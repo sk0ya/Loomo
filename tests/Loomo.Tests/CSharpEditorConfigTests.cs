@@ -91,6 +91,72 @@ public sealed class CSharpEditorConfigTests : IDisposable
     }
 
     [Fact]
+    public void Brace_alternatives_keep_their_wildcards()
+    {
+        var file = Path.Combine(_root, "Widget.cs");
+        File.WriteAllText(Path.Combine(_root, ".editorconfig"), """
+            root = true
+
+            [{*.cs,*.vb}]
+            indent_size = 3
+            """);
+
+        var config = new CSharpEditorConfigService().Resolve(file);
+
+        Assert.Equal(3, config.IndentSize);
+    }
+
+    [Fact]
+    public void Preamble_properties_are_ignored_and_root_inside_a_section_does_not_stop_the_walk()
+    {
+        var nested = Directory.CreateDirectory(Path.Combine(_root, "src")).FullName;
+        var file = Path.Combine(nested, "Widget.cs");
+        File.WriteAllText(Path.Combine(_root, ".editorconfig"), """
+            root = true
+
+            [*.cs]
+            indent_size = 4
+            """);
+        File.WriteAllText(Path.Combine(nested, ".editorconfig"), """
+            insert_final_newline = true
+
+            [*.cs]
+            root = true
+            tab_width = 2
+            """);
+
+        var config = new CSharpEditorConfigService().Resolve(file);
+
+        // セクション内の root=true は意味を持たない＝祖先の .editorconfig も効いたまま。
+        Assert.Equal(2, config.SourceFiles.Count);
+        Assert.Equal(4, config.IndentSize);
+        Assert.Equal(2, config.TabWidth);
+        // プリアンブルのプロパティは root 以外、仕様上どのファイルにも適用しない。
+        Assert.Null(config.InsertFinalNewline);
+    }
+
+    [Fact]
+    public void Analyzer_options_follow_editorconfig_edits_without_a_restart()
+    {
+        var file = Path.Combine(_root, "Widget.cs");
+        var editorConfig = Path.Combine(_root, ".editorconfig");
+        File.WriteAllText(editorConfig, "root = true\n\n[*.cs]\nindent_size = 4\n");
+        var provider = new CSharpAnalyzerConfigOptionsProvider(new CSharpEditorConfigService(), file);
+
+        Assert.True(provider.GlobalOptions.TryGetValue("indent_size", out var before));
+        Assert.Equal("4", before);
+
+        File.WriteAllText(editorConfig, "root = true\n\n[*.cs]\nindent_size = 2\n");
+        File.SetLastWriteTimeUtc(editorConfig, DateTime.UtcNow.AddSeconds(1));
+        // 構成の照合はディレクトリ単位で1秒だけ使い回す（解析中に数千回走らせないため）。
+        // テストは待たずに次の照合へ進める。
+        CSharpAnalyzerConfigOptionsProvider.ResetConfigStampCache();
+
+        Assert.True(provider.GlobalOptions.TryGetValue("indent_size", out var after));
+        Assert.Equal("2", after);
+    }
+
+    [Fact]
     public void Resolves_naming_rule_for_a_symbol_kind_and_accessibility()
     {
         var nested = Directory.CreateDirectory(Path.Combine(_root, "src")).FullName;

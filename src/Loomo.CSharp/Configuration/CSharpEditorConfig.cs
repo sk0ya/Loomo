@@ -194,8 +194,13 @@ public sealed class CSharpEditorConfigService
     {
         try
         {
-            foreach (var line in File.ReadLines(path))
+            foreach (var rawLine in File.ReadLines(path))
             {
+                var line = rawLine.Trim();
+                if (line.Length == 0 || line.StartsWith('#') || line.StartsWith(';')) continue;
+                // root はプリアンブル（最初のセクションより前）にしか意味がない。セクション内に
+                // 書かれた root=true で祖先の探索を打ち切ると、外側の .editorconfig を丸ごと落とす。
+                if (line[0] == '[' && line[^1] == ']') break;
                 var parsed = ParseProperty(line);
                 if (parsed is not { } pair || !pair.Key.Equals("root", StringComparison.OrdinalIgnoreCase)) continue;
                 return pair.Value.Equals("true", StringComparison.OrdinalIgnoreCase);
@@ -222,7 +227,9 @@ public sealed class CSharpEditorConfigService
 
             var pair = ParseProperty(line);
             if (pair is null || pair.Value.Key.Equals("root", StringComparison.OrdinalIgnoreCase)) continue;
-            if (section is null || Matches(section, configDirectory, filePath))
+            // プリアンブル（section is null）のプロパティは root 以外 EditorConfig の仕様上無視する。
+            // 拾ってしまうと、先頭に紛れた indent_size が全ファイルへ漏れる。
+            if (section is not null && Matches(section, configDirectory, filePath))
                 properties[pair.Value.Key.ToLowerInvariant()] = pair.Value.Value;
         }
     }
@@ -249,8 +256,12 @@ public sealed class CSharpEditorConfigService
     }
 
     private static System.Text.RegularExpressions.Regex GlobRegex(string pattern)
+        => new("^" + TranslateGlob(pattern) + "$",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
+    private static string TranslateGlob(string pattern)
     {
-        var builder = new System.Text.StringBuilder("^");
+        var builder = new System.Text.StringBuilder();
         for (var i = 0; i < pattern.Length; i++)
         {
             var c = pattern[i];
@@ -268,21 +279,53 @@ public sealed class CSharpEditorConfigService
             else if (c == '?') builder.Append("[^/]");
             else if (c == '{')
             {
-                var end = pattern.IndexOf('}', i + 1);
+                var end = FindClosingBrace(pattern, i);
                 if (end > i)
                 {
-                    var alternatives = pattern[(i + 1)..end].Split(',')
-                        .Select(System.Text.RegularExpressions.Regex.Escape);
-                    builder.Append("(?:").Append(string.Join('|', alternatives)).Append(")");
+                    // {} の中身はリテラルではなくパターン。エスケープしてしまうと
+                    // [{*.cs,*.vb}]（EditorConfig で正当な書き方）が「ファイル名に * を含むもの」に
+                    // なって永遠に一致せず、そのセクションの設定が黙って無視される。
+                    var alternatives = SplitAlternatives(pattern[(i + 1)..end]).Select(TranslateGlob);
+                    builder.Append("(?:").Append(string.Join('|', alternatives)).Append(')');
                     i = end;
                 }
                 else builder.Append("\\{");
             }
             else builder.Append(System.Text.RegularExpressions.Regex.Escape(c.ToString()));
         }
-        builder.Append('$');
-        return new System.Text.RegularExpressions.Regex(builder.ToString(),
-            System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+        return builder.ToString();
+    }
+
+    /// <summary>入れ子の <c>{}</c> を数えながら対応する閉じ括弧を探す。無ければ -1。</summary>
+    private static int FindClosingBrace(string pattern, int open)
+    {
+        var depth = 0;
+        for (var i = open; i < pattern.Length; i++)
+        {
+            if (pattern[i] == '{') depth++;
+            else if (pattern[i] == '}' && --depth == 0) return i;
+        }
+        return -1;
+    }
+
+    /// <summary>最上位のカンマだけで区切る（<c>{a,{b,c}}</c> の内側は分割しない）。</summary>
+    private static IReadOnlyList<string> SplitAlternatives(string body)
+    {
+        var result = new List<string>();
+        var depth = 0;
+        var start = 0;
+        for (var i = 0; i < body.Length; i++)
+        {
+            if (body[i] == '{') depth++;
+            else if (body[i] == '}') depth--;
+            else if (body[i] == ',' && depth == 0)
+            {
+                result.Add(body[start..i]);
+                start = i + 1;
+            }
+        }
+        result.Add(body[start..]);
+        return result;
     }
 }
 
@@ -291,7 +334,7 @@ public sealed class CSharpAnalyzerConfigOptionsProvider : AnalyzerConfigOptionsP
 {
     private readonly CSharpEditorConfigService _service;
     private readonly string _globalPath;
-    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, AnalyzerConfigOptions> _cache =
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, (string Stamp, AnalyzerConfigOptions Options)> _cache =
         new(StringComparer.OrdinalIgnoreCase);
 
     public CSharpAnalyzerConfigOptionsProvider(
@@ -312,8 +355,60 @@ public sealed class CSharpAnalyzerConfigOptionsProvider : AnalyzerConfigOptionsP
     private AnalyzerConfigOptions Get(string? path)
     {
         var fullPath = string.IsNullOrWhiteSpace(path) ? _globalPath : Path.GetFullPath(path);
-        return _cache.GetOrAdd(fullPath,
-            value => new CSharpAnalyzerConfigOptions(_service.Resolve(value).Properties));
+        // .editorconfig はアプリの実行中に編集される。キャッシュを引きっぱなしにすると、
+        // 一度解決したファイルは再起動するまで古い設定のままになる——効いている
+        // .editorconfig の構成と更新時刻を照合し、変わっていたら読み直す。
+        var stamp = BuildConfigStamp(fullPath);
+        if (_cache.TryGetValue(fullPath, out var cached) && string.Equals(cached.Stamp, stamp, StringComparison.Ordinal))
+            return cached.Options;
+
+        var options = new CSharpAnalyzerConfigOptions(_service.Resolve(fullPath).Properties);
+        _cache[fullPath] = (stamp, options);
+        return options;
+    }
+
+    /// <summary>
+    /// 効いている .editorconfig の並びと更新時刻。追加・削除・編集のいずれでも変わる。
+    ///
+    /// <para>結果は<b>ディレクトリ単位で短時間キャッシュ</b>する。<c>GetOptions</c> は Roslyn から
+    /// 構文木×Analyzer の回数だけ呼ばれるので、毎回祖先を辿って .editorconfig を読み直すと
+    /// （root 判定に本文を読む必要がある）解析1回で数千回のファイル走査になり、
+    /// キャッシュで避けたはずのコストが戻ってくる。1秒あればひと続きの解析は同じ結果を使い回せる。</para>
+    /// </summary>
+    private static string BuildConfigStamp(string filePath)
+    {
+        var directory = Path.GetDirectoryName(filePath);
+        if (directory is null) return "";
+
+        var now = Environment.TickCount64;
+        if (StampCache.TryGetValue(directory, out var cached) && now - cached.CheckedAt < StampTtlMs)
+            return cached.Stamp;
+
+        var stamp = ComputeConfigStamp(directory);
+        StampCache[directory] = (now, stamp);
+        return stamp;
+    }
+
+    private const long StampTtlMs = 1000;
+
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (long CheckedAt, string Stamp)> StampCache =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>短時間キャッシュを捨てる（TTL を待たずに再照合させたいテスト用）。</summary>
+    internal static void ResetConfigStampCache() => StampCache.Clear();
+
+    private static string ComputeConfigStamp(string directory)
+    {
+        var builder = new System.Text.StringBuilder();
+        foreach (var config in CSharpEditorConfigService.FindConfigFiles(directory))
+        {
+            builder.Append(config).Append('|');
+            try { builder.Append(File.GetLastWriteTimeUtc(config).Ticks); }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+            builder.Append('\n');
+        }
+        return builder.ToString();
     }
 
     private sealed class CSharpAnalyzerConfigOptions(
