@@ -1,4 +1,4 @@
-using sk0ya.Loomo.Services.Lsp;
+﻿using sk0ya.Loomo.Services.Lsp;
 using sk0ya.Loomo.CSharp.Editor;
 using sk0ya.Loomo.CSharp.Projects;
 using sk0ya.Loomo.CSharp.Refactoring;
@@ -54,7 +54,6 @@ public partial class ShellWindow
             StringComparison.OrdinalIgnoreCase);
         if (!isCSharp && control.LspDocument is not { IsConnected: true }) return;
 
-        menu.Items.Add(new Separator());
         var root = new MenuItem { Header = "リファクタリング" };
         System.Windows.Automation.AutomationProperties.SetAutomationId(root, "CSharpRefactoring");
         System.Windows.Automation.AutomationProperties.SetName(root, root.Header.ToString());
@@ -88,7 +87,9 @@ public partial class ShellWindow
         {
             var item = new MenuItem
             {
-                Header = "シグネチャの変更…",
+                // 見出しとキー表記はカタログから引く（コマンドパレットと同じ綴りにする）。
+                Header = CSharpEditorMenu.HeaderFor(CSharpEditorCommandCatalog.ChangeSignature),
+                InputGestureText = GestureFor(CSharpEditorCommandCatalog.ChangeSignature),
                 ToolTip = signature.Display,
                 Tag = CSharpEditorCommandCatalog.ChangeSignature,
             };
@@ -172,8 +173,10 @@ public partial class ShellWindow
     {
         var item = new MenuItem
         {
-            Header = "名前の変更…",
-            InputGestureText = "LSP",
+            Header = CSharpEditorMenu.HeaderFor(CSharpEditorCommandCatalog.Rename),
+            // 実効キー（未割当なら LSP 由来であることだけ示す）。
+            InputGestureText = GestureFor(CSharpEditorCommandCatalog.Rename) is { Length: > 0 } key
+                ? key : "LSP",
             Tag = CSharpEditorCommandCatalog.Rename,
         };
         System.Windows.Automation.AutomationProperties.SetAutomationId(
@@ -379,4 +382,10 @@ public partial class ShellWindow
             .GroupBy(tab => Path.GetFullPath(tab.Control.FilePath!), StringComparer.OrdinalIgnoreCase)
             .ToDictionary(group => group.Key, group => group.First().Control.Text,
                 StringComparer.OrdinalIgnoreCase);
+    /// <summary>コマンドの実効キー表記（利用者の割当を優先し、無ければカタログの既定、
+    /// どちらも無ければ空文字＝キー表記の欄を出さない）。</summary>
+    private string GestureFor(string commandId)
+        => DescribeBinding(commandId) is { Length: > 0 } effective
+            ? effective
+            : CSharpEditorMenu.GestureFor(commandId) ?? "";
 }

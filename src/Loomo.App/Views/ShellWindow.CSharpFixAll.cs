@@ -9,22 +9,23 @@ namespace sk0ya.Loomo.App.Views;
 /// C#プロジェクトの列挙とLSPセッション共有はLoomo側で行う。</summary>
 public partial class ShellWindow
 {
-    private void AddCSharpFixAllMenuItems(System.Windows.Controls.ContextMenu menu,
-        VimEditorControl? control)
+    /// <summary>「C#」サブメニューの末尾に、ファイルより広い範囲のまとめて修正を足す。
+    /// ファイル単位（<c>gA</c>）はエディタのネイティブ項目が持つので、ここは
+    /// プロジェクト／ソリューションだけ。文言もネイティブ側と同じ「〜をまとめて修正」で揃える。</summary>
+    private void AddCSharpFixAllMenuItems(System.Windows.Controls.MenuItem root, string filePath)
     {
-        if (control?.FilePath is not { Length: > 0 } filePath ||
-            !string.Equals(Path.GetExtension(filePath), ".cs", StringComparison.OrdinalIgnoreCase) ||
-            _solutionModel?.Current is not { State: ProjectLoadState.Ready } model ||
+        if (_solutionModel?.Current is not { State: ProjectLoadState.Ready } model ||
             model.ProjectForFile(filePath) is not { State: ProjectLoadState.Ready } project)
             return;
 
-        menu.Items.Add(new System.Windows.Controls.Separator());
-        AddScopeItem(menu, "Fix All in Project", project.FullPath, CSharpFixAllScope.Project);
+        if (root.Items.Count > 0)
+            root.Items.Add(new System.Windows.Controls.Separator());
+        AddScopeItem(root, "プロジェクト全体をまとめて修正", project.FullPath, CSharpFixAllScope.Project);
         if (model.Projects.Count > 1)
-            AddScopeItem(menu, "Fix All in Solution", project.FullPath, CSharpFixAllScope.Solution);
+            AddScopeItem(root, "ソリューション全体をまとめて修正", project.FullPath, CSharpFixAllScope.Solution);
     }
 
-    private void AddScopeItem(System.Windows.Controls.ContextMenu menu, string title,
+    private void AddScopeItem(System.Windows.Controls.MenuItem root, string title,
         string projectPath, CSharpFixAllScope scope)
     {
         var item = new System.Windows.Controls.MenuItem { Header = title };
@@ -32,7 +33,7 @@ public partial class ShellWindow
             item, $"CSharpFixAll.{scope}");
         System.Windows.Automation.AutomationProperties.SetName(item, title);
         item.Click += (_, _) => _ = RunCSharpFixAllAsync(projectPath, scope);
-        menu.Items.Add(item);
+        root.Items.Add(item);
     }
 
     private async Task RunCSharpFixAllAsync(string projectPath, CSharpFixAllScope scope)

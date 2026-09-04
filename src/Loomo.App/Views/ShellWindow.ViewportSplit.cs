@@ -193,6 +193,10 @@ public partial class ShellWindow {
             // 「名前の変更」は Loomo の「リファクタリング」サブメニューに入れる（§32）。
             // これを渡さないとコントロール側の "Rename Symbol" と2つ並ぶ。
             HostProvidesRenameMenuItem = true,
+#if LOOMO_EDITOR_MENU_LABELS
+            // ネイティブ項目の見出しを日本語にする（Loomo 側の追加項目と同じ言語で並べる）。
+            ContextMenuLabels = Services.EditorMenuLabels.Japanese,
+#endif
 #if LOOMO_EDITOR_HOST_API
             // LSPがrenameを返さない／接続できない場合も、C#専用DLLのRoslyn意味モデルへ戻す。
             HostRenameProvider = (path, source, line, character, newName, ct) =>
@@ -219,11 +223,7 @@ public partial class ShellWindow {
                 sk0ya.Loomo.CSharp.Editor.CSharpSemanticTokenService.GetAsync(
                     _solutionModel?.Current, path, source, ct, FindOpenCSharpEditorTexts()),
             HostHoverProvider = (path, source, line, character, ct) =>
-            {
-                var openTexts = FindOpenCSharpEditorTexts();
-                return Task.Run(() => sk0ya.Loomo.CSharp.Editor.CSharpHoverService.Get(
-                    _solutionModel?.Current, path, source, line, character, openTexts), ct);
-            },
+                RequestCSharpHoverFallbackAsync(path, source, line, character, ct),
             HostDocumentHighlightProvider = (path, source, line, character, ct) =>
             {
                 if (!string.Equals(Path.GetExtension(path), ".cs", StringComparison.OrdinalIgnoreCase))

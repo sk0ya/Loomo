@@ -19,6 +19,10 @@
 
   <PropertyGroup>
     <DefineConstants Condition="'$(UseLocalEditor)' != 'false' Or $([MSBuild]::VersionGreaterThanOrEquals('$(EditorPackageVersion)', '1.0.80'))">$(DefineConstants);LOOMO_EDITOR_HOST_API</DefineConstants>
+    <!-- 右クリックメニューのネイティブ項目の見出し差し替え（EditorContextMenuLabels）。
+         同じ版でサブメニューが開くようになった（DarkMenuItem に Popup が無かった不具合の修正）ので、
+         Loomo のサブメニュー（C#／Git／デバッグ等）もこの版から先が前提。 -->
+    <DefineConstants Condition="'$(UseLocalEditor)' != 'false' Or $([MSBuild]::VersionGreaterThanOrEquals('$(EditorPackageVersion)', '1.0.81'))">$(DefineConstants);LOOMO_EDITOR_MENU_LABELS</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>

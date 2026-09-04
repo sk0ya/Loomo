@@ -1,4 +1,4 @@
-namespace sk0ya.Loomo.App.Views;
+﻿namespace sk0ya.Loomo.App.Views;
 
 /// <summary>ShellWindow: 意味的な選択の拡大／縮小（設計書 §24.9）。
 ///
@@ -193,7 +193,6 @@ public partial class ShellWindow
                 control, document.Uri, document.Version ?? 0,
                 SelectionSpanOf(control), CaretSpan(control));
 
-        menu.Items.Add(new Separator());
         var expand = new MenuItem
         {
             Header = "選択を意味的に広げる",

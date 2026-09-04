@@ -1,4 +1,4 @@
-namespace sk0ya.Loomo.CSharp.Editor;
+﻿namespace sk0ya.Loomo.CSharp.Editor;
 
 /// <summary>C#編集固有の操作を、UI実装から独立した安定したCommand IDとして定義する。
 /// 既定ジェスチャも同じカタログに置き、App側のキーバインド一覧へそのまま投影する。</summary>
@@ -65,7 +65,7 @@ public static class CSharpEditorCommandCatalog
         new(Format, "ドキュメントを整形", "Ctrl+Alt+L"),
         new(QuickFix, "Quick Fixを表示", "Alt+Enter"),
         new(OrganizeUsings, "usingディレクティブを整理", "Ctrl+Alt+O"),
-        new(Cleanup, "C# cleanup profileを実行"),
+        new(Cleanup, "コードスタイルを一括適用"),
         new(ExtractMethod, "選択範囲からメソッドを抽出", "Ctrl+Alt+M"),
         new(ExtractInterface, "クラスからinterfaceを抽出"),
         new(ExtractClass, "メンバーをクラスへ抽出"),

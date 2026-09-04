@@ -1,13 +1,21 @@
-using sk0ya.Loomo.CSharp.Editor;
+﻿using sk0ya.Loomo.CSharp.Editor;
 using sk0ya.Loomo.CSharp.Refactoring;
 
 namespace sk0ya.Loomo.App.Views;
 
 public partial class ShellWindow
 {
-    /// <summary>C# の構文だけで完結するコード生成を右クリックへ出す。
-    /// 生成結果は通常の WorkspaceEdit と同じ preview／rollback／Undo を通る。</summary>
-    private void AddCSharpCodeGenerationMenuItems(
+    /// <summary>C# 固有の操作を「C#」サブメニュー1つに畳んで右クリックへ出す。
+    /// <para>並び（何を表に出し、何を入れ子へ落とすか）の正本は <see cref="CSharpEditorMenu"/>——
+    /// WPF に触らない純関数なので、「開いてすぐ見える段が短いか」「選択が無いときに押せない項目が
+    /// 出ていないか」をテストで押さえられる。</para>
+    /// <para><b>一覧表にしない。</b>C# の操作は 40 種あるが、右クリックはその目録ではない。
+    /// 開いてすぐ見えるのは毎日使うもの（using 整理・抽出／導入／インライン化の代表・よく使う生成）
+    /// だけにして、残りは「書き換え」「生成」「まとめて整える」の 3 つの入れ子へ落とす。
+    /// 落とした操作も同じ Command ID なので、コマンドパレットとキーバインドからは 1 手で届く。</para>
+    /// <para>見出しとキー表記も <see cref="CSharpEditorCommandCatalog"/> から引くので、
+    /// コマンドパレット・キーバインドとの表記ゆれが構造的に起きない。</para></summary>
+    private void AddCSharpMenuItems(
         System.Windows.Controls.ContextMenu menu,
         VimEditorControl? control)
     {
@@ -15,82 +23,103 @@ public partial class ShellWindow
             !string.Equals(Path.GetExtension(path), ".cs", StringComparison.OrdinalIgnoreCase))
             return;
 
-        menu.Items.Add(new Separator());
-        var root = new MenuItem { Header = "C# コード生成" };
-        SetCSharpMenuAutomation(root, "CSharpCodeGeneration");
-        var organizeUsings = new MenuItem
-        {
-            Header = "usingディレクティブを整理",
-            Tag = CSharpEditorCommandCatalog.OrganizeUsings,
-        };
-        SetCSharpMenuAutomation(organizeUsings, CSharpEditorCommandCatalog.OrganizeUsings);
-        organizeUsings.Click += (_, _) => ExecuteCSharpEditorCommand(
-            CSharpEditorCommandCatalog.OrganizeUsings, control);
-        root.Items.Add(organizeUsings);
-        var cleanup = new MenuItem
-        {
-            Header = "C# cleanup profile（プレビュー）",
-            Tag = CSharpEditorCommandCatalog.Cleanup,
-        };
-        SetCSharpMenuAutomation(cleanup, CSharpEditorCommandCatalog.Cleanup);
-        cleanup.Click += (_, _) => ExecuteCSharpEditorCommand(
-            CSharpEditorCommandCatalog.Cleanup, control);
-        root.Items.Add(cleanup);
-        var extract = new MenuItem
-        {
-            Header = "選択範囲からメソッドを抽出…",
-            Tag = CSharpEditorCommandCatalog.ExtractMethod,
-        };
-        SetCSharpMenuAutomation(extract, CSharpEditorCommandCatalog.ExtractMethod);
-        extract.Click += (_, _) => ExecuteCSharpEditorCommand(
-            CSharpEditorCommandCatalog.ExtractMethod, control);
-        root.Items.Add(extract);
-        AddCSharpCommandItem(root, control, CSharpEditorCommandCatalog.ExtractInterface, "クラスからinterfaceを抽出…");
-        AddCSharpCommandItem(root, control, CSharpEditorCommandCatalog.ExtractClass, "メンバーをクラスへ抽出…");
-        AddCSharpCommandItem(root, control, CSharpEditorCommandCatalog.PeekDefinition, "定義をPeek表示");
-        AddCSharpCommandItem(root, control, CSharpEditorCommandCatalog.PullUp, "メンバーを基底クラスへ移動");
-        AddCSharpCommandItem(root, control, CSharpEditorCommandCatalog.PushDown, "メンバーを派生クラスへ移動");
-        AddCSharpCommandItem(root, control, CSharpEditorCommandCatalog.IntroduceParameter, "パラメーターを導入…");
-        AddCSharpCommandItem(root, control, CSharpEditorCommandCatalog.IntroduceVariable, "選択式をローカル変数に導入…");
-        AddCSharpCommandItem(root, control, CSharpEditorCommandCatalog.IntroduceProperty, "選択式をプロパティに導入…");
-        AddCSharpCommandItem(root, control, CSharpEditorCommandCatalog.ExtractConstant, "選択リテラルを定数に抽出…");
-        AddCSharpCommandItem(root, control, CSharpEditorCommandCatalog.InlineVariable, "ローカル変数をインライン化");
-        AddCSharpCommandItem(root, control, CSharpEditorCommandCatalog.InlineMethod, "メソッドをインライン化");
-        AddCSharpCommandItem(root, control, CSharpEditorCommandCatalog.SafeDelete, "安全に削除");
-        AddCSharpCommandItem(root, control, CSharpEditorCommandCatalog.EncapsulateField, "フィールドをカプセル化…");
-        AddCSharpCommandItem(root, control, CSharpEditorCommandCatalog.ExtractField, "選択式をフィールドに抽出…");
-        AddCSharpCommandItem(root, control, CSharpEditorCommandCatalog.MoveTypeToFile, "型を別ファイルへ移動…");
-        AddCodeGenerationItem(root, control, CSharpCodeGenerationKind.Constructor, "コンストラクターを生成");
-        AddCodeGenerationItem(root, control, CSharpCodeGenerationKind.FieldFromConstructorParameter, "コンストラクターパラメーターからフィールドを生成");
-        AddCodeGenerationItem(root, control, CSharpCodeGenerationKind.PropertiesFromFields, "プロパティを生成");
-        AddCodeGenerationItem(root, control, CSharpCodeGenerationKind.EqualsAndGetHashCode, "Equals／GetHashCodeを生成");
-        AddCodeGenerationItem(root, control, CSharpCodeGenerationKind.ToString, "ToStringを生成");
-        AddCodeGenerationItem(root, control, CSharpCodeGenerationKind.Deconstruct, "Deconstructを生成");
-        AddCodeGenerationItem(root, control, CSharpCodeGenerationKind.MethodFromUsage, "使用箇所からメソッドを生成");
-        AddCodeGenerationItem(root, control, CSharpCodeGenerationKind.ImplementInterface, "インターフェースを実装");
-        AddCodeGenerationItem(root, control, CSharpCodeGenerationKind.OverrideMembers, "overrideメンバーを生成");
-        AddCodeGenerationItem(root, control, CSharpCodeGenerationKind.DelegatingMembers, "委譲メンバーを生成");
-        AddCodeGenerationItem(root, control, CSharpCodeGenerationKind.DisposePattern, "Disposeパターンを生成");
-        AddCodeGenerationItem(root, control, CSharpCodeGenerationKind.AsyncDisposePattern, "非同期Disposeパターンを生成");
-        AddCodeGenerationItem(root, control, CSharpCodeGenerationKind.NullGuards, "引数のnull guardを生成");
-        var jsonItem = new MenuItem
-        {
-            Header = "JSONからC#型を生成",
-            Tag = CSharpEditorCommandCatalog.GenerateJsonTypes,
-        };
-        SetCSharpMenuAutomation(jsonItem, CSharpEditorCommandCatalog.GenerateJsonTypes);
-        jsonItem.Click += (_, _) => ExecuteCSharpEditorCommand(
-            CSharpEditorCommandCatalog.GenerateJsonTypes, control);
-        root.Items.Add(jsonItem);
-        menu.Items.Add(root);
+        var root = new MenuItem { Header = "C#" };
+        SetCSharpMenuAutomation(root, "CSharpMenu");
+
+        var plan = CSharpEditorMenu.Build(control.HasSelection);
+        AddCSharpMenuSections(root, control, plan.Primary);
+        AddCSharpSubmenu(root, control, "書き換え", "CSharpMoreRewrite", plan.MoreRewrite);
+        AddCSharpSubmenu(root, control, "生成", "CSharpMoreGenerate", plan.MoreGenerate);
+        AddCSharpTidySubmenu(root, control, plan.Tidy, path);
+
+        if (root.Items.Count > 0)
+            menu.Items.Add(root);
     }
 
-    private void AddCSharpCommandItem(
-        MenuItem root, VimEditorControl control, string commandId, string header)
+    /// <summary>コントロール側の「移動」サブメニューへ、C# の「定義をPeek表示」を足す。
+    /// 移動の入口は 1 つ——定義へ移動と Peek がメニューの別々の場所に出ていると、
+    /// 「どこかへ行く」操作を探すのに 2 か所見ることになる。</summary>
+    private void AddCSharpPeekMenuItem(MenuItem? navigateMenu, VimEditorControl? control)
     {
-        var item = new MenuItem { Header = header, Tag = commandId };
-        SetCSharpMenuAutomation(item, commandId);
-        item.Click += (_, _) => ExecuteCSharpEditorCommand(commandId, control);
+        if (navigateMenu is null || control?.FilePath is not { Length: > 0 } path ||
+            !string.Equals(Path.GetExtension(path), ".cs", StringComparison.OrdinalIgnoreCase))
+            return;
+        AddCSharpCommandItem(navigateMenu, control, new CSharpMenuEntry(
+            CSharpEditorCommandCatalog.PeekDefinition,
+            CSharpEditorMenu.HeaderFor(CSharpEditorCommandCatalog.PeekDefinition),
+            CSharpEditorMenu.GestureFor(CSharpEditorCommandCatalog.PeekDefinition)));
+    }
+
+    /// <summary>入れ子を1つ足す（中身が空なら親ごと出さない）。入れ子は表の段から見て
+    /// 「たまに使う側」なので、区切り線を1本挟んでから並べる。</summary>
+    private void AddCSharpSubmenu(
+        MenuItem root, VimEditorControl control, string header, string automationId,
+        IReadOnlyList<CSharpMenuEntry> entries)
+    {
+        if (entries.Count == 0)
+            return;
+        var child = new MenuItem { Header = header };
+        SetCSharpMenuAutomation(child, automationId);
+        foreach (var entry in entries)
+            AddCSharpCommandItem(child, control, entry);
+        AddCSharpSeparatorBeforeTail(root);
+        root.Items.Add(child);
+    }
+
+    /// <summary>「まとめて整える」＝ファイルより広い範囲へ一気に効く操作。
+    /// コードスタイルの一括適用と、プロジェクト／ソリューション範囲の一括修正を同じ入れ子に置く
+    /// （どれも「今の位置」ではなく「範囲」に対する操作なので、表の段から外す）。</summary>
+    private void AddCSharpTidySubmenu(
+        MenuItem root, VimEditorControl control,
+        IReadOnlyList<CSharpMenuEntry> entries, string filePath)
+    {
+        var child = new MenuItem { Header = "まとめて整える" };
+        SetCSharpMenuAutomation(child, "CSharpTidy");
+        foreach (var entry in entries)
+            AddCSharpCommandItem(child, control, entry);
+        AddCSharpFixAllMenuItems(child, filePath);
+        if (child.Items.Count == 0)
+            return;
+        AddCSharpSeparatorBeforeTail(root);
+        root.Items.Add(child);
+    }
+
+    /// <summary>表の段と入れ子群の境目に区切り線を1本だけ入れる
+    /// （直前がまだ「表の段の項目」＝子を持たない項目のときだけ足すので、入れ子が続いても増えない）。</summary>
+    private static void AddCSharpSeparatorBeforeTail(MenuItem root)
+    {
+        if (root.Items.Count > 0 && root.Items[^1] is MenuItem { HasItems: false })
+            root.Items.Add(new Separator());
+    }
+
+    /// <summary>節を区切り線で区切って並べる。区切り線は「直前に項目がある節の前」だけに入れるので、
+    /// 空の節があっても区切り線が浮かない。</summary>
+    private void AddCSharpMenuSections(
+        MenuItem root, VimEditorControl control,
+        IReadOnlyList<CSharpMenuSection> sections)
+    {
+        foreach (var section in sections)
+        {
+            if (section.Entries.Count == 0)
+                continue;
+            if (root.Items.Count > 0)
+                root.Items.Add(new Separator());
+            foreach (var entry in section.Entries)
+                AddCSharpCommandItem(root, control, entry);
+        }
+    }
+
+    private void AddCSharpCommandItem(MenuItem root, VimEditorControl control, CSharpMenuEntry entry)
+    {
+        var item = new MenuItem
+        {
+            Header = entry.Header,
+            // キー表記は実効キー優先（GestureFor）。カタログの既定はその中で使う。
+            InputGestureText = GestureFor(entry.CommandId),
+            Tag = entry.CommandId,
+        };
+        SetCSharpMenuAutomation(item, entry.CommandId);
+        item.Click += (_, _) => ExecuteCSharpEditorCommand(entry.CommandId, control);
         root.Items.Add(item);
     }
 

@@ -1,9 +1,14 @@
-using sk0ya.Loomo.Core.Markdown;
+﻿using sk0ya.Loomo.Core.Markdown;
 using sk0ya.Loomo.Core.Files;
 using Editor.Core.Text;
 
 namespace sk0ya.Loomo.App.Views;
-/// <summary>ShellWindow: ターミナル／エディタの選択テキストに対する右クリックアクション （「AIへ送る」＝AIバーへ即送信、「ブラウザへ送る」＝内蔵ブラウザでBing検索）。 素材を別のペインへ渡す操作はすべて「〜へ送る」で揃える（設計書 §23.3 の共通語彙）。 メニュー項目はライブラリ側の ContextMenuBuilding フックで各コントロールのネイティブメニュー末尾へ 追加する（選択があるときだけ。スタイルはライブラリが自前のメニュー様式に合わせる）。</summary>
+/// <summary>ShellWindow: ターミナル／エディタの選択テキストに対する右クリックアクション （「AIへ送る」＝AIバーへ即送信、「ブラウザへ送る」＝内蔵ブラウザでBing検索）。 素材を別のペインへ渡す操作はすべて「〜へ送る」で揃える（設計書 §23.3 の共通語彙）。 メニュー項目はライブラリ側の ContextMenuBuilding フックで各コントロールのネイティブメニュー末尾へ 追加する（選択があるときだけ。スタイルはライブラリが自前のメニュー様式に合わせる）。
+/// <para><b>並びは4つの束</b>——①別のペインへ送る ②コードを操作する ③このファイルを扱う ④版と実行——で、
+/// 束ごとに区切り線を<b>1本だけ</b>置く（<see cref="AddMenuGroup"/>）。以前は寄稿する
+/// <c>Add*</c> がそれぞれ区切り線を足していたため、.cs を右クリックすると区切り線7本・
+/// トップレベル19項目がネイティブ項目20項目の下に続き、1画面に収まらなかった。
+/// 3項目以上になる系統（Git・デバッグ・C#）はサブメニューへ畳む。</para></summary>
 public partial class ShellWindow {
     private const int MaxSearchQueryLength = 300;
     private void OnEditorContextMenuBuilding(object? sender, EditorContextMenuBuildingEventArgs e) {
@@ -12,21 +17,49 @@ public partial class ShellWindow {
             AddBlameCommitMenuItems(e.Menu, control, blame);
             return;
         }
-        AddSelectionMenuItems(e.Menu, e.SelectedText, e.HasSelection,
+        // ⓪ ネイティブ項目の取捨。右クリック位置（＝キャレット位置）は、説明ポップアップを
+        //    そこへ出すためにこの時点で読む——項目を押す頃にはマウスはメニューの上にいる。
+        AdjustNativeEditorMenuItems(
+            e.Menu, control, control is not null ? Mouse.GetPosition(control) : new Point());
+        // ① 素材を別のペインへ送る（§23.3 の「〜へ送る」）
+        AddMenuGroup(e.Menu, menu => AddSelectionMenuItems(menu, e.SelectedText, e.HasSelection,
             BuildEditorSendMenuItem(
                 e.SelectedText, e.HasSelection, workingDirectory: null, control?.FilePath),
             BuildDiffSendMenu(CompareEntries(
-                control, SelectionSourceLabel(control), e.SelectedText, e.HasSelection)));
-        AddSemanticSelectionMenuItems(e.Menu, control);
-        AddRefactorMenuItems(e.Menu, control);
-        AddCSharpCodeGenerationMenuItems(e.Menu, control);
-        AddCSharpFixAllMenuItems(e.Menu, control);
-        AddOpenLinkInWindowMenuItem(e.Menu, control);
-        AddRunScriptMenuItem(e.Menu, control);
-        AddGitMenuItems(e.Menu, control);
-        AddDebugMenuItems(e.Menu, control);
-        AddMarkdownTableMenuItem(e.Menu, control);
-        AddMarkdownPathRefactorMenuItem(e.Menu, control);
+                control, SelectionSourceLabel(control), e.SelectedText, e.HasSelection))));
+#if LOOMO_EDITOR_MENU_LABELS
+        // 「どこかへ行く」操作はコントロール側の「移動」サブメニューへ入れる。
+        // Loomo の定義 Peek だけ別の場所に出ていると、移動の入口が2つに割れる。
+        AddCSharpPeekMenuItem(e.NavigateMenu, control);
+#endif
+        // ② コードを選ぶ・書き換える
+        AddMenuGroup(e.Menu, menu => {
+            AddSemanticSelectionMenuItems(menu, control);
+            AddRefactorMenuItems(menu, control);
+            AddCSharpMenuItems(menu, control);
+        });
+        // ③ このファイルそのものを扱う
+        AddMenuGroup(e.Menu, menu => {
+            AddRunScriptMenuItem(menu, control);
+            AddMarkdownTableMenuItem(menu, control);
+            AddOpenLinkInWindowMenuItem(menu, control);
+            AddMarkdownPathRefactorMenuItem(menu, control);
+        });
+        // ④ 版（Git）と実行（デバッグ）
+        AddMenuGroup(e.Menu, menu => {
+            AddGitMenuItems(menu, control);
+            AddDebugMenuItems(menu, control);
+        });
+    }
+
+    /// <summary>1つの束を足す。中身が1つでも入ったときだけ、束の<b>前</b>に区切り線を1本入れる。
+    /// 寄稿側が自分で区切り線を足さなくなるので、「区切り線だけが並ぶ」「末尾が区切り線で終わる」が
+    /// 構造的に起きない。</summary>
+    internal static void AddMenuGroup(ContextMenu menu, Action<ContextMenu> build) {
+        var before = menu.Items.Count;
+        build(menu);
+        if (menu.Items.Count > before)
+            menu.Items.Insert(before, new Separator());
     }
     /// <summary>右クリック位置（＝キャレット位置。エディタは右クリックでキャレットを移す）にリンクがあれば
     /// 「別ウィンドウで開く」を足す。URL はブラウザの、ファイルはエディタの切り離しウィンドウで開く
@@ -41,7 +74,6 @@ public partial class ShellWindow {
         var target = LinkOpenTargetResolver.Resolve(_workspace, link.Text, control.FilePath);
         if (DescribeOpenLinkInWindow(target) is not { } header)
             return;
-        menu.Items.Add(new Separator());
         var item = new MenuItem { Header = header, ToolTip = target.Value };
         item.Click += (_, _) => OpenLinkTargetInDetachedWindow(target);
         menu.Items.Add(item);
@@ -63,7 +95,6 @@ public partial class ShellWindow {
             return;
         var lines = control.Text.Replace("\r\n", "\n").Split('\n');
         bool inTable = MarkdownTableSync.TryFindTableAt(lines, control.Caret.Line, out _);
-        menu.Items.Add(new Separator());
         if (inTable) {
             var edit = new MenuItem { Header = "テーブルを VGrid で編集…" };
             edit.Click += (_, _) => EditMarkdownTable(control);
@@ -89,7 +120,6 @@ public partial class ShellWindow {
                 out var sourcePath, out _, out _, out var isDirectory))
             return;
 
-        menu.Items.Add(new Separator());
         var item = new MenuItem { Header = $"リンク先を移動・参照を更新…（{Path.GetFileName(sourcePath)}）" };
         item.Click += (_, _) => RefactorMarkdownLocalPath(
             control, documentPath, link.Text, sourcePath, isDirectory);
@@ -231,12 +261,11 @@ public partial class ShellWindow {
     private void AddGitMenuItems(ContextMenu menu, VimEditorControl? control) {
         if (control?.FilePath is not { Length: > 0 } path || !_vm.FolderTree.IsGitRepository)
             return;
-        menu.Items.Add(new Separator());
         var git = new MenuItem { Header = "Git" };
-        var history = new MenuItem { Header = "履歴を表示" };
+        var history = new MenuItem { Header = "このファイルの履歴を表示" };
         history.Click += (_, _) => _ = ShowGitHistoryAsync(path);
         git.Items.Add(history);
-        var blame = new MenuItem { Header = "Git Blame" };
+        var blame = new MenuItem { Header = "行ごとの最終更新を表示（Blame）", InputGestureText = ":Gblame" };
         blame.Click += (_, _) => control.ExecuteCommand("Gblame");
         git.Items.Add(blame);
         menu.Items.Add(git);
@@ -263,15 +292,18 @@ public partial class ShellWindow {
         EnsurePaneVisibleOrSwapTopLeft(PaneKind.Git);
         FocusPane(PaneKind.Git);
     }
+    /// <summary>デバッグ操作は「デバッグ」サブメニュー1つに畳む（停止中は4項目まで増えるため）。
+    /// <b>デバッガの管轄拡張子のファイルにだけ</b>出す——以前は拡張子を問わず出していたので、
+    /// .md や .json を右クリックしても「ブレークポイントの条件を編集…」が並んでいた。</summary>
     private void AddDebugMenuItems(ContextMenu menu, VimEditorControl? control) {
-        if (control?.FilePath is not { Length: > 0 } path) return;
+        if (control?.FilePath is not { Length: > 0 } path || !IsDebuggableSource(path)) return;
         // ファイルの管轄マネージャ（.ts/.js 系→TS IDE、それ以外→dotnet IDE）へ振り分ける。
         var mgr = ManagerForPath(path);
         var line0 = control.Caret.Line;  // 0 始まり
-        menu.Items.Add(new Separator());
+        var root = new MenuItem { Header = "デバッグ" };
         var editCond = new MenuItem { Header = "ブレークポイントの条件を編集…" };
         editCond.Click += (_, _) => EditBreakpointCondition(path, line0);
-        menu.Items.Add(editCond);
+        root.Items.Add(editCond);
         if (mgr.IsStopped) {
             var runTo = new MenuItem { Header = "カーソル行まで実行" };
             runTo.Click += (_, _) => _ = mgr switch {
@@ -279,18 +311,19 @@ public partial class ShellWindow {
                 ViewModels.DebugViewModel d => d.Launch.RunToCursorAsync(path, line0),
                 _ => Task.CompletedTask,
             };
-            menu.Items.Add(runTo);
+            root.Items.Add(runTo);
             // 次のステートメント設定・特定関数へのステップインは dotnet（netcoredbg）のみ対応。
             if (mgr is ViewModels.DebugViewModel dbg) {
                 if (dbg.Launch.SupportsSetNextStatement) {
                     var setNext = new MenuItem { Header = "次のステートメントに設定（この行へ）" };
                     setNext.Click += (_, _) => _ = dbg.Launch.SetNextStatementAsync(path, line0);
-                    menu.Items.Add(setNext);
+                    root.Items.Add(setNext);
                 }
                 if (dbg.Launch.SupportsStepInTargets)
-                    menu.Items.Add(BuildStepInTargetsMenu(dbg.Launch));
+                    root.Items.Add(BuildStepInTargetsMenu(dbg.Launch));
             }
         }
+        menu.Items.Add(root);
     }
     private static MenuItem BuildStepInTargetsMenu(ViewModels.DebugLaunchViewModel dbg) {
         var parent = new MenuItem { Header = "特定の関数にステップ イン" };
@@ -318,11 +351,13 @@ public partial class ShellWindow {
         bps.EnsureBreakpoint(path, line0).Condition = input.Trim();
     }
     private void OnTerminalContextMenuBuilding(object? sender, TerminalContextMenuBuildingEventArgs e)
-        => AddSelectionMenuItems(e.Menu, e.SelectedText, e.HasSelection,
+        // ターミナル側はエディタと違いホスト項目の区切り線を整理しないので、ここも束として足す
+        // （中身が入ったときだけ、ネイティブ項目との間に区切り線が1本入る）。
+        => AddMenuGroup(e.Menu, menu => AddSelectionMenuItems(menu, e.SelectedText, e.HasSelection,
             BuildEditorSendMenuItem(
                 e.SelectedText, e.HasSelection,
                 (sender as TerminalTabView)?.WorkingDirectory, currentDocumentPath: null),
-            BuildDiffSendMenu(CompareEntries(control: null, "ターミナルの選択", e.SelectedText, e.HasSelection)));
+            BuildDiffSendMenu(CompareEntries(control: null, "ターミナルの選択", e.SelectedText, e.HasSelection))));
     /// <summary>選択テキストがファイルの場所（パス＋行・列）を指しているなら「エディタへ送る」1項目を作る。
     /// ビルドエラー・スタックトレース・grep 出力・Git の diff 見出しなど、
     /// <b>その場に出ている文字列</b>をそのまま宛先にして、その行へ着地させる（設計書 §23.3 の「〜へ送る」）。
@@ -363,7 +398,6 @@ public partial class ShellWindow {
         var hasText = hasSelection && !string.IsNullOrWhiteSpace(selectedText);
         if (!hasText && editorItem is null && diffItem is null)
             return;
-        menu.Items.Add(new Separator());
         if (hasText) {
             var ask = new MenuItem {
                 Header = "AIへ送る", ToolTip = "選択テキストについてAIに尋ねる",
@@ -488,7 +522,6 @@ public partial class ShellWindow {
     private void AddRunScriptMenuItem(ContextMenu menu, VimEditorControl? control) {
         if (control?.FilePath is not { Length: > 0 } path || !IsRunnableScript(path))
             return;
-        menu.Items.Add(new Separator());
         var run = new MenuItem {
             Header = $"ターミナルで実行（{Path.GetFileName(path)}）", IsEnabled = _activeTerminalTab is not null, };
         run.Click += (_, _) => RunScriptInTerminal(control, path);

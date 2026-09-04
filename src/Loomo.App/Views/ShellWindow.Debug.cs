@@ -1,8 +1,18 @@
-namespace sk0ya.Loomo.App.Views;
+﻿namespace sk0ya.Loomo.App.Views;
 /// <summary>デバッグ（DAP）とエディタの橋渡し。エディタのブレークポイント列のトグルをブレークポイントストア＋デバッグアダプタへ反映し、 停止位置（実行中行）をエディタのハイライトへ反映する。 ブレークポイント状態の真実はマネージャ VM が持ち、エディタは表示するだけ（AI/人間で経路を一本化する流儀）。
 /// マネージャは 2 つ（dotnet=<see cref="ViewModels.DebugViewModel"/> / TypeScript=<see cref="ViewModels.TsDebugViewModel"/>）あり、ファイルの拡張子で管轄を振り分ける（.ts/.js 系→TS、それ以外→dotnet。同じファイルが両方に属することはないため混線しない）。 実行行クリアや DataTip 有効化のような「全エディタ」操作は、発生源マネージャの管轄拡張子のエディタに限定する（両デバッガ同時実行時に潰し合わないように）。</summary>
 public partial class ShellWindow {
     private static readonly string[] TsDebugExtensions = [".ts", ".mts", ".cts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"];
+    /// <summary>dotnet 側（netcoredbg）が行に停まれるソースの拡張子。</summary>
+    private static readonly string[] DotnetDebugExtensions = [".cs", ".fs", ".fsx", ".vb", ".razor", ".cshtml"];
+    /// <summary>どちらかのデバッガの管轄ソースか。右クリックのデバッグ項目の出し分けに使う——
+    /// .md や .json でブレークポイント操作を並べても押せるだけで意味がない。</summary>
+    internal static bool IsDebuggableSource(string? path) {
+        if (string.IsNullOrWhiteSpace(path)) return false;
+        var ext = Path.GetExtension(path);
+        return TsDebugExtensions.Any(e => string.Equals(e, ext, StringComparison.OrdinalIgnoreCase))
+            || DotnetDebugExtensions.Any(e => string.Equals(e, ext, StringComparison.OrdinalIgnoreCase));
+    }
     private void InitializeDebugWiring() {
         _vm.Debug.ExecutionLineChanged += (path, line0) => OnDebugExecutionLineChanged(_vm.Debug, path, line0);
         _vm.Debug.FramePreviewRequested += OnDebugFramePreviewRequested;
