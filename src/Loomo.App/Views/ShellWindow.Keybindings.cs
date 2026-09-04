@@ -63,9 +63,27 @@ public partial class ShellWindow {
             actions,
             onEnterMode: mode => { if (mode == CommandCatalog.ResizeMode) SetResizeMode(true); },
             onExitMode: mode => { if (mode == CommandCatalog.ResizeMode) SetResizeMode(false); },
-            canExecute: id => !id.StartsWith("editor.csharp.", StringComparison.Ordinal) ||
-                ActiveCSharpEditor() is not null);
+            canExecute: CanExecuteKeyboardCommand);
     }
+
+    /// <summary>キーからコマンドを実行してよいか。false ならキーは<b>消費されず</b>内側のペインへ
+    /// 届く（<see cref="KeyboardDispatcher"/>）。ここはウィンドウの PreviewKeyDown から走るので、
+    /// 対象ペイン以外で押されたキーを黙って食べないための最後の関門になる。
+    /// <list type="bullet">
+    /// <item>C#専用コマンドは .cs 以外なら素通し（エディタ自身のLSP操作へ委ねる）。</item>
+    /// <item>Ctrl+S はエディタにフォーカスがあるときだけ。ターミナル／ブラウザ／コンポーザで
+    /// 押した Ctrl+S が、無関係なエディタタブをディスクへ書きつつそのペインにも届かない、
+    /// という二重の事故を防ぐ。コマンドパレット経由の保存はこの関門を通らない。</item>
+    /// </list></summary>
+    private bool CanExecuteKeyboardCommand(string id) => id switch
+    {
+        "editor.save" => IsEditorFocused(),
+        _ => !id.StartsWith("editor.csharp.", StringComparison.Ordinal) ||
+            ActiveCSharpEditor() is not null,
+    };
+
+    private bool IsEditorFocused()
+        => EditorPane.IsKeyboardFocusWithin || _focusedRegion?.Pane == PaneKind.Editor;
 
     /// <summary>現在のエディター文書を保存する。Ctrl+S は言語に依存しないホスト操作なので、
     /// C# 専用 DLL ではなく ShellWindow から Editor の保存 API へ接続する。</summary>

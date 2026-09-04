@@ -212,6 +212,13 @@ public partial class ShellWindow
         await ChangeSignatureAsync(signature);
     }
 
+    /// <summary>C#専用フォールバックを走らせてよいファイルか。これらのproviderは全エディタへ
+    /// 結線されているので、.cs以外では必ず素通しする——さもないと他言語のLSP結果を
+    /// C#のCompilation失敗メッセージで上書きしてしまう（例: .ts で F12 → 「C# 定義検索: …」）。</summary>
+    private static bool IsCSharpFallbackTarget(string path)
+        => !string.IsNullOrWhiteSpace(path) &&
+           string.Equals(Path.GetExtension(path), ".cs", StringComparison.OrdinalIgnoreCase);
+
     private async Task<LspWorkspaceEdit?> RequestCSharpRenameFallbackAsync(
         string path,
         string source,
@@ -220,9 +227,7 @@ public partial class ShellWindow
         string newName,
         CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(path) || !string.Equals(
-                Path.GetExtension(path), ".cs", StringComparison.OrdinalIgnoreCase))
-            return null;
+        if (!IsCSharpFallbackTarget(path)) return null;
 
         var result = await CSharpRenameService.RenameAsync(
             _solutionModel?.Current, path, source,
@@ -243,9 +248,7 @@ public partial class ShellWindow
         int character,
         CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(path) || !string.Equals(
-                Path.GetExtension(path), ".cs", StringComparison.OrdinalIgnoreCase))
-            return null;
+        if (!IsCSharpFallbackTarget(path)) return null;
 
         return await CSharpRenameService.PrepareAsync(
             _solutionModel?.Current, path, source,
@@ -256,6 +259,8 @@ public partial class ShellWindow
     private async Task<(string Uri, int Line, int Column)?> RequestCSharpDefinitionFallbackAsync(
         string path, string source, int line, int character, CancellationToken cancellationToken)
     {
+        if (!IsCSharpFallbackTarget(path)) return null;
+
         var result = await CSharpNavigationService.FindDefinitionAsync(
             _solutionModel?.Current, path, source,
             new LspPosition(line, character), FindOpenCSharpEditorTexts(), cancellationToken);
@@ -269,6 +274,8 @@ public partial class ShellWindow
     private async Task<IReadOnlyList<LspLocation>> RequestCSharpReferencesFallbackAsync(
         string path, string source, int line, int character, CancellationToken cancellationToken)
     {
+        if (!IsCSharpFallbackTarget(path)) return [];
+
         var result = await CSharpNavigationService.FindReferencesAsync(
             _solutionModel?.Current, path, source,
             new LspPosition(line, character), FindOpenCSharpEditorTexts(), cancellationToken);
@@ -280,6 +287,8 @@ public partial class ShellWindow
     private async Task<IReadOnlyList<LspLocation>> RequestCSharpImplementationsFallbackAsync(
         string path, string source, int line, int character, CancellationToken cancellationToken)
     {
+        if (!IsCSharpFallbackTarget(path)) return [];
+
         var result = await CSharpNavigationService.FindImplementationsAsync(
             _solutionModel?.Current, path, source,
             new LspPosition(line, character), FindOpenCSharpEditorTexts(), cancellationToken);
@@ -290,6 +299,8 @@ public partial class ShellWindow
     private async Task<IReadOnlyList<LspLocation>> RequestCSharpTypeDefinitionFallbackAsync(
         string path, string source, int line, int character, CancellationToken cancellationToken)
     {
+        if (!IsCSharpFallbackTarget(path)) return [];
+
         var result = await CSharpNavigationService.FindTypeDefinitionAsync(
             _solutionModel?.Current, path, source,
             new LspPosition(line, character), FindOpenCSharpEditorTexts(), cancellationToken);
@@ -300,6 +311,8 @@ public partial class ShellWindow
     private async Task<IReadOnlyList<LspLocation>> RequestCSharpDeclarationFallbackAsync(
         string path, string source, int line, int character, CancellationToken cancellationToken)
     {
+        if (!IsCSharpFallbackTarget(path)) return [];
+
         var result = await CSharpNavigationService.FindDeclarationAsync(
             _solutionModel?.Current, path, source,
             new LspPosition(line, character), FindOpenCSharpEditorTexts(), cancellationToken);

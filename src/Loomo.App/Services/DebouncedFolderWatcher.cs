@@ -14,8 +14,11 @@ public sealed class DebouncedFolderWatcher : IDisposable
     private readonly Action _refresh;
     // 生成したスレッド（＝この watcher の所有者がコレクションを作ったスレッド）の
     // ディスパッチャ。監視の発火はスレッドプールなので、再読込は必ずここへ渡す。
-    // Application.Current の Dispatcher を使うと、テストやバックグラウンド生成時に
-    // ObservableCollection／CollectionView の所有スレッドとずれて落ちる。
+    // Application.Current の Dispatcher を先に使うと、テストやバックグラウンド生成時に
+    // ObservableCollection／CollectionView の所有スレッドとずれて落ちるため、あくまで
+    // 生成スレッドが優先。ただし生成スレッドにディスパッチャが無いときの CurrentDispatcher は
+    // メッセージポンプを持たない新品を作ってしまい、BeginInvoke した再読込が永久に走らない
+    // （更新が黙って止まる）。その場合だけ、実際に回っているUIディスパッチャへ落とす。
     private readonly System.Windows.Threading.Dispatcher _dispatcher;
     private FileSystemWatcher? _watcher;
     private Timer? _timer;
@@ -26,6 +29,7 @@ public sealed class DebouncedFolderWatcher : IDisposable
     {
         _refresh = refresh;
         _dispatcher = System.Windows.Threading.Dispatcher.FromThread(Thread.CurrentThread)
+            ?? System.Windows.Application.Current?.Dispatcher
             ?? System.Windows.Threading.Dispatcher.CurrentDispatcher;
     }
 

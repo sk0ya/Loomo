@@ -164,6 +164,10 @@ public partial class ShellWindow
         return statuses.Any(s => s.State == LspServerRuntimeState.Ready);
     }
 
+    /// <summary>「名前の変更」は<b>C#専用ではない</b>——このメニュー自体、LSP接続済みなら他言語でも出る。
+    /// C#は他の入口（コマンドパレット／キーバインド）と同じホスト結線を通し、それ以外は
+    /// コントロール自身のLSP renameを直接呼ぶ。<see cref="ExecuteCSharpEditorCommand"/> は
+    /// 拡張子が .cs でなければ黙って返るので、ここで分けないと他言語で項目が無反応になる。</summary>
     private MenuItem BuildRenameMenuItem(VimEditorControl control)
     {
         var item = new MenuItem
@@ -175,8 +179,13 @@ public partial class ShellWindow
         System.Windows.Automation.AutomationProperties.SetAutomationId(
             item, CSharpEditorCommandCatalog.Rename);
         System.Windows.Automation.AutomationProperties.SetName(item, item.Header.ToString());
-        item.Click += (_, _) => ExecuteCSharpEditorCommand(
-            CSharpEditorCommandCatalog.Rename, control);
+        item.Click += (_, _) =>
+        {
+            if (ActiveCSharpEditor(control) is not null)
+                ExecuteCSharpEditorCommand(CSharpEditorCommandCatalog.Rename, control);
+            else
+                control.ExecuteCommand("Rename");
+        };
         return item;
     }
 
