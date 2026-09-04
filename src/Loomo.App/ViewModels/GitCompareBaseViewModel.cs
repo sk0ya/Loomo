@@ -17,15 +17,10 @@ public sealed record GitCompareModeOption(GitCompareBaseKind Kind, string Label)
 /// <see cref="GitRootSwitchViewModel"/> と同じく Singleton——サイドバー Git パネルと Diff ペインは
 /// 別々の画面領域だが<b>同じ一つの基準</b>を見ているので、どちらで切り替えても両方に反映される。
 ///
-/// <para>解決（ref の確定）はここでは<b>キャッシュしない</b>。分岐点は fetch でリモートが動けば変わり、
-/// ブランチは消えることもあるので、一覧・差分を組み立てる側が毎回 <see cref="ResolveAsync"/> を呼ぶ。
-/// 既定（作業ツリー）では git を1回も起動しないので、これまでの経路の負荷は変わらない。
-/// 分岐点基準では1回の読み直しにつき <c>rev-parse --verify</c>×2 ＋ <c>merge-base</c>、しかも Git パネルと
-/// Diff ペインが別々に呼ぶので、1回の <c>RepositoryChanged</c> で最大6〜8プロセスになる。<b>メモ化はしない</b>
-/// ——「古い基準の差分が残らない」ことがこの機能の一番の要件で、キャッシュの無効化条件
-/// （対象ルート・選択・リモートの移動・HEAD の移動）を取りこぼすと静かに嘘をつく側に倒れる。
-/// ポーリングは変化があったときだけ通知するので実測で問題が出たら、そのときに
-/// <c>(root, selection, リポジトリ署名)</c> をキーにして入れる。</para>
+/// <para>解決（ref の確定）は毎回実行する。分岐点は fetch でリモートが動けば変わり、
+/// ブランチは消えることもあるため、選択変更時は最新の ref を確認する。一方、下位の GitService は
+/// status／ブランチ／ログなどの同一照会を共有キャッシュし、RepositoryChanged でまとめて破棄する。
+/// そのため Git パネルと Diff ペインが同じ照会を重ねて git を起動することはない。</para>
 ///
 /// <para>既知の限界：<see cref="GitRepositoryMonitor"/> のポーリング署名は <c>git status</c> の出力と
 /// 作業ツリーの印だけなので、<b>Loomo の外で</b> fetch してリモート追跡ブランチだけが動いた場合、

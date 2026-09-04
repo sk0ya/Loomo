@@ -37,6 +37,9 @@ public sealed record GitLogQuery
     /// <summary>リネームを追って履歴を続ける（<c>--follow</c>）。ファイル1件のときだけ意味がある。</summary>
     public bool FollowRenames { get; init; }
 
+    /// <summary>現在のブランチの主系列だけを表示する。</summary>
+    public bool FirstParent { get; init; }
+
     /// <summary>作者の絞り込み（部分一致・固定文字列）。複数は AND。</summary>
     public IReadOnlyList<string> Authors { get; init; } = Array.Empty<string>();
 
@@ -72,6 +75,8 @@ public sealed record GitLogQuery
             args.Add($"--skip={Skip}");
         args.Add("--date=format:%Y-%m-%d %H:%M");
         args.Add($"--pretty=format:{GitLogParser.PrettyFormat}");
+        if (FirstParent)
+            args.Add("--first-parent");
 
         // 検索語は正規表現ではなく固定文字列として扱う（"C++" や "a.b" がメタ文字として暴れないように）。
         if (Authors.Count > 0 || Messages.Count > 0)

@@ -31,6 +31,26 @@ public sealed class GitService
     private readonly GitCloneService _clone;
     private readonly GitRepositoryMonitor _monitor;
 
+    // GitService は Singleton なので、Git パネル・セッション・Diff が同じ照会結果を共有する。
+    // 変更通知（または Git 対象ルート変更）でまとめて破棄する。
+    private readonly object _readCacheGate = new();
+    private Task<GitStatusSnapshot>? _cachedStatus;
+    private Task<IReadOnlyList<string>>? _cachedRemotes;
+    private Task<IReadOnlyList<GitRemoteInfo>>? _cachedRemoteUrls;
+    private Task<IReadOnlyList<GitBranchInfo>>? _cachedBranches;
+    private Task<IReadOnlyList<GitTagInfo>>? _cachedTags;
+    private Task<IReadOnlyList<GitSubmoduleInfo>>? _cachedSubmodules;
+    private Task<IReadOnlyList<GitStashEntry>>? _cachedStashes;
+    private Task<IReadOnlyList<string>>? _cachedComparableRefs;
+    private readonly Dictionary<string, Task<IReadOnlyList<GitLogRow>>> _cachedLogs = new();
+    private readonly Dictionary<string, Task<string>> _cachedCommitMessages =
+        new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, Task<string?>> _cachedDefaultBranches = new();
+    private readonly Dictionary<GitCompareBaseSelection, Task<GitCompareResolution>>
+        _cachedCompareResolutions = new();
+    private readonly Dictionary<string, Task<GitCompareChanges>> _cachedCompareChanges =
+        new(StringComparer.Ordinal);
+
     public GitService(IWorkspaceService workspace)
     {
         _workspace = workspace;
@@ -49,8 +69,17 @@ public sealed class GitService
         _compare = new GitCompareService(_runner);
         _clone = new GitCloneService(_runner);
         _monitor = new GitRepositoryMonitor(_rootState, _runner);
-        _monitor.RepositoryChanged += (_, _) => RepositoryChanged?.Invoke(this, EventArgs.Empty);
-        _mutations.RepositoryChanged += (_, _) => RepositoryChanged?.Invoke(this, EventArgs.Empty);
+        _rootState.Changed += (_, _) => InvalidateReadCache();
+        _monitor.RepositoryChanged += (_, _) =>
+        {
+            InvalidateReadCache();
+            RepositoryChanged?.Invoke(this, EventArgs.Empty);
+        };
+        _mutations.RepositoryChanged += (_, _) =>
+        {
+            InvalidateReadCache();
+            RepositoryChanged?.Invoke(this, EventArgs.Empty);
+        };
         _mutations.OperationExecuted += (_, e) => OperationExecuted?.Invoke(this, e);
     }
 
@@ -79,27 +108,44 @@ public sealed class GitService
     /// ブレーム・履歴などファイル起点の操作を、現在の対象と違うフォルダーのファイルに対して行うときに使う。</summary>
     public void SetActiveRootForPath(string fullPath) => _rootState.SelectForPath(fullPath);
 
-    public Task<GitStatusSnapshot> GetStatusAsync() => _status.GetStatusAsync();
+    public Task<GitStatusSnapshot> GetStatusAsync() =>
+        Cached(ref _cachedStatus, _status.GetStatusAsync);
 
-    public Task<IReadOnlyList<string>> GetRemotesAsync() => _branches.GetRemotesAsync();
+    public Task<IReadOnlyList<string>> GetRemotesAsync() =>
+        Cached(ref _cachedRemotes, _branches.GetRemotesAsync);
 
-    public Task<IReadOnlyList<GitRemoteInfo>> GetRemoteUrlsAsync() => _branches.GetRemoteUrlsAsync();
+    public Task<IReadOnlyList<GitRemoteInfo>> GetRemoteUrlsAsync() =>
+        Cached(ref _cachedRemoteUrls, _branches.GetRemoteUrlsAsync);
 
-    public Task<IReadOnlyList<GitBranchInfo>> GetBranchesAsync() => _branches.GetBranchesAsync();
+    public Task<IReadOnlyList<GitBranchInfo>> GetBranchesAsync() =>
+        Cached(ref _cachedBranches, _branches.GetBranchesAsync);
 
     internal static (int Ahead, int Behind, bool Gone) ParseTrack(string track)
         => GitBranchService.ParseTrack(track);
 
-    public Task<IReadOnlyList<GitTagInfo>> GetTagsAsync() => _branches.GetTagsAsync();
+    public Task<IReadOnlyList<GitTagInfo>> GetTagsAsync() =>
+        Cached(ref _cachedTags, _branches.GetTagsAsync);
 
-    public Task<IReadOnlyList<GitSubmoduleInfo>> GetSubmodulesAsync() => _submodules.GetSubmodulesAsync();
+    public Task<IReadOnlyList<GitSubmoduleInfo>> GetSubmodulesAsync() =>
+        Cached(ref _cachedSubmodules, _submodules.GetSubmodulesAsync);
 
     public async Task<IReadOnlyList<GitLogRow>> GetLogAsync(
         string? branchRef = null, int limit = 300, int skip = 0, string? pathFilter = null)
         => await _history.GetLogAsync(branchRef, limit, skip, pathFilter).ConfigureAwait(false);
 
     /// <summary>絞り込み条件付きでコミットログを引く（作者・本文・日付は git 側で篩われる）。</summary>
-    public Task<IReadOnlyList<GitLogRow>> GetLogAsync(GitLogQuery query) => _history.GetLogAsync(query);
+    public Task<IReadOnlyList<GitLogRow>> GetLogAsync(GitLogQuery query)
+    {
+        var key = string.Join('\0', query.ToArguments());
+        lock (_readCacheGate)
+        {
+            if (_cachedLogs.TryGetValue(key, out var cached))
+                return cached;
+            var task = _history.GetLogAsync(query);
+            _cachedLogs[key] = task;
+            return task;
+        }
+    }
 
     // ===== 特定リビジョンのファイル =====
 
@@ -124,19 +170,48 @@ public sealed class GitService
     // ===== 比較基準（作業ツリー／ブランチ／分岐点） =====
 
     /// <summary>比較基準として選べる ref（ローカル＋リモート追跡ブランチ）。</summary>
-    public Task<IReadOnlyList<string>> GetComparableRefsAsync() => _compare.GetComparableRefsAsync();
+    public Task<IReadOnlyList<string>> GetComparableRefsAsync() =>
+        Cached(ref _cachedComparableRefs, _compare.GetComparableRefsAsync);
 
     /// <summary>既定ブランチの推定（origin/HEAD → main → master …）。無ければ null。</summary>
-    public Task<string?> GetDefaultBranchAsync(IReadOnlyList<string>? availableRefs = null) =>
-        _compare.GetDefaultBranchAsync(availableRefs);
+    public Task<string?> GetDefaultBranchAsync(IReadOnlyList<string>? availableRefs = null)
+    {
+        var key = availableRefs is null ? "" : string.Join('\0', availableRefs);
+        lock (_readCacheGate)
+        {
+            if (_cachedDefaultBranches.TryGetValue(key, out var cached))
+                return cached;
+            var task = _compare.GetDefaultBranchAsync(availableRefs);
+            _cachedDefaultBranches[key] = task;
+            return task;
+        }
+    }
 
     /// <summary>比較基準を実際の ref へ解決する（失敗は理由付きで返る）。</summary>
-    public Task<GitCompareResolution> ResolveCompareBaseAsync(GitCompareBaseSelection selection) =>
-        _compare.ResolveAsync(selection);
+    public Task<GitCompareResolution> ResolveCompareBaseAsync(GitCompareBaseSelection selection)
+    {
+        lock (_readCacheGate)
+        {
+            if (_cachedCompareResolutions.TryGetValue(selection, out var cached))
+                return cached;
+            var task = _compare.ResolveAsync(selection);
+            _cachedCompareResolutions[selection] = task;
+            return task;
+        }
+    }
 
     /// <summary>基準に対する変更ファイル一覧（未追跡は含まない・リネームは1件）。失敗は理由付きで返る。</summary>
-    public Task<GitCompareChanges> GetCompareChangesAsync(string baseRef) =>
-        _compare.GetChangesAsync(baseRef);
+    public Task<GitCompareChanges> GetCompareChangesAsync(string baseRef)
+    {
+        lock (_readCacheGate)
+        {
+            if (_cachedCompareChanges.TryGetValue(baseRef, out var cached))
+                return cached;
+            var task = _compare.GetChangesAsync(baseRef);
+            _cachedCompareChanges[baseRef] = task;
+            return task;
+        }
+    }
 
     /// <summary>基準に対する1ファイルの差分テキスト。</summary>
     public Task<string> GetCompareFileDiffAsync(
@@ -185,6 +260,9 @@ public sealed class GitService
 
     public Task<GitCommandResult> CommitAsync(string message, bool amend = false, bool sign = false) =>
         _commits.CommitAsync(message, amend, sign);
+
+    public Task<GitCommandResult> AmendCommitAsync(string targetHash, bool sign = false) =>
+        _rebase.AmendCommitAsync(targetHash, sign);
 
     public Task<GitCommandResult> FetchAsync() => _branches.FetchAsync();
     public Task<GitCommandResult> PullAsync() => _branches.PullAsync();
@@ -272,7 +350,8 @@ public sealed class GitService
     public Task<GitCommandResult> StashPushAsync(string? message, bool includeUntracked) =>
         _stashes.PushAsync(message, includeUntracked);
 
-    public Task<IReadOnlyList<GitStashEntry>> GetStashesAsync() => _stashes.GetStashesAsync();
+    public Task<IReadOnlyList<GitStashEntry>> GetStashesAsync() =>
+        Cached(ref _cachedStashes, _stashes.GetStashesAsync);
 
     public Task<GitCommandResult> StashApplyAsync(string stashRef) => _stashes.ApplyAsync(stashRef);
     public Task<GitCommandResult> StashPopAsync(string stashRef) => _stashes.PopAsync(stashRef);
@@ -283,7 +362,11 @@ public sealed class GitService
 
     public Task<GitCommandResult> ResetAsync(string hash, GitResetMode mode) => _rebase.ResetAsync(hash, mode);
 
-    public Task<string> GetCommitMessageAsync(string hash) => _rebase.GetCommitMessageAsync(hash);
+    public Task<string> GetCommitMessageAsync(
+        string hash, System.Threading.CancellationToken cancellationToken = default) =>
+        cancellationToken.CanBeCanceled
+            ? _rebase.GetCommitMessageAsync(hash, cancellationToken)
+            : CachedCommitMessage(hash);
 
     public Task<GitCommandResult> RewriteCommitMessageAsync(string hash, string message) =>
         _rebase.RewriteCommitMessageAsync(hash, message);
@@ -299,5 +382,54 @@ public sealed class GitService
         => _rebase.InteractiveRebaseAsync(fromHash, plan, newMessages);
 
     public Task<GitCommandResult> RunAsync(params string[] args) => _runner.RunAsync(args);
+
+    /// <summary>外部変更を取り込む前など、次の照会を必ず Git へ通すためのキャッシュ破棄。</summary>
+    public void InvalidateReadCache()
+    {
+        lock (_readCacheGate)
+        {
+            _cachedStatus = null;
+            _cachedRemotes = null;
+            _cachedRemoteUrls = null;
+            _cachedBranches = null;
+            _cachedTags = null;
+            _cachedSubmodules = null;
+            _cachedStashes = null;
+            _cachedComparableRefs = null;
+            _cachedLogs.Clear();
+            _cachedCommitMessages.Clear();
+            _cachedDefaultBranches.Clear();
+            _cachedCompareResolutions.Clear();
+            _cachedCompareChanges.Clear();
+        }
+    }
+
+    private Task<string> CachedCommitMessage(string hash)
+    {
+        lock (_readCacheGate)
+        {
+            // 失敗した Task は捨てて引き直す（Cached&lt;T&gt; と同じ理由）。
+            if (_cachedCommitMessages.TryGetValue(hash, out var cached))
+            {
+                if (cached is not ({ IsFaulted: true } or { IsCanceled: true }))
+                    return cached;
+                _cachedCommitMessages.Remove(hash);
+            }
+            var task = _rebase.GetCommitMessageAsync(hash);
+            _cachedCommitMessages[hash] = task;
+            return task;
+        }
+    }
+
+    private Task<T> Cached<T>(ref Task<T>? cache, Func<Task<T>> loader)
+    {
+        lock (_readCacheGate)
+        {
+            // 失敗した Task を握り込まない。握ると一度の git 失敗がキャッシュを毒し、
+            // 以後の呼び出しが全部——git を1回も起動しないまま——同じ例外を返し続ける。
+            if (cache is { IsFaulted: true } or { IsCanceled: true }) cache = null;
+            return cache ??= loader();
+        }
+    }
 
 }

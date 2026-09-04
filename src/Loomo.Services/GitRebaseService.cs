@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace sk0ya.Loomo.Services;
@@ -21,6 +22,187 @@ public sealed class GitRebaseService
 
     public Task<GitCommandResult> RebaseAsync(string onto) =>
         _mutations.ExecuteAsync("rebase", onto);
+
+    /// <summary>
+    /// ステージ済みの変更を指定コミットへ追加する。HEAD なら通常の amend、過去のコミットなら
+    /// 一時的な fixup コミットを作って autosquash する。未ステージの変更は一時退避し、成功後に戻す。
+    /// </summary>
+    public async Task<GitCommandResult> AmendCommitAsync(string targetHash, bool sign = false)
+    {
+        try
+        {
+            return await AmendCommitCoreAsync(targetHash, sign).ConfigureAwait(false);
+        }
+        finally
+        {
+            _mutations.NotifyRepositoryChanged();
+        }
+    }
+
+    private async Task<GitCommandResult> AmendCommitCoreAsync(string targetHash, bool sign)
+    {
+        if (string.IsNullOrWhiteSpace(targetHash))
+            return new GitCommandResult(-1, "", "amend 対象のコミットが選択されていません。");
+
+        var resolved = await _runner.RunAsync(
+            "rev-parse", "--verify", $"{targetHash}^{{commit}}").ConfigureAwait(false);
+        if (!resolved.Success) return resolved;
+        var target = resolved.Output.Trim();
+
+        var headResult = await _runner.RunAsync("rev-parse", "HEAD").ConfigureAwait(false);
+        if (!headResult.Success) return headResult;
+        var head = headResult.Output.Trim();
+
+        if (string.Equals(target, head, StringComparison.OrdinalIgnoreCase))
+        {
+            var args = new List<string> { "commit", "--amend", "--no-edit" };
+            if (sign) args.Add("-S");
+            return await _mutations.ExecuteAsync(args.ToArray()).ConfigureAwait(false);
+        }
+
+        var onHead = await _runner.RunAsync("merge-base", "--is-ancestor", target, "HEAD")
+            .ConfigureAwait(false);
+        // 「祖先ではない」は exit 1 だけ。それ以外（壊れたリポジトリ・不正なオブジェクト等）を
+        // 同じ文言に丸めると、git のエラーを捨てて範囲制限として報告してしまう。
+        if (onHead.ExitCode != 0)
+            return onHead.ExitCode == 1
+                ? new GitCommandResult(-1, "", "現在のブランチに含まれるコミットのみ amend できます。")
+                : onHead;
+
+        var hasParent = (await _runner.RunAsync(
+            "rev-parse", "--verify", "--quiet", $"{target}^").ConfigureAwait(false)).Success;
+        var range = hasParent ? $"{target}^..HEAD" : "HEAD";
+        var chainResult = await _runner.RunAsync(
+            "rev-list", "--reverse", "--first-parent", range).ConfigureAwait(false);
+        if (!chainResult.Success) return chainResult;
+        var chain = SplitLines(chainResult.Output);
+        if (chain.Count == 0 || !string.Equals(chain[0], target, StringComparison.OrdinalIgnoreCase))
+            return new GitCommandResult(-1, "", "現在のブランチの主系列にあるコミットのみ amend できます。");
+
+        var merges = await _runner.RunAsync("rev-list", "--min-parents=2", range)
+            .ConfigureAwait(false);
+        if (!merges.Success) return merges;
+        if (SplitLines(merges.Output).Count > 0)
+            return new GitCommandResult(-1, "", "対象から HEAD までにマージコミットがあるため amend できません。");
+
+        var stagedCheck = await _runner.RunAsync("diff", "--cached", "--quiet").ConfigureAwait(false);
+        if (stagedCheck.ExitCode != 1)
+            return stagedCheck.Success
+                ? new GitCommandResult(-1, "", "対象コミットへ追加する変更がステージされていません。")
+                : stagedCheck;
+
+        var unstagedCheck = await _runner.RunAsync("diff", "--quiet").ConfigureAwait(false);
+        if (unstagedCheck.ExitCode is not (0 or 1)) return unstagedCheck;
+        var untracked = await _runner.RunAsync("ls-files", "--others", "--exclude-standard")
+            .ConfigureAwait(false);
+        if (!untracked.Success) return untracked;
+
+        string? previousStash = null;
+        var stashNeeded = unstagedCheck.ExitCode == 1 || !string.IsNullOrWhiteSpace(untracked.Output);
+        if (stashNeeded)
+        {
+            previousStash = (await _runner.RunAsync(
+                "stash", "list", "-1", "--format=%H").ConfigureAwait(false)).Output.Trim();
+            // 内部手順は _runner で回す。_mutations は毎回 RepositoryChanged を上げるので、
+            // rebase 実行中に Git パネルが更新され、amend 候補が detached HEAD から読み直されて
+            // 選択が勝手に移る（操作ログにも Loomo 内部の stash が利用者の操作として並ぶ）。
+            // 完了通知は AmendCommitAsync の finally が1度だけ出す。
+            var stash = await _runner.RunAsync(
+                "stash", "push", "--keep-index", "-u", "-m", "Loomo: amend 前の未ステージ変更")
+                .ConfigureAwait(false);
+            if (!stash.Success) return stash;
+        }
+
+        // <c>--fixup=&lt;sha&gt;</c> が書くメッセージは「fixup! <b>対象の件名</b>」で、autosquash はまず
+        // 件名で対象を探す——範囲内に同じ件名のコミットが2つあると、せっかく解決した SHA が捨てられて
+        // 別のコミットへ静かに吸い込まれる。git は「fixup! 」の後ろがコミット名ならそれで引くので、
+        // 解決済みのハッシュをそのまま書いて曖昧さを残さない。
+        var fixupArgs = new List<string> { "commit", "-m", $"fixup! {target}" };
+        if (sign) fixupArgs.Add("-S");
+        var fixup = await _runner.RunAsync(fixupArgs.ToArray()).ConfigureAwait(false);
+        if (!fixup.Success)
+        {
+            var stashNote = stashNeeded
+                ? await RestoreAmendStashAsync(previousStash).ConfigureAwait(false)
+                : "";
+            return WithNote(fixup, stashNote);
+        }
+
+        // 署名は fixup コミットではなく rebase 側に要る。fixup コミットは squash されて消え、
+        // 手元に残るのは rebase が作り直した対象コミットとその後続——ここに -S が無いと、
+        // 署名にチェックを入れていても書き換えた範囲が丸ごと未署名になる。
+        var baseArgument = hasParent ? $"{target}^" : "--root";
+        var rebaseArgs = new List<string> { "rebase", "-i", "--autosquash" };
+        if (sign) rebaseArgs.Add("-S");
+        rebaseArgs.Add(baseArgument);
+        var rebase = await _runner.RunAsync(rebaseArgs.ToArray()).ConfigureAwait(false);
+        if (!rebase.Success)
+            return WithNote(rebase,
+                await RollbackFailedAmendAsync(head, stashNeeded, previousStash).ConfigureAwait(false));
+
+        if (stashNeeded)
+        {
+            var restore = await _runner.RunAsync("stash", "pop").ConfigureAwait(false);
+            // 履歴の書き換えはもう済んでいる。ここで失敗を返すと UI は amend 自体が失敗したと表示し、
+            // amend の入力状態も戻らない——成功として返し、退避の回収方法だけ添える。
+            if (!restore.Success)
+                return new GitCommandResult(0, rebase.Output,
+                    "amend は完了しましたが、退避した未ステージの変更を戻せませんでした"
+                    + $"（git stash pop で戻せます）。{Environment.NewLine}{restore.Message}");
+        }
+        return rebase;
+    }
+
+    /// <summary>
+    /// autosquash が失敗したときに amend 前の状態へ戻す。リベースを中断し、squash されずに残った
+    /// fixup コミットを畳み（ステージ済みの内容はインデックスへ戻る）、退避した変更を戻す。
+    /// 何もせずに返すと、進行中のリベース・宙に浮いた fixup コミット・黙って作った stash が
+    /// そのまま残る——戻しきれなかったぶんは、利用者が自分で回収できるよう文言にして返す。
+    /// </summary>
+    private async Task<string> RollbackFailedAmendAsync(
+        string originalHead, bool stashNeeded, string? previousStash)
+    {
+        var notes = new List<string>();
+        var gitDirectory = await _runner.GetGitDirectoryAsync().ConfigureAwait(false);
+        if (gitDirectory is not null && IsRebaseInProgress(gitDirectory))
+            await _runner.RunAsync("rebase", "--abort").ConfigureAwait(false);
+
+        var headNow = (await _runner.RunAsync("rev-parse", "HEAD").ConfigureAwait(false)).Output.Trim();
+        if (!string.Equals(headNow, originalHead, StringComparison.OrdinalIgnoreCase))
+        {
+            var parent = (await _runner.RunAsync("rev-parse", "HEAD^").ConfigureAwait(false)).Output.Trim();
+            var dropped = string.Equals(parent, originalHead, StringComparison.OrdinalIgnoreCase)
+                && (await _runner.RunAsync("reset", "--soft", "HEAD^").ConfigureAwait(false)).Success;
+            if (!dropped)
+                notes.Add($"一時的な fixup コミットが残っています（git reset --soft {originalHead} で戻せます）。");
+        }
+
+        if (stashNeeded)
+        {
+            var stashNote = await RestoreAmendStashAsync(previousStash).ConfigureAwait(false);
+            if (stashNote.Length > 0) notes.Add(stashNote);
+        }
+        return notes.Count == 0 ? "" : string.Join(Environment.NewLine, notes);
+    }
+
+    /// <summary>退避した未ステージ変更を戻す。戻せなかったときだけ、その旨の文言を返す。</summary>
+    private async Task<string> RestoreAmendStashAsync(string? previousStash)
+    {
+        var current = (await _runner.RunAsync(
+            "stash", "list", "-1", "--format=%H").ConfigureAwait(false)).Output.Trim();
+        if (string.IsNullOrWhiteSpace(current) || string.Equals(current, previousStash, StringComparison.Ordinal))
+            return "";
+        var pop = await _runner.RunAsync("stash", "pop").ConfigureAwait(false);
+        return pop.Success
+            ? ""
+            : "退避した未ステージの変更は stash に残っています（git stash pop で戻せます）。";
+    }
+
+    /// <summary>失敗結果へ後始末の顛末を書き足す（表示は stderr 優先なので Error 側へ寄せる）。</summary>
+    private static GitCommandResult WithNote(GitCommandResult result, string note) =>
+        note.Length == 0
+            ? result
+            : result with { Error = $"{result.Message}{Environment.NewLine}{note}" };
 
     public async Task<GitCommandResult> ContinueAsync()
     {
@@ -43,9 +225,10 @@ public sealed class GitRebaseService
     public Task<GitCommandResult> ResetAsync(string hash, GitResetMode mode) =>
         _mutations.ExecuteAsync("reset", $"--{mode.ToString().ToLowerInvariant()}", hash);
 
-    public async Task<string> GetCommitMessageAsync(string hash)
+    public async Task<string> GetCommitMessageAsync(string hash, CancellationToken cancellationToken = default)
     {
-        var result = await _runner.RunAsync("show", "-s", "--format=%B", hash).ConfigureAwait(false);
+        var result = await _runner.RunAsync(
+            null, cancellationToken, "show", "-s", "--format=%B", hash).ConfigureAwait(false);
         return result.Success ? result.Output.TrimEnd('\r', '\n') : "";
     }
 
@@ -68,8 +251,10 @@ public sealed class GitRebaseService
 
         var onHead = await _runner.RunAsync("merge-base", "--is-ancestor", hash, "HEAD")
             .ConfigureAwait(false);
-        if (!onHead.Success)
-            return new GitCommandResult(-1, "", "現在のブランチに含まれるコミットのみ修正できます。");
+        if (onHead.ExitCode != 0)
+            return onHead.ExitCode == 1
+                ? new GitCommandResult(-1, "", "現在のブランチに含まれるコミットのみ修正できます。")
+                : onHead;
 
         var hasParent = (await _runner.RunAsync(
             "rev-parse", "--verify", "--quiet", $"{hash}^").ConfigureAwait(false)).Success;
@@ -312,8 +497,10 @@ public sealed class GitRebaseService
             return new GitCommandResult(-1, "", "リベース対象がありません。");
         var onHead = await _runner.RunAsync(
             "merge-base", "--is-ancestor", fromHash, "HEAD").ConfigureAwait(false);
-        if (!onHead.Success)
-            return new GitCommandResult(-1, "", "現在のブランチに含まれるコミットのみ対象にできます。");
+        if (onHead.ExitCode != 0)
+            return onHead.ExitCode == 1
+                ? new GitCommandResult(-1, "", "現在のブランチに含まれるコミットのみ対象にできます。")
+                : onHead;
 
         var hasParent = (await _runner.RunAsync(
             "rev-parse", "--verify", "--quiet", $"{fromHash}^").ConfigureAwait(false)).Success;

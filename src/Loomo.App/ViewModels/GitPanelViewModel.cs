@@ -177,6 +177,12 @@ public sealed class GitChangeTreeNode : ObservableObject
     }
 }
 
+/// <summary>サイドバーの amend 対象として選べるコミット。</summary>
+public sealed record GitAmendCommitOption(string Hash, string ShortHash, string Subject, string Date)
+{
+    public string DisplayText => $"{ShortHash}  {Subject}  ({Date})";
+}
+
 /// <summary>
 /// サイドバー Git パネルの ViewModel。変更一覧・ステージ操作・コミット・push/pull/fetch を扱う。
 /// 複雑な操作（ログツリー・rebase 等）は Git セッションペイン（<see cref="GitSessionViewModel"/>）が担う。
@@ -204,7 +210,12 @@ public sealed partial class GitPanelViewModel : ObservableObject
     [ObservableProperty] private bool _hasUpstream;
     [ObservableProperty] private string _commitMessage = "";
     [ObservableProperty] private bool _amend;
-    private int _amendMessageLoadVersion;
+    private Task? _amendCommitsLoadTask;
+    private bool _amendCommitsLoaded;
+    private int _amendCommitsGeneration;
+    /// <summary>amend が有効なときだけ表示する、現在ブランチの主系列コミット。</summary>
+    public ObservableCollection<GitAmendCommitOption> AmendCommits { get; } = new();
+    [ObservableProperty] private GitAmendCommitOption? _selectedAmendCommit;
     /// <summary>true なら次のコミットに <c>-S</c>（GPG署名）を付ける。署名鍵未設定・gpg 未インストール等の
     /// 失敗は通常の失敗時と同じく RunOpAsync が git のエラー出力をそのまま表示する。</summary>
     [ObservableProperty] private bool _sign;
@@ -278,6 +289,7 @@ public sealed partial class GitPanelViewModel : ObservableObject
         // 基準の切替はそこには現れない＝自前で読み直さないと古い一覧が残る）。
         CompareBase.Changed += OnCompareBaseChanged;
         _git.RepositoryChanged += OnRepositoryChanged;
+        _git.ActiveRootChanged += OnActiveRootChanged;
         Staged.CollectionChanged += OnCommitCandidatesChanged;
         Changes.CollectionChanged += OnCommitCandidatesChanged;
         UnversionedFiles.CollectionChanged += OnCommitCandidatesChanged;
@@ -287,6 +299,7 @@ public sealed partial class GitPanelViewModel : ObservableObject
         // 基準がブランチ／分岐点のときはコミット欄ごと出さないが、amend を立てたまま基準を切り替えても
         // true のままにならないよう、判定にも同じフラグを入れる。
         Capabilities.CanCommit && IsRepository && !IsBusy && !string.IsNullOrWhiteSpace(CommitMessage)
+        && (!Amend || SelectedAmendCommit is not null)
         && (Amend || Staged.Count > 0 || Changes.Any(i => i.IsChecked) || UnversionedFiles.Any(i => i.IsChecked));
 
     private void OnCommitCandidatesChanged(object? sender, NotifyCollectionChangedEventArgs e)
@@ -313,20 +326,96 @@ public sealed partial class GitPanelViewModel : ObservableObject
     partial void OnAmendChanged(bool value)
     {
         CommitCommand.NotifyCanExecuteChanged();
-        var version = ++_amendMessageLoadVersion;
         if (!value)
         {
+            _amendCommitsGeneration++;
+            SelectedAmendCommit = null;
+            AmendCommits.Clear();
             CommitMessage = "";
             return;
         }
-        _ = LoadAmendMessageAsync(version);
+        _amendCommitsLoaded = false;
+        RequestAmendCommitsLoad();
     }
 
-    private async Task LoadAmendMessageAsync(int version)
+    partial void OnSelectedAmendCommitChanged(GitAmendCommitOption? value)
     {
-        var message = await _git.GetCommitMessageAsync("HEAD");
-        if (version == _amendMessageLoadVersion && Amend)
-            CommitMessage = message;
+        CommitCommand.NotifyCanExecuteChanged();
+        // amend は元コミットのメッセージを --no-edit / fixup で保持するため、
+        // 選択変更のたびに git show を実行する必要はない。件名だけを表示する。
+        CommitMessage = value?.Subject ?? "";
+    }
+
+    /// <summary>amend 候補の読み直しを試す上限。1回目は走っている読み込みに相乗りしうるので複数回。</summary>
+    private const int MaxAmendCommitsLoadAttempts = 3;
+
+    private void RequestAmendCommitsLoad()
+    {
+        if (_amendCommitsLoadTask is { IsCompleted: false }) return;
+        _amendCommitsLoadTask = LoadAmendCommitsAsync(_amendCommitsGeneration);
+        _ = _amendCommitsLoadTask;
+    }
+
+    /// <summary>
+    /// amend 候補が読めていなければ読む。履歴は pull・チェックアウト・別ペインからのコミットでも
+    /// 動くので、その通知（<see cref="OnRepositoryChanged"/>／<see cref="OnActiveRootChanged"/>）で
+    /// 読み込み済みフラグを落として引き直す——一度きりにすると、amend にチェックを入れたままの
+    /// 一覧が古いブランチのハッシュを指したまま残る。
+    /// </summary>
+    private async Task EnsureAmendCommitsLoadedAsync()
+    {
+        // 割り込み（世代更新）や、走っていた古い読み込みの取りこぼしを拾い直すが、回数は必ず
+        // 頭打ちにする。「読み込み済みになるまで回す」にすると、git log が失敗したときに
+        // フラグが立たないまま——しかも GetLogAsync は失敗した Task も返すので待機すら
+        // 発生せず——UI スレッド上で回り続け、アプリが固まる。
+        for (var attempt = 0; attempt < MaxAmendCommitsLoadAttempts && Amend && !_amendCommitsLoaded; attempt++)
+        {
+            RequestAmendCommitsLoad();
+            if (_amendCommitsLoadTask is { } load)
+                await load;
+        }
+    }
+
+    private async Task LoadAmendCommitsAsync(int generation)
+    {
+        IReadOnlyList<GitLogRow> rows;
+        try
+        {
+            rows = await _git.GetLogAsync(new GitLogQuery
+            {
+                BranchRef = "HEAD",
+                FirstParent = true,
+                Limit = 300,
+            });
+        }
+        catch (Exception ex)
+        {
+            ReportGitException("amend対象の履歴取得", ex);
+            return;
+        }
+        if (!Amend || generation != _amendCommitsGeneration) return;
+
+        var options = rows.Where(row => row.IsCommit && row.Hash is not null)
+            .Select(row => new GitAmendCommitOption(
+                row.Hash!, row.ShortHash ?? row.Hash![..Math.Min(8, row.Hash!.Length)],
+                string.IsNullOrWhiteSpace(row.Subject) ? "（メッセージなし）" : row.Subject,
+                row.Date ?? ""))
+            .ToList();
+        _amendCommitsLoaded = true;
+        // 履歴が動いていない更新（作業ツリーを触っただけ）で一覧を作り直すと、開いている
+        // ドロップダウンや選択が毎回リセットされる。中身が同じなら何もしない。
+        if (AmendCommits.SequenceEqual(options)) return;
+
+        var selectedHash = SelectedAmendCommit?.Hash;
+        AmendCommits.Clear();
+        foreach (var option in options)
+            AmendCommits.Add(option);
+
+        SelectedAmendCommit = AmendCommits.FirstOrDefault(c =>
+            string.Equals(c.Hash, selectedHash, StringComparison.OrdinalIgnoreCase))
+            ?? AmendCommits.FirstOrDefault();
+        if (SelectedAmendCommit is null)
+            CommitMessage = "";
     }
     /// <summary>
     /// 同期系コマンドの可否をまとめて再評価する。プル／プッシュは<b>方式ごとに別コマンド</b>
@@ -364,6 +453,7 @@ public sealed partial class GitPanelViewModel : ObservableObject
     public void StartLiveTracking()
     {
         if (_live is not null) return;
+        _git.InvalidateReadCache();
         _live = _git.TrackLiveChanges();
         _ = RefreshAsync();
     }
@@ -377,13 +467,37 @@ public sealed partial class GitPanelViewModel : ObservableObject
 
     private void OnRepositoryChanged(object? sender, EventArgs e)
     {
+        _amendCommitsLoaded = false;
+        _amendCommitsGeneration++;
         if (!_loaded) return;
         // 更新系コマンドの完了スレッドは UI とは限らないためディスパッチする
         UiDispatch.Post(() => _ = RefreshAsync());
     }
 
+    private void OnActiveRootChanged(object? sender, EventArgs e)
+    {
+        _amendCommitsLoaded = false;
+        _amendCommitsGeneration++;
+        if (!_loaded) return;
+        UiDispatch.Post(() => _ = RefreshAsync());
+    }
+
     [RelayCommand]
-    private async Task RefreshAsync()
+    private async Task RefreshAsync() => await RefreshSafeAsync();
+
+    private async Task RefreshSafeAsync()
+    {
+        try
+        {
+            await RefreshCoreAsync();
+        }
+        catch (Exception ex)
+        {
+            ReportGitException("Git状態の更新", ex);
+        }
+    }
+
+    private async Task RefreshCoreAsync()
     {
         _loaded = true;
         var status = await _git.GetStatusAsync();
@@ -427,6 +541,9 @@ public sealed partial class GitPanelViewModel : ObservableObject
             await LoadCompareBaseChangesAsync(resolution);
             return;
         }
+
+        // Amend を直後に ON にしたケースでも、候補のロード完了を待ってから更新を返す。
+        await EnsureAmendCommitsLoadedAsync();
 
         // ライブ更新でチェックが勝手に戻らないよう、作業ツリー側はパス単位で選択状態を引き継ぐ。
         var wasChecked = Changes.Concat(UnversionedFiles)
@@ -670,7 +787,14 @@ public sealed partial class GitPanelViewModel : ObservableObject
         }
         var message = CommitMessage.Trim();
         var amend = Amend;
+        var amendTarget = SelectedAmendCommit;
         var sign = Sign;
+        if (amend && amendTarget is null)
+        {
+            StatusMessage = "amend 対象のコミットを選択してください。";
+            StatusIsError = true;
+            return;
+        }
         // チェックした作業ツリーのファイルをステージ対象にする。リネームは新旧パスを両方含める。
         var pathsToStage = Changes.Concat(UnversionedFiles).Where(i => i.IsChecked)
             .SelectMany(i => PathsOf(i.Entry)).Distinct(StringComparer.Ordinal).ToArray();
@@ -687,7 +811,10 @@ public sealed partial class GitPanelViewModel : ObservableObject
                 var stage = await _git.StageAsync(pathsToStage);
                 if (!stage.Success) return stage;
             }
-            return await _git.CommitAsync(message, amend, sign);
+            if (!amend) return await _git.CommitAsync(message, sign: sign);
+
+            // HEAD は通常の --amend、過去のコミットは fixup + rebase で対象へ統合する。
+            return await _git.AmendCommitAsync(amendTarget!.Hash, sign);
         });
         if (!StatusIsError)
         {
@@ -734,10 +861,22 @@ public sealed partial class GitPanelViewModel : ObservableObject
                 ? $"{label}が完了しました。"
                 : Truncate(result.Message);
         }
+        catch (Exception ex)
+        {
+            ReportGitException(label, ex);
+        }
         finally
         {
             IsBusy = false;
         }
+    }
+
+    /// <summary>Git操作中の予期せぬ例外もUIへ戻し、fire-and-forget経路から未処理にしない。</summary>
+    private void ReportGitException(string operation, Exception ex)
+    {
+        System.Diagnostics.Debug.WriteLine($"[Git] {operation} に失敗: {ex}");
+        StatusIsError = true;
+        StatusMessage = $"{operation}に失敗しました: {Truncate(ex.Message)}";
     }
 
     private static string Truncate(string text)

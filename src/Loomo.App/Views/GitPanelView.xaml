@@ -384,7 +384,7 @@
                     <TextBox x:Name="CommitMessageBox"
                              Text="{Binding CommitMessage, UpdateSourceTrigger=PropertyChanged}"
                              IsEnabled="{Binding Amend, Converter={StaticResource InverseBool}}"
-                             ToolTip="amend 時は直前のコミットメッセージをそのまま使用します。"
+                             ToolTip="amend 時は選択したコミットのメッセージをそのまま使用します。"
                              AcceptsReturn="True" TextWrapping="Wrap" MinHeight="52" MaxHeight="120"
                              VerticalScrollBarVisibility="Auto">
                         <TextBox.InputBindings>
@@ -417,6 +417,23 @@
                               ToolTip="commit -S で GPG 署名を付けます（署名鍵未設定・gpg 未インストール時は失敗メッセージが出ます）。"
                               IsChecked="{Binding Sign}" />
                 </StackPanel>
+                <Grid Margin="0,0,0,6"
+                      Visibility="{Binding Amend, Converter={StaticResource BoolToVis}}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="8" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="対象" VerticalAlignment="Center"
+                               Foreground="{DynamicResource FgDim}" />
+                    <ComboBox Grid.Column="2"
+                              ItemsSource="{Binding AmendCommits}"
+                              SelectedItem="{Binding SelectedAmendCommit, Mode=TwoWay}"
+                              DisplayMemberPath="DisplayText"
+                              IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBool}}"
+                              MaxDropDownHeight="360"
+                              ToolTip="ステージ済み変更を追加するコミットを選択します。" />
+                </Grid>
                 <Button Content="✓ コミット" Style="{StaticResource FlatButton}"
                         HorizontalAlignment="Stretch"
                         ToolTip="チェックしたファイルだけをコミットします。"

@@ -187,7 +187,12 @@ public sealed partial class GitSessionViewModel : ObservableObject
     }
 
     /// <summary>Git ペインが見えている間のライブ監視を開始する。</summary>
-    public void StartLiveTracking() => _live ??= _git.TrackLiveChanges();
+    public void StartLiveTracking()
+    {
+        if (_live is not null) return;
+        _git.InvalidateReadCache();
+        _live = _git.TrackLiveChanges();
+    }
 
     /// <summary>Git ペインが隠れたらライブ監視を止める。</summary>
     public void StopLiveTracking()

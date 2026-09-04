@@ -138,7 +138,17 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
         _ = RefreshAsync();
     }
 
-    public void StartLiveTracking() => _live ??= _git.TrackLiveChanges();
+    /// <summary>
+    /// 監視を始める前に読み取りキャッシュを捨てる。Git 系ペインが全部隠れている間はポーリングが
+    /// 止まっているので、その間にターミナルからコミットされても誰も無効化しない——開いた瞬間に
+    /// 古いスナップショットを配ってしまい、ポーリング再開後の初回は基準値なので通知も上がらない
+    /// （<see cref="GitPanelViewModel.StartLiveTracking"/> / <see cref="GitSessionViewModel.StartLiveTracking"/> と同じ）。
+    /// </summary>
+    public void StartLiveTracking()
+    {
+        _git.InvalidateReadCache();
+        _live ??= _git.TrackLiveChanges();
+    }
 
     public void StopLiveTracking()
     {

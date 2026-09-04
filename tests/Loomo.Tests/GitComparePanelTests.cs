@@ -313,6 +313,7 @@ public sealed class GitComparePanelTests : IAsyncLifetime
         var panel = CreatePanel();
         await panel.RefreshCommand.ExecuteAsync(null);
         panel.Amend = true;
+        await panel.RefreshCommand.ExecuteAsync(null);
         panel.CommitMessage = "amend したい";
         Assert.True(panel.CommitCommand.CanExecute(null));
 
