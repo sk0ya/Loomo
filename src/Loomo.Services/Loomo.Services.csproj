@@ -55,6 +55,8 @@
          追加したLSP契約（補完additionalTextEdits／implementation／typeDefinition等）を公開。
          既定はこの公開パッケージ参照。Editorを同時に直す間だけ -p:UseLocalEditor=true で
          C:\Projects\Editor のプロジェクト参照へ切り替える（Directory.Build.props）。 -->
+    <!-- 1.0.82: マウスホバーの説明ポップアップ（型・要約・その位置の診断＋電球からのクイックフィックス）と、
+         WorkspaceEditRequestedEventArgs.Cancelled（編集プレビューでの取り消しを失敗と区別する）を追加。 -->
     <ProjectReference Include="..\..\..\Editor\src\Editor.Controls.Defaults\Editor.Controls.Defaults.csproj"
                       Condition="'$(UseLocalEditor)' != 'false'" />
     <!-- Defaults はパッケージ化時に Core/Controls を同梱する構成で、プロジェクト参照では
