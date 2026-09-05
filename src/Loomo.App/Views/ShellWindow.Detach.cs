@@ -18,12 +18,12 @@ public partial class ShellWindow {
                 snapshot.WorkingDirectory = terminal.WorkingDirectory;
                 break;
             case WebView2CompositionControl browser:
-                snapshot.Url = browser.Source?.ToString();
+                snapshot.Url = browser.TryUrl();
                 break;
             // 切り離したブラウザは作り直せるよう器（Grid）越しに載っている（CreateBrowserSpinoffItem）。
             // 器のまま素通りさせると復元対象から外れ、切り替え・再起動でその窓だけ消える。
             case Panel host when host.Children.OfType<WebView2CompositionControl>().FirstOrDefault() is { } hosted:
-                snapshot.Url = hosted.Source?.ToString();
+                snapshot.Url = hosted.TryUrl();
                 break;
             case DetachedEditorSupportView preview:
                 snapshot.FilePath = preview.SourceFilePath;
@@ -250,9 +250,12 @@ public partial class ShellWindow {
         _ = RealizeSpinoffBrowserAsync(host, view, url, item);
         return item;
     }
-    /// <summary>切り離しブラウザの器がいま見ている URL（まだ生成前・生成に失敗していれば null）。</summary>
+    /// <summary>切り離しブラウザの器がいま見ている URL（まだ生成前・生成に失敗していれば null）。
+    /// 読み方は本体ペインの <see cref="BrowserUrlOf"/> と同じ <see cref="WebViewSafe.TryUrl"/>——ここは
+    /// 器の中身を<b>作り直す</b>ときの行き先なので、ラッパーの <c>Source</c> を読んで取り残された古い値を
+    /// 掴むと、見ていたページが黙って1つ前へ戻る。</summary>
     private static string? SpinoffBrowserUrl(Panel host)
-        => host.Children.OfType<WebView2CompositionControl>().FirstOrDefault()?.Source?.ToString();
+        => host.Children.OfType<WebView2CompositionControl>().FirstOrDefault().TryUrl();
     /// <summary>
     /// 差分ひとつを、切り離しウィンドウのタブ1枚として作る（Git のコミット詳細のダブルクリック＝
     /// 送るたびに新しい窓と、Diff ペインが隠れているときの差分の行き先＝同じ窓へタブを足す、の共通の実体）。
@@ -356,7 +359,7 @@ public partial class ShellWindow {
                 return;
             }
             // 落ちる前の行き先を控えてから、器の中身を作り直す（イベント配布中に壊さない）。
-            var last = view.Source?.ToString();
+            var last = view.TryUrl();
             Dispatcher.BeginInvoke(new Action(() => RebuildSpinoffBrowser(host, item, last ?? url)));
         };
         // 切り離した窓の target="_blank" は、素の WebView2 の既定（ツールバーの無い素っ気ない窓）ではなく

@@ -1,4 +1,4 @@
-namespace sk0ya.Loomo.App.Views;
+﻿namespace sk0ya.Loomo.App.Views;
 /// <summary>ShellWindow: ブラウザペイン（タブ管理・ナビゲーション・WebView2 遅延実体化）。
 /// ツールバーの状態・ブックマーク・ページ内検索・ダウンロード・右クリックは
 /// <see cref="ShellWindow"/> の BrowserChrome 側に分けてある。</summary>
@@ -115,15 +115,12 @@ public partial class ShellWindow {
         }
     }
     private WebView2CompositionControl? ActiveBrowserView => _activeBrowserTab?.View;
-    /// <summary>そのタブが今いる URL。<b>WPF ラッパーの <c>Source</c> ではなく <c>CoreWebView2.Source</c> を
-    /// 正本にする</b>——ラッパー側は <see cref="Uri"/> 型なので、<c>data:</c> のように Uri に載せ替えられない
-    /// 遷移で前の値のまま取り残されることがある（アドレス欄に前のページの URL が居座る）。</summary>
+    /// <summary>そのタブが今いる URL。読み方は <see cref="WebViewSafe.TryUrl"/>（正本は
+    /// <c>CoreWebView2.Source</c>）で、まだ何も無ければ開こうとしている URL へ落とす。</summary>
     private static string? BrowserUrlOf(BrowserTab? tab) {
         if (tab is null)
             return null;
-        // 空文字も「無い」として次の手掛かりへ落とす（Source は遷移の種類によって空で返ることがある）。
-        return Empty(tab.View.TryCore()?.Source) ?? Empty(tab.View.Source?.ToString()) ?? Empty(tab.PendingUrl);
-        static string? Empty(string? value) => string.IsNullOrEmpty(value) ? null : value;
+        return tab.View.TryUrl() ?? (string.IsNullOrEmpty(tab.PendingUrl) ? null : tab.PendingUrl);
     }
     private BrowserWorkspaceTabs CurrentBrowserWorkspace
         => _activeBrowserWorkspace ?? _scratchBrowserWorkspace;
