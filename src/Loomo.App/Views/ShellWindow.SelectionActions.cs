@@ -58,7 +58,8 @@ public partial class ShellWindow {
     internal static void AddMenuGroup(ContextMenu menu, Action<ContextMenu> build) {
         var before = menu.Items.Count;
         build(menu);
-        if (menu.Items.Count > before)
+        // 先頭に区切り線は置かない（ネイティブ項目が1つも無いメニューだと、区切り線から始まってしまう）。
+        if (menu.Items.Count > before && before > 0)
             menu.Items.Insert(before, new Separator());
     }
     /// <summary>右クリック位置（＝キャレット位置。エディタは右クリックでキャレットを移す）にリンクがあれば

@@ -33,6 +33,35 @@ public sealed class CoverageReportParserTests
     }
 
     [Fact]
+    public void Counts_branches_once_when_a_file_has_several_classes()
+    {
+        // coverlet は class に branches-valid を付けないので、分岐は行の condition-coverage から
+        // 数える。1ファイルに複数クラス（入れ子型・partial の片割れ）があるとき、クラスごとに
+        // 集計し直すと先のクラスの分岐を二重に数えてしまう。
+        const string xml = """
+            <coverage>
+              <packages><package name="P"><classes>
+                <class filename="src/A.cs"><methods><method><lines>
+                  <line number="4" hits="1" condition-coverage="50% (1/2)" />
+                </lines></method></methods></class>
+                <class filename="src/A.cs"><methods><method><lines>
+                  <line number="9" hits="1" condition-coverage="100% (2/2)" />
+                </lines></method></methods></class>
+              </classes></package></packages>
+            </coverage>
+            """;
+
+        var report = CoverageReportParser.ParseXml(xml, out var error);
+
+        Assert.Null(error);
+        var file = Assert.Single(report!.Files);
+        Assert.Equal(4, file.ValidBranches);
+        Assert.Equal(3, file.CoveredBranches);
+        Assert.Equal(4, report.ValidBranches);
+        Assert.Equal(3, report.CoveredBranches);
+    }
+
+    [Fact]
     public void Parses_opencover_sequence_points()
     {
         const string xml = """

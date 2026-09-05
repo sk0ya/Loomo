@@ -31,6 +31,7 @@ public sealed class EditorContextMenuGroupTests
         => RunSta(() =>
         {
             var menu = new ContextMenu();
+            menu.Items.Add(new MenuItem { Header = "ネイティブ項目" });
 
             ShellWindow.AddMenuGroup(menu, m =>
             {
@@ -38,9 +39,23 @@ public sealed class EditorContextMenuGroupTests
                 m.Items.Add(new MenuItem { Header = "B" });
             });
 
-            Assert.IsType<Separator>(menu.Items[0]);
+            Assert.IsType<Separator>(menu.Items[1]);
             Assert.Single(menu.Items.OfType<Separator>());
-            Assert.Equal(3, menu.Items.Count);
+            Assert.Equal(4, menu.Items.Count);
+        });
+
+    /// <summary>先頭が区切り線で始まらない——ネイティブ項目が1つも無いメニューでは、
+    /// 束の前に置く区切り線は「何と何の区切りか」が無い飾りになる。</summary>
+    [Fact]
+    public void 空のメニューの先頭には区切り線を入れない()
+        => RunSta(() =>
+        {
+            var menu = new ContextMenu();
+
+            ShellWindow.AddMenuGroup(menu, m => m.Items.Add(new MenuItem { Header = "A" }));
+
+            Assert.IsNotType<Separator>(menu.Items[0]);
+            Assert.Empty(menu.Items.OfType<Separator>());
         });
 
     /// <summary>空の束が挟まっても、区切り線が連続したり末尾に残ったりしない。</summary>

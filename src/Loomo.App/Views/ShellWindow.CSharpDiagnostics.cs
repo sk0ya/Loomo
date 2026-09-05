@@ -236,6 +236,24 @@ public partial class ShellWindow
         }
     }
 
+    /// <summary>MSBuild評価が終わるのを<b>読み込み中のあいだだけ</b>待つ。
+    /// 評価がまだ始まっていない・失敗した・そもそもプロジェクト外のファイルは待っても
+    /// Ready にならないので、その場で今の状態を返す。</summary>
+    private async Task<ProjectModel?> WaitForProjectEvaluationAsync(string path)
+    {
+        var deadline = DateTime.UtcNow + StyleCopProjectEvaluationTimeout;
+        while (true)
+        {
+            var project = _solutionModel?.Current.ProjectForFile(path);
+            if (project is not { State: ProjectLoadState.Loading }) return project;
+            if (DateTime.UtcNow >= deadline) return project;
+            await Task.Delay(100);
+        }
+    }
+
+    /// <summary>Quick Fixが評価完了を待つ上限。長すぎると「候補を取得しています…」が居座る。</summary>
+    private static readonly TimeSpan StyleCopProjectEvaluationTimeout = TimeSpan.FromSeconds(3);
+
     private async Task<IReadOnlyList<LspCodeAction>> RequestStyleCopQuickFixesAsync(
         VimEditorControl control, LspRange range, IReadOnlyList<string>? only)
     {
@@ -251,13 +269,10 @@ public partial class ShellWindow
 
         // 起動直後はSolution Explorerが表示済みでもMSBuild評価が継続していることがある。
         // Quick Fixをその瞬間の「候補なし」で終わらせず、短時間だけ評価完了を待つ。
-        ProjectModel? project = null;
-        for (var attempt = 0; attempt < 40; attempt++)
-        {
-            project = _solutionModel?.Current.ProjectForFile(path);
-            if (project is { State: ProjectLoadState.Ready }) break;
-            if (attempt < 39) await Task.Delay(250);
-        }
+        // ただし待つのは「読み込み中」のときだけ。Ready にならない状態（対象外・失敗・
+        // プロジェクト外）で待つと、Quick Fixを押すたびに「候補を取得しています…」のまま
+        // 待たされ、ライトバルブの再要求ごとにその待ちが積み上がる。
+        var project = await WaitForProjectEvaluationAsync(path);
         if (project is not { State: ProjectLoadState.Ready })
             return [];
 

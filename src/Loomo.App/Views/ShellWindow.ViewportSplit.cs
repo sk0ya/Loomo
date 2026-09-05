@@ -627,7 +627,11 @@ public partial class ShellWindow {
         if (history.Count == 0)
             return false;
         var entry = history[^1];
-        var activePath = _activeEditorTab?.Control.FilePath;
+        // 実体化していないタブの Control を読むと、その場でタブを作ってしまう（遅延復元の意味が消える）。
+        // 未実体化のタブがワークスペース編集の Undo 対象になることはないので、そのまま素通しする。
+        var activePath = _activeEditorTab is { IsRealized: true } activeTab
+            ? activeTab.Control.FilePath
+            : null;
         if (activePath is null ||
             !entry.AfterEditors.ContainsKey(Path.GetFullPath(activePath)))
             return false;

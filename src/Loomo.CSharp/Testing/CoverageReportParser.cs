@@ -102,6 +102,8 @@ public static class CoverageReportParser
         var lineDetails = new Dictionary<string, Dictionary<int, bool>>(StringComparer.OrdinalIgnoreCase);
         var branches = new Dictionary<string, (int Covered, int Valid)>(StringComparer.OrdinalIgnoreCase);
         var branchDetails = new Dictionary<string, Dictionary<int, (int Covered, int Valid)>>(StringComparer.OrdinalIgnoreCase);
+        // 分岐数を属性からではなく行から数えるファイル（属性を持つクラスが1つも無かったもの）。
+        var derivedBranchFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var cls in root.Descendants().Where(e => e.Name.LocalName == "class"))
         {
             var path = (string?)cls.Attribute("filename");
@@ -136,11 +138,24 @@ public static class CoverageReportParser
                     }
                 }
             }
-            if (branchValid == 0) (branchCovered, branchValid) = branchesByLine.Values.Aggregate(
-                (Covered: 0, Valid: 0), (sum, value) => (sum.Covered + value.Covered, sum.Valid + value.Valid));
+            // branches-valid 属性が無いとき（coverlet は class に付けない）は行の condition-coverage から
+            // 数えるが、その集計はファイル単位のループ後に1度だけ行う。branchesByLine は同じ
+            // filename を持つクラス（入れ子型・partial の各片）をまたいで積み上がるので、
+            // クラスごとに足すと先に見たクラスの分岐を何度も数えてしまう。
+            if (branchValid == 0)
+            {
+                derivedBranchFiles.Add(path);
+                continue;
+            }
             branches.TryGetValue(path, out var oldBranches);
             branches[path] = (oldBranches.Covered + branchCovered, oldBranches.Valid + branchValid);
         }
+
+        foreach (var path in derivedBranchFiles)
+            branches[path] = branchDetails.TryGetValue(path, out var byLine)
+                ? byLine.Values.Aggregate((Covered: 0, Valid: 0),
+                    (sum, value) => (sum.Covered + value.Covered, sum.Valid + value.Valid))
+                : (0, 0);
 
         var rootValid = IntAttribute(root, "lines-valid");
         var rootCovered = IntAttribute(root, "lines-covered");
