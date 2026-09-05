@@ -124,12 +124,10 @@ public class DetachedPaneWindowTests
             try
             {
                 var first = NewItem("A");
-                // 窓が1つも無ければ呼び出し側が新しい窓を開く（＝ここでは false）。
-                Assert.False(manager.TryAddToRecentWindow(first));
+                manager.Detach(first);          // 窓が1つも無いので新しい窓が開く
 
-                manager.Detach(first);
                 var second = NewItem("B");
-                Assert.True(manager.TryAddToRecentWindow(second));
+                manager.Detach(second);         // 窓が出ているので同じ入口でもタブとして足される
 
                 // 窓は増えず、2枚目はタブとして足されてアクティブになる。
                 Assert.Equal(new[] { first, second }, manager.AllItems);

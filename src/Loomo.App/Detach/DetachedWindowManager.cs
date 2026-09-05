@@ -58,32 +58,31 @@ internal sealed class DetachedWindowManager
     /// <summary>全ウィンドウの切り離し項目（ホスト側から種類で絞って一括操作するため）。</summary>
     internal IEnumerable<DetachedItem> AllItems => _windows.SelectMany(w => w.Items);
 
-    /// <summary>項目を新しいフローティングウィンドウで開く（切り離しの入口）。</summary>
+    /// <summary>
+    /// 切り離しの<b>唯一の入口</b>。<b>いま開いている切り離しウィンドウ</b>（直近に前へ出たもの）が
+    /// あれば、そこへ<b>タブとして</b>足して前へ出す。1つも無ければ新しいフローティングウィンドウを開く。
+    /// 種類ごとに窓を分けたりはしない——「いま開いている別ウィンドウ」がタブの行き先、という一本の
+    /// 約束にする。同じ用途の物で窓が増え続けると画面が埋まるし、並べて見比べたくなったらタブを掴んで
+    /// 外へ落とせば別窓にできる（切り離しウィンドウの既存の作法）ので、まとめるのを既定にしても
+    /// 分ける自由は残る。
+    /// </summary>
     public void Detach(DetachedItem item)
     {
-        var win = NewWindow();
-        win.AddItem(item);
-        win.Show();
-        win.Activate();
+        if (RecentWindow() is { } window)
+        {
+            window.AddItem(item);             // AddItem がそのままアクティブタブにする
+            if (window.WindowState == WindowState.Minimized)
+                window.WindowState = WindowState.Normal;
+            window.Activate();
+        }
+        else
+        {
+            var win = NewWindow();
+            win.AddItem(item);
+            win.Show();
+            win.Activate();
+        }
         NotifyChanged();
-    }
-
-    /// <summary>
-    /// <b>いま開いている切り離しウィンドウ</b>（直近に前へ出たもの）へ、新しい項目を<b>タブとして</b>
-    /// 足して前へ出す。窓が1つも無ければ false＝呼び出し側が新しい窓を開く。同じ用途の物を窓ごと
-    /// 増やさず1つの窓のタブに集めるための入口——タブは掴んで引き出せば別窓にできるので、
-    /// 「まとめる」を既定にしても並べて見比べる自由は残る（差分の行き先がこれ）。
-    /// </summary>
-    internal bool TryAddToRecentWindow(DetachedItem item)
-    {
-        if (RecentWindow() is not { } window)
-            return false;
-        window.AddItem(item);                 // AddItem がそのままアクティブタブにする
-        if (window.WindowState == WindowState.Minimized)
-            window.WindowState = WindowState.Normal;
-        window.Activate();
-        NotifyChanged();
-        return true;
     }
 
     /// <summary>直近に前へ出た窓（一度も Activated が来ていなければ最後に作った窓）。</summary>
