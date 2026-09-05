@@ -305,14 +305,42 @@ public partial class ShellWindow {
         _ = ShowDiffInWindowAsync(vm, target);
         return item;
     }
+    /// <summary>器の中の WebView2 を捨てる。<b>器からも外す</b>のが肝——生成待ちの
+    /// <see cref="RealizeSpinoffBrowserAsync"/> は「自分がまだ器の子か」で、作り直し（別窓へ移した・
+    /// メインへ戻した・窓を閉じた）に追い越されたかどうかを見分ける。</summary>
     private static void DisposeSpinoffBrowser(Panel host) {
-        foreach (var view in host.Children.OfType<WebView2CompositionControl>().ToList())
+        foreach (var view in host.Children.OfType<WebView2CompositionControl>().ToList()) {
+            host.Children.Remove(view);
             try { view.Dispose(); } catch { }
+        }
     }
+    /// <summary>その WebView2 がいまも器の中身か（＝<see cref="DisposeSpinoffBrowser"/> に捨てられていないか）。</summary>
+    private static bool IsLiveSpinoffBrowser(Panel host, WebView2CompositionControl view)
+        => host.Children.Contains(view);
     private async Task RealizeSpinoffBrowserAsync(
         Panel host, WebView2CompositionControl view, string url, DetachedItem item) {
         try { await view.EnsureCoreWebView2Async(); }
-        catch { WebViewEnvironment.ReportUnavailable("ブラウザ"); return; }
+        catch {
+            // 器から外れていたら、作り直しに<b>追い越された</b>実体の失敗（生成には1秒ほどかかるので、
+            // その間に別の窓へ移されると器ごと作り直される）。捨てた物の失敗なので黙る——作り直しは
+            // 成功しているのに偽のエラーが出るうえ、ReportUnavailable は一度きりのラッチなので
+            // 後から起きる<b>本物の</b>失敗まで握り潰してしまう。
+            if (!IsLiveSpinoffBrowser(host, view))
+                return;
+            // 本物の失敗。現実的な原因は「別の Loomo が同じプロファイルを違うブラウザ引数で握っている」
+            // （0x8007139F、§21.5.3）なので、本体ペインと同じくポートを引き当て直して<b>コントロール
+            // ごと作り直して</b>一度だけやり直す。直せないなら黙らずに知らせる。
+            if (WebViewEnvironment.TryRecover())
+                RebuildSpinoffBrowser(host, item, url);
+            else
+                WebViewEnvironment.ReportUnavailable("ブラウザ");
+            return;
+        }
+        if (!IsLiveSpinoffBrowser(host, view)) {
+            // 生成の途中で追い越された（成功した側）。誰にも見えない WebView2 を残さない。
+            try { view.Dispose(); } catch { }
+            return;
+        }
         WebViewEnvironment.NoteCreated();
         if (view.TryCore() is not { } core)
             return;   // 生成直後に落ちた（作り直しは ProcessFailed 経由）
