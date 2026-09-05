@@ -7,12 +7,15 @@
 # デバッグ実行機能のソースフォルダは上の [Dd]ebug/（ビルド出力向け）に巻き込まれるため明示的に追跡する
 !src/Loomo.Core/Debug/
 !src/Loomo.Services/Debug/
+!src/Loomo.CSharp/Debug/
 x64/
 x86/
 [Ww][Ii][Nn]32/
 [Aa][Rr][Mm]/
 [Aa][Rr][Mm]64/
 build/
+# ビルド機能のソースフォルダも同じ理由で明示的に追跡する（上の build/ に巻き込まれる）
+!src/Loomo.CSharp/Build/
 bld/
 [Oo]ut/
 msbuild.log
