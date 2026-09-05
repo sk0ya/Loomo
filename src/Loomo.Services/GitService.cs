@@ -56,7 +56,7 @@ public sealed class GitService
         _workspace = workspace;
         _rootState = new GitRootState(workspace);
         _runner = new GitCommandRunner(_rootState);
-        _status = new GitStatusService(_runner);
+        _status = new GitStatusService(_runner, _rootState);
         _history = new GitHistoryService(_runner);
         _mutations = new GitMutationExecutor(_runner);
         _branches = new GitBranchService(_runner, _mutations);
@@ -108,8 +108,23 @@ public sealed class GitService
     /// ブレーム・履歴などファイル起点の操作を、現在の対象と違うフォルダーのファイルに対して行うときに使う。</summary>
     public void SetActiveRootForPath(string fullPath) => _rootState.SelectForPath(fullPath);
 
-    public Task<GitStatusSnapshot> GetStatusAsync() =>
-        Cached(ref _cachedStatus, _status.GetStatusAsync);
+    /// <summary>作業ツリーの状態。<b>一時的な失敗は覚えない</b>——rebase 中や index.lock 競合で
+    /// 一度でも失敗すると「リポジトリではない」がキャッシュに焼き付き、更新ボタンを押しても
+    /// 同じ嘘が返り続けて Git パネルが空のまま復帰しなくなるため（本当にリポジトリでない場所の
+    /// 答えは安定しているので、そちらは従来どおり覚える）。</summary>
+    public Task<GitStatusSnapshot> GetStatusAsync()
+    {
+        lock (_readCacheGate)
+        {
+            if (_cachedStatus is { IsFaulted: true } or { IsCanceled: true }) _cachedStatus = null;
+            if (_cachedStatus is not null) return _cachedStatus;
+            var task = _status.GetStatusAsync();
+            _cachedStatus = task;
+            ForgetTransientFailure(task, snapshot => snapshot.QueryFailed,
+                () => { if (ReferenceEquals(_cachedStatus, task)) _cachedStatus = null; });
+            return task;
+        }
+    }
 
     public Task<IReadOnlyList<string>> GetRemotesAsync() =>
         Cached(ref _cachedRemotes, _branches.GetRemotesAsync);
@@ -133,18 +148,16 @@ public sealed class GitService
         string? branchRef = null, int limit = 300, int skip = 0, string? pathFilter = null)
         => await _history.GetLogAsync(branchRef, limit, skip, pathFilter).ConfigureAwait(false);
 
-    /// <summary>絞り込み条件付きでコミットログを引く（作者・本文・日付は git 側で篩われる）。</summary>
+    /// <summary>絞り込み条件付きでコミットログを引く（作者・本文・日付は git 側で篩われる）。
+    /// git が失敗して返った空一覧は覚えない——「0 件」と取り違えると、一度の失敗で履歴が
+    /// 消えたまま戻らなくなる。</summary>
     public Task<IReadOnlyList<GitLogRow>> GetLogAsync(GitLogQuery query)
     {
         var key = string.Join('\0', query.ToArguments());
-        lock (_readCacheGate)
-        {
-            if (_cachedLogs.TryGetValue(key, out var cached))
-                return cached;
-            var task = _history.GetLogAsync(query);
-            _cachedLogs[key] = task;
-            return task;
-        }
+        return CachedByKey(_cachedLogs, key,
+            () => _history.GetLogResultAsync(query),
+            result => result.Failed,
+            result => result.Rows);
     }
 
     // ===== 特定リビジョンのファイル =====
@@ -177,40 +190,19 @@ public sealed class GitService
     public Task<string?> GetDefaultBranchAsync(IReadOnlyList<string>? availableRefs = null)
     {
         var key = availableRefs is null ? "" : string.Join('\0', availableRefs);
-        lock (_readCacheGate)
-        {
-            if (_cachedDefaultBranches.TryGetValue(key, out var cached))
-                return cached;
-            var task = _compare.GetDefaultBranchAsync(availableRefs);
-            _cachedDefaultBranches[key] = task;
-            return task;
-        }
+        return CachedByKey(_cachedDefaultBranches, key, () => _compare.GetDefaultBranchAsync(availableRefs));
     }
 
     /// <summary>比較基準を実際の ref へ解決する（失敗は理由付きで返る）。</summary>
     public Task<GitCompareResolution> ResolveCompareBaseAsync(GitCompareBaseSelection selection)
     {
-        lock (_readCacheGate)
-        {
-            if (_cachedCompareResolutions.TryGetValue(selection, out var cached))
-                return cached;
-            var task = _compare.ResolveAsync(selection);
-            _cachedCompareResolutions[selection] = task;
-            return task;
-        }
+        return CachedByKey(_cachedCompareResolutions, selection, () => _compare.ResolveAsync(selection));
     }
 
     /// <summary>基準に対する変更ファイル一覧（未追跡は含まない・リネームは1件）。失敗は理由付きで返る。</summary>
     public Task<GitCompareChanges> GetCompareChangesAsync(string baseRef)
     {
-        lock (_readCacheGate)
-        {
-            if (_cachedCompareChanges.TryGetValue(baseRef, out var cached))
-                return cached;
-            var task = _compare.GetChangesAsync(baseRef);
-            _cachedCompareChanges[baseRef] = task;
-            return task;
-        }
+        return CachedByKey(_cachedCompareChanges, baseRef, () => _compare.GetChangesAsync(baseRef));
     }
 
     /// <summary>基準に対する1ファイルの差分テキスト。</summary>
@@ -405,21 +397,58 @@ public sealed class GitService
     }
 
     private Task<string> CachedCommitMessage(string hash)
+        => CachedByKey(_cachedCommitMessages, hash, () => _rebase.GetCommitMessageAsync(hash));
+
+    /// <summary>キー付きの読み取りキャッシュ。<see cref="Cached{T}"/> と同じく<b>失敗した Task を
+    /// 握り込まない</b>——握ると、git が1回起動に失敗しただけで同じ問い合わせが永久に同じ例外を
+    /// 返し続ける（辞書側だけこの規則から外れていた）。</summary>
+    private Task<T> CachedByKey<TKey, T>(
+        Dictionary<TKey, Task<T>> cache, TKey key, Func<Task<T>> loader) where TKey : notnull
+        => CachedByKey<TKey, T, T>(cache, key, loader, _ => false, value => value);
+
+    /// <summary>キー付きの読み取りキャッシュ（<paramref name="loader"/> が成否も返す版）。
+    /// 「git が失敗したので空」を成功した答えとして覚えないための入口——キャッシュに載せるのは
+    /// <paramref name="select"/> が取り出した値だけで、失敗と判定された答えは完了後に捨てる。</summary>
+    private Task<T> CachedByKey<TKey, TResult, T>(
+        Dictionary<TKey, Task<T>> cache, TKey key, Func<Task<TResult>> loader,
+        Func<TResult, bool> failed, Func<TResult, T> select) where TKey : notnull
     {
         lock (_readCacheGate)
         {
-            // 失敗した Task は捨てて引き直す（Cached&lt;T&gt; と同じ理由）。
-            if (_cachedCommitMessages.TryGetValue(hash, out var cached))
+            if (cache.TryGetValue(key, out var cached))
             {
                 if (cached is not ({ IsFaulted: true } or { IsCanceled: true }))
                     return cached;
-                _cachedCommitMessages.Remove(hash);
+                cache.Remove(key);
             }
-            var task = _rebase.GetCommitMessageAsync(hash);
-            _cachedCommitMessages[hash] = task;
+            var transient = false;   // 完了は Task の完了で見えるので単純な捕捉変数で足りる
+            var task = Load();
+            cache[key] = task;
+            ForgetTransientFailure(task, _ => transient, () =>
+            {
+                if (cache.TryGetValue(key, out var current) && ReferenceEquals(current, task))
+                    cache.Remove(key);
+            });
             return task;
+
+            async Task<T> Load()
+            {
+                var result = await loader().ConfigureAwait(false);
+                transient = failed(result);
+                return select(result);
+            }
         }
     }
+
+    /// <summary>完了した答えが一時的な失敗だったらキャッシュから外す（次の問い合わせを git まで通す）。
+    /// 既に新しい Task へ差し替わっていれば <paramref name="evict"/> 側の同一性チェックで何もしない。</summary>
+    private void ForgetTransientFailure<T>(Task<T> task, Func<T, bool> transientFailure, Action evict)
+        => task.ContinueWith(completed =>
+        {
+            if (completed.Status == TaskStatus.RanToCompletion && !transientFailure(completed.Result))
+                return;
+            lock (_readCacheGate) evict();
+        }, TaskScheduler.Default);
 
     private Task<T> Cached<T>(ref Task<T>? cache, Func<Task<T>> loader)
     {

@@ -19,6 +19,11 @@ public sealed record GitCommitFileChange(char Status, string Path, string? OrigP
 public sealed record GitStatusSnapshot
 {
     public bool IsRepository { get; init; }
+
+    /// <summary>git の照会自体が失敗して状態が読めなかった（＝<see cref="IsRepository"/> の false は
+    /// 「リポジトリではない」ではなく「今は分からない」の意味）。rebase 中の index.lock 競合や
+    /// git の一時的な失敗を、恒久的な答えとしてキャッシュしないための区別。</summary>
+    public bool QueryFailed { get; init; }
     public string Branch { get; init; } = "";
     public string? Upstream { get; init; }
     public int Ahead { get; init; }

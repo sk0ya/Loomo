@@ -32,12 +32,19 @@ public sealed class GitHistoryService
     /// 失敗したら <c>--follow</c> を落として引き直す（履歴が丸ごと空になるより、追跡なしで出す方がよい）。</para>
     /// </summary>
     public async Task<IReadOnlyList<GitLogRow>> GetLogAsync(GitLogQuery query)
+        => (await GetLogResultAsync(query).ConfigureAwait(false)).Rows;
+
+    /// <summary>ログを引き、<b>空一覧が「0 件」なのか「git が失敗した」なのかも返す</b>。
+    /// 呼び出し側（キャッシュ）が失敗を成功した答えとして覚え込まないための区別。</summary>
+    public async Task<(IReadOnlyList<GitLogRow> Rows, bool Failed)> GetLogResultAsync(GitLogQuery query)
     {
         var result = await _runner.RunAsync(query.ToArguments()).ConfigureAwait(false);
         if (!result.Success && query.FollowRenames)
             result = await _runner.RunAsync((query with { FollowRenames = false }).ToArguments())
                 .ConfigureAwait(false);
-        return result.Success ? GitLogParser.Parse(result.Output) : Array.Empty<GitLogRow>();
+        return result.Success
+            ? (GitLogParser.Parse(result.Output), false)
+            : (Array.Empty<GitLogRow>(), true);
     }
 
     /// <summary>リネームを追ったときの「コミットごとのパス」表を作る（<see cref="GitRenameTrail"/>）。
