@@ -148,11 +148,9 @@ public partial class ShellWindow
             return;
         }
 
-        var applyError = ApplyLspWorkspaceEdit(edit.Changes, edit.DocumentVersions, edit.FileOperations,
+        var outcome = ApplyLspWorkspaceEdit(edit.Changes, edit.DocumentVersions, edit.FileOperations,
             expectedTexts: result.ExpectedTexts);
-        ShowRefactorStatus(applyError is null
-            ? $"「{result.Summary}」を適用しました。"
-            : $"「{result.Summary}」を適用できませんでした: {applyError}");
+        ShowRefactorStatus(outcome.Describe(result.Summary) ?? $"「{result.Summary}」を適用しました。");
     }
 
     private async Task RunCSharpCleanupAsync(VimEditorControl control)
@@ -180,11 +178,9 @@ public partial class ShellWindow
             return;
         }
 
-        var applyError = ApplyLspWorkspaceEdit(edit.Changes, edit.DocumentVersions, edit.FileOperations,
+        var outcome = ApplyLspWorkspaceEdit(edit.Changes, edit.DocumentVersions, edit.FileOperations,
             expectedTexts: result.ExpectedTexts);
-        ShowRefactorStatus(applyError is null
-            ? $"「{result.Summary}」を適用しました。"
-            : $"「{result.Summary}」を適用できませんでした: {applyError}");
+        ShowRefactorStatus(outcome.Describe(result.Summary) ?? $"「{result.Summary}」を適用しました。");
     }
 
     private async Task RunCSharpExtractMethodAsync(VimEditorControl control)
@@ -214,10 +210,8 @@ public partial class ShellWindow
             return;
         }
 
-        var applyError = ApplyCSharpGeneratedEdit(control, edit, result.ExpectedTexts);
-        ShowRefactorStatus(applyError is null
-            ? $"「{result.Summary}」を適用しました。"
-            : $"「{result.Summary}」を適用できませんでした: {applyError}");
+        var outcome = ApplyCSharpGeneratedEdit(control, edit, result.ExpectedTexts);
+        ShowRefactorStatus(outcome.Describe(result.Summary) ?? $"「{result.Summary}」を適用しました。");
     }
 
     private async Task RunCSharpExtractInterfaceAsync(VimEditorControl control)
@@ -260,10 +254,8 @@ public partial class ShellWindow
             return;
         }
 
-        var applyError = ApplyCSharpGeneratedEdit(control, edit, result.ExpectedTexts);
-        ShowRefactorStatus(applyError is null
-            ? $"「{result.Summary}」を適用しました。"
-            : $"「{result.Summary}」を適用できませんでした: {applyError}");
+        var outcome = ApplyCSharpGeneratedEdit(control, edit, result.ExpectedTexts);
+        ShowRefactorStatus(outcome.Describe(result.Summary) ?? $"「{result.Summary}」を適用しました。");
     }
 
     private async Task RunCSharpExtractClassAsync(VimEditorControl control)
@@ -304,10 +296,8 @@ public partial class ShellWindow
             return;
         }
 
-        var applyError = ApplyCSharpGeneratedEdit(control, edit, result.ExpectedTexts);
-        ShowRefactorStatus(applyError is null
-            ? $"「{result.Summary}」を適用しました。"
-            : $"「{result.Summary}」を適用できませんでした: {applyError}");
+        var outcome = ApplyCSharpGeneratedEdit(control, edit, result.ExpectedTexts);
+        ShowRefactorStatus(outcome.Describe(result.Summary) ?? $"「{result.Summary}」を適用しました。");
     }
 
     private async Task RunCSharpIntroduceVariableAsync(VimEditorControl control)
@@ -336,10 +326,8 @@ public partial class ShellWindow
             return;
         }
 
-        var applyError = ApplyCSharpGeneratedEdit(control, edit, result.ExpectedTexts);
-        ShowRefactorStatus(applyError is null
-            ? $"「{result.Summary}」を適用しました。"
-            : $"「{result.Summary}」を適用できませんでした: {applyError}");
+        var outcome = ApplyCSharpGeneratedEdit(control, edit, result.ExpectedTexts);
+        ShowRefactorStatus(outcome.Describe(result.Summary) ?? $"「{result.Summary}」を適用しました。");
     }
 
     private async Task RunCSharpIntroducePropertyAsync(VimEditorControl control)
@@ -374,10 +362,8 @@ public partial class ShellWindow
             return;
         }
 
-        var applyError = ApplyCSharpGeneratedEdit(control, edit, result.ExpectedTexts);
-        ShowRefactorStatus(applyError is null
-            ? $"「{result.Summary}」を適用しました。"
-            : $"「{result.Summary}」を適用できませんでした: {applyError}");
+        var outcome = ApplyCSharpGeneratedEdit(control, edit, result.ExpectedTexts);
+        ShowRefactorStatus(outcome.Describe(result.Summary) ?? $"「{result.Summary}」を適用しました。");
     }
 
     private async Task RunCSharpExtractConstantAsync(VimEditorControl control)
@@ -406,10 +392,8 @@ public partial class ShellWindow
             return;
         }
 
-        var applyError = ApplyCSharpGeneratedEdit(control, edit, result.ExpectedTexts);
-        ShowRefactorStatus(applyError is null
-            ? $"「{result.Summary}」を適用しました。"
-            : $"「{result.Summary}」を適用できませんでした: {applyError}");
+        var outcome = ApplyCSharpGeneratedEdit(control, edit, result.ExpectedTexts);
+        ShowRefactorStatus(outcome.Describe(result.Summary) ?? $"「{result.Summary}」を適用しました。");
     }
 
     private async Task RunCSharpInlineVariableAsync(VimEditorControl control)
@@ -434,10 +418,8 @@ public partial class ShellWindow
             return;
         }
 
-        var applyError = ApplyCSharpGeneratedEdit(control, edit, result.ExpectedTexts);
-        ShowRefactorStatus(applyError is null
-            ? $"「{result.Summary}」を適用しました。"
-            : $"「{result.Summary}」を適用できませんでした: {applyError}");
+        var outcome = ApplyCSharpGeneratedEdit(control, edit, result.ExpectedTexts);
+        ShowRefactorStatus(outcome.Describe(result.Summary) ?? $"「{result.Summary}」を適用しました。");
     }
 
     private async Task RunCSharpInlineMethodAsync(VimEditorControl control)
@@ -462,10 +444,8 @@ public partial class ShellWindow
             return;
         }
 
-        var applyError = ApplyCSharpGeneratedEdit(control, edit, result.ExpectedTexts);
-        ShowRefactorStatus(applyError is null
-            ? $"「{result.Summary}」を適用しました。"
-            : $"「{result.Summary}」を適用できませんでした: {applyError}");
+        var outcome = ApplyCSharpGeneratedEdit(control, edit, result.ExpectedTexts);
+        ShowRefactorStatus(outcome.Describe(result.Summary) ?? $"「{result.Summary}」を適用しました。");
     }
 
     private async Task RunCSharpEncapsulateFieldAsync(VimEditorControl control)
@@ -496,10 +476,8 @@ public partial class ShellWindow
             return;
         }
 
-        var applyError = ApplyCSharpGeneratedEdit(control, edit, result.ExpectedTexts);
-        ShowRefactorStatus(applyError is null
-            ? $"「{result.Summary}」を適用しました。"
-            : $"「{result.Summary}」を適用できませんでした: {applyError}");
+        var outcome = ApplyCSharpGeneratedEdit(control, edit, result.ExpectedTexts);
+        ShowRefactorStatus(outcome.Describe(result.Summary) ?? $"「{result.Summary}」を適用しました。");
     }
 
     private async Task RunCSharpExtractFieldAsync(VimEditorControl control)
@@ -528,10 +506,8 @@ public partial class ShellWindow
             return;
         }
 
-        var applyError = ApplyCSharpGeneratedEdit(control, edit, result.ExpectedTexts);
-        ShowRefactorStatus(applyError is null
-            ? $"「{result.Summary}」を適用しました。"
-            : $"「{result.Summary}」を適用できませんでした: {applyError}");
+        var outcome = ApplyCSharpGeneratedEdit(control, edit, result.ExpectedTexts);
+        ShowRefactorStatus(outcome.Describe(result.Summary) ?? $"「{result.Summary}」を適用しました。");
     }
 
     private async Task RunCSharpMoveTypeToFileAsync(VimEditorControl control)
@@ -568,10 +544,8 @@ public partial class ShellWindow
             return;
         }
 
-        var applyError = ApplyCSharpGeneratedEdit(control, edit, result.ExpectedTexts);
-        ShowRefactorStatus(applyError is null
-            ? $"「{result.Summary}」を適用しました。"
-            : $"「{result.Summary}」を適用できませんでした: {applyError}");
+        var outcome = ApplyCSharpGeneratedEdit(control, edit, result.ExpectedTexts);
+        ShowRefactorStatus(outcome.Describe(result.Summary) ?? $"「{result.Summary}」を適用しました。");
     }
 
     private async Task RunCSharpSafeDeleteAsync(VimEditorControl control)
@@ -598,10 +572,8 @@ public partial class ShellWindow
             return;
         }
 
-        var applyError = ApplyCSharpGeneratedEdit(control, edit, result.ExpectedTexts);
-        ShowRefactorStatus(applyError is null
-            ? $"「{result.Summary}」を適用しました。"
-            : $"「{result.Summary}」を適用できませんでした: {applyError}");
+        var outcome = ApplyCSharpGeneratedEdit(control, edit, result.ExpectedTexts);
+        ShowRefactorStatus(outcome.Describe(result.Summary) ?? $"「{result.Summary}」を適用しました。");
     }
 
     private async Task RunCSharpPullUpAsync(VimEditorControl control)
@@ -628,10 +600,8 @@ public partial class ShellWindow
             return;
         }
 
-        var applyError = ApplyCSharpGeneratedEdit(control, edit, result.ExpectedTexts);
-        ShowRefactorStatus(applyError is null
-            ? $"「{result.Summary}」を適用しました。"
-            : $"「{result.Summary}」を適用できませんでした: {applyError}");
+        var outcome = ApplyCSharpGeneratedEdit(control, edit, result.ExpectedTexts);
+        ShowRefactorStatus(outcome.Describe(result.Summary) ?? $"「{result.Summary}」を適用しました。");
     }
 
     private async Task RunCSharpPushDownAsync(VimEditorControl control)
@@ -658,10 +628,8 @@ public partial class ShellWindow
             return;
         }
 
-        var applyError = ApplyCSharpGeneratedEdit(control, edit, result.ExpectedTexts);
-        ShowRefactorStatus(applyError is null
-            ? $"「{result.Summary}」を適用しました。"
-            : $"「{result.Summary}」を適用できませんでした: {applyError}");
+        var outcome = ApplyCSharpGeneratedEdit(control, edit, result.ExpectedTexts);
+        ShowRefactorStatus(outcome.Describe(result.Summary) ?? $"「{result.Summary}」を適用しました。");
     }
 
     private async Task RunCSharpIntroduceParameterAsync(VimEditorControl control)
@@ -702,10 +670,8 @@ public partial class ShellWindow
             return;
         }
 
-        var applyError = ApplyCSharpGeneratedEdit(control, edit, result.ExpectedTexts);
-        ShowRefactorStatus(applyError is null
-            ? $"「{result.Summary}」を適用しました。"
-            : $"「{result.Summary}」を適用できませんでした: {applyError}");
+        var outcome = ApplyCSharpGeneratedEdit(control, edit, result.ExpectedTexts);
+        ShowRefactorStatus(outcome.Describe(result.Summary) ?? $"「{result.Summary}」を適用しました。");
     }
 
     private void AddCodeGenerationItem(
@@ -741,10 +707,8 @@ public partial class ShellWindow
             return;
         }
 
-        var applyError = ApplyCSharpGeneratedEdit(control, edit, result.ExpectedTexts);
-        ShowRefactorStatus(applyError is null
-            ? $"「{result.Summary}」を適用しました。"
-            : $"「{result.Summary}」を適用できませんでした: {applyError}");
+        var outcome = ApplyCSharpGeneratedEdit(control, edit, result.ExpectedTexts);
+        ShowRefactorStatus(outcome.Describe(result.Summary) ?? $"「{result.Summary}」を適用しました。");
     }
 
     private void RunCSharpJsonGeneration(VimEditorControl control)
@@ -776,10 +740,8 @@ public partial class ShellWindow
             return;
         }
 
-        var applyError = ApplyCSharpGeneratedEdit(control, edit, result.ExpectedTexts);
-        ShowRefactorStatus(applyError is null
-            ? $"「{result.Summary}」を適用しました。"
-            : $"「{result.Summary}」を適用できませんでした: {applyError}");
+        var outcome = ApplyCSharpGeneratedEdit(control, edit, result.ExpectedTexts);
+        ShowRefactorStatus(outcome.Describe(result.Summary) ?? $"「{result.Summary}」を適用しました。");
     }
 
     private void RunCSharpCodeGeneration(VimEditorControl control, CSharpCodeGenerationKind kind)
@@ -808,13 +770,11 @@ public partial class ShellWindow
             return;
         }
 
-        var applyError = ApplyCSharpGeneratedEdit(control, edit, result.ExpectedTexts);
-        ShowRefactorStatus(applyError is null
-            ? $"「{result.Summary}」を適用しました。"
-            : $"「{result.Summary}」を適用できませんでした: {applyError}");
+        var outcome = ApplyCSharpGeneratedEdit(control, edit, result.ExpectedTexts);
+        ShowRefactorStatus(outcome.Describe(result.Summary) ?? $"「{result.Summary}」を適用しました。");
     }
 
-    private string? ApplyCSharpGeneratedEdit(
+    private WorkspaceEditOutcome ApplyCSharpGeneratedEdit(
         VimEditorControl control,
         Editor.Core.Lsp.LspWorkspaceEdit edit,
         IReadOnlyDictionary<string, string>? expectedTexts = null)

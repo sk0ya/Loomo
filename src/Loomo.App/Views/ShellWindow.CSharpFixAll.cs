@@ -125,20 +125,18 @@ public partial class ShellWindow
                         $"Fix all: 候補がありません（{result?.DocumentsScanned ?? 0} ファイルを確認）。");
                     return;
                 }
-                var fallbackErrorText = ApplyLspWorkspaceEdit(
+                var fallbackOutcome = ApplyLspWorkspaceEdit(
                     fallback.Edit.Changes, null, null,
                     expectedTexts: fallback.ExpectedTexts);
-                ShowRefactorStatus(fallbackErrorText is null
-                    ? $"Fix all: {fallback.ActionsFound} 件の修正を適用しました。"
-                    : $"Fix allを適用できませんでした: {fallbackErrorText}");
+                ShowRefactorStatus(DescribeFixAll(
+                    fallbackOutcome, $"Fix all: {fallback.ActionsFound} 件の修正を適用しました。"));
                 return;
             }
 
-            var error = ApplyLspWorkspaceEdit(
+            var outcome = ApplyLspWorkspaceEdit(
                 result.Edit.Changes, result.Edit.DocumentVersions, result.Edit.FileOperations);
-            ShowRefactorStatus(error is null
-                ? $"Fix all: {result.ActionsFound} 件の修正を適用しました。"
-                : $"Fix allを適用できませんでした: {error}");
+            ShowRefactorStatus(DescribeFixAll(
+                outcome, $"Fix all: {result.ActionsFound} 件の修正を適用しました。"));
         }
         catch (OperationCanceledException)
         {
@@ -150,4 +148,10 @@ public partial class ShellWindow
         }
     }
 
+    /// <summary>Fix all の結果文。編集プレビューでの取り消しは失敗ではないので、
+    /// 上の <c>OperationCanceledException</c>（探索中の中断）と同じ言い方に揃える。</summary>
+    private static string DescribeFixAll(WorkspaceEditOutcome outcome, string applied) =>
+        outcome.Cancelled ? "Fix allをキャンセルしました。"
+        : outcome.Error is { } error ? $"Fix allを適用できませんでした: {error}"
+        : applied;
 }

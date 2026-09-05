@@ -118,15 +118,13 @@ public partial class ShellWindow
 
             if (action.Edit is { } edit && (edit.Changes.Count > 0 || edit.FileOperations is { Count: > 0 }))
             {
-                var error = ApplyLspWorkspaceEdit(edit.Changes, edit.DocumentVersions, edit.FileOperations,
+                var outcome = ApplyLspWorkspaceEdit(edit.Changes, edit.DocumentVersions, edit.FileOperations,
 #if LOOMO_EDITOR_HOST_API
                     expectedTexts: edit.ExpectedTexts);
 #else
                     expectedTexts: null);
 #endif
-                ShowRefactorStatus(error is null
-                    ? $"「{action.Title}」を適用しました。"
-                    : $"「{action.Title}」を適用できませんでした: {error}");
+                ShowRefactorStatus(outcome.Describe(action.Title) ?? $"「{action.Title}」を適用しました。");
                 return;
             }
 

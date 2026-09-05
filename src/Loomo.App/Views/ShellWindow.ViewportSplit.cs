@@ -309,17 +309,41 @@ public partial class ShellWindow {
             e.CurrentOriginalText is { } original && e.CurrentUpdatedText is { } updated
             ? new WorkspaceEditPreviewFile(path, original, updated)
             : null;
-        e.Error = ApplyLspWorkspaceEdit(e.Changes, e.DocumentVersions, e.FileOperations,
+        var outcome = ApplyLspWorkspaceEdit(e.Changes, e.DocumentVersions, e.FileOperations,
             currentPreview, e.ExpectedTexts);
 #else
-        e.Error = ApplyLspWorkspaceEdit(e.Changes, e.DocumentVersions, e.FileOperations);
+        var outcome = ApplyLspWorkspaceEdit(e.Changes, e.DocumentVersions, e.FileOperations);
 #endif
-        e.Handled = e.Error is null;
+#if LOOMO_EDITOR_EDIT_CANCEL
+        // 取り消しは失敗ではない。エディタ側もこれを見て「失敗しました」と言わなくなる。
+        e.Cancelled = outcome.Cancelled;
+        e.Error = outcome.Error;
+#else
+        // 1.0.81 以前の Editor には「取り消し」を伝える口が無い。適用だけは止めるためエラーとして返す。
+        e.Error = outcome.Cancelled ? "編集プレビューでキャンセルされました。" : outcome.Error;
+#endif
+        e.Handled = !outcome.Cancelled && outcome.Error is null;
     }
-    /// <summary>workspace edit をワークスペースへ適用する。成功なら null、失敗ならユーザーへ出す文言を返す。
+
+    /// <summary>workspace edit の適用結果。<b>取り消しは失敗ではない</b>——編集プレビューで
+    /// 「キャンセル」を押しただけなのに「適用できませんでした: 編集プレビューでキャンセルされました。」と
+    /// 出すのは、利用者が自分で止めた操作をエラーとして突き返している。</summary>
+    internal readonly record struct WorkspaceEditOutcome(string? Error, bool Cancelled)
+    {
+        internal static WorkspaceEditOutcome Ok() => new(null, false);
+        internal static WorkspaceEditOutcome Fail(string error) => new(error, false);
+        internal static WorkspaceEditOutcome Cancel() => new(null, true);
+
+        /// <summary>ステータスバーへ出す文言。適用できたときだけ null を返す（成功文は呼び出し側が持つ）。</summary>
+        internal string? Describe(string what) =>
+            Cancelled ? $"「{what}」は取り消しました。"
+            : Error is { } error ? $"「{what}」を適用できませんでした: {error}"
+            : null;
+    }
+    /// <summary>workspace edit をワークスペースへ適用する。適用できたか、失敗か、利用者が取り消したかを返す。
     /// 全対象を先に検証し、編集プレビューで確認してからファイル操作と本文変更を行う。
     /// 新規作成／名前変更されたファイルへの本文変更も、仮想的な適用後の内容を先に組み立てる。</summary>
-    private string? ApplyLspWorkspaceEdit(
+    private WorkspaceEditOutcome ApplyLspWorkspaceEdit(
         IReadOnlyDictionary<string, IReadOnlyList<Editor.Core.Lsp.LspTextEdit>> changes,
         IReadOnlyDictionary<string, int?>? documentVersions,
         IReadOnlyList<Editor.Core.Lsp.LspFileOperation>? fileOperations,
@@ -330,7 +354,7 @@ public partial class ShellWindow {
         // 正本は _workspace.Folders——LSP のサーバー自身もこの一覧で initialize されている。
         var folders = _workspace.Folders;
         if (folders.Count == 0)
-            return "ワークスペースが開かれていません。";
+            return WorkspaceEditOutcome.Fail("ワークスペースが開かれていません。");
         Dictionary<string, LspFileSnapshot>? fileSnapshots = null;
         Dictionary<VimEditorControl, string>? editorSnapshots = null;
         var mutationStarted = false;
@@ -398,7 +422,7 @@ public partial class ShellWindow {
                 var preview = new WorkspaceEditPreviewDialog("WorkspaceEdit", previewFiles, previewOperations)
                 { Owner = this };
                 if (preview.ShowDialog() != true)
-                    return "編集プレビューでキャンセルされました。";
+                    return WorkspaceEditOutcome.Cancel();
             }
 
             // Preview中にユーザーや別プロセスが触った場合は、確認済みの差分をそのまま上書きしない。
@@ -428,7 +452,7 @@ public partial class ShellWindow {
                 CaptureLspFileSnapshots(fileSnapshots.Keys),
                 CaptureLspEditorTextSnapshots(editorSnapshots),
                 CaptureLspEditorTextSnapshots(editorSnapshots, currentPreview, useCurrentText: true));
-            return null;
+            return WorkspaceEditOutcome.Ok();
         }
         catch (Exception ex) {
             // 適用後のI/O失敗でも、既に動かしたEditor／ファイルを確認済みの状態へ戻す。
@@ -441,9 +465,9 @@ public partial class ShellWindow {
             }
             catch (Exception rollback)
             {
-                return $"{ex.Message} 復元にも失敗しました: {rollback.Message}";
+                return WorkspaceEditOutcome.Fail($"{ex.Message} 復元にも失敗しました: {rollback.Message}");
             }
-            return ex.Message;
+            return WorkspaceEditOutcome.Fail(ex.Message);
         }
     }
 

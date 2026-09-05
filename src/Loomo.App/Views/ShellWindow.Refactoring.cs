@@ -249,15 +249,13 @@ public partial class ShellWindow
                 var changes = RenameExtractedSymbol(item, edit.Changes, out bool cancelled);
                 if (cancelled) return;
 
-                var error = ApplyLspWorkspaceEdit(changes, edit.DocumentVersions, edit.FileOperations,
+                var outcome = ApplyLspWorkspaceEdit(changes, edit.DocumentVersions, edit.FileOperations,
 #if LOOMO_EDITOR_HOST_API
                     expectedTexts: edit.ExpectedTexts);
 #else
                     expectedTexts: null);
 #endif
-                ShowRefactorStatus(error is null
-                    ? $"「{item.Title}」を適用しました。"
-                    : $"「{item.Title}」を適用できませんでした: {error}");
+                ShowRefactorStatus(outcome.Describe(item.Title) ?? $"「{item.Title}」を適用しました。");
                 return;
             }
 
@@ -307,16 +305,19 @@ public partial class ShellWindow
     /// （呼び出し元の UI は LSP 呼び出しを await 中＝ブロックしていないので、これで詰まらない）。</summary>
     private void OnLspServerApplyEditRequested(object? sender, LspApplyEditEventArgs e)
     {
-        var error = Dispatcher.Invoke(() =>
+        var outcome = Dispatcher.Invoke(() =>
             ApplyLspWorkspaceEdit(e.Edit.Changes, e.Edit.DocumentVersions, e.Edit.FileOperations,
 #if LOOMO_EDITOR_HOST_API
                 expectedTexts: e.Edit.ExpectedTexts));
 #else
                 expectedTexts: null));
 #endif
-        e.Applied = error is null;
-        e.FailureReason = error;
-        if (error is not null)
+        // 取り消しはサーバーから見れば「適用しなかった」だが、失敗理由は無い（利用者の判断）。
+        e.Applied = !outcome.Cancelled && outcome.Error is null;
+        e.FailureReason = outcome.Error;
+        if (outcome.Cancelled)
+            Dispatcher.BeginInvoke(new Action(() => ShowRefactorStatus("編集は取り消しました。")));
+        else if (outcome.Error is { } error)
             Dispatcher.BeginInvoke(new Action(() => ShowRefactorStatus($"編集を適用できませんでした: {error}")));
     }
 
@@ -351,9 +352,14 @@ public partial class ShellWindow
             return;
         }
 
-        var error = ApplyLspWorkspaceEdit(plan.Changes, documentVersions: null, fileOperations: null,
+        var outcome = ApplyLspWorkspaceEdit(plan.Changes, documentVersions: null, fileOperations: null,
             expectedTexts: plan.ExpectedTexts);
-        if (error is not null)
+        if (outcome.Cancelled)
+        {
+            ShowRefactorStatus("シグネチャの変更は取り消しました。");
+            return;
+        }
+        if (outcome.Error is { } error)
         {
             ShowRefactorStatus($"シグネチャを変更できませんでした: {error}");
             return;
