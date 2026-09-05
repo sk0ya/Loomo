@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
 using sk0ya.Loomo.App.Layout;
 using sk0ya.Loomo.App.Services;
@@ -374,6 +374,29 @@ public class PaneLayoutTreeTests
             Leaf(PaneKind.Editor),
             Split(SplitKind.Columns, Leaf(PaneKind.Browser), Leaf(PaneKind.Terminal)));
         Assert.Equal(PaneKind.Browser, PaneLayoutTree.MainAndSub(vertical, SplitKind.Rows).Sub!.Kind);
+    }
+
+    [Fact]
+    public void MainAndSub_takes_the_immediate_neighbour_in_a_flat_stack()
+    {
+        // 回帰：親が平坦な3枚以上の並びのとき、末尾の子を採ると「隣」を飛ばして最果てを掴んでいた。
+        // 縦1列 Rows[Editor, Terminal, Ai] で縦に並べる設定なら、サブは Editor の真下＝Terminal。
+        // Ai（最下段）を返すと、サブが無いときの追加先（メインの隣＝SubDropZone）と食い違う。
+        var column = Split(SplitKind.Rows, Leaf(PaneKind.Editor), Leaf(PaneKind.Terminal), Leaf(PaneKind.Ai));
+        var (main, sub) = PaneLayoutTree.MainAndSub(column, SplitKind.Rows);
+        Assert.Equal(PaneKind.Editor, main!.Kind);
+        Assert.Equal(PaneKind.Terminal, sub!.Kind);         // Ai（最果て）ではない
+
+        // 横並びも同じ：メインのすぐ右で、行の右端ではない。
+        var row = Split(SplitKind.Columns, Leaf(PaneKind.Editor), Leaf(PaneKind.Browser), Leaf(PaneKind.Terminal));
+        Assert.Equal(PaneKind.Browser, PaneLayoutTree.MainAndSub(row, SplitKind.Columns).Sub!.Kind);
+
+        // 隣が丸ごと非表示なら、その区画は「隣」ではないので次まで進む。
+        var hiddenNeighbour = Split(SplitKind.Columns,
+            Leaf(PaneKind.Editor),
+            Split(SplitKind.Rows, Leaf(PaneKind.EditorSupport, hidden: true), Leaf(PaneKind.Git, hidden: true)),
+            Leaf(PaneKind.Browser));
+        Assert.Equal(PaneKind.Browser, PaneLayoutTree.MainAndSub(hiddenNeighbour, SplitKind.Columns).Sub!.Kind);
     }
 
     [Fact]

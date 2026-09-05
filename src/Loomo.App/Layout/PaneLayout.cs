@@ -91,12 +91,14 @@ public static class PaneLayoutTree
     /// <summary>メイン（左上の可視ペイン）と、その隣に並ぶサブを返す。<paramref name="axis"/> はメインと
     /// サブの並べ方：<see cref="SplitKind.Columns"/>＝横に並べる（サブ＝メインの右）、
     /// <see cref="SplitKind.Rows"/>＝縦に並べる（サブ＝メインの下）。
-    /// <para>サブは<b>メインの親スプリットの中だけ</b>から採る：親がその向きなら末尾側の可視な<b>直下の子</b>が
-    /// サブの区画（＝横並びなら同じ行の右端、縦並びなら同じ列の下端）、親の向きが違う＝まだその方向に
-    /// 並んでいないので <c>Sub=null</c>（呼び手はメインの隣へ追加する）。ツリー全体の末尾リーフを見ないのは、
-    /// 「メインの隣」でないペイン（例：全幅の最下段）をサブと誤認すると、入れ替え先とサブの判定が
-    /// 食い違ってレイアウトが入れ子へ流れていくため。判定は矩形の実測値ではなく構造ベース
-    /// （矩形が未確定なタイミングで誤選択しないため）。</para></summary>
+    /// <para>サブは<b>メインの親スプリットの中で、メインの<u>次</u>にある可視な直下の子</b>から採る
+    /// （＝横並びならメインのすぐ右、縦並びならすぐ下）。親の向きが違う＝まだその方向に並んでいないので
+    /// <c>Sub=null</c>（呼び手はメインの隣へ追加する）。「メインの隣」でないペインをサブと誤認すると、
+    /// 入れ替え先とサブの追加先（<c>SubDropZone</c> は必ずメインの隣へ挿す）が食い違い、レイアウトが
+    /// 入れ子へ流れていく——これを外す形が2つあり、どちらも同じ理由でここに閉じている：
+    /// ツリー全体の末尾リーフを見ると<b>別の帯</b>（例：全幅の最下段）を掴み、親の<b>末尾の子</b>を見ると
+    /// 平坦な3枚以上の並び（例：<c>Rows[Editor, Terminal, Ai]</c>）で<b>隣を飛ばして最果て</b>を掴む。
+    /// 判定は矩形の実測値ではなく構造ベース（矩形が未確定なタイミングで誤選択しないため）。</para></summary>
     public static (PaneLeaf? Main, PaneLeaf? Sub) MainAndSub(PaneNode? root, SplitKind axis)
     {
         var main = FirstVisibleLeaf(root);
@@ -104,25 +106,26 @@ public static class PaneLayoutTree
             return (null, null);
         if (FindParent(root, main) is not { } parent || parent.Orientation != axis)
             return (main, null);
-        var sub = LastVisibleChildLeadingLeaf(parent);
+        var sub = NextVisibleSiblingLeadingLeaf(parent, parent.Children.IndexOf(main));
         return (main, ReferenceEquals(sub, main) ? null : sub);
     }
 
-    /// <summary>スプリットの末尾側の可視な<b>直下の子</b>（＝サブの区画）の中で、メインと同じ帯にある
-    /// 先頭リーフ。区画が入れ子スプリットのときに末尾まで潜らないのが要点：正規化済みツリーでは入れ子は
-    /// 必ず直交する（横並びの中の縦積み）ので、末尾まで潜ると「右上」ではなく「右下」を掴んでしまい、
-    /// サブの追加先（メインの隣）と入れ替え先が食い違って入れ子が深くなっていく。</summary>
-    private static PaneLeaf? LastVisibleChildLeadingLeaf(PaneSplit split)
+    /// <summary><paramref name="index"/>（メインの区画）の<b>次</b>にある可視な直下の子＝サブの区画、その中で
+    /// メインと同じ帯にある先頭リーフ。区画が入れ子スプリットのときに末尾まで潜らないのが要点：正規化済み
+    /// ツリーでは入れ子は必ず直交する（横並びの中の縦積み）ので、末尾まで潜ると「右上」ではなく「右下」を
+    /// 掴んでしまう。非表示だけの区画は飛ばす（中身が全部隠れている区画は「隣」ではない）。</summary>
+    private static PaneLeaf? NextVisibleSiblingLeadingLeaf(PaneSplit split, int index)
     {
-        for (var i = split.Children.Count - 1; i >= 0; i--)
+        for (var i = index + 1; i < split.Children.Count; i++)
             if (FirstVisibleLeaf(split.Children[i]) is { } found)
                 return found;
         return null;
     }
 
     /// <summary>ノード配下で末尾側（各スプリットの最後の子から辿る＝横並びなら最も右・縦並びなら最も下）に
-    /// ある可視リーフ。無ければ null。<b>サブの判定には使わない</b>——入れ子の区画では「右下」を掴んで
-    /// しまうため、サブは <see cref="LastVisibleChildLeadingLeaf"/>（末尾側の直下の子の先頭リーフ）で採る。</summary>
+    /// ある可視リーフ。無ければ null。<b>サブの判定には使わない</b>——入れ子の区画では「右下」を、平坦な
+    /// 3枚以上の並びでは隣を飛ばした最果てを掴んでしまうため、サブは
+    /// <see cref="NextVisibleSiblingLeadingLeaf"/>（メインの次の直下の子の先頭リーフ）で採る。</summary>
     public static PaneLeaf? LastVisibleLeaf(PaneNode? node)
     {
         if (node is PaneLeaf leaf)
