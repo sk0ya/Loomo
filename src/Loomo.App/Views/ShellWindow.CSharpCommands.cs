@@ -25,6 +25,26 @@ public partial class ShellWindow
             _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "未登録のC#コード生成種別です。"),
         };
 
+    /// <summary>C#操作の唯一の起動口。<b>例外はここで受けて状態行に出す</b>——任意のユーザーコードを
+    /// Roslynに食わせ、ダイアログで受け取ったパスも扱うので想定外の例外は必ず起こり得る。
+    /// これらは元々<c>async void</c>で、投げるとディスパッチャ上で再送出されて部屋ごと落ちていた
+    /// （<c>_ =</c>で捨てていた側も、黙って何も起きないので原因が追えなかった）。</summary>
+    private async void RunCSharpOperation(string commandId, Func<Task> operation)
+    {
+        try
+        {
+            await operation();
+        }
+        catch (Exception ex)
+        {
+            var title = CSharpEditorCommandCatalog.All
+                .FirstOrDefault(command => string.Equals(command.Id, commandId, StringComparison.Ordinal))
+                ?.Title ?? commandId;
+            System.Diagnostics.Debug.WriteLine($"[C#] {title} に失敗: {ex}");
+            ShowRefactorStatus($"「{title}」を実行できませんでした: {ex.Message}");
+        }
+    }
+
     /// <summary>現在のC#エディタを返す。右クリックから呼ばれた場合は呼び出し元を優先する。</summary>
     private VimEditorControl? ActiveCSharpEditor(VimEditorControl? requested = null)
     {
@@ -50,7 +70,7 @@ public partial class ShellWindow
                 control.ExecuteCommand("Rename");
                 break;
             case CSharpEditorCommandCatalog.ChangeSignature:
-                _ = RunCSharpChangeSignatureCommandAsync(control);
+                RunCSharpOperation(id, () => RunCSharpChangeSignatureCommandAsync(control));
                 break;
             case CSharpEditorCommandCatalog.GoToDefinition:
 #if LOOMO_EDITOR_HOST_API
@@ -101,55 +121,55 @@ public partial class ShellWindow
                 control.ExecuteCommand("QuickFix");
                 break;
             case CSharpEditorCommandCatalog.OrganizeUsings:
-                _ = RunCSharpOrganizeUsingsAsync(control);
+                RunCSharpOperation(id, () => RunCSharpOrganizeUsingsAsync(control));
                 break;
             case CSharpEditorCommandCatalog.Cleanup:
-                _ = RunCSharpCleanupAsync(control);
+                RunCSharpOperation(id, () => RunCSharpCleanupAsync(control));
                 break;
             case CSharpEditorCommandCatalog.ExtractMethod:
-                RunCSharpExtractMethod(control);
+                RunCSharpOperation(id, () => RunCSharpExtractMethodAsync(control));
                 break;
             case CSharpEditorCommandCatalog.ExtractInterface:
-                RunCSharpExtractInterface(control);
+                RunCSharpOperation(id, () => RunCSharpExtractInterfaceAsync(control));
                 break;
             case CSharpEditorCommandCatalog.ExtractClass:
-                _ = RunCSharpExtractClassAsync(control);
+                RunCSharpOperation(id, () => RunCSharpExtractClassAsync(control));
                 break;
             case CSharpEditorCommandCatalog.PullUp:
-                _ = RunCSharpPullUpAsync(control);
+                RunCSharpOperation(id, () => RunCSharpPullUpAsync(control));
                 break;
             case CSharpEditorCommandCatalog.PushDown:
-                _ = RunCSharpPushDownAsync(control);
+                RunCSharpOperation(id, () => RunCSharpPushDownAsync(control));
                 break;
             case CSharpEditorCommandCatalog.IntroduceParameter:
-                _ = RunCSharpIntroduceParameterAsync(control);
+                RunCSharpOperation(id, () => RunCSharpIntroduceParameterAsync(control));
                 break;
             case CSharpEditorCommandCatalog.IntroduceVariable:
-                RunCSharpIntroduceVariable(control);
+                RunCSharpOperation(id, () => RunCSharpIntroduceVariableAsync(control));
                 break;
             case CSharpEditorCommandCatalog.IntroduceProperty:
-                RunCSharpIntroduceProperty(control);
+                RunCSharpOperation(id, () => RunCSharpIntroducePropertyAsync(control));
                 break;
             case CSharpEditorCommandCatalog.ExtractConstant:
-                RunCSharpExtractConstant(control);
+                RunCSharpOperation(id, () => RunCSharpExtractConstantAsync(control));
                 break;
             case CSharpEditorCommandCatalog.InlineVariable:
-                RunCSharpInlineVariable(control);
+                RunCSharpOperation(id, () => RunCSharpInlineVariableAsync(control));
                 break;
             case CSharpEditorCommandCatalog.InlineMethod:
-                RunCSharpInlineMethod(control);
+                RunCSharpOperation(id, () => RunCSharpInlineMethodAsync(control));
                 break;
             case CSharpEditorCommandCatalog.SafeDelete:
-                _ = RunCSharpSafeDeleteAsync(control);
+                RunCSharpOperation(id, () => RunCSharpSafeDeleteAsync(control));
                 break;
             case CSharpEditorCommandCatalog.EncapsulateField:
-                RunCSharpEncapsulateField(control);
+                RunCSharpOperation(id, () => RunCSharpEncapsulateFieldAsync(control));
                 break;
             case CSharpEditorCommandCatalog.ExtractField:
-                RunCSharpExtractField(control);
+                RunCSharpOperation(id, () => RunCSharpExtractFieldAsync(control));
                 break;
             case CSharpEditorCommandCatalog.MoveTypeToFile:
-                RunCSharpMoveTypeToFile(control);
+                RunCSharpOperation(id, () => RunCSharpMoveTypeToFileAsync(control));
                 break;
             case CSharpEditorCommandCatalog.GenerateConstructor:
                 RunCSharpCodeGeneration(control, CSharpCodeGenerationKind.Constructor);
@@ -188,7 +208,7 @@ public partial class ShellWindow
                 RunCSharpCodeGeneration(control, CSharpCodeGenerationKind.AsyncDisposePattern);
                 break;
             case CSharpEditorCommandCatalog.GenerateNullGuards:
-                _ = RunCSharpNullGuardGenerationAsync(control);
+                RunCSharpOperation(id, () => RunCSharpNullGuardGenerationAsync(control));
                 break;
             case CSharpEditorCommandCatalog.GenerateJsonTypes:
                 RunCSharpJsonGeneration(control);

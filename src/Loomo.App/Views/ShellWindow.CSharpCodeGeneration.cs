@@ -187,7 +187,7 @@ public partial class ShellWindow
             : $"「{result.Summary}」を適用できませんでした: {applyError}");
     }
 
-    private async void RunCSharpExtractMethod(VimEditorControl control)
+    private async Task RunCSharpExtractMethodAsync(VimEditorControl control)
     {
         if (!control.HasSelection || control.SelectionAsLspRange() is not { } selection)
         {
@@ -220,7 +220,7 @@ public partial class ShellWindow
             : $"「{result.Summary}」を適用できませんでした: {applyError}");
     }
 
-    private async void RunCSharpExtractInterface(VimEditorControl control)
+    private async Task RunCSharpExtractInterfaceAsync(VimEditorControl control)
     {
         if (!control.HasSelection || control.SelectionAsLspRange() is not { } selection)
         {
@@ -310,7 +310,7 @@ public partial class ShellWindow
             : $"「{result.Summary}」を適用できませんでした: {applyError}");
     }
 
-    private async void RunCSharpIntroduceVariable(VimEditorControl control)
+    private async Task RunCSharpIntroduceVariableAsync(VimEditorControl control)
     {
         if (!control.HasSelection || control.SelectionAsLspRange() is not { } selection)
         {
@@ -342,7 +342,7 @@ public partial class ShellWindow
             : $"「{result.Summary}」を適用できませんでした: {applyError}");
     }
 
-    private async void RunCSharpIntroduceProperty(VimEditorControl control)
+    private async Task RunCSharpIntroducePropertyAsync(VimEditorControl control)
     {
         if (!control.HasSelection || control.SelectionAsLspRange() is not { } selection)
         {
@@ -380,7 +380,7 @@ public partial class ShellWindow
             : $"「{result.Summary}」を適用できませんでした: {applyError}");
     }
 
-    private async void RunCSharpExtractConstant(VimEditorControl control)
+    private async Task RunCSharpExtractConstantAsync(VimEditorControl control)
     {
         if (!control.HasSelection || control.SelectionAsLspRange() is not { } selection)
         {
@@ -412,7 +412,7 @@ public partial class ShellWindow
             : $"「{result.Summary}」を適用できませんでした: {applyError}");
     }
 
-    private async void RunCSharpInlineVariable(VimEditorControl control)
+    private async Task RunCSharpInlineVariableAsync(VimEditorControl control)
     {
         if (!control.HasSelection || control.SelectionAsLspRange() is not { } selection)
         {
@@ -440,7 +440,7 @@ public partial class ShellWindow
             : $"「{result.Summary}」を適用できませんでした: {applyError}");
     }
 
-    private async void RunCSharpInlineMethod(VimEditorControl control)
+    private async Task RunCSharpInlineMethodAsync(VimEditorControl control)
     {
         if (!control.HasSelection || control.SelectionAsLspRange() is not { } selection)
         {
@@ -468,7 +468,7 @@ public partial class ShellWindow
             : $"「{result.Summary}」を適用できませんでした: {applyError}");
     }
 
-    private async void RunCSharpEncapsulateField(VimEditorControl control)
+    private async Task RunCSharpEncapsulateFieldAsync(VimEditorControl control)
     {
         if (!control.HasSelection || control.SelectionAsLspRange() is not { } selection)
         {
@@ -502,7 +502,7 @@ public partial class ShellWindow
             : $"「{result.Summary}」を適用できませんでした: {applyError}");
     }
 
-    private async void RunCSharpExtractField(VimEditorControl control)
+    private async Task RunCSharpExtractFieldAsync(VimEditorControl control)
     {
         if (!control.HasSelection || control.SelectionAsLspRange() is not { } selection)
         {
@@ -534,7 +534,7 @@ public partial class ShellWindow
             : $"「{result.Summary}」を適用できませんでした: {applyError}");
     }
 
-    private async void RunCSharpMoveTypeToFile(VimEditorControl control)
+    private async Task RunCSharpMoveTypeToFileAsync(VimEditorControl control)
     {
         if (!control.HasSelection || control.SelectionAsLspRange() is not { } selection)
         {
@@ -783,7 +783,7 @@ public partial class ShellWindow
     }
 
     private void RunCSharpCodeGeneration(VimEditorControl control, CSharpCodeGenerationKind kind)
-        => _ = RunCSharpCodeGenerationAsync(control, kind);
+        => RunCSharpOperation(CSharpCommandIdFor(kind), () => RunCSharpCodeGenerationAsync(control, kind));
 
     private async Task RunCSharpCodeGenerationAsync(
         VimEditorControl control, CSharpCodeGenerationKind kind)
