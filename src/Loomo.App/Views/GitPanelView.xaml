@@ -75,7 +75,7 @@
             </Setter>
         </Style>
 
-        <!-- 変更行コンテナ（クリック=選択 / ダブルクリックで開く・コードビハインド）。
+        <!-- 変更行コンテナ（クリック=選択 / ダブルクリックで差分・コードビハインド）。
              既定の選択クロムを差し替え、ホバー=Bg・選択=Border の控えめなハイライトにする。 -->
         <Style x:Key="ChangeRowItem" TargetType="ListBoxItem">
             <Setter Property="Background" Value="Transparent" />

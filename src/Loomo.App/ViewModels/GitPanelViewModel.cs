@@ -824,7 +824,8 @@ public sealed partial class GitPanelViewModel : ObservableObject
         }
     }
 
-    /// <summary>変更行クリック：そのファイルの実体をエディタで開く（差分ではなくファイルそのもの）。
+    /// <summary>変更行の右クリックメニュー「ファイルを開く」：そのファイルの実体をエディタで開く
+    /// （差分ではなくファイルそのもの。差分はダブルクリック／「差分を開く」の <see cref="OpenDiffCommand"/>）。
     /// 削除済みエントリは開く実体が無いので何もしない。</summary>
     [RelayCommand]
     private async Task OpenFileAsync(GitChangeItem? item)
@@ -837,7 +838,7 @@ public sealed partial class GitPanelViewModel : ObservableObject
         await _editor.OpenFileAsync(fullPath);
     }
 
-    /// <summary>変更行のコンテキストメニュー「差分を開く」：その作業ツリー差分を見せてほしいと頼む
+    /// <summary>変更行のダブルクリック／コンテキストメニュー「差分を開く」：その作業ツリー差分を見せてほしいと頼む
     /// （Diff ペインで開くか、ペインが隠れていれば別ウィンドウかは ShellWindow が決める）。</summary>
     [RelayCommand]
     private void OpenDiff(GitChangeItem? item)

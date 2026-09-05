@@ -21,11 +21,16 @@ public partial class GitPanelView
         if (sender is ListBox lb) Vm?.SetStagedSelection(lb.SelectedItems);
     }
 
-    // ダブルクリックでその行のファイルを開く（単クリックは選択のみ）。
+    // ダブルクリックでその行の差分を開く（単クリックは選択のみ）。変更一覧の行は「何が変わったかを
+    // 見る」ための入口なので、Git ペインのコミット変更ファイル一覧（OnCommitFileDoubleClick）と
+    // 同じ約束にする。ファイルの実体を開きたいときは右クリックの「ファイルを開く」。
     private void ChangeList_MouseDoubleClick(object sender, MouseButtonEventArgs e)
     {
         if (FindItem(e.OriginalSource) is GitChangeItem item)
-            Vm?.OpenFileCommand.Execute(item);
+        {
+            e.Handled = true;
+            Vm?.OpenDiffCommand.Execute(item);
+        }
     }
 
     // 右クリックした行が未選択なら、その行だけを選択してからメニューを出す（VS Code と同じ挙動）。
