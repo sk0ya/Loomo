@@ -77,3 +77,6 @@ src/Loomo.App/Assets/Web/marp.min.js
 # 能力ハーネスのスクラッチ出力（中間 partial と試行生ログ）。確定レポート(.md)のみ追跡する。
 docs/reports/*-partial.md
 docs/reports/*-trials.log
+
+# 手元の走り書き用フォルダ（独自の .git を持つ入れ子リポジトリ。追跡すると gitlink が入る）
+tst/

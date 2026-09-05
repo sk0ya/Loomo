@@ -3,6 +3,7 @@ using System.Linq;
 using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Threading;
 using sk0ya.Loomo.App.Detach;
 using sk0ya.Loomo.App.ViewModels;
 using sk0ya.Loomo.App.Views;
@@ -281,6 +282,73 @@ public class DetachedPaneWindowTests
             Assert.Equal(1, window.ItemCount);
             Assert.False(window.Contains(b));
         });
+    }
+
+    [Fact]
+    public void 窓をまたいで移した器は作り直される()
+    {
+        RunSta(() =>
+        {
+            // WebView2（コンポジション版）は再ペアレントすると元の窓のコンポジタに残って空表示になるので、
+            // 器は載せ替えのたびに中身を作り直す。実機では窓をまたいで移したブラウザのタブが真っ白だった。
+            // 「外す・足す」は同じディスパッチャパスで済むが、移動先が別ウィンドウなら Unloaded/Loaded は
+            // どちらも発火する——この固定はそこ（＝合図が本当に届くこと）を実物の窓で確かめる。
+            var rebuilt = 0;
+            var host = new Grid();
+            ReparentRebuild.Watch(host, () => rebuilt++);
+
+            var first = ShowHostWindow(out var firstHost);
+            var second = ShowHostWindow(out var secondHost);
+            try
+            {
+                firstHost.Children.Add(host);
+                Pump();
+                Assert.Equal(0, rebuilt);   // 初めて窓へ載せるのは載せ替えではない（作り直さない）
+
+                firstHost.Children.Remove(host);
+                secondHost.Children.Add(host);   // DropOnto/MergeWindows と同じ形（同一パスで外して足す）
+                Pump();
+                Assert.Equal(1, rebuilt);
+
+                secondHost.Children.Remove(host);
+                firstHost.Children.Add(host);
+                Pump();
+                Assert.Equal(2, rebuilt);
+
+                // 窓から外しただけ（Loaded が来ない）では作り直さない＝見えない器を作らない。
+                firstHost.Children.Remove(host);
+                Pump();
+                Assert.Equal(2, rebuilt);
+            }
+            finally
+            {
+                first.Close();
+                second.Close();
+            }
+        });
+    }
+
+    /// <summary>実物の窓を1つ出して、その中の器を返す（<see cref="ReparentRebuild"/> は
+    /// 実際に読み込まれた視覚ツリーでないと働かないので、モックでは確かめられない）。</summary>
+    private static Window ShowHostWindow(out Grid host)
+    {
+        host = new Grid();
+        var window = new Window
+        {
+            Width = 200, Height = 200, ShowInTaskbar = false,
+            Left = -4000, Top = -4000,      // 検証の窓が画面に出て邪魔をしないよう画面外へ
+            Content = host,
+        };
+        window.Show();
+        Pump();
+        return window;
+    }
+
+    /// <summary>溜まっているディスパッチャ処理（Loaded/Unloaded の配布を含む）を流し切る。</summary>
+    private static void Pump()
+    {
+        for (var i = 0; i < 3; i++)
+            Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.SystemIdle);
     }
 
     [Fact]

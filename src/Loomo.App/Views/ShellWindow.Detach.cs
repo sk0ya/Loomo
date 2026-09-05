@@ -224,26 +224,35 @@ public partial class ShellWindow {
         => CreateBrowserSpinoffItem(BrowserUrlOf(sourceTab));
     /// <summary>切り離したブラウザ。<see cref="DetachedItem.Content"/> は差し替えられないので、
     /// <b>器（Grid）を挟んで</b>中の WebView2 だけを作り直せるようにする——ブラウザプロセスが落ちたら
-    /// コントロールごと作り直すため（§21.5.3。共有プロファイルなので他インスタンスの巻き添えでも落ちる）。</summary>
+    /// コントロールごと作り直すため（§21.5.3。共有プロファイルなので他インスタンスの巻き添えでも落ちる）。
+    /// 器はもう1つ、<b>別の切り離し窓へタブを移したとき</b>の作り直しにも効く（<see cref="ReparentRebuild"/>）。</summary>
     private DetachedItem CreateBrowserSpinoffItem(string? sourceUrl) {
         var url = sourceUrl ?? DefaultBrowserUrl;
         var host = new Grid();
         var view = CreateBrowserView();
         view.Visibility = Visibility.Visible;
         host.Children.Add(view);
-        var item = new DetachedItem( DetachKind.BrowserSpinoff, "Browser", host, _tabIcons.GetBrowserDefaultIcon(), dispose: () => DisposeSpinoffBrowser(host)) {
+        DetachedItem? item = null;
+        item = new DetachedItem( DetachKind.BrowserSpinoff, "Browser", host, _tabIcons.GetBrowserDefaultIcon(), dispose: () => DisposeSpinoffBrowser(host)) {
             // 戻すときは<b>作り直す</b>——WebView2（コンポジション版）は窓をまたいで載せ替えると
             // コンポジタが元の窓に残って空表示になる（引き出すときも同じ理由で新規生成している）。
             Return = new DetachReturn(TabEntryKind.Browser, () => {
-                var current = host.Children.OfType<WebView2CompositionControl>().FirstOrDefault()?.Source?.ToString();
+                var current = SpinoffBrowserUrl(host);   // 行き先は手放す前に控える（捨てた器から読まない）
                 DisposeSpinoffBrowser(host);
                 _ = CreateBrowserTabAsync(current ?? url);
                 FocusPane(PaneKind.Browser);
             })
         };
+        // 切り離し窓から<b>別の切り離し窓へ</b>タブを移したときも同じ——載せ替えただけでは空表示に
+        // なるので、いま見ている URL のまま器の中身を作り直す。ここが抜けていて、窓をまたいで移した
+        // ブラウザのタブが真っ白になっていた（引き出す・戻すの両端だけ手当てされていた）。
+        ReparentRebuild.Watch(host, () => RebuildSpinoffBrowser(host, item!, SpinoffBrowserUrl(host) ?? url));
         _ = RealizeSpinoffBrowserAsync(host, view, url, item);
         return item;
     }
+    /// <summary>切り離しブラウザの器がいま見ている URL（まだ生成前・生成に失敗していれば null）。</summary>
+    private static string? SpinoffBrowserUrl(Panel host)
+        => host.Children.OfType<WebView2CompositionControl>().FirstOrDefault()?.Source?.ToString();
     /// <summary>
     /// 差分ひとつを、切り離しウィンドウのタブ1枚として作る（Git のコミット詳細のダブルクリック＝
     /// 送るたびに新しい窓と、Diff ペインが隠れているときの差分の行き先＝同じ窓へタブを足す、の共通の実体）。
