@@ -53,8 +53,15 @@ public sealed partial class AppearanceViewModel : ObservableObject
     public IReadOnlyList<PaneOpenBehaviorChoice> PaneOpenBehaviors { get; } = new[]
     {
         new PaneOpenBehaviorChoice(PaneOpenBehavior.Main, "メイン（左上と入れ替え・従来）"),
-        new PaneOpenBehaviorChoice(PaneOpenBehavior.Sub,  "サブ（右上と入れ替え・横1枚なら右へ追加）"),
+        new PaneOpenBehaviorChoice(PaneOpenBehavior.Sub,  "サブ（サブと入れ替え・無ければメインの隣へ追加）"),
         new PaneOpenBehaviorChoice(PaneOpenBehavior.Loop, "ループ（サブに表示・サブ起点ならメインへ繰り上げ）"),
+    };
+
+    /// <summary>サブペインをメインのどちら側に置くか（横に並べる＝右／縦に並べる＝下）の選択肢。</summary>
+    public IReadOnlyList<PaneSubDirectionChoice> PaneSubDirections { get; } = new[]
+    {
+        new PaneSubDirectionChoice(PaneSubDirection.Horizontal, "横に並べる（サブ＝右・既定）"),
+        new PaneSubDirectionChoice(PaneSubDirection.Vertical,   "縦に並べる（サブ＝下）"),
     };
 
     /// <summary>袖（右端のミニチュア一覧）の列数の選択肢。</summary>
@@ -71,6 +78,7 @@ public sealed partial class AppearanceViewModel : ObservableObject
     [ObservableProperty] private PresetSwatch _selectedPreviewTheme;
     [ObservableProperty] private PresetSwatch _selectedTerminalTheme;
     [ObservableProperty] private PaneOpenBehaviorChoice _selectedPaneOpenBehavior;
+    [ObservableProperty] private PaneSubDirectionChoice _selectedPaneSubDirection;
     [ObservableProperty] private WingColumnsChoice _selectedWingColumns;
     [ObservableProperty] private FontSizeChoice _selectedFontSize;
 
@@ -248,6 +256,8 @@ public sealed partial class AppearanceViewModel : ObservableObject
         _selectedTerminalTheme = Match(TerminalThemes, ap.TerminalTheme, 0);
         _selectedPaneOpenBehavior = PaneOpenBehaviors.FirstOrDefault(c => c.Value == settings.PaneOpenBehavior)
             ?? PaneOpenBehaviors[0];
+        _selectedPaneSubDirection = PaneSubDirections.FirstOrDefault(c => c.Value == settings.PaneSubDirection)
+            ?? PaneSubDirections[0];
         _selectedWingColumns = WingColumnChoices.FirstOrDefault(c => c.Value == ap.WingColumns)
             ?? WingColumnChoices[0];
 
@@ -351,6 +361,17 @@ public sealed partial class AppearanceViewModel : ObservableObject
         if (value is null || _settings.PaneOpenBehavior == value.Value) return;
         _settings.PaneOpenBehavior = value.Value;
         Persist("ペインの表示方法を変更しました");
+    }
+
+    /// <summary>サブペインの位置（横＝右／縦＝下）：選択を即時反映＆永続化する。既存の配置は動かさず、
+    /// 次回の前面化（サブ／ループ）から効く。</summary>
+    partial void OnSelectedPaneSubDirectionChanged(PaneSubDirectionChoice value)
+    {
+        if (value is null || _settings.PaneSubDirection == value.Value) return;
+        _settings.PaneSubDirection = value.Value;
+        Persist(value.Value == PaneSubDirection.Vertical
+            ? "サブペインを下（縦に並べる）にしました"
+            : "サブペインを右（横に並べる）にしました");
     }
 
     /// <summary>袖の列数：選択を即時反映＆永続化する。袖のカードはコードビハインドで幅を決めて組むため、
@@ -492,6 +513,15 @@ public sealed partial class AppearanceViewModel : ObservableObject
         public string Name { get; }
 
         public PaneOpenBehaviorChoice(PaneOpenBehavior value, string name) { Value = value; Name = name; }
+    }
+
+    /// <summary>サブペインの位置（並べ方）の選択肢1つ（コンボボックス用）。<see cref="Value"/> が永続化値。</summary>
+    public sealed class PaneSubDirectionChoice
+    {
+        public PaneSubDirection Value { get; }
+        public string Name { get; }
+
+        public PaneSubDirectionChoice(PaneSubDirection value, string name) { Value = value; Name = name; }
     }
 
     /// <summary>袖の列数の選択肢1つ（コンボボックス用）。<see cref="Value"/> が永続化値（列数）。</summary>

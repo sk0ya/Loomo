@@ -31,6 +31,11 @@ public sealed class LoomoSettings
     /// 「差分を開く」等の共通経路）。既定は <see cref="PaneOpenBehavior.Main"/>（左上と入れ替え＝従来動作）。</summary>
     public PaneOpenBehavior PaneOpenBehavior { get; set; } = PaneOpenBehavior.Main;
 
+    /// <summary>サブペインをメインのどちら側に置くか（横に並べる＝右／縦に並べる＝下）。
+    /// <see cref="PaneOpenBehavior.Sub"/>・<see cref="PaneOpenBehavior.Loop"/> の配置先に効く。
+    /// 既定は <see cref="PaneSubDirection.Horizontal"/>（右＝従来動作）。</summary>
+    public PaneSubDirection PaneSubDirection { get; set; } = PaneSubDirection.Horizontal;
+
     /// <summary>ウィンドウ最下部の軌跡（操作ログ）バーを表示するか。既定は表示。OFF にすると記録が
     /// あってもバーごと隠す（記録自体は続くので、再表示すればそれまでの軌跡も見える）。バーの
     /// コンテキストメニュー「軌跡を非表示にする」や設定の「外観」トグルからここへ書き戻される。</summary>

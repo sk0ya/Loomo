@@ -307,52 +307,61 @@ public class PaneLayoutTreeTests
         Assert.Same(git, PaneLayoutTree.AddLeafAtBottom(null, git));
     }
 
-    // ===== TopRow / Rightmost / Leftmost（サブ＝右上 判定の土台） =====
+    // ===== MainAndSub（サブ＝メインの右／下 判定の土台） =====
 
     [Fact]
-    public void TopRow_returns_first_visible_row_and_ignores_lower_rows()
+    public void MainAndSub_horizontal_picks_the_right_end_of_mains_row()
     {
-        // 既定相当：Rows[ Columns[Editor,Browser], Terminal, Ai ] の上段は Columns[Editor,Browser]。
-        var top = Split(SplitKind.Columns, Leaf(PaneKind.Editor), Leaf(PaneKind.Browser));
-        var root = Split(SplitKind.Rows, top, Leaf(PaneKind.Terminal), Leaf(PaneKind.Ai));
-
-        Assert.Same(top, PaneLayoutTree.TopRow(root));
-    }
-
-    [Fact]
-    public void Rightmost_and_Leftmost_pick_top_row_edges_skipping_hidden()
-    {
-        // 上段 Columns[Editor, EditorSupport(hidden), Browser]：左端=Editor、右端=Browser（非表示は飛ばす）。
+        // 既定相当 Rows[ Columns[Editor, EditorSupport(hidden), Browser], Terminal, Ai ]：
+        // メイン＝Editor、サブ＝同じ行の右端 Browser（非表示は飛ばす／下段は見ない）。
         var top = Split(SplitKind.Columns,
             Leaf(PaneKind.Editor),
             Leaf(PaneKind.EditorSupport, hidden: true),
             Leaf(PaneKind.Browser));
         var root = Split(SplitKind.Rows, top, Leaf(PaneKind.Terminal), Leaf(PaneKind.Ai));
 
-        var topRow = PaneLayoutTree.TopRow(root);
-        Assert.Equal(PaneKind.Browser, PaneLayoutTree.RightmostVisibleLeaf(topRow)!.Kind);
-        Assert.Equal(PaneKind.Editor, PaneLayoutTree.LeftmostVisibleLeaf(topRow)!.Kind);
+        var (main, sub) = PaneLayoutTree.MainAndSub(root, SplitKind.Columns);
+        Assert.Equal(PaneKind.Editor, main!.Kind);
+        Assert.Equal(PaneKind.Browser, sub!.Kind);
     }
 
     [Fact]
-    public void Rightmost_never_returns_a_lower_row_pane()
+    public void MainAndSub_never_returns_a_pane_outside_mains_own_split()
     {
         // 回帰：矩形フォールバックが下段（Ai）を「右上」と誤認していた不具合の防止。
-        // 上段が単一 Editor でも、右端は Ai/Terminal ではなく Editor（＝上段の中だけを見る）。
+        // 上段が単一 Editor なら横並びのサブは（Ai/Terminal ではなく）まだ無い＝null。
         var root = Split(SplitKind.Rows, Leaf(PaneKind.Editor), Leaf(PaneKind.Terminal), Leaf(PaneKind.Ai));
-        var topRow = PaneLayoutTree.TopRow(root);
 
-        Assert.Equal(PaneKind.Editor, PaneLayoutTree.RightmostVisibleLeaf(topRow)!.Kind);
-        Assert.Equal(PaneKind.Editor, PaneLayoutTree.LeftmostVisibleLeaf(topRow)!.Kind);
+        var (main, sub) = PaneLayoutTree.MainAndSub(root, SplitKind.Columns);
+        Assert.Equal(PaneKind.Editor, main!.Kind);
+        Assert.Null(sub);
     }
 
     [Fact]
-    public void Sub_swap_places_target_at_top_right_replacing_the_right_pane()
+    public void MainAndSub_vertical_picks_the_bottom_of_mains_own_column_only()
     {
-        // sub モードの「右上と入れ替え」を PlaceInTree(center) と同じ手順で再現：
-        // 右上リーフの左へ対象を挿し、右上リーフを外す＝対象が右上の位置を引き継ぐ。
+        // 縦に並べる：メインの親が Rows のときだけ、その末尾＝下端がサブ。
+        var left = Split(SplitKind.Rows, Leaf(PaneKind.Editor), Leaf(PaneKind.Terminal));
+        var root = Split(SplitKind.Columns, left, Leaf(PaneKind.Browser));
+
+        var (main, sub) = PaneLayoutTree.MainAndSub(root, SplitKind.Rows);
+        Assert.Equal(PaneKind.Editor, main!.Kind);
+        Assert.Equal(PaneKind.Terminal, sub!.Kind);
+
+        // 既定レイアウト（メインの親は Columns）は縦方向にはまだ並んでいない＝サブ無し。
+        // 全幅の最下段（Ai）をサブと誤認しないこと。
+        var (defaultMain, defaultSub) = PaneLayoutTree.MainAndSub(DefaultishTree(), SplitKind.Rows);
+        Assert.Equal(PaneKind.Editor, defaultMain!.Kind);
+        Assert.Null(defaultSub);
+    }
+
+    [Fact]
+    public void Sub_swap_places_target_at_the_subs_slot_replacing_it()
+    {
+        // sub モードの「サブと入れ替え」を PlaceInTree(center) と同じ手順で再現：
+        // サブリーフの左へ対象を挿し、サブリーフを外す＝対象がサブの位置を引き継ぐ。
         var root = DefaultishTree(); // Rows[ Columns[Editor,Browser], Terminal, Ai ]
-        var sub = PaneLayoutTree.RightmostVisibleLeaf(PaneLayoutTree.TopRow(root))!; // Browser
+        var sub = PaneLayoutTree.MainAndSub(root, SplitKind.Columns).Sub!;
         Assert.Equal(PaneKind.Browser, sub.Kind);
 
         var diff = Leaf(PaneKind.Diff);
@@ -360,31 +369,82 @@ public class PaneLayoutTreeTests
         after = PaneLayoutTree.RemoveNode(after, sub);
         after = PaneLayoutTree.Normalize(after);
 
-        // 上段は [Editor, Diff]、Diff が右上、Browser は消える。
-        var topRow = Assert.IsType<PaneSplit>(PaneLayoutTree.TopRow(after));
+        // 上段は [Editor, Diff]、Diff が右上（＝サブ）、Browser は消える。
+        var topRow = Assert.IsType<PaneSplit>(Assert.IsType<PaneSplit>(after).Children[0]);
         Assert.Equal(SplitKind.Columns, topRow.Orientation);
         Assert.Equal(new[] { PaneKind.Editor, PaneKind.Diff },
             topRow.Children.Cast<PaneLeaf>().Select(l => l.Kind));
-        Assert.Equal(PaneKind.Diff, PaneLayoutTree.RightmostVisibleLeaf(PaneLayoutTree.TopRow(after))!.Kind);
+        Assert.Equal(PaneKind.Diff, PaneLayoutTree.MainAndSub(after, SplitKind.Columns).Sub!.Kind);
     }
 
     [Fact]
-    public void Sub_insert_adds_target_to_the_right_when_top_row_is_single_pane()
+    public void Sub_insert_adds_target_to_the_right_when_there_is_no_sub_yet()
     {
-        // 上段が横1枚（Editor のみ）＝メイン＝サブ。sub モードは右へ追加してサブを作る。
+        // 上段が横1枚（Editor のみ）＝サブ無し。sub モードは右へ追加してサブを作る。
         var root = Split(SplitKind.Rows, Leaf(PaneKind.Editor), Leaf(PaneKind.Terminal));
-        var main = PaneLayoutTree.LeftmostVisibleLeaf(PaneLayoutTree.TopRow(root))!; // Editor
-        Assert.Same(PaneLayoutTree.RightmostVisibleLeaf(PaneLayoutTree.TopRow(root)), main); // 単一なので左右一致
+        var (mainLeaf, sub) = PaneLayoutTree.MainAndSub(root, SplitKind.Columns);
+        Assert.Null(sub);
 
         var diff = Leaf(PaneKind.Diff);
-        var after = PaneLayoutTree.Normalize(PaneLayoutTree.InsertRelative(root, diff, main, DropZone.Right));
+        var after = PaneLayoutTree.Normalize(
+            PaneLayoutTree.InsertRelative(root, diff, mainLeaf!, DropZone.Right));
 
-        // 上段は [Editor | Diff]、Diff が右上。
-        var topRow = Assert.IsType<PaneSplit>(PaneLayoutTree.TopRow(after));
+        // 上段は [Editor | Diff]、Diff が新しいサブ。
+        var topRow = Assert.IsType<PaneSplit>(Assert.IsType<PaneSplit>(after).Children[0]);
         Assert.Equal(SplitKind.Columns, topRow.Orientation);
         Assert.Equal(new[] { PaneKind.Editor, PaneKind.Diff },
             topRow.Children.Cast<PaneLeaf>().Select(l => l.Kind));
-        Assert.Equal(PaneKind.Diff, PaneLayoutTree.RightmostVisibleLeaf(PaneLayoutTree.TopRow(after))!.Kind);
+        Assert.Equal(PaneKind.Diff, PaneLayoutTree.MainAndSub(after, SplitKind.Columns).Sub!.Kind);
+    }
+
+    [Fact]
+    public void Sub_insert_adds_target_below_main_when_arranged_vertically()
+    {
+        // 縦に並べる設定でサブが無い＝メインの下へ追加してサブを作る。既定レイアウトでも、
+        // 全幅の最下段（Ai）を置き換えるのではなく、メイン（Editor）の直下に増える。
+        var root = DefaultishTree(); // Rows[ Columns[Editor,Browser], Terminal, Ai ]
+        var (mainLeaf, sub) = PaneLayoutTree.MainAndSub(root, SplitKind.Rows);
+        Assert.Null(sub);
+
+        var diff = Leaf(PaneKind.Diff);
+        var after = PaneLayoutTree.Normalize(
+            PaneLayoutTree.InsertRelative(root, diff, mainLeaf!, DropZone.Below))!;
+
+        // 上段左のセルが Rows[Editor, Diff] になり、Diff が縦方向のサブ。Ai は最下段のまま。
+        var topRow = Assert.IsType<PaneSplit>(Assert.IsType<PaneSplit>(after).Children[0]);
+        var mainCell = Assert.IsType<PaneSplit>(topRow.Children[0]);
+        Assert.Equal(SplitKind.Rows, mainCell.Orientation);
+        Assert.Equal(new[] { PaneKind.Editor, PaneKind.Diff },
+            mainCell.Children.Cast<PaneLeaf>().Select(l => l.Kind));
+        Assert.Equal(PaneKind.Diff, PaneLayoutTree.MainAndSub(after, SplitKind.Rows).Sub!.Kind);
+        Assert.Equal(PaneKind.Ai, PaneLayoutTree.LastVisibleLeaf(after)!.Kind);
+    }
+
+    [Fact]
+    public void Vertical_loop_keeps_the_same_sub_slot_instead_of_nesting_deeper()
+    {
+        // 回帰：縦並びの「ループ」を2巡しても入れ子が深くならず、サブの位置が定まっていること。
+        // 1巡目＝メイン直下へ Diff を追加、2巡目＝Diff をメインへ繰り上げて空いた下段へ Git。
+        var root = DefaultishTree();
+        var (main1, _) = PaneLayoutTree.MainAndSub(root, SplitKind.Rows);
+        root = PaneLayoutTree.Normalize(
+            PaneLayoutTree.InsertRelative(root, Leaf(PaneKind.Diff), main1!, DropZone.Below))!;
+
+        // 2巡目：起点＝サブ（Diff）→ Diff をメインの位置へ、空いたサブへ Git。
+        var (main2, sub2) = PaneLayoutTree.MainAndSub(root, SplitKind.Rows);
+        Assert.Equal(PaneKind.Editor, main2!.Kind);
+        Assert.Equal(PaneKind.Diff, sub2!.Kind);
+        root = PaneLayoutCoordinator.Place(root, PaneKind.Diff, PaneKind.Editor, center: true, zone: null)!;
+        root = PaneLayoutCoordinator.Place(root, PaneKind.Git, PaneKind.Diff, center: false, zone: DropZone.Below)!;
+
+        var (main3, sub3) = PaneLayoutTree.MainAndSub(root, SplitKind.Rows);
+        Assert.Equal(PaneKind.Diff, main3!.Kind);
+        Assert.Equal(PaneKind.Git, sub3!.Kind);
+        // 深さは1巡目と同じ（Rows[ Columns[ Rows[…], Browser ], Terminal, Ai ]）。
+        var topRow = Assert.IsType<PaneSplit>(Assert.IsType<PaneSplit>(root).Children[0]);
+        var mainCell = Assert.IsType<PaneSplit>(topRow.Children[0]);
+        Assert.Equal(new[] { PaneKind.Diff, PaneKind.Git },
+            mainCell.Children.Cast<PaneLeaf>().Select(l => l.Kind));
     }
 
     [Fact]

@@ -88,35 +88,48 @@ public static class PaneLayoutTree
         _ => false
     };
 
-    /// <summary>上段（ルートが Rows ならその最初の可視の行、そうでなければ全体）のノードを返す。
-    /// 「サブ＝右上」の判定用に、ジオメトリではなくツリー構造から上段を決める。</summary>
-    public static PaneNode? TopRow(PaneNode? root)
+    /// <summary>メイン（左上の可視ペイン）と、その隣に並ぶサブを返す。<paramref name="axis"/> はメインと
+    /// サブの並べ方：<see cref="SplitKind.Columns"/>＝横に並べる（サブ＝メインの右）、
+    /// <see cref="SplitKind.Rows"/>＝縦に並べる（サブ＝メインの下）。
+    /// <para>サブは<b>メインの親スプリットの中だけ</b>から採る：親がその向きなら末尾側の可視リーフがサブ
+    /// （＝横並びなら同じ行の右端、縦並びなら同じ列の下端）、親の向きが違う＝まだその方向に並んでいない
+    /// ので <c>Sub=null</c>（呼び手はメインの隣へ追加する）。ツリー全体の末尾リーフを見ないのは、
+    /// 「メインの隣」でないペイン（例：全幅の最下段）をサブと誤認すると、入れ替え先とサブの判定が
+    /// 食い違ってレイアウトが入れ子へ流れていくため。判定は矩形の実測値ではなく構造ベース
+    /// （矩形が未確定なタイミングで誤選択しないため）。</para></summary>
+    public static (PaneLeaf? Main, PaneLeaf? Sub) MainAndSub(PaneNode? root, SplitKind axis)
     {
-        if (root is PaneSplit { Orientation: SplitKind.Rows } rows)
-            return rows.Children.FirstOrDefault(IsNodeVisible);
-        return root;
+        var main = FirstVisibleLeaf(root);
+        if (main is null)
+            return (null, null);
+        if (FindParent(root, main) is not { } parent || parent.Orientation != axis)
+            return (main, null);
+        var sub = LastVisibleLeaf(parent);
+        return (main, ReferenceEquals(sub, main) ? null : sub);
     }
 
-    /// <summary>ノード配下で最も右（Columns スプリットの末尾側から辿る）にある可視リーフ。無ければ null。</summary>
-    public static PaneLeaf? RightmostVisibleLeaf(PaneNode? node)
+    /// <summary>ノード配下で末尾側（各スプリットの最後の子から辿る＝横並びなら最も右・縦並びなら最も下）に
+    /// ある可視リーフ。無ければ null。サブペインの判定に使う。</summary>
+    public static PaneLeaf? LastVisibleLeaf(PaneNode? node)
     {
         if (node is PaneLeaf leaf)
             return leaf.Hidden ? null : leaf;
         if (node is PaneSplit split)
             for (var i = split.Children.Count - 1; i >= 0; i--)
-                if (RightmostVisibleLeaf(split.Children[i]) is { } found)
+                if (LastVisibleLeaf(split.Children[i]) is { } found)
                     return found;
         return null;
     }
 
-    /// <summary>ノード配下で最も左（Columns スプリットの先頭側から辿る）にある可視リーフ。無ければ null。</summary>
-    public static PaneLeaf? LeftmostVisibleLeaf(PaneNode? node)
+    /// <summary>ノード配下で先頭側（各スプリットの最初の子から辿る＝横並びなら最も左・縦並びなら最も上）に
+    /// ある可視リーフ。無ければ null。メインペインの判定に使う。</summary>
+    public static PaneLeaf? FirstVisibleLeaf(PaneNode? node)
     {
         if (node is PaneLeaf leaf)
             return leaf.Hidden ? null : leaf;
         if (node is PaneSplit split)
             foreach (var child in split.Children)
-                if (LeftmostVisibleLeaf(child) is { } found)
+                if (FirstVisibleLeaf(child) is { } found)
                     return found;
         return null;
     }

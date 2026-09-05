@@ -308,11 +308,16 @@ public partial class ShellWindow {
         }
         return best ?? AllLeaves().FirstOrDefault(l => !l.Hidden)?.Kind;
     }
-    private PaneKind? TopRightPane()
-        => PaneLayoutTree.RightmostVisibleLeaf(PaneLayoutTree.TopRow(_root))?.Kind
-            ?? AllLeaves().FirstOrDefault(l => !l.Hidden)?.Kind;
-    private PaneKind? TopRowLeftPane()
-        => PaneLayoutTree.LeftmostVisibleLeaf(PaneLayoutTree.TopRow(_root))?.Kind;
+    /// <summary>メインとサブの並べ方（設定）。Columns＝横に並べる（サブ＝右）、Rows＝縦に並べる（サブ＝下）。</summary>
+    private SplitKind SubAxis()
+        => _settings.PaneSubDirection == PaneSubDirection.Vertical ? SplitKind.Rows : SplitKind.Columns;
+    /// <summary>メイン（左上の可視ペイン）と、設定の並べ方に沿ったサブ（横並び＝メインと同じ行の右端／
+    /// 縦並び＝同じ列の下端）。サブがまだ無ければ <c>Sub</c> は null。</summary>
+    private (PaneKind? Main, PaneKind? Sub) MainAndSubPanes()
+    {
+        var (main, sub) = PaneLayoutTree.MainAndSub(_root, SubAxis());
+        return (main?.Kind ?? AllLeaves().FirstOrDefault(l => !l.Hidden)?.Kind, sub?.Kind);
+    }
     private static Brush VisualThumbnailBrush(Visual source) {
         var sourceWidth = source is FrameworkElement sourceElement
             ? double.IsFinite(sourceElement.Width) && sourceElement.Width > 0

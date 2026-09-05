@@ -265,28 +265,28 @@ public partial class ShellWindow {
         else
             SetPaneVisible(target, true);
     }
+    /// <summary>サブをメインの隣へ足すときの辺。横に並べる設定なら右、縦に並べる設定なら下。</summary>
+    private DropZone SubDropZone() => SubAxis() == SplitKind.Rows ? DropZone.Below : DropZone.Right;
     private void PlaceIntoSubPane(PaneKind target) {
         if (IsPaneVisible(target))
             return;
-        var main = TopRowLeftPane();
-        var sub = TopRightPane();
-        if (sub is { } s && s != main)
-            PlaceWingPane(target, s, center: true, zone: null);                // 右上と入れ替え
+        var (main, sub) = MainAndSubPanes();
+        if (sub is { } s && s != target)
+            PlaceWingPane(target, s, center: true, zone: null);                 // サブと入れ替え
         else if (main is { } m && m != target)
-            PlaceWingPane(target, m, center: false, zone: DropZone.Right);     // 横1枚 → 右に追加
+            PlaceWingPane(target, m, center: false, zone: SubDropZone());       // サブが無い → 右／下に追加
         else
             SetPaneVisible(target, true);
     }
     private void PlaceIntoLoopPane(PaneKind target) {
         if (IsPaneVisible(target))
             return;
-        var main = TopRowLeftPane();
-        var sub = TopRightPane();
+        var (main, sub) = MainAndSubPanes();
         var originFromSub = _focusedRegion?.Pane is { } origin
-            && sub is { } s && s != main && origin == s;
+            && sub is { } s && origin == s;
         if (originFromSub && main is { } m && sub is { } current && current != target) {
             PlaceWingPane(current, m, center: true, zone: null);
-            PlaceWingPane(target, current, center: false, zone: DropZone.Right);
+            PlaceWingPane(target, current, center: false, zone: SubDropZone());
         } else {
             PlaceIntoSubPane(target);
         }

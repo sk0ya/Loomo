@@ -563,7 +563,12 @@
                                 <TextBlock Style="{StaticResource FieldLabel}" Text="ペインの表示方法（AIの結果・ブラウザ・差分などを出す位置）" Margin="0,0,0,4" />
                                 <ComboBox ItemsSource="{Binding Appearance.PaneOpenBehaviors}" SelectedItem="{Binding Appearance.SelectedPaneOpenBehavior}"
                                           DisplayMemberPath="Name"
-                                          ToolTip="「AIへ送る」「ブラウザへ送る」「差分を開く」などで、結果を表示するペインを出す位置を選びます。メイン=左上と入れ替え（従来）／サブ=右上と入れ替え／ループ=サブに表示し、サブから操作したときはサブをメインへ繰り上げます。" />
+                                          ToolTip="「AIへ送る」「ブラウザへ送る」「差分を開く」などで、結果を表示するペインを出す位置を選びます。メイン=左上と入れ替え（従来）／サブ=サブペインと入れ替え／ループ=サブに表示し、サブから操作したときはサブをメインへ繰り上げます。" />
+
+                                <TextBlock Style="{StaticResource FieldLabel}" Text="サブペインの位置（メインとの並べ方）" Margin="0,10,0,4" />
+                                <ComboBox ItemsSource="{Binding Appearance.PaneSubDirections}" SelectedItem="{Binding Appearance.SelectedPaneSubDirection}"
+                                          DisplayMemberPath="Name"
+                                          ToolTip="上の「サブ」「ループ」で使うサブペインを、メインの右（横に並べる）に置くか下（縦に並べる）に置くかを選びます。既存のレイアウトはそのままで、次にペインを前面表示するときから効きます。" />
 
                                 <TextBlock Style="{StaticResource FieldLabel}" Text="袖（右端の画面一覧）の列数" Margin="0,10,0,4" />
                                 <ComboBox ItemsSource="{Binding Appearance.WingColumnChoices}" SelectedItem="{Binding Appearance.SelectedWingColumns}"

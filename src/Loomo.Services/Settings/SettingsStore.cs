@@ -101,6 +101,9 @@ public sealed class SettingsStore
         /// <summary>機能をペインに前面表示するときの配置の振る舞い。null=旧設定（未指定）→ 既定（Main）を維持。</summary>
         public PaneOpenBehavior? PaneOpenBehavior { get; set; }
 
+        /// <summary>サブペインの向き（横＝右／縦＝下）。null=旧設定（未指定）→ 既定（Horizontal）を維持。</summary>
+        public PaneSubDirection? PaneSubDirection { get; set; }
+
         /// <summary>AIウォームアップの有効/無効。null=旧設定（未指定）→ 既定（有効）を維持。</summary>
         public bool? WarmupEnabled { get; set; }
 
@@ -130,6 +133,7 @@ public sealed class SettingsStore
             Theme = s.Theme,
             AccentColor = s.AccentColor,
             PaneOpenBehavior = s.PaneOpenBehavior,
+            PaneSubDirection = s.PaneSubDirection,
             WarmupEnabled = s.WarmupEnabled,
             TrailVisible = s.TrailVisible,
             GitCommitDetailVisible = s.GitCommitDetailVisible,
@@ -151,6 +155,7 @@ public sealed class SettingsStore
             s.Theme = Theme;
             s.AccentColor = string.IsNullOrWhiteSpace(AccentColor) ? null : AccentColor;
             if (PaneOpenBehavior is { } pob) s.PaneOpenBehavior = pob; // 旧設定（null）は既定（Main）を維持
+            if (PaneSubDirection is { } psd) s.PaneSubDirection = psd; // 旧設定（null）は既定（Horizontal＝右）を維持
             if (WarmupEnabled is { } warm) s.WarmupEnabled = warm; // 旧設定（null）は既定（有効）を維持
             if (TrailVisible is { } trail) s.TrailVisible = trail; // 旧設定（null）は既定（表示）を維持
             if (GitCommitDetailVisible is { } gitDetail) s.GitCommitDetailVisible = gitDetail; // 同上
