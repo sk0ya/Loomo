@@ -41,6 +41,32 @@ public sealed class CSharpDebugTargetResolverTests : IDisposable
     }
 
     [Fact]
+    public void FindProject_finds_projects_deeper_than_the_startup_probe_depth()
+    {
+        // 深さで打ち切ると src/apps/web/api のような配置で「.sln/.csproj が見つかりません」になり、
+        // デバッグ実行が始められなくなる（打ち切りは起動時の有無判定だけの都合）。
+        var project = Path.Combine(_root, "src", "apps", "web", "api", "Api.csproj");
+        Directory.CreateDirectory(Path.GetDirectoryName(project)!);
+        File.WriteAllText(project, "<Project />");
+
+        Assert.Equal(Path.GetFullPath(project), CSharpDebugTargetResolver.FindProject(_root));
+    }
+
+    [Fact]
+    public void FindProject_prefers_the_shallowest_project()
+    {
+        // 深さ優先だと入口として不自然な奥のプロジェクトを掴む（tools/gen が App より先に返る）。
+        var deep = Path.Combine(_root, "aaa-tools", "gen", "deep", "Gen.csproj");
+        var shallow = Path.Combine(_root, "src", "App.csproj");
+        Directory.CreateDirectory(Path.GetDirectoryName(deep)!);
+        Directory.CreateDirectory(Path.GetDirectoryName(shallow)!);
+        File.WriteAllText(deep, "<Project />");
+        File.WriteAllText(shallow, "<Project />");
+
+        Assert.Equal(Path.GetFullPath(shallow), CSharpDebugTargetResolver.FindProject(_root));
+    }
+
+    [Fact]
     public void FindProjectNear_and_FindOutputDll_resolve_from_an_output_path()
     {
         var project = Path.Combine(_root, "App", "App.csproj");

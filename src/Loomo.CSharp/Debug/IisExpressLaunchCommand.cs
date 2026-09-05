@@ -97,7 +97,7 @@ public static class IisExpressLaunchCommand
         string? executablePath = null,
         string? applicationHostConfigPath = null)
     {
-        var spec = CreateSpec(projectPath, profile, out error, executablePath);
+        var spec = CreateSpec(projectPath, profile, out error, executablePath, applicationHostConfigPath);
         if (spec is null) return null;
 
         var environment = BuildEnvironmentPrefix(profile.EnvironmentVariables, out error);

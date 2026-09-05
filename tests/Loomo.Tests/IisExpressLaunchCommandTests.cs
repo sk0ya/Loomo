@@ -188,6 +188,53 @@ public sealed class IisExpressLaunchCommandTests
     }
 
     [Fact]
+    public void Build_honours_an_explicitly_given_applicationhost_config()
+    {
+        // 明示指定した applicationhost.config が Build まで届かないと、自動探索へ落ちて
+        // 合成サイト（/path:<dir>）で黙って起動してしまう（バインディングもアプリプールも別物）。
+        var root = Path.Combine(Path.GetTempPath(), "Loomo-iisExplicitHost-" + Guid.NewGuid().ToString("N"));
+        var project = Path.Combine(root, "App", "App.csproj");
+        var config = Path.Combine(root, "shared", "applicationhost.config");  // .vs/ の外＝自動探索では見つからない
+        Directory.CreateDirectory(Path.GetDirectoryName(project)!);
+        Directory.CreateDirectory(Path.GetDirectoryName(config)!);
+        File.WriteAllText(project, "<Project />");
+        File.WriteAllText(config, $"""
+            <configuration>
+              <system.applicationHost>
+                <sites>
+                  <site name="Explicit Site" id="9">
+                    <application path="/">
+                      <virtualDirectory path="/" physicalPath="{Path.GetDirectoryName(project)!.Replace("\\", "/", StringComparison.Ordinal)}" />
+                    </application>
+                    <bindings>
+                      <binding protocol="http" bindingInformation="*:53123:localhost" />
+                    </bindings>
+                  </site>
+                </sites>
+              </system.applicationHost>
+            </configuration>
+            """);
+        try
+        {
+            var profile = new LaunchSettingsProfile(
+                "IIS Express", "IISExpress", null, null, null,
+                new Dictionary<string, string>(), ApplicationUrl: "http://localhost:53123");
+
+            var command = IisExpressLaunchCommand.Build(
+                project, profile, out var error, @"C:\iisexpress.exe", config);
+
+            Assert.Null(error);
+            Assert.Contains("/config:'" + config.Replace("'", "''", StringComparison.Ordinal) + "'", command);
+            Assert.Contains("/site:'Explicit Site'", command);
+            Assert.DoesNotContain("/path:", command);
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public void Refuses_command_line_args_that_iis_express_cannot_forward()
     {
         var root = Path.Combine(Path.GetTempPath(), "Loomo-iisArgs-" + Guid.NewGuid().ToString("N"));
