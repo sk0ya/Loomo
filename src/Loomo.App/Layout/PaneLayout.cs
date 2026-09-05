@@ -91,9 +91,9 @@ public static class PaneLayoutTree
     /// <summary>メイン（左上の可視ペイン）と、その隣に並ぶサブを返す。<paramref name="axis"/> はメインと
     /// サブの並べ方：<see cref="SplitKind.Columns"/>＝横に並べる（サブ＝メインの右）、
     /// <see cref="SplitKind.Rows"/>＝縦に並べる（サブ＝メインの下）。
-    /// <para>サブは<b>メインの親スプリットの中だけ</b>から採る：親がその向きなら末尾側の可視リーフがサブ
-    /// （＝横並びなら同じ行の右端、縦並びなら同じ列の下端）、親の向きが違う＝まだその方向に並んでいない
-    /// ので <c>Sub=null</c>（呼び手はメインの隣へ追加する）。ツリー全体の末尾リーフを見ないのは、
+    /// <para>サブは<b>メインの親スプリットの中だけ</b>から採る：親がその向きなら末尾側の可視な<b>直下の子</b>が
+    /// サブの区画（＝横並びなら同じ行の右端、縦並びなら同じ列の下端）、親の向きが違う＝まだその方向に
+    /// 並んでいないので <c>Sub=null</c>（呼び手はメインの隣へ追加する）。ツリー全体の末尾リーフを見ないのは、
     /// 「メインの隣」でないペイン（例：全幅の最下段）をサブと誤認すると、入れ替え先とサブの判定が
     /// 食い違ってレイアウトが入れ子へ流れていくため。判定は矩形の実測値ではなく構造ベース
     /// （矩形が未確定なタイミングで誤選択しないため）。</para></summary>
@@ -104,12 +104,25 @@ public static class PaneLayoutTree
             return (null, null);
         if (FindParent(root, main) is not { } parent || parent.Orientation != axis)
             return (main, null);
-        var sub = LastVisibleLeaf(parent);
+        var sub = LastVisibleChildLeadingLeaf(parent);
         return (main, ReferenceEquals(sub, main) ? null : sub);
     }
 
+    /// <summary>スプリットの末尾側の可視な<b>直下の子</b>（＝サブの区画）の中で、メインと同じ帯にある
+    /// 先頭リーフ。区画が入れ子スプリットのときに末尾まで潜らないのが要点：正規化済みツリーでは入れ子は
+    /// 必ず直交する（横並びの中の縦積み）ので、末尾まで潜ると「右上」ではなく「右下」を掴んでしまい、
+    /// サブの追加先（メインの隣）と入れ替え先が食い違って入れ子が深くなっていく。</summary>
+    private static PaneLeaf? LastVisibleChildLeadingLeaf(PaneSplit split)
+    {
+        for (var i = split.Children.Count - 1; i >= 0; i--)
+            if (FirstVisibleLeaf(split.Children[i]) is { } found)
+                return found;
+        return null;
+    }
+
     /// <summary>ノード配下で末尾側（各スプリットの最後の子から辿る＝横並びなら最も右・縦並びなら最も下）に
-    /// ある可視リーフ。無ければ null。サブペインの判定に使う。</summary>
+    /// ある可視リーフ。無ければ null。<b>サブの判定には使わない</b>——入れ子の区画では「右下」を掴んで
+    /// しまうため、サブは <see cref="LastVisibleChildLeadingLeaf"/>（末尾側の直下の子の先頭リーフ）で採る。</summary>
     public static PaneLeaf? LastVisibleLeaf(PaneNode? node)
     {
         if (node is PaneLeaf leaf)

@@ -356,6 +356,46 @@ public class PaneLayoutTreeTests
     }
 
     [Fact]
+    public void MainAndSub_takes_the_pane_next_to_main_not_the_far_corner()
+    {
+        // 回帰：サブの区画が入れ子スプリット（右列が上下2枚）のとき、末尾まで潜って「右下」を
+        // サブと誤認していた。メインと同じ帯の「右上」がサブ。
+        var root = Split(SplitKind.Columns,
+            Leaf(PaneKind.Editor),
+            Split(SplitKind.Rows, Leaf(PaneKind.Browser), Leaf(PaneKind.Terminal)));
+
+        var (main, sub) = PaneLayoutTree.MainAndSub(root, SplitKind.Columns);
+        Assert.Equal(PaneKind.Editor, main!.Kind);
+        Assert.Equal(PaneKind.Browser, sub!.Kind);          // Terminal（右下）ではない
+        Assert.Equal(PaneKind.Terminal, PaneLayoutTree.LastVisibleLeaf(root)!.Kind);
+
+        // 縦並びも同じ：サブは真下の帯の先頭（左端）で、右下ではない。
+        var vertical = Split(SplitKind.Rows,
+            Leaf(PaneKind.Editor),
+            Split(SplitKind.Columns, Leaf(PaneKind.Browser), Leaf(PaneKind.Terminal)));
+        Assert.Equal(PaneKind.Browser, PaneLayoutTree.MainAndSub(vertical, SplitKind.Rows).Sub!.Kind);
+    }
+
+    [Fact]
+    public void Sub_swap_into_a_nested_sub_cell_keeps_the_pane_next_to_main()
+    {
+        // サブ表示で開いたペインが「右下」へ潜り込まず、右上（サブの位置）を引き継ぐこと。
+        var root = Split(SplitKind.Columns,
+            Leaf(PaneKind.Editor),
+            Split(SplitKind.Rows, Leaf(PaneKind.Browser), Leaf(PaneKind.Terminal)));
+        var sub = PaneLayoutTree.MainAndSub(root, SplitKind.Columns).Sub!;
+
+        var after = PaneLayoutCoordinator.Place(root, PaneKind.Git, sub.Kind, center: true, zone: null)!;
+
+        var columns = Assert.IsType<PaneSplit>(after);
+        Assert.Equal(SplitKind.Columns, columns.Orientation);
+        var rightCell = Assert.IsType<PaneSplit>(columns.Children[1]);
+        Assert.Equal(new[] { PaneKind.Git, PaneKind.Terminal },
+            rightCell.Children.Cast<PaneLeaf>().Select(l => l.Kind));
+        Assert.Equal(PaneKind.Git, PaneLayoutTree.MainAndSub(after, SplitKind.Columns).Sub!.Kind);
+    }
+
+    [Fact]
     public void Sub_swap_places_target_at_the_subs_slot_replacing_it()
     {
         // sub モードの「サブと入れ替え」を PlaceInTree(center) と同じ手順で再現：
