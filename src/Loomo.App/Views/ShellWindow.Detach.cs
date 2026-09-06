@@ -227,7 +227,8 @@ public partial class ShellWindow {
     /// コントロールごと作り直すため（§21.5.3。共有プロファイルなので他インスタンスの巻き添えでも落ちる）。
     /// 器はもう1つ、<b>別の切り離し窓へタブを移したとき</b>の作り直しにも効く（<see cref="ReparentRebuild"/>）。</summary>
     private DetachedItem CreateBrowserSpinoffItem(string? sourceUrl) {
-        var url = sourceUrl ?? DefaultBrowserUrl;
+        // 行き先は器より長生きさせる（実体を作り直しても、いま見ているページを見失わないため）。
+        var address = new SpinoffBrowserAddress(sourceUrl ?? DefaultBrowserUrl);
         var host = new Grid();
         var view = CreateBrowserView();
         view.Visibility = Visibility.Visible;
@@ -237,17 +238,17 @@ public partial class ShellWindow {
             // 戻すときは<b>作り直す</b>——WebView2（コンポジション版）は窓をまたいで載せ替えると
             // コンポジタが元の窓に残って空表示になる（引き出すときも同じ理由で新規生成している）。
             Return = new DetachReturn(TabEntryKind.Browser, () => {
-                var current = SpinoffBrowserUrl(host);   // 行き先は手放す前に控える（捨てた器から読まない）
+                address.Note(SpinoffBrowserUrl(host));   // 行き先は手放す前に控える（捨てた器から読まない）
                 DisposeSpinoffBrowser(host);
-                _ = CreateBrowserTabAsync(current ?? url);
+                _ = CreateBrowserTabAsync(address.Value);
                 FocusPane(PaneKind.Browser);
             })
         };
         // 切り離し窓から<b>別の切り離し窓へ</b>タブを移したときも同じ——載せ替えただけでは空表示に
         // なるので、いま見ている URL のまま器の中身を作り直す。ここが抜けていて、窓をまたいで移した
         // ブラウザのタブが真っ白になっていた（引き出す・戻すの両端だけ手当てされていた）。
-        ReparentRebuild.Watch(host, () => RebuildSpinoffBrowser(host, item!, SpinoffBrowserUrl(host) ?? url));
-        _ = RealizeSpinoffBrowserAsync(host, view, url, item);
+        ReparentRebuild.Watch(host, () => RebuildSpinoffBrowser(host, item!, address));
+        _ = RealizeSpinoffBrowserAsync(host, view, address, item);
         return item;
     }
     /// <summary>切り離しブラウザの器がいま見ている URL（まだ生成前・生成に失敗していれば null）。
@@ -321,7 +322,7 @@ public partial class ShellWindow {
     private static bool IsLiveSpinoffBrowser(Panel host, WebView2CompositionControl view)
         => host.Children.Contains(view);
     private async Task RealizeSpinoffBrowserAsync(
-        Panel host, WebView2CompositionControl view, string url, DetachedItem item) {
+        Panel host, WebView2CompositionControl view, SpinoffBrowserAddress address, DetachedItem item) {
         try { await view.EnsureCoreWebView2Async(); }
         catch {
             // 器から外れていたら、作り直しに<b>追い越された</b>実体の失敗（生成には1秒ほどかかるので、
@@ -334,7 +335,7 @@ public partial class ShellWindow {
             // （0x8007139F、§21.5.3）なので、本体ペインと同じくポートを引き当て直して<b>コントロール
             // ごと作り直して</b>一度だけやり直す。直せないなら黙らずに知らせる。
             if (WebViewEnvironment.TryRecover())
-                RebuildSpinoffBrowser(host, item, url);
+                RebuildSpinoffBrowser(host, item, address);
             else
                 WebViewEnvironment.ReportUnavailable("ブラウザ");
             return;
@@ -349,7 +350,16 @@ public partial class ShellWindow {
             return;   // 生成直後に落ちた（作り直しは ProcessFailed 経由）
         ConfigureBrowserCoreBasics(core);
         var rendererReloads = 0;
-        view.NavigationCompleted += (_, e) => { if (e.IsSuccess) rendererReloads = 0; };   // 描けたら仕切り直す
+        view.NavigationCompleted += (_, e) => {
+            if (!e.IsSuccess)
+                return;
+            rendererReloads = 0;        // 描けたら仕切り直す
+            address.Note(view.TryUrl());
+        };
+        // 見ているページが変わるたびに行き先を控える（同一ドキュメント内の遷移はこちらだけが来る）。
+        // 器を作り直す合図は実体の生成中にも届き、その間は実体から URL を読めないので、ここで
+        // 控えた最後の値が唯一の手掛かりになる。
+        core.SourceChanged += (_, _) => address.Note(view.TryUrl());
         core.ProcessFailed += (_, e) => {
             if (e.ProcessFailedKind != CoreWebView2ProcessFailedKind.BrowserProcessExited) {
                 // 描画プロセスだけの死は読み直しで戻る。ただし回数を区切る（確実に描画を殺すページだと
@@ -359,8 +369,8 @@ public partial class ShellWindow {
                 return;
             }
             // 落ちる前の行き先を控えてから、器の中身を作り直す（イベント配布中に壊さない）。
-            var last = view.TryUrl();
-            Dispatcher.BeginInvoke(new Action(() => RebuildSpinoffBrowser(host, item, last ?? url)));
+            address.Note(view.TryUrl());
+            Dispatcher.BeginInvoke(new Action(() => RebuildSpinoffBrowser(host, item, address)));
         };
         // 切り離した窓の target="_blank" は、素の WebView2 の既定（ツールバーの無い素っ気ない窓）ではなく
         // もう1枚の切り離しウィンドウで受ける（本体ペインの新しいタブと同じ考え方）。
@@ -373,21 +383,22 @@ public partial class ShellWindow {
             var title = view.TryCore()?.DocumentTitle;
             item.Title = string.IsNullOrWhiteSpace(title) ? "Browser" : title!;
         };
-        try { view.Source = new Uri(WorkspaceSessionCoordinator.NormalizeBrowserAddress(url, DefaultBrowserUrl)); }
+        try { view.Source = new Uri(WorkspaceSessionCoordinator.NormalizeBrowserAddress(address.Value, DefaultBrowserUrl)); }
         catch { /* 不正 URL は無視（空ページのまま） */ }
     }
-    private void RebuildSpinoffBrowser(Panel host, DetachedItem item, string url) {
+    private void RebuildSpinoffBrowser(Panel host, DetachedItem item, SpinoffBrowserAddress address) {
         // 落ちた知らせは窓から外れた後にも届く（Dispatcher 経由なので1拍遅れる）。手放した器へ作り直すと、
         // 誰にも見えない WebView2 が残る——メインへ<b>戻した</b>ときは新しいタブとして作り直し済みなので、
         // ブラウザが2つに増えてしまう。どの窓にも居ない項目なら何もしない。
         if (!Detached.AllItems.Contains(item))
             return;
+        address.Note(SpinoffBrowserUrl(host));   // 捨てる前に、読めるなら実体の行き先を正本へ取り込む
         DisposeSpinoffBrowser(host);
         host.Children.Clear();
         var view = CreateBrowserView();
         view.Visibility = Visibility.Visible;
         host.Children.Add(view);
-        _ = RealizeSpinoffBrowserAsync(host, view, url, item);
+        _ = RealizeSpinoffBrowserAsync(host, view, address, item);
     }
     private Point _paneTabDragStart;
     private Guid _paneTabDragId;

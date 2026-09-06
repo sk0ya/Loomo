@@ -282,6 +282,29 @@ public class DetachedPaneWindowTests
         });
     }
 
+    /// <summary>器を作り直すときの行き先は「実体から読めた最後の URL」。実体の生成には1秒ほどかかり、
+    /// その最中に次の作り直しが走ると URL は読めない——そこで切り離したときの URL へ落とすと、
+    /// それ以降に見ていたページが黙って捨てられる（窓を続けて2度またいだときに出る）。</summary>
+    [Fact]
+    public void 切り離しブラウザの行き先はURLを読めない間も最後に見えたページを保つ()
+    {
+        var address = new SpinoffBrowserAddress("https://example.com/start");
+        Assert.Equal("https://example.com/start", address.Value);
+
+        address.Note("https://example.com/page2");
+        Assert.Equal("https://example.com/page2", address.Value);
+
+        // 生成中・落ちた後は実体から読めない（null／空）。行き先の消失として扱わない。
+        address.Note(null);
+        address.Note("");
+        address.Note("   ");
+        Assert.Equal("https://example.com/page2", address.Value);
+
+        // ラッパーの Source では取り残される data: の遷移も、正本から控えれば残る。
+        address.Note("data:text/html,%3Cp%3Ehi%3C/p%3E");
+        Assert.Equal("data:text/html,%3Cp%3Ehi%3C/p%3E", address.Value);
+    }
+
     [Fact]
     public void 窓をまたいで移した器は作り直される()
     {
