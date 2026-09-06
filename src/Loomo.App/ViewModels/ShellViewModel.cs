@@ -75,10 +75,42 @@ public sealed partial class ShellViewModel : ObservableObject
     public ToastHostViewModel Toasts { get; } = new();
 
     /// <summary>サイドバーの表示状態。ActivityBar のクリックで開閉する。</summary>
-    [ObservableProperty] private bool _isSidebarVisible = true;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsExplorerSelected))]
+    [NotifyPropertyChangedFor(nameof(IsGitSelected))]
+    [NotifyPropertyChangedFor(nameof(IsSolutionSelected))]
+    [NotifyPropertyChangedFor(nameof(IsPegboardSelected))]
+    private bool _isSidebarVisible = true;
 
     /// <summary>サイドバーに現在表示しているパネル。</summary>
-    [ObservableProperty] private SidebarPanel _activePanel = SidebarPanel.Explorer;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsExplorerSelected))]
+    [NotifyPropertyChangedFor(nameof(IsGitSelected))]
+    [NotifyPropertyChangedFor(nameof(IsSolutionSelected))]
+    [NotifyPropertyChangedFor(nameof(IsPegboardSelected))]
+    private SidebarPanel _activePanel = SidebarPanel.Explorer;
+
+    // ===== ActivityBar のアイコン強調（いまどの面を見ているかを一目で分かるように） =====
+    // 「開いていて、かつそのパネル」のときだけ真。サイドバーを畳んだら何も選ばれていない状態に戻る。
+    private bool IsPanelSelected(SidebarPanel panel) => IsSidebarVisible && ActivePanel == panel;
+
+    /// <summary>エクスプローラを表示中か（ActivityBar のアイコン強調用）。</summary>
+    public bool IsExplorerSelected => IsPanelSelected(SidebarPanel.Explorer);
+    /// <summary>Git パネルを表示中か。</summary>
+    public bool IsGitSelected => IsPanelSelected(SidebarPanel.Git);
+    /// <summary>ソリューションパネルを表示中か。</summary>
+    public bool IsSolutionSelected => IsPanelSelected(SidebarPanel.Solution);
+    /// <summary>ペグボードを表示中か。</summary>
+    public bool IsPegboardSelected => IsPanelSelected(SidebarPanel.Pegboard);
+
+    /// <summary>設定オーバーレイをキーボードカテゴリで開いているか（⌨ アイコンの強調用）。</summary>
+    public bool IsKeyboardSettingsSelected =>
+        IsSettingsOverlayOpen && SettingsCategory == SettingsCategory.Keyboard;
+
+    /// <summary>設定オーバーレイを開いているか（⚙ アイコンの強調用）。キーボードは専用アイコンが
+    /// あるので、そのカテゴリのときは歯車を強調しない——強調は常に1つだけにする。</summary>
+    public bool IsSettingsSelected =>
+        IsSettingsOverlayOpen && SettingsCategory != SettingsCategory.Keyboard;
 
     /// <summary>いま起きている <see cref="ActivePanel"/> の変更が自動退避（人間の操作ではない）か。
     /// 軌跡は「人間のナビゲーション」だけを記録する面（§27）なので、ホストはこれを見て記録と
@@ -86,10 +118,16 @@ public sealed partial class ShellViewModel : ObservableObject
     public bool IsPanelChangeAutomatic { get; private set; }
 
     /// <summary>中央オーバーレイの設定画面を開いているか。</summary>
-    [ObservableProperty] private bool _isSettingsOverlayOpen;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsSettingsSelected))]
+    [NotifyPropertyChangedFor(nameof(IsKeyboardSettingsSelected))]
+    private bool _isSettingsOverlayOpen;
 
     /// <summary>設定オーバーレイで選択中のカテゴリ（左ナビ）。</summary>
-    [ObservableProperty] private SettingsCategory _settingsCategory = SettingsCategory.Ai;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsSettingsSelected))]
+    [NotifyPropertyChangedFor(nameof(IsKeyboardSettingsSelected))]
+    private SettingsCategory _settingsCategory = SettingsCategory.Ai;
 
     public ShellViewModel(
         FolderTreeViewModel folderTree,

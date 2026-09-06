@@ -516,23 +516,29 @@
             <DockPanel Grid.Column="0" Grid.Row="1" Background="{DynamicResource ActivityBarBg}"
                        MouseLeftButtonDown="OnActivityBarMouseDown">
                 <StackPanel DockPanel.Dock="Bottom">
-                    <Button Style="{StaticResource IconButton}" Content="⌨" ToolTip="キーボードショートカット"
+                    <Button Style="{StaticResource ActivityIconButton}" Content="⌨" ToolTip="キーボードショートカット"
+                            Tag="{Binding IsKeyboardSettingsSelected}"
                             Command="{Binding ShowKeyboardSettingsCommand}" />
-                    <Button Style="{StaticResource IconButton}" Content="⚙" ToolTip="設定"
+                    <Button Style="{StaticResource ActivityIconButton}" Content="⚙" ToolTip="設定"
+                            Tag="{Binding IsSettingsSelected}"
                             Command="{Binding ShowSettingsCommand}" />
                 </StackPanel>
                 <StackPanel>
-                    <Button Style="{StaticResource IconButton}" Content="🗂" ToolTip="エクスプローラ"
+                    <Button Style="{StaticResource ActivityIconButton}" Content="🗂" ToolTip="エクスプローラ"
+                            Tag="{Binding IsExplorerSelected}"
                             Command="{Binding ShowExplorerCommand}" />
-                    <Button Style="{StaticResource IconButton}" Content="⎇" ToolTip="Git"
+                    <Button Style="{StaticResource ActivityIconButton}" Content="⎇" ToolTip="Git"
+                            Tag="{Binding IsGitSelected}"
                             Command="{Binding ShowGitCommand}" />
                     <!-- ソリューション：C# プロジェクトのある部屋にだけ現れる（IsCSharpSolutionAvailable）。 -->
-                    <Button Style="{StaticResource IconButton}" Content="◈" ToolTip="ソリューション（C#）"
+                    <Button Style="{StaticResource ActivityIconButton}" Content="◈" ToolTip="ソリューション（C#）"
+                            Tag="{Binding IsSolutionSelected}"
                             Command="{Binding ShowSolutionCommand}"
                             Visibility="{Binding IsCSharpSolutionAvailable, Converter={StaticResource BoolToVis}}"
                             AutomationProperties.AutomationId="SolutionPanelButton"
                             AutomationProperties.Name="ソリューション" />
-                    <Button Style="{StaticResource IconButton}" Content="📌" ToolTip="ペグボード（スニペット・URL・パスの作業台）"
+                    <Button Style="{StaticResource ActivityIconButton}" Content="📌" ToolTip="ペグボード（スニペット・URL・パスの作業台）"
+                            Tag="{Binding IsPegboardSelected}"
                             Command="{Binding ShowPegboardCommand}" />
                 </StackPanel>
             </DockPanel>

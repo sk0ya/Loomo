@@ -166,6 +166,45 @@
         </Setter>
     </Style>
 
+    <!-- ===== ActivityBar icon button =====
+         IconButton に「いまこの面を見ている」印を足したもの。Tag に真偽値を束ねると、
+         左端のアクセントバー＋アクセントの薄い面＋通常より明るい字で強調する。
+         アクセント色は暗いパレットもあるので字そのものには使わず、バーと面で示す。 -->
+    <Style x:Key="ActivityIconButton" TargetType="Button" BasedOn="{StaticResource IconButton}">
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Grid>
+                        <Border x:Name="b" Background="{TemplateBinding Background}" />
+                        <!-- アクセントの面。Opacity で敷くのでどのパレットでも背景に馴染む。 -->
+                        <Border x:Name="tint" Background="{DynamicResource Accent}" Opacity="0" />
+                        <Border x:Name="bar" Width="3" HorizontalAlignment="Left"
+                                Background="{DynamicResource Accent}" Visibility="Collapsed" />
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <ContentPresenter.Resources>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource ContentText}" />
+                            </ContentPresenter.Resources>
+                        </ContentPresenter>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="b" Property="Background" Value="{DynamicResource BgAlt}" />
+                            <Setter Property="Foreground" Value="{DynamicResource Fg}" />
+                        </Trigger>
+                        <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="True">
+                            <Setter TargetName="bar" Property="Visibility" Value="Visible" />
+                            <Setter TargetName="tint" Property="Opacity" Value="0.18" />
+                            <Setter Property="Foreground" Value="{DynamicResource Fg}" />
+                        </DataTrigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.5" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!-- ===== Mode segment button (ペインヘッダーのチャット/ワークフロー切替) =====
          Tag="active"（選択中）でアクセント背景に。ヘッダーのドラッグ十字を継承しないよう Cursor=Hand を明示。 -->
     <Style x:Key="ModeSegButton" TargetType="Button">
