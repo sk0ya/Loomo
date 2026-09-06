@@ -154,7 +154,12 @@ public sealed partial class CSharpSolutionExplorerViewModel : ObservableObject, 
     [RelayCommand]
     private void ClearFilter() => FilterText = "";
 
-    partial void OnSelectedNodeChanged(CSharpSolutionNodeViewModel? value)
+    partial void OnSelectedNodeChanged(CSharpSolutionNodeViewModel? value) => NotifyActionTargetChanged();
+
+    /// <summary><see cref="ActionTarget"/> から算出する見出しの表示を作り直す。選択が変わったときだけでなく
+    /// <see cref="Rebuild"/> の後にも要る——無選択のとき対象は <see cref="Nodes"/> の先頭に落ちるので、
+    /// 木が入れ替われば選択が動かなくても対象は変わっているため。</summary>
+    private void NotifyActionTargetChanged()
     {
         OnPropertyChanged(nameof(ActionTarget));
         OnPropertyChanged(nameof(ActionTargetLabel));
@@ -223,6 +228,14 @@ public sealed partial class CSharpSolutionExplorerViewModel : ObservableObject, 
 
     /// <summary>絞り込みと開閉状態を反映して <see cref="Nodes"/> を作り直す。</summary>
     private void Rebuild()
+    {
+        RebuildNodes();
+        // 木を差し替えた後に通知する。RebuildNodes の中の SelectedNode=null は Nodes が空の時点で
+        // 起きるうえ、元から無選択なら等値判定で短絡して通知そのものが上がらない。
+        NotifyActionTargetChanged();
+    }
+
+    private void RebuildNodes()
     {
         Nodes.Clear();
         SelectedNode = null;
