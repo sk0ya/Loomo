@@ -1,3 +1,4 @@
+using System.Collections.Specialized;
 using sk0ya.Loomo.CSharp.Projects;
 using sk0ya.Loomo.App.ViewModels;
 using sk0ya.Loomo.Core.Abstractions;
@@ -59,7 +60,7 @@ public sealed class CSharpSolutionTreeTests
         var models = Assert.Single(selected.Children, n => n.Name == "Models");
         Assert.Contains(models.Children, n => n.Name == "User.cs");
         Assert.Contains(selected.Children, n => n.Kind == CSharpSolutionNodeKind.Analyzer);
-        Assert.Contains(selected.Children, n => n.Name == "None" && n.Kind == CSharpSolutionNodeKind.NoneFile);
+        Assert.Contains(selected.Children, n => n.Name == "その他ファイル" && n.Kind == CSharpSolutionNodeKind.NoneFile);
     }
 
     [Fact]
@@ -71,8 +72,9 @@ public sealed class CSharpSolutionTreeTests
             ], [], [], [])], "net10.0", false, ProjectLoadState.Ready);
         var tree = CSharpSolutionTreeBuilder.Build(new SolutionModel(null, "App", "C:\\work", [project], ProjectLoadState.Ready));
 
-        var tfm = Assert.Single(Assert.Single(tree.Children).Children);
-        var shared = Assert.Single(tfm.Children, n => n.Name == "Shared");
+        // TFMが1つなら段を挟まないので、プロジェクトの直下がそのままファイル階層になる。
+        var projectNode = Assert.Single(tree.Children);
+        var shared = Assert.Single(projectNode.Children, n => n.Name == "Shared");
         var common = Assert.Single(shared.Children);
         Assert.Equal("Common.cs", common.Name);
         Assert.Equal("C:\\Shared\\Common.cs", common.FullPath);
@@ -154,6 +156,136 @@ public sealed class CSharpSolutionTreeTests
         Assert.True(vm.HasMultipleConfigurations);
         Assert.Equal("Release", service.Current.EffectiveConfiguration);
         Assert.Equal("Release", vm.SelectedConfiguration);
+    }
+
+    [Fact]
+    public void TFMが1つならその段は挟まずファイルを直接ぶら下げる()
+    {
+        // 「プロジェクトを開く→net10.0を開く」の二度手間を無くす。選択肢が1つしか無い段は
+        // 選ばせる意味が無いので、TFM名は行末の添え字（Detail）へ落とす。
+        var project = new ProjectModel("App", @"C:\work\App.csproj", @"C:\work", [], [
+            new TargetFrameworkModel("net10.0", [], "latest",
+                [new ProjectItem("Program.cs", @"C:\work\Program.cs")], [], [], [])],
+            "net10.0", true, ProjectLoadState.Ready);
+        var tree = CSharpSolutionTreeBuilder.Build(
+            new SolutionModel(@"C:\work\App.sln", "App", @"C:\work", [project], ProjectLoadState.Ready));
+
+        var projectNode = Assert.Single(tree.Children);
+        Assert.DoesNotContain(projectNode.Children,
+            node => node.Kind == CSharpSolutionNodeKind.TargetFramework);
+        Assert.Contains(projectNode.Children,
+            node => node is { Name: "Program.cs", Kind: CSharpSolutionNodeKind.File });
+        Assert.Equal("テスト", projectNode.Detail);
+        Assert.Equal("1 プロジェクト", tree.Detail);
+    }
+
+    [Fact]
+    public void 絞り込みは一致した枝だけを残し上限で打ち切る()
+    {
+        var project = new ProjectModel("App", @"C:\work\App.csproj", @"C:\work", [], [
+            new TargetFrameworkModel("net10.0", [], "latest", [
+                new ProjectItem(@"Views\UserView.cs", @"C:\work\Views\UserView.cs"),
+                new ProjectItem(@"Views\OrderView.cs", @"C:\work\Views\OrderView.cs"),
+                new ProjectItem("Program.cs", @"C:\work\Program.cs"),
+            ], [], [], [])], "net10.0", false, ProjectLoadState.Ready);
+        var tree = CSharpSolutionTreeBuilder.Build(
+            new SolutionModel(@"C:\work\App.sln", "App", @"C:\work", [project], ProjectLoadState.Ready));
+
+        var hit = CSharpSolutionTreeFilter.Apply(tree, "user");
+        var views = Assert.Single(Assert.Single(hit.Root!.Children).Children);
+        Assert.Equal("Views", views.Name);
+        Assert.Equal("UserView.cs", Assert.Single(views.Children).Name);
+        Assert.Equal(1, hit.Matched);
+        Assert.False(hit.Truncated);
+
+        // 空白区切りはAND。
+        Assert.Equal(0, CSharpSolutionTreeFilter.Apply(tree, "user order").Matched);
+        // 一致なしは枝ごと消える（ソリューション行だけが残らない）。
+        Assert.Null(CSharpSolutionTreeFilter.Apply(tree, "存在しない").Root);
+        // 上限を超えたぶんは落として Truncated を立てる（全開表示を守るため）。
+        var capped = CSharpSolutionTreeFilter.Apply(tree, ".cs", limit: 2);
+        Assert.Equal(2, capped.Matched);
+        Assert.True(capped.Truncated);
+    }
+
+    [Fact]
+    public void ファイルを選んだままのビルドは持ち主のプロジェクトへ遡る()
+    {
+        // 以前はファイル選択中にビルドを押すと何も起きなかった（対象がプロジェクトでないため）。
+        var project = new ProjectModel("App", @"C:\work\App.csproj", @"C:\work", [], [
+            new TargetFrameworkModel("net10.0", [], "latest",
+                [new ProjectItem(@"Views\UserView.cs", @"C:\work\Views\UserView.cs")], [], [], [])],
+            "net10.0", false, ProjectLoadState.Ready);
+        using var vm = new CSharpSolutionExplorerViewModel(new FakeSolutionService(
+            new SolutionModel(@"C:\work\App.sln", "App", @"C:\work", [project], ProjectLoadState.Ready)));
+        CSharpSolutionActionEventArgs? requested = null;
+        vm.ActionRequested += (_, args) => requested = args;
+
+        vm.SelectedNode = Find(vm.Nodes, n => n.Name == "UserView.cs");
+        Assert.NotNull(vm.SelectedNode);
+        Assert.Equal("App", vm.ActionTargetLabel);
+        Assert.False(vm.CanTestTarget);
+
+        vm.RequestTargetAction(CSharpSolutionAction.Build);
+        Assert.NotNull(requested);
+        Assert.Equal(CSharpSolutionNodeKind.Project, requested!.Node.Kind);
+        Assert.Equal(@"C:\work\App.csproj", requested.Node.FullPath);
+    }
+
+    [Fact]
+    public void 絞り込みは結果を開いた状態で出し解除で元の開閉へ戻る()
+    {
+        var project = new ProjectModel("App", @"C:\work\App.csproj", @"C:\work", [], [
+            new TargetFrameworkModel("net10.0", [], "latest", [
+                new ProjectItem(@"Views\UserView.cs", @"C:\work\Views\UserView.cs"),
+                new ProjectItem("Program.cs", @"C:\work\Program.cs"),
+            ], [], [], [])], "net10.0", false, ProjectLoadState.Ready);
+        using var vm = new CSharpSolutionExplorerViewModel(new FakeSolutionService(
+            new SolutionModel(@"C:\work\App.sln", "App", @"C:\work", [project], ProjectLoadState.Ready)));
+
+        var views = Find(vm.Nodes, n => n.Name == "Views")!;
+        Assert.False(views.IsExpanded);
+
+        vm.FilterText = "UserView";
+        Assert.True(vm.IsFiltering);
+        Assert.Equal("1件", vm.FilterStatus);
+        Assert.True(Find(vm.Nodes, n => n.Name == "Views")!.IsExpanded);
+        Assert.Null(Find(vm.Nodes, n => n.Name == "Program.cs"));
+
+        // 解除したら、絞り込みのために開いた枝は畳まれた元の状態へ戻る。
+        vm.FilterText = "";
+        Assert.False(Find(vm.Nodes, n => n.Name == "Views")!.IsExpanded);
+        Assert.NotNull(Find(vm.Nodes, n => n.Name == "Program.cs"));
+        Assert.Equal("", vm.FilterStatus);
+    }
+
+    [Fact]
+    public void 絞り込み中の折りたたみはツリーを1度しか作り直さない()
+    {
+        var project = new ProjectModel("App", @"C:\work\App.csproj", @"C:\work", [], [
+            new TargetFrameworkModel("net10.0", [], "latest", [
+                new ProjectItem(@"Views\UserView.cs", @"C:\work\Views\UserView.cs"),
+                new ProjectItem("Program.cs", @"C:\work\Program.cs"),
+            ], [], [], [])], "net10.0", false, ProjectLoadState.Ready);
+        using var vm = new CSharpSolutionExplorerViewModel(new FakeSolutionService(
+            new SolutionModel(@"C:\work\App.sln", "App", @"C:\work", [project], ProjectLoadState.Ready)));
+
+        vm.FilterText = "UserView";
+        var rebuilds = 0;
+        // ルートを差し込んだ回数＝作り直した回数。絞り込み解除とCollapseAllで2度作ると、
+        // 1万ノード級のVMツリーを1回の折りたたみで2度捨てて作ることになる。
+        vm.Nodes.CollectionChanged += (_, e) =>
+        {
+            if (e.Action == NotifyCollectionChangedAction.Add) rebuilds++;
+        };
+
+        vm.CollapseAllCommand.Execute(null);
+
+        Assert.Equal(1, rebuilds);
+        Assert.Equal("", vm.FilterText);
+        Assert.False(vm.IsFiltering);
+        Assert.False(Find(vm.Nodes, n => n.Name == "Views")!.IsExpanded);
+        Assert.NotNull(Find(vm.Nodes, n => n.Name == "Program.cs"));
     }
 
     private static CSharpSolutionNodeViewModel? Find(

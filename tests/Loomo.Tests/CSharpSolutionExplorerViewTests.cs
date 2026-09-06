@@ -254,6 +254,69 @@ public sealed class CSharpSolutionExplorerViewTests
         });
     }
 
+    /// <summary>プロジェクト行やフォルダー行は、開閉矢印だけでなく<b>名前のところ</b>を
+    /// 1クリックしても開閉する（フォルダーツリーと同じ操作）。7pxの矢印を狙わせない。</summary>
+    [Fact]
+    public void 名前を1クリックすると開閉する()
+    {
+        _host.Run(() =>
+        {
+            using var vm = new CSharpSolutionExplorerViewModel(new FakeSolutionService(SampleSolution()));
+            var view = new CSharpSolutionExplorerView { DataContext = vm };
+            var window = new Window { Width = 520, Height = 420, Content = view, ShowInTaskbar = false };
+            try
+            {
+                window.Show();
+                window.UpdateLayout();
+
+                var tree = FindVisual<TreeView>(view)!;
+                var projectItem = FindVisual<TreeViewItem>(view,
+                    item => item.DataContext is CSharpSolutionNodeViewModel
+                    {
+                        Kind: CSharpSolutionNodeKind.Project,
+                    });
+                Assert.NotNull(projectItem);
+                var node = (CSharpSolutionNodeViewModel)projectItem!.DataContext!;
+                Assert.True(projectItem.IsExpanded);
+
+                // 名前の TextBlock を押した体で発火させる。PreviewMouseLeftButtonUp は Direct なので、
+                // 実機と同じく「押された要素を OriginalSource にして TreeView で上げる」形にする。
+                var name = FindVisual<System.Windows.Controls.TextBlock>(projectItem,
+                    block => block.Text == "App")!;
+                ClickUp(tree, name);
+                window.UpdateLayout();
+
+                Assert.False(projectItem.IsExpanded);
+                // コンテナと VM は TwoWay。開閉は利用者の状態なので VM 側にも残る。
+                Assert.False(node.IsExpanded);
+
+                ClickUp(tree, name);
+                Assert.True(projectItem.IsExpanded);
+
+                // ファイル行は子を持たないので、1クリックでは何も起きない（開くのはダブルクリック）。
+                var fileItem = FindVisual<TreeViewItem>(view,
+                    item => item.DataContext is CSharpSolutionNodeViewModel { Kind: CSharpSolutionNodeKind.File });
+                Assert.NotNull(fileItem);
+                var opened = new List<string>();
+                vm.FileOpenRequested += (_, path) => opened.Add(path);
+                ClickUp(tree, fileItem!);
+                Assert.Empty(opened);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
+    private static void ClickUp(TreeView tree, DependencyObject clicked)
+        => tree.RaiseEvent(new System.Windows.Input.MouseButtonEventArgs(
+            System.Windows.Input.Mouse.PrimaryDevice, 0, System.Windows.Input.MouseButton.Left)
+        {
+            RoutedEvent = UIElement.PreviewMouseLeftButtonUpEvent,
+            Source = clicked,
+        });
+
     private static SolutionModel SampleSolution()
     {
         var project = new ProjectModel("App", @"C:\work\App\App.csproj", @"C:\work\App", [], [
@@ -307,7 +370,10 @@ public sealed class CSharpSolutionExplorerViewTests
         // ツリーが畳まれ、利用者の手元が飛ぶ（IsExpanded を利用者の状態にした以上、必須）。
         _host.Run(() =>
         {
+            // TFMが複数なら段が残る（1つなら畳まれる）。開閉の引き継ぎはその段で確かめる。
             var project = new ProjectModel("App", @"C:\work\App\App.csproj", @"C:\work\App", [], [
+                new TargetFrameworkModel("net9.0", [], "latest",
+                    [new ProjectItem("Program.cs", @"C:\work\App\Program.cs")], [], [], []),
                 new TargetFrameworkModel("net10.0", [], "latest",
                     [new ProjectItem("Program.cs", @"C:\work\App\Program.cs")], [], [], [])],
                 "net10.0", false, ProjectLoadState.Ready);
@@ -316,10 +382,10 @@ public sealed class CSharpSolutionExplorerViewTests
                     [project], ProjectLoadState.Ready));
             using var vm = new CSharpSolutionExplorerViewModel(service);
 
-            var projectNode = FindNode(vm.Nodes, "App.csproj") ?? FindNodeOfKind(vm.Nodes, CSharpSolutionNodeKind.Project);
+            var projectNode = FindNodeOfKind(vm.Nodes, CSharpSolutionNodeKind.Project);
             Assert.NotNull(projectNode);
             var framework = Assert.Single(projectNode!.Children,
-                node => node.Kind == CSharpSolutionNodeKind.TargetFramework);
+                node => node is { Kind: CSharpSolutionNodeKind.TargetFramework, Name: "net10.0" });
             Assert.False(framework.IsExpanded);
             framework.IsExpanded = true;
 
@@ -328,9 +394,51 @@ public sealed class CSharpSolutionExplorerViewTests
             var rebuilt = FindNodeOfKind(vm.Nodes, CSharpSolutionNodeKind.TargetFramework);
             Assert.NotNull(rebuilt);
             Assert.NotSame(framework, rebuilt);
-            Assert.True(rebuilt!.IsExpanded);
+            Assert.True(FindNode(vm.Nodes, "net10.0")!.IsExpanded);
         });
     }
+
+    [Fact]
+    public void 行アイコンは種類ごとに引き当てられフォルダーは開閉で絵が変わる()
+    {
+        _host.Run(() =>
+        {
+            var filePath = @"C:\work\App\Sub\Program.cs";
+            var project = new ProjectModel("App", @"C:\work\App\App.csproj", @"C:\work\App", [], [
+                new TargetFrameworkModel("net10.0", [], "latest",
+                    [new ProjectItem(@"Sub\Program.cs", filePath)], [], [], [])],
+                "net10.0", false, ProjectLoadState.Ready);
+            using var vm = new CSharpSolutionExplorerViewModel(new FakeSolutionService(
+                new SolutionModel(@"C:\work\App\App.sln", "App", @"C:\work\App",
+                    [project], ProjectLoadState.Ready)));
+            ExpandAll(vm.Nodes);
+
+            // ソリューション・プロジェクト・ファイルはそれぞれ拡張子ぶんの絵（記号ではない）。
+            var solution = Assert.Single(vm.Nodes);
+            Assert.Same(IconFor(@"C:\work\App\App.sln"), solution.IconImage);
+            Assert.True(solution.HasIcon);
+            Assert.Equal("", solution.Glyph);
+
+            var projectNode = FindNodeOfKind(vm.Nodes, CSharpSolutionNodeKind.Project);
+            Assert.NotNull(projectNode);
+            Assert.Same(IconFor(@"C:\work\App\App.csproj"), projectNode!.IconImage);
+            Assert.NotSame(solution.IconImage, FindNode(vm.Nodes, "Program.cs")!.IconImage);
+            Assert.Same(IconFor(filePath), FindNode(vm.Nodes, "Program.cs")!.IconImage);
+
+            // フォルダーは開いた絵・畳んだ絵で変わり、変更通知も出る（出ないと絵が固まる）。
+            var folder = FindNodeOfKind(vm.Nodes, CSharpSolutionNodeKind.Folder);
+            Assert.NotNull(folder);
+            Assert.Same(FileIcons.FolderImage(open: true), folder!.IconImage);
+            var changed = new List<string?>();
+            folder.PropertyChanged += (_, e) => changed.Add(e.PropertyName);
+            folder.IsExpanded = false;
+            Assert.Contains(nameof(CSharpSolutionNodeViewModel.IconImage), changed);
+            Assert.Same(FileIcons.FolderImage(open: false), folder.IconImage);
+        });
+    }
+
+    private static System.Windows.Media.ImageSource IconFor(string path)
+        => FileIcons.ImageFor(FileIcons.IndexFor(path, isDirectory: false));
 
     private static CSharpSolutionNodeViewModel? FindNodeOfKind(
         IEnumerable<CSharpSolutionNodeViewModel> nodes, CSharpSolutionNodeKind kind)
@@ -347,7 +455,6 @@ public sealed class CSharpSolutionExplorerViewTests
     /// 全段を開いた状態にする。既定ではソリューションとプロジェクトしか開かない
     /// （全ファイルぶんの TreeViewItem を実体化させないため。<see cref="CSharpSolutionNodeViewModel.IsExpanded"/>）
     /// ので、ファイル行の描画を見るテストは自分で開いてから View を作る。
-    /// IsExpanded は変更通知を持たないため、<b>ビューを作る前に</b>設定する。
     /// </summary>
     private static void ExpandAll(IEnumerable<CSharpSolutionNodeViewModel> nodes)
     {
