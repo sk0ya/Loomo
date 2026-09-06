@@ -17,7 +17,8 @@ public sealed class ExplorerLayoutTests
         Assert.True(start >= 0 && end > start);
         var section = xaml[start..end];
 
-        // C# ソリューションツリーは IDE ペイン（DebugView の実行タブ）へ移した。
+        // C# ソリューションツリーはサイドバーの独立パネル（SidebarPanel.Solution）で、
+        // エクスプローラ（フォルダーツリー）とは別の面。ここへ混ぜない。
         Assert.DoesNotContain("<views:CSharpSolutionExplorerView", section);
 
         var tree = section.IndexOf("<views:FolderTreeView", StringComparison.Ordinal);
@@ -32,32 +33,40 @@ public sealed class ExplorerLayoutTests
         Assert.Contains("<views:TabsView Grid.Row=\"2\"", section);
     }
 
-    /// <summary>C# ソリューションツリーは IDE ペインの実行タブ左列（プロジェクト一覧の下）に置き、
-    /// 見出し行のトグルで畳めること。サイドバーへ戻る退行を防ぐ。</summary>
+    /// <summary>C# ソリューションツリーはサイドバーの独立パネルに置き、ActivityBar のアイコンごと
+    /// C# のあるワークスペースでだけ出入りすること。IDE ペイン（実行タブ）へ戻る退行を防ぐ。</summary>
     [Fact]
-    public void CSharpソリューションツリーはIDEペインの実行タブに畳める段として置かれる()
+    public void CSharpソリューションツリーはサイドバーの独立パネルとして置かれる()
     {
-        var xaml = Read("src", "Loomo.App", "Views", "DebugView.xaml");
-        var start = xaml.IndexOf("<Grid x:Name=\"ProjectPaneContent\"", StringComparison.Ordinal);
-        var end = xaml.IndexOf("x:Name=\"ProjectPaneRail\"", start, StringComparison.Ordinal);
-        Assert.True(start >= 0 && end > start, "実行タブの左列（ProjectPaneContent）があること");
-        var column = xaml[start..end];
+        var xaml = Read("src", "Loomo.App", "Views", "ShellWindow.xaml");
 
-        Assert.Contains("<RowDefinition x:Name=\"SolutionSectionRow\"", column);
-        Assert.Contains("<GridSplitter x:Name=\"SolutionSplitter\" Grid.Row=\"1\"", column);
-        var solution = column.IndexOf("<v:CSharpSolutionExplorerView x:Name=\"SolutionSection\"",
+        // ActivityBar のアイコンは C# のある部屋でだけ現れる。
+        var button = xaml.IndexOf("AutomationProperties.AutomationId=\"SolutionPanelButton\"",
             StringComparison.Ordinal);
-        Assert.True(solution >= 0, "CSharpSolutionExplorerView は左列にあること");
-        var tagEnd = column.IndexOf("/>", solution, StringComparison.Ordinal);
-        Assert.True(tagEnd > solution);
-        var tag = column[solution..tagEnd];
-        Assert.Contains("Grid.Row=\"2\"", tag);
-        Assert.Contains("DataContext=\"{Binding SolutionExplorer}\"", tag);
+        Assert.True(button >= 0, "ActivityBar にソリューションアイコンがあること");
+        var buttonStart = xaml.LastIndexOf("<Button", button, StringComparison.Ordinal);
+        var buttonTag = xaml[buttonStart..button];
+        Assert.Contains("Command=\"{Binding ShowSolutionCommand}\"", buttonTag);
+        Assert.Contains(
+            "Visibility=\"{Binding IsCSharpSolutionAvailable, Converter={StaticResource BoolToVis}}\"",
+            buttonTag);
 
-        var view = Read("src", "Loomo.App", "Views", "CSharpSolutionExplorerView.xaml");
-        Assert.Contains("x:Name=\"SectionToggle\"", view);
-        Assert.Contains("Click=\"OnSectionToggleClick\"", view);
-        Assert.Contains("x:Name=\"SectionBody\"", view);
+        // パネル本体はサイドバー（SidebarContainer）の中、ActivePanel=Solution のときだけ見える。
+        var sidebarStart = xaml.IndexOf("<Grid x:Name=\"SidebarContainer\"", StringComparison.Ordinal);
+        var sidebarEnd = xaml.IndexOf("<GridSplitter x:Name=\"SidebarSplitter\"", sidebarStart,
+            StringComparison.Ordinal);
+        Assert.True(sidebarStart >= 0 && sidebarEnd > sidebarStart);
+        var sidebar = xaml[sidebarStart..sidebarEnd];
+        var panel = sidebar.IndexOf("<Grid x:Name=\"SolutionSection\"", StringComparison.Ordinal);
+        Assert.True(panel >= 0, "ソリューションパネルはサイドバーの中にあること");
+        Assert.Contains("ConverterParameter=Solution", sidebar[panel..]);
+        Assert.Contains("<views:CSharpSolutionExplorerView DataContext=\"{Binding CSharpSolutionExplorer}\" />",
+            sidebar[panel..]);
+
+        // IDE ペイン（実行タブ）にはもう置かない。
+        var debug = Read("src", "Loomo.App", "Views", "DebugView.xaml");
+        Assert.DoesNotContain("CSharpSolutionExplorerView", debug);
+        Assert.DoesNotContain("SolutionSectionRow", debug);
     }
 
     [Fact]

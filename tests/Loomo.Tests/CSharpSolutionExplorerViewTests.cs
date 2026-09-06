@@ -254,50 +254,6 @@ public sealed class CSharpSolutionExplorerViewTests
         });
     }
 
-    /// <summary>見出しのトグルでツリー本体だけを畳み、ホストが高さを詰められるよう通知すること。</summary>
-    [Fact]
-    public void 見出しのトグルでツリー本体を畳み展開できる()
-    {
-        _host.Run(() =>
-        {
-            using var vm = new CSharpSolutionExplorerViewModel(new FakeSolutionService(SampleSolution()));
-            var view = new CSharpSolutionExplorerView { DataContext = vm };
-            var window = new Window { Width = 520, Height = 420, Content = view, ShowInTaskbar = false };
-            try
-            {
-                window.Show();
-                window.UpdateLayout();
-
-                var changed = 0;
-                view.SectionExpandedChanged += (_, _) => changed++;
-                var toggle = FindVisual<Button>(view,
-                    b => AutomationProperties.GetAutomationId(b) == "CSharpSolutionSectionToggle");
-                Assert.NotNull(toggle);
-                Assert.True(view.IsSectionExpanded);
-
-                toggle!.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
-                window.UpdateLayout();
-                Assert.False(view.IsSectionExpanded);
-                Assert.Equal(1, changed);
-                var body = (Grid)view.FindName("SectionBody");
-                Assert.Equal(Visibility.Collapsed, body.Visibility);
-                // 畳んでもツリーだけが消え、見出し（ビルド/テスト）は残る。
-                Assert.NotNull(FindVisual<Button>(view,
-                    b => AutomationProperties.GetAutomationId(b) == "CSharpSolutionBuild"));
-
-                toggle.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
-                window.UpdateLayout();
-                Assert.True(view.IsSectionExpanded);
-                Assert.Equal(2, changed);
-                Assert.Equal(Visibility.Visible, body.Visibility);
-            }
-            finally
-            {
-                window.Close();
-            }
-        });
-    }
-
     private static SolutionModel SampleSolution()
     {
         var project = new ProjectModel("App", @"C:\work\App\App.csproj", @"C:\work\App", [], [

@@ -11,7 +11,10 @@ public enum SidebarPanel
     Settings,
     Appearance,
     Git,
-    Pegboard
+    Pegboard,
+    /// <summary>C# ソリューションツリー。C# プロジェクトのあるワークスペースでだけ現れる
+    /// （ActivityBar のアイコンごと出入りする）。フォルダーツリーとは別の面。</summary>
+    Solution
 }
 
 /// <summary>中央オーバーレイ設定画面のカテゴリ（左ナビ）。</summary>
@@ -53,8 +56,13 @@ public sealed partial class ShellViewModel : ObservableObject
     public PegboardViewModel Pegboard { get; }
     /// <summary>アクティブなC#ファイルのプロジェクト／TFM文脈表示。</summary>
     public CSharpProjectContextViewModel CSharpContext { get; }
-    /// <summary>評価済みsolution／projectの構造表示。通常のFolderTreeとは別のC#ビュー。</summary>
+    /// <summary>評価済みsolution／projectの構造表示。通常のFolderTreeとは別のC#ビューで、
+    /// サイドバーの独立したパネル（<see cref="SidebarPanel.Solution"/>）として住む。</summary>
     public CSharpSolutionExplorerViewModel? CSharpSolutionExplorer { get; }
+
+    /// <summary>ソリューションパネルを出せるか（＝C#プロジェクトのあるワークスペースか）。
+    /// ActivityBar のアイコンの出入りに使う。C# の無い部屋にC#の道具は置かない。</summary>
+    public bool IsCSharpSolutionAvailable => CSharpSolutionExplorer?.IsVisible == true;
     /// <summary>ブラウザペインのツールバー状態・ブックマーク・履歴・ダウンロード（設計書 §21）。</summary>
     public BrowserViewModel Browser { get; }
     public SearchPanelViewModel SearchPanel { get; }
@@ -71,6 +79,11 @@ public sealed partial class ShellViewModel : ObservableObject
 
     /// <summary>サイドバーに現在表示しているパネル。</summary>
     [ObservableProperty] private SidebarPanel _activePanel = SidebarPanel.Explorer;
+
+    /// <summary>いま起きている <see cref="ActivePanel"/> の変更が自動退避（人間の操作ではない）か。
+    /// 軌跡は「人間のナビゲーション」だけを記録する面（§27）なので、ホストはこれを見て記録と
+    /// フォーカス移動を飛ばす。</summary>
+    public bool IsPanelChangeAutomatic { get; private set; }
 
     /// <summary>中央オーバーレイの設定画面を開いているか。</summary>
     [ObservableProperty] private bool _isSettingsOverlayOpen;
@@ -134,6 +147,16 @@ public sealed partial class ShellViewModel : ObservableObject
         Trail = trail;
         CSharpContext = csharpContext ?? new CSharpProjectContextViewModel();
         CSharpSolutionExplorer = csharpSolutionExplorer;
+        if (CSharpSolutionExplorer is { } solutionExplorer)
+            solutionExplorer.PropertyChanged += (_, e) => {
+                if (e.PropertyName != nameof(CSharpSolutionExplorerViewModel.IsVisible)) return;
+                OnPropertyChanged(nameof(IsCSharpSolutionAvailable));
+                // ワークスペース切替で C# が消えたら、空のパネルを見せたままにしない。
+                if (IsCSharpSolutionAvailable || ActivePanel != SidebarPanel.Solution) return;
+                IsPanelChangeAutomatic = true;
+                try { ActivePanel = SidebarPanel.Explorer; }
+                finally { IsPanelChangeAutomatic = false; }
+            };
 
         // 設定保存時に AIバーのプロバイダ表示を更新する。
         Settings.Saved += AiBar.RefreshProviderLabel;
@@ -206,9 +229,28 @@ public sealed partial class ShellViewModel : ObservableObject
     [RelayCommand]
     private void CloseSettingsOverlay() => IsSettingsOverlayOpen = false;
 
+    /// <summary>ActivityBar のソリューションアイコン。C#プロジェクトのあるワークスペースでだけ押せる。</summary>
+    [RelayCommand]
+    private void ShowSolution()
+    {
+        if (!IsCSharpSolutionAvailable) return;
+        Activate(SidebarPanel.Solution);
+    }
+
     /// <summary>ActivityBar のペグボードアイコン（§23.3）。</summary>
     [RelayCommand]
     private void ShowPegboard() => Activate(SidebarPanel.Pegboard);
+
+    /// <summary>軌跡（§27）から過去のパネルへ戻る。もう出せないパネル——C# の無い部屋の
+    /// ソリューション——は開かない。ActivityBar のアイコンごと消えているので、開いてしまうと
+    /// 中身が畳まれた空の列が残り、閉じる導線が無くなる。</summary>
+    public bool RestorePanel(SidebarPanel panel)
+    {
+        if (panel == SidebarPanel.Solution && !IsCSharpSolutionAvailable) return false;
+        ActivePanel = panel;
+        IsSidebarVisible = true;
+        return true;
+    }
 
     /// <summary>エクスプローラを開く（トグルせず必ず開く）。エディタの現在ファイルをツリーで
     /// 選択・表示する「同期」機能用。</summary>

@@ -94,6 +94,7 @@ public static class CommandCatalog
         new CommandDescriptor("sidebar.sessions", CatSidebar, "AIセッションを開く", null),
         new CommandDescriptor("sidebar.git", CatSidebar, "Git を開く", null),
         new CommandDescriptor("sidebar.pegboard", CatSidebar, "ペグボードを開く", null),
+        new CommandDescriptor("sidebar.solution", CatSidebar, "ソリューション（C#）を開く", null),
         new CommandDescriptor("sidebar.settings", CatSidebar, "設定を開く", null),
         new CommandDescriptor("sidebar.appearance", CatSidebar, "外観（テーマ）を開く", null),
         new CommandDescriptor("explorer.revealActiveFile", CatSidebar, "エクスプローラで現在のファイルを選択（同期）", null),

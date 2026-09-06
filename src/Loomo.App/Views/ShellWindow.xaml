@@ -526,6 +526,12 @@
                             Command="{Binding ShowExplorerCommand}" />
                     <Button Style="{StaticResource IconButton}" Content="⎇" ToolTip="Git"
                             Command="{Binding ShowGitCommand}" />
+                    <!-- ソリューション：C# プロジェクトのある部屋にだけ現れる（IsCSharpSolutionAvailable）。 -->
+                    <Button Style="{StaticResource IconButton}" Content="◈" ToolTip="ソリューション（C#）"
+                            Command="{Binding ShowSolutionCommand}"
+                            Visibility="{Binding IsCSharpSolutionAvailable, Converter={StaticResource BoolToVis}}"
+                            AutomationProperties.AutomationId="SolutionPanelButton"
+                            AutomationProperties.Name="ソリューション" />
                     <Button Style="{StaticResource IconButton}" Content="📌" ToolTip="ペグボード（スニペット・URL・パスの作業台）"
                             Command="{Binding ShowPegboardCommand}" />
                 </StackPanel>
@@ -756,8 +762,8 @@
                                  落とし、展開時に直前の高さへ戻す（ShellWindow.SidebarSections.cs）。 -->
                             <RowDefinition x:Name="SidebarTabsRow" Height="200" MinHeight="26" />
                         </Grid.RowDefinitions>
-                        <!-- C# ソリューションツリーはここから IDE ペイン（実行タブの左列）へ移した。
-                             サイドバーはフォルダー（＝部屋の住所）に専念させ、C# の道具は IDE ペインへ集約する。 -->
+                        <!-- C# ソリューションツリーはこの下の SolutionSection（独立パネル）に住む。
+                             エクスプローラはフォルダー（＝部屋の住所）に専念させ、別の面として分ける。 -->
                         <views:FolderTreeView x:Name="SidebarFolderTree" Grid.Row="0"
                             DataContext="{Binding FolderTree}" />
                         <GridSplitter x:Name="SidebarTabsSplitter" Grid.Row="1" Height="5"
@@ -771,6 +777,12 @@
                     <!-- 設定／外観はサイドバーではなく中央オーバーレイ（SettingsOverlayView）で開く。 -->
                     <views:PegboardView DataContext="{Binding Pegboard}"
                                         Visibility="{Binding DataContext.ActivePanel, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource EnumToVis}, ConverterParameter=Pegboard}" />
+                    <!-- ソリューション：フォルダーツリー（住所）とは別の、評価済み C# 構造の面。
+                         ビュー自身も C# が無ければ畳むので、包む Grid は「どのパネルか」だけを見る。 -->
+                    <Grid x:Name="SolutionSection"
+                          Visibility="{Binding ActivePanel, Converter={StaticResource EnumToVis}, ConverterParameter=Solution}">
+                        <views:CSharpSolutionExplorerView DataContext="{Binding CSharpSolutionExplorer}" />
+                    </Grid>
                 </Grid>
 
                 <GridSplitter x:Name="SidebarSplitter" Grid.Column="1" Width="6"

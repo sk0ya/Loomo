@@ -348,8 +348,7 @@ public partial class ShellWindow {
     private void JumpToPanel(TrailEntryViewModel entry) {
         if (!Enum.TryParse<SidebarPanel>(entry.Target, out var panel))
             return;
-        _vm.ActivePanel = panel;
-        _vm.IsSidebarVisible = true;
+        _vm.RestorePanel(panel);   // 出せなくなったパネル（C# の消えた部屋）はそっと何もしない
     }
     private void JumpToSession(TrailEntryViewModel entry) {
         if (!_vm.AiBar.RestoreSessionById(entry.Target))

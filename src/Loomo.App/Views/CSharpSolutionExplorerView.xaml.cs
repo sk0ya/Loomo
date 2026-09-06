@@ -11,29 +11,6 @@ public partial class CSharpSolutionExplorerView : UserControl
 {
     public CSharpSolutionExplorerView() => InitializeComponent();
 
-    /// <summary>ツリー本体を表示しているか。false のときは見出し行だけを残して畳む。
-    /// 高さの配分はホスト（IDE ペインの実行タブ）が持つため、状態変化は
-    /// <see cref="SectionExpandedChanged"/> で知らせる。</summary>
-    public bool IsSectionExpanded { get; private set; } = true;
-
-    /// <summary><see cref="IsSectionExpanded"/> が変わった。ホストが行の高さを畳む／戻すために使う。</summary>
-    public event EventHandler? SectionExpandedChanged;
-
-    /// <summary>ホストから初期状態を復元するときに使う。状態が実際に変わったときだけ
-    /// <see cref="SectionExpandedChanged"/> を発火する（同じ値なら何もしない）。</summary>
-    public void SetSectionExpanded(bool expanded)
-    {
-        if (IsSectionExpanded == expanded) return;
-        IsSectionExpanded = expanded;
-        SectionBody.Visibility = expanded ? Visibility.Visible : Visibility.Collapsed;
-        SectionToggle.Content = expanded ? "▾" : "▸";
-        SectionToggle.ToolTip = expanded ? "ソリューションツリーを折りたたむ" : "ソリューションツリーを展開";
-        SectionExpandedChanged?.Invoke(this, EventArgs.Empty);
-    }
-
-    private void OnSectionToggleClick(object sender, RoutedEventArgs e)
-        => SetSectionExpanded(!IsSectionExpanded);
-
     private void OnBuildClick(object sender, RoutedEventArgs e)
         => RequestRootAction(CSharpSolutionAction.Build);
 

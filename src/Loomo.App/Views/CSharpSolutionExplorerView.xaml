@@ -5,18 +5,10 @@
     Background="Transparent"
     Visibility="{Binding IsVisible, Converter={StaticResource BoolToVis}}">
     <DockPanel>
-        <!-- 見出し行。折りたたみトグル・構成・ビルド/テスト・実行状態。折りたたんでもこの行だけは残す。 -->
+        <!-- 見出し行。構成・ビルド/テスト・実行状態。サイドバーのパネル見出しを兼ねる。 -->
         <Border DockPanel.Dock="Top" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1"
                 Background="{DynamicResource Panel}" Padding="4,3">
             <DockPanel LastChildFill="True">
-                <!-- 折りたたみトグル。▾＝展開中、▸＝折りたたみ中。 -->
-                <Button x:Name="SectionToggle" DockPanel.Dock="Left" Style="{StaticResource SecondaryButton}"
-                        Width="18" Height="18" Padding="0" Margin="0,0,4,0"
-                        FontSize="{DynamicResource Fs10}" Content="▾"
-                        Click="OnSectionToggleClick"
-                        ToolTip="ソリューションツリーを折りたたむ"
-                        AutomationProperties.AutomationId="CSharpSolutionSectionToggle"
-                        AutomationProperties.Name="C#ソリューションの折りたたみ" />
                 <TextBlock DockPanel.Dock="Left" Text="ソリューション" Foreground="{DynamicResource FgDim}"
                            FontSize="{DynamicResource Fs10}" VerticalAlignment="Center" Margin="0,0,6,0" />
                 <ComboBox DockPanel.Dock="Left" ItemsSource="{Binding ConfigurationOptions}"
@@ -47,7 +39,7 @@
                            AutomationProperties.Name="{Binding ExecutionStatusText}" />
             </DockPanel>
         </Border>
-        <Grid x:Name="SectionBody" Background="{DynamicResource Bg}">
+        <Grid Background="{DynamicResource Bg}">
             <TextBlock Text="{Binding StatusText}" Foreground="{DynamicResource FgDim}"
                        FontSize="{DynamicResource Fs11}" Margin="10,6" TextWrapping="Wrap" />
             <!-- 仮想化は必須。ソリューション全体のツリーは1万を超えるノードになり、実体化すると

@@ -3,6 +3,7 @@ using System.Linq;
 using sk0ya.Loomo.Ai;
 using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.App.ViewModels;
+using sk0ya.Loomo.CSharp.Projects;
 using sk0ya.Loomo.Core.Agent;
 using sk0ya.Loomo.Core.Observability;
 using sk0ya.Loomo.Core.Safety;
@@ -17,7 +18,7 @@ namespace sk0ya.Loomo.Tests;
 /// </summary>
 public class ShellViewModelTests
 {
-    private static ShellViewModel CreateSut()
+    private static ShellViewModel CreateSut(CSharpSolutionExplorerViewModel? solutionExplorer = null)
     {
         var workspace = new FakeWorkspaceService();
         var folderTree = new FolderTreeViewModel(workspace, new FakeAiWarmup(),
@@ -113,7 +114,8 @@ public class ShellViewModelTests
                 Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-loomo-browser.json"))),
             searchVm, debugVm, tsIdeVm,
             new TrailViewModel(new TrailStore(
-                Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-loomo-trail.db"))));
+                Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-loomo-trail.db"))),
+            csharpSolutionExplorer: solutionExplorer);
     }
 
     [Fact]
@@ -194,5 +196,142 @@ public class ShellViewModelTests
         sut.ShowSettingsCommand.Execute(null);   // 同一カテゴリ再クリック → 閉じる
 
         Assert.False(sut.IsSettingsOverlayOpen);
+    }
+
+    // ===== ソリューション（C#）パネル：C# のある部屋にだけ現れる、フォルダーツリーとは別の面 =====
+
+    [Fact]
+    public void CSharpのないワークスペースではソリューションパネルを出さない()
+    {
+        using var solution = new CSharpSolutionExplorerViewModel(
+            new StubSolutionModelService(EmptySolution()));
+        var sut = CreateSut(solution);
+
+        Assert.False(sut.IsCSharpSolutionAvailable);
+        sut.ShowSolutionCommand.Execute(null);
+        Assert.Equal(SidebarPanel.Explorer, sut.ActivePanel);
+    }
+
+    [Fact]
+    public void CSharpプロジェクトがあればソリューションパネルを開き再クリックで閉じる()
+    {
+        var service = new StubSolutionModelService(EmptySolution());
+        using var solution = new CSharpSolutionExplorerViewModel(service);
+        var sut = CreateSut(solution);
+        var availabilityChanged = 0;
+        sut.PropertyChanged += (_, e) => {
+            if (e.PropertyName == nameof(ShellViewModel.IsCSharpSolutionAvailable)) availabilityChanged++;
+        };
+
+        service.Publish(CSharpSolution());
+        Assert.True(sut.IsCSharpSolutionAvailable);
+        Assert.Equal(1, availabilityChanged);
+
+        sut.ShowSolutionCommand.Execute(null);
+        Assert.Equal(SidebarPanel.Solution, sut.ActivePanel);
+        Assert.True(sut.IsSidebarVisible);
+
+        sut.ShowSolutionCommand.Execute(null);
+        Assert.False(sut.IsSidebarVisible);
+    }
+
+    /// <summary>C# の無いワークスペースへ切り替えたら、空のパネルを見せたままにしない。</summary>
+    [Fact]
+    public void ソリューションパネル表示中にCSharpが消えたらエクスプローラへ戻る()
+    {
+        var service = new StubSolutionModelService(CSharpSolution());
+        using var solution = new CSharpSolutionExplorerViewModel(service);
+        var sut = CreateSut(solution);
+        sut.ShowSolutionCommand.Execute(null);
+        Assert.Equal(SidebarPanel.Solution, sut.ActivePanel);
+
+        service.Publish(EmptySolution());
+
+        Assert.False(sut.IsCSharpSolutionAvailable);
+        Assert.Equal(SidebarPanel.Explorer, sut.ActivePanel);
+        Assert.True(sut.IsSidebarVisible);
+    }
+
+    /// <summary>軌跡から過去のパネルへ戻る経路も同じ判定を通ること。C# の消えた部屋で
+    /// ソリューションを開くと、閉じる導線（ActivityBar のアイコン）の無い空の列が残る。</summary>
+    [Fact]
+    public void 軌跡から戻るときも出せないソリューションパネルは開かない()
+    {
+        var service = new StubSolutionModelService(CSharpSolution());
+        using var solution = new CSharpSolutionExplorerViewModel(service);
+        var sut = CreateSut(solution);
+
+        Assert.True(sut.RestorePanel(SidebarPanel.Solution));
+        Assert.Equal(SidebarPanel.Solution, sut.ActivePanel);
+
+        service.Publish(EmptySolution());
+        Assert.Equal(SidebarPanel.Explorer, sut.ActivePanel);
+
+        Assert.False(sut.RestorePanel(SidebarPanel.Solution));
+        Assert.Equal(SidebarPanel.Explorer, sut.ActivePanel);
+
+        // C# のあるパネル以外は今までどおり戻れる。
+        Assert.True(sut.RestorePanel(SidebarPanel.Git));
+        Assert.Equal(SidebarPanel.Git, sut.ActivePanel);
+        Assert.True(sut.IsSidebarVisible);
+    }
+
+    /// <summary>自動退避は人間のナビゲーションではないので、軌跡へ書かせない印を立てること（§27）。</summary>
+    [Fact]
+    public void CSharpが消えた自動退避は人間の操作として記録させない()
+    {
+        var service = new StubSolutionModelService(CSharpSolution());
+        using var solution = new CSharpSolutionExplorerViewModel(service);
+        var sut = CreateSut(solution);
+        sut.ShowSolutionCommand.Execute(null);
+
+        var automaticWhileChanging = (bool?)null;
+        sut.PropertyChanged += (_, e) => {
+            if (e.PropertyName == nameof(ShellViewModel.ActivePanel))
+                automaticWhileChanging = sut.IsPanelChangeAutomatic;
+        };
+
+        service.Publish(EmptySolution());
+
+        Assert.Equal(SidebarPanel.Explorer, sut.ActivePanel);
+        Assert.True(automaticWhileChanging);
+        Assert.False(sut.IsPanelChangeAutomatic);   // 通知が終われば元へ戻る
+
+        // 人間の操作（ActivityBar／コマンド）では立てない。
+        sut.ShowGitCommand.Execute(null);
+        Assert.Equal(SidebarPanel.Git, sut.ActivePanel);
+        Assert.False(automaticWhileChanging);
+    }
+
+    private static SolutionModel EmptySolution()
+        => new(null, "work", @"C:\work", [], ProjectLoadState.NotConfigured);
+
+    private static SolutionModel CSharpSolution()
+    {
+        var project = new ProjectModel("App", @"C:\work\App\App.csproj", @"C:\work\App", [], [
+            new TargetFrameworkModel("net10.0", [], "latest",
+                [new ProjectItem("Program.cs", @"C:\work\App\Program.cs")], [], [], [])],
+            "net10.0", false, ProjectLoadState.Ready);
+        return new SolutionModel(@"C:\work\App\App.sln", "App", @"C:\work\App",
+            [project], ProjectLoadState.Ready);
+    }
+
+    /// <summary>ワークスペース切替を模して solution モデルを差し替えられるフェイク。</summary>
+    private sealed class StubSolutionModelService(SolutionModel initial) : ISolutionModelService
+    {
+        public SolutionModel Current { get; private set; } = initial;
+        public event EventHandler<SolutionModel>? Changed;
+
+        public void Publish(SolutionModel model)
+        {
+            Current = model;
+            Changed?.Invoke(this, model);
+        }
+
+        public Task<SolutionModel> ReloadAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult(Current);
+
+        public ProjectModel? ProjectForFile(string filePath) => Current.ProjectForFile(filePath);
+        public ProjectLoadState FileState(string filePath) => Current.ResolveFileState(filePath);
     }
 }

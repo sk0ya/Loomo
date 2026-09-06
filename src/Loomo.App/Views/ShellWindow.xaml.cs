@@ -458,9 +458,9 @@ public partial class ShellWindow : Window {
             ApplySettingsWindowState(vm.IsSettingsOverlayOpen);
         else if (e.PropertyName == nameof(ShellViewModel.SettingsCategory) && vm.IsSettingsOverlayOpen)
             _settingsWindow?.Activate();    // 開いたままカテゴリだけ切り替えたとき（IsOpen は変化しない）
-        else if (e.PropertyName == nameof(ShellViewModel.ActivePanel)) {
+        else if (e.PropertyName == nameof(ShellViewModel.ActivePanel) && !vm.IsPanelChangeAutomatic) {
             RecordTrailPanel(vm.ActivePanel);   // サイドバーのパネル切替も軌跡（操作ログ）へ
-            QueueSidebarFocus();
+            QueueSidebarFocus();                // 自動退避（C# が消えて戻る等）は人間の操作ではないので書かない
         }
     }
 

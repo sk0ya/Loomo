@@ -53,6 +53,7 @@ public sealed class RealWpfProcessIntegrationTests
             Assert.NotNull(window);
             Assert.Equal("Loomo", window!.Current.Name);
             Assert.NotNull(FindById(window, "WorkspaceButton"));
+            RevealSolutionPanel(window!);
             Assert.NotNull(FindById(window, "CSharpSolutionTree"));
             var canvas = FindById(window, "Canvas");
             Assert.NotNull(canvas);
@@ -193,6 +194,7 @@ public sealed class RealWpfProcessIntegrationTests
             var window = WaitForCSharpWindow(process!, TimeSpan.FromSeconds(75));
             SetForegroundWindow(process!.MainWindowHandle);
             Thread.Sleep(100);
+            RevealSolutionPanel(window);
             AutomationElement? fileNode = null;
             Assert.True(WaitUntil(() =>
             {
@@ -222,6 +224,7 @@ public sealed class RealWpfProcessIntegrationTests
             var canvas = FindById(window, "Canvas");
             Assert.NotNull(canvas);
             Assert.True(canvas!.TryGetCurrentPattern(TextPattern.Pattern, out var pattern));
+            RevealSolutionPanel(window);
             Assert.True(WaitUntil(() => FindByName(window, "Feature") is not null,
                 TimeSpan.FromSeconds(30)), "C# Solution Explorer did not finish loading the Feature project.");
 
@@ -325,6 +328,7 @@ public sealed class RealWpfProcessIntegrationTests
 
             // Continue the same desktop journey through Solution Explorer so the
             // C#-specific Fix result is proven usable by the actual Build/Test actions.
+            RevealSolutionPanel(window);
             AutomationElement? testProjectNode = null;
             Assert.True(WaitUntil(() =>
             {
@@ -520,16 +524,31 @@ public sealed class RealWpfProcessIntegrationTests
         }
     }
 
+    /// <summary>The solution tree now lives in its own sidebar panel, so it is not part of the
+    /// startup surface any more — reveal it explicitly with <see cref="RevealSolutionPanel"/>.</summary>
     private static bool HasCSharpSurface(AutomationElement window)
-        => FindById(window, "CSharpSolutionTree") is not null &&
-           FindById(window, "Canvas") is not null &&
+        => FindById(window, "Canvas") is not null &&
            FindAllById(window, "TabTitle").Any(static element =>
                element.Current.Name.EndsWith(".cs", StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>Open the C# solution panel from the ActivityBar (it only exists for C# workspaces).
+    /// The icon is a toggle, so this is a no-op once the tree is already on screen.</summary>
+    private static void RevealSolutionPanel(AutomationElement window)
+    {
+        if (FindById(window, "CSharpSolutionTree") is not null) return;
+        var button = WaitForAutomationId("SolutionPanelButton", TimeSpan.FromSeconds(60));
+        Assert.NotNull(button);
+        Assert.True(button!.TryGetCurrentPattern(InvokePattern.Pattern, out var invoke));
+        ((InvokePattern)invoke).Invoke();
+        Assert.True(WaitUntil(() => FindById(window, "CSharpSolutionTree") is not null,
+            TimeSpan.FromSeconds(15)), "The C# solution panel did not open from the ActivityBar.");
+    }
 
     private static void OpenFeatureService(Process process, AutomationElement window)
     {
         SetForegroundWindow(process.MainWindowHandle);
         Thread.Sleep(100);
+        RevealSolutionPanel(window);
         AutomationElement? fileNode = null;
         Assert.True(WaitUntil(() =>
         {
@@ -561,6 +580,7 @@ public sealed class RealWpfProcessIntegrationTests
     {
         var canvas = FindById(window, "Canvas");
         Assert.NotNull(canvas);
+        RevealSolutionPanel(window);
         Assert.True(WaitUntil(() => FindByName(window, "Feature") is not null,
             TimeSpan.FromSeconds(30)), "C# Solution Explorer did not finish loading the Feature project.");
 
