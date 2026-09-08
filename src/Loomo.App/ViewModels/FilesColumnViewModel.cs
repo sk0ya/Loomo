@@ -1506,6 +1506,20 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
         => QuickAccess.IsAvailable && entries.Any(entry =>
             entry.IsDirectory && QuickAccess.IsPinned(entry.FullPath));
 
+    /// <summary>ピン留め／解除は Explorer の照会と反映待ちで秒単位かかるので、UI スレッドの外で行う
+    /// （FolderTree 側と同じ理由・同じ作法）。ピン済みかどうかの判定はサービス側の最新照会に任せる。</summary>
+    public Task<QuickAccessBatchResult> PinToQuickAccessAsync(IEnumerable<FileEntryViewModel> entries)
+        => QuickAccess.PinManyAsync(QuickAccessTargets(entries));
+
+    public Task<QuickAccessBatchResult> UnpinFromQuickAccessAsync(IEnumerable<FileEntryViewModel> entries)
+        => QuickAccess.UnpinManyAsync(QuickAccessTargets(entries));
+
+    private static IReadOnlyList<string> QuickAccessTargets(IEnumerable<FileEntryViewModel> entries)
+        => entries
+            .Where(entry => entry.IsDirectory)
+            .Select(entry => entry.FullPath)
+            .ToList();
+
     public QuickAccessBatchResult PinToQuickAccess(IEnumerable<FileEntryViewModel> entries)
         => QuickAccess.PinMany(entries
             .Where(entry => entry.IsDirectory)

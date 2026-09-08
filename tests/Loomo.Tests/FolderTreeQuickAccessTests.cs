@@ -1,3 +1,4 @@
+﻿using System.Diagnostics;
 using System.IO;
 using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.App.ViewModels;
@@ -112,6 +113,52 @@ public sealed class FolderTreeQuickAccessTests : IDisposable
         Assert.False(shell.IsPinned(virtualPath));
         Assert.Equal(QuickAccessOperationStatus.Unsupported, shell.Pin(missing).Status);
         Assert.Equal(QuickAccessOperationStatus.Unsupported, shell.Unpin(virtualPath).Status);
+    }
+
+    [Fact]
+    public void Query_without_a_snapshot_answers_immediately_instead_of_asking_the_shell()
+    {
+        // クイックアクセスには「この1件はピンされているか」を個別に聞く口が無く、名前空間の
+        // 全項目を列挙して 1 件ずつ Verbs() を読むしかない（実測 1 回 9.4 秒）。これを右クリック
+        // メニューの Opened から同期に呼んでいたのが「フォルダーのコンテキストメニューで固まる」の
+        // 真因だった。未照会のときは即座に「判定不能＝未ピン」と答え、読み直しは RefreshAsync に任せる。
+        var shell = new WindowsQuickAccessService();
+        Assert.False(shell.IsSnapshotReady);
+
+        var stopwatch = Stopwatch.StartNew();
+        for (var i = 0; i < 50; i++)
+        {
+            Assert.False(shell.IsPinned(_folderA));
+            shell.CanPin(_folderB);
+        }
+        stopwatch.Stop();
+
+        Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(1),
+            $"未照会の状態照会に {stopwatch.ElapsedMilliseconds}ms かかった（シェルを叩いている）");
+    }
+
+    [Fact]
+    public async Task Async_pin_and_unpin_target_only_directories()
+    {
+        var shell = new FakeQuickAccessService { Available = true };
+        var sut = CreateViewModel(shell);
+        sut.LoadRoot(_root);
+        await sut.WhenTreeLoadedAsync();
+
+        var nodes = new[]
+        {
+            sut.Nodes.Single(node => node.FullPath == _folderA),
+            sut.Nodes.Single(node => node.Name == "file.txt"),
+        };
+
+        var pinned = await sut.PinToQuickAccessAsync(nodes);
+        Assert.Equal(1, pinned.SucceededCount);
+        Assert.Equal(new[] { _folderA }, shell.Pinned);
+
+        var unpinned = await sut.UnpinFromQuickAccessAsync(nodes);
+        Assert.Equal(1, unpinned.SucceededCount);
+        Assert.Empty(shell.Pinned);
+        Assert.Equal(new[] { _folderA }, shell.Unpinned);
     }
 
     private FolderTreeViewModel CreateViewModel(IQuickAccessService quickAccess)

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
@@ -76,24 +76,51 @@ public partial class FilesColumnView
         }
     }
 
-    private void OnQuickAccessPinClick(object sender, RoutedEventArgs e)
+    // ピン留め／解除は Explorer への照会と反映待ちで秒単位かかるので、UI スレッドの外で行う
+    // （ツリー側と同じ理由——同期に呼ぶと押した瞬間にアプリが固まる）。
+    private async void OnQuickAccessPinClick(object sender, RoutedEventArgs e)
     {
-        if (Vm is null)
+        var vm = Vm;
+        if (vm is null)
             return;
-        var result = Vm.PinToQuickAccess(Selection());
-        Vm.InvalidateQuickAccessCache();
-        if (result.HasFailures)
-            ShowError(result.ErrorMessage ?? "クイックアクセスへのピン留めに失敗しました。");
+        var selection = Selection();
+        await RunQuickAccessAsync(
+            () => vm.PinToQuickAccessAsync(selection), vm,
+            "クイックアクセスへのピン留めに失敗しました。");
     }
 
-    private void OnQuickAccessUnpinClick(object sender, RoutedEventArgs e)
+    private async void OnQuickAccessUnpinClick(object sender, RoutedEventArgs e)
     {
-        if (Vm is null)
+        var vm = Vm;
+        if (vm is null)
             return;
-        var result = Vm.UnpinFromQuickAccess(Selection());
-        Vm.InvalidateQuickAccessCache();
-        if (result.HasFailures)
-            ShowError(result.ErrorMessage ?? "クイックアクセスからの解除に失敗しました。");
+        var selection = Selection();
+        await RunQuickAccessAsync(
+            () => vm.UnpinFromQuickAccessAsync(selection), vm,
+            "クイックアクセスからの解除に失敗しました。");
+    }
+
+    private async Task RunQuickAccessAsync(
+        Func<Task<QuickAccessBatchResult>> operation, FilesColumnViewModel vm, string failureMessage)
+    {
+        Mouse.OverrideCursor = Cursors.AppStarting;
+        QuickAccessBatchResult? result = null;
+        try
+        {
+            result = await operation();
+        }
+        catch (Exception)
+        {
+            // Explorer に聞けない環境では静かに何もしない。
+        }
+        finally
+        {
+            Mouse.OverrideCursor = null;
+        }
+
+        vm.InvalidateQuickAccessCache();
+        if (result is { HasFailures: true })
+            ShowError(result.ErrorMessage ?? failureMessage);
     }
 
     private void OnPropertiesClick(object sender, RoutedEventArgs e) => ShowProperties();

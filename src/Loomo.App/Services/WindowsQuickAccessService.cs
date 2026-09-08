@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using System.Runtime.InteropServices;
 using System.Security;
 using sk0ya.Loomo.App.ViewModels;
@@ -35,33 +35,60 @@ public sealed record QuickAccessBatchResult(
 public interface IQuickAccessService
 {
     bool IsAvailable { get; }
+
+    /// <summary>照会結果が手元にあり、シェルを叩かずに <see cref="IsPinned"/>／<see cref="CanPin"/> へ
+    /// 答えられるか。<b>UI から同期に呼んでよいのはこれが true のときだけ</b>——false のまま呼ぶと
+    /// 「未ピン」と答えるだけで、シェル照会は行わない（<see cref="RefreshAsync"/> の仕事）。</summary>
+    bool IsSnapshotReady => true;
+
     bool IsPinned(string path);
     bool CanPin(string path);
     QuickAccessOperationResult Pin(string path);
     QuickAccessOperationResult Unpin(string path);
     QuickAccessBatchResult PinMany(IEnumerable<string> paths);
     QuickAccessBatchResult UnpinMany(IEnumerable<string> paths);
+
+    /// <summary>クイックアクセス一覧の照会を UI スレッドの外で済ませ、次の同期照会に備える。
+    /// 戻り値は照会できたか。既に新鮮なら何もしない。</summary>
+    Task<bool> RefreshAsync() => Task.FromResult(true);
+
+    /// <summary>ピン留め／解除を UI スレッドの外で行う（照会・反映待ちを含むため秒単位かかる）。</summary>
+    Task<QuickAccessBatchResult> PinManyAsync(IEnumerable<string> paths) => Task.FromResult(PinMany(paths));
+    Task<QuickAccessBatchResult> UnpinManyAsync(IEnumerable<string> paths) => Task.FromResult(UnpinMany(paths));
+
     void Invalidate();
 }
 
 /// <summary>Shell が無い環境では全操作を安全に no-op とする実装。テストでは
 /// <see cref="IQuickAccessService"/> を差し替えられるため、実機Explorerを必要としない。
 ///
-/// <para><b>照会は一覧をまるごと 1 回引いて短時間キャッシュする。</b>クイックアクセスには
+/// <para><b>照会は一覧をまるごと 1 回引いてキャッシュする。</b>クイックアクセスには
 /// 「この 1 件はピンされているか」を個別に聞ける口が無く、名前空間の全項目を列挙して照合するしかない。
 /// 右クリックメニューは選択項目ぶん <see cref="CanPin"/>／<see cref="IsPinned"/> を呼ぶので、
 /// 1 件ずつ列挙すると複数選択で N 回（実行時にも確認するので最大 2N 回）シェルを叩き、UI スレッドが
 /// 目に見えて止まる。列挙結果（パス→ピン判定）をまとめて持ち、自分で変更したときは
-/// <see cref="Invalidate"/> で捨てる。</para></summary>
+/// <see cref="Invalidate"/> で捨てる。</para>
+///
+/// <para><b>シェル照会は UI スレッドでは絶対に行わない。</b>1 回の照会は「一覧の列挙（実測 0.7 秒）
+/// ＋ 全項目の <c>Verbs()</c>」で、この機の実測は<b>合計 9.4 秒</b>——ピン判定に verbs を読む以外の
+/// 手段が無く（詳細列に「ピン留め」は無い）、一覧には recent files や UNC・OneDrive も混ざるので
+/// さらに伸びる。フォルダーの右クリックメニューはこれを <c>Opened</c> の中で同期に呼んでいたため、
+/// メニューを開くたびにアプリが固まっていた。そこで
+/// <see cref="Snapshot"/> は<b>キャッシュしか見ない</b>（無ければ「判定不能」）ようにし、
+/// 読み直しは <see cref="RefreshAsync"/>／<see cref="PinManyAsync"/>／<see cref="UnpinManyAsync"/> が
+/// 専用の STA スレッドで行う。Shell.Application は apartment-threaded なので、スレッドプール（MTA）
+/// ではなく STA スレッドを立てて UI スレッドと同じ呼び方を保つ。</para></summary>
 public sealed class WindowsQuickAccessService : IQuickAccessService
 {
     private const string QuickAccessNamespace = "shell:::{679F85CB-0220-4080-B29B-5540CC05AAB6}";
     private const string PinVerb = "pintohome";
     private const string UnpinVerb = "unpinfromhome";
 
-    /// <summary>照会キャッシュの寿命。1 回の操作（メニューを開く→実行する）をまとめる程度に短くし、
-    /// Explorer 側で直接ピンを変えられても程なく追いつくようにする。</summary>
-    private static readonly TimeSpan CacheLifetime = TimeSpan.FromSeconds(5);
+    /// <summary>照会キャッシュの寿命＝この間はメニューを開いても読み直さない。1 回の照会に数秒かかる
+    /// ので、寿命がそれより短いと「常に期限切れ＝毎回読み直し」になり、メニューにピン項目が
+    /// いつまでも出ない。自分で変更したときは <see cref="Invalidate"/> で捨てるため、この寿命が
+    /// 効くのは Explorer 側で直接ピンを変えられた場合だけ。</summary>
+    private static readonly TimeSpan CacheLifetime = TimeSpan.FromMinutes(1);
 
     /// <summary>変更後の反映待ち。1 件ずつではなく<b>バッチ全体で 1 回だけ</b>待つ。</summary>
     private const int ConfirmAttempts = 4;
@@ -75,6 +102,9 @@ public sealed class WindowsQuickAccessService : IQuickAccessService
     // 一覧に無いパスは未ピン。辞書そのものが null ならキャッシュ無し。
     private Dictionary<string, bool?>? _pinned;
     private DateTime _pinnedAt;
+
+    // 進行中の読み直し。同時に複数のメニューが開いても列挙は 1 回に束ねる。
+    private Task<bool>? _refresh;
 
     public WindowsQuickAccessService(IFilePlacesProvider? places = null) => _places = places;
 
@@ -132,20 +162,89 @@ public sealed class WindowsQuickAccessService : IQuickAccessService
         return true;
     }
 
-    /// <summary>クイックアクセス一覧を 1 回だけ列挙して、パス→ピン判定の対応を作る（短時間キャッシュ）。</summary>
+    /// <summary>パス→ピン判定の対応を返す。<paramref name="refresh"/> のときだけ<b>その場で</b>
+    /// シェルを列挙する（数秒かかるので、呼んでよいのは UI スレッドの外＝
+    /// <see cref="RefreshAsync"/>／<see cref="ApplyManyAsync"/> の中だけ）。それ以外は手元のキャッシュを
+    /// そのまま返し、無ければ null＝判定不能とする——ここで読みに行くと、右クリックメニューを
+    /// 開いた瞬間に UI スレッドが数秒止まる。</summary>
     private Dictionary<string, bool?>? Snapshot(bool refresh)
     {
+        if (!refresh)
+        {
+            lock (_gate)
+                return _pinned;
+        }
+
+        // 列挙はロックの外で行う（数秒かかるため、その間 IsPinned 等を待たせない）。
+        var snapshot = ReadSnapshot();
         lock (_gate)
         {
-            if (!refresh && _pinned is { } cached && DateTime.UtcNow - _pinnedAt < CacheLifetime)
-                return cached;
-
-            var snapshot = ReadSnapshot();
             // 読めなかったときは古い値で答えない（判定不能として扱う）。
             _pinned = snapshot;
             _pinnedAt = snapshot is null ? default : DateTime.UtcNow;
-            return snapshot;
         }
+        return snapshot;
+    }
+
+    /// <summary>キャッシュが新鮮で、シェルを叩かずに答えられるか。</summary>
+    public bool IsSnapshotReady
+    {
+        get
+        {
+            lock (_gate)
+                return _pinned is not null && DateTime.UtcNow - _pinnedAt < CacheLifetime;
+        }
+    }
+
+    /// <summary>一覧の照会を専用 STA スレッドで済ませ、次の同期照会に備える。新鮮なら何もしない。
+    /// 同時に呼ばれても列挙は 1 回に束ねる。</summary>
+    public Task<bool> RefreshAsync()
+    {
+        if (!IsAvailable)
+            return Task.FromResult(false);
+        if (IsSnapshotReady)
+            return Task.FromResult(true);
+
+        lock (_gate)
+        {
+            if (_refresh is { IsCompleted: false } running)
+                return running;
+            return _refresh = RunOnStaAsync(() => Snapshot(refresh: true) is not null);
+        }
+    }
+
+    public Task<QuickAccessBatchResult> PinManyAsync(IEnumerable<string> paths)
+        => ApplyManyAsync(paths, PinVerb, expectedPinned: true);
+
+    public Task<QuickAccessBatchResult> UnpinManyAsync(IEnumerable<string> paths)
+        => ApplyManyAsync(paths, UnpinVerb, expectedPinned: false);
+
+    private Task<QuickAccessBatchResult> ApplyManyAsync(
+        IEnumerable<string> paths, string verb, bool expectedPinned)
+    {
+        // 列挙は呼び出し側（UI）スレッドで済ませ、Shell を触る本体だけを STA スレッドへ渡す。
+        var targets = paths.ToList();
+        return RunOnStaAsync(() => ApplyMany(targets, verb, expectedPinned));
+    }
+
+    /// <summary>Shell.Application は apartment-threaded なので、スレッドプール（MTA）ではなく
+    /// 使い捨ての STA スレッドで呼ぶ（MTA からだと COM が立てる別 STA へマーシャリングされ、
+    /// UI スレッドから呼んだときと挙動が変わる）。</summary>
+    private static Task<T> RunOnStaAsync<T>(Func<T> work)
+    {
+        var completion = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var thread = new Thread(() =>
+        {
+            try { completion.SetResult(work()); }
+            catch (Exception ex) { completion.SetException(ex); }
+        })
+        {
+            IsBackground = true,
+            Name = "Loomo.QuickAccess",
+        };
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        return completion.Task;
     }
 
     private Dictionary<string, bool?>? ReadSnapshot()
@@ -198,6 +297,8 @@ public sealed class WindowsQuickAccessService : IQuickAccessService
         {
             _pinned = null;
             _pinnedAt = default;
+            // 進行中の読み直しは変更前の状態を運んでくるので、束ねる対象から外す。
+            _refresh = null;
         }
         (_places as IQuickAccessCacheInvalidator)?.InvalidateQuickAccessCache();
     }

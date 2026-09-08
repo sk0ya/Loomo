@@ -410,22 +410,7 @@ public partial class FolderTreeView
         if (show && DataContext is FolderTreeViewModel treeVm && node is { IsDirectory: false } && File.Exists(node.FullPath))
             PopulateWorkflowMenu(cm, treeVm, node);
 
-        // Explorer のQuick accessはWorkspaceStateStoreとは別のOS状態。メニューを開くたびに
-        // Shellへ照会するため、外部Explorerでの追加・解除や再起動後も表示がずれない。
-        var quickAccessSelection = CurrentSelection(node);
-        if (DataContext is FolderTreeViewModel quickAccessVm)
-        {
-            var canPin = quickAccessVm.CanPinToQuickAccess(quickAccessSelection);
-            var canUnpin = quickAccessVm.CanUnpinFromQuickAccess(quickAccessSelection);
-            var quickAccessPin = cm.Items.OfType<MenuItem>()
-                .FirstOrDefault(item => item.Tag as string == "QuickAccessPinnable");
-            var quickAccessUnpin = cm.Items.OfType<MenuItem>()
-                .FirstOrDefault(item => item.Tag as string == "QuickAccessUnpinnable");
-            if (quickAccessPin is not null)
-                quickAccessPin.Visibility = canPin ? Visibility.Visible : Visibility.Collapsed;
-            if (quickAccessUnpin is not null)
-                quickAccessUnpin.Visibility = canUnpin ? Visibility.Visible : Visibility.Collapsed;
-        }
+        UpdateQuickAccessMenuItems(cm, node);
 
         // 「選択した2つを Diff で比較」は、ファイルをちょうど2つ選んでいるときだけ出す
         // （それ以外では何を左右に置くか決まらない）。
@@ -448,6 +433,73 @@ public partial class FolderTreeView
         NormalizeSeparators(cm);
         foreach (var submenu in cm.Items.OfType<MenuItem>())
             NormalizeSeparators(submenu);
+    }
+
+    /// <summary>Explorer のクイックアクセス（ホーム）の項目を出し分ける。これは WorkspaceStateStore の
+    /// ルートピンとは別の OS 状態なので、実状態は Explorer に聞くしかない。
+    ///
+    /// <para><b>ただし照会を同期に行ってはいけない。</b>クイックアクセスには「この 1 件はピンされているか」を
+    /// 個別に聞く口が無く、名前空間の全項目を列挙して 1 件ずつ <c>Verbs()</c> を読むしかない——この機の実測で
+    /// <b>1 回 9.4 秒</b>。これを <c>Opened</c> の中で呼んでいたため、<b>フォルダーを右クリックするたびに
+    /// アプリが固まっていた</b>（ファイルは対象外なので固まらず、フォルダーだけの症状として現れた）。
+    /// 照会済みならその場で出し分け、まだならいったん隠しておいてバックグラウンドで読み、
+    /// メニューが開いたままなら後から差し込む。</para></summary>
+    private void UpdateQuickAccessMenuItems(ContextMenu cm, FileNodeViewModel? node)
+    {
+        var pin = FindByTag(cm, "QuickAccessPinnable");
+        var unpin = FindByTag(cm, "QuickAccessUnpinnable");
+        if ((pin is null && unpin is null) || DataContext is not FolderTreeViewModel vm)
+            return;
+
+        var selection = CurrentSelection(node);
+        // フォルダーが1つも無い選択（ファイルだけ・仮想 Shell 項目だけ）なら、そもそも照会する必要が無い。
+        var targeted = vm.QuickAccess.IsAvailable
+            && selection.Any(item => item.IsDirectory && !item.IsShellItem);
+
+        if (targeted && vm.QuickAccess.IsSnapshotReady)
+        {
+            SetVisible(pin, vm.CanPinToQuickAccess(selection));
+            SetVisible(unpin, vm.CanUnpinFromQuickAccess(selection));
+            return;
+        }
+
+        SetVisible(pin, false);
+        SetVisible(unpin, false);
+        if (targeted)
+            _ = FillQuickAccessMenuItemsAsync(cm, vm, selection, pin, unpin);
+    }
+
+    private async Task FillQuickAccessMenuItemsAsync(
+        ContextMenu cm,
+        FolderTreeViewModel vm,
+        IReadOnlyList<FileNodeViewModel> selection,
+        MenuItem? pin,
+        MenuItem? unpin)
+    {
+        try
+        {
+            // 呼び出し元は UI スレッドなので、await の後もそのまま UI スレッドに戻る。
+            if (!await vm.QuickAccess.RefreshAsync() || !cm.IsOpen)
+                return;
+
+            SetVisible(pin, vm.CanPinToQuickAccess(selection));
+            SetVisible(unpin, vm.CanUnpinFromQuickAccess(selection));
+            // 出し分けが変わったので、区切り線を見え方に合わせ直す。
+            NormalizeSeparators(cm);
+        }
+        catch (Exception)
+        {
+            // Explorer に聞けない環境では、この2項目が出ないだけ（他のメニューは通常どおり）。
+        }
+    }
+
+    private static MenuItem? FindByTag(ItemsControl menu, string tag)
+        => menu.Items.OfType<MenuItem>().FirstOrDefault(item => item.Tag as string == tag);
+
+    private static void SetVisible(UIElement? element, bool visible)
+    {
+        if (element is not null)
+            element.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
     }
 
     /// <summary>グループ分けの区切り線を、実際に見えている項目に合わせて出し分ける。
@@ -568,24 +620,46 @@ public partial class FolderTreeView
             vm.UnpinFolder(node.FullPath);
     }
 
-    private void OnPinToQuickAccessClick(object sender, RoutedEventArgs e)
+    // ピン留め／解除も UI スレッドでは行わない（照会に加えて反映待ちが入るので、同期に呼ぶと
+    // メニューを開いたときより長く固まる）。待っている間はカーソルで進行中を示す。
+    private async void OnPinToQuickAccessClick(object sender, RoutedEventArgs e)
     {
         if (DataContext is not FolderTreeViewModel vm)
             return;
 
-        var result = vm.PinToQuickAccess(CurrentSelection(ContextNode(sender)));
-        if (result.HasFailures)
+        var selection = CurrentSelection(ContextNode(sender));
+        var result = await RunQuickAccessAsync(() => vm.PinToQuickAccessAsync(selection));
+        if (result is { HasFailures: true })
             ShowError(result.ErrorMessage ?? "クイックアクセスへのピン留めに失敗しました。");
     }
 
-    private void OnUnpinFromQuickAccessClick(object sender, RoutedEventArgs e)
+    private async void OnUnpinFromQuickAccessClick(object sender, RoutedEventArgs e)
     {
         if (DataContext is not FolderTreeViewModel vm)
             return;
 
-        var result = vm.UnpinFromQuickAccess(CurrentSelection(ContextNode(sender)));
-        if (result.HasFailures)
+        var selection = CurrentSelection(ContextNode(sender));
+        var result = await RunQuickAccessAsync(() => vm.UnpinFromQuickAccessAsync(selection));
+        if (result is { HasFailures: true })
             ShowError(result.ErrorMessage ?? "クイックアクセスからの解除に失敗しました。");
+    }
+
+    private static async Task<QuickAccessBatchResult?> RunQuickAccessAsync(
+        Func<Task<QuickAccessBatchResult>> operation)
+    {
+        Mouse.OverrideCursor = Cursors.AppStarting;
+        try
+        {
+            return await operation();
+        }
+        catch (Exception)
+        {
+            return null;   // Explorer に聞けない環境では静かに何もしない。
+        }
+        finally
+        {
+            Mouse.OverrideCursor = null;
+        }
     }
 
     private void OnRemoveFromWorkspaceClick(object sender, RoutedEventArgs e)

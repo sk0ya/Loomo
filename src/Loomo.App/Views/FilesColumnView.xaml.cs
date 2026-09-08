@@ -737,6 +737,9 @@ public partial class FilesColumnView : UserControl
         var single = selection.Count == 1 ? selection[0] : null;
         var files = selection.Where(entry => !entry.IsDirectory).ToList();
         var pinTarget = PinTarget();
+        // Explorer のクイックアクセスの照会は数秒かかる（FolderTreeView.UpdateQuickAccessMenuItems の
+        // 注記を参照）。ここでは照会済みのときだけ答え、まだならこの下でバックグラウンドに回す。
+        var quickAccessReady = Vm.QuickAccess.IsSnapshotReady;
 
         foreach (var item in Descendants(menu))
         {
@@ -752,8 +755,8 @@ public partial class FilesColumnView : UserControl
                 "Pinnable" => Vm.CanPin(pinTarget),
                 "Unpinnable" => Vm.IsPinned(pinTarget),
                 // Windows Explorer 側のクイックアクセス（Loomo のルートピンとは別物）。
-                "QuickAccessPinnable" => Vm.CanPinToQuickAccess(selection),
-                "QuickAccessUnpinnable" => Vm.CanUnpinFromQuickAccess(selection),
+                "QuickAccessPinnable" => quickAccessReady && Vm.CanPinToQuickAccess(selection),
+                "QuickAccessUnpinnable" => quickAccessReady && Vm.CanUnpinFromQuickAccess(selection),
                 "GitMenu" => Vm.CanGitFor(single),
                 "GitBlame" => single is { IsDirectory: false } && Vm.CanGitFor(single),
                 "GitIgnore" => Vm.CanAddToGitignoreFor(single),
@@ -769,6 +772,40 @@ public partial class FilesColumnView : UserControl
         FolderTreeView.NormalizeSeparators(menu);
         foreach (var submenu in menu.Items.OfType<MenuItem>())
             FolderTreeView.NormalizeSeparators(submenu);
+
+        if (!quickAccessReady && Vm.QuickAccess.IsAvailable && selection.Any(entry => entry.IsDirectory))
+            _ = FillQuickAccessMenuItemsAsync(menu, selection);
+    }
+
+    /// <summary>クイックアクセスの照会を UI スレッドの外で済ませ、メニューが開いたままなら
+    /// ピン留め／解除の項目を後から差し込む。</summary>
+    private async Task FillQuickAccessMenuItemsAsync(
+        ContextMenu menu, IReadOnlyList<FileEntryViewModel> selection)
+    {
+        try
+        {
+            var vm = Vm;
+            if (vm is null || !await vm.QuickAccess.RefreshAsync() || !menu.IsOpen)
+                return;
+
+            foreach (var item in Descendants(menu))
+            {
+                var visible = (item.Tag as string) switch
+                {
+                    "QuickAccessPinnable" => vm.CanPinToQuickAccess(selection),
+                    "QuickAccessUnpinnable" => vm.CanUnpinFromQuickAccess(selection),
+                    _ => (bool?)null,
+                };
+                if (visible is { } value)
+                    item.Visibility = value ? Visibility.Visible : Visibility.Collapsed;
+            }
+
+            FolderTreeView.NormalizeSeparators(menu);
+        }
+        catch (Exception)
+        {
+            // Explorer に聞けない環境では、この2項目が出ないだけ。
+        }
     }
 
     private static IEnumerable<MenuItem> Descendants(ItemsControl menu)
