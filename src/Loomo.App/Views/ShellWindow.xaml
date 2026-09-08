@@ -2578,8 +2578,10 @@
 
                 <!-- ペインドラッグ中のスナップ風プレビュー用オーバーレイ（PaneHost と同じセルへ重ねる）。
                      Popup は1モニタへクリップされ、跨ぎ最大化中に隣のモニタでプレビューが見えないため
-                     ウィンドウ内のレイヤとして被せる。 -->
-                <Grid x:Name="PaneDragOverlay" Grid.Column="2" Panel.ZIndex="100" Visibility="Collapsed" />
+                     ウィンドウ内のレイヤとして被せる。
+                     袖の列（3〜4）まで伸ばすのは「袖へしまう」ドロップの受け皿を塗るため。原点は
+                     PaneHost と同じ（列2の左端）なので、プレビューの座標系は変わらない。 -->
+                <Grid x:Name="PaneDragOverlay" Grid.Column="2" Grid.ColumnSpan="3" Panel.ZIndex="100" Visibility="Collapsed" />
 
                 <!-- 使用箇所一覧（エディタの Find References / gr）。エディタは結果を表示せず
                      FindReferencesResult イベントを発火するだけなので、ホスト側でこのポップアップに

@@ -45,6 +45,8 @@ public partial class ShellWindow {
         return new Rect(topLeft, new Size(StageArea.ActualWidth, StageArea.ActualHeight));
     }
     private void UpdateDragPreview(Point pos) {
+        if (TryPreviewWingDrop(pos))
+            return;
         var hit = HitTestCell(pos);
         if (hit is null) {
             _dragTarget = null;
@@ -74,6 +76,46 @@ public partial class ShellWindow {
         PlaceOverlay(_dragPreview!, previewRect);
         _dragTargetOutline!.Visibility = Visibility.Visible;
         _dragPreview!.Visibility = Visibility.Visible;
+    }
+    /// <summary>袖の上なら「しまう」プレビュー（袖ぜんぶを塗る）を出して true。舞台に出ているペインを
+    /// 掴んでいるときだけ受ける——袖のカードを掴んでいる場合は元の場所へ戻すだけなので、受け皿にしない。</summary>
+    private bool TryPreviewWingDrop(Point pos) {
+        var zone = WingDropZone.Compute(WingRectInPaneHost(), PaneHost.ActualHeight);
+        // 受けない条件は MovePaneToWing と同じものをここにも置く——「しまう」表示を出しておいて
+        // 離すと何も起きない、というズレを構造的に作らない（最後の1枚は BeginPaneDrag が
+        // そもそも掴ませないので、いまは二重の守り）。
+        if (_dragFromWing || VisibleLeafCount() <= 1 || !WingDropZone.Hits(zone, pos)) {
+            SetDragToWing(false);
+            return false;
+        }
+        SetDragToWing(true);
+        _dragTarget = null;
+        _dragZone = null;
+        _dragCenter = false;
+        _dragSpan = false;
+        PlaceOverlay(_dragTargetOutline!, zone);
+        PlaceOverlay(_dragPreview!, zone);
+        _dragTargetOutline!.Visibility = Visibility.Visible;
+        _dragPreview!.Visibility = Visibility.Visible;
+        Mouse.OverrideCursor = Cursors.Hand;
+        return true;
+    }
+    /// <summary>袖の矩形を <c>PaneHost</c> 座標で返す（袖が出ていなければ空）。プレビューの
+    /// オーバーレイは <c>PaneHost</c> と同じ原点で袖の列まで伸びているので、この座標のまま置ける。</summary>
+    private Rect WingRectInPaneHost() {
+        if (WingHost is null || WingHost.Visibility != Visibility.Visible
+            || WingHost.ActualWidth <= 0 || WingHost.ActualHeight <= 0)
+            return Rect.Empty;
+        var topLeft = WingHost.TransformToVisual(PaneHost).Transform(new Point(0, 0));
+        return new Rect(topLeft, new Size(WingHost.ActualWidth, WingHost.ActualHeight));
+    }
+    /// <summary>掴んでいるチップの文言を行き先に合わせる（袖の上＝「→ 袖へ」）。</summary>
+    private void SetDragToWing(bool toWing) {
+        if (_dragToWing == toWing)
+            return;
+        _dragToWing = toWing;
+        if (_dragGhost?.Child is TextBlock label)
+            label.Text = toWing ? $"{PaneLabel(_dragSource)} → 袖へ" : PaneLabel(_dragSource);
     }
     private static bool IsNearOuterEdge(double relX, double relY, DropZone zone) => zone switch {
         DropZone.Left => relX < 0.2, DropZone.Right => relX > 0.8, DropZone.Above => relY < 0.2, _ => relY > 0.8,
@@ -112,9 +154,14 @@ public partial class ShellWindow {
         var span = _dragSpan;
         var fromWing = _dragFromWing;
         var stageDrag = _stageDrag;
+        var toWing = _dragToWing;
         EndPaneDrag();
         if (stageDrag) {
             HandleStageDrop(source, target, center, zone);
+            return;
+        }
+        if (toWing) {
+            MovePaneToWing(source);
             return;
         }
         if (target is not { } t || t == source)
@@ -192,6 +239,7 @@ public partial class ShellWindow {
         _paneDragging = false;
         _dragFromWing = false;
         _stageDrag = false;
+        _dragToWing = false;
         _dragCenter = false;
         _dragSpan = false;
         HideDragGhost();

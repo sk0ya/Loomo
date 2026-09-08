@@ -225,6 +225,21 @@ public partial class ShellWindow {
         RebuildPaneLayout();
         SaveActiveWorkspaceSnapshot();
     }
+    /// <summary>舞台（タイル）に出ているペインを袖へしまう。閉じる（＝無効化）のではなく
+    /// 「有効なまま非表示」＝袖のカードとして残すので、袖から掴み直せば元どおり戻せる。
+    /// ドラッグ元が最後の1枚のときは受けない（舞台が空になる）。</summary>
+    private void MovePaneToWing(PaneKind kind) {
+        if (_stageActive || !IsPaneVisible(kind) || VisibleLeafCount() <= 1)
+            return;
+        BeginTrailLayoutChange();
+        _enabledSessions.Add(kind);   // 袖に並ぶのは「有効な」ペインだけ
+        var wasFocused = _focusedRegion?.Pane == kind;
+        SetPaneVisible(kind, false);
+        if (!InActiveWingTab(kind))
+            SelectWingTab(WingTab.All);   // しまった先が今のタブに無いと、行方が見えない
+        if (wasFocused && TopLeftPane() is { } next)
+            FocusPane(next);
+    }
     private void EnsureEditorPaneForOpenedFile(string path) {
         var target = BinaryFileDetector.IsBinary(path) ? PaneKind.EditorSupport : PaneKind.Editor;
         if (_stageActive) {

@@ -85,6 +85,7 @@ public partial class ShellWindow : Window {
     private bool _stageDrag;
     private bool _dragCenter;
     private bool _dragSpan;
+    private bool _dragToWing;   // 袖の上で離す＝舞台から降ろして袖へしまう
     private FocusTarget? _focusedRegion;
     private bool _resizeMode;
     private bool _suppressResizeExit;
