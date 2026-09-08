@@ -55,7 +55,8 @@ public partial class CSharpSolutionExplorerView : UserControl
     /// 名前を狙って押しても何も起きないのは分かりにくいので、行のどこを押しても畳める。
     /// 矢印自身のクリックは ToggleButton 側で既にトグルされるため除外し、ダブルクリック
     /// （ClickCount=2）は二重トグルになるので無視する。開閉は TreeViewItem 側へ書く——
-    /// コンテナの IsExpanded はノード VM と TwoWay で結ばれているので、VM にも伝わる。</summary>
+    /// コンテナの IsExpanded はノード VM と TwoWay で結ばれているので、VM にも伝わる。
+    /// 2打目の <b>Down</b> は <see cref="OnTreePreviewMouseLeftButtonDown"/> が止める。</summary>
     private void OnTreeMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
         if (e.ClickCount != 1 || e.OriginalSource is not DependencyObject source) return;
@@ -64,6 +65,19 @@ public partial class CSharpSolutionExplorerView : UserControl
         if (item.DataContext is not CSharpSolutionNodeViewModel { Children.Count: > 0 }) return;
 
         item.IsExpanded = !item.IsExpanded;
+    }
+
+    /// <summary>ダブルクリックの2打目（WPF の TreeViewItem が内蔵する開閉）を、子を持つ行では止める。
+    /// 1クリック開閉と重なると「Up で開いて Down で閉じる」で往復し、ちらついて元の状態に戻ってしまう
+    /// ——止めた結果、ダブルクリックでも開閉はきっかり1回。開ける行（ファイル）は素通しで、
+    /// そこは <see cref="OnTreeDoubleClick"/> が「開く」に使う。</summary>
+    private void OnTreePreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ClickCount != 2 || e.OriginalSource is not DependencyObject source) return;
+        if (FindAncestor<TreeViewItem>(source) is not { } item) return;
+        if (item.DataContext is not CSharpSolutionNodeViewModel { Children.Count: > 0 }) return;
+
+        e.Handled = true;
     }
 
     private void OnTreeDoubleClick(object sender, MouseButtonEventArgs e)
@@ -214,9 +228,12 @@ public partial class CSharpSolutionExplorerView : UserControl
             AddAction(menu, vm, node, CSharpSolutionAction.Debug, "デバッグ");
         }
         menu.Items.Add(new Separator());
-        AddCommand(menu, "OpenProjectFile",
-            node.Kind == CSharpSolutionNodeKind.Solution ? "ソリューションファイルを開く" : "プロジェクトファイルを開く",
-            () => vm.OpenPath(node.FullPath));
+        // フォルダーだけの C# ワークスペースには .sln の実体が無い（FullPath が null）。
+        // 押しても何も起きない項目を出さないよう、下の AddPathCommands と同じ条件で守る。
+        if (!string.IsNullOrWhiteSpace(node.FullPath))
+            AddCommand(menu, "OpenProjectFile",
+                node.Kind == CSharpSolutionNodeKind.Solution ? "ソリューションファイルを開く" : "プロジェクトファイルを開く",
+                () => vm.OpenPath(node.FullPath));
         AddPathCommands(menu, node.FullPath);
     }
 

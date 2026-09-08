@@ -12,6 +12,17 @@ namespace sk0ya.Loomo.App.Views;
 /// </summary>
 internal sealed class SpinoffBrowserAddress(string initial)
 {
+    /// <summary>器（Grid）から行き先を引けるようにする添付プロパティ。切り離し直後の
+    /// スナップショット保存は実体の生成（約1秒）より<b>先</b>に走るので、実体から読めない間の
+    /// 行き先がここに要る——無いと URL 未設定で保存され、復元で既定ページへ戻ってしまう。</summary>
+    private static readonly DependencyProperty AddressProperty = DependencyProperty.RegisterAttached(
+        "Address", typeof(SpinoffBrowserAddress), typeof(SpinoffBrowserAddress));
+
+    public void AttachTo(DependencyObject host) => host.SetValue(AddressProperty, this);
+
+    public static SpinoffBrowserAddress? Of(DependencyObject? host)
+        => host?.GetValue(AddressProperty) as SpinoffBrowserAddress;
+
     /// <summary>作り直しの行き先。実体から読めた最後の URL（まだ一度も読めていなければ初期値）。</summary>
     public string Value { get; private set; } = initial;
 

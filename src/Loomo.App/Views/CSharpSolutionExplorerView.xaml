@@ -73,6 +73,7 @@
             <Button DockPanel.Dock="Right" Content="ビルド" Click="OnBuildClick"
                     Style="{StaticResource SecondaryButton}" Height="20" Padding="6,0" Margin="3,0,0,0"
                     FontSize="{DynamicResource Fs11}"
+                    IsEnabled="{Binding CanBuildTarget}"
                     ToolTip="{Binding ActionTargetLabel, StringFormat={}{0} をビルド}"
                     AutomationProperties.AutomationId="CSharpSolutionBuild"
                     AutomationProperties.Name="C#選択項目をビルド" />
@@ -139,6 +140,7 @@
                       AutomationProperties.AutomationId="CSharpSolutionTree"
                       AutomationProperties.Name="C#ソリューションツリー"
                       PreviewMouseDoubleClick="OnTreeDoubleClick"
+                      PreviewMouseLeftButtonDown="OnTreePreviewMouseLeftButtonDown"
                       PreviewMouseLeftButtonUp="OnTreeMouseLeftButtonUp"
                       PreviewKeyDown="OnTreePreviewKeyDown"
                       x:Name="SolutionTree">

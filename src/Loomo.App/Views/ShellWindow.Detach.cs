@@ -23,7 +23,11 @@ public partial class ShellWindow {
             // 切り離したブラウザは作り直せるよう器（Grid）越しに載っている（CreateBrowserSpinoffItem）。
             // 器のまま素通りさせると復元対象から外れ、切り替え・再起動でその窓だけ消える。
             case Panel host when host.Children.OfType<WebView2CompositionControl>().FirstOrDefault() is { } hosted:
-                snapshot.Url = hosted.TryUrl();
+                // 実体から読めないうち（切り離し直後は生成に約1秒かかる。保存はその前に走る）は
+                // 器に添えた行き先を使う。読めた値は次の作り直しのために控えておく。
+                var address = SpinoffBrowserAddress.Of(host);
+                address?.Note(hosted.TryUrl());
+                snapshot.Url = hosted.TryUrl() ?? address?.Value;
                 break;
             case DetachedEditorSupportView preview:
                 snapshot.FilePath = preview.SourceFilePath;
@@ -230,6 +234,7 @@ public partial class ShellWindow {
         // 行き先は器より長生きさせる（実体を作り直しても、いま見ているページを見失わないため）。
         var address = new SpinoffBrowserAddress(sourceUrl ?? DefaultBrowserUrl);
         var host = new Grid();
+        address.AttachTo(host);   // スナップショット保存が実体より先に走っても行き先を見失わない
         var view = CreateBrowserView();
         view.Visibility = Visibility.Visible;
         host.Children.Add(view);

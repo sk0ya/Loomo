@@ -29,6 +29,16 @@ public sealed record CSharpSolutionNode(
     /// <summary>名前の後ろへ淡色で添える補助情報（TFM名・件数など）。行を増やさずに
     /// 「単一TFMなら畳む」「グループの件数を出す」を賄うための1列。</summary>
     public string? Detail { get; init; }
+
+    /// <summary><see cref="Detail"/> が子の件数から作られているときの単位（<c>""</c>＝数字だけ、
+    /// <c>" プロジェクト"</c> など）。null＝件数ではない（"テスト" などの札）。絞り込みで枝を
+    /// 間引いたら数字を作り直すのに使う——そのまま持ち越すと「その他ファイル 42」の下に1件、
+    /// のような嘘の数字が残る。</summary>
+    public string? DetailCountUnit { get; init; }
+
+    /// <summary>子の件数から <see cref="Detail"/> を作った同じ node を返す（単位つき）。</summary>
+    public CSharpSolutionNode WithChildCountDetail(string unit)
+        => this with { Detail = $"{Children.Count}{unit}", DetailCountUnit = unit };
 }
 
 /// <summary>評価済みの <see cref="SolutionModel"/> を solution／project／TFM／folder／file の
@@ -41,6 +51,7 @@ public static class CSharpSolutionTreeBuilder
             CanRunTests: solution.Projects.Any(project => project.IsTestProject))
         {
             Detail = solution.Projects.Count > 0 ? $"{solution.Projects.Count} プロジェクト" : null,
+            DetailCountUnit = solution.Projects.Count > 0 ? " プロジェクト" : null,
         };
 
     private static CSharpSolutionNode BuildProject(ProjectModel project)
@@ -57,6 +68,7 @@ public static class CSharpSolutionTreeBuilder
                     .OrderBy(n => n.Name, StringComparer.OrdinalIgnoreCase).ToList())
             {
                 Detail = projectReferences.Count.ToString(),
+                DetailCountUnit = "",
             });
         }
 
@@ -114,6 +126,7 @@ public static class CSharpSolutionTreeBuilder
                 .OrderBy(n => n.Name, StringComparer.OrdinalIgnoreCase).ToList())
         {
             Detail = items.Count.ToString(),
+            DetailCountUnit = "",
         });
     }
 
@@ -211,7 +224,12 @@ public static class CSharpSolutionTreeFilter
                 if (Prune(child, isRoot: false) is { } keptChild) children.Add(keptChild);
 
             if (!self && children.Count == 0) return null;
-            return node with { Children = children };
+            var kept = node with { Children = children };
+            // 件数の Detail は間引いた後の数で作り直す。持ち越すと「その他ファイル 42」の下に
+            // 1件、のような嘘になる（表示は絞り込み結果なのに数字だけ全体を指してしまう）。
+            return node.DetailCountUnit is { } unit && children.Count != node.Children.Count
+                ? kept.WithChildCountDetail(unit)
+                : kept;
         }
     }
 }

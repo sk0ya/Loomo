@@ -67,6 +67,9 @@ public sealed partial class CSharpSolutionExplorerViewModel : ObservableObject, 
     public string ActionTargetLabel => ActionTarget?.Name ?? "";
     public string? ActionTargetPath => ActionTarget?.FullPath;
     public bool CanTestTarget => ActionTarget?.CanRunTests == true;
+    /// <summary>ビルドできる対象があるか。絞り込みが何にも一致しないと <see cref="Nodes"/> が空になり
+    /// 対象が消える——押せるのに黙って何も起きないボタンを作らないため、テストと同じく明示する。</summary>
+    public bool CanBuildTarget => ActionTarget is not null;
     public bool IsFiltering => FilterText.Trim().Length > 0;
 
     public event EventHandler<string>? FileOpenRequested;
@@ -165,6 +168,7 @@ public sealed partial class CSharpSolutionExplorerViewModel : ObservableObject, 
         OnPropertyChanged(nameof(ActionTargetLabel));
         OnPropertyChanged(nameof(ActionTargetPath));
         OnPropertyChanged(nameof(CanTestTarget));
+        OnPropertyChanged(nameof(CanBuildTarget));
     }
 
     partial void OnFilterTextChanged(string? oldValue, string newValue)

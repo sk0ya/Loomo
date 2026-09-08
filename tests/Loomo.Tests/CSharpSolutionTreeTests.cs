@@ -209,6 +209,60 @@ public sealed class CSharpSolutionTreeTests
     }
 
     [Fact]
+    public void 絞り込みで間引いた枝の件数は残った子の数で出し直す()
+    {
+        // 持ち越すと「その他ファイル 3」の下に1件、のような嘘の数字が残る。
+        var project = new ProjectModel("App", @"C:\work\App.csproj", @"C:\work", [], [
+            new TargetFrameworkModel("net10.0", [], "latest", [], [], [], [
+                new ProjectItem("app.config", @"C:\work\app.config"),
+                new ProjectItem("readme.txt", @"C:\work\readme.txt"),
+                new ProjectItem("notes.txt", @"C:\work\notes.txt"),
+            ])], "net10.0", false, ProjectLoadState.Ready);
+        var tree = CSharpSolutionTreeBuilder.Build(new SolutionModel(
+            @"C:\work\App.sln", "App", @"C:\work",
+            [project, project with { Name = "Other", FullPath = @"C:\work\Other.csproj" }],
+            ProjectLoadState.Ready));
+        Assert.Equal("3", Find(tree, n => n.Name == "その他ファイル")!.Detail);
+        Assert.Equal("2 プロジェクト", tree.Detail);
+
+        var hit = CSharpSolutionTreeFilter.Apply(tree, "config").Root!;
+        var group = Find(hit, n => n.Name == "その他ファイル")!;
+        Assert.Equal("1", group.Detail);
+        Assert.Single(group.Children);
+        // 間引かれていない枝の Detail はそのまま（数字を触るのは子が減った枝だけ）。
+        Assert.Equal("2 プロジェクト", hit.Detail);
+    }
+
+    private static CSharpSolutionNode? Find(CSharpSolutionNode node, Func<CSharpSolutionNode, bool> match)
+    {
+        if (match(node)) return node;
+        foreach (var child in node.Children)
+            if (Find(child, match) is { } hit) return hit;
+        return null;
+    }
+
+    [Fact]
+    public void 絞り込みが何にも一致しないときビルドは押せない()
+    {
+        // 対象が消えているのにボタンだけ押せると、押しても黙って何も起きない（§23.3）。
+        var project = new ProjectModel("App", @"C:\work\App.csproj", @"C:\work", [], [
+            new TargetFrameworkModel("net10.0", [], "latest",
+                [new ProjectItem("Program.cs", @"C:\work\Program.cs")], [], [], [])],
+            "net10.0", false, ProjectLoadState.Ready);
+        using var vm = new CSharpSolutionExplorerViewModel(new FakeSolutionService(
+            new SolutionModel(@"C:\work\App.sln", "App", @"C:\work", [project], ProjectLoadState.Ready)));
+        Assert.True(vm.CanBuildTarget);
+
+        vm.FilterText = "存在しない";
+        Assert.Equal("一致なし", vm.FilterStatus);
+        Assert.Null(vm.ActionTarget);
+        Assert.False(vm.CanBuildTarget);
+
+        vm.FilterText = "";
+        Assert.True(vm.CanBuildTarget);
+    }
+
+    [Fact]
     public void ファイルを選んだままのビルドは持ち主のプロジェクトへ遡る()
     {
         // 以前はファイル選択中にビルドを押すと何も起きなかった（対象がプロジェクトでないため）。
