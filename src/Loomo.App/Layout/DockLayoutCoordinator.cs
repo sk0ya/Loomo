@@ -29,14 +29,21 @@ public sealed class DockLayoutCoordinator
     public const double MinRightWidth = 160;
     public const double MaxRightWidth = 1200;
 
-    /// <summary>帯に並べる順（＝ペインの並び順）。<c>PaneKind</c> は全種がドック可能なので、
-    /// 集中モードの <c>StageOrder</c> と違ってトレースも含めた全種をここに並べる。</summary>
+    /// <summary>帯に並べる順（＝ペインの並び順）。<b>ここに無い面はドックに出ない。</b>
+    /// 顔ぶれは集中モードの <c>StageOrder</c> と揃える——トレース（<see cref="PaneKind.Trace"/>）は
+    /// 部屋の面としては出しておらず、ビュー・スイッチャーにもコマンドパレットにも並ばないので、
+    /// ドックの帯だけがその面を出す唯一の入口になっていた。</summary>
     public static readonly PaneKind[] DockOrder =
     [
         PaneKind.Editor, PaneKind.Terminal, PaneKind.Browser, PaneKind.EditorSupport, PaneKind.Git,
         PaneKind.Diff, PaneKind.Ai, PaneKind.Debug, PaneKind.TsIde, PaneKind.Search, PaneKind.Files,
-        PaneKind.Trace,
     ];
+
+    /// <summary>ドックに出せる面か（＝<see cref="DockOrder"/> に居るか）。
+    /// <para>出せない面の <see cref="RegionOf"/> は既定の <see cref="DockRegion.Center"/> を返すので、
+    /// 保存された割り当てをそのまま信じると、帯に取っ手の無い面が中央に立ってしまう。
+    /// だから保存・復元はここを通す。</para></summary>
+    public static bool IsDockable(PaneKind kind) => Array.IndexOf(DockOrder, kind) >= 0;
 
     /// <summary>既定の割り当て。書く／読む／見るための面は中央に残し、
     /// 道具（履歴・シェル・ビルド・検索・一覧）は下、本文の脇に添える面は右へ置く。</summary>
@@ -54,7 +61,6 @@ public sealed class DockLayoutCoordinator
             [PaneKind.TsIde] = DockRegion.Bottom,
             [PaneKind.Search] = DockRegion.Bottom,
             [PaneKind.Files] = DockRegion.Bottom,
-            [PaneKind.Trace] = DockRegion.Bottom,
         };
 
     private readonly Dictionary<PaneKind, DockRegion> _regions = new(DefaultRegions);
@@ -187,7 +193,8 @@ public sealed class DockLayoutCoordinator
     {
         if (CenterClosed)
             return;
-        if (CenterPane is { } current && RegionOf(current) == DockRegion.Center && applicable(current))
+        if (CenterPane is { } current && IsDockable(current) && RegionOf(current) == DockRegion.Center
+            && applicable(current))
             return;
         CenterPane = PanesIn(DockRegion.Center)
             .Where(applicable)
@@ -218,8 +225,11 @@ public sealed class DockLayoutCoordinator
             _regions[kind] = region;
         if (regions is not null)
             foreach (var (kind, region) in regions)
-                _regions[kind] = region;
-        CenterPane = centerPane is { } center && RegionOf(center) == DockRegion.Center ? center : null;
+                if (IsDockable(kind))
+                    _regions[kind] = region;
+        CenterPane = centerPane is { } center && IsDockable(center) && RegionOf(center) == DockRegion.Center
+            ? center
+            : null;
         // 立っている面があるなら閉じてはいない。閉じた印だけが残ると、次の起動で中央が埋まらない。
         CenterClosed = centerClosed && CenterPane is null;
         BottomPane = bottomPane is { } bottom && RegionOf(bottom) == DockRegion.Bottom ? bottom : null;
@@ -230,8 +240,9 @@ public sealed class DockLayoutCoordinator
 
     /// <summary>既定と違う割り当てだけを保存する（既定を変えたときに保存済みの部屋が置いていかれないように）。</summary>
     public IEnumerable<KeyValuePair<PaneKind, DockRegion>> ChangedRegions()
-        => _regions.Where(pair =>
-            !DefaultRegions.TryGetValue(pair.Key, out var fallback) || fallback != pair.Value);
+        => _regions.Where(pair => IsDockable(pair.Key))
+            .Where(pair =>
+                !DefaultRegions.TryGetValue(pair.Key, out var fallback) || fallback != pair.Value);
 
     /// <summary>その領域から出せる面が1つも無くなったら畳む（IDE の無い部屋で IDE を開いたまま
     /// 復元する、のような宙ぶらりんを作らない）。</summary>

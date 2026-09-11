@@ -26,20 +26,61 @@ public class DockLayoutCoordinatorTests
     [InlineData(PaneKind.TsIde, DockRegion.Bottom)]
     [InlineData(PaneKind.Search, DockRegion.Bottom)]
     [InlineData(PaneKind.Files, DockRegion.Bottom)]
-    [InlineData(PaneKind.Trace, DockRegion.Bottom)]
     public void Default_regions(PaneKind kind, DockRegion expected)
         => Assert.Equal(expected, Active().RegionOf(kind));
 
-    /// <summary>全 <see cref="PaneKind"/> が帯か中央のどちらかに必ず居る（並び順にも漏れが無い）。</summary>
+    /// <summary>帯に並ぶ面は全部どこかの領域に居て、既定の割り当ても漏れが無い。</summary>
     [Fact]
-    public void Every_pane_kind_has_a_place()
+    public void Every_docked_pane_kind_has_a_place()
     {
         var dock = Active();
-        foreach (PaneKind kind in Enum.GetValues<PaneKind>())
+        foreach (var kind in DockLayoutCoordinator.DockOrder)
         {
-            Assert.Contains(kind, DockLayoutCoordinator.DockOrder);
+            Assert.Contains(kind, DockLayoutCoordinator.DefaultRegions.Keys);
             Assert.True(dock.IsInTile(kind) || dock.IsDocked(kind));
         }
+    }
+
+    /// <summary>トレースはドックに出さない。
+    /// <para>部屋の面としては出しておらず（集中モードの並びにもビュー・スイッチャーにも居ない）、
+    /// ドックの帯だけがその面を出す唯一の入口になっていた——ドック状態にしただけで TRACE が
+    /// 現れるのはそれが理由。帯にも既定の割り当てにも置かない。</para></summary>
+    [Fact]
+    public void Trace_never_appears_in_the_dock()
+    {
+        Assert.DoesNotContain(PaneKind.Trace, DockLayoutCoordinator.DockOrder);
+        Assert.DoesNotContain(PaneKind.Trace, DockLayoutCoordinator.DefaultRegions.Keys);
+        Assert.False(DockLayoutCoordinator.IsDockable(PaneKind.Trace));
+
+        var dock = Active();
+        Assert.DoesNotContain(PaneKind.Trace, dock.PanesIn(DockRegion.Center));
+        Assert.DoesNotContain(PaneKind.Trace, dock.PanesIn(DockRegion.Bottom));
+        Assert.DoesNotContain(PaneKind.Trace, dock.PanesIn(DockRegion.Right));
+        Assert.DoesNotContain(PaneKind.Trace, dock.OpenPanes());
+    }
+
+    /// <summary>トレースを抱えた古い保存（既定に居た頃の部屋）を復元しても出さない。
+    /// <para>帯に出ない面の <c>RegionOf</c> は既定の中央を返すので、保存された割り当てを
+    /// そのまま信じると取っ手の無い面が中央に立ってしまう。保存へも書き戻さない。</para></summary>
+    [Fact]
+    public void Restore_drops_a_saved_trace_placement()
+    {
+        var dock = new DockLayoutCoordinator();
+        dock.Restore(
+            active: true,
+            regions: [new(PaneKind.Trace, DockRegion.Bottom)],
+            centerPane: PaneKind.Trace,
+            centerClosed: false,
+            bottomPane: PaneKind.Trace,
+            rightPane: null,
+            bottomHeight: null,
+            rightWidth: null);
+        dock.DropInapplicable(_ => true);
+
+        Assert.Equal(PaneKind.Editor, dock.CenterPane);   // 中央は並び順の先頭が立つ
+        Assert.Null(dock.BottomPane);
+        Assert.DoesNotContain(PaneKind.Trace, dock.OpenPanes());
+        Assert.DoesNotContain(PaneKind.Trace, dock.ChangedRegions().Select(pair => pair.Key));
     }
 
     /// <summary>中央も「同時に1枚」。立て替えても居るのは1枚だけ。</summary>
