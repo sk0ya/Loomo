@@ -5,6 +5,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.App.ViewModels;
 
 namespace sk0ya.Loomo.App.Views;
@@ -229,6 +230,14 @@ public partial class WorkspaceSwitcherView : UserControl
 
     private void OnMenuActivate(object sender, RoutedEventArgs e) => Activate(MenuTarget(sender));
 
+    /// <summary>別ウィンドウ＝別プロセスで開く（<see cref="WorkspaceWindowLauncher"/>）。切替と違って
+    /// いま開いている部屋はそのまま残るので、2 つのワークスペースを並べて見たいときの入口になる。</summary>
+    private void OnMenuOpenInNewWindow(object sender, RoutedEventArgs e)
+    {
+        if (MenuTarget(sender) is { } entry)
+            OpenInNewWindow(entry.RootPath);
+    }
+
     private void OnMenuTogglePin(object sender, RoutedEventArgs e)
     {
         if (MenuTarget(sender) is { } entry)
@@ -305,6 +314,22 @@ public partial class WorkspaceSwitcherView : UserControl
         try { Clipboard.SetText(path); }
         catch { /* クリップボードのロック等は無視 */ }
         Close();
+    }
+
+    private void OpenInNewWindow(string path)
+    {
+        // 理由はこのポップアップ内に出すので、成功したときだけ閉じる（Reveal と同じ作法）。
+        if (!Directory.Exists(path))
+        {
+            ShowError($"フォルダが見つかりません: {path}");
+            return;
+        }
+        try
+        {
+            WorkspaceWindowLauncher.Launch(path);
+            Close();
+        }
+        catch (Exception ex) { ShowError(ex.Message); }
     }
 
     private void Reveal(string path)

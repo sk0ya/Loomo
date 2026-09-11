@@ -219,6 +219,7 @@
                             <Border.ContextMenu>
                                 <ContextMenu>
                                     <MenuItem Header="このワークスペースへ切替" Click="OnMenuActivate" />
+                                    <MenuItem Header="別ウィンドウで開く" Click="OnMenuOpenInNewWindow" />
                                     <MenuItem Header="ピン留め／解除" Click="OnMenuTogglePin" />
                                     <Separator />
                                     <MenuItem Header="名前を変更…" Click="OnMenuRename" />

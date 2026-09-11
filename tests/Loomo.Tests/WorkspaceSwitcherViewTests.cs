@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using sk0ya.Loomo.App.Services;
 
 namespace sk0ya.Loomo.Tests;
 
@@ -26,6 +27,30 @@ public class WorkspaceSwitcherViewTests
         var template = Between(xaml, "<ListBox.ItemTemplate>", "</ListBox.ItemTemplate>");
         Assert.Contains("<ContextMenu>", template);
         Assert.Contains("Click=\"OnMenuRemove\"", template);
+    }
+
+    /// <summary>「別ウィンドウで開く」は<b>別プロセス</b>の起動（<c>--workspace</c> 付き）。
+    /// タスクバーの Recent と同じ引数の作り方を通していないと、パス末尾の <c>\</c>（ドライブ直下）で
+    /// 引用符が壊れて別のフォルダーが開く。</summary>
+    [Fact]
+    public void Open_in_new_window_launches_the_app_with_the_workspace_argument()
+    {
+        var info = WorkspaceWindowLauncher.BuildStartInfo(@"C:\app\sk0ya.Loomo.App.exe", @"C:\");
+
+        Assert.Equal(@"--workspace ""C:\\""", info.Arguments);
+        Assert.Equal(@"C:\", info.WorkingDirectory);
+        Assert.False(info.UseShellExecute);
+    }
+
+    /// <summary>行の右クリックから届くこと（メニュー項目とハンドラの結線）。</summary>
+    [Fact]
+    public void Open_in_new_window_is_on_the_row_context_menu()
+    {
+        var xaml = File.ReadAllText(Path.Combine(
+            RepoRoot(), "src", "Loomo.App", "Views", "WorkspaceSwitcherView.xaml"));
+        var template = Between(xaml, "<ListBox.ItemTemplate>", "</ListBox.ItemTemplate>");
+
+        Assert.Contains("Click=\"OnMenuOpenInNewWindow\"", template);
     }
 
     private static string Between(string text, string open, string close)
