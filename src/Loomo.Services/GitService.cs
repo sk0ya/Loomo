@@ -333,11 +333,17 @@ public sealed class GitService
     public Task<GitCommandResult> RebaseAbortAsync() => _rebase.AbortAsync();
 
     public Task<GitCommandResult> CherryPickAsync(string hash) => _merge.CherryPickAsync(hash);
+
+    /// <summary>コミットせずに変更だけ取り込む（<c>cherry-pick --no-commit</c>）。</summary>
+    public Task<GitCommandResult> CherryPickNoCommitAsync(string hash) => _merge.CherryPickNoCommitAsync(hash);
     public Task<GitCommandResult> CherryPickContinueAsync() => _merge.ContinueCherryPickAsync();
     public Task<GitCommandResult> CherryPickSkipAsync() => _merge.SkipCherryPickAsync();
     public Task<GitCommandResult> CherryPickAbortAsync() => _merge.AbortCherryPickAsync();
 
     public Task<GitCommandResult> RevertAsync(string hash) => _merge.RevertAsync(hash);
+
+    /// <summary>打ち消しコミットを作らず、打ち消す変更だけ作業ツリーへ入れる（<c>revert --no-commit</c>）。</summary>
+    public Task<GitCommandResult> RevertNoCommitAsync(string hash) => _merge.RevertNoCommitAsync(hash);
 
     public Task<GitCommandResult> StashPushAsync(string? message, bool includeUntracked) =>
         _stashes.PushAsync(message, includeUntracked);

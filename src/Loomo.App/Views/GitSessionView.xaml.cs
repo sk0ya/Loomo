@@ -221,11 +221,8 @@ public partial class GitSessionView : UserControl
             e.Handled = true;
     }
 
-    private void OnCommitFileCopyPath(object sender, RoutedEventArgs e)
-    {
-        if (SelectedCommitFile?.NavigatePath is { } path)
-            try { Clipboard.SetText(path); } catch { /* クリップボード占有中は無視 */ }
-    }
+    private void OnCommitFileCopyPath(object sender, RoutedEventArgs e) =>
+        CopyToClipboard(SelectedCommitFile?.NavigatePath);
 
     /// <summary>右クリックでも対象行を選択状態にする（コンテキストメニューの対象を確定させる）。</summary>
     private void OnListRightClickSelect(object sender, MouseButtonEventArgs e)
@@ -529,13 +526,8 @@ public partial class GitSessionView : UserControl
             await vm.Commands.CreateBranchAsync(name, branch.Name);
     }
 
-    private void OnBranchCopyName(object sender, RoutedEventArgs e)
-    {
-        if (SelectedBranch is { } branch)
-        {
-            try { Clipboard.SetText(branch.Name); } catch { /* クリップボード占有中は無視 */ }
-        }
-    }
+    private void OnBranchCopyName(object sender, RoutedEventArgs e) =>
+        CopyToClipboard(SelectedBranch?.Name);
 
     private async void OnBranchPull(object sender, RoutedEventArgs e)
     {
@@ -593,13 +585,8 @@ public partial class GitSessionView : UserControl
             await vm.Commands.PushTagAsync(tag);
     }
 
-    private void OnTagCopyName(object sender, RoutedEventArgs e)
-    {
-        if (SelectedTag is { } tag)
-        {
-            try { Clipboard.SetText(tag.Name); } catch { /* クリップボード占有中は無視 */ }
-        }
-    }
+    private void OnTagCopyName(object sender, RoutedEventArgs e) =>
+        CopyToClipboard(SelectedTag?.Name);
 
     private async void OnTagDelete(object sender, RoutedEventArgs e)
     {
@@ -663,13 +650,8 @@ public partial class GitSessionView : UserControl
             await vm.Commands.SyncSubmodulesAsync();
     }
 
-    private void OnSubmoduleCopyPath(object sender, RoutedEventArgs e)
-    {
-        if (SelectedSubmodule is { } submodule)
-        {
-            try { Clipboard.SetText(submodule.Path); } catch { /* クリップボード占有中は無視 */ }
-        }
-    }
+    private void OnSubmoduleCopyPath(object sender, RoutedEventArgs e) =>
+        CopyToClipboard(SelectedSubmodule?.Path);
 
     // ===== コミット操作 =====
 
@@ -742,23 +724,33 @@ public partial class GitSessionView : UserControl
         LogList.SelectedItems.OfType<GitLogRow>().Count(r => r.IsCommit);
 
     /// <summary>
-    /// コミット一覧のコンテキストメニューを開く直前：スカッシュは2件以上、インタラクティブリベースは
-    /// 単一選択時だけ見せる。
+    /// コミット一覧のコンテキストメニューを開く直前に、意味を持たない項目を落とす——スカッシュは2件以上、
+    /// インタラクティブリベースとファイル履歴の「この版の…」は単一選択時だけ、GitHub の項目は
+    /// GitHub リポジトリのときだけ、作者の絞り込みは既にその作者だけを見ていないときだけ。
     /// </summary>
     private void OnCommitContextMenuOpening(object sender, ContextMenuEventArgs e)
     {
-        var visible = SelectedCommitCount >= 2 ? Visibility.Visible : Visibility.Collapsed;
-        SquashMenuItem.Visibility = visible;
-        SquashSeparator.Visibility = visible;
+        SquashMenuItem.Visibility = SelectedCommitCount >= 2 ? Visibility.Visible : Visibility.Collapsed;
         InteractiveRebaseMenuItem.Visibility = SelectedCommitCount == 1 ? Visibility.Visible : Visibility.Collapsed;
 
         // 「この版の…」はファイル1件の履歴を見ているときだけ意味を持つ（どのファイルの版か決まらないため）
         var fileRevision = Vm?.IsFileHistory == true && SelectedCommitCount == 1
             ? Visibility.Visible : Visibility.Collapsed;
         FileRevisionSeparator.Visibility = fileRevision;
-        FileRevisionOpenMenuItem.Visibility = fileRevision;
-        FileRevisionCompareMenuItem.Visibility = fileRevision;
-        FileRevisionRestoreMenuItem.Visibility = fileRevision;
+        FileRevisionMenuItem.Visibility = fileRevision;
+
+        // GitHub 以外のホスティング（あるいはリモート無し）では「GitHub で開く」を出さない
+        // ——押せるのに何も起きない項目を並べない。
+        var hosting = Vm?.IsGitHubRepository == true && SelectedCommit is not null
+            ? Visibility.Visible : Visibility.Collapsed;
+        OpenOnHostingMenuItem.Visibility = hosting;
+        CopyHostingUrlMenuItem.Visibility = hosting;
+
+        // 作者の絞り込みは、既にその作者だけを見ているなら押しても何も変わらないので無効にする。
+        FilterByAuthorMenuItem.Visibility = SelectedCommit?.Author is { Length: > 0 }
+            ? Visibility.Visible : Visibility.Collapsed;
+        FilterByAuthorMenuItem.IsEnabled = SelectedCommit is { } authorRow && Vm is { } authorVm
+            && !authorVm.IsFilteredByAuthor(authorRow);
     }
 
     // ===== 特定リビジョンのファイル（ファイル履歴中のみ） =====
@@ -809,11 +801,8 @@ public partial class GitSessionView : UserControl
             await vm.SetRemoteUrlAsync(remote.Name, url);
     }
 
-    private void OnRemoteCopyUrl(object sender, RoutedEventArgs e)
-    {
-        if (RemoteList.SelectedItem is not GitRemoteInfo remote) return;
-        try { Clipboard.SetText(remote.Url); } catch { /* クリップボード占有中は無視 */ }
-    }
+    private void OnRemoteCopyUrl(object sender, RoutedEventArgs e) =>
+        CopyToClipboard((RemoteList.SelectedItem as GitRemoteInfo)?.Url);
 
     private async void OnRemoteRemove(object sender, RoutedEventArgs e)
     {
@@ -877,10 +866,22 @@ public partial class GitSessionView : UserControl
             await vm.Commands.CherryPickAsync(row);
     }
 
+    private async void OnCommitCherryPickNoCommit(object sender, RoutedEventArgs e)
+    {
+        if (Vm is { } vm && SelectedCommit is { } row)
+            await vm.Commands.CherryPickNoCommitAsync(row);
+    }
+
     private async void OnCommitRevert(object sender, RoutedEventArgs e)
     {
         if (Vm is { } vm && SelectedCommit is { } row)
             await vm.Commands.RevertAsync(row);
+    }
+
+    private async void OnCommitRevertNoCommit(object sender, RoutedEventArgs e)
+    {
+        if (Vm is { } vm && SelectedCommit is { } row)
+            await vm.Commands.RevertNoCommitAsync(row);
     }
 
     private async void OnCommitResetSoft(object sender, RoutedEventArgs e)
@@ -906,17 +907,66 @@ public partial class GitSessionView : UserControl
             await vm.Commands.ResetAsync(row, GitResetMode.Hard);
     }
 
+    // ===== 調べる・たどる =====
+
+    /// <summary>一覧の絞り込みをこのコミットの作者だけに切り替える（絞り込み帯の作者欄と同じ状態になる）。</summary>
+    private void OnCommitFilterByAuthor(object sender, RoutedEventArgs e)
+    {
+        if (Vm is { } vm && SelectedCommit is { } row)
+            vm.FilterByAuthor(row);
+    }
+
+    private void OnCommitOpenOnHosting(object sender, RoutedEventArgs e)
+    {
+        if (Vm is { } vm && SelectedCommit is { } row)
+            vm.OpenCommitOnHosting(row);
+    }
+
+    // ===== パッチ・コピー =====
+
     private async void OnCommitOpenPatch(object sender, RoutedEventArgs e)
     {
         if (Vm is { } vm && SelectedCommit is { } row)
             await vm.OpenPatchAsync(row);
     }
 
-    private void OnCommitCopyHash(object sender, RoutedEventArgs e)
+    private async void OnCommitCopyPatch(object sender, RoutedEventArgs e)
     {
-        if (SelectedCommit is { Hash: { } hash })
-        {
-            try { Clipboard.SetText(hash); } catch { /* クリップボード占有中は無視 */ }
-        }
+        if (Vm is not { } vm || SelectedCommit is not { } row)
+            return;
+        CopyToClipboard(await vm.GetCommitPatchAsync(row));
+    }
+
+    private void OnCommitCopyHash(object sender, RoutedEventArgs e) =>
+        CopyToClipboard(SelectedCommit?.Hash);
+
+    private void OnCommitCopyShortHash(object sender, RoutedEventArgs e) =>
+        CopyToClipboard(SelectedCommit?.ShortHash);
+
+    private void OnCommitCopySubject(object sender, RoutedEventArgs e) =>
+        CopyToClipboard(SelectedCommit?.Subject);
+
+    private void OnCommitCopyAuthor(object sender, RoutedEventArgs e) =>
+        CopyToClipboard(SelectedCommit?.Author);
+
+    /// <summary>「0c92f1e 件名」——issue やレビューに貼るときの定型。</summary>
+    private void OnCommitCopySummary(object sender, RoutedEventArgs e)
+    {
+        if (SelectedCommit is not { } row) return;
+        CopyToClipboard($"{row.ShortHash} {row.Subject}".Trim());
+    }
+
+    private void OnCommitCopyHostingUrl(object sender, RoutedEventArgs e)
+    {
+        if (Vm is { } vm && SelectedCommit is { } row)
+            CopyToClipboard(vm.CommitHostingUrl(row));
+    }
+
+    /// <summary>クリップボードへ渡す唯一の場所（このビューの「〜をコピー」は全部ここを通る）。
+    /// 空は何もせず、他プロセスが占有している間の失敗は黙って捨てる。</summary>
+    private static void CopyToClipboard(string? text)
+    {
+        if (string.IsNullOrEmpty(text)) return;
+        try { Clipboard.SetText(text); } catch { /* クリップボード占有中は無視 */ }
     }
 }

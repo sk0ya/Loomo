@@ -121,7 +121,16 @@ public sealed class GitSessionCommandHandler
 
     public Task<GitCommandResult?> CheckoutCommitAsync(GitLogRow row) => ForCommit(row, "チェックアウト", _git.CheckoutCommitAsync);
     public Task<GitCommandResult?> CherryPickAsync(GitLogRow row) => ForCommit(row, "チェリーピック", _git.CherryPickAsync);
+
+    /// <summary>コミットを作らず、取り込んだ変更をステージ済みのまま作業ツリーへ残す。</summary>
+    public Task<GitCommandResult?> CherryPickNoCommitAsync(GitLogRow row) =>
+        ForCommit(row, "チェリーピック（コミットなし）", _git.CherryPickNoCommitAsync);
+
     public Task<GitCommandResult?> RevertAsync(GitLogRow row) => ForCommit(row, "リバート", _git.RevertAsync);
+
+    /// <summary>打ち消しコミットを作らず、打ち消す変更だけ作業ツリーへ残す。</summary>
+    public Task<GitCommandResult?> RevertNoCommitAsync(GitLogRow row) =>
+        ForCommit(row, "リバート（コミットなし）", _git.RevertNoCommitAsync);
     public Task<GitCommandResult?> ResetAsync(GitLogRow row, GitResetMode mode) => row.Hash is null
         ? Task.FromResult<GitCommandResult?>(null)
         : RunAsync($"リセット（{mode.ToString().ToLowerInvariant()}）{row.ShortHash}",

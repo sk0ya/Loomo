@@ -28,6 +28,12 @@ public sealed class GitMergeService
     public Task<GitCommandResult> CherryPickAsync(string hash) =>
         _mutations.ExecuteAsync("cherry-pick", hash);
 
+    /// <summary>コミットを作らずに変更だけ取り込む（<c>--no-commit</c>）。
+    /// 取り込んだ内容をそのまま出すのではなく<b>手直ししてから</b>コミットしたいときの経路で、
+    /// 結果はステージされた状態で作業ツリーに残る。</summary>
+    public Task<GitCommandResult> CherryPickNoCommitAsync(string hash) =>
+        _mutations.ExecuteAsync("cherry-pick", "--no-commit", hash);
+
     public Task<GitCommandResult> ContinueCherryPickAsync() =>
         _mutations.ExecuteAsync("cherry-pick", "--continue");
 
@@ -39,4 +45,8 @@ public sealed class GitMergeService
 
     public Task<GitCommandResult> RevertAsync(string hash) =>
         _mutations.ExecuteAsync("revert", "--no-edit", hash);
+
+    /// <summary>打ち消しコミットを作らずに、打ち消す変更だけ作業ツリーへ入れる（<c>--no-commit</c>）。</summary>
+    public Task<GitCommandResult> RevertNoCommitAsync(string hash) =>
+        _mutations.ExecuteAsync("revert", "--no-commit", hash);
 }

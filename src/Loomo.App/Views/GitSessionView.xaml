@@ -553,39 +553,72 @@
                                 </GridViewColumn>
                             </GridView>
                         </ListView.View>
+                        <!-- コミット行の右クリック。よく押す順（見る→ここから作る→取り込む）に上から並べ、
+                             同じ問いの変種（リセットの3段階・コピーの各項目・取り込み方）は子メニューへ畳んで、
+                             最上位は「何をしたいか」の粒度だけにする。選択数・ファイル履歴・GitHub の有無で
+                             出し入れするものは OnCommitContextMenuOpening が切り替える。 -->
                         <ListView.ContextMenu>
                             <ContextMenu>
-                                <MenuItem Header="DIFF ペインで差分を表示（複数選択で範囲比較）" Click="OnCommitShowDiff" />
+                                <MenuItem Header="DIFF ペインで差分を表示（複数選択で範囲比較）" Click="OnCommitShowDiff"
+                                          FontWeight="SemiBold" />
                                 <!-- ファイル履歴（パス絞り込み）中だけ出す「その頃のこのファイル」。
                                      OnCommitContextMenuOpening が表示を切り替える。 -->
                                 <Separator x:Name="FileRevisionSeparator" />
-                                <MenuItem x:Name="FileRevisionOpenMenuItem"
-                                          Header="この版のファイルをエディタで開く" Click="OnCommitOpenFileRevision" />
-                                <MenuItem x:Name="FileRevisionCompareMenuItem"
-                                          Header="この版と現在のファイルを比較" Click="OnCommitCompareFileRevision" />
-                                <MenuItem x:Name="FileRevisionRestoreMenuItem"
-                                          Header="この版の内容へ戻す…" Click="OnCommitRestoreFileRevision" />
+                                <MenuItem x:Name="FileRevisionMenuItem" Header="この版のファイル">
+                                    <MenuItem Header="エディタで開く" Click="OnCommitOpenFileRevision" />
+                                    <MenuItem Header="現在のファイルと比較" Click="OnCommitCompareFileRevision" />
+                                    <MenuItem Header="この版の内容へ戻す…" Click="OnCommitRestoreFileRevision" />
+                                </MenuItem>
                                 <Separator />
-                                <MenuItem Header="ここから新しいブランチを作成…" Click="OnCommitCreateBranch" />
-                                <MenuItem Header="タグを作成…" Click="OnCommitCreateTag" />
+                                <MenuItem Header="ここから作成">
+                                    <MenuItem Header="新しいブランチ…（作成して切り替え）" Click="OnCommitCreateBranch" />
+                                    <MenuItem Header="タグ…" Click="OnCommitCreateTag" />
+                                </MenuItem>
                                 <MenuItem Header="チェックアウト（detached HEAD）" Click="OnCommitCheckout" />
-                                <MenuItem Header="コミットメッセージを修正…" Click="OnCommitRewriteMessage" />
-                                <MenuItem x:Name="InteractiveRebaseMenuItem"
-                                          Header="ここからインタラクティブリベース…" Click="OnCommitInteractiveRebase" />
-                                <!-- スカッシュは2件以上の選択時だけ表示（OnCommitContextMenuOpening で切替） -->
-                                <Separator x:Name="SquashSeparator" />
-                                <MenuItem x:Name="SquashMenuItem"
-                                          Header="選択したコミットをスカッシュ（1つにまとめる）" Click="OnCommitSquash" />
                                 <Separator />
-                                <MenuItem Header="チェリーピック（現在のブランチへ取り込み）" Click="OnCommitCherryPick" />
-                                <MenuItem Header="リバート（打ち消しコミットを作成）" Click="OnCommitRevert" />
+                                <MenuItem Header="現在のブランチへ取り込む">
+                                    <MenuItem Header="チェリーピック" Click="OnCommitCherryPick" />
+                                    <MenuItem Header="チェリーピック（コミットせず作業ツリーへ）"
+                                              Click="OnCommitCherryPickNoCommit" />
+                                    <Separator />
+                                    <MenuItem Header="リバート（打ち消しコミットを作成）" Click="OnCommitRevert" />
+                                    <MenuItem Header="リバート（コミットせず作業ツリーへ）"
+                                              Click="OnCommitRevertNoCommit" />
+                                </MenuItem>
+                                <!-- 履歴が書き換わる操作はここへまとめる（押す前に「書き換える」と読める位置に置く）。
+                                     スカッシュは2件以上、インタラクティブリベースは単一選択のときだけ出す。 -->
+                                <MenuItem Header="履歴を書き換える">
+                                    <MenuItem Header="コミットメッセージを修正…" Click="OnCommitRewriteMessage" />
+                                    <MenuItem x:Name="InteractiveRebaseMenuItem"
+                                              Header="ここからインタラクティブリベース…" Click="OnCommitInteractiveRebase" />
+                                    <MenuItem x:Name="SquashMenuItem"
+                                              Header="選択したコミットをスカッシュ（1つにまとめる）…" Click="OnCommitSquash" />
+                                    <Separator />
+                                    <MenuItem Header="ここまでリセット">
+                                        <MenuItem Header="soft（コミットだけ取り消す）" Click="OnCommitResetSoft" />
+                                        <MenuItem Header="mixed（ステージも取り消す）" Click="OnCommitResetMixed" />
+                                        <MenuItem Header="hard（作業ツリーごと捨てる）…" Click="OnCommitResetHard" />
+                                    </MenuItem>
+                                </MenuItem>
                                 <Separator />
-                                <MenuItem Header="ここまでリセット (soft)" Click="OnCommitResetSoft" />
-                                <MenuItem Header="ここまでリセット (mixed)" Click="OnCommitResetMixed" />
-                                <MenuItem Header="ここまでリセット (hard)…" Click="OnCommitResetHard" />
+                                <MenuItem x:Name="FilterByAuthorMenuItem" Header="この作者のコミットだけ表示"
+                                          Click="OnCommitFilterByAuthor" />
                                 <Separator />
-                                <MenuItem Header="パッチをエディタで開く" Click="OnCommitOpenPatch" />
-                                <MenuItem Header="ハッシュをコピー" Click="OnCommitCopyHash" />
+                                <MenuItem x:Name="OpenOnHostingMenuItem" Header="GitHub で開く"
+                                          Click="OnCommitOpenOnHosting" />
+                                <MenuItem Header="パッチ">
+                                    <MenuItem Header="エディタで開く" Click="OnCommitOpenPatch" />
+                                    <MenuItem Header="クリップボードへコピー" Click="OnCommitCopyPatch" />
+                                </MenuItem>
+                                <MenuItem Header="コピー">
+                                    <MenuItem Header="ハッシュ" Click="OnCommitCopyHash" />
+                                    <MenuItem Header="短縮ハッシュ" Click="OnCommitCopyShortHash" />
+                                    <MenuItem Header="件名" Click="OnCommitCopySubject" />
+                                    <MenuItem Header="作成者" Click="OnCommitCopyAuthor" />
+                                    <MenuItem Header="ハッシュと件名" Click="OnCommitCopySummary" />
+                                    <MenuItem x:Name="CopyHostingUrlMenuItem" Header="GitHub のリンク"
+                                              Click="OnCommitCopyHostingUrl" />
+                                </MenuItem>
                             </ContextMenu>
                         </ListView.ContextMenu>
                     </ListView>

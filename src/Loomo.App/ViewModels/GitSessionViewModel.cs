@@ -449,6 +449,33 @@ public sealed partial class GitSessionViewModel : ObservableObject
             new CommitFileDiffRequest(hash, $"コミット {row.ShortHash}", fullPath));
     }
 
+    /// <summary>一覧の絞り込みをこのコミットの作者だけに切り替える（絞り込み帯の作者欄と同じ状態になる）。</summary>
+    public void FilterByAuthor(GitLogRow row)
+    {
+        if (row.Author is { Length: > 0 } author)
+            History.AuthorSelection = author;
+    }
+
+    /// <summary>作者の絞り込みが既にこのコミットの作者になっているか（メニューの有効・無効に使う）。</summary>
+    public bool IsFilteredByAuthor(GitLogRow row) =>
+        row.Author is { Length: > 0 } author &&
+        string.Equals(History.AuthorSelection, author, StringComparison.Ordinal);
+
+    /// <summary>このコミットの GitHub 上のページ。GitHub リポジトリでなければ null。</summary>
+    public string? CommitHostingUrl(GitLogRow row) =>
+        GitHubRepositoryUrl is { } url && row.Hash is { Length: > 0 } hash ? $"{url}/commit/{hash}" : null;
+
+    /// <summary>このコミットの GitHub ページを内蔵ブラウザで開く。</summary>
+    public void OpenCommitOnHosting(GitLogRow row)
+    {
+        if (CommitHostingUrl(row) is { } url)
+            OpenHostingUrlRequested?.Invoke(this, url);
+    }
+
+    /// <summary>コミットのフルパッチ本文（クリップボードへ渡す用）。</summary>
+    public Task<string> GetCommitPatchAsync(GitLogRow row) =>
+        row.Hash is null ? Task.FromResult("") : _query.GetCommitPatchAsync(row.Hash);
+
     /// <summary>コミットのフルパッチをエディタの仮想ドキュメントで開く。</summary>
     public async Task OpenPatchAsync(GitLogRow row)
     {
