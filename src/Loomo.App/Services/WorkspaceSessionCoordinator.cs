@@ -5,11 +5,17 @@ namespace sk0ya.Loomo.App.Services;
 /// <summary>ワークスペースセッションの復元判断と表示モデル変換。</summary>
 public static class WorkspaceSessionCoordinator
 {
-    public static bool ResolveSoloMode(WorkspaceSnapshot workspace) => workspace.Mode switch
+    public static bool ResolveSoloMode(WorkspaceSnapshot workspace)
+        => ResolveDisplayMode(workspace) == DisplayMode.Solo;
+
+    /// <summary>復元する表示モード。<c>Mode</c> の無い旧データは <c>Stage.IsActive</c> から移行する
+    /// （ドックは後から足したモードなので、旧データがドックになることはない）。</summary>
+    public static DisplayMode ResolveDisplayMode(WorkspaceSnapshot workspace) => workspace.Mode switch
     {
-        DisplayMode.Solo => true,
-        DisplayMode.Layout => false,
-        _ => workspace.Stage?.IsActive == true,
+        DisplayMode.Solo => DisplayMode.Solo,
+        DisplayMode.Layout => DisplayMode.Layout,
+        DisplayMode.Dock => DisplayMode.Dock,
+        _ => workspace.Stage?.IsActive == true ? DisplayMode.Solo : DisplayMode.Layout,
     };
 
     public static string NormalizeBrowserAddress(string? text, string defaultUrl)

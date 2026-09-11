@@ -18,19 +18,17 @@ public class StageThumbnailPlannerTests
     public void Native_panes_keep_live_visual_thumbnails(PaneKind kind)
         => Assert.False(StageThumbnailPlanner.UsesSnapshotThumbnail(kind));
 
-    /// <summary>これが本体の回帰テスト。描画元を Main 実寸で組むと、ペイン 1 枚ごとの
-    /// 実寸レイアウトでペイン切替が 100ms を超える（かつミニチュアが点に潰れる）。
-    /// 広さが違っても描画元サイズは変わらないこと。</summary>
+    /// <summary>描画元は Main 領域に追従するが、最大仮想幅を超えては大きくならないこと。</summary>
     [Fact]
-    public void Source_size_does_not_scale_with_the_main_area()
+    public void Source_size_follows_the_main_area_up_to_the_virtual_width()
     {
         var narrow = StageThumbnailPlanner.SourceSize(780, CardAspect);
         var wide = StageThumbnailPlanner.SourceSize(1433, CardAspect);
         var huge = StageThumbnailPlanner.SourceSize(3840, CardAspect);
 
-        Assert.Equal(narrow, wide);
-        Assert.Equal(narrow, huge);
+        Assert.Equal(780, narrow.Width);
         Assert.Equal(StageThumbnailPlanner.VirtualWidth, wide.Width);
+        Assert.Equal(wide, huge);
     }
 
     [Fact]
@@ -38,17 +36,17 @@ public class StageThumbnailPlannerTests
     {
         var size = StageThumbnailPlanner.SourceSize(1433, CardAspect);
 
-        Assert.Equal(800, size.Width);
-        Assert.Equal(800 / CardAspect, size.Height);
+        Assert.Equal(StageThumbnailPlanner.VirtualWidth, size.Width);
+        Assert.Equal(StageThumbnailPlanner.VirtualWidth / CardAspect, size.Height);
     }
 
     [Fact]
-    public void Available_width_never_makes_the_source_smaller_than_the_widest_card()
+    public void Available_width_is_reflected_when_narrower_than_the_virtual_width()
     {
         var size = StageThumbnailPlanner.SourceSize(300, CardAspect);
 
-        Assert.Equal(StageThumbnailPlanner.VirtualWidth, size.Width);
-        Assert.True(size.Width > 790);
+        Assert.Equal(300, size.Width);
+        Assert.Equal(300 / CardAspect, size.Height);
     }
 
     [Theory]
@@ -67,12 +65,11 @@ public class StageThumbnailPlannerTests
     {
         var size = StageThumbnailPlanner.SourceSize(420, 0);
 
-        Assert.Equal(StageThumbnailPlanner.VirtualWidth, size.Width);
-        Assert.Equal(StageThumbnailPlanner.VirtualWidth, size.Height);
+        Assert.Equal(420, size.Width);
+        Assert.Equal(420, size.Height);
     }
 
-    /// <summary>仮想幅で頭打ちになる範囲のリサイズでは、袖を作り直さない
-    /// （リサイズのたびに全ペインを実寸レイアウトし直していたのが重さの一因）。</summary>
+    /// <summary>仮想幅で頭打ちになる範囲のリサイズでは、袖を作り直さない。</summary>
     [Fact]
     public void Resizing_above_the_virtual_width_does_not_change_the_source_size()
     {
@@ -81,11 +78,11 @@ public class StageThumbnailPlannerTests
     }
 
     [Fact]
-    public void Resizing_does_not_change_the_fixed_source_size()
+    public void Resizing_below_the_virtual_width_changes_the_source_size()
     {
-        Assert.False(StageThumbnailPlanner.SourceSizeChanged(300, 1400));
-        Assert.False(StageThumbnailPlanner.SourceSizeChanged(1400, 300));
-        Assert.False(StageThumbnailPlanner.SourceSizeChanged(300, 360));
+        Assert.True(StageThumbnailPlanner.SourceSizeChanged(300, 1400));
+        Assert.True(StageThumbnailPlanner.SourceSizeChanged(1400, 300));
+        Assert.True(StageThumbnailPlanner.SourceSizeChanged(300, 360));
     }
 
     [Fact]
@@ -129,8 +126,9 @@ public class StageThumbnailPlannerTests
         Assert.Equal(OffStage, plan.Keep);
     }
 
-    /// <summary>仮想サイズが変わったときは再利用できない（呼び出し側が reusable を空で渡す）
-    /// ＝全部組み直す。</summary>
+    /// <summary>再利用できるものが1つも無ければ全部組み直す（ワークスペース切替などで
+    /// ホストが総崩れになった場面）。<b>幅が変わっただけでここへ来てはいけない</b>——
+    /// 寸法は据え置いたまま合わせ直す（`ResizeThumbnailSource`）。</summary>
     [Fact]
     public void Nothing_is_reusable_rebuilds_every_source()
     {

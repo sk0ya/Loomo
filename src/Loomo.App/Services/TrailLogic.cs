@@ -3,10 +3,13 @@ namespace sk0ya.Loomo.App.Services;
 /// <summary>軌跡の分類・表示・変更検出に使うUI非依存ロジック。</summary>
 public static class TrailLogic
 {
-    public static string LayoutKey(DisplayMode mode, PaneKind? stagePane, PaneNodeSnapshot? snapshot)
+    /// <summary><paramref name="dock"/> はドックモードで開いている領域（例 "Git+EditorSupport"）。
+    /// 中央のタイルが同じでも道具の開閉で見え方は変わるので、これも配置の一部として鍵に入れる
+    /// ——入れないと、ドックモード中の操作が軌跡に1点も残らない。</summary>
+    public static string LayoutKey(DisplayMode mode, PaneKind? stagePane, PaneNodeSnapshot? snapshot, string? dock = null)
     {
         var structure = snapshot is null ? "-" : PaneLayoutTree.StructureSignature(snapshot);
-        return $"{(int)mode}|{stagePane?.ToString() ?? "-"}|{structure}";
+        return $"{(int)mode}|{stagePane?.ToString() ?? "-"}|{structure}|{dock ?? "-"}";
     }
 
     public static bool IsRecordableBrowserUrl(string? url, string defaultUrl)

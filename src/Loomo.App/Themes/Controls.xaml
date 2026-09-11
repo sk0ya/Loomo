@@ -205,6 +205,43 @@
         </Setter>
     </Style>
 
+    <!-- ===== 右帯の icon button（ドックモード）=====
+         ActivityIconButton の鏡像。アクセントバーを右端に置くだけで、それ以外は同じ文法。
+         左の ActivityBar と対になる帯なので、印は画面の外側（右辺）へ寄せる。 -->
+    <Style x:Key="ActivityIconButtonRight" TargetType="Button" BasedOn="{StaticResource IconButton}">
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Grid>
+                        <Border x:Name="b" Background="{TemplateBinding Background}" />
+                        <Border x:Name="tint" Background="{DynamicResource Accent}" Opacity="0" />
+                        <Border x:Name="bar" Width="3" HorizontalAlignment="Right"
+                                Background="{DynamicResource Accent}" Visibility="Collapsed" />
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <ContentPresenter.Resources>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource ContentText}" />
+                            </ContentPresenter.Resources>
+                        </ContentPresenter>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="b" Property="Background" Value="{DynamicResource BgAlt}" />
+                            <Setter Property="Foreground" Value="{DynamicResource Fg}" />
+                        </Trigger>
+                        <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="True">
+                            <Setter TargetName="bar" Property="Visibility" Value="Visible" />
+                            <Setter TargetName="tint" Property="Opacity" Value="0.18" />
+                            <Setter Property="Foreground" Value="{DynamicResource Fg}" />
+                        </DataTrigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.5" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!-- ===== Mode segment button (ペインヘッダーのチャット/ワークフロー切替) =====
          Tag="active"（選択中）でアクセント背景に。ヘッダーのドラッグ十字を継承しないよう Cursor=Hand を明示。 -->
     <Style x:Key="ModeSegButton" TargetType="Button">
@@ -653,6 +690,32 @@
                         </Trigger>
                         <Trigger Property="IsDragging" Value="True">
                             <Setter TargetName="Grip" Property="Width" Value="2" />
+                            <Setter TargetName="Grip" Property="Background" Value="{DynamicResource Accent}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- 上下の境界を掴む版（ドックモードの下領域の高さ）。線の向き以外は PaneResizeThumb と同じ文法。 -->
+    <Style x:Key="PaneResizeThumbHorizontal" TargetType="Thumb">
+        <Setter Property="Cursor" Value="SizeNS" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Thumb">
+                    <Grid Background="Transparent">
+                        <Border x:Name="Grip" Height="1" VerticalAlignment="Center"
+                                Background="{DynamicResource Border}" />
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Grip" Property="Height" Value="2" />
+                            <Setter TargetName="Grip" Property="Background" Value="{DynamicResource Accent}" />
+                        </Trigger>
+                        <Trigger Property="IsDragging" Value="True">
+                            <Setter TargetName="Grip" Property="Height" Value="2" />
                             <Setter TargetName="Grip" Property="Background" Value="{DynamicResource Accent}" />
                         </Trigger>
                     </ControlTemplate.Triggers>

@@ -104,9 +104,9 @@ public partial class ShellWindow {
         UpdatePaneActivityBadge(PaneKind.Terminal);
     }
     private bool IsPaneWatched(PaneKind kind)
-        => _stageActive
-            ? _stagePane == kind && !_overviewActive
-            : IsPaneVisible(kind);
+        => _stageActive ? _stagePane == kind && !_overviewActive
+        : _dockActive ? IsDockPaneShown(kind)
+        : IsPaneVisible(kind);
     private bool IsTerminalPaneWatched() => IsPaneWatched(PaneKind.Terminal);
     private bool IsAiPaneWatched() => IsPaneWatched(PaneKind.Ai);
     private void MarkPaneActivitySeen(PaneKind kind) {
@@ -136,9 +136,6 @@ public partial class ShellWindow {
             : PaneActivityKind.None;
     }
     private void UpdatePaneActivityBadge(PaneKind kind) {
-        if (!_stageActivityBadges.TryGetValue(kind, out var badge))
-            return;
-        var (chip, label) = badge;
         var exitCode = 0;
         var activity = kind switch {
             PaneKind.Terminal => AggregateTerminalActivity(out exitCode),
@@ -146,6 +143,10 @@ public partial class ShellWindow {
             PaneKind.Ai => AggregateAiActivity(),
             _ => PaneActivityKind.None,
         };
+        UpdateDockBarBadge(kind, activity);   // 袖なしのドックでは帯のアイコンが周辺視野（§24.1）
+        if (!_stageActivityBadges.TryGetValue(kind, out var badge))
+            return;
+        var (chip, label) = badge;
         switch (activity)
         {
             case PaneActivityKind.Running:

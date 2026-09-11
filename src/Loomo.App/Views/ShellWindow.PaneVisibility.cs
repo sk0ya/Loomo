@@ -7,6 +7,8 @@ public partial class ShellWindow {
     private void OnHidePane(object sender, RoutedEventArgs e) {
         if (sender is not FrameworkElement { Tag: string tag } || !Enum.TryParse<PaneKind>(tag, out var kind))
             return;
+        if (TryCloseDockPane(kind))   // ドックの領域に出ている面は「畳む」（タイルからしまうのではない）
+            return;
         BeginTrailLayoutChange();
         SetPaneVisible(kind, false);
     }
@@ -27,23 +29,30 @@ public partial class ShellWindow {
             BuildPaneMenu();
     }
     private void OnMainPaneClick(object sender, RoutedEventArgs e) => TogglePopup(PaneTogglePopup, BuildPaneMenu);
-    private PaneKind? CurrentMainPane() => _stageActive ? _stagePane : TopLeftPane();
+    private PaneKind? CurrentMainPane()
+        => _stageActive ? _stagePane
+        : _dockActive ? _dockMode.CenterPane
+        : TopLeftPane();
     private static string PaneIconKey(PaneKind kind) => $"PaneIcon.{kind}";
     private void UpdateMainPaneHeader() {
         var main = CurrentMainPane();
         var layoutLabel = CurrentLayoutLabel();
-        var modeLabel = DisplayModeName(_stageActive);
+        var modeLabel = DisplayModeName(CurrentDisplayMode);
         MainPaneIcon.Data = main is { } kind && TryFindResource(PaneIconKey(kind)) is Geometry geo ? geo : null;
         // 集中表示＝舞台のペイン名、分割表示＝配置名。名前の無い配置に「未保存の配置」と出すのは
         // 情報が無いのに幅だけ取るので、その場合はモード名だけにする。
-        MainPaneLabel.Text = _stageActive
-            ? main is { } labelKind ? PaneLabel(labelKind) : "選択"
+        // 集中もドックも「いま中央に立っている面」が現在地。分割だけが配置名を出す。
+        // 中央を畳んだドックには「いま立っている面」が無い。名前の代わりに「選択」のような
+        // 置き字を出すのは、名前の無い配置に「未保存の配置」と出すのと同じ空振りなので、
+        // 言うことが無いときはモード名だけにする。
+        MainPaneLabel.Text = _stageActive || _dockActive
+            ? main is { } labelKind ? PaneLabel(labelKind) : ""
             : layoutLabel == UnsavedLayoutLabel ? "" : layoutLabel;
         var hasDetail = MainPaneLabel.Text.Length > 0;
         MainPaneLabel.Visibility = hasDetail ? Visibility.Visible : Visibility.Collapsed;
         MainPaneLabelSeparator.Visibility = hasDetail ? Visibility.Visible : Visibility.Collapsed;
         MainPaneButton.ToolTip = main is { } k
-            ? _stageActive
+            ? _stageActive || _dockActive
                 ? $"{modeLabel}／メイン: {PaneLabel(k)}"
                 : $"{modeLabel}／配置: {(hasDetail ? layoutLabel : UnsavedLayoutLabel)}／メイン: {PaneLabel(k)}"
             : "並べ方、配置、メイン画面を変更";
@@ -105,7 +114,8 @@ public partial class ShellWindow {
         MainPaneChoices.Children.Clear();
         _paneMenuRows.Clear();
         // 配置は分割表示にしか無い概念。集中表示では見出しごと畳む（見出しだけ残すと空セクションに見える）。
-        LayoutSection.Visibility = _stageActive ? Visibility.Collapsed : Visibility.Visible;
+        // 配置（タイルの組み方）は分割表示にしか無い概念。集中・ドックでは見出しごと畳む。
+        LayoutSection.Visibility = _stageActive || _dockActive ? Visibility.Collapsed : Visibility.Visible;
         LayoutSaveRow.Visibility = Visibility.Collapsed;
         LayoutNameInput.Clear();
         BuildLayoutPopup();
@@ -113,6 +123,8 @@ public partial class ShellWindow {
             var row = BuildPopupRow(PaneLabel(kind), TryFindResource(PaneIconKey(kind)) as Geometry);
             row.Button.CommandParameter = kind.ToString();
             row.Button.Click += OnSelectMainPane;
+            if (_dockActive)
+                row.Button.ContextMenu = BuildDockPlacementMenu(kind);
 
             var eyeIcon = new System.Windows.Shapes.Path {
                 Width = 14, Height = 14, Stretch = Stretch.Uniform, StrokeThickness = 1.1,
@@ -143,14 +155,27 @@ public partial class ShellWindow {
         var fg = (Brush)FindResource("Fg");
         var fgDim = (Brush)FindResource("FgDim");
         foreach (var row in _paneMenuRows) {
-            var enabled = IsSessionEnabled(row.Kind);
-            row.Row.SetState(main == row.Kind, enabled, accent, fg, fgDim);
-            row.Row.Button.ToolTip = $"{PaneLabel(row.Kind)} をメインにする";
+            // ドックでは「部屋に出す／しまう」ではなく「出ている／畳んである」。印の意味を揃えないと、
+            // 出ているのに淡色（＝しまってある）の行が並ぶ。
+            var docked = _dockActive;
+            var enabled = docked ? _dockMode.IsOpen(row.Kind) : IsSessionEnabled(row.Kind);
+            var active = docked ? _dockMode.IsOpen(row.Kind) : main == row.Kind;
+            var regionLabel = docked
+                ? _dockMode.RegionOf(row.Kind) switch {
+                    DockRegion.Right => "右の領域",
+                    DockRegion.Bottom => "下の領域",
+                    _ => "中央",
+                }
+                : "";
+            row.Row.SetState(active, enabled, accent, fg, fgDim);
+            row.Row.Button.ToolTip = docked
+                ? $"{PaneLabel(row.Kind)} を{regionLabel}に出す（右クリックで場所を変更）"
+                : $"{PaneLabel(row.Kind)} をメインにする";
             row.EyeIcon.Data = enabled ? EyeOnIcon : EyeOffIcon;
             row.EyeIcon.Stroke = enabled ? fg : fgDim;
-            row.Eye.ToolTip = enabled
-                ? $"{PaneLabel(row.Kind)} を部屋からしまう"
-                : $"{PaneLabel(row.Kind)} を部屋に出す";
+            row.Eye.ToolTip = docked
+                ? enabled ? $"{PaneLabel(row.Kind)} を畳む" : $"{PaneLabel(row.Kind)} を{regionLabel}に出す"
+                : enabled ? $"{PaneLabel(row.Kind)} を部屋からしまう" : $"{PaneLabel(row.Kind)} を部屋に出す";
         }
     }
     private bool IsPaneApplicable(PaneKind kind)
@@ -159,6 +184,14 @@ public partial class ShellWindow {
     private void OnSelectMainPane(object sender, RoutedEventArgs e) {
         if (sender is not Button { CommandParameter: string tag } || !Enum.TryParse<PaneKind>(tag, out var kind))
             return;
+        if (_dockActive) {
+            ToggleDockPane(kind);   // ドックはどの面も「その領域の1枚にする」
+            if (_dockMode.IsOpen(kind))
+                FocusPane(kind);
+            PaneTogglePopup.IsOpen = false;
+            UpdatePaneToggleStates();
+            return;
+        }
         BeginTrailLayoutChange();
         _enabledSessions.Add(kind);
         if (_stageActive) {
@@ -172,14 +205,22 @@ public partial class ShellWindow {
         UpdatePaneToggleStates();
     }
     private void OnTogglePaneVisibility(object sender, RoutedEventArgs e) {
+        if (sender is not FrameworkElement { Tag: string tag } || !Enum.TryParse<PaneKind>(tag, out var kind))
+            return;
+        if (_dockActive) {
+            ToggleDockPane(kind);   // ドックに「部屋に出す／しまう」は無い。あるのは開閉だけ
+            UpdatePaneToggleStates();
+            return;
+        }
         BeginTrailLayoutChange();
-        if (sender is FrameworkElement { Tag: string tag } && Enum.TryParse<PaneKind>(tag, out var kind))
-            ToggleSessionEnabled(kind);
+        ToggleSessionEnabled(kind);
         UpdatePaneToggleStates();
     }
     private void UpdatePaneToggleStates() {
         RefreshPaneMenuStates();
         UpdateMainPaneHeader();
+        if (_dockActive)
+            RebuildDockBar();   // 中央の面の印はタイルの表示状態なので、ここでも帯を合わせ直す
     }
     private static string PaneLabel(PaneKind kind) => kind switch {
         PaneKind.Terminal => "ターミナル", PaneKind.Editor => "エディタ", PaneKind.EditorSupport => "エディタサポート", PaneKind.Browser => "ブラウザ", PaneKind.Ai => "AI", PaneKind.Git => "Git", PaneKind.Diff => "Diff", PaneKind.Trace => "トレース", PaneKind.Debug => "IDE", PaneKind.Search => "検索", PaneKind.TsIde => "TS IDE", PaneKind.Files => "ファイル一覧", _ => kind.ToString(),
@@ -229,7 +270,7 @@ public partial class ShellWindow {
     /// 「有効なまま非表示」＝袖のカードとして残すので、袖から掴み直せば元どおり戻せる。
     /// ドラッグ元が最後の1枚のときは受けない（舞台が空になる）。</summary>
     private void MovePaneToWing(PaneKind kind) {
-        if (_stageActive || !IsPaneVisible(kind) || VisibleLeafCount() <= 1)
+        if (_stageActive || _dockActive || !IsPaneVisible(kind) || VisibleLeafCount() <= 1)
             return;
         BeginTrailLayoutChange();
         _enabledSessions.Add(kind);   // 袖に並ぶのは「有効な」ペインだけ
@@ -242,6 +283,10 @@ public partial class ShellWindow {
     }
     private void EnsureEditorPaneForOpenedFile(string path) {
         var target = BinaryFileDetector.IsBinary(path) ? PaneKind.EditorSupport : PaneKind.Editor;
+        if (_dockActive) {
+            EnsureDockPaneShown(target);
+            return;
+        }
         if (_stageActive) {
             if (!OnStage(PaneKind.Editor) && !OnStage(PaneKind.EditorSupport))
                 SetStagePane(target);
@@ -255,6 +300,10 @@ public partial class ShellWindow {
         if (_stageActive) {
             if (!OnStage(target))
                 SetStagePane(target);
+            return;
+        }
+        if (_dockActive) {
+            EnsureDockPaneShown(target);
             return;
         }
         if (IsPaneVisible(target))

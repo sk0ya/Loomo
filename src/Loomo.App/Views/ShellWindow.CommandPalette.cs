@@ -73,16 +73,34 @@ public partial class ShellWindow {
     private List<PaletteCommand> BuildPaletteCommands() {
         var list = new List<PaletteCommand>();
         string? Sc(string id) => _keybindings.For(id)?.Format();
-        list.Add(new("並べ方", _stageActive ? "分割にする（複数の画面を並べる）" : "集中にする（1つを大きく表示）", () => { if (_stageActive) ExitStageMode(); else EnterStageMode(); }));
+        // 3モードは「行き先」を出す（トグル1本だと、いまどこに居るかを覚えていないと押せない）。
+        if (!_stageActive)
+            list.Add(new("並べ方", "集中にする（1つを大きく表示）", EnterStageMode));
+        if (_stageActive || _dockActive)
+            list.Add(new("並べ方", "分割にする（複数の画面を並べる）", () => { ExitStageMode(); ExitDockMode(); }));
+        if (!_dockActive)
+            list.Add(new("並べ方", "ドックにする（道具を下と右の領域へ）", EnterDockMode));
         if (_stageActive)
             list.Add(new("並べ方", _overviewActive ? "すべての画面の一覧を閉じる" : "すべての画面を一覧表示", ToggleOverview, "Ctrl+W z"));
+        // 「部屋に出す／しまう」はタイルの話。ドックでは同じ操作が「その領域の1枚にする／畳む」に
+        // なるので、ここで読み替える——タイルの木をそのまま触ると、見えているのは中央なのに
+        // 畳まれるのは裏の木で、押しても何も起きない操作になる（中央も選べなくなる）。
         foreach (var kind in StageOrder) {
             var target = kind;
-            list.Add(new("移動", $"{PaneLabel(target)} へ", () => { SetPaneVisible(target, true); FocusPane(target); }));
+            list.Add(new("移動", $"{PaneLabel(target)} へ", () => {
+                if (!_dockActive)
+                    SetPaneVisible(target, true);
+                FocusPane(target);   // ドックは FocusPane が畳んである面をその領域へ出す
+            }));
         }
         foreach (var kind in StageOrder) {
             var target = kind;
-            list.Add(new("ペイン", $"{PaneLabel(target)} の表示を切替", () => SetPaneVisible(target, !IsPaneVisible(target))));
+            list.Add(new("ペイン", $"{PaneLabel(target)} の表示を切替", () => {
+                if (_dockActive)
+                    ToggleDockPane(target);
+                else
+                    SetPaneVisible(target, !IsPaneVisible(target));
+            }));
         }
         list.Add(new("タブ", "新しいターミナルタブ", () => OnTerminalNewTab(this, new RoutedEventArgs()), Sc("tab.newTerminal"), "tab.newTerminal"));
         list.Add(new("タブ", "新しいエディタタブ", () => OnEditorNewTab(this, new RoutedEventArgs()), Sc("tab.newEditor"), "tab.newEditor"));

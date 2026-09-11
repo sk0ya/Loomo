@@ -351,6 +351,9 @@ public sealed class WorkspaceSnapshot
     /// <summary>ソロモード（単一ステージ＋袖＋俯瞰）の表示状態。未保存の旧ワークスペースは既定でソロにする。</summary>
     public StageSnapshot? Stage { get; set; } = StageSnapshot.Default();
 
+    /// <summary>ドックモード（IDE 風ツールウィンドウ）の表示状態。null の旧データは既定の割り当てで復元する。</summary>
+    public DockSnapshot? Dock { get; set; }
+
     /// <summary>レイアウトモードに保存した名前付きレイアウト（Ctrl+T 巡回に並ぶ）。空なら既定3種を投入する。</summary>
     public List<SavedLayout> Layouts { get; set; } = new();
 
@@ -592,7 +595,10 @@ public enum DisplayMode
     /// <summary>ソロ：1ペインを舞台に立て、他は袖でライブ待機（＋俯瞰）。</summary>
     Solo,
     /// <summary>レイアウト：自由タイルで組み、名前付きで保存・Ctrl+T で巡回する。</summary>
-    Layout
+    Layout,
+    /// <summary>ドック：中央はタイル配置のまま、下／右へ割り当てたペインを IDE 風のツールウィンドウ
+    /// （帯のアイコンで開閉）として出す。袖は出さない。</summary>
+    Dock
 }
 
 /// <summary>レイアウトモードに保存した名前付きレイアウト（ワークスペース毎）。ツリーは <see cref="PaneNodeSnapshot"/>。</summary>
@@ -632,6 +638,30 @@ public sealed class StageSnapshot
     public double? WingWidth { get; set; }
     /// <summary>袖をアイコン表示へ折りたたんだまま復元するか。</summary>
     public bool WingCollapsed { get; set; }
+}
+
+/// <summary>ドックモード（IDE 風ツールウィンドウ）の表示状態。</summary>
+public sealed class DockSnapshot
+{
+    /// <summary>既定と違う割り当てだけ。null／空なら <c>DockLayoutCoordinator.DefaultRegions</c> のまま。</summary>
+    public List<DockPlacementSnapshot>? Placements { get; set; }
+    /// <summary>中央に立っていたペイン。</summary>
+    public PaneKind? CenterPane { get; set; }
+    /// <summary>中央を閉じてあったか（閉じた中央を次の起動で勝手に埋めないための印）。</summary>
+    public bool CenterClosed { get; set; }
+    /// <summary>下の領域に出ていたペイン（null＝畳んであった）。</summary>
+    public PaneKind? BottomPane { get; set; }
+    /// <summary>右の領域に出ていたペイン（null＝畳んであった）。</summary>
+    public PaneKind? RightPane { get; set; }
+    public double? BottomHeight { get; set; }
+    public double? RightWidth { get; set; }
+}
+
+/// <summary>ペイン1枚ぶんのドック割り当て。</summary>
+public sealed class DockPlacementSnapshot
+{
+    public PaneKind Kind { get; set; }
+    public DockRegion Region { get; set; }
 }
 
 public sealed class TerminalSnapshot

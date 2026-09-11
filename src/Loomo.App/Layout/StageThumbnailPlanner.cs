@@ -10,12 +10,14 @@ namespace sk0ya.Loomo.App.Layout;
 /// <item>ペイン 1 枚ごとに実寸の Measure/Arrange/UpdateLayout が走り、ペイン切替 1 回が 100ms を超える。
 /// コストはほぼ面積比で効く（実測：Git ペイン単体で 780 幅 25ms → 1433 幅 54ms）。</item>
 /// </list>
-/// <para>どちらも固定仮想幅で解ける。<see cref="VirtualWidth"/>=800 は最大袖カード 790px より
-/// 常に大きいため、袖表示が元の描画より拡大されることはない。</para>
+/// <para>描画元は袖の最大カード幅を下限にした固定幅ではなく、現在の Main 領域に合わせて
+/// <see cref="VirtualWidth"/> まで追従させる。これにより、ウィンドウを狭めたときも袖の
+/// ミニチュア内のペインが古い幅のまま残らない。<see cref="VirtualWidth"/> を超える範囲では
+/// それ以上大きくせず、リサイズのたびに実寸レイアウトを走らせない。</para>
 /// </summary>
 public static class StageThumbnailPlanner
 {
-    /// <summary>描画元をレイアウトする固定仮想幅。Main がこれより広くても追従しない。</summary>
+    /// <summary>描画元の最大仮想幅。Main がこれより広い場合はこの幅で頭打ちにする。</summary>
     public const double VirtualWidth = 800;
 
     /// <summary>
@@ -27,8 +29,8 @@ public static class StageThumbnailPlanner
     public static bool UsesSnapshotThumbnail(PaneKind kind)
         => false;
 
-    /// <summary>描画元のサイズを決める。袖の最大幅より常に大きい固定サイズを使い、
-    /// ウィンドウ幅にかかわらずサムネイルが拡大表示されないようにする。</summary>
+    /// <summary>描画元のサイズを現在の Main 領域に合わせて決める。最大幅を超えた場合だけ
+    /// 固定幅へ収束させ、狭いウィンドウではペインの実際の幅を反映する。</summary>
     public static Size SourceSize(double availableWidth, double cardAspect)
     {
         var width = ResolveWidth(availableWidth);
@@ -36,11 +38,14 @@ public static class StageThumbnailPlanner
         return new Size(Math.Max(width, 1), Math.Max(width / aspect, 1));
     }
 
-    /// <summary>描画元は固定サイズなので、未構築のときだけ構築が必要。</summary>
+    /// <summary>描画元の実効幅が変わったときだけ作り直す。最大幅を超える範囲の
+    /// リサイズでは既存の描画元を再利用する。</summary>
     public static bool SourceSizeChanged(double previousWidth, double newWidth)
-        => previousWidth <= 0;
+        => previousWidth <= 0
+        || Math.Abs(ResolveWidth(previousWidth) - ResolveWidth(newWidth)) > 1;
 
-    private static double ResolveWidth(double availableWidth) => VirtualWidth;
+    private static double ResolveWidth(double availableWidth)
+        => availableWidth > 0 ? Math.Min(VirtualWidth, availableWidth) : VirtualWidth;
 
     /// <summary>描画元ホストの作り直しを最小化する差分。<see cref="Keep"/> は一切触らない
     /// （＝親の付け替えもレイアウトも走らない）。</summary>

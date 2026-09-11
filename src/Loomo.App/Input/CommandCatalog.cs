@@ -83,7 +83,7 @@ public static class CommandCatalog
 
         // ===== セッション（ソロ／レイアウト） =====
         new CommandDescriptor("stage.cycle", CatStage, "次へ切り替え（ソロ＝舞台／レイアウト＝保存レイアウト）", "Ctrl+T"),
-        new CommandDescriptor("mode.toggle", CatStage, "ソロ⇄レイアウトを切り替え", "Ctrl+Shift+T"),
+        new CommandDescriptor("mode.toggle", CatStage, "表示モードを切り替え（集中→分割→ドック）", "Ctrl+Shift+T"),
 
         // ===== コンポーザ =====
         new CommandDescriptor("composer.run", CatComposer, "本文をターミナルで実行", "Ctrl+Enter"),

@@ -6,6 +6,13 @@ public partial class ShellWindow {
             return;
         if (sender is not FrameworkElement { Tag: string tag } || !Enum.TryParse<PaneKind>(tag, out var kind))
             return;
+        // ドックでは中央も1枚なので、どの面もタイルの並べ替え対象ではない。
+        // 代わりに「割り当てを変えるドラッグ」を仕込む（行き先は右帯の3区画）。
+        if (_dockActive) {
+            if (!IsWithinButton(e.OriginalSource) && ResolvePaneTabId(e.OriginalSource) is null)
+                ArmDockDrag((UIElement)sender, kind, e.GetPosition(null));
+            return;
+        }
         if (e.ClickCount == 2) {
             if (IsWithinButton(e.OriginalSource))
                 return;
@@ -22,6 +29,10 @@ public partial class ShellWindow {
     }
     private void OnPaneTitleMouseMove(object sender, MouseEventArgs e) {
         if (_stageActive)
+            return;
+        // ドックのヘッダーは「割り当てを変えるドラッグ」（ArmDockDrag で仕込み済み・しきい値の
+        // 監視はウィンドウ側）なので、タイルの並べ替えには進ませない。
+        if (_dockActive)
             return;
         if (_paneDragging || !_paneDragArmed)
             return;

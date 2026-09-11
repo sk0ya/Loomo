@@ -171,6 +171,9 @@
         <!-- ファイル一覧：フォルダー＋行（＝中身を並べて見る面） -->
         <StreamGeometry x:Key="PaneIcon.Files">M2,4 H6 L7.5,5.8 H14 V12.5 H2 Z M4.5,8.2 H11.5 M4.5,10.4 H11.5</StreamGeometry>
         <StreamGeometry x:Key="PaneIcon.TsIde">M8,1.5 L13.5,4.75 V11.25 L8,14.5 L2.5,11.25 V4.75 Z M8,5.6 C6.9,5.6 6.3,6.6 6.3,8 C6.3,9.5 7,10.6 8,10.6 C9,10.6 9.7,9.5 9.7,8 C9.7,6.6 9.1,5.6 8,5.6 Z M8,5.7 V10.5</StreamGeometry>
+        <!-- トレース：時系列の点（＝AI操作の足跡を並べて読む面）。ドックの帯にも並ぶので、
+             アイコンの無いペインが1つでもあると無地のボタンになる。 -->
+        <StreamGeometry x:Key="PaneIcon.Trace">M2.5,8 H13.5 M4.6,8 m-1.3,0 a1.3,1.3 0 1 0 2.6,0 a1.3,1.3 0 1 0 -2.6,0 M11.4,8 m-1.3,0 a1.3,1.3 0 1 0 2.6,0 a1.3,1.3 0 1 0 -2.6,0 M8,4.4 V5.6 M8,10.4 V11.6</StreamGeometry>
         <StreamGeometry x:Key="WingIcon.Expanded">M10.5,2.5 L5,8 L10.5,13.5</StreamGeometry>
         <StreamGeometry x:Key="WingIcon.Collapsed">M5.5,2.5 L11,8 L5.5,13.5</StreamGeometry>
 
@@ -627,11 +630,12 @@
                             <!-- 行の文法を全セクションで揃える：[● 現在印 6px][8][アイコン 16px][7][ラベル]。
                                  見出しは PopupSectionLabel、区切りは見出しが担うので罫線は引かない。 -->
                             <StackPanel>
-                                <!-- 表示モードは2択なのでセグメント（1つの枠を2分割）にする。選択中だけ面で塗る。 -->
+                                <!-- 表示モードは3択なのでセグメント（1つの枠を3分割）にする。選択中だけ面で塗る。 -->
                                 <Border BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="4"
                                         Padding="2" Margin="2,2,2,0">
                                     <Grid>
                                         <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
                                             <ColumnDefinition Width="*" />
                                             <ColumnDefinition Width="*" />
                                         </Grid.ColumnDefinitions>
@@ -656,6 +660,20 @@
                                                       StrokeThickness="1.1" Margin="0,0,7,0" VerticalAlignment="Center"
                                                       Data="M0.5,0.5 H6 V12.5 H0.5 Z M8,0.5 H13.5 V12.5 H8 Z" />
                                                 <TextBlock x:Name="SplitModeText" Text="分割" FontWeight="SemiBold"
+                                                           VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                                            </DockPanel>
+                                        </Button>
+                                        <!-- ドック：中央はタイルのまま、道具は下／右の領域へ。アイコンは
+                                             「中央＋下辺＋右辺」＝ツールウィンドウの縁を表す。 -->
+                                        <Button x:Name="DockModeChoice" Grid.Column="2"
+                                                Style="{StaticResource BranchMenuItem}" Click="OnChooseDockMode"
+                                                HorizontalContentAlignment="Center" Padding="6,4"
+                                                ToolTip="道具の画面を下と右の領域にしまい、右端のアイコンで開閉する">
+                                            <DockPanel>
+                                                <Path x:Name="DockModeIcon" Width="15" Height="13" Stretch="Uniform"
+                                                      StrokeThickness="1.1" Margin="0,0,7,0" VerticalAlignment="Center"
+                                                      Data="M0.5,0.5 H13.5 V12.5 H0.5 Z M0.5,9 H10 M10,0.5 V12.5" />
+                                                <TextBlock x:Name="DockModeText" Text="ドック" FontWeight="SemiBold"
                                                            VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
                                             </DockPanel>
                                         </Button>
@@ -749,13 +767,25 @@
                     <!-- 動的ペインホスト／ステージ。MinWidth はサイドバー幅ドラッグや袖（固定 250px）の
                          出現でここが 0 幅まで潰れないための下限（0 幅のタイルは操作不能だし、中の
                          WebView2 が 0 サイズ配置で落ちる原因にもなる。→ WebViewArrangePolicy）。 -->
-                    <ColumnDefinition Width="*" MinWidth="160" />
+                    <ColumnDefinition x:Name="CenterColumn" Width="*" MinWidth="160" />
                     <ColumnDefinition x:Name="WingSplitterColumn" Width="0" />       <!-- 袖幅スプリッター -->
                     <ColumnDefinition x:Name="WingColumn" Width="Auto" />            <!-- 袖（ミニチュア）：両モード共通 -->
+                    <!-- ドックモード専用の3列。袖と同時には出ない（袖ありの集中／分割 ⇔ 袖なしのドック）ので、
+                         ドック以外では幅0で畳んでおく。 -->
+                    <ColumnDefinition x:Name="DockRightSplitterColumn" Width="0" />  <!-- 右ドック幅スプリッター -->
+                    <ColumnDefinition x:Name="DockRightColumn" Width="0" />          <!-- 右ドック（ツールウィンドウ） -->
+                    <ColumnDefinition x:Name="DockBarColumn" Width="0" />            <!-- 右帯（右＋下のトグル） -->
                 </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <!-- 中央（タイル／舞台）。下ドックが開くと縮み、ドックで中央を畳むと
+                         行ごと 0 になって下の領域がその場所を取る（ShellWindow.Dock.cs）。 -->
+                    <RowDefinition x:Name="CenterRow" Height="*" MinHeight="80" />
+                    <RowDefinition x:Name="DockBottomSplitterRow" Height="0" />      <!-- 下ドック高さスプリッター -->
+                    <RowDefinition x:Name="DockBottomRow" Height="0" />              <!-- 下ドック（ツールウィンドウ） -->
+                </Grid.RowDefinitions>
 
                 <!-- Sidebar : Explorer / Git / Pegboard を ActivePanel で切替 -->
-                <Grid x:Name="SidebarContainer" Grid.Column="0">
+                <Grid x:Name="SidebarContainer" Grid.Column="0" Grid.RowSpan="3">
                     <!-- エクスプローラ：フォルダーツリーを常に最上段へ置く。
                          最近／頻繁項目は中央の FilesPane 内のクイックアクセスへ移したため、
                          サイドバーには重複表示しない。 -->
@@ -791,7 +821,7 @@
                     </Grid>
                 </Grid>
 
-                <GridSplitter x:Name="SidebarSplitter" Grid.Column="1" Width="6"
+                <GridSplitter x:Name="SidebarSplitter" Grid.Column="1" Grid.RowSpan="3" Width="6"
                               HorizontalAlignment="Stretch" Background="{DynamicResource Border}" />
 
                 <!-- 動的ペインホスト：列定義とスプリッターは code-behind が構築する -->
@@ -2483,7 +2513,7 @@
                      VisualBrush の描画元になるだけで自身は不可視（Opacity 0／最背面／ヒットテスト無効）。
                      StageHost の表示状態に依らず常にアレンジさせたいので、StageHost の外（列2）に常設する
                      （レイアウトモードで Main に出ていない有効セッションのミニチュアを描くため）。 -->
-                <Grid x:Name="StageSourceArea" Grid.Column="2" Grid.ColumnSpan="3" Margin="10,8,6,10"
+                <Grid x:Name="StageSourceArea" Grid.Column="2" Grid.ColumnSpan="3" Grid.RowSpan="3" Margin="10,8,6,10"
                       SizeChanged="OnStageSourceAreaSizeChanged"
                       Opacity="0" IsHitTestVisible="False" Panel.ZIndex="-1" />
 
@@ -2498,11 +2528,11 @@
                      有効だが Main に出ていないセッションを、**選択中のグループ（メイン／サブ）ぶんだけ**並べる
                      （Main に出ている／無効なものは出さない）。所属は固定＝StageModeCoordinator.MainGroup。
                      構築は ShellWindow.Stage.cs / Wings。 -->
-                <Thumb x:Name="WingSplitter" Grid.Column="3"
+                <Thumb x:Name="WingSplitter" Grid.Column="3" Grid.RowSpan="3"
                        HorizontalAlignment="Stretch" Panel.ZIndex="2"
                        Style="{StaticResource PaneResizeThumb}" Visibility="Collapsed"
                        ToolTip="ドラッグで右側の画面一覧の幅を変更／ダブルクリックで既定幅へ戻す" />
-                <DockPanel x:Name="WingHost" Grid.Column="4" Margin="0,8,10,10" Visibility="Collapsed">
+                <DockPanel x:Name="WingHost" Grid.Column="4" Grid.RowSpan="3" Margin="0,8,10,10" Visibility="Collapsed">
                     <!-- 袖の操作は左端に固定。折りたたむと一覧はペインアイコンだけになり、
                          元の幅は保持したまま作業領域を広げる。 -->
                     <Grid x:Name="WingToolbar" DockPanel.Dock="Top" Margin="0,0,0,6">
@@ -2566,8 +2596,54 @@
                     </ScrollViewer>
                 </DockPanel>
 
+                <!-- ===== ドックモード（袖なし・IDE 風ツールウィンドウ）＝ ShellWindow.Dock.cs =====
+                     中央はタイル配置（PaneHost）のまま。下／右へ割り当てたペインだけがタイルから抜けて、
+                     この領域に1枚ずつ出る。開閉は右帯のアイコン（アイコンがタブを兼ねる）。
+                     畳むときは高さ／幅を0にするのではなく Visibility.Collapsed にする——0 サイズで
+                     配置された WebView2 はフレームプールごと壊れる（§26.3）。 -->
+                <Thumb x:Name="DockBottomSplitter" Grid.Row="1" Grid.Column="2"
+                       VerticalAlignment="Stretch" Panel.ZIndex="2"
+                       Style="{StaticResource PaneResizeThumbHorizontal}" Visibility="Collapsed"
+                       ToolTip="ドラッグで下の領域の高さを変更／ダブルクリックで既定の高さへ戻す" />
+                <Grid x:Name="DockBottomHost" Grid.Row="2" Grid.Column="2" Visibility="Collapsed" />
+
+                <Thumb x:Name="DockRightSplitter" Grid.Column="5" Grid.RowSpan="3"
+                       HorizontalAlignment="Stretch" Panel.ZIndex="2"
+                       Style="{StaticResource PaneResizeThumb}" Visibility="Collapsed"
+                       ToolTip="ドラッグで右の領域の幅を変更／ダブルクリックで既定の幅へ戻す" />
+                <Grid x:Name="DockRightHost" Grid.Column="6" Grid.RowSpan="3" Visibility="Collapsed" />
+
+                <!-- 右帯：上＝右ドック、区切りを挟んで下＝下ドックのトグル（ActivityBar の対）。
+                     中身は ShellWindow.Dock.cs が組む（顔ぶれがワークスペースで変わるため）。 -->
+                <Border x:Name="DockBar" Grid.Column="7" Grid.RowSpan="3" Visibility="Collapsed"
+                        Background="{DynamicResource ActivityBarBg}"
+                        BorderBrush="{DynamicResource Border}" BorderThickness="1,0,0,0">
+                    <!-- 帯は「上＝中央（タイル）／真ん中＝右の領域／下＝下の領域」の3区画に割る。
+                         上から順に「主役の面 → 脇に添える面 → 足元の道具」で、下の区画だけは実際の
+                         下の領域と位置が揃う。区画は罫線と余白ではっきり分け、空の区画も残す
+                         （＝ドラッグの受け皿になる）。区画の中身は ShellWindow.Dock.cs が組む。 -->
+                    <DockPanel LastChildFill="True">
+                        <StackPanel x:Name="DockBarCenterZone" DockPanel.Dock="Top" Background="Transparent"
+                                    AllowDrop="True" MinHeight="26" Tag="Center"
+                                    DragOver="OnDockZoneDragOver" DragLeave="OnDockZoneDragLeave" Drop="OnDockZoneDrop"
+                                    ToolTip="中央（タイル配置。ここへドラッグすると中央へ戻す）" />
+                        <Border DockPanel.Dock="Top" Height="1" Margin="10,6"
+                                Background="{DynamicResource Border}" />
+                        <StackPanel x:Name="DockBarBottomZone" DockPanel.Dock="Bottom" Background="Transparent"
+                                    AllowDrop="True" MinHeight="26" Tag="Bottom"
+                                    DragOver="OnDockZoneDragOver" DragLeave="OnDockZoneDragLeave" Drop="OnDockZoneDrop"
+                                    ToolTip="下の領域（ここへドラッグすると下に置く）" />
+                        <Border DockPanel.Dock="Bottom" Height="1" Margin="10,6"
+                                Background="{DynamicResource Border}" />
+                        <StackPanel x:Name="DockBarRightZone" VerticalAlignment="Center" Background="Transparent"
+                                    AllowDrop="True" MinHeight="26" Tag="Right"
+                                    DragOver="OnDockZoneDragOver" DragLeave="OnDockZoneDragLeave" Drop="OnDockZoneDrop"
+                                    ToolTip="右の領域（ここへドラッグすると右に置く）" />
+                    </DockPanel>
+                </Border>
+
                 <!-- 俯瞰：全セッションをカードで一望する Exposé 風レイヤ（背景クリックで閉じる。ソロ専用） -->
-                <Grid x:Name="OverviewLayer" Grid.Column="2" Grid.ColumnSpan="3" Visibility="Collapsed"
+                <Grid x:Name="OverviewLayer" Grid.Column="2" Grid.ColumnSpan="3" Grid.RowSpan="3" Visibility="Collapsed"
                       Background="#B2101010" MouseLeftButtonUp="OnOverviewBackgroundClick">
                     <ScrollViewer VerticalScrollBarVisibility="Auto"
                                   HorizontalScrollBarVisibility="Disabled" VerticalAlignment="Center">

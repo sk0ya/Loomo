@@ -22,21 +22,28 @@ public partial class ShellWindow {
             ExitPaneFullscreen();
             return;
         }
+        // ドックモードでは下／右に住む道具も全画面にできる（対象を中央のタイルへ限らない）が、
+        // 対象は「いま出ている面」に限る（畳んだ中央のように画面に居ない面は選ばない）。
         var target = _stageActive
             ? _stagePane
-            : _focusedRegion?.Pane ?? AllLeaves().FirstOrDefault(l => !l.Hidden)?.Kind;
-        if (target is not { } pane || !_paneElements.ContainsKey(pane))
+            : _dockActive
+                ? DockShownPane(_focusedRegion?.Pane)
+                : _focusedRegion?.Pane ?? AllLeaves().FirstOrDefault(l => !l.Hidden)?.Kind;
+        // 画面に出ていない（＝親に載っていない）要素の PointToScreen は例外を投げるので、
+        // 対象が見えていることを最後の砦として確かめる。
+        if (target is not { } pane || !_paneElements.TryGetValue(pane, out var paneElement)
+            || !paneElement.IsVisible)
             return;
         var hwnd = new WindowInteropHelper(this).Handle;
         if (hwnd == IntPtr.Zero || !GetWindowRect(hwnd, out var windowRect))
             return;
-        var paneElement = _paneElements[pane];
         var center = paneElement.PointToScreen( new Point(paneElement.ActualWidth / 2, paneElement.ActualHeight / 2));
         var monitor = MonitorFromPoint( new NativePoint { X = (int)Math.Round(center.X), Y = (int)Math.Round(center.Y) }, MonitorDefaultToNearest);
         var monitorInfo = new MonitorInfo { cbSize = Marshal.SizeOf<MonitorInfo>() };
         if (monitor == IntPtr.Zero || !GetMonitorInfo(monitor, ref monitorInfo))
             return;
         _paneFullscreen = true;
+        CollapseDockForFullscreen();
         _fullscreenPane = pane;
         _fullscreenPreviousZoomedPane = _zoomedPane;
         _fullscreenPreviousWindowState = WindowState;
@@ -85,6 +92,7 @@ public partial class ShellWindow {
         _paneFullscreen = false;
         _fullscreenPane = null;
         RebuildPaneLayout();
+        RestoreDockAfterFullscreen();
         Topmost = _fullscreenPreviousTopmost;
         ResizeMode = _fullscreenPreviousResizeMode;
         WindowState = WindowState.Normal;

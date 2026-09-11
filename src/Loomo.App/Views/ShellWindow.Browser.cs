@@ -334,10 +334,10 @@ public partial class ShellWindow {
             e.State = CoreWebView2PermissionState.Allow;
     }
     private void ScheduleBrowserRealize(BrowserTab? tab) {
-        if (tab is null || tab.RealizationStarted || !(_stageActive || IsPaneVisible(PaneKind.Browser)))
+        if (tab is null || tab.RealizationStarted || !IsPaneMaterialized(PaneKind.Browser))
             return;
         Dispatcher.BeginInvoke( DispatcherPriority.Background, new Action(() => {
-                if (ReferenceEquals(_activeBrowserTab, tab) && (_stageActive || IsPaneVisible(PaneKind.Browser)))
+                if (ReferenceEquals(_activeBrowserTab, tab) && IsPaneMaterialized(PaneKind.Browser))
                     _ = EnsureBrowserRealizedAsync(tab);
             }));
     }

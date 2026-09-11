@@ -44,9 +44,17 @@ public partial class ShellWindow {
         PaneKind.Editor, PaneKind.Terminal, PaneKind.Browser, PaneKind.EditorSupport, PaneKind.Git, PaneKind.Diff,
     ];
     private void OnToggleStageMode(object sender, RoutedEventArgs e) => ToggleDisplayMode();
+    /// <summary>いまの表示モード。3択（集中／分割／ドック）の唯一の導出点で、
+    /// <c>_stageActive</c>／<c>_dockActive</c> の組から判断する場所をここ以外に作らない。</summary>
+    private DisplayMode CurrentDisplayMode
+        => _stageActive ? DisplayMode.Solo : _dockActive ? DisplayMode.Dock : DisplayMode.Layout;
     /// <summary>表示モードの UI 名。「表示」は付けない——ヘッダーやセグメントでは常にモード名として
     /// 並ぶので、両方に付くと字数だけ増えて読み分けの助けにならない。</summary>
-    private static string DisplayModeName(bool stageActive) => stageActive ? "集中" : "分割";
+    private static string DisplayModeName(DisplayMode mode) => mode switch {
+        DisplayMode.Solo => "集中",
+        DisplayMode.Dock => "ドック",
+        _ => "分割",
+    };
     // モード切替は「まだ選んでいる途中」の操作（切り替えてからメイン画面を選び直すことが多い）なので
     // ポップアップは閉じず、中身だけ作り直す。閉じるのは行き先を決める操作（メイン画面・配置）だけ。
     private void OnChooseConcentratedMode(object sender, RoutedEventArgs e) {
@@ -57,22 +65,34 @@ public partial class ShellWindow {
         RefreshOpenPaneMenu();
     }
     private void OnChooseSplitMode(object sender, RoutedEventArgs e) {
-        if (_stageActive) {
+        if (_stageActive || _dockActive) {
             BeginTrailLayoutChange();
             ExitStageMode();
+            ExitDockMode();
         }
         RefreshOpenPaneMenu();
     }
+    /// <summary>ショートカット（mode.toggle）は3モードの巡回：集中 → 分割 → ドック → 集中。</summary>
     private void ToggleDisplayMode() {
         BeginTrailLayoutChange();
-        if (_stageActive)
-            ExitStageMode();   // → レイアウトモード
-        else
-            EnterStageMode();  // → ソロモード
+        switch (CurrentDisplayMode) {
+            case DisplayMode.Solo:
+                ExitStageMode();    // → 分割
+                break;
+            case DisplayMode.Layout:
+                EnterDockMode();    // → ドック
+                break;
+            default:
+                ExitDockMode();
+                EnterStageMode();   // → 集中
+                break;
+        }
     }
     private void EnterStageMode()
         => EnterStageMode(null);
     private void EnterStageMode(PaneKind? pane) {
+        if (_dockActive)
+            ExitDockMode();   // 舞台と袖なしのドックは同時に成り立たない
         var selectedPane = pane is { } requested && _paneElements.ContainsKey(requested)
             ? requested
             : _focusedRegion?.Pane
@@ -172,6 +192,8 @@ public partial class ShellWindow {
     private void CycleInActiveMode(int direction) {
         if (_stageActive)
             CycleStage(direction);
+        else if (_dockActive)
+            CycleDockCenter(direction);   // ドックは中央に立てる面を順に送る
         else
             CycleLayout(direction);
     }
@@ -208,6 +230,11 @@ public partial class ShellWindow {
     private void OnStageHostSizeChanged(object sender, SizeChangedEventArgs e) {
         if (!_stageActive)
             return;
+        QueueStageResize();
+    }
+    private void QueueStageResize() {
+        if (!_stageActive)
+            return;
         if (_stageResizeTimer is null) {
             _stageResizeTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
             _stageResizeTimer.Tick += (_, _) => {
@@ -236,6 +263,8 @@ public partial class ShellWindow {
     private bool IsShownInMain(PaneKind kind) {
         if (_stageActive)
             return !_overviewActive && OnStage(kind);
+        if (_dockActive)
+            return IsDockPaneShown(kind);
         if (_zoomedPane is { } zoom)
             return zoom == kind && IsPaneVisible(kind);
         return IsPaneVisible(kind);
@@ -293,6 +322,8 @@ public partial class ShellWindow {
         UpdatePaneToggleStates();
         if (_stageActive)
             RebuildStage();
+        else if (_dockActive)
+            RebuildDock();      // 袖なしなので組み直すのは帯とドックの領域
         else {
             ScheduleLayoutWings();
         }

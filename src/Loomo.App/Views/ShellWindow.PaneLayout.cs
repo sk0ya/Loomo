@@ -50,6 +50,13 @@ public partial class ShellWindow {
             RebuildStage();
             return;
         }
+        // ドックは中央も「1枚」。タイルの木（_root）は触らないまま、中央にその1枚を立てる
+        // （分割へ戻せば元の配置・比率がそのまま戻る＝舞台と同じ原則）。
+        if (_dockActive) {
+            DetachPaneElementsExcept(PanesToKeepAttached());
+            RebuildDockCore();
+            return;
+        }
         CaptureLayoutSizes();
         PaneHost.Children.Clear();
         PaneHost.RowDefinitions.Clear();
@@ -63,12 +70,12 @@ public partial class ShellWindow {
             if (!leaf.Hidden)
                 _enabledSessions.Add(leaf.Kind);
         UpdatePaneToggleStates();
-        if (_zoomedPane is { } zoom
+        if (_zoomedPane is { } zoom && !_paneFullscreen
             && !(FindLeaf(zoom) is { Hidden: false } && _paneElements.ContainsKey(zoom)))
             _zoomedPane = null; // 対象が隠れた/消えていたらズーム解除して通常描画へ
         // 袖ミニチュアに据え置くペインは親から外さない（付け替え自体が高いため）。
         // ここで確定した _root / _zoomedPane から袖の顔ぶれが決まる。
-        PaneLayoutDebugLog.Time("  detach panes", () => DetachPaneElementsExcept(WingKinds()));
+        PaneLayoutDebugLog.Time("  detach panes", () => DetachPaneElementsExcept(PanesToKeepAttached()));
         if (_zoomedPane is { } zoomed && _paneElements.TryGetValue(zoomed, out var zoomElement)) {
             zoomElement.Visibility = Visibility.Visible;
             PaneHost.Children.Add(zoomElement);
@@ -194,11 +201,24 @@ public partial class ShellWindow {
         }
         if (_stageActive)
             return;
+        // ドックでは「タイルからしまう」ではなく、いま居る領域を畳む（中央も同じ）。
+        // ここで SetPaneVisible に流すと、見えているのは中央なのに畳まれるのは
+        // 裏のタイルの木のほうで、押しても何も起きない操作になる。
+        if (_dockActive) {
+            if (DockShownPane(_focusedRegion?.Pane) is { } docked)
+                TryCloseDockPane(docked);
+            return;
+        }
         var target = _focusedRegion?.Pane ?? AllLeaves().FirstOrDefault(l => !l.Hidden)?.Kind;
         if (target is { } kind)
             SetPaneVisible(kind, false);
     }
     private void ZoomPane(PaneKind? kind) {
+        // ドックにズームは無い（中央は元から1枚で、大きく見せるのは F11 の仕事）。ここで
+        // _zoomedPane を立てると、画面は何も変わらないのに分割へ戻った瞬間その1枚だけが
+        // 描かれ、タイル配置が壊れたように見える——入口（EnterDockMode）で消すだけでは足りない。
+        if (_dockActive)
+            return;
         if (kind is { } k && (!IsPaneVisible(k) || VisibleLeafCount() <= 1))
             return; // 1枚だけ、または隠れているペインはズームしない
         if (_zoomedPane is null && kind is not null)

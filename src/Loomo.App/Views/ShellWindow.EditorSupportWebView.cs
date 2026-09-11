@@ -185,6 +185,8 @@ public partial class ShellWindow {
             return;
         if (_stageActive && _stagePane != PaneKind.Editor)
             SetStagePane(PaneKind.Editor);
+        else if (_dockActive)
+            EnsureDockPaneShown(PaneKind.Editor);   // 中央にも下／右にも置ける（既定は中央）
         SetActiveEditorTab(tab);
         if (line is int l) {
             tab.Control.NavigateTo(l - 1, Math.Max(0, column0));

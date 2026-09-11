@@ -21,13 +21,17 @@ public partial class ShellWindow {
     private void UpdateModeButtons() {
         if (MainPaneButton is null)   // InitializeComponent 前のガード
             return;
-        ApplyModeChoiceState(SplitModeChoice, SplitModeIcon, SplitModeText, !_stageActive);
-        ApplyModeChoiceState(ConcentratedModeChoice, ConcentratedModeIcon, ConcentratedModeText, _stageActive);
-        DisplayModeLabel.Text = DisplayModeName(_stageActive);
+        var mode = CurrentDisplayMode;
+        ApplyModeChoiceState(SplitModeChoice, SplitModeIcon, SplitModeText, mode == DisplayMode.Layout);
+        ApplyModeChoiceState(ConcentratedModeChoice, ConcentratedModeIcon, ConcentratedModeText, mode == DisplayMode.Solo);
+        ApplyModeChoiceState(DockModeChoice, DockModeIcon, DockModeText, mode == DisplayMode.Dock);
+        DisplayModeLabel.Text = DisplayModeName(mode);
         // 1行に収める。折り返すとショートカットが途中で割れて読めなくなる。
-        ModeDescription.Text = (_stageActive
-            ? "1つを大きく、ほかは右側で待機。"
-            : "複数の画面をタイル状に並べる。")
+        ModeDescription.Text = (mode switch {
+            DisplayMode.Solo => "1つを大きく、ほかは右側で待機。",
+            DisplayMode.Dock => "中央はタイル、道具は下と右の領域へ。",
+            _ => "複数の画面をタイル状に並べる。",
+        })
             + ShortcutSuffix("mode.toggle", "で切り替え");
         LayoutCycleHint.Text = ShortcutHint("stage.cycle", "で順に切り替え");
         UpdateMainPaneHeader();
@@ -50,7 +54,7 @@ public partial class ShellWindow {
         return UnsavedLayoutLabel;
     }
     private void CycleLayout(int direction) {
-        if (_stageActive)
+        if (_stageActive || _dockActive)   // 配置（タイルの組み方）は分割表示だけの概念
             return;
         CaptureLayoutSizes();
         if ((_layoutDirty || _activeLayoutIndex < 0) && _root is not null) {

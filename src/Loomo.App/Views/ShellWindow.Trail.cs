@@ -44,7 +44,7 @@ public partial class ShellWindow {
         if (_trailSuppressed)
             return;
         RefreshLatestTrailFilePosition();
-        var mode = _stageActive ? DisplayMode.Solo : DisplayMode.Layout;
+        var mode = CurrentDisplayMode;
         var paneLayout = _root is null ? null : JsonSerializer.Serialize(ToSnapshot(_root), TrailLayoutJson);
         _vm.Trail.UpdateLatestPaneLayout(paneLayout);
         record(mode, _stageActive ? _stagePane : null, paneLayout);
@@ -68,7 +68,9 @@ public partial class ShellWindow {
             return;
         var label = mode == DisplayMode.Solo
             ? $"集中 · {TrailLogic.PaneDisplayName(stagePane ?? PaneKind.Editor)}"
-            : "レイアウト変更";
+            : mode == DisplayMode.Dock
+                ? "ドック変更"
+                : "レイアウト変更";
         RecordTrail((recordMode, recordStagePane, layout) =>
             _vm.Trail.RecordLayout(layoutKey, label, recordMode, recordStagePane, layout));
     }
@@ -76,11 +78,11 @@ public partial class ShellWindow {
         _trailLastLayoutKey = CurrentTrailLayoutState().Key;
     }
     private (string Key, DisplayMode Mode, PaneKind? StagePane, string? PaneLayout) CurrentTrailLayoutState() {
-        var mode = _stageActive ? DisplayMode.Solo : DisplayMode.Layout;
+        var mode = CurrentDisplayMode;
         var stagePane = _stageActive ? _stagePane : (PaneKind?)null;
         var snapshot = _root is null ? null : ToSnapshot(_root);
         var paneLayout = snapshot is null ? null : JsonSerializer.Serialize(snapshot, TrailLayoutJson);
-        var key = TrailLogic.LayoutKey(mode, stagePane, snapshot);
+        var key = TrailLogic.LayoutKey(mode, stagePane, snapshot, CurrentDockKey());
         return (key, mode, stagePane, paneLayout);
     }
     private void RecordTrailEditorTab(EditorTab tab) {
@@ -178,7 +180,7 @@ public partial class ShellWindow {
     private void RecordTrailPane(PaneKind kind) {
         if (_trailSuppressed || _stageActive)
             return;
-        var mode = DisplayMode.Layout;
+        var mode = CurrentDisplayMode;
         if (_trailLastPane == kind && _trailLastPaneMode == mode) {
             _trailPendingPane = null;
             _trailPaneCommitTimer?.Stop();
@@ -196,7 +198,7 @@ public partial class ShellWindow {
             if (_trailPendingPane is not { } kind)
                 return;
             _trailPendingPane = null;
-            var mode = DisplayMode.Layout;
+            var mode = CurrentDisplayMode;
             if (_trailSuppressed
                 || _stageActive
                 || (_trailLastPane == kind && _trailLastPaneMode == mode)

@@ -43,7 +43,7 @@ public partial class ShellWindow {
     private IReadOnlyList<PaneKind> WingKinds()
         => WingCandidates().Where(InActiveWingTab).ToList();
     /// <summary>ミニチュアの描画元を <paramref name="sourceSize"/>（= <see cref="StageThumbnailPlanner"/> が
-    /// 決めた固定仮想サイズ。Main 実寸ではない）でレイアウトする。</summary>
+    /// 現在の Main 領域から決めた仮想サイズ）でレイアウトする。</summary>
     private void ArrangeThumbnailSource(PaneKind kind, Size sourceSize)
         => PaneLayoutDebugLog.Time($"  ArrangeThumbnailSource({kind}) {sourceSize.Width:0}x{sourceSize.Height:0}",
             () => ArrangeThumbnailSourceCore(kind, sourceSize));
@@ -76,17 +76,22 @@ public partial class ShellWindow {
             CaptureComposedPaneThumbnail(kind);
         var liveRequired = required.Where(kind => !StageThumbnailPlanner.UsesSnapshotThumbnail(kind)).ToArray();
         var sizeChanged = StageThumbnailPlanner.SourceSizeChanged(_thumbnailSourceWidth, sourceSize.Width);
-        var reusable = sizeChanged
-            ? Array.Empty<PaneKind>()
-            : _stageThumbnailHosts.Keys.Where(IsThumbnailSourceIntact).ToArray();
+        var reusable = _stageThumbnailHosts.Keys.Where(IsThumbnailSourceIntact).ToArray();
         var plan = StageThumbnailPlanner.PlanSources(
             _stageThumbnailHosts.Keys.ToArray(), reusable, liveRequired);
         PaneLayoutDebugLog.Log(
-            $"SyncThumbnailSources keep={plan.Keep.Count} add={plan.Add.Count} remove={plan.Remove.Count}");
+            $"SyncThumbnailSources keep={plan.Keep.Count} add={plan.Add.Count} remove={plan.Remove.Count}"
+            + $" sizeChanged={sizeChanged}");
         foreach (var kind in plan.Remove)
             ReleaseThumbnailSource(kind);
         foreach (var kind in plan.Add)
             ArrangeThumbnailSource(kind, sourceSize);
+        // 幅が変わっただけなら据え置いたまま寸法を合わせ直す。ここで作り直していたころは、
+        // 仮想幅（800）より狭い窓ではリサイズの1刻みごとに全ペインを外して繋ぎ直していた
+        // ——付け替えは Git 15ms / Diff 20ms / TsIde 40ms で、まさに避けたかったコスト。
+        if (sizeChanged)
+            foreach (var kind in plan.Keep)
+                ResizeThumbnailSource(kind, sourceSize);
         _thumbnailSourceWidth = sourceSize.Width;
     }
     /// <summary>ホストが健在で、そのペインを今も抱えているか。他の経路（タイル再構築・ワークスペース
@@ -97,6 +102,23 @@ public partial class ShellWindow {
         && host.Parent is not null
         && host.Children.Count == 1
         && ReferenceEquals(host.Children[0], _paneElements[kind]);
+    /// <summary>据え置いた描画元の寸法だけ合わせ直す（中のペインは親を替えない）。
+    /// 窓を狭めたときにミニチュアが古い幅のまま残らないための追従は、これで足りる。</summary>
+    private void ResizeThumbnailSource(PaneKind kind, Size sourceSize) {
+        if (!_stageThumbnailHosts.TryGetValue(kind, out var host))
+            return;
+        var w = Math.Max(sourceSize.Width, 1);
+        var h = Math.Max(sourceSize.Height, 1);
+        if (Math.Abs(host.Width - w) < 0.5 && Math.Abs(host.Height - h) < 0.5)
+            return;
+        host.Width = w;
+        host.Height = h;
+        host.Clip = new RectangleGeometry(new Rect(0, 0, w, h));
+        var clamped = new Size(w, h);
+        host.Measure(clamped);
+        host.Arrange(new Rect(clamped));
+        host.UpdateLayout();
+    }
     private void ReleaseThumbnailSource(PaneKind kind) {
         if (!_stageThumbnailHosts.Remove(kind, out var host))
             return;
@@ -180,13 +202,13 @@ public partial class ShellWindow {
         SyncThumbnailSources(
             WingKinds(), StageThumbnailPlanner.SourceSize(_layoutWingSourceWidth, CardAspect));
     }
-    /// <summary>F11 の全画面（集中）中は袖を出さない。舞台・通常どちらの再構築経路も最後に袖の
-    /// 幅／表示を組み直すので、そこで畳み直さないと <see cref="TogglePaneFullscreen"/> が
-    /// 0 にした袖幅がそのまま元に戻ってしまう。畳めたら true。
+    /// <summary>袖を出さない状況（F11 の全画面、および袖なしのドックモード）なら畳んで true。
+    /// 舞台・通常どちらの再構築経路も最後に袖の幅／表示を組み直すので、そこで畳み直さないと
+    /// <see cref="TogglePaneFullscreen"/> が 0 にした袖幅がそのまま元に戻ってしまう。
     /// カードは捨てずに据え置く（通常レイアウトの組み直しは ContextIdle 送りなので、捨てると
     /// 全画面を抜けた直後の数フレーム、幅だけ戻った空の袖が見える）。</summary>
     private bool CollapseWingsForFullscreen() {
-        if (!_paneFullscreen)
+        if (!_paneFullscreen && !_dockActive)
             return false;
         _layoutWingBuildPending = false;
         WingHost.Visibility = Visibility.Collapsed;
@@ -235,8 +257,8 @@ public partial class ShellWindow {
         }));
     }
     private void OnStageSourceAreaSizeChanged(object sender, SizeChangedEventArgs e) {
-        // 描画元は固定仮想幅で頭打ちなので、そこを超える範囲のリサイズでは組み直さない
-        // （以前はリサイズのたびに全ペインを実寸レイアウトし直していた）。
+        // 描画元の実効幅が変わる範囲だけ組み直す。最大仮想幅を超えるリサイズでは
+        // 既存の描画元を再利用する。
         if (_stageActive || e.NewSize.Width <= 0
             || !StageThumbnailPlanner.SourceSizeChanged(_layoutWingSourceWidth, e.NewSize.Width))
             return;

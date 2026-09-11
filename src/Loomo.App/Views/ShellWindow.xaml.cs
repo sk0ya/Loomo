@@ -1,5 +1,17 @@
 ﻿namespace sk0ya.Loomo.App.Views;
 public partial class ShellWindow : Window {
+    protected override void OnRenderSizeChanged(SizeChangedInfo sizeInfo) {
+        base.OnRenderSizeChanged(sizeInfo);
+        if (!IsLoaded || _paneFullscreen)
+            return;
+        if (_stageActive)
+            QueueStageResize();
+        // 袖のミニチュアは幅にしか追従しない（描画元の幅＝Main 領域の幅）。高さだけの変化でも
+        // 組み直していると、窓の下辺を掴んだだけで1刻みごとにカードを全部作り直すことになる。
+        else if (!_dockActive && sizeInfo.WidthChanged && WingHost.Visibility == Visibility.Visible)
+            ScheduleLayoutWings();
+    }
+
     private readonly TerminalService _terminal;
     private readonly EditorService _editor;
     private readonly BrowserService _browser;
@@ -391,6 +403,7 @@ public partial class ShellWindow : Window {
         InitializeBrowserChrome();
         InitializeGitLogFilter();
         InitializeTrail();
+        InitializeDock();
         StartupProfiler.Mark("ShellWindow ctor 完了");
     }
 
@@ -435,6 +448,7 @@ public partial class ShellWindow : Window {
                 LoadLayouts(System.Array.Empty<SavedLayout>(), scratch: null, activeIndex: -1, dirty: false);
                 ApplyIdePaneApplicability(System.Array.Empty<string>());
                 PrepareStageSnapshot(solo: true, StageSnapshot.Default());
+                PrepareDockSnapshot(dock: false, snapshot: null);
                 ApplyDefaultLayout();
                 SetBrowserAddressText(DefaultBrowserUrl);
                 CreateBrowserTab(DefaultBrowserUrl);

@@ -97,7 +97,7 @@ public partial class ShellWindow {
 
     /// <summary>そのペインへ今フォーカスを戻せるか（舞台中は表に出し直せるので可）。</summary>
     private bool IsPaneFocusableNow(PaneKind kind)
-        => _paneElements.ContainsKey(kind) && (_stageActive || IsPaneVisible(kind));
+        => _paneElements.ContainsKey(kind) && IsPaneMaterialized(kind);
     private static bool IsWithin(DependencyObject element, DependencyObject ancestor)
         => FocusReturnElement.IsWithin(element, ancestor);
     private void OnWindowDeactivated(object? sender, EventArgs e)
@@ -253,6 +253,8 @@ public partial class ShellWindow {
     private void FocusPane(PaneKind kind) {
         if (_stageActive && kind != _stagePane)
             SetStagePane(kind);
+        else if (_dockActive && !_dockMode.IsOpen(kind))
+            EnsureDockPaneShown(kind);   // 出ていない面へフォーカスが来たら、その領域に出して見せる
         _focusedRegion = FocusTarget.Of(kind);
         if (_paneElements.TryGetValue(kind, out var pane) &&
             _lastPaneFocus.TryGetValue(kind, out var previous) && TryRestoreFocus(previous, pane))
@@ -322,7 +324,8 @@ public partial class ShellWindow {
         var target = _stageActive ? _stagePane : workspace.ActivePane;
         if (target is not { } pane || !_paneElements.ContainsKey(pane))
             return;
-        if (!_stageActive && !IsPaneVisible(pane))
+        // ドックでは「タイルに出ている」だけでは足りない（下／右に開いている面も現在地になり得る）。
+        if (!_stageActive && !IsPaneMaterialized(pane))
             return;
         if (_overviewActive) {
             _focusedRegion = FocusTarget.Of(pane);

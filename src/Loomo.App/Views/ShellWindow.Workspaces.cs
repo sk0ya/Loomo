@@ -194,7 +194,9 @@ public partial class ShellWindow {
         ApplyIdePaneApplicability(WorkspaceFolders(workspace));
         LoadEnabledSessions(workspace.EnabledSessions);
         _activeWingTab = workspace.ActiveWingTab;
-        PrepareStageSnapshot(WorkspaceSessionCoordinator.ResolveSoloMode(workspace), workspace.Stage);
+        var restoredMode = WorkspaceSessionCoordinator.ResolveDisplayMode(workspace);
+        PrepareStageSnapshot(restoredMode == DisplayMode.Solo, workspace.Stage);
+        PrepareDockSnapshot(restoredMode == DisplayMode.Dock, workspace.Dock);
         StartupProfiler.Mark("  復元:PrepareStageSnapshot");
         profile?.Lap("viewModels");
         ApplyPaneLayout(workspace.PaneLayout);
@@ -226,6 +228,7 @@ public partial class ShellWindow {
         StartupProfiler.Mark("  復元:RestoreBrowserTabs");
         profile?.Lap("browser");
         CompleteStageSnapshotRestore();
+        CompleteDockSnapshotRestore();
         RestoreActivePane(workspace);
         if (workspace.DetachedWindows.Count > 0)
             Detached.Restore(workspace.DetachedWindows, RestoreDetachedItem);
@@ -320,7 +323,7 @@ public partial class ShellWindow {
         snapshot.ComposerVisible = IsComposerVisible;
         snapshot.ComposerHeight = CaptureComposerHeight();
         snapshot.Pegboard = _vm.Pegboard.ToSnapshots();
-        snapshot.Mode = _stageActive ? DisplayMode.Solo : DisplayMode.Layout;
+        snapshot.Mode = CurrentDisplayMode;
         snapshot.EnabledSessions = _enabledSessions.ToList();
         snapshot.ActiveWingTab = _activeWingTab;
         snapshot.Stage = new StageSnapshot {
@@ -328,6 +331,7 @@ public partial class ShellWindow {
             Overview = _stageActive && _overviewActive, WingWidth = _wingWidth,
             WingCollapsed = _isWingCollapsed
         };
+        snapshot.Dock = CaptureDockSnapshot();
         snapshot.Layouts = _layouts.Select(l => new SavedLayout { Name = l.Name, Tree = l.Tree }).ToList();
         snapshot.ScratchLayout = _scratchLayout;
         snapshot.ActiveLayoutIndex = _activeLayoutIndex;

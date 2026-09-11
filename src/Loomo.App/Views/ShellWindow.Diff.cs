@@ -7,14 +7,17 @@
 ///
 /// <para>Diff ペインが出ていればそのペインへ。<b>隠れているときは別ウィンドウで開く</b>——差分を
 /// 見たいだけの一瞬のために、そこに置いてあったペイン（ターミナルやエディタ）を追い出して部屋の
-/// 配置を崩すのは対価が大きい。窓なら見終わって閉じれば元の配置がそのまま残る。</para>
+/// 配置を崩すのは対価が大きい。窓なら見終わって閉じれば元の配置がそのまま残る。
+/// ただし<b>集中（袖）とドック（帯）では「隠れている」ペインが無い</b>——どちらもひと押しで
+/// 出せて、出しても元の配置は崩れない。窓へ逃がすのは分割で配置から消えているときだけ。</para>
 /// </summary>
 public partial class ShellWindow {
     /// <summary>差分を見せる。ペインが出ていなければ別ウィンドウで開く（このクラスの主役）。</summary>
     private void ShowDiff(DiffOpenTarget target) {
-        // ステージモードでは「隠れている」ペインは無い（袖に居るだけで、舞台へ上げれば出る）ので
-        // 従来どおり舞台へ出す。窓へ逃がすのは、ペインが配置から消えているときだけ。
-        if (_stageActive || IsPaneVisible(PaneKind.Diff)) {
+        // 集中では袖に、ドックでは帯に居るだけなので、そのまま舞台／領域へ出す
+        // （EnsurePaneVisibleOrSwapTopLeft がモードごとの出し方を持っている）。
+        // 窓へ逃がすのは、分割でペインが配置から消えているときだけ。
+        if (_dockActive || IsPaneMaterialized(PaneKind.Diff)) {
             _ = _vm.DiffSession.ShowAsync(target);
             EnsurePaneVisibleOrSwapTopLeft(PaneKind.Diff);
             FocusPane(PaneKind.Diff);
