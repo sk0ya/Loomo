@@ -36,6 +36,15 @@ internal static class UiJankProfiler
     /// <summary>UI スレッドへ ping を投げる間隔。60fps（≒16ms）より細かく刻んで stall を捉える。</summary>
     private const int PingIntervalMs = 4;
 
+    /// <summary>
+    /// ping が返るのをここまで待つ。
+    ///
+    /// <para>ここは短くしてはいけない。以前は 2 秒で打ち切って次周期へ回していたので、
+    /// <b>利用者が「固まる」と呼ぶ 2 秒超の停止だけが UIWAIT から漏れていた</b>
+    /// （4.7 秒の停止が DISPATCH 行にしか残っていなかったのはこのため）。</para>
+    /// </summary>
+    private const int PingWaitCapMs = 60_000;
+
     private static readonly object Lock = new();
     private static readonly string LogPath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
@@ -47,9 +56,6 @@ internal static class UiJankProfiler
 
     private static readonly Stopwatch Clock = Stopwatch.StartNew();
     private static long _lastFrameMs = -1;
-
-    /// <summary>前回の記録時点での GC 回数。stall の間に何回回ったかを出すために持つ。</summary>
-    private static int _gc0, _gc1, _gc2;
 
     /// <summary>プロファイラを開始する（UI スレッドから一度だけ呼ぶ）。無効時は何もしない。</summary>
     public static void Start(Dispatcher dispatcher)
@@ -112,17 +118,23 @@ internal static class UiJankProfiler
         try
         {
             var found = new System.Collections.Generic.List<string>();
+            var others = new System.Collections.Generic.List<string>();
             var seen = new System.Collections.Generic.HashSet<object>(ReferenceEqualityComparer.Instance);
-            Unwrap(op, found, seen, depth: 0);
-            return found.Count > 0 ? string.Join(" / ", found) : "(不明)";
+            Unwrap(op, found, others, seen, depth: 0);
+            if (found.Count > 0) return string.Join(" / ", found);
+            // Loomo のメソッドに行き着かなくても、名前を捨てない——WPF 内部（TSF/IME、入力、
+            // レイアウト）や他パッケージ由来の停止は「(不明)」と書かれると切り分け不能になる。
+            return others.Count > 0 ? $"[外部] {string.Join(" / ", others)}" : "(不明)";
         }
         catch { return "(反射失敗)"; }
     }
 
-    /// <summary>オブジェクトのフィールドを再帰的に辿り、Loomo のメソッド名／async state machine を集める
-    /// （フレームワーク・ランタイムの雑音は拾わない）。async 継続の本体（<c>&lt;Method&gt;d__NN</c>）は
-    /// 値型フィールドに埋まっているので、値型でも <c>d__</c> なら辿る。</summary>
+    /// <summary>オブジェクトのフィールドを再帰的に辿り、Loomo のメソッド名／async state machine を集める。
+    /// async 継続の本体（<c>&lt;Method&gt;d__NN</c>）は値型フィールドに埋まっているので、値型でも
+    /// <c>d__</c> なら辿る。Loomo 以外のデリゲート名は <paramref name="others"/> へ控えておき、
+    /// Loomo のものが一つも無かったときだけ使う（雑音にせず、かつ取りこぼさない）。</summary>
     private static void Unwrap(object? obj, System.Collections.Generic.List<string> found,
+        System.Collections.Generic.List<string> others,
         System.Collections.Generic.HashSet<object> seen, int depth)
     {
         if (obj is null || depth > 6 || found.Count >= 4 || !seen.Add(obj))
@@ -143,9 +155,15 @@ internal static class UiJankProfiler
         {
             var m = d.Method;
             var name = $"{m.DeclaringType?.FullName}.{m.Name}";
-            if (name.Contains("sk0ya.Loomo") && !found.Contains(name))
-                found.Add(name);
-            Unwrap(d.Target, found, seen, depth + 1);
+            if (name.Contains("sk0ya.Loomo"))
+            {
+                if (!found.Contains(name)) found.Add(name);
+            }
+            else if (others.Count < 2 && !others.Contains(name))
+            {
+                others.Add(name);
+            }
+            Unwrap(d.Target, found, others, seen, depth + 1);
             return;
         }
 
@@ -160,7 +178,7 @@ internal static class UiJankProfiler
             object? v;
             try { v = f.GetValue(obj); } catch { continue; }
             if (v is not null)
-                Unwrap(v, found, seen, depth + 1);
+                Unwrap(v, found, others, seen, depth + 1);
         }
     }
 
@@ -183,28 +201,43 @@ internal static class UiJankProfiler
         var dispatcher = _dispatcher!;
         while (_running)
         {
+            // GC 回数はこの ping の<b>往復ぶんだけ</b>を数える。以前は「前回記録した時点から」の
+            // 累計を出していたので、しきい値未満の平穏な時間に回った GC まで stall の数字に
+            // 混ざっていた（gen0=171 のような、読み手を誤らせる値になる）。
+            int g0Before = GC.CollectionCount(0);
+            int g1Before = GC.CollectionCount(1);
+            int g2Before = GC.CollectionCount(2);
+
             var sw = Stopwatch.StartNew();
-            using var done = new ManualResetEventSlim(false);
+            var done = new ManualResetEventSlim(false);
             try
             {
-                dispatcher.BeginInvoke(DispatcherPriority.Normal, new Action(() => done.Set()));
+                dispatcher.BeginInvoke(DispatcherPriority.Normal, new Action(done.Set));
             }
             catch
             {
+                done.Dispose();
                 return; // Dispatcher 終了（アプリ終了）
             }
 
-            if (!done.Wait(2000))
-                continue; // 2 秒待っても返らない＝重い処理中。次周期で計り直す。
+            if (!done.Wait(PingWaitCapMs))
+            {
+                // ここまで返らないのは事実上のハング。遅れて届く Set() と競合させないため、
+                // この 1 個だけは破棄しない（破棄済みへの Set() は UI スレッド上で例外になる）。
+                Append($"{Clock.ElapsedMilliseconds,8} ms  UIWAIT latency>{PingWaitCapMs,4} ms   （UI スレッドが返らない）");
+                continue;
+            }
 
             var latency = sw.ElapsedMilliseconds;
+            done.Dispose();
             if (latency >= StallThresholdMs)
             {
                 // GC の回数も添える。UI が止まる理由は「コードが占有した」か「GC で全スレッドが
                 // 止まった」かで対処がまったく違う——前者はその処理を背景へ、後者は割り当てを減らす。
                 // gen2 が増えていれば、大きな一時オブジェクト（LOH 行き）を作り続けている疑い。
-                int g0 = GC.CollectionCount(0) - _gc0, g1 = GC.CollectionCount(1) - _gc1, g2 = GC.CollectionCount(2) - _gc2;
-                _gc0 += g0; _gc1 += g1; _gc2 += g2;
+                int g0 = GC.CollectionCount(0) - g0Before;
+                int g1 = GC.CollectionCount(1) - g1Before;
+                int g2 = GC.CollectionCount(2) - g2Before;
                 var gc = (g0 | g1 | g2) != 0 ? $"  GC(gen0={g0} gen1={g1} gen2={g2})" : "";
                 Append($"{Clock.ElapsedMilliseconds,8} ms  UIWAIT latency={latency,5} ms{gc}   （UIスレッド占有。ハンドラ/レイアウトが犯人）");
             }
