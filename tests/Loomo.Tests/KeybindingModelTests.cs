@@ -104,6 +104,19 @@ public class KeybindingModelTests
     }
 
     [Fact]
+    public void Catalog_exposes_search_scope_commands()
+    {
+        Assert.Equal("Ctrl+Shift+F", CommandCatalog.Find("pane.search")?.DefaultBinding);
+        Assert.NotNull(CommandCatalog.Find("search.nextScope"));
+        Assert.NotNull(CommandCatalog.Find("search.previousScope"));
+        Assert.NotNull(CommandCatalog.Find("search.scope.text"));
+        Assert.NotNull(CommandCatalog.Find("search.scope.fileName"));
+        Assert.NotNull(CommandCatalog.Find("search.scope.terminal"));
+        Assert.NotNull(CommandCatalog.Find("search.scope.class"));
+        Assert.NotNull(CommandCatalog.Find("search.scope.symbol"));
+    }
+
+    [Fact]
     public void Catalog_resize_commands_enter_resize_mode()
     {
         foreach (var d in CommandCatalog.All.Where(c => c.Id.StartsWith("pane.resize.")))

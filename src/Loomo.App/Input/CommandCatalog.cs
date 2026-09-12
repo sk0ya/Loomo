@@ -39,6 +39,7 @@ public static class CommandCatalog
     private const string CatStage = "セッション";
     private const string CatProblems = "問題";
     private const string CatEditor = "エディタ";
+    private const string CatSearch = "検索";
 
     public static IReadOnlyList<CommandDescriptor> All { get; } = new CommandDescriptor[]
     {
@@ -66,6 +67,17 @@ public static class CommandCatalog
         // ファイル一覧は既定キーを与えない（サイドバーのツリーと役割が違うだけで、
         // 毎回使う起点ではない。割り当てたい人は設定画面から付けられる）。
         new CommandDescriptor("pane.files", CatPane, "ファイル一覧を開く", null),
+
+        // ===== 検索 =====
+        // pane.search は検索ペインの外では開く、検索ペイン内では次の対象へ切り替える。
+        // そのため既定キーを二重に登録せず、同じ Ctrl+Shift+F を自然な動線として使える。
+        new CommandDescriptor("search.nextScope", CatSearch, "次の検索対象へ切り替え", null),
+        new CommandDescriptor("search.previousScope", CatSearch, "前の検索対象へ切り替え", null),
+        new CommandDescriptor("search.scope.text", CatSearch, "検索対象をテキストにする", null),
+        new CommandDescriptor("search.scope.fileName", CatSearch, "検索対象をファイル名にする", null),
+        new CommandDescriptor("search.scope.terminal", CatSearch, "検索対象をターミナルにする", null),
+        new CommandDescriptor("search.scope.class", CatSearch, "検索対象をクラスにする", null),
+        new CommandDescriptor("search.scope.symbol", CatSearch, "検索対象をシンボルにする", null),
 
         // ===== 問題 =====
         new CommandDescriptor("problems.next", CatProblems, "次の問題へ移動", "F8"),

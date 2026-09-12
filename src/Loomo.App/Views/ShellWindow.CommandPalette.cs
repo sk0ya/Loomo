@@ -102,6 +102,17 @@ public partial class ShellWindow {
                     SetPaneVisible(target, !IsPaneVisible(target));
             }));
         }
+        list.Add(new("検索", "検索を開く／検索対象を次へ切り替え", OpenOrCycleSearch,
+            Sc("pane.search"), "pane.search"));
+        list.Add(new("検索", "次の検索対象へ切り替え", () => CycleSearchScope(+1),
+            Sc("search.nextScope"), "search.nextScope"));
+        list.Add(new("検索", "前の検索対象へ切り替え", () => CycleSearchScope(-1),
+            Sc("search.previousScope"), "search.previousScope"));
+        AddSearchScopeCommand(list, "テキスト", SearchScope.Text);
+        AddSearchScopeCommand(list, "ファイル", SearchScope.FileName);
+        AddSearchScopeCommand(list, "ターミナル", SearchScope.Terminal);
+        AddSearchScopeCommand(list, "クラス", SearchScope.Class);
+        AddSearchScopeCommand(list, "シンボル", SearchScope.Symbol);
         list.Add(new("タブ", "新しいターミナルタブ", () => OnTerminalNewTab(this, new RoutedEventArgs()), Sc("tab.newTerminal"), "tab.newTerminal"));
         list.Add(new("タブ", "新しいエディタタブ", () => OnEditorNewTab(this, new RoutedEventArgs()), Sc("tab.newEditor"), "tab.newEditor"));
         list.Add(new("タブ", "新しいブラウザタブ", () => OnBrowserNewTab(this, new RoutedEventArgs()), Sc("tab.newBrowser"), "tab.newBrowser"));
@@ -145,5 +156,20 @@ public partial class ShellWindow {
             list.Add(new("ワークスペース", $"切替: {target.Name}", () => _ = _vm.Workspaces.ActivateWorkspaceAsync(target)));
         }
         return list;
+    }
+
+    private void AddSearchScopeCommand(List<PaletteCommand> list, string label, SearchScope scope)
+    {
+        var id = $"search.scope.{scope switch
+        {
+            SearchScope.Text => "text",
+            SearchScope.FileName => "fileName",
+            SearchScope.Terminal => "terminal",
+            SearchScope.Class => "class",
+            SearchScope.Symbol => "symbol",
+            _ => throw new ArgumentOutOfRangeException(nameof(scope)),
+        }}";
+        list.Add(new("検索", $"検索対象を{label}にする", () => OpenSearch(scope),
+            _keybindings.For(id)?.Format(), id));
     }
 }

@@ -9,8 +9,15 @@ public partial class ShellWindow {
             ["pane.focus.left"] = () => FocusPaneInDirection(DropZone.Left), ["pane.focus.down"] = () => FocusPaneInDirection(DropZone.Below), ["pane.focus.up"] = () => FocusPaneInDirection(DropZone.Above), ["pane.focus.right"] = () => FocusPaneInDirection(DropZone.Right),
             ["pane.resize.left"] = () => ResizeFocusedPane(DropZone.Left), ["pane.resize.down"] = () => ResizeFocusedPane(DropZone.Below), ["pane.resize.up"] = () => ResizeFocusedPane(DropZone.Above), ["pane.resize.right"] = () => ResizeFocusedPane(DropZone.Right),
             ["pane.zoom"] = ToggleZoom, ["pane.fullscreen"] = TogglePaneFullscreen, ["pane.close"] = () => { if (!CloseFocusedViewport()) HideFocusedRegion(); }, ["pane.split.vertical"] = () => HandleViewportSplitKey(Key.V), ["pane.split.horizontal"] = () => HandleViewportSplitKey(Key.S), ["pane.split.closeView"] = () => HandleViewportSplitKey(Key.Q),
-            ["pane.search"] = () => { EnsurePaneVisibleOrSwapTopLeft(PaneKind.Search); FocusPane(PaneKind.Search); },
+            ["pane.search"] = OpenOrCycleSearch,
             ["pane.files"] = () => { EnsurePaneVisibleOrSwapTopLeft(PaneKind.Files); FocusPane(PaneKind.Files); },
+            ["search.nextScope"] = () => CycleSearchScope(+1),
+            ["search.previousScope"] = () => CycleSearchScope(-1),
+            ["search.scope.text"] = () => OpenSearch(SearchScope.Text),
+            ["search.scope.fileName"] = () => OpenSearch(SearchScope.FileName),
+            ["search.scope.terminal"] = () => OpenSearch(SearchScope.Terminal),
+            ["search.scope.class"] = () => OpenSearch(SearchScope.Class),
+            ["search.scope.symbol"] = () => OpenSearch(SearchScope.Symbol),
             ["problems.next"] = () => CurrentProblems().NextCommand.Execute(null), ["problems.previous"] = () => CurrentProblems().PreviousCommand.Execute(null),
             ["editor.save"] = SaveActiveEditor,
             ["editor.selection.expand"] = ExpandSemanticSelection, ["editor.selection.shrink"] = ShrinkSemanticSelection, ["editor.test.runAtCaret"] = RunTestAtCaret,
@@ -84,6 +91,49 @@ public partial class ShellWindow {
 
     private bool IsEditorFocused()
         => EditorPane.IsKeyboardFocusWithin || _focusedRegion?.Pane == PaneKind.Editor;
+
+    /// <summary>検索を開く。対象を明示したコマンドでは、その対象へ切り替えてから検索欄へフォーカスする。</summary>
+    private void OpenSearch(SearchScope? scope = null)
+    {
+        if (scope is { } value)
+            _vm.SearchPanel.Scope = value;
+
+        EnsurePaneVisibleOrSwapTopLeft(PaneKind.Search);
+        FocusPane(PaneKind.Search);
+        // FocusPane は直前に結果ツリーへフォーカスを戻す場合があるため、検索ショートカットでは
+        // 常に入力欄へ戻す。BeginInvoke されるので、舞台／ドックの再配置後にも適用される。
+        SearchPaneHost.FocusQuery();
+    }
+
+    /// <summary>検索ペイン内で既定の検索キーをもう一度押したときの動作。外からなら開くだけ、
+    /// 中からなら現在の入力を保ったまま検索対象を巡回する。</summary>
+    private void OpenOrCycleSearch()
+    {
+        if (IsSearchFocused())
+        {
+            CycleSearchScope(+1);
+            return;
+        }
+
+        OpenSearch();
+    }
+
+    /// <summary>検索対象を切り替える。検索ペインが別の場所にフォーカスされている場合も、
+    /// まず検索を表示して入力欄へ移すことで、ショートカットを連打しやすくする。</summary>
+    private void CycleSearchScope(int direction)
+    {
+        if (!IsSearchFocused())
+        {
+            OpenSearch();
+            return;
+        }
+
+        _vm.SearchPanel.CycleScope(direction);
+        SearchPaneHost.FocusQuery();
+    }
+
+    private bool IsSearchFocused()
+        => SearchPaneHost.IsKeyboardFocusWithin || _focusedRegion?.Pane == PaneKind.Search;
 
     /// <summary>現在のエディター文書を保存する。Ctrl+S は言語に依存しないホスト操作なので、
     /// C# 専用 DLL ではなく ShellWindow から Editor の保存 API へ接続する。</summary>

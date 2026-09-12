@@ -65,6 +65,16 @@ public sealed partial class SearchPanelViewModel : ObservableObject
     /// <summary>検索範囲（テキスト grep / ファイル名 / ターミナル）。</summary>
     [ObservableProperty] private SearchScope _scope = SearchScope.Text;
 
+    /// <summary>ショートカットで巡回する検索対象の順序。UI 上のボタンの並びとも揃える。</summary>
+    private static readonly SearchScope[] ScopeCycle =
+    {
+        SearchScope.Text,
+        SearchScope.FileName,
+        SearchScope.Terminal,
+        SearchScope.Class,
+        SearchScope.Symbol,
+    };
+
     // 詳細検索（ファイル名・内容・属性を AND で組み合わせる）の条件。
     [ObservableProperty] private string _advancedFileName = "";
     [ObservableProperty] private string _advancedContent = "";
@@ -290,6 +300,23 @@ public sealed partial class SearchPanelViewModel : ObservableObject
             IsReplaceVisible = false;
         }
         ScheduleSearch();
+    }
+
+    /// <summary>検索対象を指定方向へ切り替える。末尾から先頭（または先頭から末尾）へ巡回する。
+    /// 検索語・詳細条件は対象ごとに保持したままなので、切り替えても入力を失わない。</summary>
+    public void CycleScope(int direction = 1)
+    {
+        if (direction == 0)
+            return;
+
+        var current = Array.IndexOf(ScopeCycle, Scope);
+        if (current < 0)
+            current = 0;
+
+        var next = (current + Math.Sign(direction)) % ScopeCycle.Length;
+        if (next < 0)
+            next += ScopeCycle.Length;
+        Scope = ScopeCycle[next];
     }
 
     [RelayCommand]

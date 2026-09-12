@@ -63,6 +63,23 @@ public sealed class SearchPanelHighlightTests
     }
 
     [Fact]
+    public void 検索対象の巡回はUIの並び順で折り返す()
+    {
+        var sut = CreateSut();
+
+        sut.CycleScope();
+        Assert.Equal(SearchScope.FileName, sut.Scope);
+        sut.CycleScope();
+        Assert.Equal(SearchScope.Terminal, sut.Scope);
+
+        sut.CycleScope(-1);
+        Assert.Equal(SearchScope.FileName, sut.Scope);
+        sut.Scope = SearchScope.Symbol;
+        sut.CycleScope();
+        Assert.Equal(SearchScope.Text, sut.Scope);
+    }
+
+    [Fact]
     public void 詳細検索の内容ヒットは既存のEditorジャンプイベントへ流れる()
     {
         var sut = CreateSut();
