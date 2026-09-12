@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    入力の先読み（FIM）を回す別プロセス。Loomo 本体から切り離してあるのは、
+    「何があっても人の入力を止めない」ため——同じプロセスにいる限り、推論は UI スレッドと
+    CPU とメモリ帯域と GC を分け合う。別プロセスなら OS がスケジューリングを分離でき、
+    優先度も下げられる（起動側が BelowNormal を設定する）。JetBrains の Full Line Code
+    Completion が別プロセス（gRPC 越し）なのも同じ理由と見ている。
+
+    WPF は参照しない。Loomo.Core はやり取りの約束（FimProtocol）のためだけに参照する。
+    受け取るのは組み立て済みのプロンプト文字列だけで、プロンプトの組み立ても候補の選別も本体側に置いてある。
+  -->
+  <ItemGroup>
+    <!-- やり取りの約束（FimProtocol）だけを本体と共有する。UI も設定も持ち込まない。 -->
+    <ProjectReference Include="..\Loomo.Core\Loomo.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="LLamaSharp" Version="0.27.0" />
+    <PackageReference Include="LLamaSharp.Backend.Cpu" Version="0.27.0" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>sk0ya.Loomo.Completion.Host</RootNamespace>
+    <AssemblyName>sk0ya.Loomo.Completion.Host</AssemblyName>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <!-- 本体と同じ理由で出力パスを固定する（起動側が exe の場所を組み立てるため）。 -->
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="sk0ya.Loomo.Tests" />
+  </ItemGroup>
+
+</Project>

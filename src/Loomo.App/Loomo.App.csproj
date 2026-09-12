@@ -31,6 +31,20 @@
     <DefineConstants Condition="'$(UseLocalEditor)' != 'false' Or $([MSBuild]::VersionGreaterThanOrEquals('$(EditorPackageVersion)', '1.0.84'))">$(DefineConstants);LOOMO_EDITOR_INLINE_SUGGEST</DefineConstants>
   </PropertyGroup>
 
+  <!-- 先読みワーカー。参照は「一緒にビルドさせる」ためで、本体はそのアセンブリを使わない
+       （やり取りは標準入出力だけ）。apphost（.exe）は ProjectReference では運ばれないので明示的に置く。 -->
+  <ItemGroup>
+    <ProjectReference Include="../Loomo.Completion.Host/Loomo.Completion.Host.csproj" />
+  </ItemGroup>
+
+  <Target Name="CopyCompletionHostApphost" AfterTargets="Build">
+    <ItemGroup>
+      <CompletionHostApphost Include="$(MSBuildThisFileDirectory)../Loomo.Completion.Host/bin/$(Configuration)/sk0ya.Loomo.Completion.Host.exe" />
+    </ItemGroup>
+    <Copy SourceFiles="@(CompletionHostApphost)" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true"
+          Condition="Exists('%(CompletionHostApphost.FullPath)')" />
+  </Target>
+
   <ItemGroup>
     <InternalsVisibleTo Include="sk0ya.Loomo.Tests" />
   </ItemGroup>

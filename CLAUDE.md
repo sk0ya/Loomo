@@ -227,9 +227,17 @@ llama.cpp model** (Qwen2.5-Coder 0.5B, FIM) wired in through `VimEditorControlOp
 `LoomoSettings.InlineCompletion` holds the switch, the model path and the window sizes; the 整形-style
 get-the-model button lives in the editor settings category.
 
-**Why a second engine and not `LlamaCppEngine`:** this runs on *every keystroke*, so sharing the chat engine
-would park typing behind a chat generation for seconds. For the same reason a request that arrives while one is
-running is **dropped, not queued** — queued ones come back several generations stale.
+**It runs in a separate process** (`sk0ya.Loomo.Completion.Host`), and that is not an optimization — it is the
+only way to keep the promise that typing is never blocked. In-process, no thread-count split was enough: CPU
+cores can be divided, **memory bandwidth and the GC cannot**. Out of process the worker runs at
+`BelowNormal`, so the human's input outranks it structurally rather than by tuning. The wire is one JSON
+object per line over stdio (`Core/Completion/FimProtocol.cs`); only the assembled prompt crosses it (a few KB —
+never the whole buffer), and prompt assembly *and* candidate filtering stay host-side because the host is what
+knows the context. The worker always services **only the newest request**, cancelling a running generation the
+moment another arrives — reading and generating are on separate threads precisely so a cancellation can be
+heard mid-generation. If it dies, the host loses nothing (restart on next request, pending requests settle as
+"nothing", 5s response timeout, give up after 3 failed starts); a Job Object keeps it from outliving Loomo and
+it shuts itself down after 10 idle minutes.
 
 **The numbers that shaped it** (Ryzen 5 3500, 6 cores, CPU-only, measured — see §31.13 for the full table):
 KV-cache reuse is the whole ballgame (411 tokens, 298 reused, 113 resent → ~140ms; without reuse every keystroke

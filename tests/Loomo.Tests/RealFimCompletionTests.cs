@@ -1,7 +1,7 @@
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Threading.Tasks;
-using System.Diagnostics;
 using sk0ya.Loomo.Ai.Completion;
 using sk0ya.Loomo.Core.Settings;
 using Xunit.Abstractions;
@@ -9,8 +9,9 @@ using Xunit.Abstractions;
 namespace sk0ya.Loomo.Tests;
 
 /// <summary>
-/// 実際の FIM モデルを読み込んで先読みが返ることの確認。モデル（約506MB）を置いた環境でだけ走る
-/// ——普段のテストで 0.5B を読み込むわけにはいかないので、モデルが無ければ黙って通す。
+/// 先読みを別プロセスのワーカーへ投げて、実際に答えが返るところまで。モデル（約506MB）を
+/// 置いた環境でだけ走る——普段のテストで 0.5B を読み込むわけにはいかないので、
+/// モデルが無ければ黙って通す。
 /// </summary>
 public sealed class RealFimCompletionTests(ITestOutputHelper output)
 {
@@ -24,7 +25,7 @@ public sealed class RealFimCompletionTests(ITestOutputHelper output)
         ModelPath = ModelPath,
         PrefixLines = 30,
         SuffixLines = 3,
-        MaxTokens = 16,
+        MaxTokens = 8,
     };
 
     /// <summary>手掛かりの途中で切った 1 行を、モデルに書き継がせる。</summary>
@@ -38,7 +39,7 @@ public sealed class RealFimCompletionTests(ITestOutputHelper output)
     }
 
     [Fact]
-    public async Task The_model_continues_a_line_and_reuses_its_cache_between_keystrokes()
+    public async Task The_worker_continues_a_line_and_reuses_its_cache_between_keystrokes()
     {
         if (!File.Exists(ModelPath))
         {
@@ -49,55 +50,83 @@ public sealed class RealFimCompletionTests(ITestOutputHelper output)
         var source = await File.ReadAllLinesAsync(
             Path.Combine(FindRepoRoot(), "src", "Loomo.Services", "Lsp", "LspDocumentTable.cs"));
 
-        using var engine = new FimCompletionEngine();
+        using var client = new FimCompletionClient();
         var settings = Settings();
 
-        // 1 回目はモデルのロードと全文の prefill を含む（実測でおよそ 1.5 秒）。
+        // 1 回目はワーカーの起動・モデルの読み込み・全文の prefill を含む。
         var first = Cut(source, 146);
         var cold = Stopwatch.StartNew();
-        var coldResult = await engine.CompleteAsync(settings, first.Lines, first.Line, first.Column, default);
+        var coldResult = await client.CompleteAsync(settings, first.Lines, first.Line, first.Column, default);
         cold.Stop();
         output.WriteLine($"1回目 {cold.ElapsedMilliseconds} ms → {coldResult ?? "(なし)"}");
-        Assert.True(engine.IsLoaded, "モデルが読み込まれていない");
+        Assert.True(client.IsRunning, "ワーカーが起動していない");
 
         // 2 回目以降は「1 文字打った」状態。共通の接頭辞が KV に残っているので差分だけで済む。
         var typed = (string[])first.Lines.Clone();
         typed[first.Line] += first.Truth[..1];
 
         var warm = Stopwatch.StartNew();
-        var warmResult = await engine.CompleteAsync(
+        var warmResult = await client.CompleteAsync(
             settings, typed, first.Line, typed[first.Line].Length, default);
         warm.Stop();
 
-        var timing = engine.LastTiming;
+        var last = client.LastResponse;
         output.WriteLine($"2回目 {warm.ElapsedMilliseconds} ms → {warmResult ?? "(なし)"}");
-        output.WriteLine($"  再利用 {timing.ReusedTokens} tok / 送り直し {timing.PrefillTokens} tok "
-            + $"(prefill {timing.PrefillMs} ms) / 生成 {timing.GeneratedTokens} tok ({timing.GenerateMs} ms)");
+        output.WriteLine($"  再利用 {last.ReusedTokens} tok / 送り直し {last.PrefillTokens} tok "
+            + $"(prefill {last.PrefillMs} ms) / 生成 {last.GeneratedTokens} tok ({last.GenerateMs} ms)");
 
-        Assert.True(timing.ReusedTokens > 0,
-            "KV キャッシュが再利用されていない（打鍵ごとに全文を prefill し直すと 1 秒を超え、先読みとして成立しない）");
-        Assert.True(timing.PrefillTokens < timing.ReusedTokens,
-            $"送り直しが再利用より多い（再利用 {timing.ReusedTokens} / 送り直し {timing.PrefillTokens}）");
+        Assert.True(last.ReusedTokens > 0,
+            "KV キャッシュが再利用されていない（打鍵ごとに全文を prefill し直すと先読みとして成立しない）");
+        Assert.True(last.PrefillTokens < last.ReusedTokens,
+            $"送り直しが再利用より多い（再利用 {last.ReusedTokens} / 送り直し {last.PrefillTokens}）");
+    }
+
+    /// <summary>
+    /// 別プロセスにした眼目。ワーカーは<b>本体より低い優先度</b>で動いていなければならない
+    /// ——人の入力より先読みが優先されることが構造的に起きないようにするための一点。
+    /// </summary>
+    [Fact]
+    public async Task The_worker_runs_below_normal_priority()
+    {
+        if (!File.Exists(ModelPath))
+        {
+            output.WriteLine($"モデルが無いので飛ばす: {ModelPath}");
+            return;
+        }
+
+        using var client = new FimCompletionClient();
+        string[] lines = ["public void Run()", "{", "    var value = 1;", "    var v", "}"];
+        await client.CompleteAsync(Settings(), lines, 3, lines[3].Length, default);
+        Assert.True(client.IsRunning, "ワーカーが起動していない");
+
+        var worker = Process.GetProcessesByName("sk0ya.Loomo.Completion.Host");
+        Assert.NotEmpty(worker);
+        foreach (var process in worker)
+        {
+            output.WriteLine($"pid={process.Id} priority={process.PriorityClass}");
+            Assert.Equal(ProcessPriorityClass.BelowNormal, process.PriorityClass);
+            process.Dispose();
+        }
     }
 
     /// <summary>設定が無効、モデルのパスが無い——どちらも「黙って何も出さない」。
-    /// 先読みの失敗で入力が止まることがあってはならない。</summary>
+    /// ワーカーを起動すらしない（無駄なプロセスもメモリも作らない）。</summary>
     [Fact]
-    public async Task A_missing_model_or_a_disabled_setting_simply_yields_nothing()
+    public async Task A_missing_model_or_a_disabled_setting_never_starts_the_worker()
     {
-        using var engine = new FimCompletionEngine();
+        using var client = new FimCompletionClient();
         string[] lines = ["public void Run()", "{", "    var x = 1;", "}"];
 
-        Assert.Null(await engine.CompleteAsync(
+        Assert.Null(await client.CompleteAsync(
             new InlineCompletionSettings { Enabled = false, ModelPath = ModelPath }, lines, 2, 14, default));
 
-        Assert.Null(await engine.CompleteAsync(
+        Assert.Null(await client.CompleteAsync(
             new InlineCompletionSettings { Enabled = true, ModelPath = @"Z:\no\such\model.gguf" }, lines, 2, 14, default));
 
-        Assert.Null(await engine.CompleteAsync(
+        Assert.Null(await client.CompleteAsync(
             new InlineCompletionSettings { Enabled = true, ModelPath = null }, lines, 2, 14, default));
 
-        Assert.False(engine.IsLoaded, "使えない設定でモデルを読み込んではいけない");
+        Assert.False(client.IsRunning, "使えない設定でワーカーを起動してはいけない");
     }
 
     private static string FindRepoRoot()

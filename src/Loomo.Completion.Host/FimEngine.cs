@@ -9,9 +9,10 @@ using LLama;
 using LLama.Common;
 using LLama.Native;
 using LLama.Sampling;
-using sk0ya.Loomo.Core.Settings;
 
-namespace sk0ya.Loomo.Ai.Completion;
+using sk0ya.Loomo.Core.Completion;
+
+namespace sk0ya.Loomo.Completion.Host;
 
 /// <summary>1 回の先読みにかかった時間の内訳。バーや診断に出す。</summary>
 /// <param name="ReusedTokens">KV から再利用できたトークン数。</param>
@@ -26,9 +27,9 @@ public readonly record struct FimTiming(
 }
 
 /// <summary>
-/// 入力の先読みを作る FIM 専用の常駐エンジン（llama.cpp / GGUF / CPU）。チャット用の
-/// <see cref="Clients.LlamaCppEngine"/> とはモデルもコンテキストも別に持つ——用途が違い、
-/// 何より<b>打鍵のたびに呼ばれる</b>ので、チャットの生成と場所を取り合ってはいけない。
+/// 入力の先読みを作る FIM 専用の常駐エンジン（llama.cpp / GGUF / CPU）。
+/// <b>このクラスは本体とは別のプロセスで動く</b>——打鍵のたびに呼ばれるものを、UI スレッドと
+/// 同じプロセスに置いてはいけない（CPU もメモリ帯域も GC も分け合うことになる）。
 ///
 /// <para><b>速さは KV キャッシュの再利用がすべて。</b>実測（Ryzen 5 3500・6 コア・Qwen2.5-Coder 0.5B・Q8_0）:
 /// 全部を prefill し直すと 335 トークンで約 1.0 秒だが、打鍵で変わるのは行末だけなので、
@@ -39,7 +40,7 @@ public readonly record struct FimTiming(
 /// <para>量子化は Q8_0 を使う。Q4_K_M でも速くならず（0.5B は演算律速で、メモリ帯域律速ではない）、
 /// 出力だけが崩れた。</para>
 /// </summary>
-public sealed class FimCompletionEngine : IDisposable
+public sealed class FimEngine : IDisposable
 {
     /// <summary>
     /// 1 回の decode に載せるトークン数の上限。小さいほど<b>打鍵で中断しやすい</b>——
@@ -55,7 +56,19 @@ public sealed class FimCompletionEngine : IDisposable
     /// どのみち捨てられる——待ち続けるだけ CPU を取られ、入力が重くなる。</summary>
     private static readonly TimeSpan GenerateBudget = TimeSpan.FromMilliseconds(1500);
 
-    private readonly SemaphoreSlim _gate = new(1, 1);
+    private readonly string _modelPath;
+    private readonly int _decodeThreads;
+    private readonly int _prefillThreads;
+
+    /// <param name="modelPath">GGUF モデルのパス。</param>
+    /// <param name="decodeThreads">生成に使うスレッド数（0 以下なら 2）。</param>
+    /// <param name="prefillThreads">前処理に使うスレッド数（0 以下ならコア数 − 2）。</param>
+    public FimEngine(string modelPath, int decodeThreads = 0, int prefillThreads = 0)
+    {
+        _modelPath = modelPath;
+        _decodeThreads = decodeThreads > 0 ? decodeThreads : 2;
+        _prefillThreads = prefillThreads > 0 ? prefillThreads : Math.Max(1, Environment.ProcessorCount - 2);
+    }
 
     private LLamaWeights? _weights;
     private LLamaContext? _context;
@@ -73,127 +86,63 @@ public sealed class FimCompletionEngine : IDisposable
     public bool IsLoaded => _context is not null;
 
     /// <summary>
-    /// 先読みを 1 件作る。出せないときは null（設定が無効、モデルが無い、モデルが何も返さない、
-    /// 取り消された、のいずれも null に畳む——入力の邪魔をしないことが最優先で、
-    /// 失敗を呼び出し側に見せても打鍵中にできることは何もない）。
+    /// 依頼を 1 件こなす。出せないときは <see cref="FimProtocol.Response.Text"/> が null——
+    /// 失敗も「出せなかった」に畳む。本体にできることは、どちらでも「何も出さない」だけだから。
+    ///
+    /// <para>呼び出しは生成スレッド 1 本からに限る（KV キャッシュを持つので同時に走らせられない）。</para>
     /// </summary>
-    /// <param name="settings">有効・モデルパス・前後の行数。</param>
-    /// <param name="lines">バッファ全行。</param>
-    /// <param name="line">キャレット行。</param>
-    /// <param name="column">キャレット桁。</param>
-    public async Task<string?> CompleteAsync(
-        InlineCompletionSettings settings, IReadOnlyList<string> lines, int line, int column,
-        CancellationToken ct)
+    public FimProtocol.Response Complete(in FimProtocol.Request request, CancellationToken ct)
     {
-        if (_disposed) return Refuse("破棄済み");
-        if (settings is null || !settings.Enabled) return Refuse("設定が無効");
-        if (string.IsNullOrWhiteSpace(settings.ModelPath)) return Refuse("モデル未設定");
-        if (!File.Exists(settings.ModelPath)) return Refuse($"モデルが無い: {settings.ModelPath}");
-        if (lines is null || lines.Count == 0) return Refuse("本文が空");
-
-        // 打鍵のたびに呼ばれる。前の生成が終わるまで待つが、待っている間にこの要求自体が
-        // 古くなればキャンセルされて抜ける（呼び出し側が新しい要求のたびに前のを取り消す）。
-        //
-        // ここを「取れなければ即あきらめる」にしていたときは、生成 1 回ぶん（約 270ms）の間に
-        // 来た要求が全部捨てられ、<b>最新の要求まで道連れ</b>になっていた。打鍵を続けるほど
-        // 何も出なくなるという、一番ありがたくない壊れ方をする。
-        try { await _gate.WaitAsync(ct).ConfigureAwait(false); }
-        catch (OperationCanceledException) { return null; }
+        if (_disposed) return new FimProtocol.Response(request.Id, Error: "破棄済み");
+        if (!File.Exists(_modelPath)) return new FimProtocol.Response(request.Id, Error: $"モデルが無い: {_modelPath}");
 
         try
         {
-            EnsureLoaded(settings);
-            if (_context is null || _weights is null || _batch is null) return null;
+            EnsureLoaded();
+            if (_context is null || _weights is null || _batch is null)
+                return new FimProtocol.Response(request.Id, Error: "モデルを読み込めない");
 
-            var prompt = FimPrompt.Build(lines, line, column, settings.PrefixLines, settings.SuffixLines);
-            var raw = Generate(prompt, Math.Max(1, settings.MaxTokens), ct);
-            if (raw is null) return Refuse("生成が空");
-
-            var current = lines[Math.Clamp(line, 0, lines.Count - 1)];
-            int col = Math.Clamp(column, 0, current.Length);
-            var cleaned = FimCandidateFilter.Clean(raw, current[..col], current[col..]);
-            Log(cleaned is null
-                ? $"落とした: 生「{raw.ReplaceLineEndings(" ")}」 ({LastTiming.TotalMs}ms)"
-                : $"採用: 「{cleaned}」 ({LastTiming.TotalMs}ms 再利用{LastTiming.ReusedTokens}/送り直し{LastTiming.PrefillTokens})");
-            return cleaned;
+            var raw = Generate(request.Prompt, Math.Max(1, request.MaxTokens), ct);
+            var t = LastTiming;
+            return new FimProtocol.Response(
+                request.Id, raw, t.ReusedTokens, t.PrefillTokens, t.PrefillMs, t.GeneratedTokens, t.GenerateMs);
         }
-        catch (OperationCanceledException) { return null; }
+        catch (OperationCanceledException)
+        {
+            return new FimProtocol.Response(request.Id);   // 打鍵で追い越された。正常な取り消し。
+        }
         catch (Exception ex)
         {
-            Log($"失敗: {ex.GetType().Name}: {ex.Message}");
-            Debug.WriteLine($"FimCompletionEngine: {ex}");
-            return null;
-        }
-        finally
-        {
-            _gate.Release();
+            return new FimProtocol.Response(request.Id, Error: $"{ex.GetType().Name}: {ex.Message}");
         }
     }
 
-    /// <summary>LOOMO_INLINE_DIAG=1 のときだけ %TEMP%\loomo-inline-debug.log へ書く。
-    /// 先読みは黙って諦めるのが正しい振る舞いなので、諦めた理由を残さないと外から追えない。</summary>
-    private static readonly bool s_diag =
-        string.Equals(Environment.GetEnvironmentVariable("LOOMO_INLINE_DIAG"), "1", StringComparison.Ordinal);
-
-    /// <summary>書き出し専用スレッドへ渡すだけ。エンジンは打鍵の経路から呼ばれるので、
-    /// ここでファイル I/O を待つわけにはいかない。</summary>
-    private static readonly System.Collections.Concurrent.BlockingCollection<string>? s_diagQueue =
-        s_diag ? StartDiagWriter() : null;
-
-    private static System.Collections.Concurrent.BlockingCollection<string> StartDiagWriter()
-    {
-        var queue = new System.Collections.Concurrent.BlockingCollection<string>(4096);
-        var thread = new Thread(() =>
-        {
-            var path = Path.Combine(Path.GetTempPath(), "loomo-inline-debug.log");
-            foreach (var line in queue.GetConsumingEnumerable())
-            {
-                try { File.AppendAllText(path, line); } catch { }
-            }
-        })
-        { IsBackground = true, Name = "LoomoInlineDiag", Priority = ThreadPriority.BelowNormal };
-        thread.Start();
-        return queue;
-    }
-
+    /// <summary>ワーカーの覚え書きは stderr へ。stdout は応答専用なので混ぜない。</summary>
     private static void Log(string message)
     {
-        // 詰まっていたら捨てる。診断のために入力を待たせない。
-        s_diagQueue?.TryAdd($"[{DateTime.Now:HH:mm:ss.fff}] {message}" + Environment.NewLine);
+        try { Console.Error.WriteLine($"[fim] {message}"); } catch { }
     }
 
-    private static string? Refuse(string reason)
+    private void EnsureLoaded()
     {
-        Log($"出さない: {reason}");
-        return null;
-    }
-
-    private void EnsureLoaded(InlineCompletionSettings settings)
-    {
-        if (_context is not null && _loadedPath == settings.ModelPath) return;
+        if (_context is not null && _loadedPath == _modelPath) return;
 
         Unload();
 
-        // decode と prefill でスレッド数を分ける。decode は 2 で頭打ちなのに時間は長い方なので、
-        // そこを絞るのが CPU の取り分を減らす一番効く手（実測は InlineCompletionSettings 参照）。
-        int decodeThreads = settings.Threads > 0 ? settings.Threads : 2;
-        int prefillThreads = settings.PrefillThreads > 0
-            ? settings.PrefillThreads
-            : Math.Max(1, Environment.ProcessorCount - 2);
-        Log($"モデルを読み込む: {settings.ModelPath} (decode {decodeThreads} / prefill {prefillThreads} スレッド)");
-        var parameters = new ModelParams(settings.ModelPath!)
+        Log($"モデルを読み込む: {_modelPath} (decode {_decodeThreads} / prefill {_prefillThreads} スレッド)");
+        var parameters = new ModelParams(_modelPath)
         {
             ContextSize = ContextSize,
             GpuLayerCount = 0,
             BatchSize = 512,
-            Threads = decodeThreads,
-            BatchThreads = prefillThreads,
+            Threads = _decodeThreads,
+            BatchThreads = _prefillThreads,
         };
 
         _weights = LLamaWeights.LoadFromFile(parameters);
         _context = _weights.CreateContext(parameters);
         _batch = new LLamaBatch();
-        _loadedPath = settings.ModelPath;
+        _loadedPath = _modelPath;
         _fed.Clear();
         Log("モデルの読み込み完了");
     }
@@ -324,6 +273,5 @@ public sealed class FimCompletionEngine : IDisposable
         if (_disposed) return;
         _disposed = true;
         Unload();
-        _gate.Dispose();
     }
 }

@@ -88,10 +88,10 @@ internal static class LoomoServiceCollectionExtensions
         // 推論エンジンはモデルをメモリに常駐させ、全ターンで再利用するため Singleton。
         services.AddSingleton<OnnxGenAiEngine>();
         services.AddSingleton<LlamaCppEngine>();
-        // 入力の先読み（FIM）は打鍵のたびに呼ばれるので、チャット用とは別のモデル・別の
-        // コンテキストを常駐させる。同じエンジンを共有すると、生成の順番待ちで
-        // 打鍵が数秒止まる。
-        services.AddSingleton<sk0ya.Loomo.Ai.Completion.FimCompletionEngine>();
+        // 入力の先読み（FIM）は<b>別プロセス</b>で回す。同じプロセスに置くと、スレッド数を絞っても
+        // CPU・メモリ帯域・GC を UI スレッドと分け合い、打鍵が引っかかる（実測で単独 270ms の生成が
+        // アプリの中では 1.5〜3.9 秒に伸びた）。ここはその窓口で、プロセスの寿命も面倒を見る。
+        services.AddSingleton<sk0ya.Loomo.Ai.Completion.FimCompletionClient>();
         AddAliasedSingleton<LocalInferenceRouter, ILocalInferenceEngine>(services);
         services.AddSingleton<IAiClientFactory, AiClientFactory>();
         services.AddSingleton<IContextWindowPolicy, SettingsContextWindowPolicy>();
