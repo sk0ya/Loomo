@@ -183,6 +183,84 @@ public sealed class RealRoslynLspIntegrationTests
         await client.CloseDocumentAsync(uri);
     }
 
+    /// <summary>
+    /// 打鍵ごとの <c>didChange</c> は書き込みスレッドへ積むだけになり、追い越された版は
+    /// 送られずに捨てられる（Editor 側 <c>OutgoingMessageQueue</c>）。まとめた結果として
+    /// サーバーが古い本文を握ったままになれば、補完も診断も「1 つ前のファイル」に対する答えを
+    /// 返し始める——単体テストでは絶対に見えない壊れ方なので、実サーバーで両方向に確かめる。
+    /// </summary>
+    [RealRoslynFact]
+    public async Task Rapid_successive_changes_leave_the_server_holding_the_last_version()
+    {
+        var root = FindFixtureRoot();
+        var file = Path.Combine(root, "tests", "Feature.Tests", "FeatureTests.cs");
+        var uri = LspUri.FromPath(file);
+        var healthySource = File.ReadAllText(file);
+        var brokenSource = healthySource.Replace(
+            "new FeatureService().GetValue()",
+            "new FeatureService().ThisMethodDoesNotExist()",
+            StringComparison.Ordinal);
+        Assert.NotEqual(healthySource, brokenSource);
+
+        var executable = ExecutableResolver.Resolve("roslyn-language-server");
+        Assert.False(string.IsNullOrWhiteSpace(executable), "Roslyn Language ServerがPATHにありません。");
+        using var client = new LspClient(executable!, LspServerCatalog.RoslynArgs, root);
+
+        await client.InitializeAsync(LspUri.FromPath(root), [root]);
+        await client.OpenDocumentAsync(uri, "csharp", healthySource);
+
+        IReadOnlyList<DocumentSymbol> symbols = [];
+        for (var attempt = 0; attempt < 30 && symbols.Count == 0; attempt++)
+        {
+            symbols = await client.GetDocumentSymbolsAsync(uri);
+            if (symbols.Count == 0) await Task.Delay(1000);
+        }
+        Assert.NotEmpty(symbols);
+
+        var version = 1;
+
+        // 人が打っているときと同じ形: 間を置かずに何十版も投げ、最後の版だけが結論を決める。
+        async Task TypeRapidlyAsync(string finalSource)
+        {
+            for (var i = 0; i < 40; i++)
+            {
+                var interim = finalSource[..^1] + new string('\n', i % 3) + finalSource[^1..];
+                await client.ChangeDocumentAsync(uri, ++version, interim);
+            }
+            await client.ChangeDocumentAsync(uri, ++version, finalSource);
+        }
+
+        async Task<IReadOnlyList<LspDiagnostic>> WaitForDiagnosticsAsync(bool expectEmpty)
+        {
+            IReadOnlyList<LspDiagnostic> errors = [];
+            for (var attempt = 0; attempt < 30; attempt++)
+            {
+                var report = await client.GetDocumentDiagnosticsAsync(uri);
+                errors = report?.Diagnostics
+                    .Where(d => d.Severity == DiagnosticSeverity.Error)
+                    .ToList() ?? [];
+                if (expectEmpty == (errors.Count == 0)) return errors;
+                await Task.Delay(1000);
+            }
+            return errors;
+        }
+
+        // 最後に壊れた版 → サーバーはそれを見ていなければならない。
+        await TypeRapidlyAsync(brokenSource);
+        var afterBroken = await WaitForDiagnosticsAsync(expectEmpty: false);
+        Assert.True(afterBroken.Count > 0,
+            "連続した変更のあと、最後に送った壊れた本文の診断が返らない（サーバーが古い版を握っている）。");
+
+        // 最後に直した版 → 直したことも同じように届いていなければならない。
+        await TypeRapidlyAsync(healthySource);
+        var afterHealthy = await WaitForDiagnosticsAsync(expectEmpty: true);
+        Assert.True(afterHealthy.Count == 0,
+            "連続した変更のあと、最後に送った正常な本文が反映されていない: " +
+            string.Join(" / ", afterHealthy.Select(d => d.Message)));
+
+        await client.CloseDocumentAsync(uri);
+    }
+
     [RealRoslynFact]
     public async Task Workspace_service_feeds_roslyn_references_to_change_signature()
     {
