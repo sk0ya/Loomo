@@ -22,9 +22,17 @@ internal sealed class CSharpSemanticWorkspace : IDisposable
     public Solution Solution => Workspace.CurrentSolution;
     public IReadOnlyDictionary<string, DocumentId> DocumentIds { get; }
 
-    public static CSharpSemanticWorkspace Create(
-        CSharpCompilation compilation,
-        IEnumerable<string>? sourceDocumentPaths = null)
+    /// <summary>
+    /// MEF の合成結果。<b>プロセスで一度だけ作る。</b>
+    ///
+    /// <para>以前はこのクラスを呼ぶたびに <see cref="MefHostServices.Create(IEnumerable{Assembly})"/> を
+    /// 走らせていた。合成は Roslyn の Features アセンブリ全体を走査するので実測で初回 648ms・以降 140ms
+    /// かかり、補完（打鍵ごと）がそれを毎回払っていた。ホストサービスは不変なので共有して問題ない。</para>
+    /// </summary>
+    private static readonly Lazy<MefHostServices> SharedHost =
+        new(CreateHost, LazyThreadSafetyMode.ExecutionAndPublication);
+
+    private static MefHostServices CreateHost()
     {
         var assemblies = MefHostServices.DefaultAssemblies.ToList();
         foreach (var assemblyName in new[]
@@ -40,8 +48,39 @@ internal sealed class CSharpSemanticWorkspace : IDisposable
                 // 機能アセンブリが配布されない環境でも、rename／参照検索は利用できる。
             }
         }
-        var workspace = new AdhocWorkspace(MefHostServices.Create(assemblies));
+        return MefHostServices.Create(assemblies);
+    }
+
+    public static CSharpSemanticWorkspace Create(
+        CSharpCompilation compilation,
+        IEnumerable<string>? sourceDocumentPaths = null)
+    {
+        var workspace = new AdhocWorkspace(SharedHost.Value);
         var projectId = ProjectId.CreateNewId();
+
+        var allowedSourcePaths = sourceDocumentPaths is null
+            ? null
+            : sourceDocumentPaths
+                .Where(path => !string.IsNullOrWhiteSpace(path))
+                .Select(Path.GetFullPath)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var documentIds = new Dictionary<string, DocumentId>(StringComparer.OrdinalIgnoreCase);
+        var documents = new List<DocumentInfo>();
+        foreach (var tree in compilation.SyntaxTrees)
+        {
+            if (string.IsNullOrWhiteSpace(tree.FilePath)) continue;
+            var path = Path.GetFullPath(tree.FilePath);
+            if (allowedSourcePaths is not null && !allowedSourcePaths.Contains(path)) continue;
+            if (!documentIds.TryAdd(path, DocumentId.CreateNewId(projectId))) continue;
+            var text = tree.GetText();
+            documents.Add(DocumentInfo.Create(
+                documentIds[path], Path.GetFileName(path),
+                loader: TextLoader.From(TextAndVersion.Create(text, VersionStamp.Create())),
+                filePath: path));
+        }
+
+        // 文書は ProjectInfo へ<b>まとめて</b>渡す。AdhocWorkspace.AddDocument は 1 件ごとに
+        // Solution を作り直すので、1000 文書を 1 件ずつ足すと実測 522ms かかっていた（一括なら 5ms）。
         var projectInfo = ProjectInfo.Create(
             projectId,
             VersionStamp.Create(),
@@ -52,28 +91,9 @@ internal sealed class CSharpSemanticWorkspace : IDisposable
                 .OfType<PortableExecutableReference>()
                 .ToImmutableArray(),
             parseOptions: compilation.SyntaxTrees.FirstOrDefault()?.Options as CSharpParseOptions,
-            compilationOptions: compilation.Options);
+            compilationOptions: compilation.Options,
+            documents: documents);
         workspace.AddProject(projectInfo);
-
-        var allowedSourcePaths = sourceDocumentPaths is null
-            ? null
-            : sourceDocumentPaths
-                .Where(path => !string.IsNullOrWhiteSpace(path))
-                .Select(Path.GetFullPath)
-                .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var documentIds = new Dictionary<string, DocumentId>(StringComparer.OrdinalIgnoreCase);
-        foreach (var tree in compilation.SyntaxTrees)
-        {
-            if (string.IsNullOrWhiteSpace(tree.FilePath)) continue;
-            var path = Path.GetFullPath(tree.FilePath);
-            if (allowedSourcePaths is not null && !allowedSourcePaths.Contains(path)) continue;
-            if (!documentIds.TryAdd(path, DocumentId.CreateNewId(projectId))) continue;
-            var text = tree.GetText();
-            workspace.AddDocument(DocumentInfo.Create(
-                documentIds[path], Path.GetFileName(path),
-                loader: TextLoader.From(TextAndVersion.Create(text, VersionStamp.Create())),
-                filePath: path));
-        }
 
         return new(workspace, documentIds);
     }

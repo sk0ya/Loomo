@@ -15,20 +15,38 @@ namespace sk0ya.Loomo.CSharp.Editor;
 /// </summary>
 public static class CSharpDocumentHighlightService
 {
-    /// <summary>Appが利用するRoslyn非公開の入力境界。</summary>
-    public static async Task<IReadOnlyList<DocumentHighlight>> FindAsync(
+    /// <summary>
+    /// Appが利用するRoslyn非公開の入力境界。<b>中身を丸ごと背景スレッドへ逃がす。</b>
+    ///
+    /// <para>以前は <see cref="Task.Run(Func{object})"/> が Compilation の組み立てだけを覆っていた。
+    /// エディタは Normal モードのキャレット移動ごとにこれを UI スレッドから呼び、
+    /// 続く <c>await</c> には <c>ConfigureAwait(false)</c> が無かったので、Workspace 構築と
+    /// ソリューション全体の <see cref="SymbolFinder.FindReferencesAsync"/> が
+    /// <b>UI スレッドへ戻って</b>走っていた（jank ログで実測 900〜960ms）。境界をこの 1 か所に寄せる。</para>
+    /// </summary>
+    public static Task<IReadOnlyList<DocumentHighlight>> FindAsync(
         SolutionModel? solution,
         string filePath,
         string source,
         LspPosition position,
         IReadOnlyDictionary<string, string>? openTexts = null,
         CancellationToken cancellationToken = default)
+        => Task.Run(() => FindCoreAsync(
+            solution, filePath, source, position, openTexts, cancellationToken), cancellationToken);
+
+    private static async Task<IReadOnlyList<DocumentHighlight>> FindCoreAsync(
+        SolutionModel? solution,
+        string filePath,
+        string source,
+        LspPosition position,
+        IReadOnlyDictionary<string, string>? openTexts,
+        CancellationToken cancellationToken)
     {
-        var context = await Task.Run(() => CSharpWorkspaceOperationContext.Create(
+        var context = CSharpWorkspaceOperationContext.Create(
             solution, filePath, source,
             scope: CSharpWorkspaceSourceScope.Solution,
             includeSemanticCompilation: true,
-            openTexts: openTexts), cancellationToken);
+            openTexts: openTexts);
         return context.SemanticCompilation is { } compilation
             ? await FindAsync(filePath, position, compilation, cancellationToken)
             : [];

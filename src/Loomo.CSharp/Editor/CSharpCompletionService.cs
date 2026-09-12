@@ -13,7 +13,16 @@ namespace sk0ya.Loomo.CSharp.Editor;
 /// <summary>LSPが未接続・空応答のときに使うRoslynベースのC#補完。</summary>
 public static class CSharpCompletionService
 {
-    public static async Task<IReadOnlyList<LspCompletionItem>> GetAsync(
+    /// <summary>
+    /// 補完の入口。<b>中身を丸ごと背景スレッドへ逃がす。</b>
+    ///
+    /// <para>エディタはこの供給元を<b>UI スレッドから</b>呼ぶ（LSP が空応答のときの fallback で、
+    /// 打鍵 300ms 後の DispatcherTimer から走る）。本体は最初の <c>await</c> に着く前に
+    /// ソリューション全体のソース読み込み・構文解析・Workspace 構築を同期で済ませるので、
+    /// ここで包まないとその時間ぶん<b>打鍵が止まる</b>——実測で 1 回 1.3〜3 秒だった。
+    /// semanticTokens／signatureHelp／inlayHint／hover の供給元と同じ形に揃えてある。</para>
+    /// </summary>
+    public static Task<IReadOnlyList<LspCompletionItem>> GetAsync(
         SolutionModel? solution,
         string filePath,
         string source,
@@ -21,6 +30,17 @@ public static class CSharpCompletionService
         int character,
         CancellationToken cancellationToken = default,
         IReadOnlyDictionary<string, string>? openTexts = null)
+        => Task.Run(() => GetCoreAsync(
+            solution, filePath, source, line, character, cancellationToken, openTexts), cancellationToken);
+
+    private static async Task<IReadOnlyList<LspCompletionItem>> GetCoreAsync(
+        SolutionModel? solution,
+        string filePath,
+        string source,
+        int line,
+        int character,
+        CancellationToken cancellationToken,
+        IReadOnlyDictionary<string, string>? openTexts)
     {
         if (!string.Equals(Path.GetExtension(filePath), ".cs", StringComparison.OrdinalIgnoreCase) ||
             string.IsNullOrEmpty(source))
@@ -58,7 +78,7 @@ public static class CSharpCompletionService
             return BuildMemberFallback(compilation, tree, text, offset, cancellationToken);
 
         var result = new List<LspCompletionItem>();
-        foreach (var item in list.ItemsList)
+        foreach (var item in SelectItemsToExpand(list, text))
         {
             cancellationToken.ThrowIfCancellationRequested();
             var change = await service.GetChangeAsync(document, item, null, cancellationToken);
@@ -125,6 +145,55 @@ public static class CSharpCompletionService
             .ToArray()
             : BuildMemberFallback(compilation, tree, text, offset, cancellationToken);
     }
+
+    /// <summary>1 回の応答で中身まで組み立てる候補の上限。</summary>
+    private const int MaxExpandedItems = 300;
+
+    /// <summary>
+    /// 中身まで展開する候補を選ぶ。
+    ///
+    /// <para>Roslyn の <see cref="CompletionService"/> は「その位置で構文的にあり得る候補」を
+    /// <b>全部</b>返す——絞り込みは IDE の仕事だからで、Loomo 自身の solution に対して実測 11,100 件だった。
+    /// 以前はその全件に <see cref="CompletionService.GetChangeAsync"/> と
+    /// <see cref="CompletionService.GetDescriptionAsync"/> を 1 件ずつ掛けていたので、
+    /// 1 回の補完が<b>約 22 秒</b>かかっていた（しかも UI スレッドの上で）。</para>
+    ///
+    /// <para>そこで、打ったプレフィックス（<see cref="CompletionList.Span"/> が指す範囲の本文）で
+    /// 先に絞り、さらに上限を掛ける。実測で「w」223 件・「wo」64 件・「workspa」41 件まで落ち、
+    /// 展開は 22 秒から 0.2〜1.5 秒になる。エディタ側は返した一覧をさらに絞り込むので、
+    /// <b>打てば打つほど正確になる</b>方向のずれしか残らない——上限に当たるのは
+    /// プレフィックスが無いまま手動で呼んだ場合（Ctrl+Space）だけで、そこは
+    /// 1 画面に出る数をはるかに超えている。</para>
+    /// </summary>
+    private static IReadOnlyList<CompletionItem> SelectItemsToExpand(
+        CompletionList list, SourceText text)
+    {
+        IReadOnlyList<CompletionItem> items = list.ItemsList;
+
+        var span = list.Span;
+        if (span.Length > 0 && span.End <= text.Length)
+        {
+            var prefix = text.ToString(span);
+            if (prefix.Length > 0)
+            {
+                var matched = items
+                    .Where(item => MatchText(item).StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                    .ToArray();
+                // 一件も前方一致しないときは絞らない（CamelCase 入力などを切り捨てないため）。
+                if (matched.Length > 0) items = matched;
+            }
+        }
+
+        return items.Count <= MaxExpandedItems
+            ? items
+            : items
+                .OrderBy(item => item.SortText ?? item.DisplayText, StringComparer.OrdinalIgnoreCase)
+                .Take(MaxExpandedItems)
+                .ToArray();
+    }
+
+    private static string MatchText(CompletionItem item)
+        => item.FilterText is { Length: > 0 } filter ? filter : item.DisplayText;
 
     private static IReadOnlyList<LspCompletionItem> BuildMemberFallback(
         CSharpCompilation compilation,

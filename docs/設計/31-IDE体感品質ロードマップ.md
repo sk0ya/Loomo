@@ -338,6 +338,87 @@ JetBrains が一番効くと言っているのはそこなので、次に手を�
   会話の生成待ちで打鍵が数秒止まる。前の要求が動いている間に来た要求は**待たせずに捨てる**
   （並べると、手を止めた頃に何世代も前の提案が返る）。
 
+## §31.14 C# のフォールバックが打鍵を止めていた（2026-09-12）
+
+§31.12 で打鍵ごとの O(ファイル全体) を潰したあとも「入力が途中で固まる」が残っていた。
+犯人は**先読みではなく、C# の Roslyn フォールバックが UI スレッドでソリューション全体を
+組み立て直していたこと**。`%APPDATA%/Loomo/jank.log` に名前で残っていた。
+
+```
+DISPATCH dur= 958 ms  pri=Background  async CSharpDocumentHighlightService+<FindAsync>d__0
+DISPATCH dur=4753 ms  pri=Send        (不明)
+```
+
+`dur=` は UI スレッド上での実行時間なので、これがそのまま入力の停止時間である。
+
+### §31.14.1 なぜ UI スレッドに乗っていたか
+
+1. 補完は `_completionDebounce`（**DispatcherTimer**、300ms）から走る。つまり出発点が UI スレッド。
+2. `LspViewBridge.RequestCompletionAsync` に `ConfigureAwait(false)` が無いので、LSP が 0 件を返した
+   時点の `await provider(...)` も UI スレッド。
+3. `CSharpCompletionService.GetAsync` は `async Task` なのに `Task.Run` が無く、**最初の `await` に
+   着く前の同期部分**——ソリューション全 `.cs` のディスク読み込み、全件パース、Source Generator 実行、
+   `MefHostServices` の合成、980 文書の `AddDocument`——が呼び出し元スレッドで走り切る。
+
+`CSharpDocumentHighlightService.FindAsync` は `Task.Run` が Compilation の組み立てだけを覆っていて、
+続く `SymbolFinder.FindReferencesAsync`（ソリューション全体）が UI スレッドへ戻っていた。
+semanticTokens／signatureHelp／inlayHint／hover は最初から `Task.Run` で包んであり、
+**補完とハイライトだけが漏れていた**。
+
+### §31.14.2 実測（Loomo 自身・980ファイル・8.5MB・Ryzen 5 3500）
+
+| 1 回あたり | 対処 |
+|---|---|
+| ソース読み 81ms ／ 全件パース **545〜1786ms** ／ `MefHostServices.Create` **132〜648ms** ／ `AddDocument`×980 **522ms**（合計 **1289〜3082ms**） | 下記 3 点 |
+| Roslyn の候補 **11,100 件**に `GetChangeAsync` + `GetDescriptionAsync` を全件（**約 22 秒**） | 打ったプレフィックスで絞り、上限 300 件 |
+
+- **Compilation を差分更新する**（`CSharpWorkspaceOperationContext`）。Roslyn の Compilation は不変で
+  差分が安いので、`ReplaceSyntaxTree` で変わった木だけ入れ替える——**1 回 4ms**。鍵は `SolutionModel` の
+  参照同一性（record なので再評価で別インスタンスになる＝そのまま世代印）＋スコープ＋アクティブパス＋
+  CompilationOptions（**値**で比較。毎回新しいインスタンスが返るため参照では永久に外れる）。
+  枠は **4 つ**持つ——同じ打鍵で意味色付け（ProjectGraph）・補完（Solution）・コンパイラ診断
+  （ProjectGraph＋独自オプション）が**別の鍵で**来るので、1 枠だと三者が互いを追い出し、
+  キャッシュがあるのに毎回作り直すという最悪の形になる。
+- **`MefHostServices` はプロセスで一度だけ**（`CSharpSemanticWorkspace`）。不変なので共有して差し支えない。
+- **文書は `ProjectInfo` へ一括で渡す**。`AdhocWorkspace.AddDocument` は 1 件ごとに Solution を作り直すので、
+  980 件を 1 件ずつ足すと 522ms、まとめれば 5ms。
+- **候補は絞ってから展開する**。Roslyn の `CompletionService` は「その位置であり得る候補」を全部返す
+  （絞り込みは IDE の仕事）。`CompletionList.Span` の本文で前方一致を取ると
+  「w」223件・「wo」64件・「workspa」41件まで落ち、展開は 22 秒から 0.2〜1.5 秒になる。
+  上限に当たるのはプレフィックス無しの手動呼び出しだけで、そこは 1 画面に出る数をはるかに超えている。
+
+差分更新では **Source Generator を回し直さない**（生成結果は前回のものを引き継ぐ）。無期限に古く
+ならないよう、差分更新が 64 回続いたら作り直す。
+
+### §31.14.3 残っている費用
+
+打鍵あたり **1.0〜1.5 秒**（背景スレッド）。UI は止まらず、追い越された要求は取り消される。
+内訳の主は `GetCompletionsAsync` 自身の **600〜700ms** で、これは
+`CSharpSemanticWorkspace.Create` が毎回**新しい `AdhocWorkspace`** を作るため、Roslyn 側が
+文書を読み直して束縛し直していることによる（キャッシュしているのは `CSharpCompilation` で、
+Workspace の内部 Compilation は別物）。次の一手はこの Workspace を保持して
+文書の差分だけ適用すること。rename／参照検索と共有している型なので、分けて扱う。
+
+### §31.14.4 計測そのものの穴を埋めた
+
+`UiJankProfiler` は ping が 2 秒で返らないと `continue` していた。つまり
+**利用者が「固まる」と呼ぶ 2 秒超の停止だけが UIWAIT から漏れていた**（4.7 秒の停止が DISPATCH 行に
+しか残っていなかったのはこのため）。上限を 60 秒にして必ず記録する。あわせて
+`ManualResetEventSlim` を `using` で捨てていたのを、**Set が済んでから**捨てるようにした
+（破棄済みへの `Set()` は UI スレッド上の例外になる）。
+
+GC 回数は「前回記録した時点から」の累計を出していたので、平穏な時間に回った GC まで stall の数字に
+混ざっていた（`gen0=171` のような読み手を誤らせる値になる）。その ping の往復ぶんだけを数える。
+
+`(不明)` は Loomo 型でないデリゲート名を捨てていたせい。WPF 内部（TSF/IME、入力、レイアウト）や
+他パッケージ由来の停止が切り分け不能になるので、`[外部] <型>.<メソッド>` として残す。
+
+### §31.14.5 検証
+
+Loomo 3240件すべて成功（`CSharpWorkspaceOperationContextCacheTests` 4件を追加——同じ入力なら
+同じ Compilation、1 文字の編集なら**その 1 ファイルの構文木だけ**が新しくなる、ファイルの顔ぶれが
+変わったら作り直す、スコープ違いが互いを追い出さない）。
+
 ## §31.10 非目標
 
 - VS Code/Riderの全機能との同数競争。
