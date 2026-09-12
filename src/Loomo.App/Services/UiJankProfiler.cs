@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO;
@@ -47,6 +47,9 @@ internal static class UiJankProfiler
 
     private static readonly Stopwatch Clock = Stopwatch.StartNew();
     private static long _lastFrameMs = -1;
+
+    /// <summary>前回の記録時点での GC 回数。stall の間に何回回ったかを出すために持つ。</summary>
+    private static int _gc0, _gc1, _gc2;
 
     /// <summary>プロファイラを開始する（UI スレッドから一度だけ呼ぶ）。無効時は何もしない。</summary>
     public static void Start(Dispatcher dispatcher)
@@ -196,7 +199,15 @@ internal static class UiJankProfiler
 
             var latency = sw.ElapsedMilliseconds;
             if (latency >= StallThresholdMs)
-                Append($"{Clock.ElapsedMilliseconds,8} ms  UIWAIT latency={latency,5} ms   （UIスレッド占有。ハンドラ/レイアウトが犯人）");
+            {
+                // GC の回数も添える。UI が止まる理由は「コードが占有した」か「GC で全スレッドが
+                // 止まった」かで対処がまったく違う——前者はその処理を背景へ、後者は割り当てを減らす。
+                // gen2 が増えていれば、大きな一時オブジェクト（LOH 行き）を作り続けている疑い。
+                int g0 = GC.CollectionCount(0) - _gc0, g1 = GC.CollectionCount(1) - _gc1, g2 = GC.CollectionCount(2) - _gc2;
+                _gc0 += g0; _gc1 += g1; _gc2 += g2;
+                var gc = (g0 | g1 | g2) != 0 ? $"  GC(gen0={g0} gen1={g1} gen2={g2})" : "";
+                Append($"{Clock.ElapsedMilliseconds,8} ms  UIWAIT latency={latency,5} ms{gc}   （UIスレッド占有。ハンドラ/レイアウトが犯人）");
+            }
 
             Thread.Sleep(PingIntervalMs);
         }
