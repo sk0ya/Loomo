@@ -57,6 +57,8 @@
          C:\Projects\Editor のプロジェクト参照へ切り替える（Directory.Build.props）。 -->
     <!-- 1.0.82: マウスホバーの説明ポップアップ（型・要約・その位置の診断＋電球からのクイックフィックス）と、
          WorkspaceEditRequestedEventArgs.Cancelled（編集プレビューでの取り消しを失敗と区別する）を追加。 -->
+    <!-- 1.0.83: 言語サーバーが無いときのパンくずがXMLのタグ階層にも対応（.xaml/.csproj/.svg等の拡張子に加え、
+         先頭の <?xml 宣言でも判定）。深いパスははみ出しを左へ流して最内側を必ず見せる。 -->
     <ProjectReference Include="..\..\..\Editor\src\Editor.Controls.Defaults\Editor.Controls.Defaults.csproj"
                       Condition="'$(UseLocalEditor)' != 'false'" />
     <!-- Defaults はパッケージ化時に Core/Controls を同梱する構成で、プロジェクト参照では
