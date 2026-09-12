@@ -1,4 +1,4 @@
-using Editor.Core.Syntax;
+﻿using Editor.Core.Syntax;
 
 namespace sk0ya.Loomo.App.Services;
 
@@ -23,6 +23,19 @@ internal static class EditorSyntaxColors
         _theme = theme;
         Generation++;
         Changed?.Invoke();
+    }
+
+    /// <summary>
+    /// このファイルの字句解析器。拡張子から言語が決まるときだけ返す（決まらなければ色付けしない）。
+    /// エディタ以外の面（差分本体・パレットのプレビュー）が<b>同じ解析器</b>を使うための口——
+    /// 同じファイルをエディタで開いたときと色が食い違わないのが要点。
+    /// </summary>
+    internal static SyntaxEngine? CreateEngine(string filePath)
+    {
+        if (string.IsNullOrEmpty(filePath)) return null;
+        var engine = new SyntaxEngine();
+        engine.DetectLanguage(filePath);
+        return engine.LanguageName is null ? null : engine;
     }
 
     /// <summary>

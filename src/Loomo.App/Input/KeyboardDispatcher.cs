@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Windows.Input;
 
@@ -40,6 +40,34 @@ public sealed class KeyboardDispatcher
     }
 
     private void Rebuild() => _resolver.SetBindings(_bindings.Effective);
+
+    /// <summary>
+    /// モーダルに開いている面（コマンドパレット等）の中で、<b>その面のコマンドだけ</b>を実行する。
+    /// <paramref name="accept"/> が true を返す Id の、<b>1打鍵で決まる</b>バインドだけを見て、当たれば
+    /// 実行して消費する。当たらなければ何もしない＝キーはそのまま内側（入力欄）へ届く。
+    /// <para>連鎖（プレフィックス）の状態機械には触らない。面の中で <c>Ctrl+W</c> のような前置キーを
+    /// 押しても「次の1打鍵を待つ」状態に入らず、文字入力を邪魔しないため。</para>
+    /// </summary>
+    public bool TryExecuteScoped(KeyEventArgs e, Func<string, bool> accept)
+    {
+        if (KeyChord.FromEvent(e) is not { } chord) return false;
+        if (FindScoped(chord, accept) is not { } id) return false;
+
+        _actions[id]();
+        e.Handled = true;
+        return true;
+    }
+
+    /// <summary>その1打鍵に割り当たっている、<paramref name="accept"/> が通す Id（アクション未登録は対象外）。
+    /// 当たらなければ null。<see cref="TryExecuteScoped"/> の判断部分で、単体テストの入口でもある。</summary>
+    public string? FindScoped(KeyChord chord, Func<string, bool> accept)
+    {
+        var sequence = new KeySequence(chord);
+        foreach (var (id, bound) in _bindings.Effective)
+            if (accept(id) && bound.Equals(sequence) && _actions.ContainsKey(id))
+                return id;
+        return null;
+    }
 
     public void HandlePreviewKeyDown(KeyEventArgs e)
     {

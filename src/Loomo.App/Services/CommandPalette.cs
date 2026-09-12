@@ -16,7 +16,17 @@ public sealed record PaletteCommand(string Category, string Title, Action Execut
     /// <summary>一覧で <see cref="Title"/> 内の一致箇所を強調するための語（現在の素のクエリ）。
     /// 表示直前に ShellWindow がまとめて設定する。null／空なら強調なし。</summary>
     public string? TitleMatch { get; set; }
+
+    /// <summary>ナビゲーション項目（ファイル／テキスト／シンボル／行）が指す場所。
+    /// null＝ふつうのコマンド（プレビューを出さない）。</summary>
+    public PaletteTarget? Target { get; init; }
 }
+
+/// <summary>ナビゲーション項目が指す場所。プレビュー（開かずに中身を見る）と確定ジャンプの
+/// 両方がこれ1つを見るので、「一覧で見えていた場所」と「Enter で飛ぶ場所」がズレない。
+/// <paramref name="Line"/>／<paramref name="Column"/> は1始まり。0＝行を指定しない
+/// （ファイル名で選んだだけ＝先頭から見せる・開いたタブのキャレットは動かさない）。</summary>
+public sealed record PaletteTarget(string FullPath, int Line = 0, int Column = 0, string? Highlight = null);
 
 /// <summary>パレットの絞り込み（純ロジック・テスト対象）。</summary>
 public static class PaletteFilter

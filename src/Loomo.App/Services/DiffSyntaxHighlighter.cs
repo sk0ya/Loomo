@@ -1,4 +1,4 @@
-using Editor.Core.Syntax;
+﻿using Editor.Core.Syntax;
 
 namespace sk0ya.Loomo.App.Services;
 
@@ -30,7 +30,7 @@ internal static class DiffSyntaxHighlighter
         string filePath, bool hasPatchPrefix, IReadOnlyList<DiffRowVm> rows)
     {
         if (rows.Count == 0 || rows.Count > MaxLines) return None;
-        if (CreateEngine(filePath) is not { } engine) return None;
+        if (EditorSyntaxColors.CreateEngine(filePath) is not { } engine) return None;
 
         var oldLines = new List<string>();
         var newLines = new List<string>();
@@ -67,7 +67,7 @@ internal static class DiffSyntaxHighlighter
         string filePath, IReadOnlyList<DiffSideRowVm> rows, bool left)
     {
         if (rows.Count == 0 || rows.Count > MaxLines) return None;
-        if (CreateEngine(filePath) is not { } engine) return None;
+        if (EditorSyntaxColors.CreateEngine(filePath) is not { } engine) return None;
 
         var lines = new List<string>();
         var map = new int[rows.Count];
@@ -85,15 +85,6 @@ internal static class DiffSyntaxHighlighter
             if (map[i] >= 0 && map[i] < tokens.Length)
                 result[i] = tokens[map[i]];
         return result;
-    }
-
-    /// <summary>拡張子から言語が決まるときだけ字句解析器を返す（決まらなければ色付けしない）。</summary>
-    private static SyntaxEngine? CreateEngine(string filePath)
-    {
-        if (string.IsNullOrEmpty(filePath)) return null;
-        var engine = new SyntaxEngine();
-        engine.DetectLanguage(filePath);
-        return engine.LanguageName is null ? null : engine;
     }
 
     private static string Body(string text, bool hasPatchPrefix)

@@ -1,4 +1,4 @@
-namespace sk0ya.Loomo.App.Views;
+﻿namespace sk0ya.Loomo.App.Views;
 /// <summary>ShellWindow: ペイン操作（Ctrl+W プレフィックス：h/j/k/l フォーカス移動・リサイズモード・ズーム）</summary>
 public partial class ShellWindow {
     private void OnPaneNavKey(object sender, KeyEventArgs e) {
@@ -8,7 +8,12 @@ public partial class ShellWindow {
             if (e.Key == Key.Escape) {
                 CloseCommandPalette(refocus: true);
                 e.Handled = true;
+                return;
             }
+            // パレットの中で効かせるのは<b>パレット自身のコマンドだけ</b>（検索対象の切替・別の探し方で開き直し）。
+            // ほかのショートカットまで通すと、入力欄に打っている最中に部屋が動いてしまう。当たらなかった
+            // キーは消費されないので、そのまま文字として入力欄へ届く。
+            _keyboard?.TryExecuteScoped(e, IsPaletteScopedCommand);
             return;
         }
         // ブラウザ専用キー（Ctrl+L/F/D、F5、Alt+←→ 等）はペインにフォーカスがあるときだけ効かせる。

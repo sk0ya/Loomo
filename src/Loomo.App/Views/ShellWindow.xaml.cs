@@ -16,6 +16,10 @@ public partial class ShellWindow : Window {
     private readonly EditorService _editor;
     private readonly BrowserService _browser;
     private readonly IWorkspaceService _workspace;
+    // コマンドパレットの「探して飛ぶ」側（§24.2）。検索は検索ペインと同じ実装（ripgrep ／ 無ければ
+    // インプロセス走査）を共有するので、ファイル名・全文の当たり方が2か所で食い違わない。
+    // 待ち・キャンセル・供給元の振り分けは Coordinator 側（ShellWindow 責務境界）。
+    private readonly PaletteSearchCoordinator _paletteSearch;
     private readonly CommandPaletteViewController _paletteView;
     private readonly TabIconService _tabIcons;
     private readonly DiffSessionFactory _diffSessions;
@@ -116,7 +120,7 @@ public partial class ShellWindow : Window {
         IReadOnlyDictionary<string, LspFileSnapshot> AfterFiles,
         IReadOnlyDictionary<string, string> BeforeEditors,
         IReadOnlyDictionary<string, string> AfterEditors);
-    public ShellWindow( ShellViewModel vm, TerminalService terminal, EditorService editor, BrowserService browser, IWorkspaceService workspace, TabIconService tabIcons, LoomoSettings settings, TaskbarWorkspaceRecentService taskbarWorkspaceRecent, EditorSupportRegistry editorSupports, EditorSupportResolver editorSupportResolver, CodeEditorSupport codeSupport, IEditorSupportViewFactory editorSupportViewFactory, sk0ya.Loomo.Services.Lsp.LspManagementService lspManagement, sk0ya.Loomo.Services.Lsp.LspWorkspaceService lspWorkspace, ILspServerAdmin lspServerAdmin, Editor.Core.Engine.VimEngineServices editorEngineServices, sk0ya.Loomo.Services.GitService git, KeybindingService keybindings, DiffSessionFactory diffSessions, sk0ya.Loomo.CSharp.Configuration.StyleCopDiagnosticService styleCopDiagnostics, sk0ya.Loomo.CSharp.Configuration.StyleCopCodeFixService styleCopCodeFix, sk0ya.Loomo.CSharp.Configuration.CSharpCompilerDiagnosticService compilerDiagnostics, sk0ya.Loomo.CSharp.Configuration.CSharpEditorConfigService csharpEditorConfig, sk0ya.Loomo.CSharp.Projects.ISolutionModelService? solutionModel = null) {
+    public ShellWindow( ShellViewModel vm, TerminalService terminal, EditorService editor, BrowserService browser, IWorkspaceService workspace, TabIconService tabIcons, LoomoSettings settings, TaskbarWorkspaceRecentService taskbarWorkspaceRecent, EditorSupportRegistry editorSupports, EditorSupportResolver editorSupportResolver, CodeEditorSupport codeSupport, IEditorSupportViewFactory editorSupportViewFactory, sk0ya.Loomo.Services.Lsp.LspManagementService lspManagement, sk0ya.Loomo.Services.Lsp.LspWorkspaceService lspWorkspace, ILspServerAdmin lspServerAdmin, Editor.Core.Engine.VimEngineServices editorEngineServices, sk0ya.Loomo.Services.GitService git, KeybindingService keybindings, DiffSessionFactory diffSessions, sk0ya.Loomo.CSharp.Configuration.StyleCopDiagnosticService styleCopDiagnostics, sk0ya.Loomo.CSharp.Configuration.StyleCopCodeFixService styleCopCodeFix, sk0ya.Loomo.CSharp.Configuration.CSharpCompilerDiagnosticService compilerDiagnostics, sk0ya.Loomo.CSharp.Configuration.CSharpEditorConfigService csharpEditorConfig, IWorkspaceSearchService search, sk0ya.Loomo.CSharp.Projects.ISolutionModelService? solutionModel = null) {
         StartupProfiler.Mark("ShellWindow ctor 開始");
         InitializeComponent();
         StartupProfiler.Mark("InitializeComponent 完了");
@@ -144,7 +148,16 @@ public partial class ShellWindow : Window {
             (Application.Current?.TryFindResource("Accent") as SolidColorBrush)?.Color
             ?? Color.FromRgb(0x61, 0x48, 0xDE));
         EditorSyntaxColors.Apply(_appearance.BuildEditorTheme()); // Diff 本体の構文色（起動時の1回目）
-        _paletteView = new CommandPaletteViewController(PaletteList, PaletteBox);
+        _paletteView = new CommandPaletteViewController(
+            PaletteList, PaletteBox, PalettePreview, PaletteListColumn, PalettePreviewColumn,
+            (DataTemplate)PaletteBox.FindResource("PaletteCommandRow"),
+            (DataTemplate)PaletteBox.FindResource("PaletteNavigationRow"));
+        // シンボルの供給口だけは部屋側（LSP セッションは ShellWindow が持つ）。表示パスの綴りは
+        // マルチルート対応の ToDisplayPath に任せる。
+        _paletteSearch = new PaletteSearchCoordinator(search, async (query, ct) =>
+            PaletteNavigationItems.FromSymbols(
+                await WorkspaceSymbolSearch.SearchAsync(lspWorkspace, query, isClass: false, ct),
+                workspace.ToDisplayPath));
         _editorSupportNavigation = new EditorSupportNavigationService(EditorSupportPreviewFolder);
         // 落ちたインスタンスが置いていった一時ページの掃除（起動を待たせないよう裏で）。
         Task.Run(() => _editorSupportNavigation.CleanStalePages(TimeSpan.FromDays(1)));

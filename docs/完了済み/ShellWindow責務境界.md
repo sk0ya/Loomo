@@ -13,9 +13,9 @@
 | `StageModeCoordinator` | ステージ開始・終了時の状態遷移 |
 | `SpanLayoutPlanner` | 複数モニター配置の矩形計算 |
 | `WorkspaceSessionCoordinator` | タブとワークスペース状態の相互変換 |
-| `CommandPaletteService` | モード解析と候補フィルター |
-| `PaletteSearchCoordinator` | 検索のキャンセル、デバウンス、ファイル・Grep・LSP横断検索 |
-| `CommandPaletteViewController` | 候補一覧、モード表示、サイズ、プレビューエディタ |
+| `PaletteQuery` / `PaletteFilter` / `PaletteNavigationItems` | モード解析と候補フィルター、検索結果→候補の変換 |
+| `PaletteSearchCoordinator` | 検索のキャンセル、デバウンス、ファイル・Grep・LSP横断検索、プレビュー読み込み |
+| `CommandPaletteViewController` | 候補一覧、モード表示、サイズ、プレビュー欄の開閉 |
 | `EditorSupportController` | 追従元、ピン、履歴、描画シーケンス、Provider描画準備、Visual切替 |
 | `EditorSupportWebViewController` | WebView2生成、仮想ホスト、ナビゲーション、本文差し替え、スクロール転送 |
 | `EditorSupportNavigationService` | EditorSupportの戻る・進む履歴 |

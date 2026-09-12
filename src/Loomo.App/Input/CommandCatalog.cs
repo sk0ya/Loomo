@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
 using sk0ya.Loomo.CSharp.Editor;
 
@@ -44,8 +44,23 @@ public static class CommandCatalog
     public static IReadOnlyList<CommandDescriptor> All { get; } = new CommandDescriptor[]
     {
         // ===== パレット =====
-        new CommandDescriptor("palette.open", CatPalette, "コマンドパレットを開く", "Ctrl+Shift+P"),
-        new CommandDescriptor("palette.openFromPrefix", CatPalette, "コマンドパレットを開く（プレフィックス）", "Ctrl+W P"),
+        // 開くキーは、パレットの中でもう一度押すと「検索対象を次へ」になる（pane.search と同じ流儀で、
+        // 覚えるキーを1本に保つ）。対象を直に選ぶキー（palette.goTo*）とは別口。
+        new CommandDescriptor("palette.open", CatPalette, "コマンドパレットを開く／検索対象を次へ切り替え", "Ctrl+Shift+P"),
+        new CommandDescriptor("palette.openFromPrefix", CatPalette, "コマンドパレットを開く（プレフィックス）／検索対象を次へ切り替え", "Ctrl+W P"),
+        // パレットの「探して飛ぶ」入口（§24.2）。開いた時点でモードのプレフィックスが入っているだけで、
+        // 中身は同じ1つのパレット——だからここで開いてから Tab で探し方を変えられる。
+        // ファイルだけ既定キーを与える（VS Code と同じ Ctrl+P。毎回使う動線なので）。他はパレットの
+        // プレフィックス（# @ :）で届くため既定未割当にして、キーの取り合いを増やさない。
+        new CommandDescriptor("palette.goToFile", CatPalette, "ファイルを検索して開く", "Ctrl+P"),
+        new CommandDescriptor("palette.goToText", CatPalette, "テキストを検索して開く", null),
+        new CommandDescriptor("palette.goToSymbol", CatPalette, "シンボルを検索して開く", null),
+        new CommandDescriptor("palette.goToLine", CatPalette, "現在のファイルの行へ移動", null),
+        // パレットを開いている間の「検索対象（探し方）の切替」。検索ペインの search.nextScope と同じ役割で、
+        // 既定は Tab／Shift+Tab。パレットの外では実行可否（CanExecuteKeyboardCommand）が false になるので、
+        // ふつうのフォーカス移動としての Tab は食われない。
+        new CommandDescriptor("palette.nextScope", CatPalette, "検索対象を次へ切り替え（パレット）", "Tab"),
+        new CommandDescriptor("palette.previousScope", CatPalette, "検索対象を前へ切り替え（パレット）", "Shift+Tab"),
 
         // ===== ペイン操作（vim 風 Ctrl+W プレフィックス） =====
         new CommandDescriptor("pane.focus.left", CatPane, "左のペインへフォーカス", "Ctrl+W H"),

@@ -1,11 +1,17 @@
-using sk0ya.Loomo.CSharp.Editor;
+﻿using sk0ya.Loomo.CSharp.Editor;
 
 namespace sk0ya.Loomo.App.Views;
 /// <summary>ShellWindow: キーボードショートカットの結線。<see cref="CommandCatalog"/> の各コマンド Id を 実体アクションへ結び、<see cref="KeyboardDispatcher"/> を組み立てる。ディスパッチャは <see cref="KeybindingService"/> から実効バインドを得るので、設定画面での再割り当てが即反映される。 新しいショートカットは、カタログに 1 行足してここへアクションを 1 行結ぶだけで有効になる。</summary>
 public partial class ShellWindow {
     private KeyboardDispatcher BuildKeyboardDispatcher() {
         var actions = new Dictionary<string, Action>(StringComparer.Ordinal) {
-            ["palette.open"] = OpenCommandPalette, ["palette.openFromPrefix"] = OpenCommandPalette,
+            ["palette.open"] = OpenOrCyclePalette, ["palette.openFromPrefix"] = OpenOrCyclePalette,
+            ["palette.goToFile"] = () => OpenCommandPalette(PaletteMode.File),
+            ["palette.goToText"] = () => OpenCommandPalette(PaletteMode.Text),
+            ["palette.goToSymbol"] = () => OpenCommandPalette(PaletteMode.Symbol),
+            ["palette.goToLine"] = () => OpenCommandPalette(PaletteMode.Line),
+            ["palette.nextScope"] = () => CyclePaletteMode(+1),
+            ["palette.previousScope"] = () => CyclePaletteMode(-1),
             ["pane.focus.left"] = () => FocusPaneInDirection(DropZone.Left), ["pane.focus.down"] = () => FocusPaneInDirection(DropZone.Below), ["pane.focus.up"] = () => FocusPaneInDirection(DropZone.Above), ["pane.focus.right"] = () => FocusPaneInDirection(DropZone.Right),
             ["pane.resize.left"] = () => ResizeFocusedPane(DropZone.Left), ["pane.resize.down"] = () => ResizeFocusedPane(DropZone.Below), ["pane.resize.up"] = () => ResizeFocusedPane(DropZone.Above), ["pane.resize.right"] = () => ResizeFocusedPane(DropZone.Right),
             ["pane.zoom"] = ToggleZoom, ["pane.fullscreen"] = TogglePaneFullscreen, ["pane.close"] = () => { if (!CloseFocusedViewport()) HideFocusedRegion(); }, ["pane.split.vertical"] = () => HandleViewportSplitKey(Key.V), ["pane.split.horizontal"] = () => HandleViewportSplitKey(Key.S), ["pane.split.closeView"] = () => HandleViewportSplitKey(Key.Q),
@@ -84,6 +90,10 @@ public partial class ShellWindow {
     /// </list></summary>
     private bool CanExecuteKeyboardCommand(string id) => id switch
     {
+        // パレットの外では「検索対象の切替」に行き先が無い。false を返せばキーは消費されないので、
+        // 既定の Tab／Shift+Tab はふつうのフォーカス移動として通る（パレットの中では
+        // OnPaneNavKey が TryExecuteScoped で拾う）。
+        "palette.nextScope" or "palette.previousScope" => IsPaletteOpen,
         "editor.save" => IsEditorFocused(),
         _ => !id.StartsWith("editor.csharp.", StringComparison.Ordinal) ||
             ActiveCSharpEditor() is not null,
