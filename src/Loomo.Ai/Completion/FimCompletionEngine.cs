@@ -41,11 +41,19 @@ public readonly record struct FimTiming(
 /// </summary>
 public sealed class FimCompletionEngine : IDisposable
 {
-    /// <summary>1 回の decode に載せるトークン数の上限（llama.cpp の n_batch 安全圏）。</summary>
-    private const int PrefillChunkTokens = 256;
+    /// <summary>
+    /// 1 回の decode に載せるトークン数の上限。小さいほど<b>打鍵で中断しやすい</b>——
+    /// decode は途中で止められないので、この粒度がそのままキャンセルの応答時間になる。
+    /// 効率だけなら大きい方が良いが、ここでは入力を待たせない方を採る。
+    /// </summary>
+    private const int PrefillChunkTokens = 64;
 
     /// <summary>モデルに持たせる窓。prefix 30 行＋suffix 3 行なら 400 トークン前後で収まる。</summary>
     private const int ContextSize = 2048;
+
+    /// <summary>1 件の生成をここで諦める。長引いた提案は、出る頃には手が先へ進んでいて
+    /// どのみち捨てられる——待ち続けるだけ CPU を取られ、入力が重くなる。</summary>
+    private static readonly TimeSpan GenerateBudget = TimeSpan.FromMilliseconds(1500);
 
     private readonly SemaphoreSlim _gate = new(1, 1);
 
@@ -127,16 +135,31 @@ public sealed class FimCompletionEngine : IDisposable
     private static readonly bool s_diag =
         string.Equals(Environment.GetEnvironmentVariable("LOOMO_INLINE_DIAG"), "1", StringComparison.Ordinal);
 
+    /// <summary>書き出し専用スレッドへ渡すだけ。エンジンは打鍵の経路から呼ばれるので、
+    /// ここでファイル I/O を待つわけにはいかない。</summary>
+    private static readonly System.Collections.Concurrent.BlockingCollection<string>? s_diagQueue =
+        s_diag ? StartDiagWriter() : null;
+
+    private static System.Collections.Concurrent.BlockingCollection<string> StartDiagWriter()
+    {
+        var queue = new System.Collections.Concurrent.BlockingCollection<string>(4096);
+        var thread = new Thread(() =>
+        {
+            var path = Path.Combine(Path.GetTempPath(), "loomo-inline-debug.log");
+            foreach (var line in queue.GetConsumingEnumerable())
+            {
+                try { File.AppendAllText(path, line); } catch { }
+            }
+        })
+        { IsBackground = true, Name = "LoomoInlineDiag", Priority = ThreadPriority.BelowNormal };
+        thread.Start();
+        return queue;
+    }
+
     private static void Log(string message)
     {
-        if (!s_diag) return;
-        try
-        {
-            File.AppendAllText(
-                Path.Combine(Path.GetTempPath(), "loomo-inline-debug.log"),
-                $"[{DateTime.Now:HH:mm:ss.fff}] {message}" + Environment.NewLine);
-        }
-        catch { }
+        // 詰まっていたら捨てる。診断のために入力を待たせない。
+        s_diagQueue?.TryAdd($"[{DateTime.Now:HH:mm:ss.fff}] {message}" + Environment.NewLine);
     }
 
     private static string? Refuse(string reason)
@@ -149,17 +172,22 @@ public sealed class FimCompletionEngine : IDisposable
     {
         if (_context is not null && _loadedPath == settings.ModelPath) return;
 
-        Log($"モデルを読み込む: {settings.ModelPath}");
         Unload();
 
-        int threads = settings.Threads > 0 ? settings.Threads : Math.Max(1, Environment.ProcessorCount);
+        // decode と prefill でスレッド数を分ける。decode は 2 で頭打ちなのに時間は長い方なので、
+        // そこを絞るのが CPU の取り分を減らす一番効く手（実測は InlineCompletionSettings 参照）。
+        int decodeThreads = settings.Threads > 0 ? settings.Threads : 2;
+        int prefillThreads = settings.PrefillThreads > 0
+            ? settings.PrefillThreads
+            : Math.Max(1, Environment.ProcessorCount - 2);
+        Log($"モデルを読み込む: {settings.ModelPath} (decode {decodeThreads} / prefill {prefillThreads} スレッド)");
         var parameters = new ModelParams(settings.ModelPath!)
         {
             ContextSize = ContextSize,
             GpuLayerCount = 0,
             BatchSize = 512,
-            Threads = threads,
-            BatchThreads = threads,
+            Threads = decodeThreads,
+            BatchThreads = prefillThreads,
         };
 
         _weights = LLamaWeights.LoadFromFile(parameters);
@@ -198,6 +226,8 @@ public sealed class FimCompletionEngine : IDisposable
         int lastLogit = Feed(context, batch, tokens, ints, reuse, n, ct);
         prefillSw.Stop();
         if (lastLogit < 0) return null;
+        // prefill が長引くのは KV が空のとき（＝最初の 1 回）だけで、それは次回以降のための投資。
+        // ここまで来たら生成まで進む——数トークンぶんの上乗せは安く、捨てると払った分が無駄になる。
 
         var builder = new StringBuilder(64);
         using var sampler = new GreedySamplingPipeline();   // 先読みは毎回同じ答えが返る方がよい
@@ -209,6 +239,11 @@ public sealed class FimCompletionEngine : IDisposable
         while (produced < maxTokens)
         {
             ct.ThrowIfCancellationRequested();
+            if (generateSw.Elapsed > GenerateBudget)
+            {
+                Log($"打ち切り: {generateSw.ElapsedMilliseconds}ms で {produced} トークン");
+                break;
+            }
 
             var token = sampler.Sample(context.NativeHandle, lastLogit);
             if (token.IsEndOfGeneration(weights.NativeHandle)) break;

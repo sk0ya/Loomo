@@ -341,8 +341,9 @@ public sealed class SettingsStore
         public string? ModelPath { get; set; }
         public int PrefixLines { get; set; } = 30;
         public int SuffixLines { get; set; } = 3;
-        public int MaxTokens { get; set; } = 16;
+        public int MaxTokens { get; set; } = 8;
         public int Threads { get; set; }
+        public int PrefillThreads { get; set; }
 
         public static PersistedInlineCompletion From(InlineCompletionSettings c) => new()
         {
@@ -352,6 +353,7 @@ public sealed class SettingsStore
             SuffixLines = c.SuffixLines,
             MaxTokens = c.MaxTokens,
             Threads = c.Threads,
+            PrefillThreads = c.PrefillThreads,
         };
 
         public void ApplyTo(InlineCompletionSettings c)
@@ -360,8 +362,9 @@ public sealed class SettingsStore
             c.ModelPath = ModelPath;
             c.PrefixLines = PrefixLines > 0 ? PrefixLines : 30;
             c.SuffixLines = SuffixLines >= 0 ? SuffixLines : 3;
-            c.MaxTokens = MaxTokens > 0 ? MaxTokens : 16;
+            c.MaxTokens = MaxTokens > 0 ? MaxTokens : 8;
             c.Threads = Threads;
+            c.PrefillThreads = PrefillThreads;
         }
     }
 

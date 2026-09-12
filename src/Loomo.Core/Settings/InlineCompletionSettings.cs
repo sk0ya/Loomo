@@ -32,9 +32,28 @@ public sealed class InlineCompletionSettings
     /// </summary>
     public int SuffixLines { get; set; } = 3;
 
-    /// <summary>1 提案あたりの最大生成トークン数。1 行しか表示しないので長く作っても捨てるだけ。</summary>
-    public int MaxTokens { get; set; } = 16;
+    /// <summary>
+    /// 1 提案あたりの最大生成トークン数。1 行しか表示しないので長く作っても捨てるだけで、
+    /// 生成の時間はそのまま<b>手が止まってから出るまでの待ち</b>になる。
+    /// </summary>
+    public int MaxTokens { get; set; } = 8;
 
-    /// <summary>推論に使うスレッド数。0 以下なら CPU の物理コア数に合わせる。</summary>
+    /// <summary>
+    /// 生成（decode）に使うスレッド数。0 以下なら 2。
+    ///
+    /// <para>実測（Ryzen 5 3500・6 コア）で decode は<b>2 スレッドで頭打ち</b>——
+    /// 1→325ms、2→174ms、3→165ms、6→166ms。1 提案のうち時間が長いのは decode 側なので、
+    /// ここを 2 に抑えるのが CPU の取り分を減らす一番効く手になる。</para>
+    /// </summary>
     public int Threads { get; set; }
+
+    /// <summary>
+    /// 前処理（prefill）に使うスレッド数。0 以下なら「コア数 − 2」（最低 1）。
+    ///
+    /// <para>decode と違い prefill は素直に並列化が効く（1→648ms、3→236ms、6→158ms）。
+    /// ただし短いバーストなので、UI と言語サーバーのぶんを残した上で多めに割り当てる。
+    /// decode 2 ／ prefill 4 の組で打鍵あたり 357ms、全コア（6/6）の 306ms に対して
+    /// 17% 遅いだけで、長い方の decode 中は 2 コアしか使わない。</para>
+    /// </summary>
+    public int PrefillThreads { get; set; }
 }
