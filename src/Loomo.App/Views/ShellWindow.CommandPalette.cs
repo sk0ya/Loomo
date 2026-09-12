@@ -1,4 +1,4 @@
-using sk0ya.Loomo.CSharp.Editor;
+﻿using sk0ya.Loomo.CSharp.Editor;
 
 namespace sk0ya.Loomo.App.Views;
 /// <summary>ShellWindow: コマンドパレット（部屋全体の操作統一）。移動・ペイン表示・タブ・コンポーザ・ ペグボード・サイドバー・ワークスペース切替といった既存操作に名前を付け、 Ctrl+Shift+P（または Ctrl+W p）から検索して実行できるようにする。 一覧は開くたびに現在状態（ステージ中か・WS一覧など）から組み直す。 絞り込みロジックは <see cref="PaletteFilter"/>（純ロジック・テスト済み）。</summary>
@@ -13,8 +13,10 @@ public partial class ShellWindow {
         RefilterPalette();
         PaletteInput.Focus();
     }
+    // 大きさの基準はウィンドウではなくオーバーレイ自身（＝実際に被せている領域）。ウィンドウ幅で
+    // 計算すると、袖やドックで狭まった領域から箱がはみ出し、左右が切れて項目名が読めなくなる。
     private void UpdatePaletteBoxSize() {
-        _paletteView.UpdateSize(ActualWidth, ActualHeight);
+        _paletteView.UpdateSize(CommandPaletteOverlay.ActualWidth, CommandPaletteOverlay.ActualHeight);
     }
     private void OnPaletteOverlaySizeChanged(object sender, SizeChangedEventArgs e) {
         if (IsPaletteOpen)
