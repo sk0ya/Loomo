@@ -77,13 +77,21 @@ public sealed class FimCompletionEngine : IDisposable
         InlineCompletionSettings settings, IReadOnlyList<string> lines, int line, int column,
         CancellationToken ct)
     {
-        if (_disposed || settings is null || !settings.Enabled) return null;
-        if (string.IsNullOrWhiteSpace(settings.ModelPath) || !File.Exists(settings.ModelPath)) return null;
-        if (lines is null || lines.Count == 0) return null;
+        if (_disposed) return Refuse("破棄済み");
+        if (settings is null || !settings.Enabled) return Refuse("設定が無効");
+        if (string.IsNullOrWhiteSpace(settings.ModelPath)) return Refuse("モデル未設定");
+        if (!File.Exists(settings.ModelPath)) return Refuse($"モデルが無い: {settings.ModelPath}");
+        if (lines is null || lines.Count == 0) return Refuse("本文が空");
 
-        // 打鍵のたびに呼ばれる。前の要求がまだ動いているなら、この要求は捨てる——
-        // 並べて待たせると、手を止めた頃には何世代も前の提案が返ってくる。
-        if (!await _gate.WaitAsync(0, ct).ConfigureAwait(false)) return null;
+        // 打鍵のたびに呼ばれる。前の生成が終わるまで待つが、待っている間にこの要求自体が
+        // 古くなればキャンセルされて抜ける（呼び出し側が新しい要求のたびに前のを取り消す）。
+        //
+        // ここを「取れなければ即あきらめる」にしていたときは、生成 1 回ぶん（約 270ms）の間に
+        // 来た要求が全部捨てられ、<b>最新の要求まで道連れ</b>になっていた。打鍵を続けるほど
+        // 何も出なくなるという、一番ありがたくない壊れ方をする。
+        try { await _gate.WaitAsync(ct).ConfigureAwait(false); }
+        catch (OperationCanceledException) { return null; }
+
         try
         {
             EnsureLoaded(settings);
@@ -91,15 +99,20 @@ public sealed class FimCompletionEngine : IDisposable
 
             var prompt = FimPrompt.Build(lines, line, column, settings.PrefixLines, settings.SuffixLines);
             var raw = Generate(prompt, Math.Max(1, settings.MaxTokens), ct);
-            if (raw is null) return null;
+            if (raw is null) return Refuse("生成が空");
 
             var current = lines[Math.Clamp(line, 0, lines.Count - 1)];
             int col = Math.Clamp(column, 0, current.Length);
-            return FimCandidateFilter.Clean(raw, current[..col], current[col..]);
+            var cleaned = FimCandidateFilter.Clean(raw, current[..col], current[col..]);
+            Log(cleaned is null
+                ? $"落とした: 生「{raw.ReplaceLineEndings(" ")}」 ({LastTiming.TotalMs}ms)"
+                : $"採用: 「{cleaned}」 ({LastTiming.TotalMs}ms 再利用{LastTiming.ReusedTokens}/送り直し{LastTiming.PrefillTokens})");
+            return cleaned;
         }
         catch (OperationCanceledException) { return null; }
         catch (Exception ex)
         {
+            Log($"失敗: {ex.GetType().Name}: {ex.Message}");
             Debug.WriteLine($"FimCompletionEngine: {ex}");
             return null;
         }
@@ -109,10 +122,34 @@ public sealed class FimCompletionEngine : IDisposable
         }
     }
 
+    /// <summary>LOOMO_INLINE_DIAG=1 のときだけ %TEMP%\loomo-inline-debug.log へ書く。
+    /// 先読みは黙って諦めるのが正しい振る舞いなので、諦めた理由を残さないと外から追えない。</summary>
+    private static readonly bool s_diag =
+        string.Equals(Environment.GetEnvironmentVariable("LOOMO_INLINE_DIAG"), "1", StringComparison.Ordinal);
+
+    private static void Log(string message)
+    {
+        if (!s_diag) return;
+        try
+        {
+            File.AppendAllText(
+                Path.Combine(Path.GetTempPath(), "loomo-inline-debug.log"),
+                $"[{DateTime.Now:HH:mm:ss.fff}] {message}" + Environment.NewLine);
+        }
+        catch { }
+    }
+
+    private static string? Refuse(string reason)
+    {
+        Log($"出さない: {reason}");
+        return null;
+    }
+
     private void EnsureLoaded(InlineCompletionSettings settings)
     {
         if (_context is not null && _loadedPath == settings.ModelPath) return;
 
+        Log($"モデルを読み込む: {settings.ModelPath}");
         Unload();
 
         int threads = settings.Threads > 0 ? settings.Threads : Math.Max(1, Environment.ProcessorCount);
@@ -130,6 +167,7 @@ public sealed class FimCompletionEngine : IDisposable
         _batch = new LLamaBatch();
         _loadedPath = settings.ModelPath;
         _fed.Clear();
+        Log("モデルの読み込み完了");
     }
 
     private string? Generate(string prompt, int maxTokens, CancellationToken ct)

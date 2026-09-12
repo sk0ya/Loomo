@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Runtime.Versioning;
 using System.Security.Cryptography;
@@ -127,6 +127,7 @@ public sealed class SettingsStore
         public PersistedAppearance? Appearance { get; set; }
         public PersistedKeybindings? Keybindings { get; set; }
         public PersistedLsp? Lsp { get; set; }
+        public PersistedInlineCompletion? InlineCompletion { get; set; }
 
         public static PersistedSettings From(LoomoSettings s) => new()
         {
@@ -147,6 +148,7 @@ public sealed class SettingsStore
             Appearance = PersistedAppearance.From(s.Appearance),
             Keybindings = PersistedKeybindings.From(s.Keybindings),
             Lsp = PersistedLsp.From(s.Lsp),
+            InlineCompletion = PersistedInlineCompletion.From(s.InlineCompletion),
         };
 
         public void ApplyTo(LoomoSettings s)
@@ -166,6 +168,7 @@ public sealed class SettingsStore
             Observability?.ApplyTo(s.Observability); // 旧設定（null）は in-memory 既定を維持
             Vim?.ApplyTo(s.Vim);
             Editor?.ApplyTo(s.Editor); // 旧設定（null）は in-memory 既定を維持
+            InlineCompletion?.ApplyTo(s.InlineCompletion);
             Appearance?.ApplyTo(s.Appearance); // 旧設定（null）は in-memory 既定を維持
             Keybindings?.ApplyTo(s.Keybindings); // 旧設定（null）は既定割り当て（上書き無し）を維持
             Lsp?.ApplyTo(s.Lsp);                 // 旧設定（null）は空（=促しを抑止しない）を維持
@@ -291,6 +294,7 @@ public sealed class SettingsStore
         public bool CollapseUsingsOnOpen { get; set; }
         public bool AutoClosePairs { get; set; }
         public bool ShowInlayHints { get; set; }
+        public bool InlineSuggest { get; set; } = true;
         public int TabWidth { get; set; } = 2;
         public bool UseSpacesForTab { get; set; } = true;
 
@@ -306,6 +310,7 @@ public sealed class SettingsStore
             CollapseUsingsOnOpen = e.CollapseUsingsOnOpen,
             AutoClosePairs = e.AutoClosePairs,
             ShowInlayHints = e.ShowInlayHints,
+            InlineSuggest = e.InlineSuggest,
             TabWidth = e.TabWidth,
             UseSpacesForTab = e.UseSpacesForTab,
         };
@@ -322,8 +327,41 @@ public sealed class SettingsStore
             e.CollapseUsingsOnOpen = CollapseUsingsOnOpen;
             e.AutoClosePairs = AutoClosePairs;
             e.ShowInlayHints = ShowInlayHints;
+            e.InlineSuggest = InlineSuggest;
             e.TabWidth = TabWidth > 0 ? TabWidth : 2;
             e.UseSpacesForTab = UseSpacesForTab;
+        }
+    }
+
+    // ===== 入力の先読み（ローカル LLM 側）。モデルパスは平文で保持する。 =====
+
+    private sealed class PersistedInlineCompletion
+    {
+        public bool Enabled { get; set; }
+        public string? ModelPath { get; set; }
+        public int PrefixLines { get; set; } = 30;
+        public int SuffixLines { get; set; } = 3;
+        public int MaxTokens { get; set; } = 16;
+        public int Threads { get; set; }
+
+        public static PersistedInlineCompletion From(InlineCompletionSettings c) => new()
+        {
+            Enabled = c.Enabled,
+            ModelPath = c.ModelPath,
+            PrefixLines = c.PrefixLines,
+            SuffixLines = c.SuffixLines,
+            MaxTokens = c.MaxTokens,
+            Threads = c.Threads,
+        };
+
+        public void ApplyTo(InlineCompletionSettings c)
+        {
+            c.Enabled = Enabled;
+            c.ModelPath = ModelPath;
+            c.PrefixLines = PrefixLines > 0 ? PrefixLines : 30;
+            c.SuffixLines = SuffixLines >= 0 ? SuffixLines : 3;
+            c.MaxTokens = MaxTokens > 0 ? MaxTokens : 16;
+            c.Threads = Threads;
         }
     }
 

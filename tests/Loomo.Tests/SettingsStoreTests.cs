@@ -197,4 +197,66 @@ public class SettingsStoreTests
     [Fact]
     public void Inlay_hints_are_disabled_by_default()
         => Assert.False(new LoomoSettings().Editor.ShowInlayHints);
+
+    /// <summary>
+    /// 設定は <c>PersistedSettings</c> という DTO を経由して読み書きされる。新しい設定を
+    /// <see cref="LoomoSettings"/> へ足しても DTO 側へ足し忘れると、<b>JSON は読み捨てられ、
+    /// 保存しても消える</b>——実際それで「入力の先読みが一度も動かない」を出した。
+    /// セクションごと往復することをここで固定する。
+    /// </summary>
+    [Fact]
+    public void Inline_completion_settings_survive_a_save_and_load_round_trip()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"loomo-settings-{Guid.NewGuid():N}.json");
+        try
+        {
+            var saved = new LoomoSettings();
+            saved.InlineCompletion.Enabled = true;
+            saved.InlineCompletion.ModelPath = @"C:\models\completion\model.gguf";
+            saved.InlineCompletion.PrefixLines = 40;
+            saved.InlineCompletion.SuffixLines = 2;
+            saved.InlineCompletion.MaxTokens = 12;
+            saved.InlineCompletion.Threads = 4;
+            saved.Editor.InlineSuggest = false;
+            new SettingsStore(path).Save(saved);
+
+            var loaded = new LoomoSettings();
+            new SettingsStore(path).Load(loaded);
+
+            Assert.True(loaded.InlineCompletion.Enabled);
+            Assert.Equal(@"C:\models\completion\model.gguf", loaded.InlineCompletion.ModelPath);
+            Assert.Equal(40, loaded.InlineCompletion.PrefixLines);
+            Assert.Equal(2, loaded.InlineCompletion.SuffixLines);
+            Assert.Equal(12, loaded.InlineCompletion.MaxTokens);
+            Assert.Equal(4, loaded.InlineCompletion.Threads);
+            Assert.False(loaded.Editor.InlineSuggest);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    /// <summary>先読みの設定が無い古い settings.json は、既定（無効・内蔵の先読みは有効）のまま読める。</summary>
+    [Fact]
+    public void A_settings_file_without_the_inline_completion_section_keeps_the_defaults()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"loomo-settings-{Guid.NewGuid():N}.json");
+        File.WriteAllText(path, """
+            { "local": { "model": "qwen3-4b-q4_k_m" } }
+            """);
+        try
+        {
+            var settings = new LoomoSettings();
+            new SettingsStore(path).Load(settings);
+
+            Assert.False(settings.InlineCompletion.Enabled);
+            Assert.Null(settings.InlineCompletion.ModelPath);
+            Assert.True(settings.Editor.InlineSuggest);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
 }
