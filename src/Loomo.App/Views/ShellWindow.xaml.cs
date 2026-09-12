@@ -36,6 +36,8 @@ public partial class ShellWindow : Window {
     // Loomo 側の概念で、エディタへ渡すインターフェースには載っていないため（案内の出し分けに要る）。
     private readonly sk0ya.Loomo.Services.Lsp.LspWorkspaceService _lspWorkspace;
     private readonly Editor.Core.Engine.VimEngineServices _editorEngineServices;
+    /// <summary>入力の先読みを作るローカル LLM（FIM）。設定が無効／モデル未設定なら黙って何も返さない。</summary>
+    private readonly sk0ya.Loomo.Ai.Completion.FimCompletionEngine _fimCompletion;
     private readonly ILspServerAdmin _lspServerAdmin;
     private readonly KeybindingService _keybindings;
     private readonly FileAiSelectionContextBuilder _fileAiSelection;
@@ -120,7 +122,7 @@ public partial class ShellWindow : Window {
         IReadOnlyDictionary<string, LspFileSnapshot> AfterFiles,
         IReadOnlyDictionary<string, string> BeforeEditors,
         IReadOnlyDictionary<string, string> AfterEditors);
-    public ShellWindow( ShellViewModel vm, TerminalService terminal, EditorService editor, BrowserService browser, IWorkspaceService workspace, TabIconService tabIcons, LoomoSettings settings, TaskbarWorkspaceRecentService taskbarWorkspaceRecent, EditorSupportRegistry editorSupports, EditorSupportResolver editorSupportResolver, CodeEditorSupport codeSupport, IEditorSupportViewFactory editorSupportViewFactory, sk0ya.Loomo.Services.Lsp.LspManagementService lspManagement, sk0ya.Loomo.Services.Lsp.LspWorkspaceService lspWorkspace, ILspServerAdmin lspServerAdmin, Editor.Core.Engine.VimEngineServices editorEngineServices, sk0ya.Loomo.Services.GitService git, KeybindingService keybindings, DiffSessionFactory diffSessions, sk0ya.Loomo.CSharp.Configuration.StyleCopDiagnosticService styleCopDiagnostics, sk0ya.Loomo.CSharp.Configuration.StyleCopCodeFixService styleCopCodeFix, sk0ya.Loomo.CSharp.Configuration.CSharpCompilerDiagnosticService compilerDiagnostics, sk0ya.Loomo.CSharp.Configuration.CSharpEditorConfigService csharpEditorConfig, IWorkspaceSearchService search, sk0ya.Loomo.CSharp.Projects.ISolutionModelService? solutionModel = null) {
+    public ShellWindow( ShellViewModel vm, TerminalService terminal, EditorService editor, BrowserService browser, IWorkspaceService workspace, TabIconService tabIcons, LoomoSettings settings, TaskbarWorkspaceRecentService taskbarWorkspaceRecent, EditorSupportRegistry editorSupports, EditorSupportResolver editorSupportResolver, CodeEditorSupport codeSupport, IEditorSupportViewFactory editorSupportViewFactory, sk0ya.Loomo.Services.Lsp.LspManagementService lspManagement, sk0ya.Loomo.Services.Lsp.LspWorkspaceService lspWorkspace, ILspServerAdmin lspServerAdmin, Editor.Core.Engine.VimEngineServices editorEngineServices, sk0ya.Loomo.Services.GitService git, KeybindingService keybindings, DiffSessionFactory diffSessions, sk0ya.Loomo.CSharp.Configuration.StyleCopDiagnosticService styleCopDiagnostics, sk0ya.Loomo.CSharp.Configuration.StyleCopCodeFixService styleCopCodeFix, sk0ya.Loomo.CSharp.Configuration.CSharpCompilerDiagnosticService compilerDiagnostics, sk0ya.Loomo.CSharp.Configuration.CSharpEditorConfigService csharpEditorConfig, IWorkspaceSearchService search, sk0ya.Loomo.Ai.Completion.FimCompletionEngine fimCompletion, sk0ya.Loomo.CSharp.Projects.ISolutionModelService? solutionModel = null) {
         StartupProfiler.Mark("ShellWindow ctor 開始");
         InitializeComponent();
         StartupProfiler.Mark("InitializeComponent 完了");
@@ -181,6 +183,7 @@ public partial class ShellWindow : Window {
         _lspWorkspace = lspWorkspace;
         _editorEngineServices = editorEngineServices;
         _lspServerAdmin = lspServerAdmin;
+        _fimCompletion = fimCompletion;
         _git = git;
         _keybindings = keybindings;
         _fileAiSelection = new FileAiSelectionContextBuilder(workspace);

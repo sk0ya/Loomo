@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Net.Http;
@@ -24,10 +24,13 @@ public sealed record DownloadableModel(
     string Repo,
     string Subfolder,
     string FolderName,
-    string[] Files)
+    string[] Files,
+    string LocalSubdirectory = "")
 {
     /// <summary>保存先フォルダの絶対パス。</summary>
-    public string TargetDir => Path.Combine(ModelDownloadService.DefaultModelsRoot, FolderName);
+    public string TargetDir => string.IsNullOrEmpty(LocalSubdirectory)
+        ? Path.Combine(ModelDownloadService.DefaultModelsRoot, FolderName)
+        : Path.Combine(ModelDownloadService.DefaultModelsRoot, LocalSubdirectory, FolderName);
 }
 
 /// <summary>
@@ -64,6 +67,27 @@ public sealed class ModelDownloadService
 
     /// <summary>既定で選択するモデル（Qwen3-4B GGUF Q4_K_M）。</summary>
     public static DownloadableModel Default => Catalog[0];
+
+    /// <summary>入力の先読み（FIM）に使うモデルのカタログ。チャット用とは別物で、
+    /// <c>models/completion/</c> の下へ置く——チャットのモデル一覧（<see cref="ModelCatalogService"/> が
+    /// <c>models/</c> の直下だけを見る）に混ざると、会話用に選べてしまう。
+    ///
+    /// <para>Q8_0 を採る。実測（Ryzen 5 3500・6 コア）で Q4_K_M にしても速くならず
+    /// （0.5B は演算律速でメモリ帯域律速ではない）、出力だけが崩れた。</para></summary>
+    public static readonly IReadOnlyList<DownloadableModel> CompletionCatalog = new[]
+    {
+        new DownloadableModel(
+            Id: "qwen25-coder-0.5b-q8_0",
+            DisplayName: "Qwen2.5-Coder 0.5B GGUF Q8_0（入力の先読み用・約506MB）",
+            Repo: "bartowski/Qwen2.5-Coder-0.5B-GGUF",
+            Subfolder: "",
+            FolderName: "qwen25-coder-0.5b-q8_0",
+            Files: new[] { "Qwen2.5-Coder-0.5B-Q8_0.gguf" },
+            LocalSubdirectory: "completion"),
+    };
+
+    /// <summary>先読みの既定モデル。</summary>
+    public static DownloadableModel DefaultCompletion => CompletionCatalog[0];
 
     private readonly HttpClient _http;
 

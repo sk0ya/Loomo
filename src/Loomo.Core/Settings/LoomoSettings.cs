@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using sk0ya.Loomo.Core.Models;
 using sk0ya.Loomo.Core.Observability;
 using sk0ya.Loomo.Core.Safety;
@@ -64,6 +64,9 @@ public sealed class LoomoSettings
 
     /// <summary>埋め込みエディタの表示設定。</summary>
     public EditorSettings Editor { get; set; } = new();
+
+    /// <summary>入力の先読み（キャレットの先に薄く出る提案）のうち、ローカル LLM が作る方の設定。</summary>
+    public InlineCompletionSettings InlineCompletion { get; set; } = new();
 
     /// <summary>キーボードショートカットのユーザー上書き（既定と異なるものだけ保持）。</summary>
     public KeybindingSettings Keybindings { get; set; } = new();
@@ -171,6 +174,10 @@ public sealed class EditorSettings
 
     /// <summary>括弧・引用符を入力したとき対応する閉じ記号を自動挿入する（Vim <c>pairs</c>）。既定 OFF。</summary>
     public bool AutoClosePairs { get; set; }
+
+    /// <summary>入力の先読み（キャレットの先に薄く出る提案）を使うか。既定は有効。
+    /// これを切ると、同じバッファの既出行からの予測もローカル LLM の先読みもまとめて止まる。</summary>
+    public bool InlineSuggest { get; set; } = true;
 
     /// <summary>LSPが返すparameter name等のinlay hintをエディタ内へ表示する。既定 OFF。</summary>
     public bool ShowInlayHints { get; set; }

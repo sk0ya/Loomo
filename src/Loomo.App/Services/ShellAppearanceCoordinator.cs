@@ -1,4 +1,4 @@
-using sk0ya.Loomo.CSharp;
+﻿using sk0ya.Loomo.CSharp;
 
 namespace sk0ya.Loomo.App.Services;
 
@@ -29,6 +29,7 @@ public sealed class ShellAppearanceCoordinator
         SetOption(control, "indentguides", settings.ShowIndentGuides);
         SetOption(control, "pairs", settings.AutoClosePairs);
         SetOption(control, "inlayhints", settings.ShowInlayHints);
+        SetOption(control, "inlinesuggest", settings.InlineSuggest);
         control.SetTabWidth(settings.TabWidth, settings.UseSpacesForTab);
         control.ImagePasteOptions = new Editor.Core.Editing.ImagePasteOptions
         {

@@ -217,6 +217,40 @@ download button + folder picker. `ModelCatalogService` enumerates local ONNX mod
 run non-thinking). Context management is trim-only (no summarization/compaction). The `IBrowserService` /
 Copilot remnants are unused by the agent.
 
+### Inline completion (ghost text) — `Loomo.Ai/Completion/`
+
+The faint prediction ahead of the caret (Tab accepts, Ctrl+Right takes one word) has **two suppliers**, and the
+editor shows whichever answers first. The editor's own `BufferLinePredictor` answers instantly from earlier lines
+of the same buffer and needs nothing installed; `FimCompletionEngine` here is the upgrade — a **separate resident
+llama.cpp model** (Qwen2.5-Coder 0.5B, FIM) wired in through `VimEditorControlOptions.InlineSuggestionProvider`
+(`ShellWindow.RequestInlineSuggestionAsync`, behind `LOOMO_EDITOR_INLINE_SUGGEST`). Off by default —
+`LoomoSettings.InlineCompletion` holds the switch, the model path and the window sizes; the 整形-style
+get-the-model button lives in the editor settings category.
+
+**Why a second engine and not `LlamaCppEngine`:** this runs on *every keystroke*, so sharing the chat engine
+would park typing behind a chat generation for seconds. For the same reason a request that arrives while one is
+running is **dropped, not queued** — queued ones come back several generations stale.
+
+**The numbers that shaped it** (Ryzen 5 3500, 6 cores, CPU-only, measured — see §31.13 for the full table):
+KV-cache reuse is the whole ballgame (411 tokens, 298 reused, 113 resent → ~140ms; without reuse every keystroke
+costs a full second). `SuffixLines` is the expensive knob because FIM puts the trailing text *after* the caret in
+the prompt, so it is resent every keystroke — 10 lines 520ms vs 3 lines 280ms; `PrefixLines` is cheap because it
+never changes at the head. Q4_K_M is **not** faster than Q8_0 (0.5B is compute-bound, not bandwidth-bound) and
+only degrades output, so Q8_0 it is. SPM ordering (suffix first, which would maximize reuse) was tried and missed
+6 out of 6 — Qwen2.5-Coder hasn't learned that arrangement, so `FimPrompt` is PSM-only.
+
+**`FimCandidateFilter` is where the quality actually comes from.** A 0.5B happily returns *plausible but wrong* —
+`ClearDiagnostics(e.Uri, e.Diagnostics);` for `ClearDiagnostics(e);`. It rejects candidates that restate the clue
+(otherwise `ClearClearDiagnostics`), repeat what already follows, are punctuation-only fragments, run away
+repeating a char/word, or **newly** break bracket/quote pairing (a line that was already unbalanced isn't blamed
+on the candidate, and line comments aren't counted — `don't` would fail a naive quote count). Semantic checking
+(unresolved references, argument counts) is **not done yet** and is the highest-value next step: it is what
+JetBrains reports as the biggest lever, and Loomo already has LSP diagnostics to do it with.
+
+Models live under `models/completion/` (`DownloadableModel.LocalSubdirectory`), deliberately **not** under
+`models/` directly — `ModelCatalogService` enumerates that root's immediate children for the *chat* model
+dropdown, and a completion model listed there is one a user can pick to converse with.
+
 ### Multi-root workspaces — ask the workspace, don't compare against one folder
 
 A Loomo workspace is a **set of folders** (`IWorkspaceService.Folders`; primary + any added later), not one root.

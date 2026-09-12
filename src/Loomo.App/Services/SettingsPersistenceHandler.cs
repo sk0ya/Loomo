@@ -1,4 +1,4 @@
-using sk0ya.Loomo.Ai;
+﻿using sk0ya.Loomo.Ai;
 
 namespace sk0ya.Loomo.App.Services;
 
@@ -19,6 +19,9 @@ public sealed record SettingsFormState
     public bool CollapseUsingsOnOpen { get; init; }
     public bool AutoClosePairs { get; init; }
     public bool ShowInlayHints { get; init; }
+
+    /// <summary>入力の先読みそのものを使うか（内蔵の予測とローカル LLM の両方をまとめて切る）。</summary>
+    public bool InlineSuggest { get; init; }
     public int TabWidth { get; init; }
     public bool UseSpacesForTab { get; init; }
     public string ImagePasteDirectory { get; init; } = "";
@@ -26,6 +29,12 @@ public sealed record SettingsFormState
     public string ImagePasteAltText { get; init; } = "";
     public bool AutoApprove { get; init; }
     public bool RestrictToWorkspaceRoot { get; init; }
+
+    /// <summary>入力の先読みをローカル LLM でも行うか（エディタ内蔵の予測はこれと関係なく常に動く）。</summary>
+    public bool InlineCompletionEnabled { get; init; }
+
+    /// <summary>先読み用 FIM モデル（<c>.gguf</c>）のパス。</summary>
+    public string InlineCompletionModelPath { get; init; } = "";
 }
 
 /// <summary>設定フォームと永続化モデルの相互変換および保存を担当する。</summary>
@@ -57,6 +66,7 @@ public sealed class SettingsPersistenceHandler
         CollapseUsingsOnOpen = _settings.Editor.CollapseUsingsOnOpen,
         AutoClosePairs = _settings.Editor.AutoClosePairs,
         ShowInlayHints = _settings.Editor.ShowInlayHints,
+        InlineSuggest = _settings.Editor.InlineSuggest,
         TabWidth = _settings.Editor.TabWidth,
         UseSpacesForTab = _settings.Editor.UseSpacesForTab,
         ImagePasteDirectory = _settings.Editor.ImagePasteDirectory,
@@ -64,6 +74,8 @@ public sealed class SettingsPersistenceHandler
         ImagePasteAltText = _settings.Editor.ImagePasteAltText,
         AutoApprove = _settings.Safety.AutoApprove,
         RestrictToWorkspaceRoot = _settings.Safety.RestrictToWorkspaceRoot,
+        InlineCompletionEnabled = _settings.InlineCompletion.Enabled,
+        InlineCompletionModelPath = _settings.InlineCompletion.ModelPath ?? "",
     };
 
     public SettingsCommandResult Save(SettingsFormState form)
@@ -86,6 +98,7 @@ public sealed class SettingsPersistenceHandler
         _settings.Editor.CollapseUsingsOnOpen = form.CollapseUsingsOnOpen;
         _settings.Editor.AutoClosePairs = form.AutoClosePairs;
         _settings.Editor.ShowInlayHints = form.ShowInlayHints;
+        _settings.Editor.InlineSuggest = form.InlineSuggest;
         _settings.Editor.TabWidth = form.TabWidth > 0 ? form.TabWidth : 2;
         _settings.Editor.UseSpacesForTab = form.UseSpacesForTab;
         _settings.Editor.ImagePasteDirectory = form.ImagePasteDirectory.Trim();
@@ -93,6 +106,10 @@ public sealed class SettingsPersistenceHandler
         _settings.Editor.ImagePasteAltText = form.ImagePasteAltText.Trim();
         _settings.Safety.AutoApprove = form.AutoApprove;
         _settings.Safety.RestrictToWorkspaceRoot = form.RestrictToWorkspaceRoot;
+        var completionModel = form.InlineCompletionModelPath.Trim();
+        _settings.InlineCompletion.ModelPath = completionModel.Length == 0 ? null : completionModel;
+        // モデルが無いのに有効のままだと「効かない設定が入っている」状態になる。
+        _settings.InlineCompletion.Enabled = form.InlineCompletionEnabled && completionModel.Length > 0;
         try
         {
             _store.Save(_settings);

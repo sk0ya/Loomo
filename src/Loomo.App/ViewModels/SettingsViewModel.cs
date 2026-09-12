@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
@@ -87,6 +87,19 @@ public sealed partial class SettingsViewModel : ObservableObject
     /// <summary>ダウンロード進捗（0–100、不明時は不定表示用に -1）。</summary>
     [ObservableProperty] private double _downloadProgress;
 
+    /// <summary>入力の先読みそのものを使うか。切ると内蔵の予測もローカル LLM の先読みも止まる。</summary>
+    [ObservableProperty] private bool _inlineSuggest = true;
+
+    /// <summary>入力の先読みをローカル LLM でも行うか。エディタ内蔵の予測（既出行からの補完）は
+    /// これと関係なく常に動く——ここで足すのは FIM モデルによる行補完。</summary>
+    [ObservableProperty] private bool _inlineCompletionEnabled;
+
+    /// <summary>先読み用 FIM モデル（<c>.gguf</c>）のパス。空ならローカル LLM の先読みは動かない。</summary>
+    [ObservableProperty] private string _inlineCompletionModelPath = "";
+
+    /// <summary>先読みモデルをダウンロード中か。</summary>
+    [ObservableProperty] private bool _isDownloadingCompletionModel;
+
     /// <summary>ダウンロードボタンで取得する対象モデル。<see cref="Model"/> が未取得のカタログ候補を
     /// 指しているときに <see cref="RefreshModelChoices"/> が追従させる。既定は Qwen3-4B GGUF Q4_K_M。</summary>
     [ObservableProperty] private DownloadableModel _selectedDownloadModel =
@@ -126,6 +139,9 @@ public sealed partial class SettingsViewModel : ObservableObject
         TabWidth = form.TabWidth; UseSpacesForTab = form.UseSpacesForTab;
         ImagePasteDirectory = form.ImagePasteDirectory; ImagePasteFileName = form.ImagePasteFileName;
         ImagePasteAltText = form.ImagePasteAltText;
+        InlineSuggest = form.InlineSuggest;
+        InlineCompletionEnabled = form.InlineCompletionEnabled;
+        InlineCompletionModelPath = form.InlineCompletionModelPath;
         _suppressPersist = false;
     }
 
@@ -210,6 +226,9 @@ public sealed partial class SettingsViewModel : ObservableObject
             ImagePasteDirectory = ImagePasteDirectory, ImagePasteFileName = ImagePasteFileName,
             ImagePasteAltText = ImagePasteAltText, AutoApprove = AutoApprove,
             RestrictToWorkspaceRoot = RestrictToWorkspaceRoot,
+            InlineSuggest = InlineSuggest,
+            InlineCompletionEnabled = InlineCompletionEnabled,
+            InlineCompletionModelPath = InlineCompletionModelPath,
         });
         ApplyCommandResult(result);
     }
@@ -314,6 +333,69 @@ public sealed partial class SettingsViewModel : ObservableObject
         if (!string.IsNullOrEmpty(name))
             Model = name;
         Status = $"モデルフォルダを設定しました: {selection.Folder}";
+    }
+
+    /// <summary>先読みモデルが設定されているか。モデルが無ければ有効化しても動かないので、
+    /// チェックボックス自体を触れなくする。</summary>
+    public bool HasInlineCompletionModel => InlineCompletionModelPath.Trim().Length > 0;
+
+    partial void OnInlineSuggestChanged(bool value) => Persist();
+    partial void OnInlineCompletionEnabledChanged(bool value) => Persist();
+
+    partial void OnInlineCompletionModelPathChanged(string value)
+    {
+        OnPropertyChanged(nameof(HasInlineCompletionModel));
+        if (!HasInlineCompletionModel) InlineCompletionEnabled = false;
+        Persist();
+    }
+
+    /// <summary>
+    /// 入力の先読み用の FIM モデルを取得して設定する。チャット用とは別の小さなモデルで、
+    /// 置き場所も <c>models/completion/</c> と分ける（チャットのモデル一覧に混ざらないように）。
+    /// </summary>
+    [RelayCommand]
+    private async Task DownloadCompletionModelAsync()
+    {
+        if (IsDownloadingCompletionModel) return;
+        var model = ModelDownloadService.DefaultCompletion;
+        var cts = new CancellationTokenSource();
+        IsDownloadingCompletionModel = true;
+        try
+        {
+            Status = $"{model.DisplayName} をダウンロードしています…";
+            var progress = new Progress<ModelDownloadService.Progress>(p =>
+            {
+                var pct = p.TotalBytes > 0
+                    ? $"{p.DownloadedBytes * 100.0 / p.TotalBytes:0}%"
+                    : $"{p.DownloadedBytes / (1024 * 1024)}MB";
+                Status = $"先読みモデルをダウンロード中 — {pct}";
+            });
+
+            var dir = await _modelDownload.DownloadAsync(model, progress, cts.Token);
+            var file = Directory.EnumerateFiles(dir, "*.gguf").OrderBy(p => p, StringComparer.OrdinalIgnoreCase).FirstOrDefault();
+            if (file is null)
+            {
+                Status = "先読みモデルの取得に失敗しました（.gguf が見つかりません）。";
+                return;
+            }
+
+            InlineCompletionModelPath = file;   // → Persist
+            InlineCompletionEnabled = true;     // → Persist
+            Status = $"入力の先読みを有効にしました: {Path.GetFileName(file)}";
+        }
+        catch (OperationCanceledException)
+        {
+            Status = "ダウンロードを中止しました。";
+        }
+        catch (Exception ex)
+        {
+            Status = $"先読みモデルの取得に失敗しました: {ex.Message}";
+        }
+        finally
+        {
+            IsDownloadingCompletionModel = false;
+            cts.Dispose();
+        }
     }
 
     /// <summary>選択中のモデル（GGUF・CPU）を Hugging Face からダウンロードして設定する。</summary>

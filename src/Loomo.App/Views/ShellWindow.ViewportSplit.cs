@@ -184,9 +184,31 @@ public partial class ShellWindow {
         }
     }
 
+#if LOOMO_EDITOR_INLINE_SUGGEST
+    /// <summary>
+    /// エディタからの先読み要求を FIM エンジンへ渡す。打鍵のたびに呼ばれ、古い要求は
+    /// エディタ側がキャンセルする。出せないときは null を返すだけ——先読みの失敗で
+    /// 入力が止まることがあってはならない。
+    /// </summary>
+    private async Task<Editor.Core.Completion.InlineSuggestion?> RequestInlineSuggestionAsync(
+        Editor.Core.Completion.InlineSuggestionContext context, CancellationToken ct)
+    {
+        var text = await _fimCompletion.CompleteAsync(
+            _settings.InlineCompletion, context.Lines, context.Line, context.Column, ct);
+        return text is null
+            ? null
+            : new Editor.Core.Completion.InlineSuggestion(text, Editor.Core.Completion.InlineSuggestionSource.External);
+    }
+#endif
+
     private VimEditorControl BuildEditorControl(EditorTab tab) {
         var control = new VimEditorControl(new VimEditorControlOptions {
             GitServiceFactory = () => new GitDiffProvider(),
+#if LOOMO_EDITOR_INLINE_SUGGEST
+            // キャレットの先に薄く出す提案のうち、ローカル LLM（FIM）が作る方。
+            // エディタ内蔵の予測（既出行からの補完）はこれが無くても動き、先に出る。
+            InlineSuggestionProvider = RequestInlineSuggestionAsync,
+#endif
             // ワークスペースフォルダーも文書の参照カウントもサーバーのプールもワークスペース側が知っている。
             LspWorkspace = _lspWorkspace, LspServerAdmin = _lspServerAdmin,
             EngineServices = _editorEngineServices,
