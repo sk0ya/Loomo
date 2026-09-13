@@ -270,7 +270,11 @@ public partial class ShellWindow {
             || _paneSplitterDragging
             || WingHost.Visibility != Visibility.Visible)
             return;
-        RebuildWings();
+        // ScrollViewer.OnLayoutUpdated から直接呼ばれるため、ここでペインの親を
+        // 付け替えると WPF のツリーウォーク中に論理子を変更することになり、
+        // 「現時点では、このノードの論理子を変更できません」で落ちる。
+        // レイアウトが落ち着いてから既存の遅延再構築経路へ送る。
+        ScheduleLayoutWings();
     }
     private void UpdateWingHostVisibility() {
         if (WingHost is null)

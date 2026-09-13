@@ -41,12 +41,18 @@ public partial class ShellWindow {
                 _ = OpenUrlInBrowserAsync(uri.AbsoluteUri, null);
                 return;
             }
-            if (uri.IsFile) {
+            // .NET は C:\\... も file URI として解釈する。行番号／列番号付きの
+            // Windows パスを uri.LocalPath に渡すと :10:5 がファイル名に残るため、
+            // Windows パスは URI 処理から外して SourceLocationResolver に任せる。
+            if (uri.IsFile && !IsWindowsPathTarget(target)) {
                 e.Handled = true;
-                _ = OpenPathInEditorAsync(uri.LocalPath, line: 0, column: 0);
+                _ = OpenTerminalPathAsync(uri.LocalPath, line: 0, column: 0);
                 return;
             }
-            return; // mailto: 等は既定の外部起動に委ねる。
+            // Windowsの絶対パス（C:\...）も Uri として解釈され、scheme="c" になる。
+            // それをここで捨てると、下の SourceLocationResolver に届かず行ジャンプできない。
+            if (!IsWindowsPathTarget(target))
+                return; // mailto: 等は既定の外部起動に委ねる。
         }
         // OSC8 のターゲットは素のパスのことも「パス:行:列」のこともある。
         // 読み取りは選択テキストと同じ SourceLocationParser に寄せて、書式の解釈をここに二重化しない
@@ -54,9 +60,22 @@ public partial class ShellWindow {
         var cwd = (sender as TerminalTabView)?.WorkingDirectory;
         if (SourceLocationResolver.TryResolve(_workspace, target, cwd, currentDocumentPath: null, out var location)) {
             e.Handled = true;
-            _ = OpenPathInEditorAsync(location.Path, location.Line, location.Column);
+            _ = OpenTerminalPathAsync(location.Path, location.Line, location.Column);
         }
     }
+    internal static bool IsWindowsPathTarget(string target)
+        => target.Length >= 3 && char.IsLetter(target[0]) && target[1] == ':' &&
+           (target[2] == '\\' || target[2] == '/');
+
+    /// <summary>ターミナルからのリンクは、開くだけでなく着地点の Editor ペインへ移す。</summary>
+    private async Task OpenTerminalPathAsync(string path, int line, int column)
+    {
+        if (!File.Exists(path))
+            return;
+        await OpenPathInEditorAsync(path, line, column);
+        FocusPane(PaneKind.Editor);
+    }
+
     private async Task OpenPathInEditorAsync(string fullPath, int line, int column, bool alignTop = false) {
         await OpenFileInNewEditorTabAsync(fullPath);
         if (line <= 0)

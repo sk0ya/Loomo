@@ -24,6 +24,11 @@ dotnet test                                              # all tests (xUnit)
 dotnet test --filter "FullyQualifiedName~DiffUtil"       # single test class / method
 ```
 
+検証や再ビルドで `bin/Debug` の出力ファイルが実行中の Loomo にロックされている場合は、
+ワークスペースから起動した `sk0ya.Loomo.App.exe` を終了してよい。修正確認後は必要に応じて
+`dotnet run --project src/Loomo.App/Loomo.App.csproj` で再起動する。終了対象は Loomo 本体に限定し、
+無関係なユーザープロセスは終了しない。
+
 Requires the Windows .NET SDK matching the projects' `TargetFramework` (each `*.csproj` is the source of
 truth — don't hardcode it here). App and test projects target a `-windows` TFM (WPF); `Loomo.Core` and
 `Loomo.Ai` target the plain one.

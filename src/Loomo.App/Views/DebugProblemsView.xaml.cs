@@ -1,5 +1,8 @@
+using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
+using System.Windows.Media;
 using sk0ya.Loomo.App.ViewModels;
 
 namespace sk0ya.Loomo.App.Views;
@@ -14,17 +17,34 @@ public partial class DebugProblemsView : UserControl
 
     private ProblemsViewModel? Vm => DataContext as ProblemsViewModel;
 
-    /// <summary>ファイル見出しは行のどこをクリックしても開閉。</summary>
-    private void OnGroupRowClick(object sender, MouseButtonEventArgs e)
+    /// <summary>TreeViewItem のクラスハンドラーに握られる前に、行クリックを処理する。
+    /// 行内の Grid に MouseLeftButtonUp を直接置くと、実機入力では TreeViewItem の
+    /// 選択処理に負けて問題行のジャンプが発火しないことがある。</summary>
+    private void OnTreeMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
-        if ((sender as System.Windows.FrameworkElement)?.DataContext is ProblemFileGroup g)
-            g.IsExpanded = !g.IsExpanded;
-    }
+        if (e.ClickCount != 1 || e.OriginalSource is not DependencyObject source)
+            return;
 
-    private void OnProblemRowClick(object sender, MouseButtonEventArgs e)
-    {
-        if ((sender as System.Windows.FrameworkElement)?.DataContext is ProblemItemViewModel item)
-            Vm?.OpenCommand.Execute(item);
+        // 開閉矢印は ToggleButton 自身が IsExpanded を更新する。
+        if (FindAncestor<ToggleButton>(source) is not null)
+            return;
+
+        // Quick Fix はそのボタンの Command だけを実行し、行ジャンプを重ねない。
+        if (FindAncestor<ButtonBase>(source) is not null)
+            return;
+
+        if (FindAncestor<TreeViewItem>(source) is not { } treeItem)
+            return;
+
+        switch (treeItem.DataContext)
+        {
+            case ProblemFileGroup group:
+                group.IsExpanded = !group.IsExpanded;
+                break;
+            case ProblemItemViewModel item:
+                Vm?.OpenCommand.Execute(item);
+                break;
+        }
     }
 
     private void OnTreeKeyDown(object sender, KeyEventArgs e)
@@ -41,5 +61,20 @@ public partial class DebugProblemsView : UserControl
                 e.Handled = true;
                 break;
         }
+    }
+
+    private static T? FindAncestor<T>(DependencyObject source) where T : DependencyObject
+    {
+        for (var current = source; current is not null; current = current switch
+        {
+            Visual or System.Windows.Media.Media3D.Visual3D => VisualTreeHelper.GetParent(current),
+            _ => LogicalTreeHelper.GetParent(current),
+        })
+        {
+            if (current is T match)
+                return match;
+        }
+
+        return null;
     }
 }

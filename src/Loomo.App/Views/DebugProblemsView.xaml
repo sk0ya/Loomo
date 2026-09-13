@@ -27,7 +27,32 @@
                 <DataTrigger Binding="{Binding Severity}" Value="Hint">
                     <Setter Property="Foreground" Value="{StaticResource ProblemsHint}" />
                 </DataTrigger>
+                <!-- 選択行の上では、固定の重要度色よりも選択用の明るい文字色を優先する。
+                     Accent の色相はテーマ／ユーザー設定で変わるため、ここだけは共通の
+                     AccentFg に揃えて選択状態のコントラストを落とさない。 -->
+                <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType={x:Type TreeViewItem}}}" Value="True">
+                    <Setter Property="Foreground" Value="{DynamicResource AccentFg}" />
+                </DataTrigger>
             </Style.Triggers>
+        </Style>
+
+        <!-- 診断行の補助情報。選択中は FgDim のままだと Accent 背景に沈むので、
+             行コンテナーの状態に応じて文字色を切り替える。 -->
+        <Style x:Key="ProblemMetaText" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType={x:Type TreeViewItem}}}" Value="True">
+                    <Setter Property="Foreground" Value="{DynamicResource AccentFg}" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- 素の Button は Windows の既定配色（灰色の面＋白文字）になり、暗色テーマの
+             問題一覧だけ別アプリのように見える。共有の枠線ボタンへ寄せる。 -->
+        <Style x:Key="ProblemQuickFixButton" TargetType="Button" BasedOn="{StaticResource SecondaryButton}">
+            <Setter Property="Padding" Value="6,1" />
+            <Setter Property="MinHeight" Value="22" />
+            <Setter Property="FontSize" Value="{DynamicResource Fs11}" />
         </Style>
 
         <!-- テーマ対応の TreeViewItem（SEARCH ペインの結果ツリーと同じ流儀：既定の Windows 配色を使わせない。
@@ -127,10 +152,14 @@
         </Grid.RowDefinitions>
 
         <WrapPanel Grid.Row="0" Margin="4,0,4,4">
-            <CheckBox Content="Error" IsChecked="{Binding ShowErrors}" Margin="0,0,8,0" />
-            <CheckBox Content="Warning" IsChecked="{Binding ShowWarnings}" Margin="0,0,8,0" />
-            <CheckBox Content="Info" IsChecked="{Binding ShowInformation}" Margin="0,0,8,0" />
-            <CheckBox Content="Hint" IsChecked="{Binding ShowHints}" Margin="0,0,8,0" />
+            <CheckBox Content="Error" Foreground="{StaticResource ProblemsError}"
+                      IsChecked="{Binding ShowErrors}" Margin="0,0,8,0" />
+            <CheckBox Content="Warning" Foreground="{StaticResource ProblemsWarning}"
+                      IsChecked="{Binding ShowWarnings}" Margin="0,0,8,0" />
+            <CheckBox Content="Info" Foreground="{StaticResource ProblemsInformation}"
+                      IsChecked="{Binding ShowInformation}" Margin="0,0,8,0" />
+            <CheckBox Content="Hint" Foreground="{StaticResource ProblemsHint}"
+                      IsChecked="{Binding ShowHints}" Margin="0,0,8,0" />
             <CheckBox Content="Build" IsChecked="{Binding ShowBuild}" Margin="0,0,8,0" />
             <CheckBox Content="Compiler" IsChecked="{Binding ShowCompiler}" Margin="0,0,8,0" />
             <CheckBox Content="LSP" IsChecked="{Binding ShowLsp}" Margin="0,0,8,0" />
@@ -165,6 +194,7 @@
                           VirtualizingPanel.IsVirtualizing="True"
                           VirtualizingPanel.VirtualizationMode="Recycling"
                           VirtualizingPanel.ScrollUnit="Pixel"
+                          PreviewMouseLeftButtonUp="OnTreeMouseLeftButtonUp"
                           PreviewKeyDown="OnTreeKeyDown">
                     <TreeView.ItemsPanel>
                         <ItemsPanelTemplate>
@@ -175,8 +205,7 @@
                         <!-- ファイル見出し：ファイル名（強調）＋相対ディレクトリ（薄く）＋右端に ✕/▲ 件数。
                              行のどこをクリックしても配下を開閉する。 -->
                         <HierarchicalDataTemplate DataType="{x:Type vm:ProblemFileGroup}" ItemsSource="{Binding Items}">
-                            <Grid Background="Transparent" ToolTip="{Binding FilePath}"
-                                  MouseLeftButtonUp="OnGroupRowClick">
+                            <Grid Background="Transparent" ToolTip="{Binding FilePath}">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="*" />
@@ -203,8 +232,7 @@
 
                         <!-- 診断行：グリフ・メッセージ（1行・省略・全文はツールチップ）・コード（薄く）・行:列。 -->
                         <DataTemplate DataType="{x:Type vm:ProblemItemViewModel}">
-                            <Grid Background="Transparent" ToolTip="{Binding ToolTipText}"
-                                  MouseLeftButtonUp="OnProblemRowClick">
+                            <Grid Background="Transparent" ToolTip="{Binding ToolTipText}">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="16" />
                                     <ColumnDefinition Width="*" />
@@ -218,15 +246,16 @@
                                 <TextBlock Grid.Column="1" Text="{Binding Message}" FontSize="{DynamicResource Fs12}"
                                            VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
                                 <TextBlock Grid.Column="2" Text="{Binding Code}" FontSize="{DynamicResource Fs10}"
-                                           Foreground="{DynamicResource FgDim}" Margin="8,0,0,0"
+                                           Style="{StaticResource ProblemMetaText}" Margin="8,0,0,0"
                                            VerticalAlignment="Center" />
                                 <TextBlock Grid.Column="3" Text="{Binding SourceLabel}" FontSize="{DynamicResource Fs10}"
-                                           Foreground="{DynamicResource FgDim}" Margin="8,0,0,0"
+                                           Style="{StaticResource ProblemMetaText}" Margin="8,0,0,0"
                                            VerticalAlignment="Center" />
                                 <TextBlock Grid.Column="4" Text="{Binding LineColumn}" FontSize="{DynamicResource Fs10}"
-                                           Foreground="{DynamicResource FgDim}" FontFamily="Consolas"
+                                           Style="{StaticResource ProblemMetaText}" FontFamily="Consolas"
                                            Margin="6,0,2,0" VerticalAlignment="Center" />
-                                <Button Grid.Column="5" Content="Quick Fix" Padding="5,0" Margin="6,0,2,0"
+                                <Button Grid.Column="5" Content="Quick Fix" Style="{StaticResource ProblemQuickFixButton}"
+                                        Margin="6,0,2,0"
                                         ToolTip="この位置で利用できるCode Actionを表示"
                                         Command="{Binding DataContext.QuickFixCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                         CommandParameter="{Binding}" />
