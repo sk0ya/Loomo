@@ -14,6 +14,8 @@ namespace sk0ya.Loomo.Services.Lsp;
 /// </summary>
 internal static class LspCodeLensExecutionFilter
 {
+    private const int ResolveConcurrency = 8;
+
     public static async Task<IReadOnlyList<LspCodeLens>> ResolveExecutableAsync(
         IReadOnlyList<LspCodeLens> lenses,
         bool supportsResolve,
@@ -21,6 +23,7 @@ internal static class LspCodeLensExecutionFilter
         CancellationToken ct = default)
     {
         var resolved = new LspCodeLens?[lenses.Count];
+        using var gate = new SemaphoreSlim(ResolveConcurrency);
         var tasks = lenses.Select(async (lens, index) =>
         {
             ct.ThrowIfCancellationRequested();
@@ -35,7 +38,16 @@ internal static class LspCodeLensExecutionFilter
 
             try
             {
-                var candidate = await resolve(lens, ct);
+                await gate.WaitAsync(ct);
+                LspCodeLens? candidate;
+                try
+                {
+                    candidate = await resolve(lens, ct);
+                }
+                finally
+                {
+                    gate.Release();
+                }
                 if (candidate is not null && HasExecutableCommand(candidate))
                     resolved[index] = candidate;
             }
@@ -50,9 +62,10 @@ internal static class LspCodeLensExecutionFilter
         });
 
         await Task.WhenAll(tasks);
+        ct.ThrowIfCancellationRequested();
         return resolved.OfType<LspCodeLens>().ToArray();
     }
 
     private static bool HasExecutableCommand(LspCodeLens lens) =>
-        lens.Command is { Command.Length: > 0 };
+        lens.Command is { Command: { } command } && !string.IsNullOrWhiteSpace(command);
 }
