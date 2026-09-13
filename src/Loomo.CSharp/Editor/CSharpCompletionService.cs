@@ -127,14 +127,9 @@ public static class CSharpCompletionService
                 InsertTextFormat.PlainText,
                 item.SortText,
                 false,
-                new LspTextEdit(range, insertText)
-#if LOOMO_EDITOR_COMPLETION_ADDITIONAL_EDITS
-                ,
+                new LspTextEdit(range, insertText),
                 AdditionalTextEdits: additionalTextEdits.Length == 0
                     ? null : additionalTextEdits));
-#else
-                ));
-#endif
         }
 
         return result.Count > 0

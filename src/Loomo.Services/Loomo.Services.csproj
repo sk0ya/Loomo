@@ -8,7 +8,6 @@
     <ImplicitUsings>disable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
     <UseWPF>true</UseWPF>
-    <DefineConstants Condition="'$(UseLocalEditor)' != 'false' Or $([MSBuild]::VersionGreaterThanOrEquals('$(EditorPackageVersion)', '1.0.80'))">$(DefineConstants);LOOMO_EDITOR_EXTENDED_LSP</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>

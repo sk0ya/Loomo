@@ -184,7 +184,6 @@ public partial class ShellWindow {
         }
     }
 
-#if LOOMO_EDITOR_INLINE_SUGGEST
     /// <summary>
     /// エディタからの先読み要求を FIM エンジンへ渡す。打鍵のたびに呼ばれ、古い要求は
     /// エディタ側がキャンセルする。出せないときは null を返すだけ——先読みの失敗で
@@ -199,27 +198,21 @@ public partial class ShellWindow {
             ? null
             : new Editor.Core.Completion.InlineSuggestion(text, Editor.Core.Completion.InlineSuggestionSource.External);
     }
-#endif
 
     private VimEditorControl BuildEditorControl(EditorTab tab) {
         var control = new VimEditorControl(new VimEditorControlOptions {
             GitServiceFactory = () => new GitDiffProvider(),
-#if LOOMO_EDITOR_INLINE_SUGGEST
             // キャレットの先に薄く出す提案のうち、ローカル LLM（FIM）が作る方。
             // エディタ内蔵の予測（既出行からの補完）はこれが無くても動き、先に出る。
             InlineSuggestionProvider = RequestInlineSuggestionAsync,
-#endif
             // ワークスペースフォルダーも文書の参照カウントもサーバーのプールもワークスペース側が知っている。
             LspWorkspace = _lspWorkspace, LspServerAdmin = _lspServerAdmin,
             EngineServices = _editorEngineServices,
             // 「名前の変更」は Loomo の「リファクタリング」サブメニューに入れる（§32）。
             // これを渡さないとコントロール側の "Rename Symbol" と2つ並ぶ。
             HostProvidesRenameMenuItem = true,
-#if LOOMO_EDITOR_MENU_LABELS
             // ネイティブ項目の見出しを日本語にする（Loomo 側の追加項目と同じ言語で並べる）。
             ContextMenuLabels = Services.EditorMenuLabels.Japanese,
-#endif
-#if LOOMO_EDITOR_HOST_API
             // LSPがrenameを返さない／接続できない場合も、C#専用DLLのRoslyn意味モデルへ戻す。
             HostRenameProvider = (path, source, line, character, newName, ct) =>
                 RequestCSharpRenameFallbackAsync(path, source, line, character, newName, ct),
@@ -269,14 +262,11 @@ public partial class ShellWindow {
                 return Task.Run(() => sk0ya.Loomo.CSharp.Editor.CSharpParameterNameHintService.Get(
                     _solutionModel?.Current, path, source, startLine, endLine, openTexts), ct);
             }
-#endif
         }) {
             VimEnabled = _settings.Vim.Enabled, Visibility = Visibility.Collapsed
         };
-#if LOOMO_EDITOR_HOST_API
         control.HostCodeActionProvider = (range, only) =>
             RequestCSharpQuickFixesAsync(control, range, only);
-#endif
         _appearance.ApplyEditorOptions(control);
         _appearance.ApplyEditorAppearance(control);
         control.SetSharedStatusBar(EditorSharedStatusBar);
@@ -289,9 +279,7 @@ public partial class ShellWindow {
                 ScheduleEditorSupportUpdate();
             ScheduleStyleCopAnalysis(control);
         };
-#if LOOMO_EDITOR_HOST_API
         control.LspDiagnosticsChanged += OnStyleCopLspDiagnosticsChanged;
-#endif
         control.SaveRequested += (_, _) => {
             QueueEditorTabUpdate(tab);
             if (ReferenceEquals(_editorSupport.Source, tab))
@@ -310,9 +298,7 @@ public partial class ShellWindow {
             e.Line >= 0 ? e.Line + 1 : 0,
             e.Column >= 0 ? e.Column + 1 : 0);
         control.FindReferencesResult += OnEditorFindReferencesResult;
-#if LOOMO_EDITOR_HOST_API
         control.WorkspaceEditRequested += OnEditorWorkspaceEditRequested;
-#endif
         control.ContextMenuBuilding += OnEditorContextMenuBuilding;
         control.BlameCommitClicked += (_, e) => ShowBlameCommitDiff(control, e.Blame);
         control.SplitRequested += (_, e) => SplitEditorView(e.Vertical ? SplitKind.Columns : SplitKind.Rows, e.FilePath);
@@ -326,24 +312,15 @@ public partial class ShellWindow {
         return control;
     }
     private void OnEditorWorkspaceEditRequested(object? sender, WorkspaceEditRequestedEventArgs e) {
-#if LOOMO_EDITOR_HOST_API
         var currentPreview = e.CurrentFilePath is { Length: > 0 } path &&
             e.CurrentOriginalText is { } original && e.CurrentUpdatedText is { } updated
             ? new WorkspaceEditPreviewFile(path, original, updated)
             : null;
         var outcome = ApplyLspWorkspaceEdit(e.Changes, e.DocumentVersions, e.FileOperations,
             currentPreview, e.ExpectedTexts);
-#else
-        var outcome = ApplyLspWorkspaceEdit(e.Changes, e.DocumentVersions, e.FileOperations);
-#endif
-#if LOOMO_EDITOR_EDIT_CANCEL
         // 取り消しは失敗ではない。エディタ側もこれを見て「失敗しました」と言わなくなる。
         e.Cancelled = outcome.Cancelled;
         e.Error = outcome.Error;
-#else
-        // 1.0.81 以前の Editor には「取り消し」を伝える口が無い。適用だけは止めるためエラーとして返す。
-        e.Error = outcome.Cancelled ? "編集プレビューでキャンセルされました。" : outcome.Error;
-#endif
         e.Handled = !outcome.Cancelled && outcome.Error is null;
     }
 
@@ -615,14 +592,9 @@ public partial class ShellWindow {
         IReadOnlyDictionary<VimEditorControl, string> editors)
     {
         foreach (var (editor, text) in editors)
-#if LOOMO_EDITOR_HOST_API
             if (!string.Equals(editor.Text, text, StringComparison.Ordinal))
                 if (!editor.TryRestoreWorkspaceText(text, out var error))
                     throw new InvalidOperationException($"{editor.FilePath}: {error}");
-#else
-            if (!string.Equals(editor.Text, text, StringComparison.Ordinal))
-                throw new InvalidOperationException($"{editor.FilePath}: Editor package does not support workspace text restore.");
-#endif
 
         foreach (var (path, snapshot) in files)
         {
@@ -768,14 +740,9 @@ public partial class ShellWindow {
             if (open.Length == 0)
                 throw new InvalidOperationException($"{path}: 対応するエディタタブが閉じられています。");
             foreach (var editor in open)
-#if LOOMO_EDITOR_HOST_API
                 if (!string.Equals(editor.Text, text, StringComparison.Ordinal) &&
                     !editor.TryRestoreWorkspaceText(text, out var error))
                     throw new InvalidOperationException($"{path}: {error}");
-#else
-                if (!string.Equals(editor.Text, text, StringComparison.Ordinal))
-                    throw new InvalidOperationException($"{path}: Editor package does not support workspace text restore.");
-#endif
         }
         RestoreLspFileSnapshots(files);
     }

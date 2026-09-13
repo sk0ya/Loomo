@@ -91,7 +91,6 @@ public sealed class CSharpEditAssist : EditAssistBase
     /// Roslynの構文木で確認して末尾のセミコロンを補うが、ifやメソッド宣言などの
     /// ブロック構文は変更しない。末尾コメントはコメントの前へ挿入する。
     /// </summary>
-#if LOOMO_EDITOR_STATEMENT_COMPLETION
     public override EditResult OnCompleteStatement(EditContext ctx)
     {
         var line = ctx.Buffer.GetLine(ctx.Cursor.Line);
@@ -134,7 +133,6 @@ public sealed class CSharpEditAssist : EditAssistBase
         var newColumn = column >= statementEnd ? column + 1 : column;
         return EditResult.Done(ctx.Cursor with { Column = newColumn });
     }
-#endif
 
     private static bool HasTrailingCommentWithCode(string line, int column, SyntaxToken[] tokens)
     {

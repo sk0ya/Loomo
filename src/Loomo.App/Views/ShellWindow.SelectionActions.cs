@@ -27,11 +27,9 @@ public partial class ShellWindow {
                 e.SelectedText, e.HasSelection, workingDirectory: null, control?.FilePath),
             BuildDiffSendMenu(CompareEntries(
                 control, SelectionSourceLabel(control), e.SelectedText, e.HasSelection))));
-#if LOOMO_EDITOR_MENU_LABELS
         // 「どこかへ行く」操作はコントロール側の「移動」サブメニューへ入れる。
         // Loomo の定義 Peek だけ別の場所に出ていると、移動の入口が2つに割れる。
         AddCSharpPeekMenuItem(e.NavigateMenu, control);
-#endif
         // ② コードを選ぶ・書き換える
         AddMenuGroup(e.Menu, menu => {
             AddSemanticSelectionMenuItems(menu, control);

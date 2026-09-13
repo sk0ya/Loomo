@@ -30,17 +30,6 @@
     <None Update="xunit.runner.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
-  <!-- 旧公開Editor (1.0.79) には後発LSP／WorkspaceEdit契約がないため、
-       その契約を直接検証するテストだけは旧版受入れ時のコンパイル対象から外す。 -->
-  <ItemGroup Condition="'$(UseLocalEditor)' == 'false' And $([MSBuild]::VersionLessThan('$(EditorPackageVersion)', '1.0.82'))">
-    <Compile Remove="RealRoslynLspIntegrationTests.cs" />
-    <Compile Remove="LspWorkspaceServiceTests.cs" />
-    <Compile Remove="CSharpCompletionServiceTests.cs" />
-    <Compile Remove="CSharpRenameServiceTests.cs" />
-    <Compile Remove="CSharpCompilerCodeFixServiceTests.cs" />
-    <Compile Remove="CSharpEditorIntegrationTests.cs" />
-  </ItemGroup>
-
   <ItemGroup>
     <ProjectReference Include="..\..\src\Loomo.Core\Loomo.Core.csproj" />
     <ProjectReference Include="..\..\src\Loomo.Ai\Loomo.Ai.csproj" />

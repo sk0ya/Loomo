@@ -73,46 +73,22 @@ public partial class ShellWindow
                 RunCSharpOperation(id, () => RunCSharpChangeSignatureCommandAsync(control));
                 break;
             case CSharpEditorCommandCatalog.GoToDefinition:
-#if LOOMO_EDITOR_HOST_API
                 _ = control.GoToDefinitionAsync();
-#else
-                control.ExecuteCommand("GoToDefinition");
-#endif
                 break;
             case CSharpEditorCommandCatalog.PeekDefinition:
-#if LOOMO_EDITOR_HOST_API
                 _ = control.PeekDefinitionAsync();
-#else
-                control.ExecuteCommand("PeekDefinition");
-#endif
                 break;
             case CSharpEditorCommandCatalog.GoToImplementation:
-#if LOOMO_EDITOR_HOST_API
                 _ = control.GoToImplementationAsync();
-#else
-                control.ExecuteCommand("GoToImplementation");
-#endif
                 break;
             case CSharpEditorCommandCatalog.GoToTypeDefinition:
-#if LOOMO_EDITOR_HOST_API
                 _ = control.GoToTypeDefinitionAsync();
-#else
-                control.ExecuteCommand("GoToTypeDefinition");
-#endif
                 break;
             case CSharpEditorCommandCatalog.GoToDeclaration:
-#if LOOMO_EDITOR_HOST_API
                 _ = control.GoToDeclarationAsync();
-#else
-                control.ExecuteCommand("GoToDeclaration");
-#endif
                 break;
             case CSharpEditorCommandCatalog.FindReferences:
-#if LOOMO_EDITOR_HOST_API
                 _ = control.FindReferencesAsync();
-#else
-                control.ExecuteCommand("FindReferences");
-#endif
                 break;
             case CSharpEditorCommandCatalog.Format:
                 control.ExecuteCommand("Format");

@@ -250,11 +250,7 @@ public partial class ShellWindow
                 if (cancelled) return;
 
                 var outcome = ApplyLspWorkspaceEdit(changes, edit.DocumentVersions, edit.FileOperations,
-#if LOOMO_EDITOR_HOST_API
                     expectedTexts: edit.ExpectedTexts);
-#else
-                    expectedTexts: null);
-#endif
                 ShowRefactorStatus(outcome.Describe(item.Title) ?? $"「{item.Title}」を適用しました。");
                 return;
             }
@@ -307,11 +303,7 @@ public partial class ShellWindow
     {
         var outcome = Dispatcher.Invoke(() =>
             ApplyLspWorkspaceEdit(e.Edit.Changes, e.Edit.DocumentVersions, e.Edit.FileOperations,
-#if LOOMO_EDITOR_HOST_API
                 expectedTexts: e.Edit.ExpectedTexts));
-#else
-                expectedTexts: null));
-#endif
         // 取り消しはサーバーから見れば「適用しなかった」だが、失敗理由は無い（利用者の判断）。
         e.Applied = !outcome.Cancelled && outcome.Error is null;
         e.FailureReason = outcome.Error;

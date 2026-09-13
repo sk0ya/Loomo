@@ -210,11 +210,7 @@ public static class CSharpRenameService
         IReadOnlyDictionary<string, IReadOnlyList<LspTextEdit>> changes,
         IReadOnlyDictionary<string, string> expectedTexts)
     {
-#if LOOMO_EDITOR_EXPECTED_TEXTS
         return new LspWorkspaceEdit(changes, ExpectedTexts: expectedTexts);
-#else
-        return new LspWorkspaceEdit(changes);
-#endif
     }
 
     private static bool IsIdentifierSpan(SourceText text, TextSpan span)

@@ -75,7 +75,6 @@ public partial class ShellWindow {
         var coverage = CoverageForPath(path);
         var branchByLine = coverage?.BranchDetails.ToDictionary(branch => branch.Line1)
             ?? new Dictionary<int, sk0ya.Loomo.CSharp.Testing.CoverageBranchSummary>();
-#if LOOMO_EDITOR_HOST_API
         var coverageMarkers = coverage?.LineDetails.Select(line =>
         {
             var kind = line.Covered
@@ -94,13 +93,10 @@ public partial class ShellWindow {
             return new Editor.Controls.Rendering.EditorCoverageMarker(line.Line1 - 1, kind, tooltip);
         }).ToArray()
             ?? Array.Empty<Editor.Controls.Rendering.EditorCoverageMarker>();
-#endif
         control.SetTestGlyphsEnabled(_testGlyphColumns.ShouldEnable(path, glyphs.Count));
         control.SetTestGlyphs(glyphs);
-#if LOOMO_EDITOR_HOST_API
         control.SetCoverageMarkersEnabled(coverageMarkers.Length > 0);
         control.SetCoverageMarkers(coverageMarkers);
-#endif
     }
 
     private sk0ya.Loomo.CSharp.Testing.CoverageFileSummary? CoverageForPath(string? path)

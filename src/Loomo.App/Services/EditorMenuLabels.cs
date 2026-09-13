@@ -1,6 +1,5 @@
-﻿#if LOOMO_EDITOR_MENU_LABELS
+﻿
 using Editor.Controls;
-#endif
 
 namespace sk0ya.Loomo.App.Services;
 
@@ -35,7 +34,6 @@ internal static class EditorMenuLabels
     internal const string FormatDocument = "ファイル全体を整形";
     internal const string FormatSelection = "選択範囲を整形";
 
-#if LOOMO_EDITOR_MENU_LABELS
     internal static EditorContextMenuLabels Japanese { get; } = new()
     {
         CopySelection = CopySelection,
@@ -59,5 +57,4 @@ internal static class EditorMenuLabels
         FormatDocument = FormatDocument,
         FormatSelection = FormatSelection,
     };
-#endif
 }

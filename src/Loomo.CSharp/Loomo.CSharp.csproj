@@ -7,7 +7,6 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
     <LangVersion>latest</LangVersion>
-    <DefineConstants Condition="'$(UseLocalEditor)' != 'false' Or $([MSBuild]::VersionGreaterThanOrEquals('$(EditorPackageVersion)', '1.0.80'))">$(DefineConstants);LOOMO_EDITOR_STATEMENT_COMPLETION;LOOMO_EDITOR_COMPLETION_ADDITIONAL_EDITS;LOOMO_EDITOR_EXPECTED_TEXTS</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>

@@ -19,11 +19,7 @@ public partial class ShellWindow
 
     private static IReadOnlyList<LspDiagnostic> EditorLspDiagnostics(VimEditorControl control)
     {
-#if LOOMO_EDITOR_HOST_API
         return control.LspDiagnostics;
-#else
-        return [];
-#endif
     }
 
     private void InitializeCSharpDiagnosticsWiring()

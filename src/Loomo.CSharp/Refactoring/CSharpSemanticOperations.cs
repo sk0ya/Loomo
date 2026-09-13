@@ -494,11 +494,7 @@ public static class CSharpSemanticOperations
             ? result
             : result with
             {
-#if LOOMO_EDITOR_EXPECTED_TEXTS
                 Edit = edit with { ExpectedTexts = expected },
-#else
-                Edit = edit,
-#endif
                 ExpectedTexts = expected,
             };
     }
@@ -526,11 +522,7 @@ public static class CSharpSemanticOperations
             ? result
             : result with
             {
-#if LOOMO_EDITOR_EXPECTED_TEXTS
                 Edit = edit with { ExpectedTexts = expected },
-#else
-                Edit = edit,
-#endif
                 ExpectedTexts = expected,
             };
     }
