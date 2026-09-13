@@ -81,7 +81,7 @@
          OSCカラー/アイコンタイトル、保護セル・二重下線、X10マウス、水平方向の移動と画面編集）、
          グリフをフォント幅でなくセル数で送るよう修正＋遅延ラップの取りこぼし修正、セルに固定されるインライン画像描画、
          タブの別ウィンドウ切り離し、貼り付け改行のCR正規化、ConPTY破棄時のデッドロック修正、FlowDocument描画経路の削除 -->
-    <PackageReference Include="sk0ya.Terminal.Controls" Version="1.0.31" />
+    <PackageReference Include="sk0ya.Terminal.Controls" Version="1.0.32" />
   </ItemGroup>
 
 </Project>
