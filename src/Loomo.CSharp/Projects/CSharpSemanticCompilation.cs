@@ -46,7 +46,7 @@ public static class CSharpSemanticCompilation
             })
             .ToImmutableArray<SyntaxTree>();
 
-        var references = ResolveReferences(referencePaths);
+        var references = ResolveReferences(referencePaths, assemblyName);
         var compilation = CSharpCompilation.Create(
             assemblyName ?? "Loomo.CSharp.Workspace",
             trees,
@@ -71,13 +71,15 @@ public static class CSharpSemanticCompilation
         return tree is null ? null : compilation.GetSemanticModel(tree, ignoreAccessibility: false);
     }
 
-    private static IReadOnlyList<MetadataReference> ResolveReferences(IEnumerable<string>? referencePaths)
+    private static IReadOnlyList<MetadataReference> ResolveReferences(
+        IEnumerable<string>? referencePaths, string? assemblyName)
     {
         var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var currentProcessAssemblyName = Assembly.GetEntryAssembly()?.GetName().Name;
         if (referencePaths is not null)
         {
             foreach (var path in referencePaths)
-                AddPath(path, paths);
+                AddPath(path, paths, assemblyName, currentProcessAssemblyName);
         }
 
         // Unit tests and csproj評価前の編集ではReferencePathが空になることがある。
@@ -86,7 +88,7 @@ public static class CSharpSemanticCompilation
         if (!string.IsNullOrWhiteSpace(trusted))
         {
             foreach (var path in trusted.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
-                AddPath(path, paths);
+                AddPath(path, paths, assemblyName, currentProcessAssemblyName);
         }
 
         // 参照は必ず共有キャッシュ経由で取る（毎回作り直すとヒープが膨らんで
@@ -98,18 +100,35 @@ public static class CSharpSemanticCompilation
         return references;
     }
 
-    private static void AddPath(string? path, ISet<string> paths)
+    private static void AddPath(
+        string? path, ISet<string> paths, string? assemblyName, string? currentProcessAssemblyName)
     {
         if (string.IsNullOrWhiteSpace(path)) return;
         try
         {
             var full = Path.GetFullPath(path);
             if (File.Exists(full) &&
-                string.Equals(Path.GetExtension(full), ".dll", StringComparison.OrdinalIgnoreCase))
+                string.Equals(Path.GetExtension(full), ".dll", StringComparison.OrdinalIgnoreCase) &&
+                !IsSelfAssembly(full, assemblyName, currentProcessAssemblyName))
                 paths.Add(full);
         }
         catch (ArgumentException) { }
         catch (IOException) { }
+    }
+
+    /// <summary>
+    /// 実行中の Loomo 自身を、編集中プロジェクトのメタデータ参照へ混ぜない。
+    /// <c>TRUSTED_PLATFORM_ASSEMBLIES</c> はホスト構成によってアプリ自身の DLL を含むため、
+    /// これを無条件に取り込むと、ソース側の型と古い実行中 DLL 側の型が衝突して CS0436 になる。
+    /// project の参照一覧に同名 DLL が残るケースも同じ規則で防ぐ。
+    /// </summary>
+    private static bool IsSelfAssembly(string path, string? assemblyName, string? currentProcessAssemblyName)
+    {
+        var name = Path.GetFileNameWithoutExtension(path);
+        return (!string.IsNullOrWhiteSpace(assemblyName) &&
+                   string.Equals(name, assemblyName, StringComparison.OrdinalIgnoreCase))
+            || (!string.IsNullOrWhiteSpace(currentProcessAssemblyName) &&
+                   string.Equals(name, currentProcessAssemblyName, StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>MSBuildのAnalyzer項目に含まれるSource GeneratorだけをRoslyn公式APIで実行する。

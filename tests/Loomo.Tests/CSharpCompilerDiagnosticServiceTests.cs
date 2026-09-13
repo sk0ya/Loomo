@@ -1,5 +1,6 @@
 using System.IO;
 using Editor.Core.Lsp;
+using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.CSharp.Configuration;
 using sk0ya.Loomo.CSharp.Projects;
 using LspDiagnosticSeverity = Editor.Core.Lsp.DiagnosticSeverity;
@@ -100,6 +101,20 @@ public sealed class CSharpCompilerDiagnosticServiceTests : IDisposable
 
         Assert.Null(result.Error);
         Assert.DoesNotContain(result.Diagnostics, item => item.Severity == DiagnosticSeverity.Error);
+    }
+
+    [Fact]
+    public void Does_not_reference_the_compilation_assembly_itself()
+    {
+        var path = Path.Combine(_root, "PaneKind.cs");
+        var source = "namespace sk0ya.Loomo.App.Services; public enum PaneKind { Source }";
+
+        var compilation = CSharpSemanticCompilation.Create(
+            new Dictionary<string, string> { [path] = source },
+            referencePaths: [typeof(PaneKind).Assembly.Location],
+            assemblyName: typeof(PaneKind).Assembly.GetName().Name);
+
+        Assert.DoesNotContain(compilation.GetDiagnostics(), diagnostic => diagnostic.Id == "CS0436");
     }
 
     [Fact]

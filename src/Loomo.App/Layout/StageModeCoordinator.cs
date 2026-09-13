@@ -1,5 +1,3 @@
-using sk0ya.Loomo.App.Services;
-
 namespace sk0ya.Loomo.App.Layout;
 
 /// <summary>ステージ／俯瞰表示のUI非依存な状態を所有する。</summary>
