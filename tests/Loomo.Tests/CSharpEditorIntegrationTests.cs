@@ -29,6 +29,35 @@ public sealed class CSharpEditorIntegrationTests
     }
 
     [Fact]
+    public void Loomo_registration_highlights_classic_and_XML_solution_files()
+    {
+        var services = VimEngineServices.CreateIsolated();
+        CSharpEditorIntegration.Configure(services);
+        var syntax = new SyntaxEngine(services.SyntaxLanguages);
+
+        syntax.DetectLanguage("Sample.sln");
+        Assert.Equal("Solution", syntax.LanguageName);
+        var classic = syntax.Tokenize([
+            "Microsoft Visual Studio Solution File, Format Version 12.00",
+            "# Visual Studio Version 17",
+            "Project(\"{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}\") = \"App\", \"src\\App\\App.csproj\", \"{11111111-1111-1111-1111-111111111111}\""
+        ]);
+
+        Assert.Contains(classic[0].Tokens, t => t.Kind == TokenKind.Keyword);
+        Assert.Contains(classic[0].Tokens, t => t.Kind == TokenKind.Number);
+        Assert.Contains(classic[1].Tokens, t => t.Kind == TokenKind.Comment);
+        Assert.Contains(classic[2].Tokens, t => t.Kind == TokenKind.Type);
+        Assert.Contains(classic[2].Tokens, t => t.Kind == TokenKind.String);
+
+        syntax.DetectLanguage("Sample.slnx");
+        var xml = syntax.Tokenize(["<Solution>", "  <Project Path=\"src/App/App.csproj\" />", "</Solution>"]);
+
+        Assert.Contains(xml[0].Tokens, t => t.Kind == TokenKind.Keyword);
+        Assert.Contains(xml[1].Tokens, t => t.Kind == TokenKind.Attribute);
+        Assert.Contains(xml[1].Tokens, t => t.Kind == TokenKind.String);
+    }
+
+    [Fact]
     public void Interpolated_strings_keep_expression_identifiers_out_of_the_string_token()
     {
         var line = "var text = $\"Hello {name} — {amount.ToString()} {{literal}}\";";

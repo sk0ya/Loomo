@@ -33,7 +33,9 @@ internal static class EditorSyntaxColors
     internal static SyntaxEngine? CreateEngine(string filePath)
     {
         if (string.IsNullOrEmpty(filePath)) return null;
-        var engine = new SyntaxEngine();
+        var languages = SyntaxLanguageRegistry.CreateDefault();
+        sk0ya.Loomo.CSharp.Editor.CSharpEditorIntegration.ConfigureSyntax(languages);
+        var engine = new SyntaxEngine(languages);
         engine.DetectLanguage(filePath);
         return engine.LanguageName is null ? null : engine;
     }
