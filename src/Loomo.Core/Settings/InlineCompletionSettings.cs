@@ -27,10 +27,10 @@ public sealed class InlineCompletionSettings
     /// キャレットより後ろに見せる行数。
     ///
     /// <para><b>ここは短くする。</b>FIM のプロンプトでは後ろの本文がキャレット位置より<i>後</i>に並ぶため、
-    /// 打鍵のたびに丸ごと送り直しになる。実測（Ryzen 5 3500・0.5B・Q8_0）で 10 行なら約 520ms、
-    /// 3 行なら約 280ms と、体感を決めているのがこの値だった。</para>
+    /// 打鍵のたびに丸ごと送り直しになる。0.5Bモデルの実測では、3行だとウォーム時321ms、
+    /// 1行なら157msだった。候補表示の速さを優先して既定は1行にする。</para>
     /// </summary>
-    public int SuffixLines { get; set; } = 3;
+    public int SuffixLines { get; set; } = 1;
 
     /// <summary>
     /// 1 提案あたりの最大生成トークン数。1 行しか表示しないので長く作っても捨てるだけで、

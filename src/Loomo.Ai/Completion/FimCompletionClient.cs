@@ -30,6 +30,12 @@ public sealed class FimCompletionClient : IDisposable
     /// <summary>1 件の応答をここまで待つ。超えたら諦める——出る頃には手が先へ進んでいる。</summary>
     private static readonly TimeSpan ResponseTimeout = TimeSpan.FromSeconds(5);
 
+    /// <summary>
+    /// Editor の120ms待ちのあと、さらに入力が止まるまで待つ。ここを短くするとモデル推論が
+    /// 打鍵の合間に始まり、CPUとメモリ帯域を奪って文字入力が引っかかる。
+    /// </summary>
+    private static readonly TimeSpan TypingQuietPeriod = TimeSpan.FromMilliseconds(350);
+
     /// <summary>ワーカーが立て続けに落ちるときは諦める（起動の繰り返しで CPU を食わない）。</summary>
     private const int MaxStartFailures = 3;
 
@@ -69,6 +75,17 @@ public sealed class FimCompletionClient : IDisposable
         if (string.IsNullOrWhiteSpace(settings.ModelPath) || !File.Exists(settings.ModelPath)) return null;
         if (lines is null || lines.Count == 0) return null;
 
+        // Editorのタイマーを通過しただけではまだ送らない。次の打鍵でキャンセルされれば、
+        // プロセス起動もモデル推論も発生しない。入力の滑らかさを候補の早さより優先する。
+        try
+        {
+            await Task.Delay(TypingQuietPeriod, ct).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            return null;
+        }
+
         var prompt = FimPrompt.Build(lines, line, column, settings.PrefixLines, settings.SuffixLines);
         var id = Interlocked.Increment(ref _nextId);
 
@@ -80,7 +97,11 @@ public sealed class FimCompletionClient : IDisposable
 
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
             timeout.CancelAfter(ResponseTimeout);
-            using var registration = timeout.Token.Register(() => tcs.TrySetResult(default));
+            using var registration = timeout.Token.Register(() =>
+            {
+                // TCS を先に決着させ、成功応答と競合した場合は取り消し通知を送らない。
+                if (tcs.TrySetResult(default)) Cancel(id);
+            });
 
             var response = await tcs.Task.ConfigureAwait(false);
             if (response.Id != id || response.Text is not { Length: > 0 } raw) return null;
@@ -114,6 +135,24 @@ public sealed class FimCompletionClient : IDisposable
                 // パイプが壊れた＝ワーカーが落ちた。次の依頼で起動し直す。
                 TearDown();
                 return false;
+            }
+        }
+    }
+
+    /// <summary>画面側で待たなくなった依頼を、ワーカーの生成ループにも伝える。</summary>
+    private void Cancel(long id)
+    {
+        lock (_gate)
+        {
+            if (_process is not { HasExited: false }) return;
+            try
+            {
+                _process.StandardInput.WriteLine(FimProtocol.Serialize(new FimProtocol.Cancellation(id)));
+                _process.StandardInput.Flush();
+            }
+            catch
+            {
+                TearDown();
             }
         }
     }

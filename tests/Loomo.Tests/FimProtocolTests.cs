@@ -28,6 +28,16 @@ public sealed class FimProtocolTests
         Assert.Equal(sent, received);
     }
 
+    [Fact]
+    public void A_cancellation_survives_the_round_trip()
+    {
+        var sent = new FimProtocol.Cancellation(23);
+
+        var received = FimProtocol.ReadCancellation(FimProtocol.Serialize(sent));
+
+        Assert.Equal(sent, received);
+    }
+
     /// <summary>「出せなかった」も応答。本体はこれを受けて静かに何も出さない。</summary>
     [Fact]
     public void An_empty_answer_is_a_valid_response()
@@ -83,4 +93,11 @@ public sealed class FimProtocolTests
     [Fact]
     public void A_log_line_is_not_mistaken_for_a_response()
         => Assert.Null(FimProtocol.ReadResponse("[fim] ready pid=1234 model=Qwen2.5-Coder-0.5B-Q8_0.gguf"));
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("{\"cancel\":false,\"id\":23}")]
+    [InlineData("{\"cancel\":true,\"id\":0}")]
+    public void A_non_cancellation_line_is_ignored(string? line)
+        => Assert.Null(FimProtocol.ReadCancellation(line));
 }

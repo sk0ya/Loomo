@@ -259,4 +259,24 @@ public class SettingsStoreTests
             File.Delete(path);
         }
     }
+
+    [Theory]
+    [InlineData("{ \"inlineCompletion\": {} }")]
+    [InlineData("{ \"inlineCompletion\": { \"suffixLines\": -1 } }")]
+    public void Missing_or_invalid_inline_suffix_uses_the_fast_default(string json)
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"loomo-settings-{Guid.NewGuid():N}.json");
+        File.WriteAllText(path, json);
+        try
+        {
+            var settings = new LoomoSettings();
+            new SettingsStore(path).Load(settings);
+
+            Assert.Equal(1, settings.InlineCompletion.SuffixLines);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
 }

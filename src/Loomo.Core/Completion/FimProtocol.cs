@@ -25,6 +25,9 @@ public static class FimProtocol
     /// <param name="MaxTokens">生成の上限トークン数。</param>
     public readonly record struct Request(long Id, string Prompt, int MaxTokens);
 
+    /// <summary>待機中または実行中の依頼を取り消す通知。</summary>
+    public readonly record struct Cancellation(long Id);
+
     /// <summary>生成の結果。<paramref name="Text"/> が null なら「出せなかった」。</summary>
     /// <param name="Id">対応する依頼の通し番号。</param>
     /// <param name="Text">モデルの生の出力（選別前）。</param>
@@ -45,6 +48,9 @@ public static class FimProtocol
         string? Error = null);
 
     public static string Serialize(in Request request) => JsonSerializer.Serialize(request, Json);
+
+    public static string Serialize(in Cancellation cancellation)
+        => JsonSerializer.Serialize(new CancellationEnvelope(true, cancellation.Id), Json);
 
     public static string Serialize(in Response response) => JsonSerializer.Serialize(response, Json);
 
@@ -71,4 +77,18 @@ public static class FimProtocol
         }
         catch (JsonException) { return null; }
     }
+
+    /// <summary>1 行を取り消し通知として読む。依頼・応答の行は null。</summary>
+    public static Cancellation? ReadCancellation(string? line)
+    {
+        if (string.IsNullOrWhiteSpace(line)) return null;
+        try
+        {
+            var message = JsonSerializer.Deserialize<CancellationEnvelope>(line, Json);
+            return message.Cancel && message.Id > 0 ? new Cancellation(message.Id) : null;
+        }
+        catch (JsonException) { return null; }
+    }
+
+    private readonly record struct CancellationEnvelope(bool Cancel, long Id);
 }

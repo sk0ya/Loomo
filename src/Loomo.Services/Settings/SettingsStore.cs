@@ -340,7 +340,7 @@ public sealed class SettingsStore
         public bool Enabled { get; set; }
         public string? ModelPath { get; set; }
         public int PrefixLines { get; set; } = 30;
-        public int SuffixLines { get; set; } = 3;
+        public int SuffixLines { get; set; } = 1;
         public int MaxTokens { get; set; } = 8;
         public int Threads { get; set; }
         public int PrefillThreads { get; set; }
@@ -361,7 +361,7 @@ public sealed class SettingsStore
             c.Enabled = Enabled;
             c.ModelPath = ModelPath;
             c.PrefixLines = PrefixLines > 0 ? PrefixLines : 30;
-            c.SuffixLines = SuffixLines >= 0 ? SuffixLines : 3;
+            c.SuffixLines = SuffixLines >= 0 ? SuffixLines : 1;
             c.MaxTokens = MaxTokens > 0 ? MaxTokens : 8;
             c.Threads = Threads;
             c.PrefillThreads = PrefillThreads;

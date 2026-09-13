@@ -26,6 +26,7 @@ using var engine = new FimEngine(modelPath, decodeThreads, prefillThreads);
 var pending = new object();
 FimProtocol.Request? next = null;
 CancellationTokenSource? running = null;
+long runningId = 0;
 var signal = new SemaphoreSlim(0);
 var stdout = Console.Out;
 
@@ -43,6 +44,7 @@ var worker = new Thread(() =>
             request = queued;
             next = null;
             cts = running = new CancellationTokenSource();
+            runningId = request.Id;
         }
 
         var response = engine.Complete(request, cts.Token);
@@ -51,7 +53,11 @@ var worker = new Thread(() =>
 
         lock (pending)
         {
-            if (ReferenceEquals(running, cts)) running = null;
+            if (ReferenceEquals(running, cts))
+            {
+                running = null;
+                runningId = 0;
+            }
         }
         cts.Dispose();
     }
@@ -63,6 +69,18 @@ Console.Error.WriteLine($"[fim] ready pid={Environment.ProcessId} model={Path.Ge
 
 while (Console.ReadLine() is { } line)
 {
+    if (FimProtocol.ReadCancellation(line) is { } cancellation)
+    {
+        lock (pending)
+        {
+            if (next is { } queued && queued.Id == cancellation.Id)
+                next = null;
+            if (runningId == cancellation.Id)
+                running?.Cancel();
+        }
+        continue;
+    }
+
     if (FimProtocol.ReadRequest(line) is not { } request) continue;
 
     lock (pending)
