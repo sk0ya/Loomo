@@ -133,8 +133,25 @@ public partial class ShellWindow {
         _stageThumbnailHosts.Clear();
         _thumbnailSourceWidth = 0;
     }
-    private void RebuildWings()
-        => PaneLayoutDebugLog.Time("RebuildWings", RebuildWingsCore);
+    private void RebuildWings() {
+        try {
+            PaneLayoutDebugLog.Time("RebuildWings", RebuildWingsCore);
+        }
+        catch (InvalidOperationException ex) when (IsTreeWalkMutation(ex)) {
+            // ScrollViewer.OnLayoutUpdated／バインディング更新の再入中は、Dispatcher に送った処理でも
+            // WPF が論理ツリーを歩いている場合がある。ここで落ちると Loomo 本体だけでなく、共有している
+            // WebView2 のブラウザプロセスまで孤児化し、次回起動の WebView2 初期化を壊す。
+            // 次のアイドル時へ戻して再試行する。既存のキューを使うので、リサイズ中も多重化しない。
+            _layoutWingBuildPending = true;
+            PaneLayoutDebugLog.Log($"RebuildWings: ツリーウォーク中のため再試行 ({ex.Message})");
+            ScheduleLayoutWings();
+        }
+    }
+
+    private static bool IsTreeWalkMutation(InvalidOperationException ex)
+        => ex.Message.Contains("論理子を変更できません", StringComparison.Ordinal)
+            || (ex.Message.Contains("logical child", StringComparison.OrdinalIgnoreCase)
+                && ex.Message.Contains("tree walk", StringComparison.OrdinalIgnoreCase));
     private void RebuildWingsCore() {
         PaneLayoutDebugLog.Log("RebuildWings()", withCaller: true);
         if (CollapseWingsForFullscreen())
@@ -242,7 +259,7 @@ public partial class ShellWindow {
         if (_layoutWingBuildQueued)
             return;
         _layoutWingBuildQueued = true;
-        Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, new Action(() => {
+        Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(() => {
             _layoutWingBuildQueued = false;
             if (_paneSplitterDragging)
                 return;
