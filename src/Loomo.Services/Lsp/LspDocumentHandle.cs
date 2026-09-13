@@ -210,10 +210,18 @@ internal sealed class LspDocumentHandle : ILspDocument, ILspReferenceQuery
             ? _entry.Client.Client.GetDocumentLinksAsync(Uri, ct)
             : Task.FromResult<IReadOnlyList<LspDocumentLink>>([]);
 
-    public Task<IReadOnlyList<LspCodeLens>> RequestCodeLensesAsync(CancellationToken ct = default) =>
-        IsReady && ServerSupportsCodeLens
-            ? _entry.Client.Client.GetCodeLensesAsync(Uri, ct)
-            : Task.FromResult<IReadOnlyList<LspCodeLens>>([]);
+    public async Task<IReadOnlyList<LspCodeLens>> RequestCodeLensesAsync(CancellationToken ct = default)
+    {
+        if (!IsReady || !ServerSupportsCodeLens)
+            return [];
+
+        var lenses = await _entry.Client.Client.GetCodeLensesAsync(Uri, ct);
+        return await LspCodeLensExecutionFilter.ResolveExecutableAsync(
+            lenses,
+            ServerSupportsCodeLensResolve,
+            (lens, token) => ResolveCodeLensAsync(lens, token),
+            ct);
+    }
 
     public Task<LspCodeLens?> ResolveCodeLensAsync(LspCodeLens lens, CancellationToken ct = default) =>
         IsReady && ServerSupportsCodeLensResolve
