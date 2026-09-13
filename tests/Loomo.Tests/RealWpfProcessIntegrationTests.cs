@@ -195,12 +195,7 @@ public sealed class RealWpfProcessIntegrationTests
             SetForegroundWindow(process!.MainWindowHandle);
             Thread.Sleep(100);
             RevealSolutionPanel(window);
-            AutomationElement? fileNode = null;
-            Assert.True(WaitUntil(() =>
-            {
-                fileNode = FindByNameAndType(window, "FeatureService.cs", ControlType.TreeItem);
-                return fileNode is not null;
-            }, TimeSpan.FromSeconds(30)), "FeatureService.cs did not appear in C# Solution Explorer.");
+            var fileNode = RevealFeatureService(window);
             Assert.True(fileNode!.TryGetCurrentPattern(SelectionItemPattern.Pattern, out var selectionPattern));
             ((SelectionItemPattern)selectionPattern).Select();
             fileNode.SetFocus();
@@ -549,12 +544,7 @@ public sealed class RealWpfProcessIntegrationTests
         SetForegroundWindow(process.MainWindowHandle);
         Thread.Sleep(100);
         RevealSolutionPanel(window);
-        AutomationElement? fileNode = null;
-        Assert.True(WaitUntil(() =>
-        {
-            fileNode = FindByNameAndType(window, "FeatureService.cs", ControlType.TreeItem);
-            return fileNode is not null;
-        }, TimeSpan.FromSeconds(30)), "FeatureService.cs did not appear in C# Solution Explorer.");
+        var fileNode = RevealFeatureService(window);
         Assert.True(fileNode!.TryGetCurrentPattern(SelectionItemPattern.Pattern, out var selectionPattern));
         ((SelectionItemPattern)selectionPattern).Select();
         fileNode.SetFocus();
@@ -574,6 +564,43 @@ public sealed class RealWpfProcessIntegrationTests
             }
             catch (ElementNotAvailableException) { return false; }
         }, TimeSpan.FromSeconds(15)), "FeatureService.cs did not become the active editor tab.");
+    }
+
+    /// <summary>複数TFMプロジェクトは初期表示でTFM以下を畳んでいるため、実際の利用者操作と
+    /// 同じく Feature → net10.0 を開いてからファイルを探す。</summary>
+    private static AutomationElement RevealFeatureService(AutomationElement window)
+    {
+        AutomationElement? feature = null;
+        Assert.True(WaitUntil(() =>
+        {
+            feature = FindByNameAndType(window, "Feature", ControlType.TreeItem);
+            return feature is not null;
+        }, TimeSpan.FromSeconds(30)), "Feature project did not appear in C# Solution Explorer.");
+        ExpandTreeItem(feature!);
+
+        AutomationElement? targetFramework = null;
+        Assert.True(WaitUntil(() =>
+        {
+            targetFramework = FindByNameAndType(feature!, "net10.0", ControlType.TreeItem);
+            return targetFramework is not null;
+        }, TimeSpan.FromSeconds(15)), "net10.0 did not appear under the Feature project.");
+        ExpandTreeItem(targetFramework!);
+
+        AutomationElement? fileNode = null;
+        Assert.True(WaitUntil(() =>
+        {
+            fileNode = FindByNameAndType(targetFramework!, "FeatureService.cs", ControlType.TreeItem);
+            return fileNode is not null;
+        }, TimeSpan.FromSeconds(15)), "FeatureService.cs did not appear in C# Solution Explorer.");
+        return fileNode!;
+    }
+
+    private static void ExpandTreeItem(AutomationElement item)
+    {
+        if (!item.TryGetCurrentPattern(ExpandCollapsePattern.Pattern, out var pattern)) return;
+        var expandable = (ExpandCollapsePattern)pattern;
+        if (expandable.Current.ExpandCollapseState == ExpandCollapseState.Collapsed)
+            expandable.Expand();
     }
 
     private static AutomationElement OpenQuickFixPreview(Process process, AutomationElement window)
