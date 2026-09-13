@@ -9,7 +9,7 @@ namespace sk0ya.Loomo.Services.Lsp;
 
 /// <summary>
 /// CodeLensを表示へ渡す前に、実行可能な command を持つものだけへ確定する。
-/// 公開Editor.Controls 1.0.85との組み合わせでも、未解決レンズの既定表示
+/// 公開Editor.Controls 1.0.86との組み合わせで、未解決レンズの既定表示
 /// 「CodeLens」が壊れたリンクとして残らないようにする。
 /// </summary>
 internal static class LspCodeLensExecutionFilter
