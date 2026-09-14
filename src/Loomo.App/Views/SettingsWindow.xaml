@@ -45,7 +45,8 @@
     <DockPanel>
         <!-- キャプション：左は空きスペース（ドラッグでウィンドウ移動）、右にボタン。
              タイトル文字は左ナビの「設定」見出しが兼ねるので置かない。 -->
-        <Grid DockPanel.Dock="Top" Height="30" Background="{DynamicResource BgAlt}"
+        <!-- 背景は本体のタイトルバーと同じ ActivityBarBg に揃える。 -->
+        <Grid DockPanel.Dock="Top" Height="30" Background="{DynamicResource ActivityBarBg}"
               MouseLeftButtonDown="OnCaptionMouseDown">
             <StackPanel HorizontalAlignment="Right" Orientation="Horizontal" VerticalAlignment="Stretch">
                 <Button Style="{StaticResource SettingsCaptionButton}" Content="—"
