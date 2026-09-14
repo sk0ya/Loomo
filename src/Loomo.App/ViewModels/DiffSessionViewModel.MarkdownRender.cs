@@ -32,6 +32,10 @@ public sealed partial class DiffSessionViewModel
     /// <b>HTML より先に入れる</b>（ビューは HTML の変化を合図に、そのあとでこれを読む）。</summary>
     public string MarkdownRenderMapFolder { get; private set; } = "";
 
+    /// <summary>レンダリング差分のページ内の変更グループ数。レンダリング表示中の「次/前の差分」は
+    /// テキスト行（組み立てていない）ではなくこれを行き先にする。HTML と同じく<b>HTML より先に入れる</b>。</summary>
+    public int MarkdownRenderChangeCount { get; private set; }
+
     /// <summary>選択中のファイルはレンダリング表示できるか（＝Markdown で、コンフリクト解消表示中でない）。
     /// ヘッダーのトグルはこれが false のときは<b>出さない</b>（押せるのに何も起きない項目を作らない・§24.7）。
     /// <b>コンフリクト中を外すのが要点</b>——本文グリッドごと Ours/Result/Theirs へ置き換わっているので、
@@ -54,6 +58,7 @@ public sealed partial class DiffSessionViewModel
 
     partial void OnIsMarkdownRenderChanged(bool value)
     {
+        _changeCursor = -1;   // 行き先の並び（テキスト行／レンダリングの変更グループ）が入れ替わる
         NotifyMarkdownRenderState();
         _ = LoadAndAutoJumpAsync(SelectedFile);
     }
@@ -116,6 +121,7 @@ public sealed partial class DiffSessionViewModel
     private void ApplyMarkdownRender(MarkdownDiffRender render)
     {
         MarkdownRenderMapFolder = render.MapFolder;
+        MarkdownRenderChangeCount = render.ChangeCount;
         MarkdownRenderNotice = render.Notice;
         MarkdownRenderHtml = render.Html;
     }

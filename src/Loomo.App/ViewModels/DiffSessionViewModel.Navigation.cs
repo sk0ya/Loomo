@@ -140,6 +140,8 @@ public sealed partial class DiffSessionViewModel
     /// </summary>
     private bool JumpToNewSideLine(int newLine)
     {
+        // レンダリング表示にはテキスト行が無い（組み立てていない行を当てると、隠れた古い行へ飛んだことにされる）。
+        if (IsMarkdownRenderActive) return false;
         int best = -1;
         int bestLine = int.MinValue;
         if (IsSideBySide)
@@ -177,9 +179,14 @@ public sealed partial class DiffSessionViewModel
         return true;
     }
 
-    /// <summary>変更ブロック（連続する追加/削除/空セルのかたまり）の先頭行インデックス一覧。</summary>
+    /// <summary>変更ブロック（連続する追加/削除/空セルのかたまり）の先頭行インデックス一覧。
+    /// レンダリング表示中は行ではなく<b>ページ内の変更グループ番号</b>（0..n-1）で、ビューはそれをページのスクロールに読み替える。</summary>
     private List<int> ChangeAnchors()
     {
+        // レンダリング表示中はテキスト行を組み立てていない（DiffRows/SideRows は前の表示の残りか空）。
+        // それを数えると、隠れた行へ「飛んだ」ことになって画面は動かないか、いきなり次のファイルへ移る。
+        if (IsMarkdownRenderActive)
+            return Enumerable.Range(0, MarkdownRenderChangeCount).ToList();
         var anchors = new List<int>();
         var inBlock = false;
         if (IsSideBySide)

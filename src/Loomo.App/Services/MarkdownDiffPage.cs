@@ -6,8 +6,9 @@ namespace sk0ya.Loomo.App.Services;
 /// <summary>Markdown レンダリング差分の組み立て結果。<paramref name="Html"/> が null なら表示は諦めていて、
 /// <paramref name="Notice"/> がその理由（利用者に見せる文言）。表示できるときの <paramref name="Notice"/> は空。
 /// <paramref name="MapFolder"/> は相対パス画像の解決先（<c>preview.loomo</c> の実体）で、
-/// <b>HTML と一組で運ぶ</b>——別々に置くと、割り込んだ古い読込が別ファイルの基準へ差し替えてしまう。</summary>
-internal sealed record MarkdownDiffRender(string? Html, string Notice, string MapFolder = "");
+/// <b>HTML と一組で運ぶ</b>——別々に置くと、割り込んだ古い読込が別ファイルの基準へ差し替えてしまう。
+/// <paramref name="ChangeCount"/> はページ内の変更グループ数（「次/前の差分」の行き先の数）で、同じ理由で HTML と一組。</summary>
+internal sealed record MarkdownDiffRender(string? Html, string Notice, string MapFolder = "", int ChangeCount = 0);
 
 /// <summary>
 /// ブロック差分（<see cref="MarkdownBlockDiff"/>）を、Markdown プレビューと同じ土俵の HTML ページへ描く。
@@ -48,8 +49,41 @@ internal static class MarkdownDiffPage
             return new MarkdownDiffRender(null, emptyNotice);
 
         return new MarkdownDiffRender(
-            MarkdownPage.BuildPage(BuildBody(blocks), title, styleName, baseHref), "");
+            MarkdownPage.BuildPage(BuildBody(blocks), title, styleName, baseHref), "",
+            ChangeCount: CountChangeGroups(blocks));
     }
+
+    /// <summary>
+    /// 変更グループ（連続する追加／削除ブロックのかたまり）の数。テキスト差分の「変更ブロック」と同じ数え方で、
+    /// 削除の直後に追加が続く書き換えは<b>1か所</b>として数える（「次の差分」で削除と追加に2回止まらない）。
+    /// </summary>
+    internal static int CountChangeGroups(IReadOnlyList<MarkdownDiffBlock> blocks)
+    {
+        var count = 0;
+        var inGroup = false;
+        foreach (var block in blocks)
+        {
+            var changed = block.Kind != MarkdownDiffBlockKind.Unchanged;
+            if (changed && !inGroup) count++;
+            inGroup = changed;
+        }
+        return count;
+    }
+
+    /// <summary>
+    /// <paramref name="index"/> 番目の変更グループへスクロールし、そのグループを現在地として縁取るスクリプト。
+    /// テキスト差分のジャンプ（画面の上から約1/3に置く・アンバーのマーカー）と見え方を揃える。
+    /// </summary>
+    internal static string ScrollToChangeScript(int index) => $$"""
+        (() => {
+            const blocks = document.querySelectorAll('[data-lmdiff-grp="{{index}}"]');
+            if (blocks.length === 0) return;
+            document.querySelectorAll('.lmdiff-cur').forEach(e => e.classList.remove('lmdiff-cur'));
+            blocks.forEach(e => e.classList.add('lmdiff-cur'));
+            const top = blocks[0].getBoundingClientRect().top + window.scrollY - window.innerHeight * 0.35;
+            window.scrollTo(0, Math.max(0, top));
+        })();
+        """;
 
     /// <summary>本文（差分用の CSS ＋ ブロックごとの変換結果）を組み立てる。</summary>
     internal static string BuildBody(IReadOnlyList<MarkdownDiffBlock> blocks)
@@ -63,9 +97,18 @@ internal static class MarkdownDiffPage
                 ? "変更されたブロックはありません"
                 : $"＋追加 {added} ブロック　−削除 {removed} ブロック")
             .AppendLine("</div>");
+        // 変更グループの番号（CountChangeGroups と同じ数え方）。「次/前の差分」はこの番号で行き先を引く。
+        var group = -1;
+        var inGroup = false;
         foreach (var block in blocks)
         {
-            html.Append("<div class=\"lmdiff-b ").Append(ClassOf(block.Kind)).Append("\">");
+            var changed = block.Kind != MarkdownDiffBlockKind.Unchanged;
+            if (changed && !inGroup) group++;
+            inGroup = changed;
+            html.Append("<div class=\"lmdiff-b ").Append(ClassOf(block.Kind)).Append('"');
+            if (changed)
+                html.Append(" data-lmdiff-grp=\"").Append(group).Append('"');
+            html.Append('>');
             html.Append(MarkdownRenderer.RenderToBody(block.Text));
             html.AppendLine("</div>");
         }
@@ -103,5 +146,7 @@ internal static class MarkdownDiffPage
             text-decoration: none; pointer-events: none; }
         .lmdiff-ins::after { content: "＋追加"; color: #81C784; }
         .lmdiff-del::after { content: "−削除"; color: #E57373; }
+        /* 「次/前の差分」の現在地。テキスト差分のジャンプマーカー（DiffSessionView の CurrentMark）と同じアンバー。 */
+        .lmdiff-cur { outline: 2px solid rgba(255, 193, 7, .7); outline-offset: -2px; }
         """;
 }

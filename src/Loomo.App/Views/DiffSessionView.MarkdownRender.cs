@@ -35,6 +35,48 @@ public partial class DiffSessionView
     private Window? _markdownWindow;
     /// <summary>描画の世代番号。await の間に新しい HTML が来たら古い方の適用を捨てる。</summary>
     private int _markdownRenderSeq;
+    /// <summary>今のページの読み込みが終わっているか。終わる前のスクロールは読み込み完了で上書きされるので待たせる。</summary>
+    private bool _markdownPageReady;
+    /// <summary>ページの読み込み待ちの「次/前の差分」の行き先（変更グループ番号・-1 は無し）。
+    /// ファイルを開いた直後の自動ジャンプは、ほぼ必ずページの読み込みより先に来る。</summary>
+    private int _markdownPendingChange = -1;
+    /// <summary>いま読み込ませている差分ページの URL（一時ページは描画ごとに ?v= で別 URL）。
+    /// 読み込み完了はこれと一致したときだけ数える——前のページの完了で「読み込み済み」にすると、
+    /// 新しいファイルの行き先を古いページへ当てて使い切ってしまう。</summary>
+    private string? _markdownNavigatingUrl;
+
+    /// <summary>描き直しを諦めた（書き出し・初期化・遷移の失敗）。前のページはそのまま出ているので、
+    /// 待たせていた行き先はそこへ当てる——待たせたままだと「次/前の差分」が以後ずっと無反応になる。</summary>
+    private void AbandonMarkdownNavigation()
+    {
+        _markdownNavigatingUrl = null;
+        _markdownPageReady = true;
+        FlushMarkdownPendingChange();
+    }
+
+    /// <summary>レンダリング差分の <paramref name="index"/> 番目の変更グループへスクロールする
+    /// （ページが読み込み中なら、読み込み完了まで持ち越す）。</summary>
+    private void ScrollMarkdownToChange(int index)
+    {
+        _markdownPendingChange = index;
+        FlushMarkdownPendingChange();
+    }
+
+    /// <summary>WebView2 の <c>Source</c> は正規化されて返ることがあるので、文字列ではなく URI として比べる。</summary>
+    private static bool IsSameUrl(string? actual, string expected)
+        => Uri.TryCreate(actual, UriKind.Absolute, out var a)
+           && Uri.TryCreate(expected, UriKind.Absolute, out var b)
+           && a == b;
+
+    private void FlushMarkdownPendingChange()
+    {
+        if (_markdownPendingChange < 0 || !_markdownPageReady || _markdownWeb?.TryCore() is not { } core)
+            return;
+        var index = _markdownPendingChange;
+        _markdownPendingChange = -1;
+        try { _ = core.ExecuteScriptAsync(MarkdownDiffPage.ScrollToChangeScript(index)); }
+        catch { /* 描き直しで core が捨てられた直後など。次の描画でやり直せる */ }
+    }
 
     /// <summary>
     /// レンダリング差分の本文でリンクが押された（生の href と、その差分の出どころのファイル）。
@@ -97,20 +139,34 @@ public partial class DiffSessionView
             return;
         }
 
+        // これから別のページへ差し替える。前のページへ新しい差分の行き先を当てないよう、読み込み完了まで待たせる。
+        _markdownPageReady = false;
+        _markdownNavigatingUrl = null;
         var web = await EnsureMarkdownWebAsync();
-        if (web is null || seq != _markdownRenderSeq || web.TryCore() is not { } core)
+        if (seq != _markdownRenderSeq)
+            return;   // 新しい描画が持ち主
+        if (web is null || web.TryCore() is not { } core)
+        {
+            AbandonMarkdownNavigation();
             return;
+        }
 
         // 相対パス画像の解決先をこの差分のファイルへ合わせる（マルチルートの基準は VM 側で解決済み）。
         _markdownNavigation!.UpdatePreviewHost(core, vm.MarkdownRenderMapFolder);
 
         var navigation = _markdownNavigation;
         var url = await Task.Run(() => navigation.TryWritePage(html, out var written) ? written : null);
-        if (url is null || seq != _markdownRenderSeq || web.TryCore() is not { } current)
+        if (seq != _markdownRenderSeq)
             return;
+        if (url is null || web.TryCore() is not { } current)
+        {
+            AbandonMarkdownNavigation();
+            return;
+        }
         web.Visibility = Visibility.Visible;
+        _markdownNavigatingUrl = url;
         try { current.Navigate(url); }
-        catch { /* 描けなければ前の表示のまま */ }
+        catch { AbandonMarkdownNavigation(); /* 描けなければ前の表示のまま */ }
     }
 
     private async Task<WebView2CompositionControl?> EnsureMarkdownWebAsync()
@@ -160,6 +216,18 @@ public partial class DiffSessionView
                 e.Cancel = true;
         };
         core.NewWindowRequested += (_, e) => e.Handled = true;
+        // 差分ページの読み込みが終わったら、待たせていた「次/前の差分」（開いた直後の自動ジャンプ）を当てる。
+        // 数えるのは<b>いま読み込ませているページ</b>の完了だけ（about:blank や前のページの完了は数えない）。
+        // 失敗でも「待ち」は解く——解かないと以後の「次/前の差分」が全部待たされたまま無反応になる。
+        core.NavigationCompleted += (_, _) =>
+        {
+            if (!ReferenceEquals(_markdownWeb, web) || _markdownNavigatingUrl is not { } expected
+                || !IsSameUrl(core.Source, expected))
+                return;
+            _markdownNavigatingUrl = null;
+            _markdownPageReady = true;
+            FlushMarkdownPendingChange();
+        };
         core.WebMessageReceived += OnMarkdownWebMessageReceived;
         // ブラウザプロセスが落ちたら作り直して描き直す（放っておくと空のまま残る）。
         core.ProcessFailed += (_, e) =>
@@ -202,5 +270,7 @@ public partial class DiffSessionView
         _markdownWeb = null;
         _markdownInit = null;
         _markdownWindow = null;
+        _markdownPageReady = false;
+        _markdownNavigatingUrl = null;
     }
 }

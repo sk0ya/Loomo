@@ -69,6 +69,7 @@ public sealed partial class DiffSessionViewModel
         // モードを戻したら前の HTML を残さない。**世代チェックの内側で**消すのが要点——外でやると、
         // 遅れて再開した古い読込が、既に出ている新しいレンダリング結果を消して真っ白なペインにする。
         MarkdownRenderHtml = null;
+        MarkdownRenderChangeCount = 0;
         MarkdownRenderNotice = "";
         if (IsSideBySide)
         {

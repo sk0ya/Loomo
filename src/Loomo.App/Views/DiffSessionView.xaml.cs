@@ -683,6 +683,12 @@ public partial class DiffSessionView : UserControl
     /// <summary>表示中（統合 / 左右）の本文で指定行へスクロールし、その行をはっきりマークする。</summary>
     private void ScrollToRow(int index)
     {
+        // レンダリング表示中の行き先は行ではなくページ内の変更グループ番号（テキスト本文は退けてある）。
+        if (Vm is { IsMarkdownRenderActive: true })
+        {
+            ScrollMarkdownToChange(index);
+            return;
+        }
         // 指定行の段落がまだ組まれていないとジャンプが黙って空振りするので、その場で組み切る。
         // 続けてレイアウトも通す——下の GetCharacterRect は行の位置が計算済みでないと空の矩形を返す。
         FlushBuilds();

@@ -415,4 +415,33 @@ public class MarkdownBlockDiffTests
         Assert.Contains("こんばんは", body);
         Assert.Contains("＋追加 1 ブロック", body);
     }
+
+    // ===== 次/前の差分の行き先 =====
+
+    [Fact]
+    public void 削除と追加が続く書き換えは1つの変更グループとして数える()
+    {
+        var blocks = Build("# 題\n\nこんにちは\n\n末尾\n", "# 題\n\nこんばんは\n\n末尾\n");
+
+        Assert.Equal(1, MarkdownDiffPage.CountChangeGroups(blocks));
+        var body = MarkdownDiffPage.BuildBody(blocks);
+        Assert.Contains("data-lmdiff-grp=\"0\"", body);
+        Assert.DoesNotContain("data-lmdiff-grp=\"1\"", body);
+    }
+
+    [Fact]
+    public void 離れた変更は別の変更グループになりページの件数と一致する()
+    {
+        var blocks = Build(
+            "# 題\n\n一段落\n\n二段落\n\n三段落\n",
+            "# 題（改）\n\n一段落\n\n二段落\n\n三段落（改）\n");
+
+        var render = MarkdownDiffPage.Build(
+            DiffUtil.ComputeFull("# 題\n\n一段落\n\n二段落\n\n三段落\n", "# 題（改）\n\n一段落\n\n二段落\n\n三段落（改）\n"),
+            "差分", "Dracula", null, "（差分はありません）");
+
+        Assert.Equal(2, MarkdownDiffPage.CountChangeGroups(blocks));
+        Assert.Equal(2, render.ChangeCount);
+        Assert.Contains("data-lmdiff-grp=\"1\"", render.Html);
+    }
 }
