@@ -113,6 +113,26 @@ public partial class ShellWindow {
         }
         StopCodeReadyRetry();
     }
+    /// <summary>ワークスペース切替。追従元を外すだけでなく、描きかけの描画・持ち越した要求・
+    /// 追従元に紐づく状態（構造・履歴・準備待ち）・ページの記憶をまとめて捨てる。
+    /// 判断の中身は <see cref="EditorSupportUpdateLoop.Restart"/> と
+    /// <see cref="EditorSupportController.ResetForWorkspaceSwitch"/> にあり、どちらもテストで固定してある。</summary>
+    private void ResetEditorSupportForWorkspaceSwitch() {
+        _editorSupportDebounceTimer?.Stop();
+        _editorSupportFileWatcher?.Stop();
+        _editorSupportLoop?.Restart();   // 追従元を外す前に、前のファイルを描いている描画を止める
+        if (_editorSupport.ResetForWorkspaceSwitch() is { } previous) {
+            previous.Control.ViewportScrolled -= EditorSupportSource_ViewportScrolled;
+            previous.Control.CaretMoved -= EditorSupportSource_CaretMoved;
+        }
+        _editorSupport.WebView.ResetPageState();
+        _editorSupportForceFullPage = false;
+        _markdownEditMode = false;
+        // コントローラー側も同じ旗を持つ。こちらだけ下ろすと、次の .md で編集面のまま開くのにボタンは未押下になる。
+        _editorSupport.WebView.SetMarkdownEditMode(false);
+        UpdateEditorSupportPinToggle();
+        UpdateEditorSupportNavAffordances();
+    }
     private void EditorSupportSource_ViewportScrolled(object? sender, EventArgs e) {
         if (_syncingEditorFromSupport || sender is not VimEditorControl editor)
             return;

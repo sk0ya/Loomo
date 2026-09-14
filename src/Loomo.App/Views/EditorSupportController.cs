@@ -256,11 +256,26 @@ internal sealed class EditorSupportController
         }
     }
 
-    public void Reset()
+    /// <summary>
+    /// ワークスペース切替。追従元を外し、<b>その追従元に紐づいて覚えていたものを全部捨てる</b>。
+    /// 戻り値は外した追従元（呼び元がイベント購読を外すため）。
+    /// <para>
+    /// 追従元を外すだけでは足りない。エディタタブの実体はワークスペースごとに生き続けるので、戻ってくると
+    /// 同じインスタンスがまた追従元になり、残っていた構造が「このタブ・このファイルのもの」として一致してしまう。
+    /// 履歴を残せば「戻る」が前のワークスペースのファイルを開き、準備待ちの回数を残せば猶予が短くなる。
+    /// </para>
+    /// </summary>
+    public EditorTab? ResetForWorkspaceSwitch()
     {
-        Source = null;
+        var previous = DetachSource();
         IsPinned = false;
         IsNavigating = false;
+        History.Clear();
+        ClearOutline();
+        StopReadyRetry();
+        _caretTimer?.Stop();
+        DiagnosticStopwatch = null;
+        return previous;
     }
 
 }

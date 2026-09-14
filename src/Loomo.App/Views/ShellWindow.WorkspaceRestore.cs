@@ -93,11 +93,7 @@ public partial class ShellWindow {
             _vm.Tabs.AddTerminalTab(tab.Id, tab.View.HeaderTitle, false);
     }
     private void DetachEditorTabs() {
-        _editorSupportDebounceTimer?.Stop();
-        DetachEditorSupportSource();
-        _editorSupport.WebView.ResetPageState();
-        _editorSupport.IsPinned = false;
-        UpdateEditorSupportPinToggle();
+        ResetEditorSupportForWorkspaceSwitch();
         CurrentEditorWorkspace.ActiveTabId = _activeEditorTab?.Id;
         _editorViews?.Reset();
         _vm.Tabs.EditorTabs.Clear();

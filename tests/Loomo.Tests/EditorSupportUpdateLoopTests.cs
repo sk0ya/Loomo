@@ -399,6 +399,177 @@ public class EditorSupportUpdateLoopTests
         Assert.Equal(1, runs);
     }
 
+    // ── 戻ってこない描画が続く（ワークスペース切替で WebView2・言語サーバーの足場が消える）──────
+    //    見限りを1回だけ確かめていた頃は、2回目以降に何が起きるかを誰も見ていなかった。
+
+    [Fact]
+    public async Task 戻ってこない描画が何度続いてもループは永久には止まらない()
+    {
+        // 見限った回数が「追い越し回数」に数えられ、しかも描き切るまで0に戻らない。
+        // 2回見限ったあとは次の描画を止められなくなり、それがまた戻ってこないと
+        // ループは走行中のまま閉じる——以後どの要求も二度と描かれない（＝固まる）。
+        var wedged = new TaskCompletionSource();
+        var runs = 0;
+        var finished = 0;
+        var loop = Loop(() => true, async (_, _) =>
+        {
+            if (++runs <= 3)
+                await wedged.Task;   // ct を見ない・永久に返らない
+            finished++;
+        });
+        loop.AbandonAfterCancel = TimeSpan.FromMilliseconds(30);
+        loop.StaleRenderDeadline = TimeSpan.FromMilliseconds(30);
+
+        loop.Invalidate(Content);
+        for (var expected = 2; expected <= 4; expected++)
+        {
+            loop.Invalidate(Content);            // 描けないまま次の要求が来る
+            await WaitUntilAsync(() => runs >= expected);
+        }
+        await WaitUntilAsync(() => !loop.IsDraining);
+
+        Assert.Equal(4, runs);
+        Assert.Equal(1, finished);
+        Assert.False(loop.IsDraining);
+        Assert.False(loop.HasPendingWork);
+        wedged.SetResult();
+    }
+
+    [Fact]
+    public async Task キャレットの要求で止めない内容の描画も戻ってこなければ見限る()
+    {
+        // 内容の描画はキャレット移動では止めない。でもそれが戻ってこないなら、待っている
+        // キャレットの要求は永久に処理されない。止めない特例にも期限が要る。
+        var wedged = new TaskCompletionSource();
+        var seen = new List<EditorSupportUpdateReason>();
+        var loop = Loop(() => true, async (reason, _) =>
+        {
+            seen.Add(reason);
+            if (seen.Count == 1)
+                await wedged.Task;
+        });
+        loop.AbandonAfterCancel = TimeSpan.FromMilliseconds(30);
+        loop.StaleRenderDeadline = TimeSpan.FromMilliseconds(30);
+
+        loop.Invalidate(Content);
+        loop.Invalidate(Caret);
+        await WaitUntilAsync(() => seen.Count >= 2);
+
+        Assert.Equal([Content, Content | Caret], seen);   // 見限った内容の要求も捨てずに一緒に描く
+        wedged.SetResult();
+    }
+
+    [Fact]
+    public void 期限は古くなった描画だけに付き_最新の要求を描いている描画は急かさない()
+    {
+        // 大きな Excel・巨大 CSV の読み込みは長い。誰も待っていない描画を時間で打ち切ると、
+        // 重いファイルは永久に表示できなくなる。
+        var gate = new TaskCompletionSource();
+        CancellationToken token = default;
+        var loop = Loop(() => true, async (_, ct) =>
+        {
+            token = ct;
+            await gate.Task;
+        });
+        loop.StaleRenderDeadline = TimeSpan.FromMilliseconds(1);
+
+        loop.Invalidate(Content);
+        Thread.Sleep(50);
+
+        Assert.False(token.IsCancellationRequested);
+        gate.SetResult();
+    }
+
+    [Fact]
+    public async Task 上限に達しても見限りが無ければ遅い描画を時間で打ち切らない()
+    {
+        // 巨大 CSV・Excel の読み込みは期限を超えうる。追い越しの上限に達しただけで期限を付けると、
+        // 編集を続ける限り毎回打ち切られて永久に表示されない。期限を付けるのは見限りが起きた後だけ。
+        var slow = new TaskCompletionSource();
+        var tokens = new List<CancellationToken>();
+        var loop = Loop(() => true, async (_, ct) =>
+        {
+            tokens.Add(ct);
+            if (tokens.Count <= 2)
+                await Task.Delay(Timeout.Infinite, ct);   // 追い越されれば素直に止まる
+            else
+                await slow.Task;                          // 遅いが生きている
+        });
+        loop.StaleRenderDeadline = TimeSpan.FromMilliseconds(1);
+
+        loop.Invalidate(Content);
+        loop.Invalidate(Content);
+        await WaitUntilAsync(() => tokens.Count >= 2);
+        loop.Invalidate(Content);
+        await WaitUntilAsync(() => tokens.Count >= 3);
+        loop.Invalidate(Content);                         // 上限に達している：止めない番
+        await Task.Delay(50);
+
+        Assert.False(tokens[2].IsCancellationRequested);
+        slow.SetResult();
+        await loop.Completion;
+    }
+
+    [Fact]
+    public async Task ワークスペース切替で走行中の描画を止め_前の要求を持ち越さない()
+    {
+        // 前のワークスペースのファイルを描いている最中に切り替わった。その描画を待つ理由はもう無く、
+        // 言語サーバーは切替で落とされるので、待てば最長で期限いっぱい新しいワークスペースが描かれない。
+        var gate = new TaskCompletionSource();
+        CancellationToken first = default;
+        var runs = 0;
+        var loop = Loop(() => true, async (_, ct) =>
+        {
+            if (++runs > 1)
+                return;
+            first = ct;
+            await gate.Task;
+            ct.ThrowIfCancellationRequested();
+        });
+
+        loop.Invalidate(Content);
+        loop.Restart();
+
+        Assert.True(first.IsCancellationRequested);
+        gate.SetResult();
+        await loop.Completion;
+        Assert.Equal(1, runs);                // 追従元が決まる前に、前の要求で描き直さない
+        Assert.False(loop.HasPendingWork);
+    }
+
+    [Fact]
+    public async Task ワークスペース切替のあとは追い越しの回数も数え直す()
+    {
+        // 前のワークスペースで上限まで追い越していると、切替後の最初の描画が
+        // 「描き切らせる番」を引き継ぎ、新しいファイルへの切替で止められなくなる。
+        var runs = 0;
+        var tokens = new List<CancellationToken>();
+        var loop = Loop(() => true, async (_, ct) =>
+        {
+            runs++;
+            tokens.Add(ct);
+            await Task.Delay(Timeout.Infinite, ct);
+        });
+
+        loop.Invalidate(Content);
+        for (var i = 0; i < 2; i++)
+        {
+            loop.Invalidate(Content);
+            await WaitUntilAsync(() => runs >= i + 2);
+        }
+        loop.Invalidate(Content);
+        Assert.False(tokens[^1].IsCancellationRequested);   // 上限に達している：止めない番
+
+        loop.Restart();
+        await WaitUntilAsync(() => !loop.IsDraining);
+        loop.Invalidate(Content);                           // 新しいワークスペースの描画
+        await WaitUntilAsync(() => runs >= 4);
+        loop.Invalidate(Content);                           // すぐ次のファイルへ
+
+        Assert.True(tokens[3].IsCancellationRequested);
+        loop.Restart();
+    }
+
     /// <summary>条件が成り立つまで待つ（成り立たなければ失敗させるため、待ちきって戻る）。</summary>
     private static async Task WaitUntilAsync(Func<bool> condition)
     {

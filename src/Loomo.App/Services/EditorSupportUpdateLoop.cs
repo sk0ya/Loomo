@@ -103,9 +103,15 @@ public sealed class EditorSupportUpdateLoop
     private EditorSupportUpdateReason _pending;
     private EditorSupportUpdateReason _runningReason;
     private CancellationTokenSource? _running;
+    private bool _runningDeadlineArmed;
+    /// <summary>最後に描き切ってから、戻ってこない描画を見限ったか（＝足場が壊れている証拠がある）。</summary>
+    private bool _abandonedSinceCompletion;
     private bool _draining;
     private int _consecutiveCancellations;
     private int _pollStep;
+    /// <summary><see cref="Restart"/> のたびに進む。走行中の描画がこれより前の世代なら、
+    /// 中断・見限りのあとも要求を差し戻さない（前のワークスペースの要求を持ち越さない）。</summary>
+    private int _generation;
 
     /// <param name="canRender">いま描いてよいか（ペインが実際に見えているか）。</param>
     /// <param name="render">1回分の描画。<paramref name="render"/> は渡された
@@ -137,6 +143,23 @@ public sealed class EditorSupportUpdateLoop
     /// <summary>キャンセルを伝えた描画を見限るまでの猶予（テストから縮めるため internal）。</summary>
     internal TimeSpan AbandonAfterCancel { get; set; } = TimeSpan.FromSeconds(5);
 
+    /// <summary>
+    /// <b>もう古いのに止めずに待っている</b>描画に与える期限（テストから縮めるため internal）。
+    /// 止めない特例は2つ——キャレットの要求は内容の描画を止めない、追い越しの上限に達したら描き切らせる——で、
+    /// どちらも「その描画はいずれ返ってくる」を前提にしている。返ってこなければ待っている要求は永久に描かれず、
+    /// 上限側では見限りも起きないのでループが走行中のまま閉じる。
+    /// <para>
+    /// <b>時間だけでは「戻ってこない」と決めない。</b>付けるのは2つの場合だけ。
+    /// キャレットの要求が内容の描画を待っているとき——キャレット要求はコード表示でしか来ず、コード描画は
+    /// 構造（8秒）＋②（prepare 8秒→incoming/outgoing 並行8秒）＋コールドの取り直し（8秒）で最悪およそ32秒に収まる。
+    /// もう1つは、追い越しの上限に達した描画で、<b>最後に描き切ってから見限りが起きている</b>とき。
+    /// 上限に達しただけで付けると、45秒を超える重い読み込み（巨大 CSV・Excel）が編集を続ける限り毎回打ち切られ、
+    /// 永久に表示されない。見限りは「中断を伝えても返らなかった」実績なので、そこから先は時間で区切ってよい。
+    /// 誰も待っていない描画（最新の要求を描いている）には付けない。
+    /// </para>
+    /// </summary>
+    internal TimeSpan StaleRenderDeadline { get; set; } = TimeSpan.FromSeconds(45);
+
     /// <summary>再描画を要求する。EditorSupport を更新する唯一の入口。</summary>
     public void Invalidate(EditorSupportUpdateReason reason = EditorSupportUpdateReason.Content)
     {
@@ -150,10 +173,48 @@ public sealed class EditorSupportUpdateLoop
             // 走行中の描画が古くなったなら止めて、いまの状態でやり直させる。
             if (ShouldPreempt(reason))
                 _running?.Cancel();
+            else if (CaretWaitsOnContent(reason) || _abandonedSinceCompletion)
+                ArmStaleDeadline();   // 止めない特例でも、戻ってこないまま待ち続けない（StaleRenderDeadline）
             return;
         }
 
         Completion = DrainAsync();
+    }
+
+    /// <summary>
+    /// 表示の前提ごと入れ替わった（ワークスペース切替）。走行中の描画を止め、持ち越した要求・
+    /// 追い越しの回数・見回りを捨てて、<b>何も要求されていない状態</b>からやり直す。
+    /// <para>
+    /// 捨てるのが要点。前のワークスペースの要求を差し戻すと、追従元が決まる前に描き直しが走るうえ、
+    /// 走行中の描画を待てば言語サーバー（切替で落とされる）の期限いっぱい新しいワークスペースが描かれない。
+    /// 追い越しの回数を持ち越すと、切替後の最初の描画が「描き切らせる番」を引き継いで止められなくなる。
+    /// 新しい追従元は呼び元が <see cref="Invalidate"/> で知らせる。
+    /// </para>
+    /// </summary>
+    public void Restart()
+    {
+        _generation++;
+        _pending = EditorSupportUpdateReason.None;
+        _consecutiveCancellations = 0;
+        _abandonedSinceCompletion = false;
+        _pollStep = 0;
+        _watch.Cancel();
+        _running?.Cancel();
+    }
+
+    /// <summary>キャレットの要求が、止めない決まりの内容描画を待っている。</summary>
+    private bool CaretWaitsOnContent(EditorSupportUpdateReason reason)
+        => reason == EditorSupportUpdateReason.Caret
+           && _runningReason.HasFlag(EditorSupportUpdateReason.Content);
+
+    /// <summary>止めずに待つと決めた描画へ、戻ってこないとき用の期限を1回だけ仕掛ける。</summary>
+    private void ArmStaleDeadline()
+    {
+        if (_runningDeadlineArmed || _running is not { IsCancellationRequested: false } running)
+            return;
+        // 要求が来るたびに張り直すと、打鍵が続く間は期限が永久に来ない。
+        _runningDeadlineArmed = true;
+        running.CancelAfter(StaleRenderDeadline);
     }
 
     /// <summary>
@@ -227,20 +288,31 @@ public sealed class EditorSupportUpdateLoop
                 var reason = _pending;
                 _pending = EditorSupportUpdateReason.None;
                 _runningReason = reason;
+                var generation = _generation;
 
                 // 見限った描画はトークンを持ったまま生き続けるので、その場合は cts を捨てない
                 // （破棄済みトークンでの再開は例外の出方が変わる）。
                 var cts = new CancellationTokenSource();
                 _running = cts;
+                _runningDeadlineArmed = false;
                 var render = InvokeRenderAsync(reason, cts.Token);
                 var completed = render.IsCompleted || await AwaitOrAbandonAsync(render, cts);
                 _running = null;
+
+                if (generation != _generation)
+                {
+                    // 走っている間にやり直し（Restart）が入った：前の世代の要求は差し戻さず、回数も数えない。
+                    if (completed)
+                        cts.Dispose();
+                    continue;
+                }
 
                 if (!completed)
                 {
                     // 戻ってこない描画は見限る。要求は残すので、次周回で新しい描画がやり直す。
                     _pending |= reason;
                     _consecutiveCancellations++;
+                    _abandonedSinceCompletion = true;
                     _onError?.Invoke(new TimeoutException(
                         $"EditorSupport の描画が中断要求に応答しないので打ち切りました（reason={reason}）。"));
                     continue;
@@ -257,6 +329,7 @@ public sealed class EditorSupportUpdateLoop
                 else
                 {
                     _consecutiveCancellations = 0;   // 一度描き切ったので、また追い越してよい
+                    _abandonedSinceCompletion = false;
                 }
             }
         }
