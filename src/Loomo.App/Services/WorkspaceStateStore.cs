@@ -319,6 +319,13 @@ public sealed class WorkspaceSnapshot
     /// （プライマリフォルダーぶん。プライマリ以外は <see cref="AdditionalFolders"/> 側に持つ）。</summary>
     public string? TreeRootPath { get; set; }
 
+    /// <summary>FolderTree で展開していたフォルダー（フルパス）。全ワークスペースフォルダーぶんを1つに持つ
+    /// （フルパスなので所属フォルダーは復元時に判別できる）。空の旧データはすべて畳んだ状態で開く。</summary>
+    public List<string> TreeExpandedPaths { get; set; } = new();
+
+    /// <summary>FolderTree で選択していた項目（フルパス）。null なら未選択。</summary>
+    public string? TreeSelectedPath { get; set; }
+
     /// <summary>マルチルートワークスペースで、プライマリ（<see cref="RootPath"/>）以外に追加した
     /// ワークスペースフォルダー。単一フォルダー時は空。</summary>
     public List<WorkspaceFolderPin> AdditionalFolders { get; set; } = new();

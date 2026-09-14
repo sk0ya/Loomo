@@ -221,6 +221,12 @@ public sealed partial class FolderTreeViewModel : IFolderPinStore
     /// LoadRoot 同様、復元中は RootStateChanged を発火しない（保存イベントの多重発火を避ける）。</summary>
     public void RestoreAdditionalFolders(IReadOnlyList<WorkspaceFolderPin> pins)
     {
+        try { RestoreAdditionalFoldersCore(pins); }
+        finally { PrunePendingViewStateToLoadableRoots(); }
+    }
+
+    private void RestoreAdditionalFoldersCore(IReadOnlyList<WorkspaceFolderPin> pins)
+    {
         if (pins.Count == 0)
             return;
 

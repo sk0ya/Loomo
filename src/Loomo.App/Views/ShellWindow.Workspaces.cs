@@ -179,6 +179,7 @@ public partial class ShellWindow {
         _vm.Recent.SetWorkspace(workspace);
         profile?.Lap("detach");
         if (!deferHydration) {
+            _vm.FolderTree.SetPendingViewState(workspace.TreeExpandedPaths, workspace.TreeSelectedPath);
             _vm.FolderTree.LoadRoot(workspace.RootPath, workspace.PinnedFolders, workspace.TreeRootPath);
             _vm.FolderTree.RestoreAdditionalFolders(workspace.AdditionalFolders);
             // ファイル一覧はパンくずの起点・ピン・書き込み可否をワークスペースのフォルダー集合から
@@ -209,6 +210,7 @@ public partial class ShellWindow {
         if (deferHydration) {
             await Dispatcher.Yield(System.Windows.Threading.DispatcherPriority.Background);
             StartupProfiler.Mark("  復元:初フレーム後に継続");
+            _vm.FolderTree.SetPendingViewState(workspace.TreeExpandedPaths, workspace.TreeSelectedPath);
             _vm.FolderTree.LoadRoot(workspace.RootPath, workspace.PinnedFolders, workspace.TreeRootPath);
             _vm.FolderTree.RestoreAdditionalFolders(workspace.AdditionalFolders);
             _vm.Files.Restore(workspace.Files?.Migrate(), workspace.RootPath);
@@ -316,6 +318,8 @@ public partial class ShellWindow {
         snapshot.DetachedWindows = _detached?.Capture(CaptureDetachedItem) ?? new();
         snapshot.PinnedFolders = _vm.FolderTree.PinnedFolders.ToList();
         snapshot.TreeRootPath = _vm.FolderTree.TreeRootOverride;
+        snapshot.TreeExpandedPaths = _vm.FolderTree.CaptureExpandedPaths().ToList();
+        snapshot.TreeSelectedPath = _vm.FolderTree.CaptureSelectedPath();
         snapshot.AdditionalFolders = _vm.FolderTree.CaptureAdditionalFolders().ToList();
         snapshot.Files = _vm.Files.Capture();
         snapshot.GitCompare = _vm.GitPanel.CompareBase.Capture();

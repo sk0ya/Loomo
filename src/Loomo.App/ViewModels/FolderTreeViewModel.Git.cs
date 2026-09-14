@@ -119,7 +119,10 @@ public sealed partial class FolderTreeViewModel
             return;
 
         if (!header.IsExpanded)
+        {
             header.IsExpanded = true;
+            ApplyPendingViewState(header.Children, state.FolderPath, state.DisplayedPath);
+        }
         else
             ReconcileChildren(header.Children, state.DisplayedPath, state.FolderPath);
     }

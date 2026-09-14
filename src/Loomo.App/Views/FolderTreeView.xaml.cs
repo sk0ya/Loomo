@@ -32,9 +32,20 @@ public partial class FolderTreeView : UserControl
     private bool _suppressSelectionPreview;
     private CancellationTokenSource? _zipOperationCts;
 
+    // ワークスペース復元で選ばれたノード。コンテナ生成が後になると SelectedItemChanged も遅れて届くため、
+    // フラグではなく「どのノードの選択か」で見分けてプレビューを開かない。
+    private FileNodeViewModel? _restoredSelection;
+
     public FolderTreeView()
     {
         InitializeComponent();
+        DataContextChanged += (_, e) =>
+        {
+            if (e.OldValue is FolderTreeViewModel oldVm)
+                oldVm.SelectionRestored -= OnSelectionRestored;
+            if (e.NewValue is FolderTreeViewModel newVm)
+                newVm.SelectionRestored += OnSelectionRestored;
+        };
         Unloaded += (_, _) =>
         {
             CancelPropertiesLoad();
@@ -188,6 +199,12 @@ public partial class FolderTreeView : UserControl
     /// 選択）でも開かない。</summary>
     private void OnTreeSelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
     {
+        if (_restoredSelection is not null && ReferenceEquals(e.NewValue, _restoredSelection))
+        {
+            _restoredSelection = null;
+            return;
+        }
+
         if (_suppressSelectionPreview
             || Mouse.LeftButton == MouseButtonState.Pressed
             || Mouse.RightButton == MouseButtonState.Pressed)
@@ -196,6 +213,20 @@ public partial class FolderTreeView : UserControl
         // 移動中は据え置き、止まったところの行を開く（Start だけでは再スタートしない）。
         _selectionPreviewTimer.Stop();
         _selectionPreviewTimer.Start();
+    }
+
+    // 復元された選択は「見せるだけ」：プレビューもフォーカス移動もせず、展開したコンテナの生成・
+    // レイアウト確定を待ってから縦方向に見える位置へスクロールする。
+    private void OnSelectionRestored(object? sender, FileNodeViewModel node)
+    {
+        _restoredSelection = node;
+        Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
+        {
+            if (ReferenceEquals(FileTree.SelectedItem, node))
+                _restoredSelection = null;   // 選択変更は届き済み（取り残すと次の同一ノード選択を黙らせる）
+            if (node.IsSelected)
+                FindContainer(FileTree, node)?.BringIntoView();
+        }));
     }
 
     private void PreviewSelectedNode()

@@ -349,6 +349,13 @@ public sealed partial class FolderTreeViewModel : ObservableObject
 
         // トップレベルのみ（遅延読込）なので同期で十分軽い。
         ReconcileChildren(Nodes, _currentRoot, _currentRoot);
+        // 表示ルート（ワークスペース外のピンもあり得る）とワークスペースルートの配下を消費する。
+        // 追加フォルダーぶんの保留は、複数フォルダー化したあとの見出し投入で使うので残す
+        // （Shell 名前空間表示ではパスで切り分けられないので全部消費する）。
+        if (FolderTreeShellNamespaces.IsShellPath(_currentRoot))
+            ApplyPendingViewState(Nodes);
+        else
+            ApplyPendingViewState(Nodes, _currentRoot, _workspaceRoot);
 
         HasVisibleNodes = Nodes.Count > 0;
         EmptyMessage = CreateEmptyMessage();
