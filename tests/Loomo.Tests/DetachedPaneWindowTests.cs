@@ -408,7 +408,9 @@ public class DetachedPaneWindowTests
             var stripRight = window.TabStripScrollViewer.TransformToAncestor(window.TitleBar)
                 .Transform(new Point(window.TabStripScrollViewer.ActualWidth, 0)).X;
 
-            Assert.Equal(barWidth - window.CaptionButtons.ActualWidth, buttonsLeft, precision: 3);
+            // キャプションボタンのスタイルは App のテーマ辞書（DynamicResource）なので、ここでは既定の Button になり
+            // 幅が Path の中身なりの端数になる。レイアウト丸めの 1px 未満の差は許容する。
+            Assert.Equal(barWidth - window.CaptionButtons.ActualWidth, buttonsLeft, tolerance: 1.0);
             Assert.True(buttonsLeft - stripRight >= 48, $"掴みしろが足りない（{buttonsLeft - stripRight}px）");
         });
     }

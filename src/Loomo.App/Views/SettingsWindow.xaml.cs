@@ -12,7 +12,19 @@ namespace sk0ya.Loomo.App.Views;
 /// 本体を Owner にするため常に手前に出て、本体終了時に一緒に閉じる。位置・サイズは永続化しない。</summary>
 public partial class SettingsWindow : Window
 {
-    public SettingsWindow() => InitializeComponent();
+    public SettingsWindow()
+    {
+        InitializeComponent();
+        StateChanged += (_, _) => UpdateMaxRestoreGlyph();
+    }
+
+    /// <summary>最大化ボタンのアイコンとツールチップを状態に合わせる（本体・切り離しウィンドウと同じ見せ方）。</summary>
+    private void UpdateMaxRestoreGlyph()
+    {
+        var maximized = WindowState == WindowState.Maximized;
+        MaxRestoreIcon.Data = maximized ? CaptionGlyphs.Restore : CaptionGlyphs.Maximize;
+        MaxRestoreButton.ToolTip = maximized ? "元に戻す" : "最大化";
+    }
 
     // ===== キャプション（WindowChrome：自前キャプション＋リサイズ枠だけ WindowChrome に任せる） =====
 

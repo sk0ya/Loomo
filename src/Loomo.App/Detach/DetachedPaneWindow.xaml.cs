@@ -36,7 +36,7 @@ public partial class DetachedPaneWindow : Window
         TabStripItems.ItemsSource = _items;
         TabOverflowList.ItemsSource = _items;
         Closed += OnWindowClosed;
-        StateChanged += (_, _) => MaxRestoreButton.Content = WindowState == WindowState.Maximized ? "❐" : "□";
+        StateChanged += (_, _) => UpdateMaxRestoreGlyph();
         LocationChanged += (_, _) => {
             _manager.UpdateWindowDragTarget(this);
             _manager.NotifyChanged();
@@ -62,6 +62,14 @@ public partial class DetachedPaneWindow : Window
         => WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
 
     private void OnCloseWindow(object sender, RoutedEventArgs e) => Close();
+
+    /// <summary>最大化ボタンのアイコンとツールチップを状態に合わせる（本体の <c>UpdateMaximizeGlyph</c> と同じ見せ方）。</summary>
+    private void UpdateMaxRestoreGlyph()
+    {
+        var maximized = WindowState == WindowState.Maximized;
+        MaxRestoreIcon.Data = maximized ? CaptionGlyphs.Restore : CaptionGlyphs.Maximize;
+        MaxRestoreButton.ToolTip = maximized ? "元に戻す" : "最大化";
+    }
 
     /// <summary>タイトルバーの空き領域ドラッグでウィンドウ移動（ダブルクリックで最大化トグル）。タブ・ボタン上は無視。</summary>
     private void OnCaptionMouseDown(object sender, MouseButtonEventArgs e)

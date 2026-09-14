@@ -159,12 +159,27 @@
                 <Button x:Name="TabOverflowButton" Style="{StaticResource DetachCaptionButton}" Width="28"
                         Content="▾" FontSize="{DynamicResource Fs11}" ToolTip="タブ一覧"
                         Click="OnTabOverflowClick" />
-                <Button Style="{StaticResource DetachCaptionButton}" Content="—"
-                        FontSize="{DynamicResource Fs13}" ToolTip="最小化" Click="OnMinimize" />
-                <Button x:Name="MaxRestoreButton" Style="{StaticResource DetachCaptionButton}" Content="□"
-                        FontSize="{DynamicResource Fs13}" ToolTip="最大化/元に戻す" Click="OnMaxRestore" />
-                <Button Style="{StaticResource DetachCaptionButton}" Content="✕"
-                        FontSize="{DynamicResource Fs13}" ToolTip="閉じる" Click="OnCloseWindow" />
+                <!-- 最小化・最大化・閉じるは本体と同じスタイル＋同じ Path アイコン（文字グリフだと本体とズレる）。
+                     スタイルは App のテーマ辞書にあるので、Application 無しのテストでも組めるよう DynamicResource で引く。
+                     Height はバーの高さに合わせて伸ばす（CaptionButton 既定の 36 は本体のバー用）。 -->
+                <Button Style="{DynamicResource CaptionButton}" Height="Auto" WindowChrome.IsHitTestVisibleInChrome="True"
+                        ToolTip="最小化" Click="OnMinimize">
+                    <Path Stretch="None" StrokeThickness="1" SnapsToDevicePixels="True"
+                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                          Data="M0,5 H10" />
+                </Button>
+                <Button x:Name="MaxRestoreButton" Style="{DynamicResource CaptionButton}" Height="Auto"
+                        WindowChrome.IsHitTestVisibleInChrome="True" ToolTip="最大化" Click="OnMaxRestore">
+                    <Path x:Name="MaxRestoreIcon" Stretch="None" StrokeThickness="1" SnapsToDevicePixels="True"
+                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                          Data="M0.5,0.5 H9.5 V9.5 H0.5 Z" />
+                </Button>
+                <Button Style="{DynamicResource CaptionCloseButton}" Height="Auto" WindowChrome.IsHitTestVisibleInChrome="True"
+                        ToolTip="閉じる" Click="OnCloseWindow">
+                    <Path Stretch="None" StrokeThickness="1" SnapsToDevicePixels="True"
+                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                          Data="M0,0 L10,10 M0,10 L10,0" />
+                </Button>
             </StackPanel>
         </Grid>
 

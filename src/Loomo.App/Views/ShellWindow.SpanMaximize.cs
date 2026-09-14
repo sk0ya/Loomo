@@ -173,7 +173,7 @@ public partial class ShellWindow {
     }
     private void UpdateMaximizeGlyph() {
         var maximized = _isSpanMaximized || WindowState == WindowState.Maximized;
-        MaximizeIcon.Data = maximized ? RestoreGeometry : MaximizeGeometry;
+        MaximizeIcon.Data = maximized ? CaptionGlyphs.Restore : CaptionGlyphs.Maximize;
         MaximizeButton.ToolTip = maximized ? "元に戻す" : "最大化";
         SpanMaximizeButton.ToolTip = _isSpanMaximized ? "元に戻す" : "全モニタへ最大化";
     }
