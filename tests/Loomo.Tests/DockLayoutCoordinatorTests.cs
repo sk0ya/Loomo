@@ -17,7 +17,6 @@ public class DockLayoutCoordinatorTests
     [Theory]
     [InlineData(PaneKind.Editor, DockRegion.Center)]
     [InlineData(PaneKind.Browser, DockRegion.Center)]
-    [InlineData(PaneKind.Diff, DockRegion.Center)]
     [InlineData(PaneKind.Ai, DockRegion.Center)]
     [InlineData(PaneKind.EditorSupport, DockRegion.Right)]
     [InlineData(PaneKind.Terminal, DockRegion.Bottom)]
@@ -39,6 +38,24 @@ public class DockLayoutCoordinatorTests
             Assert.Contains(kind, DockLayoutCoordinator.DefaultRegions.Keys);
             Assert.True(dock.IsInTile(kind) || dock.IsDocked(kind));
         }
+    }
+
+    /// <summary>Diff はドックに出さない（ドック中の差分は別ウィンドウで開く）。
+    /// FocusPane 経由で開こうとしても中央に立たない。</summary>
+    [Fact]
+    public void Diff_never_appears_in_the_dock()
+    {
+        Assert.DoesNotContain(PaneKind.Diff, DockLayoutCoordinator.DockOrder);
+        Assert.DoesNotContain(PaneKind.Diff, DockLayoutCoordinator.DefaultRegions.Keys);
+        Assert.False(DockLayoutCoordinator.IsDockable(PaneKind.Diff));
+
+        var dock = Active();
+        var center = dock.CenterPane;
+        Assert.False(dock.Open(PaneKind.Diff));
+        Assert.False(dock.Place(PaneKind.Diff, DockRegion.Bottom));
+        Assert.Equal(center, dock.CenterPane);
+        Assert.Null(dock.BottomPane);
+        Assert.DoesNotContain(PaneKind.Diff, dock.OpenPanes());
     }
 
     /// <summary>トレースはドックに出さない。

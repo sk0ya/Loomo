@@ -32,11 +32,13 @@ public sealed class DockLayoutCoordinator
     /// <summary>帯に並べる順（＝ペインの並び順）。<b>ここに無い面はドックに出ない。</b>
     /// 顔ぶれは集中モードの <c>StageOrder</c> と揃える——トレース（<see cref="PaneKind.Trace"/>）は
     /// 部屋の面としては出しておらず、ビュー・スイッチャーにもコマンドパレットにも並ばないので、
-    /// ドックの帯だけがその面を出す唯一の入口になっていた。</summary>
+    /// ドックの帯だけがその面を出す唯一の入口になっていた。
+    /// <para>Diff も置かない——ドックでは差分は別ウィンドウで開く（<c>ShellWindow.ShowDiff</c>）。
+    /// 中央の1枚を差分で差し替えると、書いていたエディタが見えなくなる。</para></summary>
     public static readonly PaneKind[] DockOrder =
     [
         PaneKind.Editor, PaneKind.Terminal, PaneKind.Browser, PaneKind.EditorSupport, PaneKind.Git,
-        PaneKind.Diff, PaneKind.Ai, PaneKind.Debug, PaneKind.TsIde, PaneKind.Search, PaneKind.Files,
+        PaneKind.Ai, PaneKind.Debug, PaneKind.TsIde, PaneKind.Search, PaneKind.Files,
     ];
 
     /// <summary>ドックに出せる面か（＝<see cref="DockOrder"/> に居るか）。
@@ -52,7 +54,6 @@ public sealed class DockLayoutCoordinator
         {
             [PaneKind.Editor] = DockRegion.Center,
             [PaneKind.Browser] = DockRegion.Center,
-            [PaneKind.Diff] = DockRegion.Center,
             [PaneKind.Ai] = DockRegion.Center,
             [PaneKind.EditorSupport] = DockRegion.Right,
             [PaneKind.Terminal] = DockRegion.Bottom,
@@ -148,6 +149,9 @@ public sealed class DockLayoutCoordinator
     /// 状態が変わったら true。</summary>
     public bool Open(PaneKind kind)
     {
+        // 帯に取っ手の無い面は出さない（FocusPane 等から来ても、中央に居座らせない）。
+        if (!IsDockable(kind))
+            return false;
         var region = RegionOf(kind);
         if (OpenPaneIn(region) == kind)
             return false;
@@ -175,7 +179,7 @@ public sealed class DockLayoutCoordinator
     public bool Place(PaneKind kind, DockRegion region)
     {
         var previous = RegionOf(kind);
-        if (previous == region)
+        if (!IsDockable(kind) || previous == region)
             return false;
         if (OpenPaneIn(previous) == kind)
             SetOpenPane(previous, null);

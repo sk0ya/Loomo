@@ -251,6 +251,10 @@ public partial class ShellWindow {
         return true;
     }
     private void FocusPane(PaneKind kind) {
+        // ドックに置かない面（Diff 等）は出せないので、現在地も動かさない。動かすと軌跡の点や
+        // パレットを閉じた後の「元へ戻す」が、画面に居ない面へフォーカスを当てて何も起きない。
+        if (_dockActive && !DockLayoutCoordinator.IsDockable(kind))
+            return;
         if (_stageActive && kind != _stagePane)
             SetStagePane(kind);
         else if (_dockActive && !_dockMode.IsOpen(kind))

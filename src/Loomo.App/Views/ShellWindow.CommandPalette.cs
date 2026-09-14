@@ -224,7 +224,7 @@ public partial class ShellWindow {
         // 「部屋に出す／しまう」はタイルの話。ドックでは同じ操作が「その領域の1枚にする／畳む」に
         // なるので、ここで読み替える——タイルの木をそのまま触ると、見えているのは中央なのに
         // 畳まれるのは裏の木で、押しても何も起きない操作になる（中央も選べなくなる）。
-        foreach (var kind in StageOrder) {
+        foreach (var kind in PaneOrderForMode()) {
             var target = kind;
             list.Add(new("移動", $"{PaneLabel(target)} へ", () => {
                 if (!_dockActive)
@@ -232,7 +232,7 @@ public partial class ShellWindow {
                 FocusPane(target);   // ドックは FocusPane が畳んである面をその領域へ出す
             }));
         }
-        foreach (var kind in StageOrder) {
+        foreach (var kind in PaneOrderForMode()) {
             var target = kind;
             list.Add(new("ペイン", $"{PaneLabel(target)} の表示を切替", () => {
                 if (_dockActive)

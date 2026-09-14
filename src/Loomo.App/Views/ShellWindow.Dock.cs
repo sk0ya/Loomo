@@ -164,6 +164,10 @@ public partial class ShellWindow {
 
     // ===== 問い合わせ =====
 
+    /// <summary>ビュー・スイッチャーとコマンドパレットに並べる面。ドック中は帯に出せる面だけ
+    /// （Diff などドックに置かない面を並べると、押しても何も出ない行になる）。</summary>
+    private IEnumerable<PaneKind> PaneOrderForMode()
+        => _dockActive ? StageOrder.Where(DockLayoutCoordinator.IsDockable) : StageOrder;
     /// <summary>ドックモードで、そのペインがいま見えているか。3領域とも「出ている1枚か」で決まる。</summary>
     private bool IsDockPaneShown(PaneKind kind) => _dockMode.IsOpen(kind);
     /// <summary>実体を作って動かしておくべきか（＝画面のどこかに出ている）。集中モードは袖でも

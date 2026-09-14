@@ -119,7 +119,7 @@ public partial class ShellWindow {
         LayoutSaveRow.Visibility = Visibility.Collapsed;
         LayoutNameInput.Clear();
         BuildLayoutPopup();
-        foreach (var kind in StageOrder.Where(IsPaneApplicable)) {
+        foreach (var kind in PaneOrderForMode().Where(IsPaneApplicable)) {
             var row = BuildPopupRow(PaneLabel(kind), TryFindResource(PaneIconKey(kind)) as Geometry);
             row.Button.CommandParameter = kind.ToString();
             row.Button.Click += OnSelectMainPane;
