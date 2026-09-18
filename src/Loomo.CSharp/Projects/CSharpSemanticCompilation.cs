@@ -71,8 +71,23 @@ public static class CSharpSemanticCompilation
         return tree is null ? null : compilation.GetSemanticModel(tree, ignoreAccessibility: false);
     }
 
-    private static IReadOnlyList<MetadataReference> ResolveReferences(
-        IEnumerable<string>? referencePaths, string? assemblyName)
+    /// <summary>
+    /// 編集中プロジェクトのメタデータ参照を決める。正本は <b>MSBuild が解決した参照</b>
+    /// （<c>@(ReferencePath)</c>）だけで、実行中の Loomo 自身が読み込んでいるアセンブリは混ぜない。
+    ///
+    /// <para><b>なぜ厳しくするか</b>——以前は <c>TRUSTED_PLATFORM_ASSEMBLIES</c>（＝実行中の
+    /// Loomo.App が読み込む全 DLL）を無条件に足していた。これは「編集中プロジェクトの参照」ではなく
+    /// 「Loomo というアプリの中身」なので、2つ壊れる。(1) Loomo で Loomo 自身を編集すると、
+    /// ソース側の型と走っている <c>sk0ya.Loomo.Services.dll</c> の型が衝突して CS0436 が出る。
+    /// (2) 他人のプロジェクトを編集しているときも、そのプロジェクトが参照していない Loomo の依存
+    /// （Editor / Roslyn / CommunityToolkit…）が見えてしまい、診断がそのプロジェクトの意味から離れる。</para>
+    ///
+    /// <para>MSBuild 参照が1件も無いとき（未評価・未restore・単体テスト）だけ、標準ライブラリの
+    /// 代わりに TPA を使う。その場合も<b>実行中アプリの出力ディレクトリにある DLL は除く</b>ので、
+    /// 足されるのは共有フレームワーク（System.*／WPF）だけになる。</para>
+    /// </summary>
+    public static IReadOnlyList<MetadataReference> ResolveReferences(
+        IEnumerable<string>? referencePaths, string? assemblyName = null)
     {
         var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var currentProcessAssemblyName = Assembly.GetEntryAssembly()?.GetName().Name;
@@ -82,12 +97,9 @@ public static class CSharpSemanticCompilation
                 AddPath(path, paths, assemblyName, currentProcessAssemblyName);
         }
 
-        // Unit tests and csproj評価前の編集ではReferencePathが空になることがある。
-        // 実行中の.NETが提供する標準参照を足して、string／LINQ等の意味解決を可能にする。
-        var trusted = AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") as string;
-        if (!string.IsNullOrWhiteSpace(trusted))
+        if (paths.Count == 0)
         {
-            foreach (var path in trusted.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
+            foreach (var path in SharedFrameworkFallback())
                 AddPath(path, paths, assemblyName, currentProcessAssemblyName);
         }
 
@@ -99,6 +111,36 @@ public static class CSharpSemanticCompilation
                 references.Add(reference);
         return references;
     }
+
+    /// <summary>MSBuild 参照が無いときだけ使う標準参照。TPA から<b>実行中アプリ自身の出力
+    /// ディレクトリの DLL を除いた</b>もの、つまり共有フレームワークだけを返す。</summary>
+    private static IEnumerable<string> SharedFrameworkFallback()
+    {
+        if (AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") is not string trusted ||
+            string.IsNullOrWhiteSpace(trusted)) yield break;
+        foreach (var path in trusted.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
+            if (!IsHostAssembly(path)) yield return path;
+    }
+
+    private static readonly string HostDirectory = NormalizeDirectory(AppContext.BaseDirectory);
+
+    /// <summary>実行中のアプリ（Loomo 本体・テストホスト）が自分の出力として抱えている DLL か。</summary>
+    private static bool IsHostAssembly(string path)
+    {
+        try
+        {
+            return HostDirectory.Length > 0 && string.Equals(
+                NormalizeDirectory(Path.GetDirectoryName(Path.GetFullPath(path))),
+                HostDirectory, StringComparison.OrdinalIgnoreCase);
+        }
+        catch (ArgumentException) { return false; }
+        catch (IOException) { return false; }
+    }
+
+    private static string NormalizeDirectory(string? directory)
+        => string.IsNullOrWhiteSpace(directory)
+            ? ""
+            : Path.TrimEndingDirectorySeparator(Path.GetFullPath(directory));
 
     private static void AddPath(
         string? path, ISet<string> paths, string? assemblyName, string? currentProcessAssemblyName)
@@ -117,10 +159,12 @@ public static class CSharpSemanticCompilation
     }
 
     /// <summary>
-    /// 実行中の Loomo 自身を、編集中プロジェクトのメタデータ参照へ混ぜない。
-    /// <c>TRUSTED_PLATFORM_ASSEMBLIES</c> はホスト構成によってアプリ自身の DLL を含むため、
-    /// これを無条件に取り込むと、ソース側の型と古い実行中 DLL 側の型が衝突して CS0436 になる。
-    /// project の参照一覧に同名 DLL が残るケースも同じ規則で防ぐ。
+    /// 編集中プロジェクト自身の出力 DLL を参照へ混ぜない（ソース側の型と衝突して CS0436 になる）。
+    ///
+    /// <para><paramref name="assemblyName"/> には<b>MSBuild が評価した実アセンブリ名</b>を渡すこと。
+    /// Loomo は <c>Loomo.Services.csproj</c> → <c>sk0ya.Loomo.Services</c> のようにプロジェクト
+    /// ファイル名とアセンブリ名が違うので、csproj のファイル名を渡すとこの判定がすり抜ける
+    /// （<see cref="ProjectModel.CompilationAssemblyName"/>）。</para>
     /// </summary>
     private static bool IsSelfAssembly(string path, string? assemblyName, string? currentProcessAssemblyName)
     {

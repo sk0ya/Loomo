@@ -8,7 +8,7 @@ namespace sk0ya.Loomo.CSharp.Projects;
 public sealed class MsBuildProjectEvaluator : IProjectEvaluator
 {
     private static readonly string[] Properties = ["TargetFramework", "TargetFrameworks", "DefineConstants", "LangVersion",
-        "Nullable", "ProjectAssetsFile"];
+        "Nullable", "ProjectAssetsFile", "AssemblyName"];
     private static readonly string[] Items = ["Compile", "ProjectReference", "Analyzer", "AdditionalFiles", "None", "PackageReference", "ReferencePath"];
 
     public async Task<ProjectEvaluation> EvaluateAsync(string projectPath, string? targetFramework,
@@ -17,6 +17,39 @@ public sealed class MsBuildProjectEvaluator : IProjectEvaluator
 
     public async Task<ProjectEvaluation> EvaluateAsync(string projectPath, string? targetFramework,
         string? configuration, CancellationToken cancellationToken = default)
+    {
+        // まず参照解決まで走らせる。失敗したら評価だけに落として、少なくとも Compile 項目は返す。
+        var (exitCode, stdout, stderr) = await RunAsync(
+            projectPath, targetFramework, configuration, resolveReferences: true, cancellationToken);
+        if (exitCode != 0)
+            (exitCode, stdout, stderr) = await RunAsync(
+                projectPath, targetFramework, configuration, resolveReferences: false, cancellationToken);
+        if (exitCode != 0)
+            throw new InvalidOperationException($"MSBuild評価に失敗しました ({exitCode}): {stderr.Trim()}");
+
+        try
+        {
+            var evaluation = Parse(stdout);
+            evaluation = AddPackageAnalyzers(evaluation, projectPath, targetFramework);
+            return await AddProjectReferenceAnalyzersAsync(
+                evaluation, projectPath, targetFramework, configuration, cancellationToken);
+        }
+        catch (JsonException ex) { throw new InvalidOperationException("MSBuild評価結果をJSONとして読めません。", ex); }
+    }
+
+    /// <summary>
+    /// <c>dotnet msbuild</c> を1回走らせる。
+    ///
+    /// <para><paramref name="resolveReferences"/> が要るのは <c>@(ReferencePath)</c> のため——
+    /// <c>-getProperty</c>／<c>-getItem</c> だけを渡すと MSBuild は<b>評価しかせずターゲットを実行しない</b>ので、
+    /// <c>ResolveAssemblyReferences</c> が作る <c>@(ReferencePath)</c> は必ず空になる。参照が空だと
+    /// 意味解析（診断・リファクタリング）が「このプロジェクトの参照」を一切知らないまま走ることになる。
+    /// コンパイル自体は要らないので <c>SkipCompilerExecution</c>／<c>BuildProjectReferences=false</c> を付け、
+    /// 参照プロジェクトはビルドせず TargetPath だけ解決させる（IDE の design-time build と同じ形）。</para>
+    /// </summary>
+    private static async Task<(int ExitCode, string Stdout, string Stderr)> RunAsync(
+        string projectPath, string? targetFramework, string? configuration,
+        bool resolveReferences, CancellationToken cancellationToken)
     {
         using var process = new Process
         {
@@ -31,6 +64,12 @@ public sealed class MsBuildProjectEvaluator : IProjectEvaluator
         };
         process.StartInfo.ArgumentList.Add("msbuild");
         process.StartInfo.ArgumentList.Add(projectPath);
+        if (resolveReferences)
+        {
+            process.StartInfo.ArgumentList.Add("/t:ResolveReferences");
+            process.StartInfo.ArgumentList.Add("/p:BuildProjectReferences=false");
+            process.StartInfo.ArgumentList.Add("/p:SkipCompilerExecution=true");
+        }
         process.StartInfo.ArgumentList.Add("/getProperty:" + string.Join(',', Properties));
         process.StartInfo.ArgumentList.Add("/getItem:" + string.Join(',', Items));
         process.StartInfo.ArgumentList.Add("/p:Configuration=" +
@@ -48,18 +87,7 @@ public sealed class MsBuildProjectEvaluator : IProjectEvaluator
             stdoutTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
             stderrTask = process.StandardError.ReadToEndAsync(cancellationToken);
             await process.WaitForExitAsync(cancellationToken);
-            var stdout = await stdoutTask;
-            var stderr = await stderrTask;
-            if (process.ExitCode != 0)
-                throw new InvalidOperationException($"MSBuild評価に失敗しました ({process.ExitCode}): {stderr.Trim()}");
-            try
-            {
-                var evaluation = Parse(stdout);
-                evaluation = AddPackageAnalyzers(evaluation, projectPath, targetFramework);
-                return await AddProjectReferenceAnalyzersAsync(
-                    evaluation, projectPath, targetFramework, configuration, cancellationToken);
-            }
-            catch (JsonException ex) { throw new InvalidOperationException("MSBuild評価結果をJSONとして読めません。", ex); }
+            return (process.ExitCode, await stdoutTask, await stderrTask);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -114,7 +142,7 @@ public sealed class MsBuildProjectEvaluator : IProjectEvaluator
             Property("DefineConstants"), Property("LangVersion"), ReadItems("Compile"),
             ReadItems("ProjectReference"), ReadItems("Analyzer"), ReadItems("AdditionalFiles"),
             ReadItems("None"), ReadTestProject(), ReadItems("PackageReference"), ReadItems("ReferencePath"),
-            Property("ProjectAssetsFile"), Property("Nullable"));
+            Property("ProjectAssetsFile"), Property("Nullable"), Property("AssemblyName"));
 
         bool ReadTestProject()
         {

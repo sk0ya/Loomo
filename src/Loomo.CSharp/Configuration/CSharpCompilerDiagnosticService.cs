@@ -44,7 +44,7 @@ public sealed class CSharpCompilerDiagnosticService
                     solution, fullPath, source,
                     includeSemanticCompilation: true,
                     compilationOptions: CSharpProjectCompilationOptions.Compilation(target, editorConfig),
-                    assemblyName: project.Name,
+                    assemblyName: project.CompilationAssemblyName,
                     openTexts: openTexts);
                 return compilation.SemanticCompilation!.GetDiagnostics(cancellationToken)
                 .Where(diagnostic => !diagnostic.IsSuppressed && diagnostic.Location.IsInSource)

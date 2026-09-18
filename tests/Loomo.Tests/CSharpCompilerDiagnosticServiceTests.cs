@@ -118,6 +118,54 @@ public sealed class CSharpCompilerDiagnosticServiceTests : IDisposable
     }
 
     [Fact]
+    public void Does_not_reference_the_running_application_assemblies()
+    {
+        // 走っているプロセス（Loomo 本体／テストホスト）は自分の出力に sk0ya.Loomo.Services.dll を
+        // 抱えている。それを参照へ混ぜると、同じ型を持つソースと衝突して CS0436 になる。
+        var path = Path.Combine(_root, "SettingsStore.cs");
+        var source = """
+            namespace sk0ya.Loomo.Services.Settings;
+            public class SettingsStore { }
+            public static class Caller { public static SettingsStore Make() => new SettingsStore(); }
+            """;
+
+        // 本番と同じ形——MSBuild 参照は空で、assemblyName は csproj のファイル名（実アセンブリ名と違う）。
+        var compilation = CSharpSemanticCompilation.Create(
+            new Dictionary<string, string> { [path] = source },
+            assemblyName: "Loomo.Services");
+
+        Assert.DoesNotContain(compilation.GetDiagnostics(), diagnostic => diagnostic.Id == "CS0436");
+        var hostDirectory = Path.TrimEndingDirectorySeparator(AppContext.BaseDirectory);
+        Assert.DoesNotContain(compilation.References, reference => string.Equals(
+            Path.GetDirectoryName(reference.Display ?? ""), hostDirectory, StringComparison.OrdinalIgnoreCase));
+        // 標準ライブラリは残る（共有フレームワークは実行中アプリの出力ではない）。
+        Assert.DoesNotContain(compilation.GetDiagnostics(), diagnostic => diagnostic.Id == "CS0518");
+    }
+
+    [Fact]
+    public void Uses_only_the_msbuild_resolved_references_when_they_exist()
+    {
+        var compilation = CSharpSemanticCompilation.Create(
+            new Dictionary<string, string> { [Path.Combine(_root, "A.cs")] = "class A { }" },
+            referencePaths: [typeof(object).Assembly.Location]);
+
+        // MSBuild が参照を返したら、それが参照の全部。実行中プロセスの都合を足さない。
+        var reference = Assert.Single(compilation.References);
+        Assert.Equal(typeof(object).Assembly.Location, reference.Display, ignoreCase: true);
+    }
+
+    [Fact]
+    public void Compilation_assembly_name_prefers_the_evaluated_assembly_name()
+    {
+        var project = new ProjectModel("Loomo.Services", Path.Combine(_root, "Loomo.Services.csproj"),
+            _root, [], [], null, false, ProjectLoadState.Ready);
+
+        Assert.Equal("Loomo.Services", project.CompilationAssemblyName);
+        Assert.Equal("sk0ya.Loomo.Services",
+            (project with { AssemblyName = "sk0ya.Loomo.Services" }).CompilationAssemblyName);
+    }
+
+    [Fact]
     public async Task Uses_unsaved_text_for_other_open_compile_files()
     {
         var activePath = Path.Combine(_root, "Active.cs");

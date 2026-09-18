@@ -47,7 +47,9 @@ public sealed record ProjectEvaluation(
     IReadOnlyList<ProjectItemEvaluation>? PackageReferences = null,
     IReadOnlyList<ProjectItemEvaluation>? References = null,
     string? ProjectAssetsFile = null,
-    string? Nullable = null);
+    string? Nullable = null,
+    // MSBuildが評価した実アセンブリ名。プロジェクトファイル名とは一致しないことがある。
+    string? AssemblyName = null);
 
 public sealed record ProjectItemEvaluation(
     string Include,

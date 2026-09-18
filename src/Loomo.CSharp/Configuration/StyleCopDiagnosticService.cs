@@ -86,9 +86,9 @@ public sealed class StyleCopDiagnosticService
                     path, cancellationToken: cancellationToken));
             }
 
-            var references = ResolveReferences(target);
+            var references = ResolveReferences(target, project.CompilationAssemblyName);
             var compilation = CSharpCompilation.Create(
-                Path.GetFileNameWithoutExtension(project.FullPath),
+                project.CompilationAssemblyName,
                 trees,
                 references,
                 CSharpProjectCompilationOptions.Compilation(target));
@@ -128,20 +128,12 @@ public sealed class StyleCopDiagnosticService
         }
     }
 
-    private static IReadOnlyList<MetadataReference> ResolveReferences(TargetFrameworkModel? target)
-    {
-        var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var reference in target?.References ?? [])
-            if (File.Exists(reference.FullPath)) paths.Add(Path.GetFullPath(reference.FullPath));
-
-        if (AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") is string trusted)
-            foreach (var path in trusted.Split(Path.PathSeparator))
-                if (File.Exists(path)) paths.Add(path);
-
-        // 参照は共有キャッシュから（毎回作り直さない。MetadataReferenceCache のコメント参照）。
-        return paths.Select(static path => MetadataReferenceCache.Get(path))
-            .OfType<MetadataReference>().ToArray();
-    }
+    /// <summary>参照解決は compiler フォールバックと同じ規則に寄せる（実行中の Loomo 自身の DLL を
+    /// 混ぜない。<see cref="CSharpSemanticCompilation.ResolveReferences"/> 参照）。</summary>
+    private static IReadOnlyList<MetadataReference> ResolveReferences(
+        TargetFrameworkModel? target, string assemblyName)
+        => CSharpSemanticCompilation.ResolveReferences(
+            (target?.References ?? []).Select(reference => reference.FullPath), assemblyName);
 
     private static IReadOnlyDictionary<string, string>? NormalizeOpenTexts(
         IReadOnlyDictionary<string, string>? openTexts)

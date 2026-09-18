@@ -219,6 +219,7 @@ public sealed class SolutionModelService : ISolutionModelService, IDisposable
             PackageReferences = (first.PackageReferences ?? Array.Empty<ProjectItemEvaluation>())
                 .Select(i => i.Include).Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
             Configuration = configuration,
+            AssemblyName = first.AssemblyName,
         };
     }
 

@@ -150,7 +150,7 @@ public static class CSharpCompilerCodeFixService
             CSharpWorkspaceSourceScope.ProjectGraph,
             includeSemanticCompilation: true,
             compilationOptions: CSharpProjectCompilationOptions.Compilation(target, editorConfig),
-            assemblyName: project.Name,
+            assemblyName: project.CompilationAssemblyName,
             openTexts: openTexts);
         if (context.SemanticCompilation is not { } compilation || !context.IsSourceSnapshotComplete)
             return [];

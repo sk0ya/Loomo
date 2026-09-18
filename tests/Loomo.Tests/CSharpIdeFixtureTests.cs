@@ -85,6 +85,23 @@ public sealed class CSharpIdeFixtureTests
     }
 
     [Fact]
+    public async Task Real_evaluation_resolves_assembly_references_and_the_real_assembly_name()
+    {
+        var projectPath = Path.Combine(FixtureRoot, "src", "Feature", "Feature.csproj");
+
+        var evaluation = await new MsBuildProjectEvaluator().EvaluateAsync(projectPath, "net10.0", "Debug");
+
+        // csproj のファイル名（Feature）ではなく、MSBuild が評価した実アセンブリ名。
+        // 意味解析の Compilation 名に使うので、ここがズレると自己参照除外も InternalsVisibleTo も外れる。
+        Assert.Equal("Loomo.CSharpFixture.Feature", evaluation.AssemblyName);
+        // @(ReferencePath) は ResolveReferences を実行して初めて埋まる。評価だけだと常に空で、
+        // 意味解析が「このプロジェクトの参照」を知らないまま走ってしまう。
+        Assert.NotNull(evaluation.References);
+        Assert.Contains(evaluation.References!, item => (item.FullPath ?? item.Include)
+            .EndsWith("System.Runtime.dll", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public async Task Fixture_runs_the_build_gate_and_test_journey()
     {
         var root = FixtureRoot;
@@ -1157,6 +1174,7 @@ public sealed class CSharpIdeFixtureTests
             [target], targetFramework, evaluation.IsTestProject, ProjectLoadState.Ready)
         {
             PackageReferences = (evaluation.PackageReferences ?? []).Select(item => item.Include).ToArray(),
+            AssemblyName = evaluation.AssemblyName,
         };
     }
 

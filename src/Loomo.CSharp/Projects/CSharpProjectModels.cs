@@ -58,6 +58,18 @@ public sealed record ProjectModel(
     /// <summary>評価されたPackageReference。中央管理されたAnalyzerの存在確認にも使う。</summary>
     public IReadOnlyList<string> PackageReferences { get; init; } = Array.Empty<string>();
 
+    /// <summary>MSBuildが評価した実アセンブリ名（<c>$(AssemblyName)</c>）。未評価なら null。</summary>
+    public string? AssemblyName { get; init; }
+
+    /// <summary>
+    /// このプロジェクトを表す Compilation に与える名前。<b><see cref="Name"/>（＝csprojのファイル名）
+    /// を使ってはいけない</b>——Loomo 自身が <c>Loomo.Services.csproj</c> → <c>sk0ya.Loomo.Services</c> の
+    /// ように両者が食い違う構成で、食い違うと (1) 自分自身の出力DLLを参照から外す判定がすり抜けて
+    /// CS0436 になり、(2) <c>InternalsVisibleTo</c> の相手名と一致せず internal 参照が誤ってエラーになる。
+    /// </summary>
+    public string CompilationAssemblyName
+        => string.IsNullOrWhiteSpace(AssemblyName) ? Name : AssemblyName;
+
     /// <summary>solution構成からこのプロジェクトへ割り当てられた実構成名。</summary>
     public string Configuration { get; init; } = "Debug";
 
