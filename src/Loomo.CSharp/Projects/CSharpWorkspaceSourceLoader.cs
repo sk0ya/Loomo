@@ -16,6 +16,16 @@ public sealed record CSharpWorkspaceSourceSnapshot(
 {
     /// <summary>上限超過によるファイル欠落がなく、Compilationが全対象を含む状態か。</summary>
     public bool IsComplete => SkippedFileCount == 0;
+
+    /// <summary>
+    /// このスナップショットが<b>ソースを取り込んだ</b>プロジェクトの実アセンブリ名。
+    /// アクティブ文書のプロジェクトだけでなく、辿った ProjectReference 先も含む。
+    ///
+    /// <para>参照解決がこれを必要とする——ソースで持っているアセンブリの<b>出力 DLL</b> を
+    /// メタデータ参照へ足すと同じ型が二重に見えて CS0436 になる
+    /// （<see cref="CSharpSemanticCompilation.ResolveReferences"/>）。</para>
+    /// </summary>
+    public IReadOnlyList<string> SourceAssemblyNames { get; init; } = [];
 }
 
 /// <summary>Roslyn構文fallbackが参照型を解決するためのC#ソーススナップショットを作る。
@@ -64,6 +74,7 @@ public static class CSharpWorkspaceSourceLoader
         var start = solution?.ProjectForFile(activeFullPath);
         var queue = new Queue<ProjectModel>();
         var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var sourceAssemblyNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         if (scope == CSharpWorkspaceSourceScope.Solution)
         {
             // linked fileがsolution内の複数projectに含まれる場合、pathだけをキーにする
@@ -86,6 +97,7 @@ public static class CSharpWorkspaceSourceLoader
             var project = queue.Dequeue();
             var projectPath = Path.GetFullPath(project.FullPath);
             if (!visited.Add(projectPath)) continue;
+            sourceAssemblyNames.Add(project.CompilationAssemblyName);
             var parseOptions = CSharpProjectCompilationOptions.Parse(
                 project.SelectedTargetFrameworkModel);
 
@@ -110,7 +122,10 @@ public static class CSharpWorkspaceSourceLoader
         result[activeFullPath] = activeText;
         parseOptionsByPath[activeFullPath] = CSharpProjectCompilationOptions.Parse(
             start?.SelectedTargetFrameworkModel);
-        return new CSharpWorkspaceSourceSnapshot(result, parseOptionsByPath, skippedFileCount);
+        return new CSharpWorkspaceSourceSnapshot(result, parseOptionsByPath, skippedFileCount)
+        {
+            SourceAssemblyNames = sourceAssemblyNames.ToArray(),
+        };
     }
 
     private static IReadOnlyDictionary<string, string>? NormalizeOpenTexts(

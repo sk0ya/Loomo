@@ -190,6 +190,49 @@ public sealed class CSharpCompilerDiagnosticServiceTests : IDisposable
         Assert.DoesNotContain(result.Diagnostics, item => item.Code is "CS1061" or "CS0117");
     }
 
+    [Fact]
+    public async Task Does_not_reference_the_output_of_projects_whose_source_is_in_the_compilation()
+    {
+        // 本番でずっと出ていた形——Loomo.App のファイルを開くと、ProjectReference 先である
+        // Loomo.Core の「ソース」が Compilation へ積まれる一方、MSBuild の @(ReferencePath) には
+        // 同じ Loomo.Core の「出力 DLL」が並ぶ。両方入ると全型が二重に見えて CS0436 になる。
+        // 「自分自身の DLL だけ外す」では防げない（衝突するのは参照先であって自分ではない）。
+        var settingsPath = Path.Combine(_root, "LoomoSettings.cs");
+        File.WriteAllText(settingsPath, """
+            namespace sk0ya.Loomo.Core.Settings;
+            public class LoomoSettings { public int MaxTokens { get; set; } }
+            """);
+        var appPath = Path.Combine(_root, "Reader.cs");
+        var appSource = """
+            using sk0ya.Loomo.Core.Settings;
+            public class Reader { public int Read(LoomoSettings settings) => settings.MaxTokens; }
+            """;
+        File.WriteAllText(appPath, appSource);
+
+        var corePath = Path.Combine(_root, "Loomo.Core.csproj");
+        var core = new ProjectModel("Loomo.Core", corePath, _root, [],
+            [new TargetFrameworkModel("net10.0", [], "latest",
+                [new ProjectItem("LoomoSettings.cs", settingsPath)], [], [], [])],
+            "net10.0", false, ProjectLoadState.Ready)
+        { AssemblyName = "sk0ya.Loomo.Core" };
+        var app = new ProjectModel("Loomo.App", Path.Combine(_root, "Loomo.App.csproj"), _root, [corePath],
+            [new TargetFrameworkModel("net10.0", [], "latest",
+                [new ProjectItem("Reader.cs", appPath)], [], [], [])
+            {
+                ProjectReferences = [corePath],
+                References = [new ProjectItem("sk0ya.Loomo.Core.dll",
+                    typeof(Core.Settings.LoomoSettings).Assembly.Location)],
+            }],
+            "net10.0", false, ProjectLoadState.Ready)
+        { AssemblyName = "sk0ya.Loomo.App" };
+        var solution = new SolutionModel(null, "Loomo", _root, [app, core], ProjectLoadState.Ready);
+
+        var result = await new CSharpCompilerDiagnosticService().AnalyzeAsync(solution, appPath, appSource);
+
+        Assert.Null(result.Error);
+        Assert.DoesNotContain(result.Diagnostics, item => item.Code == "CS0436");
+    }
+
     private SolutionModel CreateSolution(string path)
     {
         var project = new ProjectModel("Sample", Path.Combine(_root, "Sample.csproj"),

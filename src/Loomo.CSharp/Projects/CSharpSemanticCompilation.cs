@@ -28,7 +28,8 @@ public static class CSharpSemanticCompilation
         CSharpCompilationOptions? compilationOptions = null,
         IEnumerable<string>? analyzerPaths = null,
         IEnumerable<AdditionalText>? additionalTexts = null,
-        AnalyzerConfigOptionsProvider? analyzerConfigOptionsProvider = null)
+        AnalyzerConfigOptionsProvider? analyzerConfigOptionsProvider = null,
+        IEnumerable<string>? sourceAssemblyNames = null)
     {
         var trees = sourceTexts
             .Where(pair => string.Equals(Path.GetExtension(pair.Key), ".cs", StringComparison.OrdinalIgnoreCase))
@@ -46,7 +47,7 @@ public static class CSharpSemanticCompilation
             })
             .ToImmutableArray<SyntaxTree>();
 
-        var references = ResolveReferences(referencePaths, assemblyName);
+        var references = ResolveReferences(referencePaths, assemblyName, sourceAssemblyNames);
         var compilation = CSharpCompilation.Create(
             assemblyName ?? "Loomo.CSharp.Workspace",
             trees,
@@ -85,22 +86,38 @@ public static class CSharpSemanticCompilation
     /// <para>MSBuild 参照が1件も無いとき（未評価・未restore・単体テスト）だけ、標準ライブラリの
     /// 代わりに TPA を使う。その場合も<b>実行中アプリの出力ディレクトリにある DLL は除く</b>ので、
     /// 足されるのは共有フレームワーク（System.*／WPF）だけになる。</para>
+    ///
+    /// <para><paramref name="sourceAssemblyNames"/> には、この Compilation に<b>ソースとして
+    /// 入っているプロジェクトのアセンブリ名を全部</b>渡す（<see cref="CSharpWorkspaceSourceSnapshot.SourceAssemblyNames"/>）。
+    /// この Compilation は単一プロジェクトではなく<b>プロジェクトグラフ</b>——
+    /// <see cref="CSharpWorkspaceSourceLoader"/> は ProjectReference を辿って参照先の<b>ソース</b>も
+    /// 積むのに対し、MSBuild が解決した <c>@(ReferencePath)</c> には同じ参照先の<b>出力 DLL</b>
+    /// （<c>sk0ya.Loomo.Core.dll</c> 等）が並ぶ。両方入れれば同じ型が二重に見えて CS0436 になる。
+    /// 「自分自身の DLL だけ外す」では足りないのはこのためで、実際 Loomo.App のファイルを開くと
+    /// Loomo.Core の全型が衝突していた。</para>
     /// </summary>
     public static IReadOnlyList<MetadataReference> ResolveReferences(
-        IEnumerable<string>? referencePaths, string? assemblyName = null)
+        IEnumerable<string>? referencePaths, string? assemblyName = null,
+        IEnumerable<string>? sourceAssemblyNames = null)
     {
         var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var currentProcessAssemblyName = Assembly.GetEntryAssembly()?.GetName().Name;
+        var fromSource = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (!string.IsNullOrWhiteSpace(assemblyName)) fromSource.Add(assemblyName);
+        if (Assembly.GetEntryAssembly()?.GetName().Name is { Length: > 0 } entryAssemblyName)
+            fromSource.Add(entryAssemblyName);
+        foreach (var name in sourceAssemblyNames ?? [])
+            if (!string.IsNullOrWhiteSpace(name)) fromSource.Add(name);
+
         if (referencePaths is not null)
         {
             foreach (var path in referencePaths)
-                AddPath(path, paths, assemblyName, currentProcessAssemblyName);
+                AddPath(path, paths, fromSource);
         }
 
         if (paths.Count == 0)
         {
             foreach (var path in SharedFrameworkFallback())
-                AddPath(path, paths, assemblyName, currentProcessAssemblyName);
+                AddPath(path, paths, fromSource);
         }
 
         // 参照は必ず共有キャッシュ経由で取る（毎回作り直すとヒープが膨らんで
@@ -142,8 +159,16 @@ public static class CSharpSemanticCompilation
             ? ""
             : Path.TrimEndingDirectorySeparator(Path.GetFullPath(directory));
 
-    private static void AddPath(
-        string? path, ISet<string> paths, string? assemblyName, string? currentProcessAssemblyName)
+    /// <summary>
+    /// 参照を1件加える。<paramref name="fromSource"/> に名前があるアセンブリは<b>加えない</b>
+    /// ——その中身は既にソースとしてこの Compilation に入っており、DLL も足すと CS0436 になる。
+    ///
+    /// <para>名前は<b>MSBuild が評価した実アセンブリ名</b>で照合すること。Loomo は
+    /// <c>Loomo.Services.csproj</c> → <c>sk0ya.Loomo.Services</c> のようにプロジェクトファイル名と
+    /// アセンブリ名が違うので、csproj のファイル名で照合すると判定がすり抜ける
+    /// （<see cref="ProjectModel.CompilationAssemblyName"/>）。</para>
+    /// </summary>
+    private static void AddPath(string? path, ISet<string> paths, IReadOnlySet<string> fromSource)
     {
         if (string.IsNullOrWhiteSpace(path)) return;
         try
@@ -151,28 +176,11 @@ public static class CSharpSemanticCompilation
             var full = Path.GetFullPath(path);
             if (File.Exists(full) &&
                 string.Equals(Path.GetExtension(full), ".dll", StringComparison.OrdinalIgnoreCase) &&
-                !IsSelfAssembly(full, assemblyName, currentProcessAssemblyName))
+                !fromSource.Contains(Path.GetFileNameWithoutExtension(full)))
                 paths.Add(full);
         }
         catch (ArgumentException) { }
         catch (IOException) { }
-    }
-
-    /// <summary>
-    /// 編集中プロジェクト自身の出力 DLL を参照へ混ぜない（ソース側の型と衝突して CS0436 になる）。
-    ///
-    /// <para><paramref name="assemblyName"/> には<b>MSBuild が評価した実アセンブリ名</b>を渡すこと。
-    /// Loomo は <c>Loomo.Services.csproj</c> → <c>sk0ya.Loomo.Services</c> のようにプロジェクト
-    /// ファイル名とアセンブリ名が違うので、csproj のファイル名を渡すとこの判定がすり抜ける
-    /// （<see cref="ProjectModel.CompilationAssemblyName"/>）。</para>
-    /// </summary>
-    private static bool IsSelfAssembly(string path, string? assemblyName, string? currentProcessAssemblyName)
-    {
-        var name = Path.GetFileNameWithoutExtension(path);
-        return (!string.IsNullOrWhiteSpace(assemblyName) &&
-                   string.Equals(name, assemblyName, StringComparison.OrdinalIgnoreCase))
-            || (!string.IsNullOrWhiteSpace(currentProcessAssemblyName) &&
-                   string.Equals(name, currentProcessAssemblyName, StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>MSBuildのAnalyzer項目に含まれるSource GeneratorだけをRoslyn公式APIで実行する。

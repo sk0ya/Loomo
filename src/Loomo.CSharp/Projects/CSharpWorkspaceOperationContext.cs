@@ -68,7 +68,11 @@ public sealed record CSharpWorkspaceOperationContext(
                 analyzerPaths: analyzerPaths,
                 additionalTexts: CSharpSemanticCompilation.CreateAdditionalTexts(additionalTexts),
                 analyzerConfigOptionsProvider: new CSharpAnalyzerConfigOptionsProvider(
-                    editorConfigService ?? new CSharpEditorConfigService(), activePath)));
+                    editorConfigService ?? new CSharpEditorConfigService(), activePath),
+                // ソースで持っているプロジェクトの出力 DLL は参照から外す。この Compilation は
+                // ProjectReference 先のソースまで積む（CSharpWorkspaceSourceLoader）ので、
+                // 参照先の DLL を足すと同じ型が二重になり CS0436 が出る。
+                sourceAssemblyNames: snapshot.SourceAssemblyNames));
         return new(snapshot, compilation);
     }
 
