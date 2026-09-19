@@ -290,7 +290,8 @@ public partial class ShellWindow {
                 AiBarHost.FocusInput();
                 break;
             case PaneKind.Git:
-                GitSessionHost.Focus();
+                // ペインの器ではなくコミット一覧へ落とす（そのまま j/k・Enter が効く）。
+                GitSessionHost.FocusCommitList();
                 break;
             case PaneKind.Diff:
                 DiffSessionHost.Focus();

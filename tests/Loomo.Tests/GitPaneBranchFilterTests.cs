@@ -115,7 +115,8 @@ public sealed class GitPaneBranchFilterTests : IAsyncLifetime
     [Theory]
     // 打った直後は VM がまだ空（Delay=120）でも、入力欄に字がある以上 Esc は消す側に効く。
     [InlineData(Key.Escape, "fea", true, BranchFilterKeyAction.Clear)]
-    [InlineData(Key.Escape, "", true, BranchFilterKeyAction.None)]
+    // 空での Esc は出口（キーボードで入ったのに出られない入力欄にしない）。
+    [InlineData(Key.Escape, "", true, BranchFilterKeyAction.MoveToList)]
     [InlineData(Key.Down, "fea", true, BranchFilterKeyAction.MoveToList)]
     // 降りる先が無いときに握り潰すと、効かないキーを飲み込むだけになる。
     [InlineData(Key.Down, "zzz", false, BranchFilterKeyAction.None)]

@@ -328,6 +328,7 @@
                                   ItemTemplate="{StaticResource BranchNodeTemplate}"
                                   ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                                   MouseDoubleClick="OnBranchDoubleClick"
+                                  PreviewKeyDown="OnBranchListKeyDown"
                                   PreviewMouseLeftButtonUp="OnBranchTreeClick"
                                   PreviewMouseRightButtonDown="OnListRightClickSelect"
                                   ContextMenuOpening="OnBranchContextMenuOpening">
@@ -528,6 +529,8 @@
                              SelectionMode="Extended"
                              ScrollViewer.HorizontalScrollBarVisibility="Auto"
                              ScrollViewer.ScrollChanged="OnLogScrollChanged"
+                             PreviewKeyDown="OnLogListKeyDown"
+                             LostKeyboardFocus="OnLogListLostFocus"
                              MouseDoubleClick="OnCommitShowDiff"
                              PreviewMouseRightButtonDown="OnListRightClickSelect"
                              ContextMenuOpening="OnCommitContextMenuOpening"

@@ -258,7 +258,6 @@ public partial class GitSessionView : UserControl
     /// </summary>
     private async void OnBranchDoubleClick(object sender, MouseButtonEventArgs e)
     {
-        CancelPendingBranchMenu();
         if (Vm is not { } vm)
             return;
 
@@ -273,6 +272,18 @@ public partial class GitSessionView : UserControl
         if (branch is null)
             return;
 
+        await ShowBranchLogGuardedAsync(vm, branch);
+    }
+
+    /// <summary>
+    /// そのブランチのコミットを一覧に出す（ダブルクリックと Enter の共通経路）。
+    /// async void のイベントハンドラーから例外を出すとアプリ全体が終了するので必ず受け、
+    /// 連打で古い読み込みが失敗したときは<b>最新の操作のぶんだけ</b>を画面へ知らせる
+    /// （さもないと、もう表示していないブランチのエラーが後から居座る）。
+    /// </summary>
+    private async Task ShowBranchLogGuardedAsync(GitSessionViewModel vm, GitBranchInfo branch)
+    {
+        CancelPendingBranchMenu();
         var request = ++_branchLogRequest;
         try
         {
@@ -280,8 +291,6 @@ public partial class GitSessionView : UserControl
         }
         catch (Exception exception)
         {
-            // async void のイベントハンドラーから例外を出すとアプリ全体が終了する。
-            // 連打で古い読み込みが失敗しても、最新の操作だけを画面へ知らせる。
             if (request == _branchLogRequest)
             {
                 vm.StatusIsError = true;

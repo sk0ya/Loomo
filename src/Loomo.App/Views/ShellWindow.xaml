@@ -2003,6 +2003,7 @@
                             <Grid Width="210" Margin="8,0,0,0" VerticalAlignment="Center">
                                 <TextBox x:Name="LogFilterBox" MinHeight="24" Padding="6,3"
                                          VerticalContentAlignment="Center" Cursor="IBeam"
+                                         PreviewKeyDown="OnLogFilterKeyDown"
                                          Text="{Binding GitSession.History.LogFilter, UpdateSourceTrigger=PropertyChanged, Delay=200}">
                                     <TextBox.ToolTip>
                                         <ToolTip MaxWidth="380">
