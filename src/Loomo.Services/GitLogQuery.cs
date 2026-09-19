@@ -68,6 +68,10 @@ public sealed record GitLogQuery
             GitCompareArgs.LiteralPathspecs,
             "log",
             "--graph",
+            // 完全な ref 名で装飾させる（refs/heads/... ／ refs/remotes/... ／ refs/tags/...）。
+            // 短縮名だと「リモートの main」と「origin/main という名前のローカルブランチ」を
+            // 見分けられず、色分けが推測になる（GitRefLabels）。
+            "--decorate=full",
             string.IsNullOrWhiteSpace(BranchRef) ? "--all" : BranchRef,
             $"-n{Limit}",
         };

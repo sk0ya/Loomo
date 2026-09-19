@@ -205,7 +205,10 @@ public sealed partial class GitSessionViewModel : ObservableObject
         _commitDetailVisible = settings?.GitCommitDetailVisible ?? true;
         _branchColumnVisible = settings?.GitBranchColumnVisible ?? true;
         // 読めない値（手書き・古い版）は既定へ落とす。ここで例外にすると起動ごと落ちる。
+        // IsDefined まで見るのは、TryParse が "7" のような数値文字列を<b>成功させて</b>
+        // 定義の無い値を返すため——どのタブにも一致せず、左列の下段が空白のまま操作不能になる。
         _referenceTab = Enum.TryParse<GitReferenceTab>(settings?.GitReferenceTab, out var tab)
+            && Enum.IsDefined(tab)
             ? tab : GitReferenceTab.Tags;
         Commands.StatusChanged += (_, status) =>
         {

@@ -21,8 +21,9 @@ public sealed class GitLogRowToolTipTests
     public void refsがあれば2行目に添える()
     {
         // refs も同じセルで切れる側なので、件名だけ出して終わりにしない。
-        Assert.Equal("直近の修正\nHEAD -> main, origin/main",
-            Row("直近の修正", "HEAD -> main, origin/main").ToolTipText);
+        // 出すのは短縮名（完全名の扱いは GitRefLabelTests）。
+        Assert.Equal("直近の修正\nmain, origin/main",
+            Row("直近の修正", "HEAD -> refs/heads/main, refs/remotes/origin/main").ToolTipText);
     }
 
     [Theory]

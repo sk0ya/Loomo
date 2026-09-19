@@ -78,6 +78,40 @@ public sealed class GitStatusToBrushConverter : IValueConverter
     }
 }
 
+/// <summary>コミットに付いた参照の種類を色に変換する（ブランチ／リモート／タグを一目で分ける）。
+/// テーマ非依存のセマンティック色で、<see cref="GitStatusToBrushConverter"/> と同じ考え方。
+/// HEAD が指している参照だけは別扱いにしたいので、ConverterParameter="Head" で前景色を返す。</summary>
+public sealed class GitRefKindToBrushConverter : IValueConverter
+{
+    private static readonly Brush Local = Freeze("#6CB6FF");    // ローカルブランチ：青
+    private static readonly Brush Remote = Freeze("#9DA5B4");   // リモート追跡：灰（手元の枝より控えめに）
+    private static readonly Brush Tag = Freeze("#E2C08D");      // タグ：ゴールド
+    private static readonly Brush Head = Freeze("#73C991");     // いま居る場所：緑
+    private static readonly Brush Other = Freeze("#7F8490");
+
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture) =>
+        value is GitRefKind kind
+            ? kind switch
+            {
+                GitRefKind.LocalBranch => Local,
+                GitRefKind.RemoteBranch => Remote,
+                GitRefKind.Tag => Tag,
+                GitRefKind.Head => Head,
+                _ => Other,
+            }
+            : Other;
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        => throw new NotSupportedException();
+
+    private static Brush Freeze(string hex)
+    {
+        var b = new SolidColorBrush((Color)ColorConverter.ConvertFromString(hex));
+        b.Freeze();
+        return b;
+    }
+}
+
 /// <summary>文字列が空のとき Visible（ウォーターマーク表示用）。</summary>
 public sealed class EmptyStringToVisibilityConverter : IValueConverter
 {

@@ -22,6 +22,7 @@
     <conv:AllTrueToVisibilityConverter x:Key="AllTrueToVisibilityConverter" />
     <conv:EqualityToVisibilityConverter x:Key="EqualityToVis" />
     <conv:GitStatusToBrushConverter x:Key="GitStatusBrush" />
+    <conv:GitRefKindToBrushConverter x:Key="GitRefKindBrush" />
     <conv:RelativeDateConverter x:Key="RelativeDate" />
     <conv:LastPathSegmentConverter x:Key="LastPathSegment" />
 

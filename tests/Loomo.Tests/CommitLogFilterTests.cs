@@ -47,6 +47,23 @@ public class CommitLogFilterTests
         Assert.Equal(expected, CommitLogFilter.Parse(filter).Matches(Row()));
     }
 
+    [Theory]
+    // 一覧は --decorate=full で引いているので、生の refs は完全名で来る。
+    [InlineData("ref:main", true)]
+    [InlineData("ref:origin/main", true)]
+    [InlineData("ref:v1.0", true)]
+    // 参照の一致は<b>画面に出ている短縮名</b>で見る。完全名をそのまま部分一致させると、
+    // "heads" や "refs" が装飾のある全コミットに当たって探し物と違うものが並ぶ。
+    [InlineData("ref:heads", false)]
+    [InlineData("ref:refs/", false)]
+    [InlineData("refs/remotes", false)]   // 接頭辞なしの素の語でも同じ
+    public void 参照の一致は短縮名で見る(string filter, bool expected)
+    {
+        var row = Row(refs: "HEAD -> refs/heads/main, tag: refs/tags/v1.0, refs/remotes/origin/main");
+
+        Assert.Equal(expected, CommitLogFilter.Parse(filter).Matches(row));
+    }
+
     [Fact]
     public void 複数トークンはANDで結合される()
     {

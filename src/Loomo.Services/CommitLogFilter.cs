@@ -207,14 +207,27 @@ public sealed class CommitLogFilter
             Field.Author => Contains(row.Author, _value),
             Field.Message => Contains(row.Subject, _value),
             Field.Hash => Contains(row.Hash, _value) || Contains(row.ShortHash, _value),
-            Field.Ref => Contains(row.Refs, _value),
+            Field.Ref => MatchesRef(row, _value),
             Field.Date => _date!.Matches(DayOf(row)),
             _ => Contains(row.Subject, _value)
                  || Contains(row.Author, _value)
                  || Contains(row.ShortHash, _value)
                  || Contains(row.Hash, _value)
-                 || Contains(row.Refs, _value),
+                 || MatchesRef(row, _value),
         };
+
+        /// <summary>
+        /// 参照の一致は<b>画面に出ている短縮名</b>で見る。生の <c>%D</c> は
+        /// <c>refs/remotes/origin/main</c> のような完全名（<c>--decorate=full</c>）なので、
+        /// そのまま部分一致させると <c>ref:heads</c> や <c>refs</c> が装飾のある全コミットに当たる
+        /// ——探しているものと当たるものが違う。
+        /// </summary>
+        private static bool MatchesRef(GitLogRow row, string term)
+        {
+            foreach (var label in row.RefLabels)
+                if (Contains(label.Name, term)) return true;
+            return false;
+        }
 
         private static bool Contains(string? haystack, string term) =>
             haystack is not null && haystack.Contains(term, StringComparison.OrdinalIgnoreCase);

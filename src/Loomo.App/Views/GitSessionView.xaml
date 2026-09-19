@@ -599,14 +599,67 @@
                                     </GridViewColumn.HeaderTemplate>
                                     <GridViewColumn.CellTemplate>
                                         <DataTemplate>
-                                            <!-- 切れた件名は列境界をドラッグしないと読めないので、全文はツールチップで出す
-                                                 （継続行は ToolTipText が null ＝ツールチップを出さない）。 -->
-                                            <TextBlock TextTrimming="CharacterEllipsis"
+                                            <!-- グラフ｜参照バッジ｜件名。参照は1色のテキストだと
+                                                 ブランチ・リモート・タグが混ざって読めないので、種類で
+                                                 色分けした丸バッジにし、HEAD が指しているものには
+                                                 印を付ける（＝いま自分が居る行が一目で分かる）。
+                                                 切れた件名は列境界をドラッグしないと読めないので、全文は
+                                                 ツールチップで出す（継続行は null ＝ツールチップを出さない）。 -->
+                                            <DockPanel LastChildFill="True"
                                                        ToolTip="{Binding ToolTipText, Mode=OneWay}">
-                                                <Run Text="{Binding Graph, Mode=OneWay}" Foreground="{DynamicResource FgDim}" /><Run Text=" " /><Run
-                                                    Text="{Binding Refs, Mode=OneWay}" Foreground="#FFE5A23B" /><Run Text=" " /><Run
-                                                    Text="{Binding Subject, Mode=OneWay}" Foreground="{DynamicResource Fg}" />
-                                            </TextBlock>
+                                                <TextBlock DockPanel.Dock="Left" Text="{Binding Graph, Mode=OneWay}"
+                                                           Foreground="{DynamicResource FgDim}" VerticalAlignment="Center" />
+                                                <!-- 参照が多い行で件名を押し出さないよう上限を置き、はみ出しは切る
+                                                     （読みたいのは件名の方）。左の余白は各バッジが持つので、
+                                                     参照が0件の行には隙間が出ない。 -->
+                                                <ItemsControl DockPanel.Dock="Left" ItemsSource="{Binding RefLabels, Mode=OneWay}"
+                                                              MaxWidth="200" ClipToBounds="True"
+                                                              VerticalAlignment="Center">
+                                                    <ItemsControl.ItemsPanel>
+                                                        <ItemsPanelTemplate>
+                                                            <StackPanel Orientation="Horizontal" />
+                                                        </ItemsPanelTemplate>
+                                                    </ItemsControl.ItemsPanel>
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <!-- 太さはローカル値で置かない。ローカル値はスタイルの
+                                                                 トリガーに勝つので、HEAD の強調が一生効かなくなる。 -->
+                                                            <Border CornerRadius="3" Margin="6,0,0,0" Padding="4,0"
+                                                                    BorderBrush="{Binding Kind, Converter={StaticResource GitRefKindBrush}}">
+                                                                <Border.Style>
+                                                                    <Style TargetType="Border">
+                                                                        <Setter Property="BorderThickness" Value="1" />
+                                                                        <Style.Triggers>
+                                                                            <!-- いま HEAD が指している参照＝自分が居る場所 -->
+                                                                            <DataTrigger Binding="{Binding IsHead}" Value="True">
+                                                                                <Setter Property="BorderThickness" Value="2" />
+                                                                            </DataTrigger>
+                                                                        </Style.Triggers>
+                                                                    </Style>
+                                                                </Border.Style>
+                                                                <TextBlock Text="{Binding Name, Mode=OneWay}"
+                                                                           FontSize="{DynamicResource Fs10}"
+                                                                           VerticalAlignment="Center"
+                                                                           FontFamily="Segoe UI"
+                                                                           Foreground="{Binding Kind, Converter={StaticResource GitRefKindBrush}}">
+                                                                    <TextBlock.Style>
+                                                                        <Style TargetType="TextBlock">
+                                                                            <Style.Triggers>
+                                                                                <DataTrigger Binding="{Binding IsHead}" Value="True">
+                                                                                    <Setter Property="FontWeight" Value="SemiBold" />
+                                                                                </DataTrigger>
+                                                                            </Style.Triggers>
+                                                                        </Style>
+                                                                    </TextBlock.Style>
+                                                                </TextBlock>
+                                                            </Border>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+                                                <TextBlock Text="{Binding Subject, Mode=OneWay}" Margin="6,0,0,0"
+                                                           Foreground="{DynamicResource Fg}" VerticalAlignment="Center"
+                                                           TextTrimming="CharacterEllipsis" />
+                                            </DockPanel>
                                         </DataTemplate>
                                     </GridViewColumn.CellTemplate>
                                 </GridViewColumn>

@@ -44,6 +44,9 @@ public sealed class GitReferenceTabTests
     [Theory]
     [InlineData("")]
     [InlineData("Branches")]      // 知らない値（手書き・将来の版）
+    // 数値文字列は Enum.TryParse が「成功」させて定義の無い値を返す。落とさないと
+    // どのタブにも一致せず、左列の下段が空白のまま操作不能になる。
+    [InlineData("7")]
     public void 読めない値は既定へ落とす(string stored)
     {
         // ここで例外にすると、settings.json を1文字間違えただけで起動ごと落ちる。
