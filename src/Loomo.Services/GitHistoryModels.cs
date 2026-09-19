@@ -15,6 +15,10 @@ public sealed record GitLogRow(
 {
     public bool IsCommit => Hash is not null;
 
+    /// <summary>親コミットのハッシュ（<c>%P</c>）。マージなら2つ以上。グラフのレーンはここから決まる
+    /// （<see cref="GitCommitGraph"/>）。</summary>
+    public IReadOnlyList<string> Parents { get; init; } = [];
+
     /// <summary>この行に付いた参照（ブランチ・タグ）を種類つきで。
     /// <b>毎回計算する</b>——record が合成する等値比較には宣言したフィールドも入るので、
     /// ここにキャッシュを持つと「まだ描画していない行」と「描画済みの行」が等しくなくなる。

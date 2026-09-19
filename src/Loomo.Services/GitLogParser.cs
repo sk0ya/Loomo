@@ -10,8 +10,10 @@ namespace sk0ya.Loomo.Services;
 /// </summary>
 public static class GitLogParser
 {
-    /// <summary>GitService.GetLogAsync が使う --pretty 書式（グラフ列の直後に US 区切りで並ぶ）。</summary>
-    public const string PrettyFormat = "%x1f%H%x1f%h%x1f%an%x1f%ad%x1f%D%x1f%s";
+    /// <summary>GitService.GetLogAsync が使う --pretty 書式（グラフ列の直後に US 区切りで並ぶ）。
+    /// 末尾の <c>%P</c>（親ハッシュ・空白区切り）はグラフのレーンを自分で組むために要る
+    /// （<see cref="GitCommitGraph"/>）。<b>末尾に足す</b>ので、古い並びを読む箇所は壊れない。</summary>
+    public const string PrettyFormat = "%x1f%H%x1f%h%x1f%an%x1f%ad%x1f%D%x1f%s%x1f%P";
 
     public static IReadOnlyList<GitLogRow> Parse(string output)
     {
@@ -44,7 +46,13 @@ public static class GitLogParser
                 Author: fields[2],
                 Date: fields[3],
                 Refs: fields[4].Length > 0 ? fields[4] : null,
-                Subject: fields[5]));
+                Subject: fields[5])
+            {
+                // 親が無い（最初のコミット）と、書式が古い出力の両方で空になる。
+                Parents = fields.Length > 6
+                    ? fields[6].Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                    : Array.Empty<string>(),
+            });
         }
         return rows;
     }

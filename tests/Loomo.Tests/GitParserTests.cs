@@ -111,5 +111,22 @@ public class GitParserTests
         Assert.True(rows[2].IsCommit);
         Assert.Equal("| *", rows[2].Graph);
         Assert.Null(rows[2].Refs);
+        // 親を書いていない（古い書式の）出力でも落ちない。
+        Assert.Empty(rows[0].Parents);
+    }
+
+    [Fact]
+    public void ログ_親ハッシュを読める()
+    {
+        const string us = "";
+        var output =
+            $"{us}m1{us}m1{us}koya{us}2026-09-19 10:00{us}{us}マージ{us}a1 b1\n" +
+            $"{us}a1{us}a1{us}koya{us}2026-09-19 09:00{us}{us}最初のコミット{us}\n";
+
+        var rows = GitLogParser.Parse(output);
+
+        // グラフのレーンはここから組む（GitCommitGraph）。
+        Assert.Equal(new[] { "a1", "b1" }, rows[0].Parents);
+        Assert.Empty(rows[1].Parents);   // 根のコミット
     }
 }
