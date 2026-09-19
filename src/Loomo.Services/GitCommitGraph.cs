@@ -120,7 +120,10 @@ public static class GitCommitGraph
             // 一覧に出てこない親（ページの境目・浅いクローン・--first-parent）なら、線は
             // この行の下端まで引いて<b>レーンは空ける</b>——待ち続けても来ないし、
             // 次の行があるなら、そこから先はもうその枝を描きようがない。
-            waiting[lane] = parents.Count > 0 && present.Contains(parents[0]) ? parents[0] : null;
+            // ただし空けるのは<b>この行の処理が終わってから</b>——先に空けると、第2親の
+            // レーン探しが同じレーンを再利用して色を上書きし、いま引いた線と二重に描かれる。
+            var firstParentIsPresent = parents.Count > 0 && present.Contains(parents[0]);
+            waiting[lane] = parents.Count > 0 ? parents[0] : null;
             if (parents.Count > 0)
                 edges.Add(new GitGraphEdge(GitGraphEdgeKind.Out, lane, lane, color));
 
@@ -138,6 +141,9 @@ public static class GitCommitGraph
                 }
                 edges.Add(new GitGraphEdge(GitGraphEdgeKind.Out, lane, target, colors[target]));
             }
+
+            // 一覧に出てこない第1親の待ちはここで落とす（上の理由でこの位置）。
+            if (!firstParentIsPresent) waiting[lane] = null;
 
             // 残り（この行と無関係なレーン）は縦に素通り。
             for (var i = 0; i < incoming.Count; i++)

@@ -121,6 +121,22 @@ public sealed class GitCommitGraphTests
         });
     }
 
+    /// <summary>
+    /// 第1親が一覧に居ないマージでも、第2親が同じレーンを取り直さない。取り直すとそのレーンの色が
+    /// 上書きされ、いま引いた第1親への線と二重に（違う色で）描かれる。
+    /// </summary>
+    [Fact]
+    public void 第2親は第1親が空けたレーンを奪わない()
+    {
+        // 第1親 a は一覧に無く（--first-parent の見え方）、第2親 b だけが一覧に居る。
+        var graph = GitCommitGraph.Build([Row("m", "a", "b"), Row("b", "z"), Row("z")]);
+
+        var outgoing = graph[0].Edges.Where(e => e.Kind == GitGraphEdgeKind.Out).ToList();
+        Assert.Equal(2, outgoing.Count);
+        Assert.Distinct(outgoing.Select(e => e.ToLane));
+        Assert.Distinct(outgoing.Select(e => e.Color));
+    }
+
     [Fact]
     public void ページの境目で親が居なくてもレーンは増えない()
     {

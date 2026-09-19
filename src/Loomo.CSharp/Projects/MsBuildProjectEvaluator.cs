@@ -166,15 +166,35 @@ public sealed class MsBuildProjectEvaluator : IProjectEvaluator
         var config = Segment(configuration, "Debug");
         var tfm = Segment(targetFramework, "shared");
         var key = Path.GetFileNameWithoutExtension(projectPath) + "-" + Hash(Path.GetFullPath(projectPath));
+        var keyRoot = Path.Combine(DesignTimeRoot, key);
+        // 使った印を先に付ける。<b>掃除より先</b>でなければならない——並行して評価している別の
+        // プロジェクトを「古い」と見て消しにいく事故を、この順序だけで防いでいる。
+        TouchUsed(keyRoot);
         PruneOldDesignTimeOutput();
         // 末尾の区切りは MSBuild の約束（無いとパス結合が壊れる）。
-        return Path.Combine(DesignTimeRoot, key, config, tfm) + Path.DirectorySeparatorChar;
+        return Path.Combine(keyRoot, config, tfm) + Path.DirectorySeparatorChar;
     }
 
     private static string DesignTimeRoot => Path.Combine(Path.GetTempPath(), "loomo-designtime");
 
     /// <summary>掃除は寿命に1回でいい（同じ日に何度も消して回るものではない）。</summary>
     private static int _pruned;
+
+    /// <summary>最終使用日時の印。フォルダーの更新日時では当てにならない——MSBuild は既存の
+    /// 生成ソースを書き直すだけのことが多く、それでは親フォルダーの日時が動かないので、
+    /// 毎日使っているプロジェクトでも「7日以上使われていない」に見える。</summary>
+    private const string UsedStampFileName = ".loomo-last-used";
+
+    private static void TouchUsed(string keyRoot)
+    {
+        try
+        {
+            Directory.CreateDirectory(keyRoot);
+            // 中身は要らない。ファイル自身の更新日時だけが印。
+            File.WriteAllText(Path.Combine(keyRoot, UsedStampFileName), "");
+        }
+        catch (Exception) { /* 印が付けられなくても評価は続ける（最悪、早めに掃除されるだけ） */ }
+    }
 
     /// <summary>
     /// 古い design-time 中間出力を捨てる。ここはリポジトリの外なので <c>dotnet clean</c> も
@@ -193,8 +213,12 @@ public sealed class MsBuildProjectEvaluator : IProjectEvaluator
             {
                 try
                 {
-                    if (Directory.GetLastWriteTimeUtc(directory) < limit)
-                        Directory.Delete(directory, recursive: true);
+                    // 印が無いのは、この仕組みより前に作られたもの。
+                    var stamp = Path.Combine(directory, UsedStampFileName);
+                    var lastUsed = File.Exists(stamp)
+                        ? File.GetLastWriteTimeUtc(stamp)
+                        : Directory.GetCreationTimeUtc(directory);
+                    if (lastUsed < limit) Directory.Delete(directory, recursive: true);
                 }
                 catch (Exception) { /* 使用中・権限。次の機会に消える */ }
             }

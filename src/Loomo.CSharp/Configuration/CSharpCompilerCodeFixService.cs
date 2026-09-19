@@ -151,8 +151,12 @@ public static class CSharpCompilerCodeFixService
             includeSemanticCompilation: true,
             compilationOptions: CSharpProjectCompilationOptions.Compilation(target, editorConfig),
             assemblyName: project.CompilationAssemblyName,
-            openTexts: openTexts);
-        if (context.SemanticCompilation is not { } compilation || !context.IsSourceSnapshotComplete)
+            openTexts: openTexts,
+            requireTrustedSources: true);
+        // 診断を出さない状態（上限で切り詰めた／読めないソースがある）では修正も出さない。
+        // 診断側だけ黙らせても、電球からは同じ偽の CS0103／CS0246 に対する「using を追加」が
+        // 出てしまう——直す先が無い提案を押させることになる。
+        if (context.SemanticCompilation is not { } compilation || !context.CanTrustSemanticResults)
             return [];
 
         var tree = compilation.SyntaxTrees.FirstOrDefault(candidate =>
