@@ -557,7 +557,10 @@
                                     </GridViewColumn.HeaderTemplate>
                                     <GridViewColumn.CellTemplate>
                                         <DataTemplate>
-                                            <TextBlock TextTrimming="CharacterEllipsis">
+                                            <!-- 切れた件名は列境界をドラッグしないと読めないので、全文はツールチップで出す
+                                                 （継続行は ToolTipText が null ＝ツールチップを出さない）。 -->
+                                            <TextBlock TextTrimming="CharacterEllipsis"
+                                                       ToolTip="{Binding ToolTipText, Mode=OneWay}">
                                                 <Run Text="{Binding Graph, Mode=OneWay}" Foreground="{DynamicResource FgDim}" /><Run Text=" " /><Run
                                                     Text="{Binding Refs, Mode=OneWay}" Foreground="#FFE5A23B" /><Run Text=" " /><Run
                                                     Text="{Binding Subject, Mode=OneWay}" Foreground="{DynamicResource Fg}" />
@@ -585,8 +588,10 @@
                                 <GridViewColumn Header="ID" Width="80">
                                     <GridViewColumn.CellTemplate>
                                         <DataTemplate>
+                                            <!-- 短縮ハッシュに対する全文はツールチップで（コピーは右クリックから）。 -->
                                             <TextBlock Text="{Binding ShortHash, Mode=OneWay}"
                                                        FontSize="{DynamicResource Fs11}"
+                                                       ToolTip="{Binding Hash, Mode=OneWay}"
                                                        Foreground="{DynamicResource Accent}" TextTrimming="CharacterEllipsis" />
                                         </DataTemplate>
                                     </GridViewColumn.CellTemplate>
