@@ -281,9 +281,43 @@
                                 Style="{StaticResource ToolbarButton}" Content="↺ すべてのブランチを表示"
                                 Click="OnShowAllBranchesLog"
                                 Visibility="{Binding History.IsLogScoped, Converter={StaticResource BoolToVis}}" />
+
+                        <!-- ブランチの絞り込み。ブランチ切替ポップアップの絞り込みとは<b>別の状態</b>
+                             （PaneBranchFilter）を見る——同じにすると、ポップアップを開いた拍子に
+                             （開くたびに空へ戻す作りなので）ここで打った語が消える。
+                             Esc で解除、↓ で一覧へ（GitSessionView.Keyboard.cs）。 -->
+                        <Grid DockPanel.Dock="Top" Margin="8,0,8,3">
+                            <TextBox x:Name="BranchFilterBox" MinHeight="24"
+                                     VerticalContentAlignment="Center"
+                                     Text="{Binding PaneBranchFilter, UpdateSourceTrigger=PropertyChanged, Delay=120}"
+                                     PreviewKeyDown="OnBranchFilterKeyDown">
+                                <TextBox.Style>
+                                    <!-- 右の余白は「✕」が出ている間だけ空ける（常に空けると、絞り込んで
+                                         いないときに理由のない余白が残る）。 -->
+                                    <Style TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
+                                        <Setter Property="Padding" Value="6,3" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding HasPaneBranchFilter}" Value="True">
+                                                <Setter Property="Padding" Value="6,3,24,3" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBox.Style>
+                            </TextBox>
+                            <TextBlock Text="🔍 ブランチを絞り込み" Foreground="{DynamicResource FgDim}"
+                                       FontSize="{DynamicResource Fs12}" Margin="8,0,0,0" IsHitTestVisible="False"
+                                       VerticalAlignment="Center"
+                                       Visibility="{Binding PaneBranchFilter, Converter={StaticResource EmptyToVis}}" />
+                            <Button HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,3,0"
+                                    Style="{StaticResource ToolbarButton}" Padding="5,1" Content="✕"
+                                    ToolTip="絞り込みを解除（Esc）"
+                                    Command="{Binding ClearPaneBranchFilterCommand}"
+                                    Visibility="{Binding HasPaneBranchFilter, Converter={StaticResource BoolToVis}}" />
+                        </Grid>
+
                         <TreeView x:Name="BranchList" Background="Transparent" BorderThickness="0"
                                   Foreground="{DynamicResource Fg}"
-                                  ItemsSource="{Binding BranchTree}"
+                                  ItemsSource="{Binding PaneFilteredBranchTree}"
                                   ItemContainerStyle="{StaticResource BranchTreeItem}"
                                   ItemTemplate="{StaticResource BranchNodeTemplate}"
                                   ScrollViewer.HorizontalScrollBarVisibility="Disabled"

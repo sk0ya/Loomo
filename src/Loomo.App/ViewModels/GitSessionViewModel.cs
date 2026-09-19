@@ -84,13 +84,30 @@ public sealed partial class GitSessionViewModel : ObservableObject
     [ObservableProperty] private IReadOnlyList<BranchTreeNode> _branchTree = Array.Empty<BranchTreeNode>();
 
     /// <summary>
-    /// ブランチ切替ポップアップ用の絞り込み語。<see cref="BranchTree"/> 側（Git ペインのブランチ一覧）は
-    /// 絞り込まない——同じ VM を見ているが用途が違う（あちらはコミットグラフの表示範囲を選ぶ一覧）。
+    /// ブランチ切替ポップアップ用の絞り込み語。ポップアップは開くたびに
+    /// <see cref="BranchSwitcherView.PrepareForOpen"/> がこれを空へ戻す（前回の絞り込みが残っていると
+    /// 「ブランチが消えた」ように見えるため）。
     /// </summary>
     [ObservableProperty] private string _branchFilter = "";
 
     /// <summary>絞り込み後のブランチ一覧。空語なら <see cref="BranchTree"/> と同一インスタンス。</summary>
     [ObservableProperty] private IReadOnlyList<BranchTreeNode> _filteredBranchTree = Array.Empty<BranchTreeNode>();
+
+    /// <summary>
+    /// Git ペイン左列のブランチ一覧の絞り込み語。<b>ポップアップの <see cref="BranchFilter"/> とは
+    /// 別に持つ</b>——同じ状態にすると、ブランチを切り替えようとポップアップを開いた瞬間に
+    /// （開くたびに空へ戻す作りなので）ペインで打った絞り込みが消える。用途も違って、
+    /// あちらは「切り替える1本を探す」使い捨て、こちらは「この範囲を見ている」という持続する状態。
+    /// </summary>
+    [ObservableProperty] private string _paneBranchFilter = "";
+
+    /// <summary>ペイン左列の絞り込み後のブランチ一覧。空語なら <see cref="BranchTree"/> と同一インスタンス
+    /// （作り直さない＝フォルダの開閉と選択が生きる）。</summary>
+    [ObservableProperty] private IReadOnlyList<BranchTreeNode> _paneFilteredBranchTree = Array.Empty<BranchTreeNode>();
+
+    /// <summary>絞り込み中か（解除ボタンの出し入れ）。判定は一覧を絞る側と<b>同じ述語</b>にする
+    /// ——空白だけを打ったときに「✕ は出るが一覧は絞られていない」という嘘になる。</summary>
+    public bool HasPaneBranchFilter => !string.IsNullOrWhiteSpace(PaneBranchFilter);
 
     /// <summary>現在ブランチの上流との差。ポップアップの同期帯がプル／プッシュの件数として出す。</summary>
     [ObservableProperty] private int _ahead;
@@ -231,6 +248,7 @@ public sealed partial class GitSessionViewModel : ObservableObject
             _allBranches = Array.Empty<GitBranchInfo>();
             BranchTree = Array.Empty<BranchTreeNode>();
             FilteredBranchTree = BranchTree;
+            PaneFilteredBranchTree = BranchTree;
             RemoteLabel = "";
             UpstreamLabel = "";
             Ahead = Behind = 0;
@@ -264,6 +282,7 @@ public sealed partial class GitSessionViewModel : ObservableObject
         _allBranches = overview.Branches;
         BranchTree = BranchTreeBuilder.Update(BranchTree, _allBranches);
         UpdateFilteredBranchTree();
+        UpdatePaneFilteredBranchTree();
         UpdateRemote(overview.Remotes);
         var remoteUrls = await _git.GetRemoteUrlsAsync();
         Remotes = remoteUrls;
@@ -294,6 +313,16 @@ public sealed partial class GitSessionViewModel : ObservableObject
 
     partial void OnBranchFilterChanged(string value) => UpdateFilteredBranchTree();
 
+    partial void OnPaneBranchFilterChanged(string value)
+    {
+        OnPropertyChanged(nameof(HasPaneBranchFilter));
+        UpdatePaneFilteredBranchTree();
+    }
+
+    /// <summary>絞り込みを解除して一覧を元のツリーへ戻す（ペイン左列の「✕」と Esc から）。</summary>
+    [RelayCommand]
+    private void ClearPaneBranchFilter() => PaneBranchFilter = "";
+
     partial void OnGitHubRepositoryUrlChanged(string? value)
     {
         OnPropertyChanged(nameof(IsGitHubRepository));
@@ -305,6 +334,37 @@ public sealed partial class GitSessionViewModel : ObservableObject
         FilteredBranchTree = string.IsNullOrWhiteSpace(BranchFilter)
             ? BranchTree
             : BranchTreeBuilder.BuildFiltered(_allBranches, BranchFilter);
+
+    /// <summary>最後に絞り込み結果を組んだときの入力（元ツリーと語）。同じなら組み直さないための控え。</summary>
+    private IReadOnlyList<BranchTreeNode>? _paneFilterSource;
+    private string _paneFilterTerm = "";
+
+    /// <summary>
+    /// <see cref="UpdateFilteredBranchTree"/> のペイン左列版。ただしこちらは<b>組み直しを抑える</b>
+    /// ——<see cref="RefreshAsync"/> は <c>RepositoryChanged</c> のたびに走り、それはファイルを保存した
+    /// だけでも飛ぶ。毎回新しいリストを入れると TreeView がコンテナを作り直し、絞り込んで選んだ行の
+    /// 選択もフォーカスも（出かけていた操作メニューごと）落ちる。ブランチ構成が変わらない限り
+    /// <see cref="BranchTree"/> は同一インスタンスなので（<see cref="BranchTreeBuilder.Update"/>）、
+    /// それと語の組が前回と同じなら何もしない。
+    /// </summary>
+    private void UpdatePaneFilteredBranchTree()
+    {
+        if (string.IsNullOrWhiteSpace(PaneBranchFilter))
+        {
+            _paneFilterSource = null;
+            _paneFilterTerm = "";
+            PaneFilteredBranchTree = BranchTree;
+            return;
+        }
+
+        var term = PaneBranchFilter.Trim();
+        if (ReferenceEquals(_paneFilterSource, BranchTree) && _paneFilterTerm == term)
+            return;
+
+        _paneFilterSource = BranchTree;
+        _paneFilterTerm = term;
+        PaneFilteredBranchTree = BranchTreeBuilder.BuildFiltered(_allBranches, term);
+    }
 
     public Task LoadMoreLogAsync() => History.LoadMoreAsync();
     public Task ShowBranchLogAsync(GitBranchInfo branch) => History.ShowBranchAsync(branch);
