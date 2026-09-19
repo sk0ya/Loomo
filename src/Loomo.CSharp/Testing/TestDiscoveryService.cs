@@ -32,7 +32,7 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
 
         var files = solution.Projects
             .Where(project => project.State == ProjectLoadState.Ready && project.IsTestProject)
-            .SelectMany(project => project.SelectedTargetFrameworkModel?.CompileFiles ?? [])
+            .SelectMany(project => project.SelectedTargetFrameworkModel?.AuthoredCompileFiles ?? [])
             .Where(item => string.Equals(Path.GetExtension(item.FullPath), ".cs",
                 StringComparison.OrdinalIgnoreCase))
             .Select(item => item.FullPath);

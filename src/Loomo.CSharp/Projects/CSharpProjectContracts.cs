@@ -56,4 +56,7 @@ public sealed record ProjectItemEvaluation(
     string? FullPath = null,
     string? Link = null,
     string? OutputItemType = null,
-    bool? ReferenceOutputAssembly = null);
+    bool? ReferenceOutputAssembly = null,
+    // design-time buildが中間出力へ生成した項目（XAMLの*.g.cs、AssemblyInfo、global usings）。
+    // コンパイラには要るが、ユーザーが開く・編集する対象ではない。
+    bool IsGenerated = false);

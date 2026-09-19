@@ -257,7 +257,8 @@ public sealed class SolutionModelService : ISolutionModelService, IDisposable
             };
 
     private static IReadOnlyList<ProjectItem> ToItems(IEnumerable<ProjectItemEvaluation> items, string projectPath)
-        => items.Select(i => new ProjectItem(i.Include, ResolveItemPath(projectPath, i) ?? i.Include, i.Link)).ToList();
+        => items.Select(i => new ProjectItem(
+            i.Include, ResolveItemPath(projectPath, i) ?? i.Include, i.Link, i.IsGenerated)).ToList();
 
     private static string? ResolveItemPath(string projectPath, ProjectItemEvaluation item)
     {

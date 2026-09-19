@@ -107,7 +107,7 @@ public static class CSharpSolutionTreeBuilder
     private static void AddTargetFrameworkChildren(
         List<CSharpSolutionNode> destination, ProjectModel project, TargetFrameworkModel tfm)
     {
-        AddFileTree(destination, project.Directory, tfm.CompileFiles, CSharpSolutionNodeKind.File);
+        AddFileTree(destination, project.Directory, tfm.AuthoredCompileFiles, CSharpSolutionNodeKind.File);
         AddItemGroup(destination, "アナライザー", CSharpSolutionNodeKind.Analyzer, tfm.Analyzers);
         AddItemGroup(destination, "追加ファイル", CSharpSolutionNodeKind.AdditionalFile, tfm.AdditionalFiles);
         AddItemGroup(destination, "その他ファイル", CSharpSolutionNodeKind.NoneFile, tfm.NoneFiles);

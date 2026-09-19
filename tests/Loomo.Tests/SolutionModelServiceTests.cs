@@ -454,6 +454,57 @@ public sealed class SolutionModelServiceTests : IDisposable
         Assert.True(evaluator.Requests.Count > 1);
     }
 
+    [Fact]
+    public async Task Generated_compile_items_stay_in_the_compilation_but_out_of_the_authored_list()
+    {
+        var projectDir = Directory.CreateDirectory(Path.Combine(_root, "src", "App")).FullName;
+        var projectPath = Path.Combine(projectDir, "App.csproj");
+        var sourcePath = Path.Combine(projectDir, "MainWindow.xaml.cs");
+        var generatedPath = Path.Combine(projectDir, "obj", "Debug", "MainWindow.g.cs");
+        File.WriteAllText(projectPath, "<Project />");
+
+        var workspace = new FakeWorkspaceService();
+        workspace.OpenFolder(_root);
+        var evaluator = new FakeEvaluator();
+        evaluator.Set(projectPath, null, new ProjectEvaluation("net10.0", "", "", "latest",
+            [new("MainWindow.xaml.cs", sourcePath),
+             new("obj/Debug/MainWindow.g.cs", generatedPath, IsGenerated: true)],
+            [], [], [], [], false));
+
+        using var service = new SolutionModelService(workspace, evaluator);
+        var model = await service.ReloadAsync();
+
+        var target = Assert.Single(model.Projects).SelectedTargetFrameworkModel!;
+        // 意味解析はx:Nameのフィールドを見つけられないといけないので、生成ソースもCompileFilesに残る。
+        Assert.Equal(2, target.CompileFiles.Count);
+        Assert.Contains(target.CompileFiles, item => item.IsGenerated);
+        // 人が開く・書き換える対象を数え上げる側には出さない。
+        Assert.Equal([sourcePath], target.AuthoredCompileFiles.Select(item => item.FullPath));
+        // Solution Explorerは中間出力の中身を並べない。
+        var tree = CSharpSolutionTreeBuilder.Build(model);
+        Assert.DoesNotContain("MainWindow.g.cs", Flatten(tree).Select(node => node.Name));
+    }
+
+    private static IEnumerable<CSharpSolutionNode> Flatten(CSharpSolutionNode node)
+        => new[] { node }.Concat(node.Children.SelectMany(Flatten));
+
+    [Theory]
+    // 中間出力の下＝生成ソース。絶対パスでも、プロジェクト基準の相対Includeでも同じ判定になる。
+    [InlineData(@"C:\work\app\obj\Debug\MainWindow.g.cs", true)]
+    [InlineData(@"obj\Debug\MainWindow.g.cs", true)]
+    // 兄弟ディレクトリを前方一致で飲み込まない。
+    [InlineData(@"C:\work\app\obj2\Other.cs", false)]
+    [InlineData(@"C:\work\app\Views\MainWindow.xaml.cs", false)]
+    public void Generated_classification_asks_the_intermediate_output_not_the_file_name(
+        string include, bool expected)
+    {
+        var marked = MsBuildProjectEvaluator.MarkGenerated(
+            [new ProjectItemEvaluation(include, Path.IsPathRooted(include) ? include : null)],
+            @"C:\work\app\App.csproj", @"obj\Debug\");
+
+        Assert.Equal(expected, Assert.Single(marked).IsGenerated);
+    }
+
     private sealed class FakeEvaluator : IProjectEvaluator
     {
         private readonly Dictionary<(string Path, string? TargetFramework), ProjectEvaluation> _values = new();

@@ -41,7 +41,7 @@ public static class CSharpFixAllPlanner
         if (project.State != ProjectLoadState.Ready)
             return Failure("対象のC#プロジェクトがまだ読み込まれていません。");
 
-        var isCompileFile = project.SelectedTargetFrameworkModel?.CompileFiles.Any(item =>
+        var isCompileFile = project.SelectedTargetFrameworkModel?.AuthoredCompileFiles.Any(item =>
             string.Equals(Path.GetFullPath(item.FullPath), fullPath,
                 StringComparison.OrdinalIgnoreCase)) == true;
         return isCompileFile
@@ -72,7 +72,7 @@ public static class CSharpFixAllPlanner
             ? solution.Projects.Where(candidate => candidate.State == ProjectLoadState.Ready).ToArray()
             : [project];
         var files = projects
-            .SelectMany(candidate => candidate.SelectedTargetFrameworkModel?.CompileFiles ?? [])
+            .SelectMany(candidate => candidate.SelectedTargetFrameworkModel?.AuthoredCompileFiles ?? [])
             .Select(item => Path.GetFullPath(item.FullPath))
             .Where(IsCSharpSource)
             .Where(File.Exists)

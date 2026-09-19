@@ -30,6 +30,10 @@ public sealed record CSharpWorkspaceSourceSnapshot(
 
 /// <summary>Roslyn構文fallbackが参照型を解決するためのC#ソーススナップショットを作る。
 /// 選択プロジェクトとProjectReference先だけを辿り、巨大ファイルや未読込プロジェクトは読み飛ばす。
+/// <b>ビルドの生成ソース（XAMLの<c>*.g.cs</c>等）も読む</b>——コンパイラが見る入力と同じにするため。
+/// これを「中間出力だから」と省くと、<c>x:Name</c>のフィールドと<c>InitializeComponent</c>を宣言する
+/// partial halfが落ち、コードビハインド全体がCS0103の誤検出になる
+/// （<see cref="TargetFrameworkModel.AuthoredCompileFiles"/>）。
 /// 現在のEditor本文は最後に上書きし、未保存内容を常に正本にする。<c>openTexts</c>を渡した場合は、
 /// アクティブ文書以外の開いているCompileファイルも同じように未保存本文を優先する。</summary>
 public static class CSharpWorkspaceSourceLoader

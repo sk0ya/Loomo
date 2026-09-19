@@ -698,6 +698,20 @@ Rider相当を「コマンドの数」として追わない。プロジェクト
   C#関連383件とBuild（警告0／エラー0）も合格した。全体テストは別の`GitHistoryFilterTests`一過性失敗後に無出力化したため、全体成功とは扱わない。
 - `GitHistoryFilterTests`の明示`ReloadAsync`とデバウンス再読込の世代競合を修正し、履歴テストを3回連続で合格させた。
   ゴミ箱走査修正と合わせた全体`dotnet test`は2,982合格・2スキップ・失敗0（合計2,984、5分7秒）で完走した。
+- MSBuild評価の実行ターゲットを`ResolveReferences`から`Compile`（design-time build）へ広げ、ビルドが`@(Compile)`へ
+  足す生成ソース——XAMLの`*.g.cs`、`AssemblyInfo.cs`、global usings——を意味解析のCompilationへ入れるようにした。
+  これが欠けると`x:Name`のフィールドと`InitializeComponent`を宣言するpartial halfが落ち、WPFのコードビハインドが
+  丸ごとCS0103（名前が存在しません）の誤検出になっていた。`MarkupCompilePass1`のような生成ターゲットを名指しせず
+  `Compile`を指すのは、WPF以外に存在しないターゲット名でプロジェクト種別ごとの分岐とMSB4057を作らないため。
+  生成ソースは中間出力（`$(IntermediateOutputPath)`）の下かで判別して`ProjectItem.IsGenerated`に印を付け、
+  Solution Explorerの一覧・テスト探索・Fix Allの書き換え対象は`AuthoredCompileFiles`だけを見る。
+  fixtureのWPFプロジェクトへ`x:Name`参照を足した実MSBuild回帰と、分類の境界（兄弟`obj2`、相対Include）、
+  モデル伝播の単体テストで確認した。
+  あわせて評価の`dotnet msbuild`へ`/m:1 /nodeReuse:false`を付けた。`dotnet msbuild`の既定（`-maxcpucount`＋
+  node reuse）はワーカーノードを別プロセスで起こしてビルド後も15分常駐させ、そのノードが
+  リダイレクトした標準出力のハンドルを継承するため、msbuild本体が終了しても`ReadToEndAsync`が返らない。
+  design-time buildへ広げた時点で実際に評価が13分ハングした（testhostのCPUは1.4秒＝計算ではなく待ち）。
+  プロジェクト単位の並列化は`SolutionModelService`が持っているので、1評価は単一プロセスで走らせる。
 
 ## §33.3 設計原則
 

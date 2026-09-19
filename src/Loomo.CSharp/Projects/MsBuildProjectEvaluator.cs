@@ -8,7 +8,7 @@ namespace sk0ya.Loomo.CSharp.Projects;
 public sealed class MsBuildProjectEvaluator : IProjectEvaluator
 {
     private static readonly string[] Properties = ["TargetFramework", "TargetFrameworks", "DefineConstants", "LangVersion",
-        "Nullable", "ProjectAssetsFile", "AssemblyName"];
+        "Nullable", "ProjectAssetsFile", "AssemblyName", "IntermediateOutputPath"];
     private static readonly string[] Items = ["Compile", "ProjectReference", "Analyzer", "AdditionalFiles", "None", "PackageReference", "ReferencePath"];
 
     public async Task<ProjectEvaluation> EvaluateAsync(string projectPath, string? targetFramework,
@@ -18,18 +18,19 @@ public sealed class MsBuildProjectEvaluator : IProjectEvaluator
     public async Task<ProjectEvaluation> EvaluateAsync(string projectPath, string? targetFramework,
         string? configuration, CancellationToken cancellationToken = default)
     {
-        // まず参照解決まで走らせる。失敗したら評価だけに落として、少なくとも Compile 項目は返す。
+        // まずdesign-time buildまで走らせる。失敗したら評価だけに落として、少なくとも作成済みの
+        // Compile 項目は返す（生成ソースと参照は欠ける）。
         var (exitCode, stdout, stderr) = await RunAsync(
-            projectPath, targetFramework, configuration, resolveReferences: true, cancellationToken);
+            projectPath, targetFramework, configuration, designTimeBuild: true, cancellationToken);
         if (exitCode != 0)
             (exitCode, stdout, stderr) = await RunAsync(
-                projectPath, targetFramework, configuration, resolveReferences: false, cancellationToken);
+                projectPath, targetFramework, configuration, designTimeBuild: false, cancellationToken);
         if (exitCode != 0)
             throw new InvalidOperationException($"MSBuild評価に失敗しました ({exitCode}): {stderr.Trim()}");
 
         try
         {
-            var evaluation = Parse(stdout);
+            var evaluation = Parse(stdout, projectPath);
             evaluation = AddPackageAnalyzers(evaluation, projectPath, targetFramework);
             return await AddProjectReferenceAnalyzersAsync(
                 evaluation, projectPath, targetFramework, configuration, cancellationToken);
@@ -40,16 +41,26 @@ public sealed class MsBuildProjectEvaluator : IProjectEvaluator
     /// <summary>
     /// <c>dotnet msbuild</c> を1回走らせる。
     ///
-    /// <para><paramref name="resolveReferences"/> が要るのは <c>@(ReferencePath)</c> のため——
-    /// <c>-getProperty</c>／<c>-getItem</c> だけを渡すと MSBuild は<b>評価しかせずターゲットを実行しない</b>ので、
-    /// <c>ResolveAssemblyReferences</c> が作る <c>@(ReferencePath)</c> は必ず空になる。参照が空だと
-    /// 意味解析（診断・リファクタリング）が「このプロジェクトの参照」を一切知らないまま走ることになる。
+    /// <para><paramref name="designTimeBuild"/> が要るのは、<c>-getProperty</c>／<c>-getItem</c> だけを渡すと
+    /// MSBuild が<b>評価しかせずターゲットを実行しない</b>ためで、そこで欠けるものが2つある。
+    /// ひとつは <c>@(ReferencePath)</c>——<c>ResolveAssemblyReferences</c> が作るので必ず空になり、
+    /// 意味解析（診断・リファクタリング）が「このプロジェクトの参照」を知らないまま走る。
+    /// もうひとつは<b>生成ソース</b>——XAMLの <c>*.g.cs</c>、<c>AssemblyInfo.cs</c>、global usings は
+    /// プロジェクトのファイル一覧ではなく、<c>Compile</c> までのターゲットが <c>@(Compile)</c> へ<b>足す</b>。
+    /// これが欠けると <c>x:Name</c> のフィールドと <c>InitializeComponent</c> を宣言する partial half が
+    /// Compilation に入らず、コードビハインド全体がCS0103（名前が存在しません）の誤検出になる。</para>
+    ///
+    /// <para>走らせるターゲットが <c>ResolveReferences</c> ではなく <c>Compile</c> なのはそのため。
+    /// <c>MarkupCompilePass1</c> のような生成ターゲットを名指しすると、Loomo が「どの生成ターゲットが要るか」を
+    /// プロジェクト種別ごとに数え上げることになり、しかもWPF以外には存在しないターゲット名なので
+    /// 非WPFプロジェクトが軒並み MSB4057 で失敗する。<c>Compile</c> は全プロジェクトに在り、
+    /// 各SDKが自分の生成ターゲットをその前段へ繋いでいる。
     /// コンパイル自体は要らないので <c>SkipCompilerExecution</c>／<c>BuildProjectReferences=false</c> を付け、
     /// 参照プロジェクトはビルドせず TargetPath だけ解決させる（IDE の design-time build と同じ形）。</para>
     /// </summary>
     private static async Task<(int ExitCode, string Stdout, string Stderr)> RunAsync(
         string projectPath, string? targetFramework, string? configuration,
-        bool resolveReferences, CancellationToken cancellationToken)
+        bool designTimeBuild, CancellationToken cancellationToken)
     {
         using var process = new Process
         {
@@ -64,9 +75,10 @@ public sealed class MsBuildProjectEvaluator : IProjectEvaluator
         };
         process.StartInfo.ArgumentList.Add("msbuild");
         process.StartInfo.ArgumentList.Add(projectPath);
-        if (resolveReferences)
+        AddSingleProcessSwitches(process.StartInfo);
+        if (designTimeBuild)
         {
-            process.StartInfo.ArgumentList.Add("/t:ResolveReferences");
+            process.StartInfo.ArgumentList.Add("/t:Compile");
             process.StartInfo.ArgumentList.Add("/p:BuildProjectReferences=false");
             process.StartInfo.ArgumentList.Add("/p:SkipCompilerExecution=true");
         }
@@ -111,7 +123,22 @@ public sealed class MsBuildProjectEvaluator : IProjectEvaluator
         }
     }
 
-    private static ProjectEvaluation Parse(string json)
+    /// <summary>MSBuildを<b>このプロセスだけ</b>で走らせる。
+    ///
+    /// <para><c>dotnet msbuild</c> は既定で <c>-maxcpucount</c>＋node reuse なので、ワーカーノードを
+    /// 別プロセスとして起こし、それをビルド後も15分間常駐させる。そのノードは親から
+    /// <b>リダイレクトした標準出力のハンドルを継承する</b>ので、msbuild本体が終了しても
+    /// <c>ReadToEndAsync</c> が返らない——評価1回がノードの寿命ぶん止まる（design-time buildへ
+    /// 広げた時点で実際に13分ハングした）。プロジェクト1つの評価に並列ノードは要らないので、
+    /// 単一プロセスで走らせて常駐ノードを作らせない。並列化はプロジェクト単位で
+    /// <see cref="SolutionModelService"/> が既に持っている。</para></summary>
+    private static void AddSingleProcessSwitches(ProcessStartInfo startInfo)
+    {
+        startInfo.ArgumentList.Add("/m:1");
+        startInfo.ArgumentList.Add("/nodeReuse:false");
+    }
+
+    private static ProjectEvaluation Parse(string json, string projectPath)
     {
         using var doc = JsonDocument.Parse(json);
         var root = doc.RootElement;
@@ -139,7 +166,8 @@ public sealed class MsBuildProjectEvaluator : IProjectEvaluator
             }).Where(x => x.Include.Length > 0).ToList();
         }
         return new ProjectEvaluation(Property("TargetFramework"), Property("TargetFrameworks"),
-            Property("DefineConstants"), Property("LangVersion"), ReadItems("Compile"),
+            Property("DefineConstants"), Property("LangVersion"),
+            MarkGenerated(ReadItems("Compile"), projectPath, Property("IntermediateOutputPath")),
             ReadItems("ProjectReference"), ReadItems("Analyzer"), ReadItems("AdditionalFiles"),
             ReadItems("None"), ReadTestProject(), ReadItems("PackageReference"), ReadItems("ReferencePath"),
             Property("ProjectAssetsFile"), Property("Nullable"), Property("AssemblyName"));
@@ -150,6 +178,55 @@ public sealed class MsBuildProjectEvaluator : IProjectEvaluator
             return string.Equals(marker, "true", StringComparison.OrdinalIgnoreCase)
                 || ReadItems("PackageReference").Any(i => i.Include.Equals("Microsoft.NET.Test.Sdk", StringComparison.OrdinalIgnoreCase));
         }
+    }
+
+    /// <summary>design-time buildが<c>@(Compile)</c>へ足した<b>生成ソース</b>に印を付ける。
+    /// 判定は「プロジェクトの中間出力（<c>$(IntermediateOutputPath)</c>）の下にあるか」——
+    /// <c>*.g.cs</c>のような名前や<c>obj</c>という綴りを当てにしない。SDKごとに生成ターゲットも
+    /// 出力先の綴りも違い、中間出力はMSBuild自身が知っている唯一の正本だから。
+    ///
+    /// <para>印が要るのは、これらが<b>コンパイラには必要でユーザーには見せない</b>ファイルだから。
+    /// 意味解析（<see cref="CSharpWorkspaceSourceLoader"/>）は全部を読み、Solution Explorerの一覧・
+    /// テスト探索・Fix Allの書き換え対象は
+    /// <see cref="TargetFrameworkModel.AuthoredCompileFiles"/> だけを見る。</para></summary>
+    internal static IReadOnlyList<ProjectItemEvaluation> MarkGenerated(
+        IReadOnlyList<ProjectItemEvaluation> items, string projectPath, string? intermediateOutputPath)
+    {
+        if (string.IsNullOrWhiteSpace(intermediateOutputPath)) return items;
+        string projectDirectory;
+        string intermediateDirectory;
+        try
+        {
+            projectDirectory = Path.GetDirectoryName(Path.GetFullPath(projectPath))!;
+            intermediateDirectory = Path.TrimEndingDirectorySeparator(
+                Path.GetFullPath(Path.Combine(projectDirectory, intermediateOutputPath)));
+        }
+        catch (ArgumentException) { return items; }
+
+        return items.Select(item =>
+            item.IsGenerated || !IsUnder(intermediateDirectory, projectDirectory, item)
+                ? item
+                : item with { IsGenerated = true }).ToArray();
+    }
+
+    /// <summary>項目が指定ディレクトリの下にあるか。相対Includeはプロジェクトの場所を基準に解決し
+    /// （カレントディレクトリではない）、比較は区切り文字まで含める——前方一致だけだと
+    /// <c>obj</c> の判定が <c>obj2</c> のような兄弟ディレクトリを取り込む。</summary>
+    private static bool IsUnder(string directory, string projectDirectory, ProjectItemEvaluation item)
+    {
+        var candidate = item.FullPath ?? item.Include;
+        if (string.IsNullOrWhiteSpace(candidate)) return false;
+        try
+        {
+            var full = Path.GetFullPath(Path.IsPathRooted(candidate)
+                ? candidate
+                : Path.Combine(projectDirectory, candidate));
+            return full.Length > directory.Length &&
+                   full.StartsWith(directory, StringComparison.OrdinalIgnoreCase) &&
+                   (full[directory.Length] == Path.DirectorySeparatorChar ||
+                    full[directory.Length] == Path.AltDirectorySeparatorChar);
+        }
+        catch (ArgumentException) { return false; }
     }
 
     /// <summary>NuGetの依存パッケージAnalyzerは通常のMSBuild評価だけでは@(Analyzer)に現れない。
@@ -273,6 +350,7 @@ public sealed class MsBuildProjectEvaluator : IProjectEvaluator
         };
         process.StartInfo.ArgumentList.Add("msbuild");
         process.StartInfo.ArgumentList.Add(projectPath);
+        AddSingleProcessSwitches(process.StartInfo);
         // MSBuild emits a bare scalar for a single requested property. Request a harmless
         // second property so the result is always the JSON envelope parsed below.
         process.StartInfo.ArgumentList.Add("/getProperty:TargetPath,AssemblyName");

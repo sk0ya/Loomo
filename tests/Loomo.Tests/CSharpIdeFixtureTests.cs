@@ -102,6 +102,36 @@ public sealed class CSharpIdeFixtureTests
     }
 
     [Fact]
+    public async Task Wpf_code_behind_is_diagnosed_with_the_generated_half_of_its_partial_class()
+    {
+        var root = FixtureRoot;
+        var projectPath = Path.Combine(root, "src", "Client", "Client.csproj");
+        var sourcePath = Path.Combine(root, "src", "Client", "MainWindow.xaml.cs");
+
+        var evaluation = await new MsBuildProjectEvaluator().EvaluateAsync(projectPath, null, "Debug");
+
+        // XAMLの*.g.cs は「プロジェクトのファイル」ではなく、Compileまでのターゲットが@(Compile)へ足す。
+        // 評価しか走らせないと必ず欠け、x:Nameのフィールドと InitializeComponent を宣言している
+        // partial halfごと Compilation から消える。
+        var generated = Assert.Single(evaluation.Compile, item =>
+            (item.FullPath ?? item.Include).EndsWith("MainWindow.g.cs", StringComparison.OrdinalIgnoreCase));
+        Assert.True(generated.IsGenerated);
+
+        var project = CreateProjectModel(projectPath, evaluation, evaluation.TargetFramework!);
+        var solution = new SolutionModel(
+            Path.Combine(root, "CSharpIde.sln"), "CSharpIde", root, [project], ProjectLoadState.Ready);
+        var source = await File.ReadAllTextAsync(sourcePath);
+
+        var result = await new CSharpCompilerDiagnosticService().AnalyzeAsync(solution, sourcePath, source);
+
+        Assert.Null(result.Error);
+        Assert.DoesNotContain(result.Diagnostics, diagnostic => diagnostic.Code == "CS0103");
+        // 生成ソースはコンパイラへは渡すが、人へ見せる一覧・書き換え対象には混ぜない。
+        Assert.DoesNotContain(project.SelectedTargetFrameworkModel!.AuthoredCompileFiles,
+            item => item.FullPath.EndsWith("MainWindow.g.cs", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public async Task Fixture_runs_the_build_gate_and_test_journey()
     {
         var root = FixtureRoot;
@@ -1156,7 +1186,8 @@ public sealed class CSharpIdeFixtureTests
         var directory = Path.GetDirectoryName(Path.GetFullPath(projectPath))!;
         static ProjectItem ToItem(ProjectItemEvaluation item, string projectDirectory)
             => new(item.Include,
-                Path.GetFullPath(Path.Combine(projectDirectory, item.FullPath ?? item.Include)), item.Link);
+                Path.GetFullPath(Path.Combine(projectDirectory, item.FullPath ?? item.Include)), item.Link,
+                item.IsGenerated);
 
         var target = new TargetFrameworkModel(targetFramework,
             (evaluation.DefineConstants ?? "").Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),

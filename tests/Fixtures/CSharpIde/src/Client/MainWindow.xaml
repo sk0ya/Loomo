@@ -3,6 +3,8 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="CSharp Fixture" Height="120" Width="320">
   <Grid>
-    <TextBlock Text="C# IDE fixture" HorizontalAlignment="Center" VerticalAlignment="Center" />
+    <!-- x:Name のフィールドは obj の *.g.cs 側に生成される。コードビハインドから参照して、
+         生成ソースを含まない Compilation が CS0103 を誤検出しないことを回帰で押さえる。 -->
+    <TextBlock x:Name="StatusText" Text="C# IDE fixture" HorizontalAlignment="Center" VerticalAlignment="Center" />
   </Grid>
 </Window>

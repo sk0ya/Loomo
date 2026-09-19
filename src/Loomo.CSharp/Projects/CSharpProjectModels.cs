@@ -14,7 +14,10 @@ public enum ProjectLoadState
 }
 
 /// <summary>MSBuild item の解決済みパスと、プロジェクト内での相対表記。</summary>
-public sealed record ProjectItem(string Include, string FullPath, string? Link = null);
+/// <param name="IsGenerated">ビルドが中間出力へ生成した項目か。詳細は
+/// <see cref="TargetFrameworkModel.AuthoredCompileFiles"/>。</param>
+public sealed record ProjectItem(string Include, string FullPath, string? Link = null,
+    bool IsGenerated = false);
 
 /// <summary>1つの TargetFramework に対するMSBuild評価結果。</summary>
 public sealed record TargetFrameworkModel(
@@ -26,6 +29,19 @@ public sealed record TargetFrameworkModel(
     IReadOnlyList<ProjectItem> AdditionalFiles,
     IReadOnlyList<ProjectItem> NoneFiles)
 {
+    /// <summary>ユーザーが書いたCompileファイルだけ（＝ビルドの生成ソースを除いた <see cref="CompileFiles"/>）。
+    ///
+    /// <para><see cref="CompileFiles"/> は<b>コンパイラが見る入力そのもの</b>で、XAMLの<c>*.g.cs</c>・
+    /// <c>AssemblyInfo.cs</c>・global usings といったビルド生成ソースを含む。意味解析はこれを全部
+    /// 読まなければならない——<c>x:Name</c>のフィールドと<c>InitializeComponent</c>はそこにしか無く、
+    /// 欠けるとコードビハインドが丸ごとCS0103の誤検出になる。</para>
+    ///
+    /// <para>逆に<b>人が開く・書き換える対象を数え上げる側</b>（Solution Explorerの一覧、テスト探索、
+    /// Fix Allの適用対象）はこちらを使う。生成ソースを混ぜると、中間出力の中身が一覧に並び、
+    /// 次のビルドで消える場所を書き換えることになる。</para></summary>
+    public IReadOnlyList<ProjectItem> AuthoredCompileFiles
+        => CompileFiles.Where(file => !file.IsGenerated).ToArray();
+
     /// <summary>このTFMのMSBuild評価で有効になったProjectReference。
     /// nullは旧来の簡易モデルを表し、プロジェクト全体の参照へフォールバックする。</summary>
     public IReadOnlyList<string>? ProjectReferences { get; init; }
