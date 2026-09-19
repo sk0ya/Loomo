@@ -269,10 +269,12 @@
                 <!-- ブランチ一覧＋タグ一覧。コミット一覧の見出し「コミット」の左の開閉ボタンで
                      列ごと畳める（非表示時は列の幅ごと 0 にする＝ApplyBranchColumnVisibility）。 -->
                 <Grid x:Name="BranchPanel" Grid.Column="0">
+                    <!-- 下段が3セクションの縦積みから切替式になったぶん、既定の取り分をブランチへ寄せる
+                         （下段はどの種類でも「見出し1行＋一覧」の同じ高さで足りる）。 -->
                     <Grid.RowDefinitions>
-                        <RowDefinition Height="2*" MinHeight="80" />
+                        <RowDefinition Height="3*" MinHeight="80" />
                         <RowDefinition Height="6" />
-                        <RowDefinition Height="1*" MinHeight="60" />
+                        <RowDefinition Height="1*" MinHeight="70" />
                     </Grid.RowDefinitions>
 
                     <DockPanel Grid.Row="0">
@@ -369,15 +371,54 @@
                     <GridSplitter Grid.Row="1" Height="6" HorizontalAlignment="Stretch"
                                   Background="{DynamicResource Border}" />
 
-                    <!-- タグ一覧＋サブモジュール一覧 -->
-                    <Grid Grid.Row="2">
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="*" MinHeight="40" />
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                        </Grid.RowDefinitions>
+                    <!-- 参照（タグ／リモート／サブモジュール）。3つを縦に積むと、190px の列の中で
+                         本命のブランチ一覧が潰れる——とくにリモートは滅多に触らないのに場所だけ取る。
+                         切替式にして、空いた高さはブランチ側へ回す。選んだ種類は設定へ持ち越す。 -->
+                    <DockPanel Grid.Row="2">
+                        <!-- 種類の切替。EnumToBool で相互排他に振る舞わせる。押し直しで外れて見える
+                             （ToggleButton は Click の前に自分で反転する）のは、押されたボタンを
+                             結び直して直す＝OnReferenceTabClick。 -->
+                        <UniformGrid DockPanel.Dock="Top" Rows="1" Margin="6,2,6,3">
+                            <ToggleButton x:Name="RefTabTags" Style="{StaticResource ToolbarToggleButton}" Margin="0,0,3,0"
+                                          MinHeight="22" ToolTip="タグ"
+                                          IsChecked="{Binding EffectiveReferenceTab, Mode=OneWay,
+                                              Converter={StaticResource EnumToBool}, ConverterParameter=Tags}"
+                                          Tag="Tags" Click="OnReferenceTabClick">
+                                <TextBlock FontSize="{DynamicResource Fs11}">
+                                    <Run Text="タグ" /><Run Text=" " /><Run
+                                        Text="{Binding Tags.Count, Mode=OneWay}"
+                                        Foreground="{DynamicResource FgDim}" />
+                                </TextBlock>
+                            </ToggleButton>
+                            <ToggleButton x:Name="RefTabRemotes" Style="{StaticResource ToolbarToggleButton}" Margin="0,0,3,0"
+                                          MinHeight="22" ToolTip="リモート"
+                                          IsChecked="{Binding EffectiveReferenceTab, Mode=OneWay,
+                                              Converter={StaticResource EnumToBool}, ConverterParameter=Remotes}"
+                                          Tag="Remotes" Click="OnReferenceTabClick">
+                                <TextBlock FontSize="{DynamicResource Fs11}">
+                                    <Run Text="リモート" /><Run Text=" " /><Run
+                                        Text="{Binding Remotes.Count, Mode=OneWay}"
+                                        Foreground="{DynamicResource FgDim}" />
+                                </TextBlock>
+                            </ToggleButton>
+                            <!-- サブモジュールが無いワークスペースでは、そもそも選べるようにしない -->
+                            <ToggleButton x:Name="RefTabSubmodules" Style="{StaticResource ToolbarToggleButton}" MinHeight="22"
+                                          ToolTip="サブモジュール"
+                                          IsChecked="{Binding EffectiveReferenceTab, Mode=OneWay,
+                                              Converter={StaticResource EnumToBool}, ConverterParameter=Submodules}"
+                                          Tag="Submodules" Click="OnReferenceTabClick"
+                                          Visibility="{Binding HasSubmodules, Converter={StaticResource BoolToVis}}">
+                                <TextBlock FontSize="{DynamicResource Fs11}">
+                                    <Run Text="サブ" /><Run Text=" " /><Run
+                                        Text="{Binding Submodules.Count, Mode=OneWay}"
+                                        Foreground="{DynamicResource FgDim}" />
+                                </TextBlock>
+                            </ToggleButton>
+                        </UniformGrid>
 
-                        <DockPanel Grid.Row="0">
+                        <Grid>
+                        <DockPanel Visibility="{Binding EffectiveReferenceTab, Converter={StaticResource EnumToVis},
+                                       ConverterParameter=Tags}">
                             <DockPanel DockPanel.Dock="Top" Margin="8,2,8,2" LastChildFill="False">
                                 <Button DockPanel.Dock="Left" Style="{StaticResource ToolbarButton}"
                                         Content="＋ タグ" ToolTip="タグを作成…" Click="OnTagCreate" />
@@ -411,16 +452,15 @@
                         </DockPanel>
 
                         <!-- リモート一覧。行の右クリックで URL 変更・削除、見出しの「＋」で追加。
-                             リモートが1つも無いリポジトリでも見出しは出す（＝「追加できる場所」がここだと分かる）。 -->
-                        <DockPanel Grid.Row="1" Margin="0,6,0,0">
+                             リモートが1つも無いリポジトリでもこのタブは出す（＝「追加できる場所」がここだと分かる）。 -->
+                        <DockPanel Visibility="{Binding EffectiveReferenceTab, Converter={StaticResource EnumToVis},
+                                       ConverterParameter=Remotes}">
                             <DockPanel DockPanel.Dock="Top" Margin="8,2,8,2" LastChildFill="False">
-                                <TextBlock DockPanel.Dock="Left" Text="リモート" VerticalAlignment="Center"
-                                           FontSize="{DynamicResource Fs11}" Foreground="{DynamicResource FgDim}" />
                                 <Button DockPanel.Dock="Right" Style="{StaticResource ToolbarButton}" Margin="0"
                                         Content="＋ 追加" ToolTip="リモートを追加…" Click="OnRemoteAdd" />
                             </DockPanel>
                             <ListBox x:Name="RemoteList" Style="{StaticResource GitList}"
-                                     ItemsSource="{Binding Remotes}" MaxHeight="120"
+                                     ItemsSource="{Binding Remotes}"
                                      PreviewMouseRightButtonDown="OnListRightClickSelect">
                                 <ListBox.ContextMenu>
                                     <ContextMenu>
@@ -444,17 +484,15 @@
                             </ListBox>
                         </DockPanel>
 
-                        <!-- サブモジュール一覧（サブモジュールが無いワークスペースではセクションごと隠す） -->
-                        <DockPanel Grid.Row="2" Margin="0,6,0,0"
-                                   Visibility="{Binding Submodules.Count, Converter={StaticResource CountToVis}}">
+                        <!-- サブモジュール一覧（タブ自体がサブモジュールのあるときだけ） -->
+                        <DockPanel Visibility="{Binding EffectiveReferenceTab, Converter={StaticResource EnumToVis},
+                                       ConverterParameter=Submodules}">
                             <DockPanel DockPanel.Dock="Top" Margin="8,2,8,2" LastChildFill="False">
-                                <TextBlock DockPanel.Dock="Left" Text="サブモジュール" VerticalAlignment="Center"
-                                           FontSize="{DynamicResource Fs11}" Foreground="{DynamicResource FgDim}" />
                                 <Button DockPanel.Dock="Right" Style="{StaticResource ToolbarButton}" Margin="0"
                                         Content="同期" Click="OnSubmodulesSync" />
                             </DockPanel>
                             <ListBox x:Name="SubmoduleList" Style="{StaticResource GitList}"
-                                     ItemsSource="{Binding Submodules}" MaxHeight="160"
+                                     ItemsSource="{Binding Submodules}"
                                      PreviewMouseRightButtonDown="OnListRightClickSelect">
                                 <ListBox.ContextMenu>
                                     <ContextMenu>
@@ -478,7 +516,8 @@
                                 </ListBox.ItemTemplate>
                             </ListBox>
                         </DockPanel>
-                    </Grid>
+                        </Grid>
+                    </DockPanel>
                 </Grid>
 
                 <GridSplitter x:Name="BranchSplitter" Grid.Column="1" Width="6" HorizontalAlignment="Stretch"

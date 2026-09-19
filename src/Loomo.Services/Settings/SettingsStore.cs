@@ -116,6 +116,9 @@ public sealed class SettingsStore
         /// <summary>Git ペインのブランチ一覧列の表示ON/OFF。null=旧設定（未指定）→ 既定（表示）を維持。</summary>
         public bool? GitBranchColumnVisible { get; set; }
 
+        /// <summary>Git ペイン左列の下段で選んでいる参照の種類。null=旧設定（未指定）→ 既定（タグ）を維持。</summary>
+        public string? GitReferenceTab { get; set; }
+
         /// <summary>ブラウザのブックマークバーの表示ON/OFF。null=旧設定（未指定）→ 既定（表示）を維持。</summary>
         public bool? BrowserBookmarkBarVisible { get; set; }
 
@@ -139,6 +142,7 @@ public sealed class SettingsStore
             TrailVisible = s.TrailVisible,
             GitCommitDetailVisible = s.GitCommitDetailVisible,
             GitBranchColumnVisible = s.GitBranchColumnVisible,
+            GitReferenceTab = s.GitReferenceTab,
             BrowserBookmarkBarVisible = s.BrowserBookmarkBarVisible,
             Local = PersistedProvider.From(s.Local),
             Safety = PersistedSafety.From(s.Safety),
@@ -162,6 +166,7 @@ public sealed class SettingsStore
             if (TrailVisible is { } trail) s.TrailVisible = trail; // 旧設定（null）は既定（表示）を維持
             if (GitCommitDetailVisible is { } gitDetail) s.GitCommitDetailVisible = gitDetail; // 同上
             if (GitBranchColumnVisible is { } gitBranches) s.GitBranchColumnVisible = gitBranches; // 同上
+            if (GitReferenceTab is { Length: > 0 } gitRefTab) s.GitReferenceTab = gitRefTab;      // 同上
             if (BrowserBookmarkBarVisible is { } bookmarkBar) s.BrowserBookmarkBarVisible = bookmarkBar; // 同上
             Local.ApplyTo(s.Local);
             Safety.ApplyTo(s.Safety);

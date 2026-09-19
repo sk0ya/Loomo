@@ -16,6 +16,14 @@ using sk0ya.Loomo.Services;
 
 namespace sk0ya.Loomo.App.ViewModels;
 
+/// <summary>Git ペイン左列の下段で切り替える参照の種類。</summary>
+public enum GitReferenceTab
+{
+    Tags,
+    Remotes,
+    Submodules,
+}
+
 /// <summary>
 /// Git セッションペインの ViewModel。コミットグラフ（git log --graph）・ブランチ一覧と、
 /// rebase / merge / cherry-pick / reset などサイドバーに収まらない操作を担う。
@@ -80,6 +88,38 @@ public sealed partial class GitSessionViewModel : ObservableObject
         catch { /* 永続化に失敗しても表示切替自体は効かせる */ }
     }
 
+    /// <summary>
+    /// 左列の下段で選んでいる参照の種類。タグ／リモート／サブモジュールを縦に積むと、本命の
+    /// ブランチ一覧が 190px の列の中で潰れる（リモートは滅多に触らないのに場所だけ取る）ので、
+    /// 切替式にして高さをブランチへ回す。選択は設定へ持ち越す。
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(EffectiveReferenceTab))]
+    private GitReferenceTab _referenceTab;
+
+    partial void OnReferenceTabChanged(GitReferenceTab value)
+    {
+        if (_settings is null) return;
+        _settings.GitReferenceTab = value.ToString();
+        try { _settingsStore?.Save(_settings); }
+        catch { /* 永続化に失敗しても切替自体は効かせる */ }
+    }
+
+    /// <summary>サブモジュールが1つも無いか（タブごと出さない判断に使う）。</summary>
+    public bool HasSubmodules => Submodules.Count > 0;
+
+    /// <summary>
+    /// 実際に見せる種類。<b>選択そのものは書き換えない</b>——サブモジュールを見ている最中に
+    /// ワークスペースを切り替えて（サブモジュールの無いリポジトリになって）も、戻ってきたら
+    /// 元の種類に戻ってほしい。消えたタブを選んだままにしておくと空の一覧が居座るので、
+    /// 表示だけタグへ落とす。
+    /// </summary>
+    public GitReferenceTab EffectiveReferenceTab => Resolve(ReferenceTab, HasSubmodules);
+
+    /// <summary>表示する種類を決める（純ロジック）。</summary>
+    public static GitReferenceTab Resolve(GitReferenceTab desired, bool hasSubmodules) =>
+        desired is GitReferenceTab.Submodules && !hasSubmodules ? GitReferenceTab.Tags : desired;
+
     /// <summary>ブランチ一覧のツリー（ローカル／リモートの見出し、その中を "/" でフォルダ化）。</summary>
     [ObservableProperty] private IReadOnlyList<BranchTreeNode> _branchTree = Array.Empty<BranchTreeNode>();
 
@@ -138,8 +178,11 @@ public sealed partial class GitSessionViewModel : ObservableObject
     /// <summary>リモート一覧（名前＋fetch URL）。追加・URL 変更・削除の対象。</summary>
     [ObservableProperty] private IReadOnlyList<GitRemoteInfo> _remotes = Array.Empty<GitRemoteInfo>();
 
-    /// <summary>サブモジュール一覧（0件ならビュー側でセクションごと隠す）。</summary>
-    [ObservableProperty] private IReadOnlyList<GitSubmoduleInfo> _submodules = Array.Empty<GitSubmoduleInfo>();
+    /// <summary>サブモジュール一覧（0件ならビュー側でタブごと隠す）。</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasSubmodules))]
+    [NotifyPropertyChangedFor(nameof(EffectiveReferenceTab))]
+    private IReadOnlyList<GitSubmoduleInfo> _submodules = Array.Empty<GitSubmoduleInfo>();
 
     /// <summary>Git 操作の対象フォルダーの切替 UI 状態。サイドバー Git パネル（<see cref="GitPanelViewModel"/>）
     /// と共有する（どちらから切り替えても両方に反映される）。</summary>
@@ -161,6 +204,9 @@ public sealed partial class GitSessionViewModel : ObservableObject
         // 保存された表示状態を初期反映する（field 直接代入なので OnCommitDetailVisibleChanged＝永続化は走らない）。
         _commitDetailVisible = settings?.GitCommitDetailVisible ?? true;
         _branchColumnVisible = settings?.GitBranchColumnVisible ?? true;
+        // 読めない値（手書き・古い版）は既定へ落とす。ここで例外にすると起動ごと落ちる。
+        _referenceTab = Enum.TryParse<GitReferenceTab>(settings?.GitReferenceTab, out var tab)
+            ? tab : GitReferenceTab.Tags;
         Commands.StatusChanged += (_, status) =>
         {
             IsBusy = status.IsBusy;

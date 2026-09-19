@@ -137,6 +137,23 @@ public partial class GitSessionView : UserControl
         }
     }
 
+    /// <summary>
+    /// 左列下段の種類切替（タグ／リモート／サブモジュール）。
+    ///
+    /// <para><b>選択中のボタンを押しても外れないようにする</b>のがここの主な仕事。ToggleButton は
+    /// Click が届く前に自分で IsChecked を反転させてしまうので、同じ種類を押し直すと
+    /// 「ボタンは OFF なのに一覧はその種類のまま」になる——VM の値は変わらず、通知も飛ばないので
+    /// 片方向バインディングは二度と true を押し戻さない。押されたボタンだけ結び直して実体へ揃える
+    /// （種類が実際に変わったときは通知で3つとも揃うので、これで足りる）。</para>
+    /// </summary>
+    private void OnReferenceTabClick(object sender, RoutedEventArgs e)
+    {
+        if (Vm is not { } vm || sender is not FrameworkElement { Tag: string tag } button) return;
+        if (Enum.TryParse<GitReferenceTab>(tag, out var tab))
+            vm.ReferenceTab = tab;
+        (button as ToggleButton)?.GetBindingExpression(ToggleButton.IsCheckedProperty)?.UpdateTarget();
+    }
+
     /// <summary>コミット一覧の見出し「コミット」の左の開閉ボタン。VM 側を反転させ、
     /// 表示の反映（列を畳む／戻す）と永続化はそちらの変更通知経由で行う。</summary>
     private void OnBranchColumnToggleClick(object sender, RoutedEventArgs e)
