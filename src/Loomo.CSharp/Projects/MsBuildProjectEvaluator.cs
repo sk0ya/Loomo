@@ -18,9 +18,27 @@ public sealed class MsBuildProjectEvaluator : IProjectEvaluator
     public async Task<ProjectEvaluation> EvaluateAsync(string projectPath, string? targetFramework,
         string? configuration, CancellationToken cancellationToken = default)
     {
-        // まずdesign-time buildまで走らせる。失敗したら評価だけに落として、少なくとも作成済みの
+        // TFM の指定が無いときは、まず<b>評価だけ</b>で何の TFM を持つプロジェクトかを見る。
+        // design-time build を TFM 無しで回すと、複数 TFM のプロジェクトでは内側の TFM ごとの
+        // ビルドが走り、それらが（グローバルプロパティである）同じ中間出力へ相乗りして互いの
+        // 生成ソースと cache を上書きする。単一 TFM なら、ここで分かった TFM を指定して回す。
+        string stdout, stderr;
+        int exitCode;
+        if (string.IsNullOrWhiteSpace(targetFramework))
+        {
+            (exitCode, stdout, stderr) = await RunAsync(
+                projectPath, null, configuration, designTimeBuild: false, cancellationToken);
+            if (exitCode == 0 && SingleTargetFramework(stdout) is { } only)
+                targetFramework = only;
+            else if (exitCode == 0)
+                // 複数 TFM。生成ソースと参照は TFM ごとの評価（呼び出し側が回す）で埋まるので、
+                // ここで design-time build まで走らせても捨てるだけになる。
+                return await CompleteAsync(stdout, projectPath, null, configuration, cancellationToken);
+        }
+
+        // design-time buildまで走らせる。失敗したら評価だけに落として、少なくとも作成済みの
         // Compile 項目は返す（生成ソースと参照は欠ける）。
-        var (exitCode, stdout, stderr) = await RunAsync(
+        (exitCode, stdout, stderr) = await RunAsync(
             projectPath, targetFramework, configuration, designTimeBuild: true, cancellationToken);
         if (exitCode != 0)
             (exitCode, stdout, stderr) = await RunAsync(
@@ -28,6 +46,14 @@ public sealed class MsBuildProjectEvaluator : IProjectEvaluator
         if (exitCode != 0)
             throw new InvalidOperationException($"MSBuild評価に失敗しました ({exitCode}): {stderr.Trim()}");
 
+        return await CompleteAsync(stdout, projectPath, targetFramework, configuration, cancellationToken);
+    }
+
+    /// <summary>MSBuild の出力を評価結果へ組み、アナライザーを足す（両方の経路の合流点）。</summary>
+    private async Task<ProjectEvaluation> CompleteAsync(
+        string stdout, string projectPath, string? targetFramework, string? configuration,
+        CancellationToken cancellationToken)
+    {
         try
         {
             var evaluation = Parse(stdout, projectPath);
@@ -36,6 +62,26 @@ public sealed class MsBuildProjectEvaluator : IProjectEvaluator
                 evaluation, projectPath, targetFramework, configuration, cancellationToken);
         }
         catch (JsonException ex) { throw new InvalidOperationException("MSBuild評価結果をJSONとして読めません。", ex); }
+    }
+
+    /// <summary>
+    /// 評価だけの出力から「単一 TFM ならその名前」を読む。複数 TFM（<c>TargetFrameworks</c> が空でない）
+    /// なら null——そのときは TFM ごとの評価が別に走るので、ここで design-time build を回す意味がない。
+    /// </summary>
+    private static string? SingleTargetFramework(string json)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            if (!doc.RootElement.TryGetProperty("Properties", out var properties)
+                || properties.ValueKind != JsonValueKind.Object) return null;
+            string? Read(string name) => properties.TryGetProperty(name, out var value)
+                ? value.GetString() : null;
+            if (!string.IsNullOrWhiteSpace(Read("TargetFrameworks"))) return null;
+            var single = Read("TargetFramework");
+            return string.IsNullOrWhiteSpace(single) ? null : single;
+        }
+        catch (JsonException) { return null; }
     }
 
     /// <summary>
@@ -57,6 +103,12 @@ public sealed class MsBuildProjectEvaluator : IProjectEvaluator
     /// 各SDKが自分の生成ターゲットをその前段へ繋いでいる。
     /// コンパイル自体は要らないので <c>SkipCompilerExecution</c>／<c>BuildProjectReferences=false</c> を付け、
     /// 参照プロジェクトはビルドせず TargetPath だけ解決させる（IDE の design-time build と同じ形）。</para>
+    ///
+    /// <para><b>TFM 指定は省けない</b>: <c>IntermediateOutputPath</c> はグローバルプロパティなので、
+    /// TFM 無しで <c>/t:Compile</c> を回すと、複数 TFM のプロジェクトでは内側の TFM ごとのビルドが
+    /// すべて同じ中間出力へ相乗りし、<c>AssemblyInfo.cs</c> や各種 cache を互いに上書きする
+    /// （cache が「最新」に見えるので、2つ目の TFM は1つ目の生成物を使い続ける）。
+    /// 呼び出し側は TFM を知る前に一度呼ぶので、そのときは評価だけで TFM を見てから回す。</para>
     /// </summary>
     private static async Task<(int ExitCode, string Stdout, string Stderr)> RunAsync(
         string projectPath, string? targetFramework, string? configuration,
@@ -81,6 +133,8 @@ public sealed class MsBuildProjectEvaluator : IProjectEvaluator
             process.StartInfo.ArgumentList.Add("/t:Compile");
             process.StartInfo.ArgumentList.Add("/p:BuildProjectReferences=false");
             process.StartInfo.ArgumentList.Add("/p:SkipCompilerExecution=true");
+            process.StartInfo.ArgumentList.Add("/p:IntermediateOutputPath="
+                + DesignTimeIntermediatePath(projectPath, configuration, targetFramework));
         }
         process.StartInfo.ArgumentList.Add("/getProperty:" + string.Join(',', Properties));
         process.StartInfo.ArgumentList.Add("/getItem:" + string.Join(',', Items));
@@ -121,6 +175,55 @@ public sealed class MsBuildProjectEvaluator : IProjectEvaluator
             try { await process.WaitForExitAsync(); } catch (InvalidOperationException) { }
             throw;
         }
+    }
+
+    /// <summary>
+    /// design-time build が書き込む中間出力の置き場。<b>実ビルドの <c>obj\Debug\&lt;tfm&gt;\</c> とは分ける</b>
+    /// ——この評価は人がターミナルで走らせる <c>dotnet build</c> や、AI の <c>run_powershell</c> による
+    /// ビルドと同時に走りうるのに、MSBuild は中間出力をプロセス間で排他しない。同じ場所を使うと、
+    /// どちらかが「ファイルが使用中」で落ちるか、生成ソースを互いに半端な状態で上書きする。
+    ///
+    /// <para>分けるのは <c>IntermediateOutputPath</c> だけで、<c>BaseIntermediateOutputPath</c>（<c>obj\</c>）は
+    /// そのまま——<c>project.assets.json</c> と NuGet の生成 props/targets はそこに居るので、動かすと
+    /// 「復元されていません」で design-time build ごと失敗する。</para>
+    ///
+    /// <para>置き場は<b>リポジトリの外（一時フォルダー）</b>。プロジェクト直下の <c>obj\</c> の中に作ると、
+    /// 中間出力の置き場を移しているリポジトリ（<c>BaseIntermediateOutputPath</c> の変更・
+    /// <c>UseArtifactsOutput</c>）では <c>.gitignore</c> に載っていない <c>obj\</c> を勝手に生やすうえ、
+    /// <c>dotnet clean</c> でも消えない。プロジェクトのフルパスで鍵を作るので、別リポジトリの同名
+    /// プロジェクトとも混ざらない。</para>
+    ///
+    /// <para>TFM ごとに分けるのは、<b>同じプロジェクトの複数 TFM が同時に書く</b>ため。このプロパティは
+    /// グローバルなので、TFM 指定の無い呼び出しで design-time build を回すと内側の TFM ごとのビルドまで
+    /// 同じ場所を使い、<c>AssemblyInfo.cs</c> や各種 cache を互いに上書きする。だから
+    /// <see cref="EvaluateAsync(string, string?, string?, CancellationToken)"/> は
+    /// <b>design-time build を必ず TFM 指定つきで走らせる</b>。</para>
+    /// </summary>
+    private static string DesignTimeIntermediatePath(
+        string projectPath, string? configuration, string? targetFramework)
+    {
+        var config = Segment(configuration, "Debug");
+        var tfm = Segment(targetFramework, "shared");
+        var key = Path.GetFileNameWithoutExtension(projectPath) + "-" + Hash(Path.GetFullPath(projectPath));
+        // 末尾の区切りは MSBuild の約束（無いとパス結合が壊れる）。
+        return Path.Combine(Path.GetTempPath(), "loomo-designtime", key, config, tfm)
+            + Path.DirectorySeparatorChar;
+    }
+
+    private static string Hash(string value)
+    {
+        var bytes = System.Security.Cryptography.SHA256.HashData(
+            System.Text.Encoding.UTF8.GetBytes(value.ToLowerInvariant()));
+        return Convert.ToHexString(bytes)[..12];
+    }
+
+    /// <summary>パスの1区切りとして安全な綴りにする（構成名や TFM に区切り文字が来ても外へ出さない）。</summary>
+    private static string Segment(string? value, string fallback)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return fallback;
+        var cleaned = new string(value.Trim()
+            .Select(c => Path.GetInvalidFileNameChars().Contains(c) ? '_' : c).ToArray());
+        return cleaned.Length == 0 || cleaned.All(c => c == '.') ? fallback : cleaned;
     }
 
     /// <summary>MSBuildを<b>このプロセスだけ</b>で走らせる。

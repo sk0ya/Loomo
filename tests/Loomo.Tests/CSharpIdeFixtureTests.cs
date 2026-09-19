@@ -101,6 +101,89 @@ public sealed class CSharpIdeFixtureTests
             .EndsWith("System.Runtime.dll", StringComparison.OrdinalIgnoreCase));
     }
 
+    /// <summary>
+    /// design-time build は<b>実ビルドの中間出力を触らない</b>。この評価は、人がターミナルで走らせる
+    /// <c>dotnet build</c> や AI のビルドと同時に走りうるのに、MSBuild は中間出力をプロセス間で
+    /// 排他しない——同じ場所を使うと、どちらかが「ファイルが使用中」で落ちるか、生成ソースを
+    /// 互いに半端な状態で上書きする。
+    /// </summary>
+    [Fact]
+    public async Task Design_time_build_writes_outside_the_real_intermediate_output()
+    {
+        var projectPath = Path.Combine(FixtureRoot, "src", "Client", "Client.csproj");
+        var projectDir = Path.GetDirectoryName(projectPath)!;
+        var realIntermediate = Path.Combine(projectDir, "obj");
+        // 実ビルドが置いたものの見張り役。空のまま比べると、上書きを戻しても気づけない
+        // （評価が obj に何も書かなくなった今、この印だけが「触っていない」の根拠になる）。
+        Directory.CreateDirectory(realIntermediate);
+        var sentinel = Path.Combine(realIntermediate, "loomo-designtime-guard.txt");
+        await File.WriteAllTextAsync(sentinel, "実ビルドの成果物のつもり");
+        var before = Snapshot(realIntermediate);
+        Assert.NotEmpty(before);
+
+        // TFM は指定しない（このプロジェクトは net10.0-windows。違う TFM を渡すと UseWPF が効かず、
+        // そもそも markup compile が走らない）。
+        var evaluation = await new MsBuildProjectEvaluator().EvaluateAsync(projectPath, null, "Debug");
+
+        // 生成ソースは design-time 専用の置き場から来る（＝実ビルドの中間出力には書いていない）。
+        var generated = Assert.Single(evaluation.Compile, item =>
+            (item.FullPath ?? item.Include).EndsWith("MainWindow.g.cs", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains("loomo-designtime", generated.FullPath ?? generated.Include,
+            StringComparison.OrdinalIgnoreCase);
+        // リポジトリの中にも置かない（中間出力の置き場を移しているリポジトリでは、
+        // .gitignore に載っていない obj\ を勝手に生やすことになる）。
+        Assert.DoesNotContain(projectDir, generated.FullPath ?? generated.Include,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(before, Snapshot(realIntermediate));
+        File.Delete(sentinel);
+    }
+
+    /// <summary>複数 TFM のプロジェクトでも、TFM ごとの生成物が混ざらない。
+    /// 中間出力の指定はグローバルプロパティなので、TFM 無しで design-time build を回すと
+    /// 内側の TFM ごとのビルドが同じ場所へ相乗りして互いの生成ソースを上書きする。</summary>
+    [Fact]
+    public async Task Multi_target_frameworks_do_not_share_generated_sources()
+    {
+        var projectPath = Path.Combine(FixtureRoot, "src", "Feature", "Feature.csproj");
+        var evaluator = new MsBuildProjectEvaluator();
+
+        var net9 = await evaluator.EvaluateAsync(projectPath, "net9.0", "Debug");
+        var net10 = await evaluator.EvaluateAsync(projectPath, "net10.0", "Debug");
+
+        // 置き場が分かれていること。
+        var net9Info = GeneratedAssemblyInfo(net9);
+        var net10Info = GeneratedAssemblyInfo(net10);
+        Assert.NotEqual(Path.GetDirectoryName(net9Info), Path.GetDirectoryName(net10Info));
+
+        // 同じ場所を使うと真っ先に潰し合うのがこれ（ファイル名が TFM そのもの）。両方が実在し、
+        // それぞれの置き場に居ることを見る——相乗りしていれば、片方の TFM のものしか残らない。
+        var net9Attributes = GeneratedAssemblyAttributes(net9);
+        var net10Attributes = GeneratedAssemblyAttributes(net10);
+        Assert.Contains("v9.0", Path.GetFileName(net9Attributes), StringComparison.Ordinal);
+        Assert.Contains("v10.0", Path.GetFileName(net10Attributes), StringComparison.Ordinal);
+        Assert.True(File.Exists(net9Attributes), net9Attributes);
+        Assert.True(File.Exists(net10Attributes), net10Attributes);
+        Assert.Equal(Path.GetDirectoryName(net9Info), Path.GetDirectoryName(net9Attributes));
+        Assert.Equal(Path.GetDirectoryName(net10Info), Path.GetDirectoryName(net10Attributes));
+    }
+
+    private static string GeneratedAssemblyInfo(ProjectEvaluation evaluation) =>
+        evaluation.Compile.Select(item => item.FullPath ?? item.Include)
+            .Single(path => path.EndsWith(".AssemblyInfo.cs", StringComparison.OrdinalIgnoreCase));
+
+    private static string GeneratedAssemblyAttributes(ProjectEvaluation evaluation) =>
+        evaluation.Compile.Select(item => item.FullPath ?? item.Include)
+            .Single(path => path.EndsWith(".AssemblyAttributes.cs", StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>フォルダーの中身（相対パスと最終更新時刻）。存在しなければ空。</summary>
+    private static string[] Snapshot(string directory) =>
+        Directory.Exists(directory)
+            ? Directory.EnumerateFiles(directory, "*", SearchOption.AllDirectories)
+                .Select(path => $"{Path.GetRelativePath(directory, path)}|{File.GetLastWriteTimeUtc(path):O}")
+                .OrderBy(entry => entry, StringComparer.Ordinal)
+                .ToArray()
+            : [];
+
     [Fact]
     public async Task Wpf_code_behind_is_diagnosed_with_the_generated_half_of_its_partial_class()
     {
