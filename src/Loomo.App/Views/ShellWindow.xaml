@@ -1972,7 +1972,16 @@
                                       ToolTip="コミット詳細の表示／非表示"
                                       IsChecked="{Binding GitSession.CommitDetailVisible, Mode=TwoWay}"
                                       Visibility="{Binding GitSession.IsRepository, Converter={StaticResource BoolToVis}}" />
-                        <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center"
+                        <!-- 絞り込みの帯の開閉。ヘッダーに絞り込み群が並びきらない幅のときだけ出る
+                             （表示の出し入れは ShellWindow.GitPaneHeader.cs）。 -->
+                        <ToggleButton x:Name="GitLogFilterToggle" DockPanel.Dock="Right" Margin="0,0,6,0"
+                                      MinHeight="24" VerticalAlignment="Center" Content="🔍 絞り込み"
+                                      Style="{StaticResource ToolbarToggleButton}"
+                                      ToolTip="コミットの絞り込みを表示／非表示"
+                                      Visibility="Collapsed"
+                                      Checked="OnGitLogFilterToggled" Unchecked="OnGitLogFilterToggled" />
+                        <StackPanel x:Name="GitPaneHeaderFilters" DockPanel.Dock="Left"
+                                    Orientation="Horizontal" VerticalAlignment="Center"
                                     Visibility="{Binding GitSession.IsRepository, Converter={StaticResource BoolToVis}}">
                             <!-- ブランチ切替：タイトルバーと同じコントロール。クリックで一覧ポップアップ→選択でチェックアウト -->
                             <Button x:Name="GitPaneBranchButton" Height="24" Margin="2,0,8,0" Padding="8,0"
@@ -1999,7 +2008,14 @@
                                  条件のうち git で表現できる分（作者・本文・日付）は git log の
                                  author/grep/since オプションへ押し下げて「履歴全体」を検索し
                                  （GitLogQuery／CommitLogFilter.ApplyTo）、hash:／ref: は git に対応する
-                                 絞り込みが無いので読み込み済みの一覧に対して効く。 -->
+                                 絞り込みが無いので読み込み済みの一覧に対して効く。
+
+                                 このまとまりは<b>ペインが狭いとヘッダーからはみ出して消える</b>ので、
+                                 そのときは下の帯（GitLogFilterBand）へ丸ごと移す＝実体は1つのまま
+                                 （ShellWindow.GitPaneHeader.cs）。WrapPanel なのは、移した先の幅に
+                                 合わせて勝手に折り返させるため。 -->
+                            <WrapPanel x:Name="GitLogFilterGroup" Orientation="Horizontal"
+                                       VerticalAlignment="Center">
                             <Grid Width="210" Margin="8,0,0,0" VerticalAlignment="Center">
                                 <TextBox x:Name="LogFilterBox" MinHeight="24" Padding="6,3"
                                          VerticalContentAlignment="Center" Cursor="IBeam"
@@ -2069,8 +2085,17 @@
                                     ToolTip="絞り込みをすべて解除"
                                     Command="{Binding GitSession.History.ClearLogFiltersCommand}"
                                     Visibility="{Binding GitSession.History.HasActiveFilters, Converter={StaticResource BoolToVis}}" />
+                            </WrapPanel>
                         </StackPanel>
                     </DockPanel>
+
+                    <!-- 狭いときだけ出る絞り込みの帯。中身は上の GitLogFilterGroup を移してきたもの
+                         （複製ではない）。効いている絞り込みがある間は畳めない——一覧が絞られているのに
+                         その理由が画面のどこにも無い、という状態を作らないため。 -->
+                    <Border x:Name="GitLogFilterBand" DockPanel.Dock="Top" Visibility="Collapsed"
+                            Background="{DynamicResource Panel}" BorderBrush="{DynamicResource Border}"
+                            BorderThickness="0,0,0,1" Padding="6,4" />
+
                     <views:GitSessionView x:Name="GitSessionHost" DataContext="{Binding GitSession}" />
                 </DockPanel>
 

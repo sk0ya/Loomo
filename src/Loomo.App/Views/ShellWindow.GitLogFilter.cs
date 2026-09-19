@@ -10,6 +10,8 @@ public partial class ShellWindow {
     private void InitializeGitLogFilter() {
         TrackPopupClose(LogDatePopup);
         GitSessionHost.LogFilterFocusRequested += (_, _) => {
+            // 畳んでいるときの入力欄は閉じた帯の中＝そのままでは Focus が空振りする。
+            RevealGitLogFilter();
             LogFilterBox.Focus();
             LogFilterBox.SelectAll();   // 打ち直しが前の語の後ろへ続かないように
         };
