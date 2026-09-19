@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -15,9 +16,16 @@ public sealed record GitLogRow(
 {
     public bool IsCommit => Hash is not null;
 
-    /// <summary>親コミットのハッシュ（<c>%P</c>）。マージなら2つ以上。グラフのレーンはここから決まる
+    /// <summary>親コミットのハッシュ（<c>%P</c>）を git が書いたまま＝空白区切りの1本の文字列で持つ。
+    /// <b>配列で持たない</b>——record が合成する等値比較には宣言したフィールドも入り、配列は参照比較
+    /// なので、同じ出力を読み直しただけの行同士が等しくなくなる（一覧の <c>IndexOf</c>／
+    /// <c>Contains</c> がその等値性に乗っている）。</summary>
+    public string ParentsText { get; init; } = "";
+
+    /// <summary>親コミットのハッシュ。マージなら2つ以上。グラフのレーンはここから決まる
     /// （<see cref="GitCommitGraph"/>）。</summary>
-    public IReadOnlyList<string> Parents { get; init; } = [];
+    public IReadOnlyList<string> Parents =>
+        ParentsText.Length == 0 ? [] : ParentsText.Split(' ', StringSplitOptions.RemoveEmptyEntries);
 
     /// <summary>この行に付いた参照（ブランチ・タグ）を種類つきで。
     /// <b>毎回計算する</b>——record が合成する等値比較には宣言したフィールドも入るので、

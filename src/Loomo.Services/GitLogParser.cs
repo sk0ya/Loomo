@@ -49,9 +49,7 @@ public static class GitLogParser
                 Subject: fields[5])
             {
                 // 親が無い（最初のコミット）と、書式が古い出力の両方で空になる。
-                Parents = fields.Length > 6
-                    ? fields[6].Split(' ', StringSplitOptions.RemoveEmptyEntries)
-                    : Array.Empty<string>(),
+                ParentsText = fields.Length > 6 ? fields[6].Trim() : "",
             });
         }
         return rows;

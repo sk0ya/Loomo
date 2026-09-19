@@ -25,11 +25,16 @@ public readonly record struct GitGraphEdge(
 /// 1行ぶんのグラフ。<paramref name="Lane"/> がこのコミットの丸の位置、
 /// <paramref name="Edges"/> がこの行の帯に引く線。
 /// </summary>
-/// <param name="Lane">コミットの丸を置く列（0 始まり）。</param>
+/// <param name="Lane">コミットの丸を置く列（0 始まり）。<b>-1 は丸を打たない行</b>
+/// （<c>--graph</c> が挟む枝の継続行）。</param>
 /// <param name="Color">丸の色番号。</param>
 /// <param name="LaneCount">この行の帯で使われている列数（幅を決めるのに使う）。</param>
 public sealed record GitGraphRow(
-    int Lane, int Color, IReadOnlyList<GitGraphEdge> Edges, int LaneCount);
+    int Lane, int Color, IReadOnlyList<GitGraphEdge> Edges, int LaneCount)
+{
+    /// <summary>この行にコミットの丸があるか。</summary>
+    public bool HasNode => Lane >= 0;
+}
 
 /// <summary>
 /// コミットの親子関係から、描画用のレーン（縦の列）を組む純ロジック。
@@ -49,8 +54,12 @@ public sealed record GitGraphRow(
 /// 残りのレーンは素通りの縦線になる。</para>
 ///
 /// <para><b>順序は git に任せる</b>——<c>--topo-order</c> で来た並びをそのまま使う。ここで
-/// 並べ替えると、一覧に出ている順番と食い違ってレーンが繋がらなくなる。親が一覧の外
-/// （読み込んでいない古いコミット・浅いクローン）なら、その線は行の下端で途切れる。</para>
+/// 並べ替えると、一覧に出ている順番と食い違ってレーンが繋がらなくなる。</para>
+///
+/// <para><b>一覧に出てこない親のためにレーンを開けたままにしない</b>。ページの境目や浅いクローン、
+/// <c>--first-parent</c>（第2親のコミットを出さないのに <c>%P</c> は両方返す）では、待っても
+/// 来ないコミットが親に挙がる。開いたままだとそのレーンは二度と閉じず、以降の全行に素通りの線が
+/// 1本ずつ増え続ける。線はその行の下端まで引いて、レーンは空ける。</para>
 /// </summary>
 public static class GitCommitGraph
 {
@@ -67,13 +76,25 @@ public static class GitCommitGraph
         var waiting = new List<string?>();
         var colors = new List<int>();
         var nextColor = 0;
+        // この一覧に本当に出てくるコミット。ここに居ない親のためにレーンを開いたままにすると、
+        // そのレーンは<b>二度と閉じない</b>——git log --first-parent は第2親のコミットを出さないのに
+        // %P は両方返すので、マージ1件ごとに素通りの線が1本ずつ永久に増えることになる。
+        var present = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var row in rows)
+            if (row.Hash is { Length: > 0 } hash)
+                present.Add(hash);
 
         foreach (var row in rows)
         {
             if (row.Hash is not { Length: > 0 } hash)
             {
-                // グラフを自分で組むので git の継続行はもう来ない。来ても場所だけ取らせる。
-                result.Add(new GitGraphRow(0, 0, Array.Empty<GitGraphEdge>(), Math.Max(waiting.Count, 1)));
+                // --graph が挟む枝の継続行。丸は無いが、開いている枝は素通りさせる
+                // （ここで線を切ると、マージの直後の帯だけ縦線が全部消える）。
+                var passing = new List<GitGraphEdge>();
+                for (var i = 0; i < waiting.Count; i++)
+                    if (waiting[i] is not null)
+                        passing.Add(new GitGraphEdge(GitGraphEdgeKind.Through, i, i, colors[i]));
+                result.Add(new GitGraphRow(-1, 0, passing, Math.Max(waiting.Count, 1)));
                 continue;
             }
 
@@ -96,7 +117,10 @@ public static class GitCommitGraph
 
             var parents = row.Parents;
             // 第1親はこのレーンをそのまま下へ引き継ぐ（色も引き継ぐ＝枝の色が続く）。
-            waiting[lane] = parents.Count > 0 ? parents[0] : null;
+            // 一覧に出てこない親（ページの境目・浅いクローン・--first-parent）なら、線は
+            // この行の下端まで引いて<b>レーンは空ける</b>——待ち続けても来ないし、
+            // 次の行があるなら、そこから先はもうその枝を描きようがない。
+            waiting[lane] = parents.Count > 0 && present.Contains(parents[0]) ? parents[0] : null;
             if (parents.Count > 0)
                 edges.Add(new GitGraphEdge(GitGraphEdgeKind.Out, lane, lane, color));
 
@@ -108,7 +132,9 @@ public static class GitCommitGraph
                 if (target < 0)
                 {
                     target = TakeFreeLane(waiting, colors, ref nextColor);
-                    waiting[target] = parent;
+                    // 一覧に居ない親は待たない（開いたままにすると永久に閉じないレーンになる）。
+                    // 線だけはこの行の下端まで引く＝「ここで枝が合流している」は見える。
+                    waiting[target] = present.Contains(parent) ? parent : null;
                 }
                 edges.Add(new GitGraphEdge(GitGraphEdgeKind.Out, lane, target, colors[target]));
             }

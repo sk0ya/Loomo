@@ -9,7 +9,8 @@ namespace sk0ya.Loomo.Tests;
 public sealed class GitCommitGraphTests
 {
     private static GitLogRow Row(string hash, params string[] parents) =>
-        new("", hash, hash, "t", "2026-09-19 10:00", null, hash) { Parents = parents };
+        new("", hash, hash, "t", "2026-09-19 10:00", null, hash)
+        { ParentsText = string.Join(' ', parents) };
 
     [Fact]
     public void 一本道は同じレーンに並ぶ()
@@ -96,6 +97,63 @@ public sealed class GitCommitGraphTests
         Assert.Equal(0, row.Lane);
         // 線は下端まで伸びる（そこで途切れて見える）。
         Assert.Contains(row.Edges, e => e.Kind == GitGraphEdgeKind.Out && e.ToLane == 0);
+    }
+
+    /// <summary>
+    /// 一覧に出てこない親のためにレーンを開けたままにしない。<c>--first-parent</c> は第2親の
+    /// コミットを出さないのに <c>%P</c> は両方返すので、開いたままだとマージ1件ごとに
+    /// 素通りの線が1本ずつ永久に増える。
+    /// </summary>
+    [Fact]
+    public void 一覧に出てこない親のレーンは残さない()
+    {
+        // m は第2親 b を持つが、b は一覧に無い（--first-parent の見え方）。
+        var graph = GitCommitGraph.Build(
+            [Row("m", "a", "b"), Row("a", "z"), Row("z", "y"), Row("y")]);
+
+        // マージの行では第2親への線が見える（合流していることは分かる）。
+        Assert.Contains(graph[0].Edges, e => e.Kind == GitGraphEdgeKind.Out && e.ToLane != graph[0].Lane);
+        // その後の行には素通りの線が残らない＝幅も増えない。
+        Assert.All(graph.Skip(1), row =>
+        {
+            Assert.Equal(1, row.LaneCount);
+            Assert.DoesNotContain(row.Edges, e => e.Kind == GitGraphEdgeKind.Through);
+        });
+    }
+
+    [Fact]
+    public void ページの境目で親が居なくてもレーンは増えない()
+    {
+        // 末尾のコミットの親は次のページ（まだ読み込んでいない）。
+        var graph = GitCommitGraph.Build([Row("c", "b"), Row("b", "未読の親")]);
+
+        // 線は下端まで引く（続きがあることは見える）。
+        Assert.Contains(graph[1].Edges, e => e.Kind == GitGraphEdgeKind.Out);
+        Assert.Equal(1, graph[1].LaneCount);
+    }
+
+    /// <summary>
+    /// <c>--graph</c> が挟む継続行（ハッシュを持たない行）でも、開いている枝の線は切らない。
+    /// 切ると、マージの直後の帯だけ縦線が全部消えて一段ぶん途切れて見える。
+    /// </summary>
+    [Fact]
+    public void 継続行でも開いている枝は素通りさせる()
+    {
+        var continuation = new GitLogRow("|\\", null, null, null, null, null, null);
+        var graph = GitCommitGraph.Build(
+            [Row("m1", "b"), continuation, Row("t1", "b"), Row("b")]);
+
+        var passing = graph[1];
+        Assert.False(passing.HasNode);   // 丸は打たない
+        Assert.NotEmpty(passing.Edges);
+        Assert.All(passing.Edges, e => Assert.Equal(GitGraphEdgeKind.Through, e.Kind));
+    }
+
+    [Fact]
+    public void 同じ出力を読み直した行は等しいまま()
+    {
+        // 一覧の IndexOf／Contains がこの等値性に乗っている（配列を持たせると参照比較で壊れる）。
+        Assert.Equal(Row("m", "a", "b"), Row("m", "a", "b"));
     }
 
     [Fact]

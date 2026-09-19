@@ -64,7 +64,8 @@ public sealed class GitCommitGraphRealRepoTests : IAsyncLifetime
         // レーン番号は必ず帯の中に収まる（はみ出すと描画で切れる）。
         for (var i = 0; i < graph.Count; i++)
         {
-            Assert.InRange(graph[i].Lane, 0, graph[i].LaneCount - 1);
+            // 継続行は丸を打たない（Lane = -1）。
+            if (graph[i].HasNode) Assert.InRange(graph[i].Lane, 0, graph[i].LaneCount - 1);
             foreach (var edge in graph[i].Edges)
             {
                 Assert.InRange(edge.FromLane, 0, graph[i].LaneCount - 1);
