@@ -45,14 +45,16 @@ public sealed class CSharpCompilerDiagnosticService
                     includeSemanticCompilation: true,
                     compilationOptions: CSharpProjectCompilationOptions.Compilation(target, editorConfig),
                     assemblyName: project.CompilationAssemblyName,
-                    openTexts: openTexts);
+                    openTexts: openTexts,
+                    // 信用できない状態なら Compilation を組ませない（どのみち捨てるので）
+                    requireTrustedSources: true);
                 // ソースを積みきれなかったときは<b>何も出さないが、黙らない</b>。欠けたのはこちらの
                 // 都合なのに、出る診断は「型が見つからない」（CS0246／CS0103）で、コードの誤りと
                 // 区別が付かない——本物の誤りがその中に埋もれる。かといって空を返すだけでは
                 // 「問題なし」と見分けが付かないので、理由を添えて返す（Quick Fix 側は前から同じ
                 // 条件で降りている＝CSharpCompilerCodeFixService）。これはフォールバックなので、
                 // 言語サーバーが入っていればそちらの診断が出る。
-                if (compilation.SourceSnapshotWarning is { } incomplete)
+                if (compilation.SemanticTrustWarning is { } incomplete)
                     return (Array.Empty<LspDiagnostic>(), incomplete);
                 return (compilation.SemanticCompilation!.GetDiagnostics(cancellationToken)
                 .Where(diagnostic => !diagnostic.IsSuppressed && diagnostic.Location.IsInSource)

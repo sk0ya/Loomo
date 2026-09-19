@@ -58,6 +58,30 @@ public sealed class CSharpCompilerDiagnosticServiceTests : IDisposable
         Assert.Contains("切り詰め", result.Error);
     }
 
+    /// <summary>
+    /// 読めないソース（未生成の <c>*.g.cs</c> ／ <c>AssemblyInfo.cs</c>）があるときも同じ。
+    /// 欠けると <c>InitializeComponent</c> や <c>x:Name</c> の partial half ごと落ちて、
+    /// 診断が CS0103／CS0246 だらけになる——それは<b>コードの誤りではない</b>。
+    /// </summary>
+    [Fact]
+    public async Task Stays_silent_when_generated_sources_are_missing()
+    {
+        var path = Path.Combine(_root, "Broken.cs");
+        File.WriteAllText(path, "class Broken { }");
+        var missing = Path.Combine(_root, "Broken.g.cs");   // ビルドしていないので実在しない
+        var project = new ProjectModel("Sample", Path.Combine(_root, "Sample.csproj"),
+            _root, [], [new TargetFrameworkModel("net10.0", [], "latest",
+                [new ProjectItem("Broken.cs", path), new ProjectItem("Broken.g.cs", missing)], [], [], [])],
+            "net10.0", false, ProjectLoadState.Ready);
+        var solution = new SolutionModel(null, "Sample", _root, [project], ProjectLoadState.Ready);
+
+        var result = await new CSharpCompilerDiagnosticService().AnalyzeAsync(
+            solution, path, "class Broken { void Run() { int value = 1 } }");
+
+        Assert.Empty(result.Diagnostics);
+        Assert.Contains("読み込めません", result.Error);
+    }
+
     [Fact]
     public async Task Returns_no_diagnostic_for_valid_unsaved_source()
     {

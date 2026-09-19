@@ -23,6 +23,20 @@ public sealed record CSharpWorkspaceOperationContext(
         ? null
         : $"C#ソースが上限で切り詰められています（{Snapshot.SkippedFileCount}ファイル）。";
 
+    /// <summary>
+    /// 意味解析の結果をそのまま人へ見せてよいか。上限による切り詰めに加えて、
+    /// <b>読めなかったソース</b>（未生成の <c>*.g.cs</c> ／ <c>AssemblyInfo.cs</c>）も見る
+    /// ——欠けると <c>InitializeComponent</c> や <c>x:Name</c> の partial half ごと落ちて、
+    /// 診断が CS0103／CS0246 だらけになる。
+    /// </summary>
+    public bool CanTrustSemanticResults => Snapshot.IsComplete && !Snapshot.HasUnreadableSources;
+
+    /// <summary>信用できないときの理由（UIへそのまま出せる日本語）。信用できるなら null。</summary>
+    public string? SemanticTrustWarning => SourceSnapshotWarning ?? (Snapshot.HasUnreadableSources
+        ? $"C#ソースを読み込めません（{Snapshot.MissingFileCount}ファイル）。"
+            + "ビルドで生成されるファイルが未生成の可能性があります。"
+        : null);
+
     public static CSharpWorkspaceOperationContext Create(
         SolutionModel? solution,
         string activePath,
@@ -32,7 +46,8 @@ public sealed record CSharpWorkspaceOperationContext(
         CSharpCompilationOptions? compilationOptions = null,
         string? assemblyName = null,
         CSharpEditorConfigService? editorConfigService = null,
-        IReadOnlyDictionary<string, string>? openTexts = null)
+        IReadOnlyDictionary<string, string>? openTexts = null,
+        bool requireTrustedSources = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(activePath);
         ArgumentNullException.ThrowIfNull(activeText);
@@ -40,6 +55,12 @@ public sealed record CSharpWorkspaceOperationContext(
         var snapshot = CSharpWorkspaceSourceLoader.LoadSnapshot(
             solution, activePath, activeText, scope, openTexts);
         if (!includeSemanticCompilation)
+            return new(snapshot, null);
+        // 結果を人へ見せられない状態だと分かっているなら、Compilation は組まない。
+        // 意味解析の本体はここで、大規模ソリューションでは数秒かかる（CompilationCache の実測で
+        // 1.3〜3.1秒）。呼び出し側は結局これを捨てるので、打鍵ごとの再解析でそれを払い続けるのは
+        // 丸損なうえ、捨てる Compilation でキャッシュの枠を1つ潰す。
+        if (requireTrustedSources && !new CSharpWorkspaceOperationContext(snapshot, null).CanTrustSemanticResults)
             return new(snapshot, null);
 
         var activeProject = solution?.ProjectForFile(Path.GetFullPath(activePath));

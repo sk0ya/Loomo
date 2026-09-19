@@ -18,6 +18,18 @@ public sealed record CSharpWorkspaceSourceSnapshot(
     public bool IsComplete => SkippedFileCount == 0;
 
     /// <summary>
+    /// <c>@(Compile)</c> に在るのに<b>読めなかった</b>ファイルの数（実在しない・開けない）。
+    /// 上限による切り詰め（<see cref="SkippedFileCount"/>）とは原因が別なので分けて数える
+    /// ——こちらの典型は「まだビルドしていない／<c>obj\</c> を消した」で、<c>*.g.cs</c> や
+    /// <c>AssemblyInfo.cs</c> が無い状態。<c>InitializeComponent</c> や <c>x:Name</c> の
+    /// partial half が丸ごと欠けるので、意味解析は CS0103／CS0246 だらけになる。
+    /// </summary>
+    public int MissingFileCount { get; init; }
+
+    /// <summary>読めなかったソースがあるか（＝意味解析の結果をそのまま人へ見せてはいけない）。</summary>
+    public bool HasUnreadableSources => MissingFileCount > 0;
+
+    /// <summary>
     /// このスナップショットが<b>ソースを取り込んだ</b>プロジェクトの実アセンブリ名。
     /// アクティブ文書のプロジェクトだけでなく、辿った ProjectReference 先も含む。
     ///
@@ -71,6 +83,7 @@ public static class CSharpWorkspaceSourceLoader
         var parseOptionsByPath = new Dictionary<string, CSharpParseOptions>(StringComparer.OrdinalIgnoreCase);
         var budget = new SourceLoadBudget(MaxSourceFileCount, MaxSnapshotBytes);
         var skippedFileCount = 0;
+        var missingFileCount = 0;
         var projects = (solution?.Projects ?? [])
             .Where(project => project.State == ProjectLoadState.Ready)
             .ToDictionary(project => Path.GetFullPath(project.FullPath),
@@ -105,32 +118,39 @@ public static class CSharpWorkspaceSourceLoader
                 project.SelectedTargetFrameworkModel);
 
             var loadedAny = false;
-            var missedAny = false;
+            var truncated = false;
             foreach (var item in project.SelectedTargetFrameworkModel?.CompileFiles ?? [])
             {
                 if (!string.Equals(Path.GetExtension(item.FullPath), ".cs", StringComparison.OrdinalIgnoreCase))
                     continue;
                 var read = TryRead(result, parseOptionsByPath, item.FullPath, parseOptions,
                     budget, normalizedOpenTexts);
+                // アクティブ文書は最後に未保存本文で上書きするので、読めなくても欠けていない
+                // （まだ保存していない新規ファイルがそれ＝ここで数えると診断が丸ごと止まる）。
+                var isActive = string.Equals(Path.GetFullPath(item.FullPath), activeFullPath,
+                    StringComparison.OrdinalIgnoreCase);
                 if (read == SourceLoadResult.Loaded) loadedAny = true;
-                else missedAny = true;
-                if (read == SourceLoadResult.SkippedByBudget
-                    && !string.Equals(Path.GetFullPath(item.FullPath), activeFullPath,
-                        StringComparison.OrdinalIgnoreCase))
-                    skippedFileCount++;
+                if (read == SourceLoadResult.NotLoaded && !isActive) missingFileCount++;
+                if (read == SourceLoadResult.SkippedByBudget)
+                {
+                    truncated = true;
+                    if (!isActive) skippedFileCount++;
+                }
             }
 
-            // アセンブリ名を登録するのは、そのプロジェクトのソースを<b>全部</b>積めたときだけ。
-            // 登録された名前は「その出力 DLL は参照から外す」という意味（ソースと DLL の両方が
-            // あると同じ型が二重に見えて CS0436）なので、一部しか読めていないのに登録すると
-            // <b>読めなかったファイルの型はソースにも DLL にも居ない</b>ことになり、CS0246 が溢れる。
-            // 一部だけのときは DLL を残す側に倒す——型が二重（CS0436・警告）の方が、
-            // 型が消える（CS0246・エラー）より後始末が利く。
+            // アセンブリ名を登録する＝「その出力 DLL は参照から外す」（ソースと DLL の両方があると
+            // 同じ型が二重に見えて CS0436）。外すかどうかは<b>何が読めなかったか</b>で決める。
             //
-            // 踏むのは、上限（MaxSourceFileCount／MaxSnapshotBytes）に達した大規模ソリューションと、
-            // 一度ビルドした後に obj/ を消した（生成ソースが実在しない）プロジェクト。
-            // 一度もビルドしていないプロジェクトは DLL も無いので、ここで何をしても型は戻らない。
-            if (loadedAny && !missedAny) sourceAssemblyNames.Add(project.CompilationAssemblyName);
+            // ・1行も読めていない → 登録しない。ソースも DLL も無い状態＝そのプロジェクトの型が
+            //   全部消えて CS0246 が溢れる。
+            // ・上限で切り詰められた → 登録しない。読めなかったのは<b>人の書いたソース</b>で、
+            //   その型は DLL にしか残っていない。型が二重（CS0436・警告）の方が、型が消える
+            //   （CS0246・エラー）よりずっと後始末が利く。
+            // ・読めなかったのが実在しないファイルだけ → 登録する。これは生成ソース
+            //   （*.g.cs／AssemblyInfo.cs）が未生成という意味で、その型を人が参照することは無い。
+            //   ここで DLL を足すと、読めているソースの型が<b>全部</b>二重になって CS0436 が
+            //   使用箇所の数だけ出る（直前の「全部読めたときだけ」はこれを踏んでいた）。
+            if (loadedAny && !truncated) sourceAssemblyNames.Add(project.CompilationAssemblyName);
 
             var projectReferences = project.SelectedTargetFrameworkModel?.ProjectReferences
                 ?? project.ProjectReferences;
@@ -145,6 +165,7 @@ public static class CSharpWorkspaceSourceLoader
         return new CSharpWorkspaceSourceSnapshot(result, parseOptionsByPath, skippedFileCount)
         {
             SourceAssemblyNames = sourceAssemblyNames.ToArray(),
+            MissingFileCount = missingFileCount,
         };
     }
 

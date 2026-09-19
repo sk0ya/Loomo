@@ -71,12 +71,13 @@ public sealed class CSharpWorkspaceSourceLoaderTests : IDisposable
     }
 
     /// <summary>
-    /// 一部しか読めなかったプロジェクトも登録しない。登録＝「その DLL は参照から外す」なので、
-    /// 読めなかったファイルの型が<b>ソースにも DLL にも居ない</b>状態（CS0246）になる。
-    /// 型が二重（CS0436・警告）の方が、型が消える（CS0246・エラー）より後始末が利く。
+    /// 読めなかったのが<b>実在しないファイルだけ</b>なら、そのプロジェクトは登録する（＝DLL を外す）。
+    /// これは生成ソース（<c>*.g.cs</c>／<c>AssemblyInfo.cs</c>）が未生成という意味で、その型を人が
+    /// 参照することは無い。ここで DLL を足すと、読めているソースの型が<b>全部</b>二重になり、
+    /// CS0436 が使用箇所の数だけ出る。
     /// </summary>
     [Fact]
-    public void Does_not_claim_projects_whose_sources_were_only_partly_read()
+    public void Claims_projects_whose_only_unread_files_are_missing_from_disk()
     {
         var activePath = Write("Active.cs", "public class Active { }");
         var readablePath = Write("Readable.cs", "public class Readable { }");
@@ -97,7 +98,42 @@ public sealed class CSharpWorkspaceSourceLoaderTests : IDisposable
             solution, activePath, File.ReadAllText(activePath));
 
         Assert.Contains(readablePath, snapshot.Texts.Keys, StringComparer.OrdinalIgnoreCase);
-        Assert.DoesNotContain("Half", snapshot.SourceAssemblyNames);
+        Assert.Contains("Half", snapshot.SourceAssemblyNames);
+        // 読めなかったことは別に数える——意味解析の結果を人へ見せてよいかの判断に使う。
+        Assert.Equal(1, snapshot.MissingFileCount);
+        Assert.True(snapshot.HasUnreadableSources);
+        Assert.True(snapshot.IsComplete);   // 「上限で切り詰めた」わけではない
+    }
+
+    /// <summary>
+    /// 上限で切り詰められたプロジェクトは登録しない（＝DLL を参照に残す）。読めなかったのは
+    /// <b>人の書いたソース</b>で、その型は DLL にしか残っていない。型が二重（CS0436・警告）の方が、
+    /// 型が消える（CS0246・エラー）よりずっと後始末が利く。
+    /// </summary>
+    [Fact]
+    public void Does_not_claim_projects_whose_sources_were_truncated()
+    {
+        var activePath = Write("Active.cs", "public class Active { }");
+        var readablePath = Write("Readable.cs", "public class Readable { }");
+        // 1ファイルの上限（8MB）を超えるソース＝切り詰められる側。
+        var hugePath = Write("Huge.cs", "// " + new string('x', 9 * 1024 * 1024) + "\npublic class Huge { }");
+        var activeProjectPath = Path.Combine(_root, "Active.csproj");
+        var bulkProjectPath = Path.Combine(_root, "Bulk.csproj");
+        var bulk = new ProjectModel("Bulk", bulkProjectPath, _root, [],
+            [new TargetFrameworkModel("net10.0", [], "latest", [
+                new ProjectItem("Readable.cs", readablePath),
+                new ProjectItem("Huge.cs", hugePath),
+            ], [], [], [])],
+            "net10.0", false, ProjectLoadState.Ready);
+        var active = Project("Active", activeProjectPath, [bulkProjectPath], activePath);
+        var solution = new SolutionModel(Path.Combine(_root, "Sample.sln"), "Sample", _root,
+            [active, bulk], ProjectLoadState.Ready);
+
+        var snapshot = CSharpWorkspaceSourceLoader.LoadSnapshot(
+            solution, activePath, File.ReadAllText(activePath));
+
+        Assert.DoesNotContain("Bulk", snapshot.SourceAssemblyNames);
+        Assert.False(snapshot.IsComplete);
     }
 
     [Fact]
