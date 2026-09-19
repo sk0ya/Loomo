@@ -21,4 +21,22 @@ public sealed class UsingFoldStateTests
         Assert.NotNull(folds.GetHidingFold(1));
         Assert.Null(folds.GetHidingFold(4));
     }
+
+    /// <summary>サーバーの答えを待たずに畳み、あとから foldingRange が届いても開かない。
+    /// 実測で Roslyn は using 節を範囲として返さないことがあり、以前はここで畳みが消えて
+    /// 「開いた直後に閉じた using が勝手に開く」になっていた。</summary>
+    [Fact]
+    public void CloseUsingRanges_folds_without_server_ranges_and_survives_them()
+    {
+        var folds = new FoldManager();
+
+        ShellAppearanceCoordinator.CloseUsingRanges(folds, [new LspFoldingRange(0, 3)]);
+        Assert.True(Assert.Single(folds.Folds).IsClosed);
+
+        // サーバーは using 節を報せず、クラスの範囲だけを返してきた。
+        folds.SetLspRanges([(5, 9)]);
+
+        Assert.True(Assert.Single(folds.Folds, fold => fold.StartLine == 0).IsClosed);
+        Assert.NotNull(folds.GetHidingFold(2));
+    }
 }

@@ -215,12 +215,12 @@ internal sealed class LspDocumentHandle : ILspDocument, ILspReferenceQuery
         if (!IsReady || !ServerSupportsCodeLens)
             return [];
 
-        var lenses = await _entry.Client.Client.GetCodeLensesAsync(Uri, ct);
-        return await LspCodeLensExecutionFilter.ResolveExecutableAsync(
-            lenses,
-            ServerSupportsCodeLensResolve,
-            (lens, token) => ResolveCodeLensAsync(lens, token),
-            ct);
+        // 解決（codeLens/resolve）はここでやらない。エディタ側が同じことをしたうえで、
+        // <b>解決前の一覧で先に注釈行を確保する</b>——行の位置は一覧応答の時点で確定しているので、
+        // 解決を待たずに場所を空けておけば、本文を読み始めた頃に一斉にずれることがない。
+        // ここで解決まで済ませて返すと、エディタには最初から解決済みしか見えず、その先行確保が
+        // 丸ごと効かなくなる（実測: 開いてから 8 秒後に行とラベルが同時に現れていた）。
+        return await _entry.Client.Client.GetCodeLensesAsync(Uri, ct);
     }
 
     public Task<LspCodeLens?> ResolveCodeLensAsync(LspCodeLens lens, CancellationToken ct = default) =>

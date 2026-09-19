@@ -26,7 +26,7 @@ internal static class HoverDisplayText
             if (trimmed.TrimStart().StartsWith("```", StringComparison.Ordinal)) continue;
             // 空行が続くのは Markdown の段落分けの都合。1 行に畳む。
             if (trimmed.Trim().Length == 0 && (kept.Count == 0 || kept[^1].Length == 0)) continue;
-            kept.Add(Unescape(trimmed));
+            kept.Add(DecodeEntities(Unescape(trimmed)));
         }
         while (kept.Count > 0 && kept[^1].Length == 0)
             kept.RemoveAt(kept.Count - 1);
@@ -50,6 +50,15 @@ internal static class HoverDisplayText
         }
         return text.ToString();
     }
+
+    /// <summary>HTML の文字参照（<c>&amp;nbsp;</c> <c>&amp;lt;</c> など）を文字へ戻す。Roslyn は要約を
+    /// <b>1 行に畳んで</b>返すので、<c>`…`</c> の隣の空白が Markdown で潰れないよう <c>&amp;nbsp;</c> と
+    /// 書く——外さないと実測で <c>LoomoSettings&amp;nbsp;を&amp;nbsp;…</c> という綴りが本文に見えていた。
+    /// 戻す空白は<b>普通の空白</b>にする（NBSP のままだと折り返さず、ここから写した文字にも紛れ込む）。</summary>
+    private static string DecodeEntities(string line) =>
+        line.Contains('&')
+            ? System.Net.WebUtility.HtmlDecode(line).Replace('\u00A0', ' ')
+            : line;
 
     private const string EscapablePunctuation = @"\`*_{}[]()#+-.!<>|~";
 }

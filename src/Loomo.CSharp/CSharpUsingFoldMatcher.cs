@@ -1,51 +1,46 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using Editor.Core.Lsp;
 
 namespace sk0ya.Loomo.CSharp;
 
-/// <summary>LSP の foldingRange から、C# の using ディレクティブ群に対応する範囲だけを選ぶ。</summary>
+/// <summary>C# の using ディレクティブ群がどの行からどの行までかを、<b>本文だけ</b>から決める。
+///
+/// <para>以前は LSP の foldingRange から「using 節に当たる範囲」を選んでいた。だが実測で Roslyn は
+/// using 節を範囲として返さないことがあり、そのうえ答えが届くのは開いてから 0.5 秒後——本文が
+/// 読めるようになってから畳まれて文字が動く。using の固まりは文字を見れば分かるので、
+/// サーバーに頼るのをやめた。</para></summary>
 public static class CSharpUsingFoldMatcher
 {
-    public static IReadOnlyList<LspFoldingRange> Find(string text, IReadOnlyList<LspFoldingRange> ranges)
+    /// <summary>畳める using の固まり。1 行しかない固まりは畳んでも意味がないので返さない。</summary>
+    public static IReadOnlyList<LspFoldingRange> Find(string text)
     {
-        var lines = text.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n').Split('\n');
-        var usingLines = lines
-            .Select((line, index) => (line: line.TrimStart(), index))
-            .Where(item => IsUsingDirective(item.line))
-            .Select(item => item.index)
-            .ToArray();
-        if (usingLines.Length < 2)
-            return [];
+        if (string.IsNullOrEmpty(text)) return [];
 
-        var groups = new List<(int First, int Last)>();
+        var lines = text.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n').Split('\n');
+        var usingLines = new List<int>();
+        for (var i = 0; i < lines.Length; i++)
+            if (IsUsingDirective(lines[i].TrimStart()))
+                usingLines.Add(i);
+        if (usingLines.Count < 2) return [];
+
+        var groups = new List<LspFoldingRange>();
         var first = usingLines[0];
         var last = first;
-        for (var i = 1; i < usingLines.Length; i++)
+        for (var i = 1; i < usingLines.Count; i++)
         {
+            // 空行やコメントを挟んだだけなら同じ固まり（using をグループ分けして書く流儀がある）。
             if (OnlyTriviaBetween(lines, last + 1, usingLines[i] - 1))
             {
                 last = usingLines[i];
                 continue;
             }
-            if (last > first)
-                groups.Add((first, last));
+            if (last > first) groups.Add(new LspFoldingRange(first, last));
             first = last = usingLines[i];
         }
-        if (last > first)
-            groups.Add((first, last));
+        if (last > first) groups.Add(new LspFoldingRange(first, last));
 
-        return groups
-            .Select(group => ranges
-                // imports 範囲は最初の using 行から始まる。単に包含する外側の namespace/type
-                // 範囲を選ぶと using 以外まで閉じるため、開始行の一致を必須にする。
-                .Where(range => range.StartLine == group.First && range.EndLine >= group.Last)
-                .OrderBy(range => range.EndLine - range.StartLine)
-                .FirstOrDefault())
-            .Where(range => range is not null)
-            .Distinct()
-            .ToArray()!;
+        return groups;
     }
 
     private static bool IsUsingDirective(string line)

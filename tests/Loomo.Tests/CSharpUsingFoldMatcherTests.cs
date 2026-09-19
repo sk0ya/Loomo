@@ -1,13 +1,13 @@
-using Editor.Core.Lsp;
 using sk0ya.Loomo.CSharp;
 using Xunit;
 
 namespace sk0ya.Loomo.Tests;
 
+/// <summary>using 節の範囲は<b>本文だけ</b>から決める（サーバーの foldingRange を待たない）。</summary>
 public sealed class CSharpUsingFoldMatcherTests
 {
     [Fact]
-    public void Find_matches_using_range_even_when_kind_is_null()
+    public void Find_returns_the_leading_using_block()
     {
         const string text = """
             using System;
@@ -19,37 +19,37 @@ public sealed class CSharpUsingFoldMatcherTests
             {
             }
             """;
-        var imports = new LspFoldingRange(0, 1);
-        var type = new LspFoldingRange(5, 7);
 
-        var result = CSharpUsingFoldMatcher.Find(text, [imports, type]);
+        var range = Assert.Single(CSharpUsingFoldMatcher.Find(text));
 
-        Assert.Equal([imports], result);
+        Assert.Equal(0, range.StartLine);
+        Assert.Equal(1, range.EndLine);
     }
 
+    /// <summary>空行やコメントで区切って書く流儀があるので、そこでは固まりを切らない。</summary>
     [Fact]
-    public void Find_does_not_match_class_or_method_ranges()
+    public void Find_keeps_groups_separated_by_blank_lines_together()
     {
         const string text = """
             using System;
-            using System.Linq;
 
-            public sealed class Foo
-            {
-                public void Run()
-                {
-                }
-            }
+            // Loomo
+            using sk0ya.Loomo.Core;
+            using sk0ya.Loomo.Services;
+
+            namespace Sample;
             """;
 
-        var result = CSharpUsingFoldMatcher.Find(text,
-            [new LspFoldingRange(3, 8), new LspFoldingRange(5, 7)]);
+        var range = Assert.Single(CSharpUsingFoldMatcher.Find(text));
 
-        Assert.Empty(result);
+        Assert.Equal(0, range.StartLine);
+        Assert.Equal(4, range.EndLine);
     }
 
+    /// <summary>namespace ブロックの中に書かれた using も、その固まりだけを畳む
+    /// （外側の namespace ごと畳まない）。</summary>
     [Fact]
-    public void Find_does_not_use_an_outer_namespace_range_that_contains_usings()
+    public void Find_matches_usings_inside_a_namespace_block()
     {
         const string text = """
             namespace Sample
@@ -63,9 +63,10 @@ public sealed class CSharpUsingFoldMatcherTests
             }
             """;
 
-        var result = CSharpUsingFoldMatcher.Find(text, [new LspFoldingRange(0, 8)]);
+        var range = Assert.Single(CSharpUsingFoldMatcher.Find(text));
 
-        Assert.Empty(result);
+        Assert.Equal(2, range.StartLine);
+        Assert.Equal(3, range.EndLine);
     }
 
     [Fact]
@@ -84,8 +85,13 @@ public sealed class CSharpUsingFoldMatcherTests
             }
             """;
 
-        var result = CSharpUsingFoldMatcher.Find(text, [new LspFoldingRange(3, 8)]);
+        Assert.Empty(CSharpUsingFoldMatcher.Find(text));
+    }
 
-        Assert.Empty(result);
+    /// <summary>1 行しかない固まりは畳んでも得がないので返さない。</summary>
+    [Fact]
+    public void Find_ignores_a_single_using()
+    {
+        Assert.Empty(CSharpUsingFoldMatcher.Find("using System;\n\nnamespace Sample;\n"));
     }
 }

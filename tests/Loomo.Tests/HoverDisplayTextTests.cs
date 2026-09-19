@@ -41,6 +41,18 @@ public sealed class HoverDisplayTextTests
     public void 記号の前でないバックスラッシュは残す()
         => Assert.Equal(@"C:\work\a", HoverDisplayText.Plain(@"C:\work\a"));
 
+    /// <summary>Roslyn は要約を 1 行に畳み、<c>`…`</c> の隣の空白を <c>&amp;nbsp;</c> と書いて返す。
+    /// 外さないと綴りがそのまま本文に出る（実測でそうなっていた）。</summary>
+    [Fact]
+    public void HTMLの文字参照を文字へ戻す()
+    {
+        var text = HoverDisplayText.Plain("LoomoSettings&nbsp;を&nbsp;settings.json&nbsp;に永続化する。");
+
+        Assert.Equal("LoomoSettings を settings.json に永続化する。", text);
+        // 戻した空白は普通の空白。NBSP のままだと折り返さず、ここから写した文字にも紛れ込む。
+        Assert.DoesNotContain('\u00A0', text!);
+    }
+
     [Theory]
     [InlineData(null)]
     [InlineData("")]
