@@ -607,8 +607,11 @@
                                                  ツールチップで出す（継続行は null ＝ツールチップを出さない）。 -->
                                             <DockPanel LastChildFill="True"
                                                        ToolTip="{Binding ToolTipText, Mode=OneWay}">
-                                                <TextBlock DockPanel.Dock="Left" Text="{Binding Graph, Mode=OneWay}"
-                                                           Foreground="{DynamicResource FgDim}" VerticalAlignment="Center" />
+                                                <!-- 枝は git の文字グラフではなく描いて出す。自分が
+                                                     何行目かはコントロールが自分で引き当てる（グラフは行では
+                                                     なく一覧の並びに属する情報なので、行のバインディングでは
+                                                     取れない）＝CommitGraphCell。 -->
+                                                <local:CommitGraphCell DockPanel.Dock="Left" />
                                                 <!-- 参照が多い行で件名を押し出さないよう上限を置き、はみ出しは切る
                                                      （読みたいのは件名の方）。左の余白は各バッジが持つので、
                                                      参照が0件の行には隙間が出ない。 -->

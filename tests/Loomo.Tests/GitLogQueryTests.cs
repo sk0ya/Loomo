@@ -12,11 +12,15 @@ public class GitLogQueryTests
     private static string Args(GitLogQuery query) => string.Join(' ', query.ToArguments());
 
     [Fact]
-    public void 既定はグラフ付きの全ブランチ()
+    public void 既定は全ブランチをトポロジ順で引く()
     {
         var args = Args(new GitLogQuery { Limit = 50 });
 
-        Assert.Contains("--graph", args);
+        // グラフは自分で組む（GitCommitGraph）ので --graph は渡さない。渡すと枝の継続行が
+        // 一覧に混ざる。ただし --graph は --topo-order を暗黙に有効にするので、外すなら
+        // こちらを明示しないと並びが日付順に変わり、レーンが繋がらなくなる。
+        Assert.DoesNotContain("--graph", args);
+        Assert.Contains("--topo-order", args);
         Assert.Contains("--all", args);
         Assert.Contains("-n50", args);
         Assert.DoesNotContain("--skip", args);

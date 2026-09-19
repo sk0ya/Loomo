@@ -328,6 +328,7 @@ public sealed partial class GitHistoryViewModel : ObservableObject
     public void Clear()
     {
         LogRows.Clear();
+        RebuildGraph();
         _knownAuthors.Clear();
         UpdateAuthorOptions();
         CommitDetail = "";
@@ -377,8 +378,37 @@ public sealed partial class GitHistoryViewModel : ObservableObject
             if (reselectHash is not null && row.Hash == reselectHash) reselect = row;
         }
         HasMoreLog = count >= PageSize;
+        RebuildGraph();
         return reselect;
     }
+
+    /// <summary>行ごとのグラフ（<see cref="LogRows"/> と同じ並び・同じ件数）。</summary>
+    public IReadOnlyList<GitGraphRow> Graph { get; private set; } = Array.Empty<GitGraphRow>();
+
+    /// <summary>グラフ列の幅を決める最大レーン数。行ごとの実幅で描くと、枝の増減で件名の左端が
+    /// ガタガタ動いて読めない。</summary>
+    [ObservableProperty] private int _graphLaneCount;
+
+    /// <summary>
+    /// グラフを出してよいか。<b>絞り込み中は出さない</b>——レーンは「一覧の並びで隣り合う行が
+    /// 親子である」ことを前提に繋いでいるので、間引かれた一覧の上では線が嘘になる
+    /// （git 自身も絞り込みでは履歴を単純化して見せる）。
+    /// </summary>
+    public bool ShowGraph => !HasActiveFilters;
+
+    private void RebuildGraph()
+    {
+        Graph = GitCommitGraph.Build(LogRows);
+        GraphLaneCount = Graph.Count == 0 ? 0 : Graph.Max(row => row.LaneCount);
+        GraphChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>グラフを組み直した（ビューは行の描画を更新する）。</summary>
+    public event EventHandler? GraphChanged;
+
+    /// <summary>一覧の <paramref name="index"/> 行目のグラフ。範囲外・絞り込み中は null。</summary>
+    public GitGraphRow? GraphAt(int index) =>
+        ShowGraph && index >= 0 && index < Graph.Count ? Graph[index] : null;
 
     private async Task SelectLoadedOrOlderAsync(string hash)
     {
@@ -417,7 +447,10 @@ public sealed partial class GitHistoryViewModel : ObservableObject
     private void RefreshView()
     {
         OnPropertyChanged(nameof(HasActiveFilters));
+        OnPropertyChanged(nameof(ShowGraph));
         LogView.Refresh();
+        // 絞り込みの有無でグラフの出し入れが変わるので、行を描き直させる。
+        GraphChanged?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>

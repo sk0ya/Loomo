@@ -46,8 +46,9 @@ public sealed class GitCommitGraphRealRepoTests : IAsyncLifetime
         var graph = GitCommitGraph.Build(rows);
 
         Assert.Equal(rows.Count, graph.Count);
-        var commits = rows.Where(row => row.IsCommit).ToList();
-        Assert.Equal(4, commits.Count);
+        // 枝の継続行はもう来ない（--graph を渡していない）＝行数と件数が一致する。
+        Assert.All(rows, row => Assert.True(row.IsCommit));
+        Assert.Equal(4, rows.Count);
 
         // マージコミットは親を2つ持ち、そこから2本の線が下へ出る。
         var mergeIndex = rows.ToList().FindIndex(row => row.Subject == "枝を取り込む");

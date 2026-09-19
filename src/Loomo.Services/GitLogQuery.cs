@@ -67,7 +67,11 @@ public sealed record GitLogQuery
         {
             GitCompareArgs.LiteralPathspecs,
             "log",
-            "--graph",
+            // グラフは自分で組む（GitCommitGraph）ので --graph は渡さない。渡すと枝の継続行
+            // （"|\" だけの行）が一覧に混ざり、行数と件数がずれる。ただし --graph は
+            // <b>--topo-order を暗黙に有効にする</b>ので、外すならこちらを明示しないと
+            // 並びが日付順に変わり、レーンが繋がらなくなる。
+            "--topo-order",
             // 完全な ref 名で装飾させる（refs/heads/... ／ refs/remotes/... ／ refs/tags/...）。
             // 短縮名だと「リモートの main」と「origin/main という名前のローカルブランチ」を
             // 見分けられず、色分けが推測になる（GitRefLabels）。
