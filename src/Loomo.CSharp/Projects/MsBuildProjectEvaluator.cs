@@ -18,27 +18,9 @@ public sealed class MsBuildProjectEvaluator : IProjectEvaluator
     public async Task<ProjectEvaluation> EvaluateAsync(string projectPath, string? targetFramework,
         string? configuration, CancellationToken cancellationToken = default)
     {
-        // TFM の指定が無いときは、まず<b>評価だけ</b>で何の TFM を持つプロジェクトかを見る。
-        // design-time build を TFM 無しで回すと、複数 TFM のプロジェクトでは内側の TFM ごとの
-        // ビルドが走り、それらが（グローバルプロパティである）同じ中間出力へ相乗りして互いの
-        // 生成ソースと cache を上書きする。単一 TFM なら、ここで分かった TFM を指定して回す。
-        string stdout, stderr;
-        int exitCode;
-        if (string.IsNullOrWhiteSpace(targetFramework))
-        {
-            (exitCode, stdout, stderr) = await RunAsync(
-                projectPath, null, configuration, designTimeBuild: false, cancellationToken);
-            if (exitCode == 0 && SingleTargetFramework(stdout) is { } only)
-                targetFramework = only;
-            else if (exitCode == 0)
-                // 複数 TFM。生成ソースと参照は TFM ごとの評価（呼び出し側が回す）で埋まるので、
-                // ここで design-time build まで走らせても捨てるだけになる。
-                return await CompleteAsync(stdout, projectPath, null, configuration, cancellationToken);
-        }
-
         // design-time buildまで走らせる。失敗したら評価だけに落として、少なくとも作成済みの
         // Compile 項目は返す（生成ソースと参照は欠ける）。
-        (exitCode, stdout, stderr) = await RunAsync(
+        var (exitCode, stdout, stderr) = await RunAsync(
             projectPath, targetFramework, configuration, designTimeBuild: true, cancellationToken);
         if (exitCode != 0)
             (exitCode, stdout, stderr) = await RunAsync(
@@ -65,26 +47,6 @@ public sealed class MsBuildProjectEvaluator : IProjectEvaluator
     }
 
     /// <summary>
-    /// 評価だけの出力から「単一 TFM ならその名前」を読む。複数 TFM（<c>TargetFrameworks</c> が空でない）
-    /// なら null——そのときは TFM ごとの評価が別に走るので、ここで design-time build を回す意味がない。
-    /// </summary>
-    private static string? SingleTargetFramework(string json)
-    {
-        try
-        {
-            using var doc = JsonDocument.Parse(json);
-            if (!doc.RootElement.TryGetProperty("Properties", out var properties)
-                || properties.ValueKind != JsonValueKind.Object) return null;
-            string? Read(string name) => properties.TryGetProperty(name, out var value)
-                ? value.GetString() : null;
-            if (!string.IsNullOrWhiteSpace(Read("TargetFrameworks"))) return null;
-            var single = Read("TargetFramework");
-            return string.IsNullOrWhiteSpace(single) ? null : single;
-        }
-        catch (JsonException) { return null; }
-    }
-
-    /// <summary>
     /// <c>dotnet msbuild</c> を1回走らせる。
     ///
     /// <para><paramref name="designTimeBuild"/> が要るのは、<c>-getProperty</c>／<c>-getItem</c> だけを渡すと
@@ -104,11 +66,13 @@ public sealed class MsBuildProjectEvaluator : IProjectEvaluator
     /// コンパイル自体は要らないので <c>SkipCompilerExecution</c>／<c>BuildProjectReferences=false</c> を付け、
     /// 参照プロジェクトはビルドせず TargetPath だけ解決させる（IDE の design-time build と同じ形）。</para>
     ///
-    /// <para><b>TFM 指定は省けない</b>: <c>IntermediateOutputPath</c> はグローバルプロパティなので、
+    /// <para><b>TFM 無しの呼び出しについて</b>: <c>IntermediateOutputPath</c> はグローバルプロパティなので、
     /// TFM 無しで <c>/t:Compile</c> を回すと、複数 TFM のプロジェクトでは内側の TFM ごとのビルドが
-    /// すべて同じ中間出力へ相乗りし、<c>AssemblyInfo.cs</c> や各種 cache を互いに上書きする
-    /// （cache が「最新」に見えるので、2つ目の TFM は1つ目の生成物を使い続ける）。
-    /// 呼び出し側は TFM を知る前に一度呼ぶので、そのときは評価だけで TFM を見てから回す。</para>
+    /// すべて <c>shared</c> の中間出力へ相乗りし、<c>AssemblyInfo.cs</c> や各種 cache を互いに上書きする。
+    /// ただし<b>その結果は使われない</b>——呼び出し側は複数 TFM と分かった時点で TFM ごとに評価し直し、
+    /// そちらは TFM ごとの置き場を持つ（<see cref="SolutionModelService"/>）。TFM を先に知るために
+    /// 評価だけの下見を挟む案は、<b>単一 TFM のプロジェクト（多数派）で毎回プロセスが2倍</b>になるので
+    /// 採らない。</para>
     /// </summary>
     private static async Task<(int ExitCode, string Stdout, string Stderr)> RunAsync(
         string projectPath, string? targetFramework, string? configuration,
@@ -193,11 +157,8 @@ public sealed class MsBuildProjectEvaluator : IProjectEvaluator
     /// <c>dotnet clean</c> でも消えない。プロジェクトのフルパスで鍵を作るので、別リポジトリの同名
     /// プロジェクトとも混ざらない。</para>
     ///
-    /// <para>TFM ごとに分けるのは、<b>同じプロジェクトの複数 TFM が同時に書く</b>ため。このプロパティは
-    /// グローバルなので、TFM 指定の無い呼び出しで design-time build を回すと内側の TFM ごとのビルドまで
-    /// 同じ場所を使い、<c>AssemblyInfo.cs</c> や各種 cache を互いに上書きする。だから
-    /// <see cref="EvaluateAsync(string, string?, string?, CancellationToken)"/> は
-    /// <b>design-time build を必ず TFM 指定つきで走らせる</b>。</para>
+    /// <para>TFM ごとに分けるのは、<b>同じプロジェクトの複数 TFM が同時に書く</b>ため（TFM 指定の無い
+    /// 呼び出しは <c>shared</c> に相乗りするが、その結果は使われない＝<see cref="RunAsync"/> の注記）。</para>
     /// </summary>
     private static string DesignTimeIntermediatePath(
         string projectPath, string? configuration, string? targetFramework)
@@ -205,9 +166,40 @@ public sealed class MsBuildProjectEvaluator : IProjectEvaluator
         var config = Segment(configuration, "Debug");
         var tfm = Segment(targetFramework, "shared");
         var key = Path.GetFileNameWithoutExtension(projectPath) + "-" + Hash(Path.GetFullPath(projectPath));
+        PruneOldDesignTimeOutput();
         // 末尾の区切りは MSBuild の約束（無いとパス結合が壊れる）。
-        return Path.Combine(Path.GetTempPath(), "loomo-designtime", key, config, tfm)
-            + Path.DirectorySeparatorChar;
+        return Path.Combine(DesignTimeRoot, key, config, tfm) + Path.DirectorySeparatorChar;
+    }
+
+    private static string DesignTimeRoot => Path.Combine(Path.GetTempPath(), "loomo-designtime");
+
+    /// <summary>掃除は寿命に1回でいい（同じ日に何度も消して回るものではない）。</summary>
+    private static int _pruned;
+
+    /// <summary>
+    /// 古い design-time 中間出力を捨てる。ここはリポジトリの外なので <c>dotnet clean</c> も
+    /// <c>git clean</c> も届かない——放っておくと、開いたリポジトリ × ブランチの数だけ
+    /// 生成ソースと MSBuild の cache が一生積もる。<b>失敗しても黙って諦める</b>
+    /// （消せないファイルがあるだけで評価を止める理由にはならない）。
+    /// </summary>
+    private static void PruneOldDesignTimeOutput()
+    {
+        if (Interlocked.Exchange(ref _pruned, 1) != 0) return;
+        try
+        {
+            if (!Directory.Exists(DesignTimeRoot)) return;
+            var limit = DateTime.UtcNow - TimeSpan.FromDays(7);
+            foreach (var directory in Directory.EnumerateDirectories(DesignTimeRoot))
+            {
+                try
+                {
+                    if (Directory.GetLastWriteTimeUtc(directory) < limit)
+                        Directory.Delete(directory, recursive: true);
+                }
+                catch (Exception) { /* 使用中・権限。次の機会に消える */ }
+            }
+        }
+        catch (Exception) { /* 一時フォルダーごと読めない環境でも評価は続ける */ }
     }
 
     private static string Hash(string value)

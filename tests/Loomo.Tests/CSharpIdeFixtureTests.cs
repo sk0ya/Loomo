@@ -120,22 +120,28 @@ public sealed class CSharpIdeFixtureTests
         await File.WriteAllTextAsync(sentinel, "実ビルドの成果物のつもり");
         var before = Snapshot(realIntermediate);
         Assert.NotEmpty(before);
+        try
+        {
+            // TFM は指定しない（このプロジェクトは net10.0-windows。違う TFM を渡すと UseWPF が効かず、
+            // そもそも markup compile が走らない）。
+            var evaluation = await new MsBuildProjectEvaluator().EvaluateAsync(projectPath, null, "Debug");
 
-        // TFM は指定しない（このプロジェクトは net10.0-windows。違う TFM を渡すと UseWPF が効かず、
-        // そもそも markup compile が走らない）。
-        var evaluation = await new MsBuildProjectEvaluator().EvaluateAsync(projectPath, null, "Debug");
-
-        // 生成ソースは design-time 専用の置き場から来る（＝実ビルドの中間出力には書いていない）。
-        var generated = Assert.Single(evaluation.Compile, item =>
-            (item.FullPath ?? item.Include).EndsWith("MainWindow.g.cs", StringComparison.OrdinalIgnoreCase));
-        Assert.Contains("loomo-designtime", generated.FullPath ?? generated.Include,
-            StringComparison.OrdinalIgnoreCase);
-        // リポジトリの中にも置かない（中間出力の置き場を移しているリポジトリでは、
-        // .gitignore に載っていない obj\ を勝手に生やすことになる）。
-        Assert.DoesNotContain(projectDir, generated.FullPath ?? generated.Include,
-            StringComparison.OrdinalIgnoreCase);
-        Assert.Equal(before, Snapshot(realIntermediate));
-        File.Delete(sentinel);
+            // 生成ソースは design-time 専用の置き場から来る（＝実ビルドの中間出力には書いていない）。
+            var generated = Assert.Single(evaluation.Compile, item =>
+                (item.FullPath ?? item.Include).EndsWith("MainWindow.g.cs", StringComparison.OrdinalIgnoreCase));
+            Assert.Contains("loomo-designtime", generated.FullPath ?? generated.Include,
+                StringComparison.OrdinalIgnoreCase);
+            // リポジトリの中にも置かない（中間出力の置き場を移しているリポジトリでは、
+            // .gitignore に載っていない obj\ を勝手に生やすことになる）。
+            Assert.DoesNotContain(projectDir, generated.FullPath ?? generated.Include,
+                StringComparison.OrdinalIgnoreCase);
+            Assert.Equal(before, Snapshot(realIntermediate));
+        }
+        finally
+        {
+            // 落ちたときに置き去りにすると、次回以降この見張り役が before に混ざってフィクスチャが汚れる。
+            File.Delete(sentinel);
+        }
     }
 
     /// <summary>複数 TFM のプロジェクトでも、TFM ごとの生成物が混ざらない。
