@@ -38,7 +38,7 @@ public sealed class CSharpCompilerDiagnosticService
             // Compilation の生成も診断の取得も Task.Run の<b>中</b>で完結させる。
             // GetDiagnostics() が意味解析の本体で、ここが一番重い——await の後ろに置くと、
             // UI スレッドから呼ばれたときに続きがディスパッチャへ戻って数秒固まる（実測3.9秒）。
-            var diagnostics = await Task.Run(() =>
+            var (diagnostics, warning) = await Task.Run(() =>
             {
                 var compilation = CSharpWorkspaceOperationContext.Create(
                     solution, fullPath, source,
@@ -46,7 +46,15 @@ public sealed class CSharpCompilerDiagnosticService
                     compilationOptions: CSharpProjectCompilationOptions.Compilation(target, editorConfig),
                     assemblyName: project.CompilationAssemblyName,
                     openTexts: openTexts);
-                return compilation.SemanticCompilation!.GetDiagnostics(cancellationToken)
+                // ソースを積みきれなかったときは<b>何も出さないが、黙らない</b>。欠けたのはこちらの
+                // 都合なのに、出る診断は「型が見つからない」（CS0246／CS0103）で、コードの誤りと
+                // 区別が付かない——本物の誤りがその中に埋もれる。かといって空を返すだけでは
+                // 「問題なし」と見分けが付かないので、理由を添えて返す（Quick Fix 側は前から同じ
+                // 条件で降りている＝CSharpCompilerCodeFixService）。これはフォールバックなので、
+                // 言語サーバーが入っていればそちらの診断が出る。
+                if (compilation.SourceSnapshotWarning is { } incomplete)
+                    return (Array.Empty<LspDiagnostic>(), incomplete);
+                return (compilation.SemanticCompilation!.GetDiagnostics(cancellationToken)
                 .Where(diagnostic => !diagnostic.IsSuppressed && diagnostic.Location.IsInSource)
                 .Where(diagnostic => string.Equals(
                     Path.GetFullPath(diagnostic.Location.SourceTree?.FilePath ?? ""),
@@ -57,9 +65,9 @@ public sealed class CSharpCompilerDiagnosticService
                 .OrderBy(diagnostic => diagnostic.Range.Start.Line)
                 .ThenBy(diagnostic => diagnostic.Range.Start.Character)
                 .ThenBy(diagnostic => diagnostic.Code, StringComparer.OrdinalIgnoreCase)
-                .ToArray();
+                .ToArray(), (string?)null);
             }, cancellationToken).ConfigureAwait(false);
-            return new(diagnostics, null);
+            return new(diagnostics, warning);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {

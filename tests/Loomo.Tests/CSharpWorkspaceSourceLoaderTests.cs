@@ -44,6 +44,82 @@ public sealed class CSharpWorkspaceSourceLoaderTests : IDisposable
             .Single().NewText, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// ソースを1行も取り込めなかったプロジェクトの名前は登録しない。この名前は
+    /// 「その出力 DLL は参照から外す」という意味（ソースと DLL の両方があると CS0436）なので、
+    /// 読めていないプロジェクトまで登録すると<b>ソースも DLL も無い</b>状態になり、
+    /// そのプロジェクトの型が全部消えて CS0246 が溢れる。
+    /// まだ一度もビルドしていない（生成ソースが実在しない）参照先がこれに当たる。
+    /// </summary>
+    [Fact]
+    public void Does_not_claim_projects_whose_sources_could_not_be_read()
+    {
+        var activePath = Write("Active.cs", "public class Active { }");
+        var missingPath = Path.Combine(_root, "NotGenerated.g.cs");   // 実在しない
+        var activeProjectPath = Path.Combine(_root, "Active.csproj");
+        var missingProjectPath = Path.Combine(_root, "Generated.csproj");
+        var generated = Project("Generated", missingProjectPath, [], missingPath);
+        var active = Project("Active", activeProjectPath, [missingProjectPath], activePath);
+        var solution = new SolutionModel(Path.Combine(_root, "Sample.sln"), "Sample", _root,
+            [active, generated], ProjectLoadState.Ready);
+
+        var snapshot = CSharpWorkspaceSourceLoader.LoadSnapshot(
+            solution, activePath, File.ReadAllText(activePath));
+
+        Assert.Contains("Active", snapshot.SourceAssemblyNames);
+        Assert.DoesNotContain("Generated", snapshot.SourceAssemblyNames);
+    }
+
+    /// <summary>
+    /// 一部しか読めなかったプロジェクトも登録しない。登録＝「その DLL は参照から外す」なので、
+    /// 読めなかったファイルの型が<b>ソースにも DLL にも居ない</b>状態（CS0246）になる。
+    /// 型が二重（CS0436・警告）の方が、型が消える（CS0246・エラー）より後始末が利く。
+    /// </summary>
+    [Fact]
+    public void Does_not_claim_projects_whose_sources_were_only_partly_read()
+    {
+        var activePath = Write("Active.cs", "public class Active { }");
+        var readablePath = Write("Readable.cs", "public class Readable { }");
+        var missingPath = Path.Combine(_root, "Missing.g.cs");   // 実在しない
+        var activeProjectPath = Path.Combine(_root, "Active.csproj");
+        var halfProjectPath = Path.Combine(_root, "Half.csproj");
+        var half = new ProjectModel("Half", halfProjectPath, _root, [],
+            [new TargetFrameworkModel("net10.0", [], "latest", [
+                new ProjectItem("Readable.cs", readablePath),
+                new ProjectItem("Missing.g.cs", missingPath),
+            ], [], [], [])],
+            "net10.0", false, ProjectLoadState.Ready);
+        var active = Project("Active", activeProjectPath, [halfProjectPath], activePath);
+        var solution = new SolutionModel(Path.Combine(_root, "Sample.sln"), "Sample", _root,
+            [active, half], ProjectLoadState.Ready);
+
+        var snapshot = CSharpWorkspaceSourceLoader.LoadSnapshot(
+            solution, activePath, File.ReadAllText(activePath));
+
+        Assert.Contains(readablePath, snapshot.Texts.Keys, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Half", snapshot.SourceAssemblyNames);
+    }
+
+    [Fact]
+    public void Claims_projects_whose_sources_were_read()
+    {
+        var contractsPath = Write("Contracts.cs", "public interface IContract { }");
+        var featurePath = Write("Feature.cs", "public class Feature { }");
+        var contractsProjectPath = Path.Combine(_root, "Contracts.csproj");
+        var featureProjectPath = Path.Combine(_root, "Feature.csproj");
+        var contracts = Project("Contracts", contractsProjectPath, [], contractsPath);
+        var feature = Project("Feature", featureProjectPath, [contractsProjectPath], featurePath);
+        var solution = new SolutionModel(Path.Combine(_root, "Sample.sln"), "Sample", _root,
+            [feature, contracts], ProjectLoadState.Ready);
+
+        var snapshot = CSharpWorkspaceSourceLoader.LoadSnapshot(
+            solution, featurePath, File.ReadAllText(featurePath));
+
+        // 辿った ProjectReference 先も、ソースを積めている限り名前を登録する（DLL と二重にしない）。
+        Assert.Contains("Feature", snapshot.SourceAssemblyNames);
+        Assert.Contains("Contracts", snapshot.SourceAssemblyNames);
+    }
+
     [Fact]
     public void Uses_unsaved_text_for_other_open_compile_files()
     {

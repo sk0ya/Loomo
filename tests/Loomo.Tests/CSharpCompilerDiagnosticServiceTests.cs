@@ -30,6 +30,34 @@ public sealed class CSharpCompilerDiagnosticServiceTests : IDisposable
         Assert.Null(result.Error);
     }
 
+    /// <summary>
+    /// ソースを積みきれなかったときは何も出さない。欠けたのはこちらの都合なのに、出る診断は
+    /// 「型が見つからない」（CS0246／CS0103）になり、コードの誤りと区別が付かない——本物の誤りが
+    /// その中に埋もれる。Quick Fix 側は前から同じ条件で降りている。
+    /// </summary>
+    [Fact]
+    public async Task Stays_silent_when_the_source_snapshot_is_incomplete()
+    {
+        var path = Path.Combine(_root, "Broken.cs");
+        File.WriteAllText(path, "class Broken { }");
+        // 上限（1ファイル 8MB）を超えるファイルを1つ混ぜる＝スナップショットが欠ける。
+        var hugePath = Path.Combine(_root, "Huge.cs");
+        File.WriteAllText(hugePath, "// " + new string('x', 9 * 1024 * 1024) + "\nclass Huge { }");
+        var project = new ProjectModel("Sample", Path.Combine(_root, "Sample.csproj"),
+            _root, [], [new TargetFrameworkModel("net10.0", [], "latest",
+                [new ProjectItem("Broken.cs", path), new ProjectItem("Huge.cs", hugePath)], [], [], [])],
+            "net10.0", false, ProjectLoadState.Ready);
+        var solution = new SolutionModel(null, "Sample", _root, [project], ProjectLoadState.Ready);
+
+        var result = await new CSharpCompilerDiagnosticService().AnalyzeAsync(
+            solution, path, "class Broken { void Run() { int value = 1 } }");
+
+        // 同じ本文は Reports_unsaved_syntax_diagnostic_for_the_active_file で CS1002 が出る側。
+        Assert.Empty(result.Diagnostics);
+        // 空を返すだけでは「問題なし」と見分けが付かないので、理由を添える。
+        Assert.Contains("切り詰め", result.Error);
+    }
+
     [Fact]
     public async Task Returns_no_diagnostic_for_valid_unsaved_source()
     {

@@ -101,20 +101,36 @@ public static class CSharpWorkspaceSourceLoader
             var project = queue.Dequeue();
             var projectPath = Path.GetFullPath(project.FullPath);
             if (!visited.Add(projectPath)) continue;
-            sourceAssemblyNames.Add(project.CompilationAssemblyName);
             var parseOptions = CSharpProjectCompilationOptions.Parse(
                 project.SelectedTargetFrameworkModel);
 
+            var loadedAny = false;
+            var missedAny = false;
             foreach (var item in project.SelectedTargetFrameworkModel?.CompileFiles ?? [])
             {
                 if (!string.Equals(Path.GetExtension(item.FullPath), ".cs", StringComparison.OrdinalIgnoreCase))
                     continue;
-                if (TryRead(result, parseOptionsByPath, item.FullPath, parseOptions,
-                        budget, normalizedOpenTexts) == SourceLoadResult.SkippedByBudget
+                var read = TryRead(result, parseOptionsByPath, item.FullPath, parseOptions,
+                    budget, normalizedOpenTexts);
+                if (read == SourceLoadResult.Loaded) loadedAny = true;
+                else missedAny = true;
+                if (read == SourceLoadResult.SkippedByBudget
                     && !string.Equals(Path.GetFullPath(item.FullPath), activeFullPath,
                         StringComparison.OrdinalIgnoreCase))
                     skippedFileCount++;
             }
+
+            // アセンブリ名を登録するのは、そのプロジェクトのソースを<b>全部</b>積めたときだけ。
+            // 登録された名前は「その出力 DLL は参照から外す」という意味（ソースと DLL の両方が
+            // あると同じ型が二重に見えて CS0436）なので、一部しか読めていないのに登録すると
+            // <b>読めなかったファイルの型はソースにも DLL にも居ない</b>ことになり、CS0246 が溢れる。
+            // 一部だけのときは DLL を残す側に倒す——型が二重（CS0436・警告）の方が、
+            // 型が消える（CS0246・エラー）より後始末が利く。
+            //
+            // 踏むのは、上限（MaxSourceFileCount／MaxSnapshotBytes）に達した大規模ソリューションと、
+            // 一度ビルドした後に obj/ を消した（生成ソースが実在しない）プロジェクト。
+            // 一度もビルドしていないプロジェクトは DLL も無いので、ここで何をしても型は戻らない。
+            if (loadedAny && !missedAny) sourceAssemblyNames.Add(project.CompilationAssemblyName);
 
             var projectReferences = project.SelectedTargetFrameworkModel?.ProjectReferences
                 ?? project.ProjectReferences;
