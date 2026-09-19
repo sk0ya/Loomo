@@ -248,6 +248,10 @@ public sealed partial class GitSessionViewModel : ObservableObject
             _allBranches = Array.Empty<GitBranchInfo>();
             BranchTree = Array.Empty<BranchTreeNode>();
             FilteredBranchTree = BranchTree;
+            // 控え（組み直しを抑えるための前回入力）も一緒に落とす。property だけ書き換えると
+            // 「控えは在るのに画面はそれと違う」状態になり、次の更新が早期 return で空のまま居座る。
+            _paneFilterSource = null;
+            _paneFilterTerm = "";
             PaneFilteredBranchTree = BranchTree;
             RemoteLabel = "";
             UpstreamLabel = "";

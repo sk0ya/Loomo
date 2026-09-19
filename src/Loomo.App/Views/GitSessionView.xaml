@@ -304,12 +304,18 @@
                                     </Style>
                                 </TextBox.Style>
                             </TextBox>
+                            <!-- 透かし文字は<b>入力欄の Text</b> を見る。VM 側（Delay=120）を見ると、
+                                 打った最初の1文字の上に 120ms のあいだ透かしが残る。 -->
                             <TextBlock Text="🔍 ブランチを絞り込み" Foreground="{DynamicResource FgDim}"
                                        FontSize="{DynamicResource Fs12}" Margin="8,0,0,0" IsHitTestVisible="False"
                                        VerticalAlignment="Center"
-                                       Visibility="{Binding PaneBranchFilter, Converter={StaticResource EmptyToVis}}" />
+                                       Visibility="{Binding Text, ElementName=BranchFilterBox,
+                                           Converter={StaticResource EmptyToVis}}" />
+                            <!-- 幅は固定する。文字サイズ設定（Fs*）で膨らむと、上で空けた右余白（24px）を
+                                 食い破って長いブランチ名の末尾に重なり、そこはクリックもできなくなる。 -->
                             <Button HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,3,0"
-                                    Style="{StaticResource ToolbarButton}" Padding="5,1" Content="✕"
+                                    Width="18" Height="18" Padding="0"
+                                    Style="{StaticResource ToolbarButton}" Content="✕"
                                     ToolTip="絞り込みを解除（Esc）"
                                     Command="{Binding ClearPaneBranchFilterCommand}"
                                     Visibility="{Binding HasPaneBranchFilter, Converter={StaticResource BoolToVis}}" />

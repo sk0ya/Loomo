@@ -39,22 +39,25 @@ public partial class GitSessionView
     private void OnBranchFilterKeyDown(object sender, KeyEventArgs e)
     {
         if (sender is not TextBox box) return;
-        // 拾う2キー以外では何もしない。ここで無条件に UpdateSource すると、PreviewKeyDown は
-        // 文字が入る<b>前</b>に来るので「1打ぶん古い語」を毎打鍵で流すことになり、Delay の意味が消える。
-        if (e.Key is not (Key.Escape or Key.Down)) return;
 
-        // 待たせている語を先に確定させる。↓ の行き先（絞り込み後の一覧）は、押した瞬間の
-        // 見た目と一致していなければならない。
-        PushFilterTermNow(box);
-
-        switch (ResolveBranchFilterKey(e.Key, box.Text, BranchList.Items.Count > 0))
+        switch (e.Key)
         {
-            case BranchFilterKeyAction.Clear:
+            case Key.Escape:
+                // 消す前に語を流さない。流すと、捨てるつもりの語で一瞬だけ絞り込みが効いて
+                // 一覧が作り直され、選択も開きかけの操作メニューも落ちる。消してから1回だけ流す
+                // （この Delay 待ちを踏まないと、打った直後の Esc が素通りする）。
+                if (ResolveBranchFilterKey(e.Key, box.Text, hasRows: false)
+                    is not BranchFilterKeyAction.Clear) return;
                 box.Clear();
                 PushFilterTermNow(box);
                 e.Handled = true;
                 break;
-            case BranchFilterKeyAction.MoveToList:
+
+            case Key.Down:
+                // 行き先は「絞り込んだ後の一覧」なので、待たせている語を先に確定させる。
+                PushFilterTermNow(box);
+                if (ResolveBranchFilterKey(e.Key, box.Text, BranchList.Items.Count > 0)
+                    is not BranchFilterKeyAction.MoveToList) return;
                 MoveFocusToBranchList();
                 e.Handled = true;
                 break;
