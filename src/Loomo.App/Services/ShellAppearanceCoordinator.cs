@@ -68,7 +68,16 @@ public sealed class ShellAppearanceCoordinator
         {
             // 範囲がまだ無ければ作る（作った時点で閉じている・以後サーバーの範囲では消えない）。
             folds.CreateFold(range.StartLine, range.EndLine);
-            folds.CloseFold(range.StartLine);
+            // ただし CreateFold は既存の範囲と重なると何もしない。namespace X { using …; } のように
+            // using が他の範囲の内側に居ると作られず、そのまま CloseFold(先頭行) を呼べば閉じるのは
+            // その行の最内フォールド＝namespace そのもの——頼んでいないのにファイルが丸ごと畳まれる。
+            // 読み込み直後は Folds が空なので出ないが、設定の再適用（ApplyEditorSettingsToOpenEditorTabs）は
+            // foldingRange が届いたあとの既存タブに掛かる。閉じるのは、その行の最内フォールドが
+            // using の固まりそのものだったときだけ。畳めないなら畳まない＝他人の範囲には触らない。
+            if (folds.FindFoldAt(range.StartLine) is { } fold
+                && fold.StartLine == range.StartLine && fold.EndLine == range.EndLine
+                && !fold.IsClosed)
+                folds.CloseFold(range.StartLine);
         }
     }
 

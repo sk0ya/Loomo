@@ -39,4 +39,23 @@ public sealed class UsingFoldStateTests
         Assert.True(Assert.Single(folds.Folds, fold => fold.StartLine == 0).IsClosed);
         Assert.NotNull(folds.GetHidingFold(2));
     }
+
+    /// <summary><c>namespace X { using …; }</c> のように using が他の範囲の内側に居る形。
+    /// CreateFold は重なる範囲を作らないので、そのまま CloseFold(先頭行) を呼ぶと
+    /// その行の最内フォールド＝namespace が閉じ、ファイルが丸ごと畳まれてしまっていた。
+    /// 畳めないなら畳まない——他人のフォールドは触らない。</summary>
+    [Fact]
+    public void CloseUsingRanges_never_closes_an_enclosing_fold()
+    {
+        var folds = new FoldManager();
+        // 0: namespace X {  1-2: using …  4: class …  9: }
+        folds.SetLspRanges([(0, 9), (4, 8)]);
+
+        ShellAppearanceCoordinator.CloseUsingRanges(folds, [new LspFoldingRange(1, 2)]);
+
+        Assert.Equal(2, folds.Folds.Count);    // using の範囲は作られない（重なるので作れない）
+        Assert.False(Assert.Single(folds.Folds, fold => fold.StartLine == 0).IsClosed);
+        Assert.False(Assert.Single(folds.Folds, fold => fold.StartLine == 4).IsClosed);
+        Assert.Null(folds.GetHidingFold(4));   // 本文が隠れていない
+    }
 }
