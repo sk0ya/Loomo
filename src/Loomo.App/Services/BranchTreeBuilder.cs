@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Linq;
 using sk0ya.Loomo.Services;
 
@@ -10,7 +11,7 @@ namespace sk0ya.Loomo.App.Services;
 /// （"feature/x" の "feature"）か、ローカル／リモートを分ける見出し（<see cref="IsSection"/>）。
 /// Label は自分のセグメントのみで、フルネームはリーフの <see cref="Branch"/>.Name が持つ。
 /// </summary>
-public sealed class BranchTreeNode
+public sealed class BranchTreeNode : INotifyPropertyChanged
 {
     public required string Label { get; init; }
     public GitBranchInfo? Branch { get; init; }
@@ -25,8 +26,25 @@ public sealed class BranchTreeNode
     public bool IsRemote => Branch?.IsRemote == true;
 
     /// <summary>TreeView の展開状態（ItemContainerStyle が TwoWay でバインドする）。
-    /// 既定は折りたたみで、現在ブランチへの経路上のフォルダだけ Build が展開する。</summary>
-    public bool IsExpanded { get; set; }
+    /// 既定は折りたたみで、現在ブランチへの経路上のフォルダだけ Build が展開する。
+    ///
+    /// <para><b>変更通知が要る</b>——操作バーの「すべて展開／すべて折りたたむ」はここ（モデル）を
+    /// 書き換える側で、通知が無いと TwoWay バインディングは画面へ返らず、ツリーは畳まれたまま
+    /// 動かない。</para></summary>
+    public bool IsExpanded
+    {
+        get => _isExpanded;
+        set
+        {
+            if (_isExpanded == value) return;
+            _isExpanded = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsExpanded)));
+        }
+    }
+
+    private bool _isExpanded;
+
+    public event PropertyChangedEventHandler? PropertyChanged;
 
     /// <summary>リーフのツールチップ：フルネーム＋上流（あれば）。フォルダ・見出しには出さない。</summary>
     public string? ToolTip => Branch is null ? null
@@ -135,6 +153,20 @@ public static class BranchTreeBuilder
             .Where(b => b.Name.Contains(t, StringComparison.OrdinalIgnoreCase))
             .Select(b => new BranchTreeNode { Label = b.Name, Branch = b })
             .ToList();
+    }
+
+    /// <summary>
+    /// フォルダ／見出しの開閉をまとめて切り替える（操作バーの「すべて展開」「すべて折りたたむ」）。
+    /// リーフ＝ブランチ行は開閉を持たないので触らない（触ると TreeView が無意味に通知を撒く）。
+    /// </summary>
+    public static void SetExpandedAll(IReadOnlyList<BranchTreeNode> nodes, bool expanded)
+    {
+        foreach (var node in nodes)
+        {
+            if (node.IsFolder)
+                node.IsExpanded = expanded;
+            SetExpandedAll(node.Children, expanded);
+        }
     }
 
     public static IReadOnlyList<BranchTreeNode> Build(IReadOnlyList<GitBranchInfo> branches)

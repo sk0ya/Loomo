@@ -357,4 +357,59 @@ public sealed class BranchTreeBuilderTests
         var tree = BranchTreeBuilder.Build(Snapshot());
         Assert.Same(tree, BranchTreeBuilder.Update(tree, Snapshot()));
     }
+
+    /// <summary>操作バーの「すべて展開」「すべて折りたたむ」。畳まれた枝の中まで届くこと。</summary>
+    [Fact]
+    public void すべて展開と折りたたみは入れ子のフォルダにも届く()
+    {
+        var tree = BranchTreeBuilder.Build(new[]
+        {
+            Branch("main", current: true),
+            Branch("feature/ui/tabs"),
+            Branch("feature/ui/split"),
+            Branch("feature/git/log"),
+            Branch("origin/main", remote: true),
+        });
+
+        BranchTreeBuilder.SetExpandedAll(tree, expanded: true);
+        Assert.All(AllFolders(tree), n => Assert.True(n.IsExpanded));
+
+        BranchTreeBuilder.SetExpandedAll(tree, expanded: false);
+        Assert.All(AllFolders(tree), n => Assert.False(n.IsExpanded));
+    }
+
+    /// <summary>ブランチ行（リーフ）は開閉を持たないので触らない。</summary>
+    [Fact]
+    public void すべて展開はリーフの開閉を触らない()
+    {
+        var tree = BranchTreeBuilder.Build(new[] { Branch("main", current: true), Branch("dev") });
+
+        BranchTreeBuilder.SetExpandedAll(tree, expanded: true);
+        Assert.All(tree, n => Assert.False(n.IsExpanded));
+    }
+
+    /// <summary>「すべて展開」はモデル側を書き換える経路なので、変更通知が要る（無いと画面が動かない）。</summary>
+    [Fact]
+    public void 開閉の変更は通知される()
+    {
+        var node = new BranchTreeNode { Label = "feature" };
+        var raised = new List<string?>();
+        node.PropertyChanged += (_, e) => raised.Add(e.PropertyName);
+
+        node.IsExpanded = true;
+        node.IsExpanded = true;   // 同じ値では鳴らさない
+
+        Assert.Equal(new[] { nameof(BranchTreeNode.IsExpanded) }, raised);
+    }
+
+    private static IEnumerable<BranchTreeNode> AllFolders(IEnumerable<BranchTreeNode> nodes)
+    {
+        foreach (var node in nodes)
+        {
+            if (node.IsFolder)
+                yield return node;
+            foreach (var child in AllFolders(node.Children))
+                yield return child;
+        }
+    }
 }

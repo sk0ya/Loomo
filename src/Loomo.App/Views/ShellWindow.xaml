@@ -1983,26 +1983,6 @@
                         <StackPanel x:Name="GitPaneHeaderFilters" DockPanel.Dock="Left"
                                     Orientation="Horizontal" VerticalAlignment="Center"
                                     Visibility="{Binding GitSession.IsRepository, Converter={StaticResource BoolToVis}}">
-                            <!-- ブランチ切替：タイトルバーと同じコントロール。クリックで一覧ポップアップ→選択でチェックアウト -->
-                            <Button x:Name="GitPaneBranchButton" Height="24" Margin="2,0,8,0" Padding="8,0"
-                                    Style="{StaticResource BranchMenuItem}"
-                                    ToolTip="ブランチを切り替え" Click="OnGitPaneBranchClick">
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="⎇" Foreground="{DynamicResource FgDim}" VerticalAlignment="Center"
-                                               Margin="0,0,5,0" />
-                                    <TextBlock Text="{Binding GitSession.BranchLabel}" FontSize="{DynamicResource Fs12}" FontWeight="SemiBold"
-                                               VerticalAlignment="Center" MaxWidth="220"
-                                               TextTrimming="CharacterEllipsis" />
-                                    <TextBlock Text="▾" FontSize="{DynamicResource Fs8}" Foreground="{DynamicResource FgDim}"
-                                               VerticalAlignment="Center" Margin="5,1,0,0" />
-                                </StackPanel>
-                            </Button>
-                            <Popup x:Name="GitPaneBranchPopup" PlacementTarget="{Binding ElementName=GitPaneBranchButton}"
-                                   Placement="Bottom" StaysOpen="False" AllowsTransparency="True">
-                                <views:BranchSwitcherView x:Name="GitPaneBranchSwitcher" DataContext="{Binding GitSession}" />
-                            </Popup>
-                            <!-- フェッチ／プル／プッシュはここには置かない。ブランチ切替ポップアップの
-                                 同期帯（BranchSwitcherView）が一箇所の持ち場で、上流と件数もそこに出る。 -->
                             <!-- コミット一覧の絞り込み：author:／msg:／hash:／ref:／date: のトークン構文＋
                                  作者ドロップダウン・期間ピッカーの補助UI。
                                  条件のうち git で表現できる分（作者・本文・日付）は git log の

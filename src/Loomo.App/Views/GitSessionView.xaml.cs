@@ -1,4 +1,4 @@
-
+﻿
 using System;
 using System.ComponentModel;
 using System.Linq;
@@ -40,11 +40,22 @@ public partial class GitSessionView : UserControl
     /// <summary>ブランチ一覧の列を隠す直前の幅。再表示でユーザーがドラッグした幅へ戻すため覚えておく。</summary>
     private GridLength _branchColumnWidth = new(190);
 
+    /// <summary>畳んだときに残す左列の幅（＝操作バーの設計値）。実測が取れるならそちらを使う。</summary>
+    private const double CollapsedBranchColumnWidth = 29;
+
+    /// <summary>直前に画面へ反映した左列の開閉（null＝まだ一度も反映していない）。
+    /// 「畳む直前の幅を覚える」を<b>開いていたときだけ</b>に限るための控え——畳んだ列の実寸は
+    /// 操作バーの幅（約 29px）なので、畳んだまま二度目の反映が来たときに測ると、ユーザーが
+    /// ドラッグした幅がその 29px で潰れる。</summary>
+    private bool? _branchColumnApplied;
+
     public GitSessionView()
     {
         InitializeComponent();
         DataContextChanged += OnDataContextChanged;
         SetupLogColumnResize();
+        // 無選択で立ち上がるので、選んだ1本に効く操作は最初から押せない状態にしておく
+        UpdateBranchOpButtons();
         if (BranchList.ContextMenu is { } menu)
             menu.Closed += (_, _) => _branchMenuTarget = null;
     }
@@ -81,32 +92,48 @@ public partial class GitSessionView : UserControl
     }
 
     /// <summary>
-    /// 左列（ブランチ一覧＋タグ／リモート／サブモジュール）の表示/非表示を反映する。コミット詳細と
-    /// 同じく、非表示のときは列の幅と MinWidth ごと 0 にして畳む（中身を Collapsed にするだけでは
-    /// 列の固定幅が残り、空白の帯が居座るため）。
+    /// 左列（ブランチ一覧＋タグ／リモート／サブモジュール）の表示/非表示を反映する。畳むのは
+    /// <b>一覧だけ</b>で、左端の操作バーは残す——開閉ボタンがそのバーに居るので、列ごと消すと
+    /// 戻す入口が画面から無くなる。列は幅と MinWidth をバーの実寸まで詰める（中身を Collapsed に
+    /// するだけでは列の固定幅が残り、空白の帯が居座るため）。
+    ///
+    /// <para>VM が無い間は<b>何もしない</b>——ペインの付け替え（RebuildPaneLayout）で DataContext は
+    /// 一度外れて戻る。そこで「表示」を既定にして反映すると、畳んだ状態が一瞬だけ開いた扱いになり、
+    /// 戻ってきた拍子に覚えている幅を畳んだ幅で潰してしまう。</para>
     /// </summary>
     private void ApplyBranchColumnVisibility()
     {
-        var visible = Vm?.BranchColumnVisible ?? true;
+        if (Vm is not { } vm)
+            return;
+
+        var visible = vm.BranchColumnVisible;
         if (visible)
         {
             BranchSplitterColumn.Width = new GridLength(6);
             BranchColumn.MinWidth = 120;
             BranchColumn.Width = _branchColumnWidth;
             BranchSplitter.Visibility = Visibility.Visible;
-            BranchPanel.Visibility = Visibility.Visible;
+            BranchListArea.Visibility = Visibility.Visible;
+            BranchOpListGroup.Visibility = Visibility.Visible;
         }
         else
         {
-            // ドラッグ後の実寸を覚えてから畳む（次の表示で同じ幅に戻す）
-            if (BranchColumn.ActualWidth > 0)
+            // ドラッグ後の実寸を覚えてから畳む（次の表示で同じ幅に戻す）。測るのは開いていたとき
+            // だけ——畳んだ列の実寸は操作バーの幅なので、畳んだまま測ると覚えた幅がそれで潰れる。
+            if (_branchColumnApplied != false && BranchColumn.ActualWidth > 0)
                 _branchColumnWidth = new GridLength(BranchColumn.ActualWidth);
             BranchSplitter.Visibility = Visibility.Collapsed;
-            BranchPanel.Visibility = Visibility.Collapsed;
+            BranchListArea.Visibility = Visibility.Collapsed;
+            BranchOpListGroup.Visibility = Visibility.Collapsed;
             BranchSplitterColumn.Width = new GridLength(0);
-            BranchColumn.MinWidth = 0;
-            BranchColumn.Width = new GridLength(0);
+            // バーの実寸へ詰める。まだ測っていない（起動直後に畳んだ状態で復元した）ときだけ
+            // 設計値へ落とす＝ボタン 26px ＋ Padding 1×2 ＋ 右の区切り線 1px。
+            var barWidth = BranchOpBar.ActualWidth > 0 ? BranchOpBar.ActualWidth : CollapsedBranchColumnWidth;
+            BranchColumn.MinWidth = barWidth;
+            BranchColumn.Width = new GridLength(barWidth);
         }
+
+        _branchColumnApplied = visible;
     }
 
     /// <summary>
@@ -154,7 +181,7 @@ public partial class GitSessionView : UserControl
         (button as ToggleButton)?.GetBindingExpression(ToggleButton.IsCheckedProperty)?.UpdateTarget();
     }
 
-    /// <summary>コミット一覧の見出し「コミット」の左の開閉ボタン。VM 側を反転させ、
+    /// <summary>操作バーのいちばん上の開閉ボタン。VM 側を反転させ、
     /// 表示の反映（列を畳む／戻す）と永続化はそちらの変更通知経由で行う。</summary>
     private void OnBranchColumnToggleClick(object sender, RoutedEventArgs e)
     {
@@ -587,6 +614,79 @@ public partial class GitSessionView : UserControl
             if (forceAnswer == MessageBoxResult.Yes)
                 await vm.Commands.DeleteBranchAsync(branch, force: true);
         }
+    }
+
+    // ===== 操作バー（ブランチ一覧の左の縦帯）=====
+
+    /// <summary>
+    /// 選んだ1本に効く操作（チェックアウト／マージ／削除）の可否を選択に合わせる。
+    /// 判定は行の右クリックメニュー（<see cref="TryPrepareBranchMenu"/>）と同じ——同じ操作が
+    /// 入口ごとに違う可否を見せると、押せないのか効かないのか分からなくなる。
+    /// </summary>
+    private void OnBranchSelectionChanged(object sender, RoutedPropertyChangedEventArgs<object> e) =>
+        UpdateBranchOpButtons();
+
+    private void UpdateBranchOpButtons()
+    {
+        var branch = SelectedTreeBranch;
+        BranchOpCheckout.IsEnabled = branch is { IsCurrent: false };
+        BranchOpMerge.IsEnabled = branch is { IsCurrent: false };
+        BranchOpDelete.IsEnabled = branch is { IsCurrent: false, IsRemote: false };
+    }
+
+    /// <summary>
+    /// 新しいブランチ。起点は一覧で選んだブランチで、選んでいなければ現在ブランチ（＝素の
+    /// <c>git branch</c>）——「押したのに何も起きない」を作らないため、無選択でも必ず作れる。
+    /// </summary>
+    private async void OnBarBranchCreate(object sender, RoutedEventArgs e)
+    {
+        if (Vm is not { } vm) return;
+        var start = SelectedTreeBranch;
+        var name = InputDialog.Prompt(Window.GetWindow(this), "新しいブランチ",
+            start is null
+                ? "ブランチ名を入力してください"
+                : $"{start.Name} から作成するブランチ名を入力してください");
+        if (!string.IsNullOrWhiteSpace(name))
+            await vm.Commands.CreateBranchAsync(name, start?.Name);
+    }
+
+    private Task PullWithModeAsync(GitPullMode mode) =>
+        Vm is { } vm ? vm.PullWithModeAsync(mode) : Task.CompletedTask;
+
+    private async void OnBarPullMerge(object sender, RoutedEventArgs e) =>
+        await PullWithModeAsync(GitPullMode.Merge);
+    private async void OnBarPullRebase(object sender, RoutedEventArgs e) =>
+        await PullWithModeAsync(GitPullMode.Rebase);
+    private async void OnBarPullFastForward(object sender, RoutedEventArgs e) =>
+        await PullWithModeAsync(GitPullMode.FastForwardOnly);
+
+    private async void OnBarPushNormal(object sender, RoutedEventArgs e)
+    {
+        if (Vm is { } vm)
+            await vm.Commands.PushAsync();
+    }
+
+    /// <summary>強制プッシュ。相手は上流（表示が無ければ現在ブランチ）で、選択行とは関係がない。</summary>
+    private async void OnBarPushForce(object sender, RoutedEventArgs e)
+    {
+        if (Vm is not { } vm) return;
+        var target = vm.UpstreamLabel.Length > 0 ? vm.UpstreamLabel : "現在のブランチ";
+        if (GitBranchDialogs.ConfirmForcePush(Window.GetWindow(this), target))
+            await vm.PushForceAsync();
+    }
+
+    /// <summary>
+    /// 一覧の開閉をまとめて切り替える。TreeViewItem ではなくモデル（<see cref="BranchTreeNode"/>）を
+    /// 書き換えるのは、畳まれた枝のコンテナはまだ存在しないため——見えている行だけ開いても
+    /// 「すべて」にならない。
+    /// </summary>
+    private void OnBarExpandAll(object sender, RoutedEventArgs e) => SetBranchTreeExpanded(true);
+    private void OnBarCollapseAll(object sender, RoutedEventArgs e) => SetBranchTreeExpanded(false);
+
+    private void SetBranchTreeExpanded(bool expanded)
+    {
+        if (Vm?.PaneFilteredBranchTree is { } tree)
+            BranchTreeBuilder.SetExpandedAll(tree, expanded);
     }
 
     // ===== タグ操作 =====

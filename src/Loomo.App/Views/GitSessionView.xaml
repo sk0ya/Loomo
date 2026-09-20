@@ -98,21 +98,84 @@
             </Setter>
         </Style>
 
-        <!-- 左列（ブランチ一覧）の開閉ボタン。コミット一覧の見出し行に収まるよう、装飾は最小限の
-             平板な山括弧1文字にする（開＝◀ 閉じられる／閉＝▶ 開ける）。 -->
+        <!-- ブランチ一覧の左に立てる操作バーのボタン。幅 26px の縦帯に収めるので、文字は1つだけ
+             （名前はツールチップが持つ）。無効時はテンプレート側で薄くする＝押せないことを形で見せる。 -->
+        <Style x:Key="BranchOpButton" TargetType="Button">
+            <Setter Property="Width" Value="26" />
+            <Setter Property="Height" Value="26" />
+            <Setter Property="Margin" Value="0,1" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FontSize" Value="{DynamicResource Fs13}" />
+            <Setter Property="Focusable" Value="False" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="b" Background="{TemplateBinding Background}" CornerRadius="4">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="b" Property="Background" Value="{DynamicResource Border}" />
+                                <Setter Property="Foreground" Value="{DynamicResource Fg}" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="b" Property="Opacity" Value="0.35" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- 操作バーの区切り（同期／ブランチ／一覧の3群を見分けるための線） -->
+        <Style x:Key="BranchOpSeparator" TargetType="Border">
+            <Setter Property="Height" Value="1" />
+            <Setter Property="Margin" Value="5,5" />
+            <Setter Property="Background" Value="{DynamicResource Border}" />
+        </Style>
+
+        <!-- 同期ボタン（フェッチ／プル／プッシュ）。件数を矢印の下に置くぶん背を高くし、3つとも
+             同じ寸法にする——高さが揃っていないと矢印の高さが1つだけずれて見える。 -->
+        <Style x:Key="BranchOpSyncButton" TargetType="Button" BasedOn="{StaticResource BranchOpButton}">
+            <Setter Property="Height" Value="32" />
+        </Style>
+
+        <!-- 同期ボタンの矢印。送る／取り込む対象があるとき（件数>0）だけアクセント色にする。 -->
+        <Style x:Key="BranchOpArrow" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="{DynamicResource Fs14}" />
+            <Setter Property="HorizontalAlignment" Value="Center" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+
+        <!-- 件数。26px 幅に矢印と並べる余地は無いので<b>下の行</b>へ置く（重ねると桁が矢印に食い込む）。 -->
+        <Style x:Key="BranchOpCount" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="{DynamicResource Fs9}" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="HorizontalAlignment" Value="Center" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Foreground" Value="{DynamicResource Accent}" />
+        </Style>
+
+        <!-- 左列（ブランチ一覧）の開閉ボタン。操作バーの先頭に立てるので、寸法は
+             BranchOpButton と揃える（開＝◀ 閉じられる／閉＝▶ 開ける）。 -->
         <Style x:Key="BranchColumnToggle" TargetType="ToggleButton">
-            <Setter Property="Width" Value="14" />
-            <Setter Property="Height" Value="14" />
-            <Setter Property="Margin" Value="0,0,4,0" />
+            <Setter Property="Width" Value="26" />
+            <Setter Property="Height" Value="26" />
+            <Setter Property="Margin" Value="0,1" />
             <Setter Property="VerticalAlignment" Value="Center" />
             <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
+            <Setter Property="Cursor" Value="Hand" />
             <Setter Property="Focusable" Value="False" />
             <Setter Property="ToolTip" Value="ブランチ一覧の表示／非表示" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="ToggleButton">
-                        <Border x:Name="b" Background="Transparent" CornerRadius="2">
-                            <TextBlock x:Name="glyph" Text="▶" FontSize="{DynamicResource Fs8}"
+                        <Border x:Name="b" Background="Transparent" CornerRadius="4">
+                            <TextBlock x:Name="glyph" Text="▶" FontSize="{DynamicResource Fs9}"
                                        Foreground="{TemplateBinding Foreground}"
                                        HorizontalAlignment="Center" VerticalAlignment="Center" />
                         </Border>
@@ -221,9 +284,10 @@
 
         <DockPanel Visibility="{Binding IsRepository, Converter={StaticResource BoolToVis}}">
 
-            <!-- 同期帯（フェッチ／プル／プッシュ・上流表示・ルート切替）はここには置かない。
-                 ペインヘッダーのブランチ切替ボタンのポップアップ（BranchSwitcherView）が同じ操作を
-                 同じ形で持っていて役割が重複するので、持ち場をそちら一箇所に寄せた。 -->
+            <!-- 同期（フェッチ／プル／プッシュ）の持ち場は、ペインでは<b>ブランチ一覧の左の操作バー</b>
+                 （下の BranchPanel）。横帯にしないのは、押す相手＝ブランチが見えている場所の隣に
+                 置きたいため。ペインヘッダーにあったブランチ切替ポップアップは、この一覧と操作バーが
+                 同じ操作を常に見える形で持つので消した（タイトルバー側のポップアップだけが残る）。 -->
 
             <!-- 進行中操作（rebase / merge / cherry-pick）のバナー -->
             <Border DockPanel.Dock="Top" Margin="8,4,8,4" Padding="8,6" CornerRadius="4"
@@ -266,9 +330,143 @@
                     <ColumnDefinition Width="*" MinWidth="200" />
                 </Grid.ColumnDefinitions>
 
-                <!-- ブランチ一覧＋タグ一覧。コミット一覧の見出し「コミット」の左の開閉ボタンで
-                     列ごと畳める（非表示時は列の幅ごと 0 にする＝ApplyBranchColumnVisibility）。 -->
-                <Grid x:Name="BranchPanel" Grid.Column="0">
+                <!-- 操作バー＋ブランチ一覧＋タグ一覧。バーのいちばん上の開閉ボタンで一覧を畳める
+                     （畳んでも列は 0 にせずバーの幅まで詰める＝ApplyBranchColumnVisibility。
+                     バーごと消すと戻す入口が画面から無くなるため）。 -->
+                <DockPanel x:Name="BranchPanel" Grid.Column="0">
+
+                    <!-- ===== 操作バー（一覧の左に立てる縦帯）=====
+                         上から「同期（リポジトリ全体）」「ブランチ（選んだ1本）」「一覧そのもの」の3群。
+                         同期がここに来たのは、ペインの中で<b>一覧を見ながら押せる場所</b>が他に無かった
+                         ため——以前はヘッダーのブランチ切替ポップアップの同期帯だけが持ち場で、押すたびに
+                         一覧を開き直す必要があった（そのポップアップはペインからは消した）。
+                         ブランチ群は選択に追従して有効／無効が変わる（UpdateBranchOpButtons）。 -->
+                    <Border x:Name="BranchOpBar" DockPanel.Dock="Left" Background="{DynamicResource BgAlt}"
+                            BorderBrush="{DynamicResource Border}" BorderThickness="0,0,1,0" Padding="1,3">
+                        <StackPanel>
+                            <!-- 一覧の開閉。バーはここだけ残して畳むので、戻す入口が画面から消えない。
+                                 結びは片方向＋Click で VM を反転させる：TwoWay にすると DataContext の
+                                 差し替えの拍子に既定値（false）が VM へ書き戻され、押してもいない
+                                 畳んだ状態が設定へ永続化されてしまう。 -->
+                            <ToggleButton Style="{StaticResource BranchColumnToggle}"
+                                          Click="OnBranchColumnToggleClick"
+                                          IsChecked="{Binding BranchColumnVisible, Mode=OneWay}" />
+
+                            <Border Style="{StaticResource BranchOpSeparator}" />
+
+                            <Button Style="{StaticResource BranchOpSyncButton}"
+                                    ToolTip="フェッチ（リモートの最新を取得する。作業ツリーは変えない）"
+                                    IsEnabled="{Binding HasRemote}" Command="{Binding FetchCommand}">
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="*" />
+                                        <RowDefinition Height="10" />
+                                    </Grid.RowDefinitions>
+                                    <TextBlock Text="⭮" Style="{StaticResource BranchOpArrow}" />
+                                </Grid>
+                            </Button>
+
+                            <!-- 方式（マージ／リベース／早送りのみ）を並べる幅は無いので右クリックへ逃がす。
+                                 1クリックの既定は素の pull のまま。 -->
+                            <Button Style="{StaticResource BranchOpSyncButton}"
+                                    ToolTip="プル（上流の変更を現在ブランチへ取り込む）／右クリックで取り込み方を選ぶ"
+                                    IsEnabled="{Binding HasRemote}" Command="{Binding PullCommand}">
+                                <Button.ContextMenu>
+                                    <ContextMenu>
+                                        <MenuItem Header="マージで取り込む（既定）" Click="OnBarPullMerge" />
+                                        <MenuItem Header="リベースで取り込む（--rebase）" Click="OnBarPullRebase" />
+                                        <MenuItem Header="早送りできるときだけ（--ff-only）" Click="OnBarPullFastForward" />
+                                    </ContextMenu>
+                                </Button.ContextMenu>
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="*" />
+                                        <RowDefinition Height="10" />
+                                    </Grid.RowDefinitions>
+                                    <TextBlock Text="↓">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock" BasedOn="{StaticResource BranchOpArrow}">
+                                                <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding Behind, Converter={StaticResource CountToVis}}"
+                                                                 Value="Visible">
+                                                        <Setter Property="Foreground" Value="{DynamicResource Accent}" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                    <TextBlock Grid.Row="1" Text="{Binding Behind}" Style="{StaticResource BranchOpCount}"
+                                               Visibility="{Binding Behind, Converter={StaticResource CountToVis}}" />
+                                </Grid>
+                            </Button>
+
+                            <!-- 強制プッシュは右クリックの中に置く。リベース・amend の後に必ず要るが、
+                                 1クリック目に出してよい操作ではない。 -->
+                            <Button Style="{StaticResource BranchOpSyncButton}"
+                                    ToolTip="プッシュ（現在ブランチのコミットを上流へ送る）／右クリックで強制プッシュ"
+                                    IsEnabled="{Binding HasRemote}" Command="{Binding PushCommand}">
+                                <Button.ContextMenu>
+                                    <ContextMenu>
+                                        <MenuItem Header="プッシュ（既定）" Click="OnBarPushNormal" />
+                                        <MenuItem Header="強制プッシュ（--force-with-lease）…" Click="OnBarPushForce" />
+                                    </ContextMenu>
+                                </Button.ContextMenu>
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="*" />
+                                        <RowDefinition Height="10" />
+                                    </Grid.RowDefinitions>
+                                    <TextBlock Text="↑">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock" BasedOn="{StaticResource BranchOpArrow}">
+                                                <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding Ahead, Converter={StaticResource CountToVis}}"
+                                                                 Value="Visible">
+                                                        <Setter Property="Foreground" Value="{DynamicResource Accent}" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                    <TextBlock Grid.Row="1" Text="{Binding Ahead}" Style="{StaticResource BranchOpCount}"
+                                               Visibility="{Binding Ahead, Converter={StaticResource CountToVis}}" />
+                                </Grid>
+                            </Button>
+
+                            <!-- ここから下は一覧を見ながら押す群なので、畳んでいる間は隠す
+                                 （選んだ1本に効く操作が、見えない選択に効いてしまうのを防ぐ）。
+                                 同期は上に残す——ペインの中で他に入口が無い。 -->
+                            <StackPanel x:Name="BranchOpListGroup">
+                            <Border Style="{StaticResource BranchOpSeparator}" />
+
+                            <!-- 以下は「一覧で選んだ1本」に効く群。選択が無い／フォルダ行のときは押せない
+                                 （＋だけは現在ブランチから作れるので常に押せる）。 -->
+                            <Button Style="{StaticResource BranchOpButton}"
+                                    Content="＋" ToolTip="新しいブランチを作成…（選んだブランチが起点。無選択なら現在ブランチ）"
+                                    Click="OnBarBranchCreate" />
+                            <Button x:Name="BranchOpCheckout" Style="{StaticResource BranchOpButton}"
+                                    Content="✓" ToolTip="チェックアウト（選んだブランチへ切り替える）"
+                                    Click="OnBranchCheckout" />
+                            <Button x:Name="BranchOpMerge" Style="{StaticResource BranchOpButton}"
+                                    Content="⑃" ToolTip="現在のブランチへマージ（選んだブランチを取り込む）"
+                                    Click="OnBranchMerge" />
+                            <Button x:Name="BranchOpDelete" Style="{StaticResource BranchOpButton}"
+                                    Content="🗑" ToolTip="削除（選んだブランチ）"
+                                    Click="OnBranchDelete" />
+
+                            <Border Style="{StaticResource BranchOpSeparator}" />
+
+                            <Button Style="{StaticResource BranchOpButton}" Content="⊞"
+                                    ToolTip="すべて展開" Click="OnBarExpandAll" />
+                            <Button Style="{StaticResource BranchOpButton}" Content="⊟"
+                                    ToolTip="すべて折りたたむ" Click="OnBarCollapseAll" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <Grid x:Name="BranchListArea">
                     <!-- 下段が3セクションの縦積みから切替式になったぶん、既定の取り分をブランチへ寄せる
                          （下段はどの種類でも「見出し1行＋一覧」の同じ高さで足りる）。 -->
                     <Grid.RowDefinitions>
@@ -330,6 +528,7 @@
                                   ItemTemplate="{StaticResource BranchNodeTemplate}"
                                   ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                                   MouseDoubleClick="OnBranchDoubleClick"
+                                  SelectedItemChanged="OnBranchSelectionChanged"
                                   PreviewKeyDown="OnBranchListKeyDown"
                                   PreviewMouseLeftButtonUp="OnBranchTreeClick"
                                   PreviewMouseRightButtonDown="OnListRightClickSelect"
@@ -518,7 +717,8 @@
                         </DockPanel>
                         </Grid>
                     </DockPanel>
-                </Grid>
+                    </Grid>
+                </DockPanel>
 
                 <GridSplitter x:Name="BranchSplitter" Grid.Column="1" Width="6" HorizontalAlignment="Stretch"
                               Background="{DynamicResource Border}" />
@@ -576,25 +776,15 @@
                              FontFamily="Cascadia Mono, Consolas">
                         <ListView.View>
                             <GridView>
-                                <!-- 見出しの左端に左列（ブランチ一覧）の開閉ボタンを置く。列見出しの
-                                     DataContext は見出し文字列そのものなので、状態は UserControl の
-                                     DataContext（VM）へ RelativeSource で結ぶ。結びは片方向＋Click で
-                                     VM を反転させる：TwoWay にすると見出しの再生成や DataContext の
-                                     差し替えの拍子に ToggleButton の既定値（false）が VM へ書き戻され、
-                                     押してもいないのに畳まれた状態が設定へ永続化されてしまう。 -->
+                                <!-- 左列（ブランチ一覧）の開閉ボタンはここには置かない。操作バーの
+                                     いちばん上が持ち場で、畳んでいる間もバーごと残る＝戻す入口が
+                                     消えない（見出しに置くと、開閉の対象と押す場所が離れていた）。 -->
                                 <GridViewColumn Header="コミット" Width="380">
                                     <GridViewColumn.HeaderTemplate>
                                         <DataTemplate>
-                                            <StackPanel Orientation="Horizontal">
-                                                <ToggleButton Style="{StaticResource BranchColumnToggle}"
-                                                              Click="OnBranchColumnToggleClick"
-                                                              IsChecked="{Binding DataContext.BranchColumnVisible,
-                                                                  RelativeSource={RelativeSource AncestorType=UserControl},
-                                                                  Mode=OneWay}" />
-                                                <TextBlock Text="{Binding}" FontSize="{DynamicResource Fs11}"
-                                                           VerticalAlignment="Center"
-                                                           TextTrimming="CharacterEllipsis" />
-                                            </StackPanel>
+                                            <TextBlock Text="{Binding}" FontSize="{DynamicResource Fs11}"
+                                                       VerticalAlignment="Center"
+                                                       TextTrimming="CharacterEllipsis" />
                                         </DataTemplate>
                                     </GridViewColumn.HeaderTemplate>
                                     <GridViewColumn.CellTemplate>
