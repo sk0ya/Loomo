@@ -29,26 +29,50 @@ public sealed class CSharpDiagnosticExplanationServiceTests : IDisposable
             explanation);
     }
 
-    /// <summary>Roslyn は連続する不要 using を1件の広い範囲で返す。どの行が重複で、
-    /// どの行が「そもそも使われていない」のかは、範囲を行へ切り直さないと分からない。</summary>
+    /// <summary>Roslyn が返す範囲は using の塊を<b>まとめて</b>指していて、その中の1本1本が
+    /// 不要という意味ではない（実機では、まとめて指された範囲に本文で使っている using が入っていた）。
+    /// だから重複だけを言い、残りが「使われていない」とは<b>言わない</b>——理由を足したつもりで
+    /// 嘘を足さないため。範囲そのものは事実なので、何行目をまとめて指しているかは言う。</summary>
     [Fact]
-    public void Splits_a_merged_range_into_duplicates_and_genuinely_unused_lines()
+    public void Says_only_what_it_verified_about_a_merged_range()
     {
         var globals = Write("GlobalUsings.cs", "global using System;\nglobal using System.Windows;\n");
         var path = Write("View.cs", """
             using System;
             using System.Windows;
-            using System.Reflection;
+            using System.Collections.ObjectModel;
 
             public class View { }
             """);
 
-        var explanation = Explain(path, Range(0, 0, 2, 25), globals, path);
+        var explanation = Explain(path, Range(0, 0, 2, 37), globals, path);
 
         Assert.Equal(
-            "対象は using 3 件。2 件は GlobalUsings.cs:1 の global using と重複。" +
-            "3行目 はこの本文で使われていません。",
+            "この指摘は 1〜3行目 の using 3 件をまとめて指しています。" +
+            "うち 2 件は GlobalUsings.cs の global using と重複しています（消しても解決は変わりません）。",
             explanation);
+    }
+
+    /// <summary>全部が重複なら、そう言い切れる。</summary>
+    [Fact]
+    public void Says_all_when_every_directive_is_a_duplicate()
+    {
+        var globals = Write("GlobalUsings.cs", "global using System;\nglobal using System.Windows;\n");
+        var path = Write("View.cs", "using System;\nusing System.Windows;\n");
+
+        Assert.Equal(
+            "この指摘は 1〜2行目 の using 2 件をまとめて指しています。" +
+            "いずれも GlobalUsings.cs の global using と重複しています（消しても解決は変わりません）。",
+            Explain(path, Range(0, 0, 1, 21), globals, path));
+    }
+
+    /// <summary>重複が1件も無ければ黙る。Roslyn の文面に足せることが無い。</summary>
+    [Fact]
+    public void Stays_silent_when_nothing_is_a_duplicate()
+    {
+        var path = Write("View.cs", "using System.Reflection;\nusing System.Text;\n");
+
+        Assert.Null(Explain(path, Range(0, 0, 1, 18), path));
     }
 
     /// <summary>ImplicitUsings が生成した global using は中間出力の中にあり、開いても仕方がない。

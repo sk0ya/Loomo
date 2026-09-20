@@ -690,8 +690,14 @@ Roslyn は正しい：`src/Loomo.App/GlobalUsings.cs` に `global using System.W
 `Loomo.CSharp/Configuration/CSharpDiagnosticExplanationService.cs` が持つ：
 
 - 診断の範囲を**行へ切り直して** using を1本ずつ数え、`global using` の索引と突き合わせる。
-  「1行目は `GlobalUsings.cs:2` の global using と重複しています」「対象は using 3 件。2 件は…と重複。
-  3行目 はこの本文で使われていません」のように、**どの行がどちらなのか**を言う。
+  「この指摘は 1〜14行目 の using 14 件をまとめて指しています。うち 13 件は `GlobalUsings.cs` の
+  global using と重複しています（消しても解決は変わりません）」のように、**まとめて指されている範囲**と
+  **こちらで確かめた重複**を分けて言う。
+- **範囲から「使われていない」を推測しない。** 最初の実装は「重複でない残りは本文で使われていない」と
+  書いていたが、実機で試すと 3行目 `System.Collections.ObjectModel` が挙がった——30行目の
+  `ObservableCollection<DetachedItem>` で**使っている**。Roslyn が返す範囲は using の塊をまとめて
+  指しているだけで、その中の1本1本が不要だという意味ではない。理由を足したつもりで嘘を足していた。
+  いまは重複だけを言い、重複が1件も無ければ**何も言わない**。
 - 索引はテキスト走査だけで作る（ホバー1回で Compilation を組むと数秒かかる）。ファイル先頭だけ読み、
   プロジェクト単位で 30 秒キャッシュ。`ImplicitUsings` が中間出力に生成した global using は開いても
   仕方がないので、そう名乗る。

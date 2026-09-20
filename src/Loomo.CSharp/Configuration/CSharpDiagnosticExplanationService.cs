@@ -61,46 +61,55 @@ public sealed class CSharpDiagnosticExplanationService
 
         var index = GetGlobalUsingIndex(solution, filePath);
         var duplicates = new List<(int Line, GlobalUsing Global)>();
-        var unused = new List<(int Line, string Namespace)>();
         foreach (var (line, ns, isStatic) in directives)
-        {
             if (index.TryGet(ns, isStatic, out var global)) duplicates.Add((line, global));
-            else unused.Add((line, ns));
-        }
 
-        return Compose(duplicates, unused);
+        return Compose(directives, duplicates);
     }
 
+    /// <summary>
+    /// 言い切れることだけを書く。<b>重複している</b>ことはこちらで突き合わせて分かるが、
+    /// 残りがなぜ不要なのかは分からない——Roslyn が返す範囲は using の塊をまとめて指しており、
+    /// <b>その中の1本1本が不要だという意味ではない</b>（実際、まとめて指された範囲の中に
+    /// 本文で使っている using が入っていた）。範囲から「使われていない」を推測すると、
+    /// 理由を足したつもりで嘘を足すことになる。
+    /// </summary>
     private static string? Compose(
-        IReadOnlyList<(int Line, GlobalUsing Global)> duplicates,
-        IReadOnlyList<(int Line, string Namespace)> unused)
+        IReadOnlyList<(int Line, string Namespace, bool Static)> directives,
+        IReadOnlyList<(int Line, GlobalUsing Global)> duplicates)
     {
-        if (duplicates.Count == 0 && unused.Count == 0) return null;
+        if (duplicates.Count == 0) return null;
 
-        var text = new StringBuilder();
-        if (duplicates.Count == 1 && unused.Count == 0)
-        {
-            var (line, global) = duplicates[0];
-            text.Append($"{line}行目は {global.Describe()} と重複しています（消しても解決は変わりません）。");
-            return text.ToString();
-        }
-        if (duplicates.Count == 0 && unused.Count == 1)
-            return $"{unused[0].Line}行目（{unused[0].Namespace}）は、この本文で使われていません。";
+        if (directives.Count == 1)
+            return $"{duplicates[0].Line}行目は {duplicates[0].Global.Describe()} と重複しています" +
+                   "（消しても解決は変わりません）。";
 
-        text.Append($"対象は using {duplicates.Count + unused.Count} 件。");
-        if (duplicates.Count > 0)
-            text.Append($"{duplicates.Count} 件は {duplicates[0].Global.Describe()} と重複。");
-        if (unused.Count > 0)
-            text.Append($"{DescribeLines(unused)} はこの本文で使われていません。");
-        return text.ToString();
+        var scope = directives[0].Line == directives[^1].Line
+            ? $"{directives[0].Line}行目"
+            : $"{directives[0].Line}〜{directives[^1].Line}行目";
+        var source = DescribeGlobals(duplicates);
+        return duplicates.Count == directives.Count
+            ? $"この指摘は {scope} の using {directives.Count} 件をまとめて指しています。" +
+              $"いずれも {source} と重複しています（消しても解決は変わりません）。"
+            : $"この指摘は {scope} の using {directives.Count} 件をまとめて指しています。" +
+              $"うち {duplicates.Count} 件は {source} と重複しています（消しても解決は変わりません）。";
     }
 
-    /// <summary>行番号は<b>数えるのではなく挙げる</b>——「どの行か」が知りたいことなので。
-    /// 多いときだけ先頭3つに切り、残りは件数で示す。</summary>
-    private static string DescribeLines(IReadOnlyList<(int Line, string Namespace)> items)
+    /// <summary>重複相手が複数あるとき、先頭1件の行番号を代表にすると<b>他の行の話が混ざる</b>。
+    /// 複数あるならファイル名までにして、行番号は1件のときだけ言う。</summary>
+    private static string DescribeGlobals(IReadOnlyList<(int Line, GlobalUsing Global)> duplicates)
     {
-        var shown = string.Join("・", items.Take(3).Select(item => $"{item.Line}行目"));
-        return items.Count <= 3 ? shown : $"{shown} ほか計{items.Count}件";
+        if (duplicates.Count == 1) return duplicates[0].Global.Describe();
+        if (duplicates.All(item => item.Global.IsGenerated)) return "ImplicitUsings が生成した global using";
+
+        var files = duplicates
+            .Select(item => item.Global.FilePath)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var name = Path.GetFileName(files[0]);
+        return files.Length == 1
+            ? $"{name} の global using"
+            : $"{name} ほか{files.Length - 1}ファイルの global using";
     }
 
     private GlobalUsingIndex GetGlobalUsingIndex(SolutionModel? solution, string filePath)
@@ -139,7 +148,7 @@ public sealed class CSharpDiagnosticExplanationService
                 : $"{name}:{Line} の global using";
         }
 
-        private bool IsGenerated =>
+        public bool IsGenerated =>
             FilePath.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}",
                 StringComparison.OrdinalIgnoreCase) ||
             FilePath.EndsWith(".g.cs", StringComparison.OrdinalIgnoreCase);
