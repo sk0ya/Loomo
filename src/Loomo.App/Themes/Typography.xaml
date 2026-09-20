@@ -27,4 +27,9 @@
          スケールする必要がある固定幅。UiFontManager.Apply が Fs* と同様に上書きする。 -->
     <sys:Double x:Key="TrailHourLabelW">38</sys:Double>
 
+    <!-- ペイン見出し帯の高さ（PaneHeaderBar の MinHeight）。中に何を置いたかで帯の高さが変わると
+         ペインごとに見出しの高さがズレる（GIT はトグル、EDITOR はタブ帯…と一番背の高い要素で決まっていた）。
+         中の文字が伸びれば帯も伸びる必要があるので、固定 px ではなくこのトークンで追随させる。 -->
+    <sys:Double x:Key="PaneHeaderH">22</sys:Double>
+
 </ResourceDictionary>

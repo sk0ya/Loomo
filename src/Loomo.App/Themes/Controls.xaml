@@ -252,7 +252,7 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
-                    <Border x:Name="b" Background="Transparent" CornerRadius="4" Padding="10,3">
+                    <Border x:Name="b" Background="Transparent" CornerRadius="4" Padding="10,1">
                         <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center">
                             <ContentPresenter.Resources>
                                 <Style TargetType="TextBlock" BasedOn="{StaticResource ContentText}" />
@@ -670,6 +670,26 @@
         <Setter Property="FontSize" Value="{DynamicResource Fs11}" />
         <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="Padding" Value="10,3" />
+    </Style>
+
+    <!-- ペインの見出し帯。ペイン本体（Panel）と同色だと帯が背景に溶けて、隣り合うペインの
+         境目も「どこまでが1つのペインか」も読めない。PaneHeaderBg で一段持ち上げ、下辺の
+         PaneHeaderRule と対で「この線から下がこのペインの中身」を示す。ヘッダーは
+         DockPanel.Dock="Top" 固定なので、それもここで持たせて呼び出し側の重複を消す。
+         高さも帯そのものが決める。中に置いた一番背の高い要素任せにすると、GIT はトグル・EDITOR は
+         タブ帯…とペインごとに見出しの高さがズレる（実際にズレていた）。 -->
+    <Style x:Key="PaneHeaderBar" TargetType="DockPanel">
+        <Setter Property="DockPanel.Dock" Value="Top" />
+        <Setter Property="Background" Value="{DynamicResource PaneHeaderBg}" />
+        <Setter Property="MinHeight" Value="{DynamicResource PaneHeaderH}" />
+    </Style>
+
+    <!-- 見出し帯と中身を分ける 1px の罫。PaneHeaderBar の直後に置く（DockPanel の詰め順どおり
+         帯の下に来る）。帯の色差だけでは境目が甘いテーマがあるため、線で必ず 1 本引く。 -->
+    <Style x:Key="PaneHeaderRule" TargetType="Border">
+        <Setter Property="DockPanel.Dock" Value="Top" />
+        <Setter Property="Height" Value="1" />
+        <Setter Property="Background" Value="{DynamicResource Border}" />
     </Style>
 
     <!-- ペイン境界のリサイズつまみ。6px の操作領域は透明のまま確保し、通常時はテーマの
@@ -1380,7 +1400,7 @@
     <!-- Diff のソース切替（Git / 比較）のセグメントボタン -->
     <Style x:Key="SourceToggle" TargetType="RadioButton">
         <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
-        <Setter Property="Padding" Value="10,2" />
+        <Setter Property="Padding" Value="10,1" />
         <Setter Property="Margin" Value="0,0,2,0" />
         <Setter Property="Cursor" Value="Hand" />
         <Setter Property="Template">

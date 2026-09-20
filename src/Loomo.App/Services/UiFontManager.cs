@@ -35,7 +35,7 @@ public sealed class UiFontManager
     {
         ("Fs8", 8), ("Fs9", 9), ("Fs10", 10), ("Fs11", 11), ("Fs11_5", 11.5),
         ("Fs12", 12), ("Fs12_5", 12.5), ("Fs13", 13), ("Fs14", 14), ("Fs15", 15), ("Fs20", 20),
-        ("TrailHourLabelW", 38),
+        ("TrailHourLabelW", 38), ("PaneHeaderH", 22),
     };
 
     /// <summary>直近に適用した倍率（基準サイズ / <see cref="ReferenceSize"/>）。

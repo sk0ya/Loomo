@@ -13,6 +13,11 @@
          明色テーマでは Bg より少し暗くする（明色で明るくすると白に埋もれるため向きが逆）。
          差は BgAlt と同程度に抑え、帯として浮くが主張はしない量に留める。 -->
     <SolidColorBrush x:Key="ActivityBarBg" Color="#FF373737" />
+    <!-- ペインヘッダー（TERMINAL / EDITOR / GIT … の帯）の背景。Panel と同色だと帯が消えて
+         「どこからどこまでが1つのペインか」が読めなくなるので、ActivityBarBg と同じ向き
+         （暗色テーマは明るく、明色テーマは暗く）へ Panel から一段だけ持ち上げる。量はどのテーマでも
+         同じに見えるよう、Panel とのコントラスト比 1.18 前後へ揃えてある（PaletteResourceTests が監視）。 -->
+    <SolidColorBrush x:Key="PaneHeaderBg" Color="#FF2B2B2B" />
     <SolidColorBrush x:Key="Border" Color="#FF3C3C3C" />
     <SolidColorBrush x:Key="Accent" Color="#FF0E639C" />
     <SolidColorBrush x:Key="AccentHover" Color="#FF1177BB" />

@@ -125,9 +125,9 @@
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderBrush" Value="Transparent" />
             <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="Padding" Value="6,1" />
+            <Setter Property="Padding" Value="6,0" />
             <Setter Property="Width" Value="30" />
-            <Setter Property="Height" Value="26" />
+            <Setter Property="Height" Value="22" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="Template">
                 <Setter.Value>
@@ -830,7 +830,7 @@
                 <!-- Terminal -->
                 <DockPanel x:Name="TerminalPane" Background="{DynamicResource Panel}" AllowDrop="True"
                             DragOver="OnFileDropDragOver" Drop="OnTerminalFileDrop">
-                    <DockPanel DockPanel.Dock="Top" Background="{DynamicResource Panel}" LastChildFill="True"
+                    <DockPanel Style="{StaticResource PaneHeaderBar}" LastChildFill="True"
                                Tag="Terminal" Cursor="SizeAll"
                                AllowDrop="True" DragOver="OnPaneHeaderTabDragOver" Drop="OnPaneHeaderTabDrop"
                                PreviewMouseLeftButtonDown="OnPaneTitleMouseDown" PreviewMouseMove="OnPaneTitleMouseMove">
@@ -904,6 +904,7 @@
                             </ItemsControl>
                         </ScrollViewer>
                     </DockPanel>
+                    <Border Style="{StaticResource PaneHeaderRule}" />
                     <Grid>
                         <Grid.RowDefinitions>
                             <RowDefinition Height="*" />
@@ -941,7 +942,7 @@
                 <!-- Editor -->
                 <DockPanel x:Name="EditorPane" Background="{DynamicResource Panel}" AllowDrop="True"
                             DragOver="OnFileDropDragOver" Drop="OnEditorFileDrop">
-                    <DockPanel DockPanel.Dock="Top" Background="{DynamicResource Panel}" LastChildFill="True"
+                    <DockPanel Style="{StaticResource PaneHeaderBar}" LastChildFill="True"
                                Tag="Editor" Cursor="SizeAll"
                                AllowDrop="True" DragOver="OnPaneHeaderTabDragOver" Drop="OnPaneHeaderTabDrop"
                                PreviewMouseLeftButtonDown="OnPaneTitleMouseDown" PreviewMouseMove="OnPaneTitleMouseMove">
@@ -1015,6 +1016,7 @@
                             </ItemsControl>
                         </ScrollViewer>
                     </DockPanel>
+                    <Border Style="{StaticResource PaneHeaderRule}" />
                     <!-- 言語サーバー(LSP)の促しバー：対応サーバーが未導入/未設定のファイルを開いたとき、
                          エディタ上端に閉じられる通知を出す。永続化された「今後表示しない」と一致する拡張子では出ない。 -->
                     <Border DockPanel.Dock="Top" Background="{DynamicResource BgAlt}"
@@ -1083,7 +1085,7 @@
 
                 <!-- EditorSupport : アクティブなエディタのファイルに対応するサポート（Markdown プレビュー等）を自動表示 -->
                 <DockPanel x:Name="EditorSupportPane" Background="{DynamicResource Panel}">
-                    <DockPanel DockPanel.Dock="Top" Background="{DynamicResource Panel}" LastChildFill="True"
+                    <DockPanel Style="{StaticResource PaneHeaderBar}" LastChildFill="True"
                                Tag="EditorSupport" Cursor="SizeAll"
                                PreviewMouseLeftButtonDown="OnPaneTitleMouseDown" PreviewMouseMove="OnPaneTitleMouseMove">
                         <TextBlock DockPanel.Dock="Left" Style="{StaticResource PanelHeader}" Text="EDITOR SUPPORT" />
@@ -1168,12 +1170,13 @@
                                    FontSize="{DynamicResource Fs11}" Foreground="{DynamicResource FgDim}"
                                    TextTrimming="CharacterEllipsis" />
                     </DockPanel>
+                    <Border Style="{StaticResource PaneHeaderRule}" />
                     <Grid x:Name="EditorSupportContentHost" />
                 </DockPanel>
 
                 <!-- Browser -->
                 <DockPanel x:Name="BrowserPane" Background="{DynamicResource Panel}">
-                    <DockPanel DockPanel.Dock="Top" Background="{DynamicResource Panel}" LastChildFill="True"
+                    <DockPanel Style="{StaticResource PaneHeaderBar}" LastChildFill="True"
                                Tag="Browser" Cursor="SizeAll"
                                AllowDrop="True" DragOver="OnPaneHeaderTabDragOver" Drop="OnPaneHeaderTabDrop"
                                PreviewMouseLeftButtonDown="OnPaneTitleMouseDown" PreviewMouseMove="OnPaneTitleMouseMove">
@@ -1247,6 +1250,7 @@
                             </ItemsControl>
                         </ScrollViewer>
                     </DockPanel>
+                    <Border Style="{StaticResource PaneHeaderRule}" />
                     <Grid DockPanel.Dock="Top" Margin="8,0,8,4">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
@@ -1943,7 +1947,7 @@
                 <!-- Git : セッションペイン（コミットグラフ・ブランチ・rebase 等の複雑操作） -->
                 <DockPanel x:Name="GitPane" Background="{DynamicResource Panel}" AllowDrop="True"
                             DragOver="OnFileDropDragOver" Drop="OnGitFileDrop">
-                    <DockPanel DockPanel.Dock="Top" Background="{DynamicResource Panel}" LastChildFill="False"
+                    <DockPanel Style="{StaticResource PaneHeaderBar}" LastChildFill="False"
                                Tag="Git" Cursor="SizeAll"
                                PreviewMouseLeftButtonDown="OnPaneTitleMouseDown" PreviewMouseMove="OnPaneTitleMouseMove">
                         <TextBlock DockPanel.Dock="Left" Style="{StaticResource PanelHeader}" Text="GIT"
@@ -1973,6 +1977,7 @@
                                       IsChecked="{Binding GitSession.CommitDetailVisible, Mode=TwoWay}"
                                       Visibility="{Binding GitSession.IsRepository, Converter={StaticResource BoolToVis}}" />
                     </DockPanel>
+                    <Border Style="{StaticResource PaneHeaderRule}" />
 
                     <views:GitSessionView x:Name="GitSessionHost" DataContext="{Binding GitSession}" />
                 </DockPanel>
@@ -1981,7 +1986,7 @@
                      ヘッダーツールバーは持たず、モード切替・オプションは SearchPanelView 内蔵。 -->
                 <DockPanel x:Name="SearchPane" Background="{DynamicResource Panel}" AllowDrop="True"
                             DragOver="OnFileDropDragOver" Drop="OnSearchFileDrop">
-                    <DockPanel DockPanel.Dock="Top" Background="{DynamicResource Panel}" LastChildFill="False"
+                    <DockPanel Style="{StaticResource PaneHeaderBar}" LastChildFill="False"
                                Tag="Search" Cursor="SizeAll"
                                PreviewMouseLeftButtonDown="OnPaneTitleMouseDown" PreviewMouseMove="OnPaneTitleMouseMove">
                         <TextBlock DockPanel.Dock="Left" Style="{StaticResource PanelHeader}" Text="SEARCH" />
@@ -1989,6 +1994,7 @@
                                 Content="—" FontSize="{DynamicResource Fs13}" ToolTip="このペインを隠す"
                                 Tag="Search" Click="OnHidePane" />
                     </DockPanel>
+                    <Border Style="{StaticResource PaneHeaderRule}" />
                     <views:SearchPanelView x:Name="SearchPaneHost" DataContext="{Binding SearchPanel}" />
                 </DockPanel>
 
@@ -1996,7 +2002,7 @@
                      一括操作をする面）。サイドバーのツリーとは役割が違う——ツリーは階層の把握、こちらは
                      集合の処理（§26.10）。カラム内の操作バーは FilesPaneView、ペイン共通の操作はここに置く。 -->
                 <DockPanel x:Name="FilesPane" Background="{DynamicResource Panel}">
-                    <DockPanel DockPanel.Dock="Top" Background="{DynamicResource Panel}" LastChildFill="False"
+                    <DockPanel Style="{StaticResource PaneHeaderBar}" LastChildFill="False"
                                Tag="Files" Cursor="SizeAll"
                                PreviewMouseLeftButtonDown="OnPaneTitleMouseDown" PreviewMouseMove="OnPaneTitleMouseMove">
                         <TextBlock DockPanel.Dock="Left" Style="{StaticResource PanelHeader}" Text="FILES" />
@@ -2023,7 +2029,7 @@
                         <!-- カラム数（1／2／4）。2カラムは「左から右へ移す」ためにあるので、
                              Diff の表示形式トグルと同じ格好でヘッダーに置く（行を増やさない）。 -->
                          <Border DockPanel.Dock="Right" Background="{DynamicResource BgAlt}"
-                                 BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="5" Padding="2"
+                                 BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="5" Padding="2,0"
                                  Margin="0,0,6,0" VerticalAlignment="Center">
                              <StackPanel Orientation="Horizontal">
                                  <RadioButton Style="{StaticResource FilesColumnToggle}"
@@ -2048,13 +2054,14 @@
                              </StackPanel>
                          </Border>
                     </DockPanel>
+                    <Border Style="{StaticResource PaneHeaderRule}" />
                     <views:FilesPaneView x:Name="FilesPaneHost" DataContext="{Binding Files}" />
                 </DockPanel>
 
                 <!-- Diff : セッションペイン（Git作業ツリー差分＋アドホック比較） -->
                 <DockPanel x:Name="DiffPane" Background="{DynamicResource Panel}" AllowDrop="True"
                             DragOver="OnFileDropDragOver" Drop="OnDiffFileDrop">
-                    <DockPanel DockPanel.Dock="Top" Background="{DynamicResource Panel}" LastChildFill="False"
+                    <DockPanel Style="{StaticResource PaneHeaderBar}" LastChildFill="False"
                                Tag="Diff" Cursor="SizeAll"
                                PreviewMouseLeftButtonDown="OnPaneTitleMouseDown" PreviewMouseMove="OnPaneTitleMouseMove">
                         <TextBlock DockPanel.Dock="Left" Style="{StaticResource PanelHeader}" Text="DIFF" />
@@ -2062,7 +2069,7 @@
                                 Content="—" FontSize="{DynamicResource Fs13}" ToolTip="このペインを隠す"
                                 Tag="Diff" Click="OnHidePane" />
                         <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
-                            <Border Background="{DynamicResource BgAlt}" CornerRadius="4" Padding="1"
+                            <Border Background="{DynamicResource BgAlt}" CornerRadius="4" Padding="1,0"
                                     Margin="0,0,10,0">
                                 <StackPanel Orientation="Horizontal">
                                     <RadioButton Style="{StaticResource SourceToggle}" Content="Git" FontSize="{DynamicResource Fs12}"
@@ -2084,7 +2091,7 @@
                             <!-- 差分の表示形式（左右並び / 統合）。既定の左右を先頭に置く。
                                  Markdown をレンダリング表示している間は出さない——押しても画面は変わらず、
                                  差分の読み直しだけが走る（押せるのに何も起きない・§24.7）。 -->
-                            <Border Background="{DynamicResource BgAlt}" CornerRadius="4" Padding="1"
+                            <Border Background="{DynamicResource BgAlt}" CornerRadius="4" Padding="1,0"
                                     Margin="0,0,10,0"
                                     Visibility="{Binding DiffSession.CanChooseTextLayout, Converter={StaticResource BoolToVis}}">
                                 <StackPanel Orientation="Horizontal">
@@ -2098,7 +2105,7 @@
                             </Border>
                             <!-- Markdown 差分のレンダリング表示（§24.10）。テキスト／描画の切り替えは
                                  **対象が Markdown のときだけ**出す（押せるのに何も起きない項目を作らない・§24.7）。 -->
-                            <Border Background="{DynamicResource BgAlt}" CornerRadius="4" Padding="1"
+                            <Border Background="{DynamicResource BgAlt}" CornerRadius="4" Padding="1,0"
                                     Margin="0,0,10,0"
                                     Visibility="{Binding DiffSession.CanRenderMarkdown, Converter={StaticResource BoolToVis}}">
                                 <StackPanel Orientation="Horizontal">
@@ -2133,7 +2140,7 @@
                                         Command="{Binding DiffSession.ClearGitTargetCommand}" />
                             </StackPanel>
                             <!-- 変更ブロック間のジャンプ＋差分コピー -->
-                            <Border Background="{DynamicResource BgAlt}" CornerRadius="4" Padding="1"
+                            <Border Background="{DynamicResource BgAlt}" CornerRadius="4" Padding="1,0"
                                     Margin="0,0,10,0">
                                 <StackPanel Orientation="Horizontal">
                                     <Button Style="{StaticResource PaneHeaderToolButton}" Content="↓ 次の差分"
@@ -2166,12 +2173,13 @@
                                     Visibility="{Binding DiffSession.IsCompareMode, Converter={StaticResource BoolToVis}}" />
                         </StackPanel>
                     </DockPanel>
+                    <Border Style="{StaticResource PaneHeaderRule}" />
                     <views:DiffSessionView x:Name="DiffSessionHost" DataContext="{Binding DiffSession}" />
                 </DockPanel>
 
                 <!-- Trace : セッションペイン（AI操作トレースのタイムライン表示・読み取り専用） -->
                 <DockPanel x:Name="TracePane" Background="{DynamicResource Panel}">
-                    <DockPanel DockPanel.Dock="Top" Background="{DynamicResource Panel}" LastChildFill="False"
+                    <DockPanel Style="{StaticResource PaneHeaderBar}" LastChildFill="False"
                                Tag="Trace" Cursor="SizeAll"
                                PreviewMouseLeftButtonDown="OnPaneTitleMouseDown" PreviewMouseMove="OnPaneTitleMouseMove">
                         <TextBlock DockPanel.Dock="Left" Style="{StaticResource PanelHeader}" Text="TRACE" />
@@ -2187,12 +2195,13 @@
                                        TextTrimming="CharacterEllipsis" />
                         </StackPanel>
                     </DockPanel>
+                    <Border Style="{StaticResource PaneHeaderRule}" />
                     <views:TraceSessionView x:Name="TraceSessionHost" DataContext="{Binding TraceSession}" />
                 </DockPanel>
 
                 <!-- デバッグ : ペイン化（DAP / netcoredbg。出力・ブレークポイント・変数・コールスタック） -->
                 <DockPanel x:Name="DebugPane" Background="{DynamicResource Panel}">
-                    <DockPanel DockPanel.Dock="Top" Background="{DynamicResource Panel}" LastChildFill="False"
+                    <DockPanel Style="{StaticResource PaneHeaderBar}" LastChildFill="False"
                                Tag="Debug" Cursor="SizeAll"
                                PreviewMouseLeftButtonDown="OnPaneTitleMouseDown" PreviewMouseMove="OnPaneTitleMouseMove">
                         <TextBlock DockPanel.Dock="Left" Style="{StaticResource PanelHeader}" Text="IDE" />
@@ -2273,12 +2282,13 @@
                                    AutomationProperties.AutomationId="CSharpExecutionStatus"
                                    AutomationProperties.Name="{Binding Debug.StatusMessage}" />
                     </DockPanel>
+                    <Border Style="{StaticResource PaneHeaderRule}" />
                     <views:DebugView DataContext="{Binding Debug}" />
                 </DockPanel>
 
                 <!-- TS IDE : ペイン化（DAP / vscode-js-debug。TypeScript / Node.js のデバッグ・型チェック） -->
                 <DockPanel x:Name="TsIdePane" Background="{DynamicResource Panel}">
-                    <DockPanel DockPanel.Dock="Top" Background="{DynamicResource Panel}" LastChildFill="False"
+                    <DockPanel Style="{StaticResource PaneHeaderBar}" LastChildFill="False"
                                Tag="TsIde" Cursor="SizeAll"
                                PreviewMouseLeftButtonDown="OnPaneTitleMouseDown" PreviewMouseMove="OnPaneTitleMouseMove">
                         <TextBlock DockPanel.Dock="Left" Style="{StaticResource PanelHeader}" Text="TS IDE" />
@@ -2349,12 +2359,13 @@
                                    Margin="10,0,0,0" FontSize="{DynamicResource Fs11}" Foreground="{DynamicResource FgDim}"
                                    TextTrimming="CharacterEllipsis" />
                     </DockPanel>
+                    <Border Style="{StaticResource PaneHeaderRule}" />
                     <views:TsDebugView DataContext="{Binding TsIde}" />
                 </DockPanel>
 
                 <!-- AI : ペイン化（トランスクリプト＋入力を1列にまとめる） -->
                 <DockPanel x:Name="AiPane" Background="{DynamicResource Panel}">
-                    <DockPanel DockPanel.Dock="Top" Background="{DynamicResource Panel}" LastChildFill="False"
+                    <DockPanel Style="{StaticResource PaneHeaderBar}" LastChildFill="False"
                                Tag="Ai" Cursor="SizeAll"
                                PreviewMouseLeftButtonDown="OnPaneTitleMouseDown" PreviewMouseMove="OnPaneTitleMouseMove">
                         <TextBlock DockPanel.Dock="Left" Style="{StaticResource PanelHeader}" Text="AI" />
@@ -2364,7 +2375,7 @@
                         <!-- チャット/ワークフロー切替（ヘッダー側）。DataContext は ShellViewModel なので AiBar 経由で束ねる。 -->
                         <Border DockPanel.Dock="Left" Margin="10,0,0,0" VerticalAlignment="Center"
                                 Background="{DynamicResource BgAlt}" BorderBrush="{DynamicResource Border}"
-                                BorderThickness="1" CornerRadius="5" Padding="2">
+                                BorderThickness="1" CornerRadius="5" Padding="2,0">
                             <StackPanel Orientation="Horizontal">
                                 <Button Content="チャット" Style="{StaticResource ModeSegButton}"
                                         Command="{Binding AiBar.ShowChatModeCommand}"
@@ -2395,6 +2406,7 @@
                             </Button.Visibility>
                         </Button>
                     </DockPanel>
+                    <Border Style="{StaticResource PaneHeaderRule}" />
                     <!-- AIセッション：チャット欄の左上に常設した ActivityBar 風アイコン。クリックで一覧を開閉する。 -->
                     <Border DockPanel.Dock="Left" Background="{DynamicResource ActivityBarBg}">
                         <Button Style="{StaticResource IconButton}" Content="💬" ToolTip="AIセッション一覧"

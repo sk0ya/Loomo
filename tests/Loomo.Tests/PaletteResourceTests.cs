@@ -120,6 +120,37 @@ public class PaletteResourceTests
                 }
     }
 
+    /// <summary>ペインヘッダーの帯（PaneHeaderBg）が、ペイン本体（Panel）から「一段持ち上がった面」に
+    /// 見えること。同色だと帯が背景へ溶けて、どこからどこまでが1つのペインか読めなくなる（実際にそうなって
+    /// いた）。向きは ActivityBarBg と同じ規則——暗色テーマは明るく、明色テーマは暗く——で、量はテーマを
+    /// またいで同じに見えるようコントラスト比で揃える。上限も置くのは、帯が主張しすぎて中身より目立つのを
+    /// 防ぐため（見出しは案内であって主役ではない）。</summary>
+    [Fact]
+    public void ペインヘッダーの帯が本体から一段持ち上がっている()
+    {
+        RunSta(() =>
+        {
+            foreach (var theme in Enum.GetValues<AppTheme>())
+            {
+                var dict = Load(theme);
+                Color Color(string key) => ((SolidColorBrush)dict[key]).Color;
+
+                var panel = Color("Panel");
+                var header = Color("PaneHeaderBg");
+
+                var contrast = ThemeManager.Contrast(panel, header);
+                Assert.True(contrast is >= 1.12 and <= 1.26,
+                    $"{theme}: Panel {panel} × PaneHeaderBg {header} のコントラストが {contrast:0.000}（1.12〜1.26 の外）");
+
+                static double Luminance(Color c) => (0.299 * c.R + 0.587 * c.G + 0.114 * c.B) / 255.0;
+                var lifted = Luminance(header) > Luminance(panel);
+                Assert.True(lifted == !theme.IsLight(),
+                    $"{theme}: PaneHeaderBg {header} は Panel {panel} より" +
+                    $"{(lifted ? "明るい" : "暗い")}が、{(theme.IsLight() ? "明色" : "暗色")}テーマでは逆向きにする");
+            }
+        });
+    }
+
     /// <summary>テスト用の HSL→RGB（ThemeManager 側は private なので、入力の生成だけ自前で行う）。</summary>
     private static Color Hsl(double h, double s, double l)
     {
