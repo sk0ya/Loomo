@@ -198,6 +198,7 @@ public partial class ShellWindow : Window {
         InitializePanes();
         HookBranchSwitchers();
         HookWorkspaceSwitcher();
+        HookDebugSwitcher();
         HookPaneMenu();
         PreviewMouseDown += OnShellPreviewMouseNavigate;
         SidebarSplitter.Cursor = Cursors.SizeWE;

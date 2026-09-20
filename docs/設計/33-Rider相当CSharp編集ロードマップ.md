@@ -1225,3 +1225,20 @@ StyleCopだけを先に追加しても、Roslynがプロジェクトを正しく
   - 回帰は `CSharpSolutionTreeTests` に4件（単一TFMの畳み込み／絞り込みの刈り込み・AND・上限／対象の遡り／
     絞り込みの開閉復帰）と、実WPFの `CSharpSolutionExplorerViewTests` に1件（名前を1クリックで開閉・
     ファイル行は反応しない）を追加。全体テストは3,064合格・11スキップ・失敗0、solution Build は警告0・エラー0。
+
+---
+
+## C# 文脈バーの撤去（2026-09-21）
+
+エディタの上に常駐していた **C# プロジェクト文脈バー**（`ShellWindow.xaml` の `CSharpContext` 帯：
+プロジェクト名・TFM・`.editorconfig` 有無・参照/Analyzer 件数・StyleCop の導入状態・TFM/構成の
+コンボボックス）を削除した。常に見えている必要のない情報で、エディタの上端を 1 行ぶん狭めていたため。
+
+- 表示専用アダプター `CSharpProjectContextViewModel`（と `CSharpProjectContextViewModelTests`）も併せて削除。
+  帯が唯一の読み手で、`OnActiveEditorFileChanged` からファイルを切り替えるたびに `.editorconfig` と
+  StyleCop 設定を評価していた——見せ先が無くなった以上、その評価ごと落とす。
+- **構成（Debug／Release）の切替はソリューションパネル（◈）のコンボボックスに残っている**
+  （`CSharpSolutionExplorerView`。同じ `ISolutionModelService` を見ているので、帯があったときと同じ効き方）。
+- **失われたのは多ターゲット（multi-targeting）プロジェクトの TFM 切替 UI だけ**。解析対象 TFM は
+  `ISolutionModelService.SelectTargetFrameworkAsync` に残っているので、必要になったら
+  ソリューションツリーの TFM の段（●／○ が出ている行）か、タイトルバーのデバッグメニュー（§28.11）へ足す。

@@ -595,6 +595,39 @@
                         <views:BranchSwitcherView x:Name="BranchSwitcher" DataContext="{Binding GitSession}" />
                     </Popup>
 
+                    <!-- デバッグ：現在の起動構成をクリックでポップアップ→構成の切替と開始（ブランチ切替と同じ作り）。
+                         C# プロジェクトのある部屋にだけ出す（IDE ペインの適用性と同じ判定＝§28.6。
+                         Visibility は ApplyIdePaneApplicability がプログラムから切り替える）。 -->
+                    <!-- 見た目はブランチ切替と同じだが、Style は素の BranchMenuItem を使う。
+                         TitleBarBranchButton は「BranchLabel が空なら隠す」トリガ付きで、デバッグの
+                         出し入れとは無関係な条件が混ざるため。 -->
+                    <Button x:Name="DebugButton" Height="24" Margin="10,0,0,0" Padding="8,0"
+                            Style="{StaticResource BranchMenuItem}" Visibility="Collapsed"
+                            ToolTip="デバッグ（起動構成の切替・開始）" Click="OnTitleBarDebugClick"
+                            WindowChrome.IsHitTestVisibleInChrome="True"
+                            AutomationProperties.AutomationId="TitleBarDebugButton"
+                            AutomationProperties.Name="デバッグ">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="🐞" FontSize="{DynamicResource Fs11}" VerticalAlignment="Center"
+                                       Margin="0,0,5,0" />
+                            <!-- 出すのは構成名ではなく解決後の対象（Rider の実行構成ウィジェットと同じ）。
+                                 「既定」のような構成名だけでは、押したときに何が動くか分からない。 -->
+                            <TextBlock Text="{Binding Debug.Profiles.SelectedTargetLabel, FallbackValue=デバッグ}"
+                                       FontSize="{DynamicResource Fs12}" VerticalAlignment="Center"
+                                       MaxWidth="200" TextTrimming="CharacterEllipsis" />
+                            <!-- 実行中の印。状態の文字はポップアップの中に出すので、ここは目の端で気づく点だけ。 -->
+                            <Ellipse Width="6" Height="6" Margin="6,1,0,0" VerticalAlignment="Center"
+                                     Fill="{DynamicResource Accent}"
+                                     Visibility="{Binding Debug.IsBusy, Converter={StaticResource BoolToVis}}" />
+                            <TextBlock Text="▾" FontSize="{DynamicResource Fs8}" Foreground="{DynamicResource FgDim}"
+                                       VerticalAlignment="Center" Margin="5,1,0,0" />
+                        </StackPanel>
+                    </Button>
+                    <Popup x:Name="DebugPopup" PlacementTarget="{Binding ElementName=DebugButton}"
+                           Placement="Bottom" StaysOpen="False" AllowsTransparency="True">
+                        <views:DebugSwitcherView x:Name="DebugSwitcher" DataContext="{Binding Debug}" />
+                    </Popup>
+
                 </StackPanel>
 
                 <!-- ウィンドウ操作ボタン＋ペイン表示トグル（キャプション領域だがクリック可能にする） -->
@@ -1045,37 +1078,6 @@
                                         Content="×" ToolTip="閉じる" Command="{Binding LspPrompt.CloseCommand}" />
                             </StackPanel>
                         </Grid>
-                    </Border>
-                    <!-- C# の評価済みプロジェクト文脈。評価ロジックは Loomo.CSharp、ここは表示だけを担う。 -->
-                    <Border DockPanel.Dock="Top" Background="{DynamicResource BgAlt}"
-                            BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1" Padding="8,3"
-                            Visibility="{Binding CSharpContext.IsVisible, Converter={StaticResource BoolToVis}}">
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="{Binding CSharpContext.StatusText}"
-                                       ToolTip="{Binding CSharpContext.StatusToolTip}"
-                                       Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs10}"
-                                       TextTrimming="CharacterEllipsis" />
-                            <TextBlock Text="{Binding CSharpContext.EditorConfigSummary}"
-                                       Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs10}"
-                                       Margin="8,0,0,0" VerticalAlignment="Center" />
-                            <TextBlock Text="{Binding CSharpContext.ProjectStructureSummary}"
-                                       Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs10}"
-                                       Margin="8,0,0,0" VerticalAlignment="Center" />
-                            <TextBlock Text="{Binding CSharpContext.StyleCopSummary}"
-                                       ToolTip="{Binding CSharpContext.StyleCopToolTip}"
-                                       Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs10}"
-                                       Margin="8,0,0,0" VerticalAlignment="Center" />
-                            <ComboBox ItemsSource="{Binding CSharpContext.TargetFrameworkOptions}"
-                                      SelectedItem="{Binding CSharpContext.SelectedTargetFramework, Mode=TwoWay}"
-                                      Visibility="{Binding CSharpContext.HasMultipleTargetFrameworks, Converter={StaticResource BoolToVis}}"
-                                      Margin="8,0,0,0" Padding="4,0" MinWidth="100" Height="22"
-                                      ToolTip="解析対象のTargetFrameworkを選択" />
-                            <ComboBox ItemsSource="{Binding CSharpContext.ConfigurationOptions}"
-                                      SelectedItem="{Binding CSharpContext.SelectedConfiguration, Mode=TwoWay}"
-                                      Visibility="{Binding CSharpContext.HasMultipleConfigurations, Converter={StaticResource BoolToVis}}"
-                                      Margin="8,0,0,0" Padding="4,0" MinWidth="86" Height="22"
-                                      ToolTip="Build／Test／Run／Debugで使う構成を選択" />
-                        </StackPanel>
                     </Border>
                     <!-- 分割しても下端に1つだけ表示する共有ステータスバー。各エディタは SetSharedStatusBar で
                          自前のバーを隠してここへ状態を流す（フォーカス中のエディタの mode/file/cursor を表示）。 -->

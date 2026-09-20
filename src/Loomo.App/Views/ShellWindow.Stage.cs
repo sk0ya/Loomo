@@ -299,6 +299,7 @@ public partial class ShellWindow {
     private void ApplyIdePaneApplicability(IReadOnlyList<string> folders) {
         _idePaneApplicable = ViewModels.DebugTargetResolver.HasCSharpProject(folders);
         _tsIdePaneApplicable = ViewModels.TsDebugTargetResolver.HasTypeScriptProject(folders);
+        UpdateDebugButtonVisibility();   // タイトルバーのデバッグメニューも同じ判定で出し入れする
         RefreshOpenPaneMenu();   // 行の集合が変わるので、開いていれば作り直す
     }
     private void ToggleSessionEnabled(PaneKind kind) {

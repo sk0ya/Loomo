@@ -54,8 +54,6 @@ public sealed partial class ShellViewModel : ObservableObject
     public DiffSessionViewModel DiffSession { get; }
     public TraceSessionViewModel TraceSession { get; }
     public PegboardViewModel Pegboard { get; }
-    /// <summary>アクティブなC#ファイルのプロジェクト／TFM文脈表示。</summary>
-    public CSharpProjectContextViewModel CSharpContext { get; }
     /// <summary>評価済みsolution／projectの構造表示。通常のFolderTreeとは別のC#ビューで、
     /// サイドバーの独立したパネル（<see cref="SidebarPanel.Solution"/>）として住む。</summary>
     public CSharpSolutionExplorerViewModel? CSharpSolutionExplorer { get; }
@@ -153,7 +151,6 @@ public sealed partial class ShellViewModel : ObservableObject
         TsDebugViewModel tsIde,
         TrailViewModel trail,
         RecentItemsViewModel? recent = null,
-        CSharpProjectContextViewModel? csharpContext = null,
         CSharpSolutionExplorerViewModel? csharpSolutionExplorer = null,
         StyleCopSettingsViewModel? styleCop = null)
     {
@@ -183,7 +180,6 @@ public sealed partial class ShellViewModel : ObservableObject
         Debug = debug;
         TsIde = tsIde;
         Trail = trail;
-        CSharpContext = csharpContext ?? new CSharpProjectContextViewModel();
         CSharpSolutionExplorer = csharpSolutionExplorer;
         if (CSharpSolutionExplorer is { } solutionExplorer)
             solutionExplorer.PropertyChanged += (_, e) => {

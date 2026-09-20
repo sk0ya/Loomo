@@ -53,6 +53,9 @@ public sealed class RealWpfProcessIntegrationTests
             Assert.NotNull(window);
             Assert.Equal("Loomo", window!.Current.Name);
             Assert.NotNull(FindById(window, "WorkspaceButton"));
+            // C#の部屋ではタイトルバーにデバッグメニューが出る（§28.6と同じ適用性判定）。Collapsedな
+            // 要素はUIAツリーに現れないので、これは「見えていること」の確認になる。
+            Assert.NotNull(FindById(window, "TitleBarDebugButton"));
             RevealSolutionPanel(window!);
             Assert.NotNull(FindById(window, "CSharpSolutionTree"));
             var canvas = FindById(window, "Canvas");

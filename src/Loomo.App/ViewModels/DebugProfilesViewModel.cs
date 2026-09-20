@@ -131,11 +131,13 @@ public sealed partial class DebugProfilesViewModel : ObservableObject, IDisposab
     {
         ApplySelectedProfileToLaunch();
         PersistAll();
+        NotifySelectedTargetChanged();
     }
 
     partial void OnSelectedProjectChanged(DebugProjectDiscovery.ProjectEntry value)
     {
         OnPropertyChanged(nameof(SelectedProjectPath));
+        NotifySelectedTargetChanged();
         if (_applying) return;
         ReloadLaunchSettingsProfiles();
         _saveDebounce.Stop();
@@ -144,6 +146,7 @@ public sealed partial class DebugProfilesViewModel : ObservableObject, IDisposab
 
     partial void OnSelectedLaunchSettingsProfileChanged(LaunchSettingsProfile? value)
     {
+        NotifySelectedTargetChanged();
         if (value is null) return;
         if (!value.IsRunSupported)
         {
@@ -394,4 +397,126 @@ public sealed partial class DebugProfilesViewModel : ObservableObject, IDisposab
         Profiles.Remove(SelectedProfile);
         SelectedProfile = Profiles[Math.Min(idx, Profiles.Count - 1)];
     }
+
+    // --- 実行ターゲット（Rider の実行構成ウィジェット相当。タイトルバーのデバッグメニューが使う） ---
+
+    /// <summary>「1 行＝そのまま実行できる 1 つの対象」に畳んだ一覧（<see cref="DebugRunTargetItem"/>）。
+    /// 構成・起動プロジェクト・launchSettings という3つの並列な選択肢を掛け合わせる代わりに、
+    /// 保存した構成と「プロジェクト（＋launchSettings プロファイル）」を同じ一覧へ並べる。
+    /// 中身は開くたびに <see cref="RefreshRunTargets"/> で作り直す（ここは表示用の写しで、正本は
+    /// <see cref="Profiles"/>／<see cref="AvailableProjects"/>／選択中の各プロパティ）。</summary>
+    public ObservableCollection<DebugRunTargetItem> RunTargets { get; } = new();
+
+    /// <summary>ウィジェットに出す現在の対象名（Rider の実行構成名）。構成名ではなく<b>解決後の対象</b>を
+    /// 出す——構成名は「既定」のように中身を語らないことが多く、押す前に何が動くか分かる方が要る。</summary>
+    public string SelectedTargetLabel
+    {
+        get
+        {
+            if (SelectedProject is { } project && !ReferenceEquals(project, DebugProjectDiscovery.AutoDetect))
+                return SelectedLaunchSettingsProfile is { } launch
+                    ? $"{project.Name}: {launch.Name}"
+                    : project.Name;
+            return SelectedProfile?.Name ?? "デバッグ";
+        }
+    }
+
+    /// <summary>デバッグなしの実行（▶）ができるか。対象の .csproj が決まっているときだけ
+    /// （自動検出のままでは <c>dotnet run</c> に渡すプロジェクトが無い）。</summary>
+    public bool CanRunWithoutDebugger => SelectedProjectPath is not null;
+
+    /// <summary>一覧を作り直す（メニューを開く直前に呼ぶ）。launchSettings.json は選択中プロジェクトの
+    /// ぶんしか読んでいない（<see cref="ReloadLaunchSettingsProfiles"/>）ので、ここでは候補すべてを
+    /// その場で読む——ファイルが無ければ 1 行のまま、というのが行から分かるようにするため。</summary>
+    public void RefreshRunTargets()
+    {
+        RunTargets.Clear();
+        foreach (var profile in Profiles)
+            RunTargets.Add(new DebugRunTargetItem(profile, DescribeProfileTarget(profile), ProfileProjectPath(profile))
+            {
+                GroupLabel = RunTargets.Count == 0 ? "構成" : null,
+            });
+
+        var firstProjectRow = true;
+        foreach (var project in AvailableProjects)
+        {
+            var isAutoDetect = ReferenceEquals(project, DebugProjectDiscovery.AutoDetect);
+            RunTargets.Add(new DebugRunTargetItem(project, null,
+                isAutoDetect ? "最初に見つかった .csproj" : project.RelativePath.Replace('\\', '/'))
+            {
+                GroupLabel = firstProjectRow ? "対象（選んだ構成でこれを実行する）" : null,
+            });
+            firstProjectRow = false;
+            if (isAutoDetect) continue;
+            foreach (var launch in LaunchProfilesOf(project.FullPath))
+                RunTargets.Add(new DebugRunTargetItem(project, launch,
+                    launch.IsRunSupported ? launch.CommandName : $"未対応: {launch.CommandName}"));
+        }
+
+        SyncRunTargetFlags();
+    }
+
+    /// <summary>行を選ぶ＝その対象を「次に実行するもの」にする。構成の行は構成の切替、プロジェクトの行は
+    /// 選択中の構成の対象差し替え（＝既存のコンボボックスと同じ操作）。</summary>
+    public void SelectRunTarget(DebugRunTargetItem item)
+    {
+        if (item.Profile is { } profile)
+            SelectedProfile = profile;
+        else if (item.Project is { } project)
+        {
+            SelectedProject = project;   // launchSettings 候補はここで読み直される
+            if (item.LaunchProfile is { } launch)
+                SelectedLaunchSettingsProfile = LaunchSettingsProfiles.FirstOrDefault(p =>
+                    string.Equals(p.Name, launch.Name, StringComparison.OrdinalIgnoreCase));
+        }
+        SyncRunTargetFlags();
+    }
+
+    /// <summary>現在の選択（構成／プロジェクト／launchSettings）に合わせて ● を付け直す。</summary>
+    private void SyncRunTargetFlags()
+    {
+        foreach (var item in RunTargets)
+            item.IsCurrent = item.Profile is { } profile
+                ? ReferenceEquals(profile, SelectedProfile)
+                : item.Project is { } project
+                    && ReferenceEquals(project, SelectedProject)
+                    && (item.LaunchProfile is null
+                        ? SelectedLaunchSettingsProfile is null
+                        : string.Equals(item.LaunchProfile.Name, SelectedLaunchSettingsProfile?.Name,
+                            StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>選択が変わったことを一覧とウィジェットの表示へ伝える。</summary>
+    private void NotifySelectedTargetChanged()
+    {
+        SyncRunTargetFlags();
+        OnPropertyChanged(nameof(SelectedTargetLabel));
+        OnPropertyChanged(nameof(CanRunWithoutDebugger));
+    }
+
+    /// <summary>保存した構成の右に出す「実際に動くもの」。</summary>
+    private string DescribeProfileTarget(DebugLaunchProfileItem profile)
+    {
+        var model = profile.Model;
+        var project = string.IsNullOrEmpty(model.ProjectPath)
+            ? "自動検出"
+            : Path.GetFileNameWithoutExtension(model.ProjectPath);
+        return string.IsNullOrEmpty(model.LaunchSettingsProfileName)
+            ? project
+            : $"{project}: {model.LaunchSettingsProfileName}";
+    }
+
+    /// <summary>構成が指すプロジェクトの絶対パス（デバッグなしの実行に要る）。自動検出なら null。</summary>
+    private string? ProfileProjectPath(DebugLaunchProfileItem profile)
+        => string.IsNullOrEmpty(profile.Model.ProjectPath)
+            ? null
+            : AvailableProjects.FirstOrDefault(p =>
+                string.Equals(p.RelativePath, profile.Model.ProjectPath, StringComparison.OrdinalIgnoreCase))?.FullPath;
+
+    /// <summary>そのプロジェクトの launchSettings プロファイル（読めなければ空）。C# 以外
+    /// （TS IDE 側の package.json）は Properties/launchSettings.json を持たないので読みにいかない。</summary>
+    private static IReadOnlyList<LaunchSettingsProfile> LaunchProfilesOf(string projectPath)
+        => projectPath.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase)
+            ? LaunchSettingsProfileParser.ParseProject(projectPath, out _)
+            : Array.Empty<LaunchSettingsProfile>();
 }

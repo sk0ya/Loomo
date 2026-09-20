@@ -83,15 +83,28 @@ public partial class ShellWindow
         }
 
         var tfm = e.Node.Kind == CSharpSolutionNodeKind.Project
-            ? _solutionModel?.Current.Projects.FirstOrDefault(project =>
-                string.Equals(Path.GetFullPath(project.FullPath), target,
-                    StringComparison.OrdinalIgnoreCase))?.SelectedTargetFramework
+            ? SelectedTargetFrameworkFor(target)
             : null;
+        await ExecuteCSharpTargetAsync(target, e.Action, tfm);
+    }
+
+    /// <summary>プロジェクトに選ばれている TFM（複数ターゲットのとき）。見つからなければ null。</summary>
+    private string? SelectedTargetFrameworkFor(string projectPath)
+        => _solutionModel?.Current.Projects.FirstOrDefault(project =>
+            string.Equals(Path.GetFullPath(project.FullPath), Path.GetFullPath(projectPath),
+                StringComparison.OrdinalIgnoreCase))?.SelectedTargetFramework;
+
+    /// <summary>C# 対象（.sln／.csproj）のビルド／テスト／実行そのもの。出力は可視ターミナルへ流し、
+    /// 同じ全文を Problems のビルド診断へ渡す。Solution Explorer とタイトルバーのデバッグメニュー
+    /// （<see cref="DebugSwitcherView"/> の ▶）が<b>同じ</b>ここを通る——実行の仕方が2通りに分かれると、
+    /// launchSettings／IIS Express／TFM の扱いが片方だけ直る。</summary>
+    private async Task ExecuteCSharpTargetAsync(string target, CSharpSolutionAction action, string? tfm)
+    {
         var configuration = _solutionModel?.Current.ConfigurationForTarget(target) ?? "Debug";
-        var launchProfile = e.Action == CSharpSolutionAction.Run
+        var launchProfile = action == CSharpSolutionAction.Run
             ? _vm.Debug.Profiles.SelectedRunLaunchProfileFor(target)
             : null;
-        var actionName = e.Action switch
+        var actionName = action switch
         {
             CSharpSolutionAction.Test => "テスト",
             CSharpSolutionAction.Run => "実行",
@@ -108,8 +121,8 @@ public partial class ShellWindow
 
         _vm.Debug.RequestOutput();
         _vm.Debug.IsTaskRunning = true;
-        SetStatus(e.Action == CSharpSolutionAction.Test
-            ? "テスト中…" : e.Action == CSharpSolutionAction.Run ? "実行中…" : "ビルド中…");
+        SetStatus(action == CSharpSolutionAction.Test
+            ? "テスト中…" : action == CSharpSolutionAction.Run ? "実行中…" : "ビルド中…");
         CSharpTestExecutionResult? testExecution = null;
         try
         {
@@ -125,10 +138,10 @@ public partial class ShellWindow
                 }
                 result = await _terminal.RunCommandInVisibleTerminalAsync(command, CancellationToken.None);
             }
-            else if (e.Action == CSharpSolutionAction.Build)
+            else if (action == CSharpSolutionAction.Build)
                 result = await CSharpBuildService.RunAsync(
                     _terminal, target, configuration, CancellationToken.None, tfm);
-            else if (e.Action == CSharpSolutionAction.Test)
+            else if (action == CSharpSolutionAction.Test)
             {
                 testExecution = await CSharpTestExecutionService.RunAsync(
                     _terminal, target, null, configuration, CancellationToken.None,
