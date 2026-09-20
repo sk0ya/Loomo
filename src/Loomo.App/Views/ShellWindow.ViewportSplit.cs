@@ -871,6 +871,7 @@ public partial class ShellWindow {
         control.LoadFile(path);
         _appearance.ApplyUsingFoldingOnOpen(control);
         SyncEditorTestGlyphs(control);   // LoadFile はグリフを捨てるが BufferChanged を出さない
+        SyncEditorCodeActionBulb(control);
         ScheduleStyleCopAnalysis(control);
     }
     private void ApplyVimEnabledToOpenEditorTabs() {

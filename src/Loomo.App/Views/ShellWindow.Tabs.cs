@@ -185,7 +185,10 @@ public partial class ShellWindow {
         _vm.TsIde.Problems.CurrentFilePath = filePath;
         // 読み込みを伴わないタブ活性化ぶんの再送（読み込みを伴う経路は LoadEditorFile が受け持つ）。
         // 同じ内容なら Editor 側が no-op にするので、重複して送っても害はない。
-        if (tab.IsRealized) SyncEditorTestGlyphs(tab.Control);
+        if (tab.IsRealized) {
+            SyncEditorTestGlyphs(tab.Control);
+            SyncEditorCodeActionBulb(tab.Control);
+        }
         if (string.Equals(filePath, _lastLspPromptPath, StringComparison.OrdinalIgnoreCase))
             return;
         _lastLspPromptPath = filePath;

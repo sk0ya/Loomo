@@ -15,9 +15,9 @@
          Editor 側を同時に直しながら動かすときだけ -p:UseLocalEditor=true として
          C:\Projects\Editor のプロジェクト参照へ切り替える。
 
-         1.0.89 で診断表示だけをホストから差し替える API を公開した。 -->
+         1.0.90 でガターのクイックフィックス電球とスクロールバーの診断マーカーを公開した。 -->
     <UseLocalEditor Condition="'$(UseLocalEditor)' == ''">false</UseLocalEditor>
-    <EditorPackageVersion Condition="'$(EditorPackageVersion)' == ''">1.0.89</EditorPackageVersion>
+    <EditorPackageVersion Condition="'$(EditorPackageVersion)' == ''">1.0.90</EditorPackageVersion>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <!-- RID 指定は自己完結（ランタイム同梱）を意味しない。既定に頼らず明示する。 -->
     <SelfContained>false</SelfContained>

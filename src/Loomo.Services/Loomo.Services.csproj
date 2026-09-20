@@ -66,6 +66,10 @@
          つなぎ直しでは消さずに薄くして押せなくする。行の増減でスクロール位置を補正して、画面上部の
          行を同じ高さに留める。手で畳んだ折りたたみ（zf・ホストが閉じる using 節）を foldingRange で
          消さない。ホバー本文の HTML 文字参照（&amp;nbsp; 等）を文字へ戻す。 -->
+    <!-- 1.0.90: ガター最左のクイックフィックス電球（SetCodeActionBulbEnabled。候補は Alt+Enter と
+         同じ経路で確かめてから点灯）と、垂直スクロールバーへの診断マーカー（エラー／警告／情報／
+         不要な using 等のヒントを行単位で射影・クリックでその行へジャンプ）。あわせてブレークポイントは
+         専用列をやめて行番号の上へ移した（行番号のクリックでトグル。デバッグ有効時もガター幅が増えない）。 -->
     <ProjectReference Include="..\..\..\Editor\src\Editor.Controls.Defaults\Editor.Controls.Defaults.csproj"
                       Condition="'$(UseLocalEditor)' != 'false'" />
     <!-- Defaults はパッケージ化時に Core/Controls を同梱する構成で、プロジェクト参照では
