@@ -1,3 +1,5 @@
+using sk0ya.Loomo.CSharp.Configuration;
+
 namespace sk0ya.Loomo.App.Views;
 
 /// <summary>IDE ペイン「問題」タブとエディタの橋渡し。中身（ビルド出力のパース）は
@@ -16,10 +18,33 @@ public partial class ShellWindow
     }
 
     private void OnLspDiagnosticsPublished(string uri, IReadOnlyList<Editor.Core.Lsp.LspDiagnostic> diagnostics)
-        => Dispatcher.BeginInvoke(new Action(() => {
-            _vm.Debug.Problems.SetLspDiagnostics(uri, diagnostics);
-            _vm.TsIde.Problems.SetLspDiagnostics(uri, diagnostics);
-        }));
+        => Dispatcher.BeginInvoke(new Action(() => PublishLspDiagnosticsToProblems(uri, diagnostics)));
+
+    private void PublishLspDiagnosticsToProblems(
+        string uri, IReadOnlyList<Editor.Core.Lsp.LspDiagnostic> diagnostics)
+    {
+        var presentationDiagnostics = ExpandUnnecessaryUsingDiagnostics(uri, diagnostics);
+        _vm.Debug.Problems.SetLspDiagnostics(uri, presentationDiagnostics);
+        _vm.TsIde.Problems.SetLspDiagnostics(uri, presentationDiagnostics);
+    }
+
+    private IReadOnlyList<Editor.Core.Lsp.LspDiagnostic> ExpandUnnecessaryUsingDiagnostics(
+        string uri, IReadOnlyList<Editor.Core.Lsp.LspDiagnostic> diagnostics)
+    {
+        if (!Uri.TryCreate(uri, UriKind.Absolute, out var documentUri) || !documentUri.IsFile ||
+            !string.Equals(Path.GetExtension(documentUri.LocalPath), ".cs", StringComparison.OrdinalIgnoreCase))
+            return diagnostics;
+
+        var path = Path.GetFullPath(documentUri.LocalPath);
+        var tab = _editorTabs.FirstOrDefault(candidate => candidate.IsRealized &&
+            string.Equals(Path.GetFullPath(candidate.Control.FilePath ?? ""), path,
+                StringComparison.OrdinalIgnoreCase));
+        if (tab is null)
+            return diagnostics;
+
+        var individualRanges = _compilerUnusedUsingRanges.GetValueOrDefault(tab.Control) ?? [];
+        return CSharpDiagnosticMerger.ExpandUnnecessaryUsingGroups(diagnostics, individualRanges);
+    }
 
     private void OnProblemWorkspaceFoldersChanged(object? sender, EventArgs e)
         => Dispatcher.BeginInvoke(new Action(() => {

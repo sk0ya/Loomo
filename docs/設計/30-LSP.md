@@ -701,6 +701,9 @@ Roslyn は正しい：`src/Loomo.App/GlobalUsings.cs` に `global using System.W
 - 索引はテキスト走査だけで作る（ホバー1回で Compilation を組むと数秒かかる）。ファイル先頭だけ読み、
   プロジェクト単位で 30 秒キャッシュ。`ImplicitUsings` が中間出力に生成した global using は開いても
   仕方がないので、そう名乗る。
+- LSP の広い診断範囲は、Loomo の Compilation が確認した `CS8019` の位置がある場合だけ、Editor と
+  Problems で using ごとに表示する。範囲内の構文だけから不要と推測すると、実際に使っている using まで
+  警告するため。該当箇所の Quick Fix には1本の削除と、ファイル内の不要 using をまとめて削除する候補を出す。
 - **説明できない規則には何も言わない。** 曖昧な一般論を足すと、本当に説明がある診断と見分けが付かなくなる。
   規則を増やすときは `Explain` の switch に足す（いまは IDE0005 / CS8019）。
 

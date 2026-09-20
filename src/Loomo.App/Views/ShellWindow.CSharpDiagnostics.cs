@@ -16,6 +16,7 @@ public partial class ShellWindow
     private readonly Dictionary<VimEditorControl, IReadOnlyList<LspDiagnostic>> _styleCopResults = [];
     private readonly Dictionary<VimEditorControl, CancellationTokenSource> _compilerAnalysisCts = [];
     private readonly Dictionary<VimEditorControl, IReadOnlyList<LspDiagnostic>> _compilerResults = [];
+    private readonly Dictionary<VimEditorControl, IReadOnlyList<LspRange>> _compilerUnusedUsingRanges = [];
 
     private static IReadOnlyList<LspDiagnostic> EditorLspDiagnostics(VimEditorControl control)
     {
@@ -68,6 +69,7 @@ public partial class ShellWindow
         // LSP側の最新診断は保持し、fallback側だけを空にして「解析中」と一致させる。
         _styleCopResults.Remove(control);
         _compilerResults.Remove(control);
+        _compilerUnusedUsingRanges.Remove(control);
         RefreshStyleCopPresentation(control);
         _ = AnalyzeStyleCopAsync(control, project, expectedPath, source, openTexts, cts);
 
@@ -156,10 +158,14 @@ public partial class ShellWindow
                 if (cts.IsCancellationRequested || !ReferenceEquals(_compilerAnalysisCts.GetValueOrDefault(control), cts) ||
                     !string.Equals(Path.GetFullPath(control.FilePath ?? ""), expectedPath, StringComparison.OrdinalIgnoreCase) ||
                     !string.Equals(control.Text, source, StringComparison.Ordinal)) return;
+                _compilerUnusedUsingRanges[control] = result.Error is null
+                    ? result.UnnecessaryUsingRanges ?? []
+                    : [];
                 _compilerResults[control] = result.Error is null
                     ? result.Diagnostics
                     : [new LspDiagnostic(new LspRange(new LspPosition(0, 0), new LspPosition(0, 0)),
                         result.Error, DiagnosticSeverity.Warning, "Compiler", "LOOMO")];
+                PublishLspDiagnosticsToProblems(LspUri.FromPath(expectedPath), EditorLspDiagnostics(control));
                 RefreshStyleCopPresentation(control);
             });
         }
@@ -203,6 +209,8 @@ public partial class ShellWindow
         // 残りの公式Analyzer／compiler診断を併記する。Problems側の重複排除も通るが、
         // Editorの波線・gutterには重複を送らない。
         var lspDiagnostics = EditorLspDiagnostics(control);
+        control.ReplaceLspDiagnosticPresentation(CSharpDiagnosticMerger.ExpandUnnecessaryUsingGroups(
+            lspDiagnostics, _compilerUnusedUsingRanges.GetValueOrDefault(control) ?? []));
         var fallbackStyleCop = CSharpDiagnosticMerger.ExcludeDuplicates(
             lspDiagnostics, _styleCopResults.GetValueOrDefault(control) ?? []);
         var fallbackCompiler = CSharpDiagnosticMerger.ExcludeDuplicates(
@@ -224,9 +232,11 @@ public partial class ShellWindow
             compilerCts.Cancel();
         _styleCopResults.Remove(control);
         _compilerResults.Remove(control);
+        _compilerUnusedUsingRanges.Remove(control);
         if (control.FilePath is { Length: > 0 } path)
         {
             control.ClearDiagnostics();
+            control.ReplaceLspDiagnosticPresentation(null);
             _vm.Debug.Problems.ClearStyleCopDiagnostics(path);
             _vm.Debug.Problems.ClearCompilerDiagnostics(path);
         }
@@ -408,6 +418,7 @@ public partial class ShellWindow
         _compilerAnalysisCts.Clear();
         _styleCopResults.Clear();
         _compilerResults.Clear();
+        _compilerUnusedUsingRanges.Clear();
         _vm.Debug.Problems.ClearAllStyleCopDiagnostics();
         _vm.Debug.Problems.ClearAllCompilerDiagnostics();
     }

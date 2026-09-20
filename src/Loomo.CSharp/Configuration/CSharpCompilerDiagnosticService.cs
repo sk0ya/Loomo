@@ -38,7 +38,7 @@ public sealed class CSharpCompilerDiagnosticService
             // Compilation の生成も診断の取得も Task.Run の<b>中</b>で完結させる。
             // GetDiagnostics() が意味解析の本体で、ここが一番重い——await の後ろに置くと、
             // UI スレッドから呼ばれたときに続きがディスパッチャへ戻って数秒固まる（実測3.9秒）。
-            var (diagnostics, warning) = await Task.Run(() =>
+            var (diagnostics, warning, unusedUsingRanges) = await Task.Run(() =>
             {
                 var compilation = CSharpWorkspaceOperationContext.Create(
                     solution, fullPath, source,
@@ -55,21 +55,28 @@ public sealed class CSharpCompilerDiagnosticService
                 // 条件で降りている＝CSharpCompilerCodeFixService）。これはフォールバックなので、
                 // 言語サーバーが入っていればそちらの診断が出る。
                 if (compilation.SemanticTrustWarning is { } incomplete)
-                    return (Array.Empty<LspDiagnostic>(), incomplete);
-                return (compilation.SemanticCompilation!.GetDiagnostics(cancellationToken)
-                .Where(diagnostic => !diagnostic.IsSuppressed && diagnostic.Location.IsInSource)
-                .Where(diagnostic => string.Equals(
-                    Path.GetFullPath(diagnostic.Location.SourceTree?.FilePath ?? ""),
-                    fullPath, StringComparison.OrdinalIgnoreCase))
-                .Where(diagnostic => diagnostic.Severity is RoslynDiagnosticSeverity.Error
-                    or RoslynDiagnosticSeverity.Warning or RoslynDiagnosticSeverity.Info)
-                .Select(ToLspDiagnostic)
-                .OrderBy(diagnostic => diagnostic.Range.Start.Line)
-                .ThenBy(diagnostic => diagnostic.Range.Start.Character)
-                .ThenBy(diagnostic => diagnostic.Code, StringComparer.OrdinalIgnoreCase)
-                .ToArray(), (string?)null);
+                    return (Array.Empty<LspDiagnostic>(), incomplete, Array.Empty<LspRange>());
+                var allDiagnostics = compilation.SemanticCompilation!.GetDiagnostics(cancellationToken)
+                    .Where(diagnostic => !diagnostic.IsSuppressed && diagnostic.Location.IsInSource)
+                    .Where(diagnostic => string.Equals(
+                        Path.GetFullPath(diagnostic.Location.SourceTree?.FilePath ?? ""),
+                        fullPath, StringComparison.OrdinalIgnoreCase))
+                    .ToArray();
+                var unusedUsingRanges = allDiagnostics
+                    .Where(diagnostic => string.Equals(diagnostic.Id, "CS8019", StringComparison.Ordinal))
+                    .Select(ToLspRange)
+                    .ToArray();
+                var diagnostics = allDiagnostics
+                    .Where(diagnostic => diagnostic.Severity is RoslynDiagnosticSeverity.Error
+                        or RoslynDiagnosticSeverity.Warning or RoslynDiagnosticSeverity.Info)
+                    .Select(ToLspDiagnostic)
+                    .OrderBy(diagnostic => diagnostic.Range.Start.Line)
+                    .ThenBy(diagnostic => diagnostic.Range.Start.Character)
+                    .ThenBy(diagnostic => diagnostic.Code, StringComparer.OrdinalIgnoreCase)
+                    .ToArray();
+                return (diagnostics, (string?)null, unusedUsingRanges);
             }, cancellationToken).ConfigureAwait(false);
-            return new(diagnostics, warning);
+            return new(diagnostics, warning, unusedUsingRanges);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -84,13 +91,8 @@ public sealed class CSharpCompilerDiagnosticService
 
     private static LspDiagnostic ToLspDiagnostic(Diagnostic diagnostic)
     {
-        var span = diagnostic.Location.GetLineSpan();
-        var start = span.StartLinePosition;
-        var end = span.EndLinePosition;
         return new(
-            new LspRange(
-                new LspPosition(start.Line, start.Character),
-                new LspPosition(end.Line, end.Character)),
+            ToLspRange(diagnostic),
             diagnostic.GetMessage(),
             diagnostic.Severity switch
             {
@@ -107,8 +109,17 @@ public sealed class CSharpCompilerDiagnosticService
                 ? [DiagnosticTag.Unnecessary]
                 : null);
     }
+
+    private static LspRange ToLspRange(Diagnostic diagnostic)
+    {
+        var span = diagnostic.Location.GetLineSpan();
+        return new LspRange(
+            new LspPosition(span.StartLinePosition.Line, span.StartLinePosition.Character),
+            new LspPosition(span.EndLinePosition.Line, span.EndLinePosition.Character));
+    }
 }
 
 public sealed record CSharpCompilerAnalysisResult(
     IReadOnlyList<LspDiagnostic> Diagnostics,
-    string? Error);
+    string? Error,
+    IReadOnlyList<LspRange>? UnnecessaryUsingRanges = null);

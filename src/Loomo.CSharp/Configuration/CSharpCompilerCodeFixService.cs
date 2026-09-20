@@ -13,6 +13,7 @@ namespace sk0ya.Loomo.CSharp.Configuration;
 /// </summary>
 public static class CSharpCompilerCodeFixService
 {
+    private const string RemoveAllUnusedUsingsTitle = "未使用のusingをまとめて削除";
     private static readonly HashSet<string> UsingFixDiagnosticIds =
         ["CS0103", "CS0246"];
 
@@ -166,11 +167,13 @@ public static class CSharpCompilerCodeFixService
 
         var text = tree.GetText(cancellationToken);
         var root = tree.GetCompilationUnitRoot(cancellationToken);
-        var diagnostics = compilation.GetDiagnostics(cancellationToken)
+        var fileDiagnostics = compilation.GetDiagnostics(cancellationToken)
             .Where(diagnostic => diagnostic.Location.IsInSource &&
-                ReferenceEquals(diagnostic.Location.SourceTree, tree) &&
-                IsInRange(ToLspRange(text, diagnostic.Location.SourceSpan), range))
+                ReferenceEquals(diagnostic.Location.SourceTree, tree))
             .OrderBy(diagnostic => diagnostic.Location.SourceSpan.Start)
+            .ToArray();
+        var diagnostics = fileDiagnostics
+            .Where(diagnostic => IsInRange(ToLspRange(text, diagnostic.Location.SourceSpan), range))
             .ToArray();
         var actions = new List<LspCodeAction>();
         foreach (var diagnostic in diagnostics)
@@ -199,12 +202,17 @@ public static class CSharpCompilerCodeFixService
             }
         }
 
-        return actions
-            .GroupBy(action => (action.Title, action.Edit?.Changes.Values
-                .SelectMany(edits => edits).FirstOrDefault()?.NewText))
+        if (diagnostics.Any(diagnostic => diagnostic.Id == "CS8019") &&
+            TryCreateRemoveAllUnusedUsingsAction(fullPath, text, root, fileDiagnostics) is { } removeAll)
+            actions.Add(removeAll);
+
+        var uniqueActions = actions
+            .GroupBy(action => (action.Title, GetActionEditKey(action)))
             .Select(group => group.First())
+            .OrderByDescending(action => action.Title == RemoveAllUnusedUsingsTitle)
             .Take(12)
             .ToArray();
+        return uniqueActions;
     }
 
     private static IReadOnlyList<LspCodeAction> CreateUsingActions(
@@ -340,16 +348,11 @@ public static class CSharpCompilerCodeFixService
         CompilationUnitSyntax root,
         Diagnostic diagnostic)
     {
-        var usingDirective = root.Usings.FirstOrDefault(candidate =>
-            candidate.FullSpan.Contains(diagnostic.Location.SourceSpan.Start) ||
-            candidate.Span.Contains(diagnostic.Location.SourceSpan.Start));
+        var usingDirective = FindUsingDirective(root, diagnostic.Location.SourceSpan.Start);
         if (usingDirective is null || usingDirective.GlobalKeyword.IsKind(SyntaxKind.GlobalKeyword))
             return null;
 
-        var startLine = text.Lines.GetLineFromPosition(usingDirective.SpanStart);
-        var endPosition = Math.Max(usingDirective.SpanStart, usingDirective.Span.End - 1);
-        var endLine = text.Lines.GetLineFromPosition(Math.Min(endPosition, text.Length));
-        var span = TextSpan.FromBounds(startLine.Start, endLine.EndIncludingLineBreak);
+        var span = GetUsingRemovalSpan(text, usingDirective);
         var uri = LspUri.FromPath(Path.GetFullPath(filePath));
         var edit = new LspWorkspaceEdit(
             new Dictionary<string, IReadOnlyList<LspTextEdit>>(StringComparer.OrdinalIgnoreCase)
@@ -359,6 +362,60 @@ public static class CSharpCompilerCodeFixService
         return new LspCodeAction(
             "未使用のusingを削除", LspCodeActionKinds.QuickFix, edit, IsPreferred: true);
     }
+
+    private static LspCodeAction? TryCreateRemoveAllUnusedUsingsAction(
+        string filePath,
+        SourceText text,
+        CompilationUnitSyntax root,
+        IEnumerable<Diagnostic> diagnostics)
+    {
+        var directives = diagnostics
+            .Where(diagnostic => diagnostic.Id == "CS8019")
+            .Select(diagnostic => FindUsingDirective(root, diagnostic.Location.SourceSpan.Start))
+            .Where(usingDirective => usingDirective is not null &&
+                !usingDirective.GlobalKeyword.IsKind(SyntaxKind.GlobalKeyword))
+            .Select(usingDirective => usingDirective!)
+            .DistinctBy(usingDirective => usingDirective.FullSpan.Start)
+            .ToArray();
+        if (directives.Length < 2) return null;
+
+        var removalSpans = directives
+            .Select(usingDirective => GetUsingRemovalSpan(text, usingDirective))
+            .Distinct()
+            .ToArray();
+        if (removalSpans.Length < 2) return null;
+
+        var uri = LspUri.FromPath(Path.GetFullPath(filePath));
+        var edits = removalSpans
+            .Select(span => new LspTextEdit(ToLspRange(text, span), string.Empty))
+            .ToArray();
+        var edit = new LspWorkspaceEdit(
+            new Dictionary<string, IReadOnlyList<LspTextEdit>>(StringComparer.OrdinalIgnoreCase)
+            {
+                [uri] = edits,
+            });
+        return new LspCodeAction(RemoveAllUnusedUsingsTitle,
+            LspCodeActionKinds.QuickFix, edit);
+    }
+
+    private static UsingDirectiveSyntax? FindUsingDirective(CompilationUnitSyntax root, int position)
+        => root.DescendantNodes().OfType<UsingDirectiveSyntax>().FirstOrDefault(candidate =>
+            candidate.FullSpan.Contains(position) || candidate.Span.Contains(position));
+
+    private static TextSpan GetUsingRemovalSpan(SourceText text, UsingDirectiveSyntax usingDirective)
+    {
+        var startLine = text.Lines.GetLineFromPosition(usingDirective.SpanStart);
+        var endPosition = Math.Max(usingDirective.SpanStart, usingDirective.Span.End - 1);
+        var endLine = text.Lines.GetLineFromPosition(Math.Min(endPosition, text.Length));
+        return TextSpan.FromBounds(startLine.Start, endLine.EndIncludingLineBreak);
+    }
+
+    private static string GetActionEditKey(LspCodeAction action)
+        => string.Join("|", action.Edit?.Changes
+            .OrderBy(change => change.Key, StringComparer.Ordinal)
+            .SelectMany(change => change.Value.Select(edit =>
+                $"{change.Key}:{edit.Range.Start.Line}:{edit.Range.Start.Character}:" +
+                $"{edit.Range.End.Line}:{edit.Range.End.Character}:{edit.NewText}")) ?? []);
 
     private static bool TryGetIdentifier(
         CompilationUnitSyntax root, Diagnostic diagnostic, out string identifier)

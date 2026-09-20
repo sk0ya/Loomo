@@ -12,15 +12,12 @@
        直下へ平坦にコピーされる。 -->
   <PropertyGroup>
     <!-- 通常は公開パッケージ（nuget.org の sk0ya.Editor.Controls）を参照する。
-         Editor 側を同時に直しながら動かしたいときは -p:UseLocalEditor=true として
+         Editor 側を同時に直しながら動かすときだけ -p:UseLocalEditor=true として
          C:\Projects\Editor のプロジェクト参照へ切り替える。
 
-         いまは既定が true —— 診断の素性（DiagnosticTag / CodeDescriptionHref / EditorDiagnostic の
-         HelpLink・Tags）と HostDiagnosticExplanationProvider（§30.19）が公開パッケージにまだ無く、
-         false ではビルドが通らない。次の sk0ya.Editor.Controls を公開したら
-         EditorPackageVersion を上げて既定を false へ戻すこと。 -->
-    <UseLocalEditor Condition="'$(UseLocalEditor)' == ''">true</UseLocalEditor>
-    <EditorPackageVersion Condition="'$(EditorPackageVersion)' == ''">1.0.88</EditorPackageVersion>
+         1.0.89 で診断表示だけをホストから差し替える API を公開した。 -->
+    <UseLocalEditor Condition="'$(UseLocalEditor)' == ''">false</UseLocalEditor>
+    <EditorPackageVersion Condition="'$(EditorPackageVersion)' == ''">1.0.89</EditorPackageVersion>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <!-- RID 指定は自己完結（ランタイム同梱）を意味しない。既定に頼らず明示する。 -->
     <SelfContained>false</SelfContained>
