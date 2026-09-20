@@ -651,7 +651,7 @@ initialize に失敗しても「言語サーバーへの接続待ちです」**�
 `Vim.Enabled = false`**（Vim 無効時のエンジンは常時 `Insert` を装う）ため**既定では一度も発火せず**、
 Vim を入れていても**編集中＝ Insert モードでは死んでいる**。
 
-そこで消費者をホスト側に置いた（`Views/Shell/Editor/ShellWindow.SemanticSelection.cs` ＋ `Services/SemanticSelection.cs`）。
+そこで消費者をホスト側に置いた（`Views/Shell/Editor/ShellWindow.SemanticSelection.cs` ＋ `Services/Editor/Interaction/SemanticSelection.cs`）。
 `foldingRange` を使う `ShellAppearanceCoordinator`、`codeAction` を組む `Views/Shell/Editor/ShellWindow.Refactoring.cs` と
 同じ立場で、**Editor ライブラリは変更していない**。設計・罠（適用した範囲と読み戻した範囲が
 一致しないこと／来た道を捨てる条件／キーがエディタへ吸われるかの結論）は **§24.9**（03）に書いた。

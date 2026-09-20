@@ -39,30 +39,30 @@
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
     <!-- Flow の埋め込みタイムライン／インスペクターを .flow EditorSupport で利用する。 -->
     <PackageReference Include="Flow.Editor" Version="0.1.5" />
-    <!-- 軌跡（操作ログ）の日別永続化（%APPDATA%/Loomo/trail.db、Services/TrailStore.cs） -->
+    <!-- 軌跡（操作ログ）の日別永続化（%APPDATA%/Loomo/trail.db、Services/Trail/TrailStore.cs） -->
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.9" />
     <!-- Microsoft.Data.Sqlite の推移参照に含まれる脆弱な 2.1.11 を、修正済み SQLite を使う 3.x へ昇格する。 -->
     <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.4" />
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.8" />
-    <!-- JSON プレビューのスキーマ検証（$schema 解決＋検証、Services/JsonSchemaValidation.cs）。MIT。 -->
+    <!-- JSON プレビューのスキーマ検証（$schema 解決＋検証、Services/Editor/Support/JsonSchemaValidation.cs）。MIT。 -->
     <PackageReference Include="JsonSchema.Net" Version="9.2.2" />
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.3967.48" />
     <!-- CSV/TSV の EditorSupport 表示（Vim キーバインド付きグリッド）。名前空間は VGrid.*
          1.0.3: セル編集後の列幅調整とグリッド描画のパフォーマンス改善 -->
     <PackageReference Include="VGrid.Editor" Version="1.0.3" />
     <!-- Office の読み取り専用プレビュー（EditorSupport）。どちらも MIT。
-         ClosedXML: .xlsx を読んで HTML テーブルへ（Services/ExcelEditorSupport.cs）。
-         Mammoth:   .docx を意味的な HTML へ変換（Services/WordEditorSupport.cs）。 -->
+         ClosedXML: .xlsx を読んで HTML テーブルへ（Services/Editor/Support/ExcelEditorSupport.cs）。
+         Mammoth:   .docx を意味的な HTML へ変換（Services/Editor/Support/OfficeEditorSupport.cs）。 -->
     <PackageReference Include="ClosedXML" Version="0.105.0" />
     <PackageReference Include="Mammoth" Version="1.11.0" />
-    <!-- YAML/TOML の EditorSupport 表示（パース結果を JSON 化して JSON ツリーで表示、Services/DataFormatEditorSupport.cs）。
+    <!-- YAML/TOML の EditorSupport 表示（パース結果を JSON 化して JSON ツリーで表示、Services/Editor/Support/DataFormatEditorSupport.cs）。
          YamlDotNet: .yaml/.yml を読んで JSON 互換文字列へ（JsonCompatible シリアライザ）。MIT。
          Tomlyn:     .toml を Toml.Parse(...).ToModel() で TomlTable にしてから JSON へ。BSD-2-Clause。
                      2.x はモデル API（ToModel）を廃し STJ 風ソースジェネレータ方式へ全面刷新したため、
                      このオブジェクトグラフ→JSON 変換には 0.17.0 系（最後の ToModel を持つ安定版）を使う。 -->
     <PackageReference Include="YamlDotNet" Version="16.3.0" />
     <PackageReference Include="Tomlyn" Version="0.17.0" />
-    <!-- Parquet（.parquet）の読み取り専用プレビュー（先頭行を HTML テーブルへ、Services/DatabaseEditorSupport.cs）。
+    <!-- Parquet（.parquet）の読み取り専用プレビュー（先頭行を HTML テーブルへ、Services/Editor/Support/DatabaseEditorSupport.cs）。
          Parquet.Net: フルマネージドの Apache Parquet 実装（列指向）。net8/net10 ターゲットで net9 でも復元可。MIT。 -->
     <PackageReference Include="Parquet.Net" Version="6.0.3" />
   </ItemGroup>
