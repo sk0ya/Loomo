@@ -48,6 +48,7 @@ internal static class LoomoServiceCollectionExtensions
         services.AddSingleton<StyleCopConfigurationService>();
         services.AddSingleton<StyleCopSeverityService>();
         services.AddSingleton<CSharpCompilerDiagnosticService>();
+        services.AddSingleton<CSharpDiagnosticExplanationService>();
         services.AddSingleton<StyleCopDiagnosticService>();
         services.AddSingleton<StyleCopCodeFixService>();
         services.AddSingleton<CSharpSolutionExplorerViewModel>();

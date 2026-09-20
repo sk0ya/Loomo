@@ -261,6 +261,15 @@ public partial class ShellWindow {
                 var openTexts = FindOpenCSharpEditorTexts();
                 return Task.Run(() => sk0ya.Loomo.CSharp.Editor.CSharpParameterNameHintService.Get(
                     _solutionModel?.Current, path, source, startLine, endLine, openTexts), ct);
+            },
+            // 診断の文面は結論だけのことがある。「なぜ」を知っているのはプロジェクトを
+            // 抱えている側なので、部屋が答える（§30.19）。
+            HostDiagnosticExplanationProvider = (path, source, diagnostic, ct) =>
+            {
+                if (!string.Equals(Path.GetExtension(path), ".cs", StringComparison.OrdinalIgnoreCase))
+                    return Task.FromResult<string?>(null);
+                var solution = _solutionModel?.Current;
+                return Task.Run(() => _diagnosticExplanations.Explain(solution, path, source, diagnostic), ct);
             }
         }) {
             VimEnabled = _settings.Vim.Enabled, Visibility = Visibility.Collapsed

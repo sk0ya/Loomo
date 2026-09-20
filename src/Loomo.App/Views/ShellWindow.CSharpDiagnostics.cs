@@ -389,7 +389,12 @@ public partial class ShellWindow
                 DiagnosticSeverity.Warning => EditorDiagnosticSeverity.Warning,
                 DiagnosticSeverity.Information => EditorDiagnosticSeverity.Information,
                 _ => EditorDiagnosticSeverity.Hint,
-            }, diagnostic.Source, diagnostic.Code);
+            }, diagnostic.Source, diagnostic.Code, null, diagnostic.CodeDescriptionHref,
+            diagnostic.Tags?.Select(static tag => tag switch
+            {
+                DiagnosticTag.Deprecated => EditorDiagnosticTag.Deprecated,
+                _ => EditorDiagnosticTag.Unnecessary,
+            }).ToArray());
 
     private void DisposeCSharpDiagnosticsWiring()
     {

@@ -99,7 +99,13 @@ public sealed class CSharpCompilerDiagnosticService
                 RoslynDiagnosticSeverity.Info => LspDiagnosticSeverity.Information,
                 _ => LspDiagnosticSeverity.Hint,
             },
-            "Compiler", diagnostic.Id);
+            "Compiler", diagnostic.Id,
+            string.IsNullOrWhiteSpace(diagnostic.Descriptor.HelpLinkUri) ? null : diagnostic.Descriptor.HelpLinkUri,
+            // 「消しても構わない」印（未使用の using・到達しないコード）は、Roslyn 自身が
+            // CustomTags で言っている。LSP 経由の診断と同じ見せ方（波線ではなく薄字）に揃える。
+            diagnostic.Descriptor.CustomTags.Contains(WellKnownDiagnosticTags.Unnecessary)
+                ? [DiagnosticTag.Unnecessary]
+                : null);
     }
 }
 

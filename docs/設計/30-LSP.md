@@ -655,3 +655,49 @@ Vim を入れていても**編集中＝ Insert モードでは死んでいる**�
 `foldingRange` を使う `ShellAppearanceCoordinator`、`codeAction` を組む `ShellWindow.Refactoring.cs` と
 同じ立場で、**Editor ライブラリは変更していない**。設計・罠（適用した範囲と読み戻した範囲が
 一致しないこと／来た道を捨てる条件／キーがエディタへ吸われるかの結論）は **§24.9**（03）に書いた。
+
+## §30.19 診断は「結論」だけ出しても伝わらない（2026-09-20 修正）
+
+`using System.Windows;` の上に「**Using ディレクティブは必要ありません。**」が出て、
+それが**誤検知に見えた**——`System.Windows` はそのファイルで実際に使っているのだから。
+Roslyn は正しい：`src/Loomo.App/GlobalUsings.cs` に `global using System.Windows;` があり、
+ファイル側の using は**消しても解決が変わらない**。正しさの問題ではなく、**伝え方の問題**だった。
+
+実際に届いていた payload（`%TEMP%\editor-lsp-debug.log`）はこうで、必要な材料は全部来ていた：
+
+```json
+{"range":{"start":{"line":0,"character":0},"end":{"line":8,"character":31}},
+ "severity":4,"code":"IDE0005",
+ "codeDescription":{"href":"https://learn.microsoft.com/…/ide0005"},"tags":[1]}
+```
+
+落ちていたのは4つ。
+
+1. **`code` が捨てられていた。** 診断を読む実装が push（`publishDiagnostics`）と pull
+   （`textDocument/diagnostic`）で二重にあり、**pull 側だけ `code` を落としていた**。Roslyn は pull で
+   返すので、C# の診断はホバーに出どころ（`Roslyn(IDE0005)`）が一度も出ず、調べる取っ掛かりが無かった。
+   → Editor 側で `LspDiagnosticParser` に一本化（§LSP）。`codeDescription.href` も拾い、出どころ自体を
+   規則の説明ページへのリンクにした。押すと `LinkClicked` 経由で Loomo のブラウザペインへ流れる。
+2. **`tags` を見ていなかった。** `severity:4`（ヒント）＋ `tags:[1]`（Unnecessary）は「間違い」ではなく
+   「消しても何も変わらない」の印なのに、他の診断と同じ**波線**で描いていた。赤い波線と並べばエラーに見える。
+   → Unnecessary は波線をやめて**薄字**、Deprecated は取り消し線（`DiagnosticDecorations`）。
+3. **範囲が塊で来る。** Roslyn は連続する不要 using を**1件の広い範囲**にまとめる（上の 0〜8 行目）。
+   塊のどこにマウスを置いても同じ文言が出るので、**どの行のことか分からない**。
+4. **「なぜ」は誰も言わない。** 重複相手が `GlobalUsings.cs:14` だとは、サーバーは言わない。
+
+3 と 4 に答えられるのは、**プロジェクトを抱えている側＝部屋**だけである。Editor 側には口だけを開け
+（`VimEditorControlOptions.HostDiagnosticExplanationProvider`）、中身は
+`Loomo.CSharp/Configuration/CSharpDiagnosticExplanationService.cs` が持つ：
+
+- 診断の範囲を**行へ切り直して** using を1本ずつ数え、`global using` の索引と突き合わせる。
+  「1行目は `GlobalUsings.cs:2` の global using と重複しています」「対象は using 3 件。2 件は…と重複。
+  3行目 はこの本文で使われていません」のように、**どの行がどちらなのか**を言う。
+- 索引はテキスト走査だけで作る（ホバー1回で Compilation を組むと数秒かかる）。ファイル先頭だけ読み、
+  プロジェクト単位で 30 秒キャッシュ。`ImplicitUsings` が中間出力に生成した global using は開いても
+  仕方がないので、そう名乗る。
+- **説明できない規則には何も言わない。** 曖昧な一般論を足すと、本当に説明がある診断と見分けが付かなくなる。
+  規則を増やすときは `Explain` の switch に足す（いまは IDE0005 / CS8019）。
+
+フォールバック側（`CSharpCompilerDiagnosticService`）も Roslyn の `CustomTags`／`HelpLinkUri` を
+そのまま渡すようにした。**出どころが LSP かホストかで見え方が変わらない**ことが要点で、
+`EditorDiagnostic` 側にも `HelpLink` / `Tags` を足してある。
