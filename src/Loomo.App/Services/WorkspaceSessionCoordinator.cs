@@ -1,4 +1,4 @@
-using sk0ya.Loomo.App.Views;
+﻿using sk0ya.Loomo.App.Views;
 
 namespace sk0ya.Loomo.App.Services;
 
@@ -143,7 +143,11 @@ public static class WorkspaceSessionCoordinator
         {
             Id = tab.Id,
             FilePath = editor.FilePath,
-            Text = editor.Text,
+            // 本文は「下書きへ書くとき」＝未保存か名前無しのタブだけ読む。`VimEditorControl.Text` は
+            // 行配列を毎回 join して 1 本の文字列を作る（456KB のファイルで 0.4ms・LOH 行き）ので、
+            // 保存されているタブの本文まで読むと、打鍵のたびに開いている全タブぶんの複製が走っていた。
+            // 復元側（RestoreEditor）もこの条件でしか本文を使わない。§31.15
+            Text = editor.IsModified || string.IsNullOrWhiteSpace(editor.FilePath) ? editor.Text : null,
             Title = string.IsNullOrWhiteSpace(editor.FilePath) ? "Untitled" : Path.GetFileName(editor.FilePath),
             IsModified = editor.IsModified,
             IsActive = isActive,

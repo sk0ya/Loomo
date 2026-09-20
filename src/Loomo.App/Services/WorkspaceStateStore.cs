@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -20,10 +20,11 @@ namespace sk0ya.Loomo.App.Services;
 [JsonSerializable(typeof(WorkspaceIndex))]
 internal partial class WorkspaceStateJsonContext : JsonSerializerContext;
 
-public sealed class WorkspaceStateStore
+public sealed class WorkspaceStateStore : IDisposable
 {
     private readonly string _filePath;
     private readonly string _workspaceDirectory;
+    private readonly DeferredWriteQueue _writes = new("LoomoWorkspaceSave");
 
     public WorkspaceStateStore() : this(DefaultPath()) { }
 
@@ -33,12 +34,20 @@ public sealed class WorkspaceStateStore
         _workspaceDirectory = Path.Combine(Path.GetDirectoryName(filePath)!, "workspaces");
     }
 
+    /// <summary>積んである書き出しを待ってから終わる（終了時に下書きを落とさない）。</summary>
+    public void Dispose()
+    {
+        _writes.Flush();
+        _writes.Dispose();
+    }
+
     public static string DefaultPath() => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "Loomo", "workspaces.json");
 
     public WorkspaceState Load()
     {
+        _writes.Flush();   // 積んである書き出しより前の内容を読まない
         if (!File.Exists(_filePath))
             return new WorkspaceState();
 
@@ -73,6 +82,7 @@ public sealed class WorkspaceStateStore
     /// <summary>起動用。一覧とアクティブなワークスペースだけを読み、他の詳細は切替時まで遅延する。</summary>
     public WorkspaceState LoadForStartup()
     {
+        _writes.Flush();
         if (!File.Exists(_filePath)) return new WorkspaceState();
         try
         {
@@ -100,6 +110,7 @@ public sealed class WorkspaceStateStore
 
     public WorkspaceSnapshot? LoadWorkspace(Guid id)
     {
+        _writes.Flush();
         var path = StatePath(id);
         if (!File.Exists(path)) return null;
         try
@@ -125,14 +136,35 @@ public sealed class WorkspaceStateStore
 
     /// <summary>状態を同期でディスクへ書き出す。書込直後の <see cref="Load"/>（別インスタンス含む）が
     /// 確実に最新を読めるよう、あえて同期のまま（read-after-write の耐久性契約）。直列化はソース
-    /// ジェネレータ経路でリフレクションコストを外す。呼び出し回数は切替経路側で間引く。</summary>
+    /// ジェネレータ経路でリフレクションコストを外す。呼び出し回数は切替経路側で間引く。
+    /// <para>積んである遅延書き出し（<see cref="SaveDeferred"/>）を先に片付けてから書く——順序が入れ替わると、
+    /// 古い計画がここで書いたものを上書きする。</para></summary>
     public void Save(WorkspaceState state)
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(_filePath)!);
-        Directory.CreateDirectory(_workspaceDirectory);
+        _writes.Flush();
+        BuildSavePlan(state).Execute();
+    }
+
+    /// <summary>
+    /// 状態の<b>組み立てだけ</b>を呼び出しスレッドで行い、ディスクへの書き出しは書き出し専用スレッドへ回す。
+    /// 打鍵・タブ切替のたびに走る定期保存の入口はこちら（実測で 1 回 9〜10ms のうち大半が下書きの書き出し＝
+    /// ディスク。UI スレッドで払う理由がない。§31.15）。
+    /// <para>読み直しの直前など、確実にディスクへ載っていてほしい場所では <see cref="Flush"/> を通すこと。
+    /// <see cref="Save"/>／<see cref="Load"/>／<see cref="DeleteWorkspace"/> は自分で通す。</para>
+    /// </summary>
+    public void SaveDeferred(WorkspaceState state) => _writes.Enqueue(BuildSavePlan(state));
+
+    /// <summary>積んである遅延書き出しが終わるまで待つ。</summary>
+    public void Flush() => _writes.Flush();
+
+    private FileWritePlan BuildSavePlan(WorkspaceState state)
+    {
+        var plan = new FileWritePlan()
+            .EnsureDirectory(Path.GetDirectoryName(_filePath)!)
+            .EnsureDirectory(_workspaceDirectory);
 
         foreach (var workspace in state.Workspaces.Where(w => w.IsDetailsLoaded))
-            SaveWorkspace(workspace);
+            PlanWorkspace(plan, workspace);
 
         var index = new WorkspaceIndex
         {
@@ -140,21 +172,22 @@ public sealed class WorkspaceStateStore
             ActiveWorkspaceId = state.ActiveWorkspaceId,
             Workspaces = state.Workspaces.Select(WorkspaceSummary.From).ToList()
         };
-        File.WriteAllText(_filePath,
+        return plan.WriteAllText(_filePath,
             JsonSerializer.Serialize(index, WorkspaceStateJsonContext.Default.WorkspaceIndex));
     }
 
     public void DeleteWorkspace(Guid id)
     {
+        _writes.Flush();   // 消した先を、積んである計画に書き戻させない
         var dir = WorkspacePath(id);
         if (Directory.Exists(dir)) Directory.Delete(dir, recursive: true);
     }
 
-    private void SaveWorkspace(WorkspaceSnapshot workspace)
+    private void PlanWorkspace(FileWritePlan plan, WorkspaceSnapshot workspace)
     {
         var dir = WorkspacePath(workspace.Id);
         var drafts = Path.Combine(dir, "drafts");
-        Directory.CreateDirectory(drafts);
+        plan.EnsureDirectory(drafts);
 
         // 旧 single-editor 形式を保存時点で新しいタブ形式へ確定させる。本文を state.json から
         // 除外する前に draft へ書くため、移行直後にプロセスが終了しても未保存内容を失わない。
@@ -181,23 +214,22 @@ public sealed class WorkspaceStateStore
             if (tab.IsModified || string.IsNullOrWhiteSpace(tab.FilePath))
             {
                 if (tab.Text is not null)
-                    File.WriteAllText(draft, tab.Text);
-                else if (tab.DeferredTextPath is { } source && File.Exists(source)
+                    plan.WriteAllText(draft, tab.Text);
+                else if (tab.DeferredTextPath is { } source
                          && !string.Equals(source, draft, StringComparison.OrdinalIgnoreCase))
-                    File.Copy(source, draft, overwrite: true);
+                    plan.CopyIfExists(source, draft);
                 tab.DeferredTextPath = draft;
             }
-            else if (File.Exists(draft))
+            else
             {
-                File.Delete(draft);
+                plan.DeleteIfExists(draft);
                 tab.DeferredTextPath = null;
             }
         }
 
         var liveDrafts = workspace.EditorTabs.Select(t => t.Id.ToString("N") + ".txt")
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        foreach (var stale in Directory.EnumerateFiles(drafts, "*.txt"))
-            if (!liveDrafts.Contains(Path.GetFileName(stale))) File.Delete(stale);
+        plan.PruneDirectory(drafts, "*.txt", liveDrafts);
 
         // state.json はメタデータのみ。本文は drafts に置き、タブ実体化時に読む。
         var text = workspace.EditorTabs.Select(t => t.Text).ToArray();
@@ -207,7 +239,7 @@ public sealed class WorkspaceStateStore
             foreach (var tab in workspace.EditorTabs) tab.Text = null;
             workspace.Editor.Text = null;
             var wrapper = new WorkspaceState { Workspaces = [workspace] };
-            File.WriteAllText(Path.Combine(dir, "state.json"),
+            plan.WriteAllText(Path.Combine(dir, "state.json"),
                 JsonSerializer.Serialize(wrapper, WorkspaceStateJsonContext.Default.WorkspaceState));
         }
         finally

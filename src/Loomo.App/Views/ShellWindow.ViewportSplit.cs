@@ -869,6 +869,28 @@ public partial class ShellWindow {
     /// 送り直していると、上のどれか（実際にブランチ切替で全タブ）が落ちる。</para></summary>
     private void LoadEditorFile(VimEditorControl control, string path) {
         control.LoadFile(path);
+        AfterEditorFileLoaded(control);
+    }
+    /// <summary>
+    /// <see cref="LoadEditorFile"/> の、<b>UI スレッドを空けておく</b>版。ディスクを読むところ——
+    /// <c>.editorconfig</c> の探索と解析・バイト列の読み出し・エンコーディング判定・デコード・行分割——は
+    /// 背景スレッドで済ませ、UI スレッドが払うのは読み終えたものを載せる部分だけにする（§31.15）。
+    /// <para>待っている間にタブが閉じられている／作り直されていることがあるので、載せる前に確かめる。
+    /// 閉じたタブのコントロールは <c>Dispose</c> 済みで、そこへ読み込ませると死んだ相手を叩くことになる。</para>
+    /// <para>読み込み後の後始末は <see cref="LoadEditorFile"/> と同じ 1 本（<see cref="AfterEditorFileLoaded"/>）
+    /// を通る。経路が増えても後始末が分岐しないようにするため。</para>
+    /// </summary>
+    private async Task LoadEditorFileAsync(EditorTab tab, string path) {
+        if (!tab.IsRealized)
+            _ = tab.Control;   // 実体化はここで済ませる（await の後に走らせない）
+        var control = tab.Control;
+        var prepared = await Task.Run(() => PreparedFileLoad.Prepare(path));
+        if (!_editorTabs.Contains(tab) || !tab.IsRealized || !ReferenceEquals(tab.Control, control))
+            return;
+        control.LoadFile(path, prepared);
+        AfterEditorFileLoaded(control);
+    }
+    private void AfterEditorFileLoaded(VimEditorControl control) {
         _appearance.ApplyUsingFoldingOnOpen(control);
         SyncEditorTestGlyphs(control);   // LoadFile はグリフを捨てるが BufferChanged を出さない
         SyncEditorCodeActionBulb(control);

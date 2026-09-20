@@ -296,6 +296,16 @@ from `_activeWorkspace?.RootPath` at a glance is the win.
 
 ### Persistence
 
+**Editor operations stay off the UI thread** (`docs/設計/31-IDE体感品質ロードマップ.md` §31.15 is the authority).
+The periodic workspace save, the trail's SQLite writes and opening a file used to run on the UI thread on every
+keystroke / pane switch / open — measured at ~9.8ms, ~1.4ms and the whole read respectively. The shape of the fix
+is **"build the plan on the thread that can read the state, run it on a writer thread"**: `FileWritePlan` +
+`DeferredWriteQueue` (one thread, FIFO, newer plans drop older ones they fully cover), `WorkspaceStateStore.SaveDeferred`
+/ `Flush`, `TrailStore.AppendDeferred` (returns a `TrailRowRef` whose id the writer fills in), and
+`PreparedFileLoad.Prepare` off-thread before `LoadEditorFileAsync` installs it. Read-after-write is **not** given up:
+`Save`, `Load`, `DeleteWorkspace` and the trail's reads flush first, and the workspace switch / window close still
+write synchronously. Don't add a disk write or a full-buffer copy (`VimEditorControl.Text`) to a per-keystroke path.
+
 `%APPDATA%/Loomo/` holds `settings.json` (provider/model/`modelPath`/MaxTokens + Safety; legacy
 legacy `baseUrl`/`numGpu`/`thinking`/`thinkingEffort`/`SystemPrompt` fields are ignored), `models/` (downloaded
 ONNX models), and `sessions/*.json`. **API keys are DPAPI-encrypted (CurrentUser)** — classes touching this are

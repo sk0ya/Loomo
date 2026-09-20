@@ -24,6 +24,7 @@ global using Editor.Controls.Git;
 global using Editor.Controls.Lsp;
 global using Editor.Controls.Rendering;
 global using Editor.Controls.Themes;
+global using Editor.Core.Buffer;
 global using Editor.Core.Lsp;
 global using Microsoft.Web.WebView2.Core;
 global using Microsoft.Web.WebView2.Wpf;

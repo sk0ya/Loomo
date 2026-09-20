@@ -1,4 +1,4 @@
-namespace sk0ya.Loomo.App.Views;
+﻿namespace sk0ya.Loomo.App.Views;
 /// <summary>ShellWindow: エディタタブを開く・プレビュータブの使い回し（新規タブ・仮想ドキュメント・ ファイル/プレビューで開く・外部変更の読み直し・プレビュー↔通常の昇格）。選択/クローズ/活性化は ShellWindow.Tabs.cs。</summary>
 public partial class ShellWindow {
     private void OnEditorNewTab(object sender, RoutedEventArgs e) {
@@ -41,7 +41,7 @@ public partial class ShellWindow {
         _editorTabs.Add(tab);
         _vm.Tabs.AddEditorTab(tab.Id, path, false, false);
         ActivateEditorTab(tab.Id);
-        LoadEditorFile(tab.Control, path);
+        await LoadEditorFileAsync(tab, path);
         OnActiveEditorFileChanged(tab);   // Activate 時点ではまだパス未設定なので、読み込み後に評価する
         UpdateEditorTab(tab);
         RecordTrailEditorTab(tab);
@@ -78,7 +78,7 @@ public partial class ShellWindow {
         _trailSuppressed = true;
         try { ActivateEditorTab(target.Id); }
         finally { _trailSuppressed = trailSaved; }
-        LoadEditorFile(target.Control, path);
+        await LoadEditorFileAsync(target, path);
         OnActiveEditorFileChanged(target);   // Activate 時点ではまだパス未設定なので、読み込み後に評価する
         SetPreviewTab(target);
         UpdateEditorTab(target);
@@ -95,8 +95,8 @@ public partial class ShellWindow {
         string diskText;
         try { diskText = await File.ReadAllTextAsync(path); }
         catch { return; }   // 読めなければ現状維持（best-effort）
-        if (NormalizeEol(diskText) != NormalizeEol(tab.Control.Text)) {
-            LoadEditorFile(tab.Control, path);
+        if (!EolInsensitiveText.Equals(diskText, tab.Control.Text)) {
+            await LoadEditorFileAsync(tab, path);
             UpdateEditorTab(tab);
         }
         if (ReferenceEquals(_editorSupport.Source, tab))
@@ -125,7 +125,6 @@ public partial class ShellWindow {
                 await ReloadExistingTabIfChangedAsync(tab);
         }
     }
-    private static string NormalizeEol(string text) => text.Replace("\r\n", "\n").Replace("\r", "\n");
     private void SetPreviewTab(EditorTab? tab) {
         if (_previewEditorTab is { } old && !ReferenceEquals(old, tab))
             _vm.Tabs.SetEditorTabPreview(old.Id, false);

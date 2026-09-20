@@ -1,4 +1,4 @@
-namespace sk0ya.Loomo.App.Views;
+﻿namespace sk0ya.Loomo.App.Views;
 /// <summary>ShellWindow: ワークスペース切替とスナップショット保存・復元（タブ実体の付け替え）</summary>
 public partial class ShellWindow {
     private readonly object _workspaceSwitchRequestGate = new();
@@ -266,21 +266,24 @@ public partial class ShellWindow {
         if (immediate) {
             _pendingWorkspaceSnapshotSave?.Abort();
             _pendingWorkspaceSnapshotSave = null;
-            SaveActiveWorkspaceSnapshotNow();
+            SaveActiveWorkspaceSnapshotNow(immediate: true);
             return;
         }
         if (_pendingWorkspaceSnapshotSave is { Status: DispatcherOperationStatus.Pending })
             return;
         _pendingWorkspaceSnapshotSave = Dispatcher.BeginInvoke( new Action(() => {
                 _pendingWorkspaceSnapshotSave = null;
-                SaveActiveWorkspaceSnapshotNow();
+                SaveActiveWorkspaceSnapshotNow(immediate: false);
             }), DispatcherPriority.ApplicationIdle);
     }
-    private void SaveActiveWorkspaceSnapshotNow() {
+    /// <summary>いまの状態を書き出す。<paramref name="immediate"/> が false（打鍵・タブ切替ごとの定期保存）なら、
+    /// UI スレッドでやるのは状態の組み立てまでで、ディスクへの書き出しは書き出し専用スレッドが引き取る
+    /// （実測 9〜10ms／回のほとんどはディスク。§31.15）。切替・終了時だけ同期で書き切る。</summary>
+    private void SaveActiveWorkspaceSnapshotNow(bool immediate) {
         if (_activeWorkspace is null)
             return;
         CaptureInto(_activeWorkspace);
-        _vm.Workspaces.SaveSnapshot(_activeWorkspace);
+        _vm.Workspaces.SaveSnapshot(_activeWorkspace, immediate);
         RefreshLatestTrailPaneLayout();
     }
     private void CaptureInto(WorkspaceSnapshot snapshot) {
@@ -302,13 +305,14 @@ public partial class ShellWindow {
         snapshot.EditorTabs = persistableEditorTabs
             .Select(tab => WorkspaceSessionCoordinator.CaptureEditorTab(tab, _activeEditorTab?.Id))
             .ToList();
-        var activeTab = persistableEditorTabs.FirstOrDefault(t => t.Id == _activeEditorTab?.Id)
-            ?? persistableEditorTabs.FirstOrDefault();
-        if (activeTab is not null) {
-            var s = WorkspaceSessionCoordinator.CaptureEditorTab(activeTab, _activeEditorTab?.Id);
-            snapshot.Editor.FilePath = s.FilePath;
-            snapshot.Editor.Text = s.Text;
-            snapshot.Editor.IsModified = s.IsModified;
+        // 旧 single-editor 形式の鏡。もう一度 CaptureEditorTab を呼ぶと本文の複製が1本余計に走るので、
+        // 上で取ったものから引く。
+        var activeSnapshot = snapshot.EditorTabs.FirstOrDefault(t => t.Id == _activeEditorTab?.Id)
+            ?? snapshot.EditorTabs.FirstOrDefault();
+        if (activeSnapshot is not null) {
+            snapshot.Editor.FilePath = activeSnapshot.FilePath;
+            snapshot.Editor.Text = activeSnapshot.Text;
+            snapshot.Editor.IsModified = activeSnapshot.IsModified;
         }
         snapshot.BrowserTabs = _browserTabs
             .Where(tab => !EditorSupportNavigationService.IsPreviewUrl(BrowserUrlOf(tab)))

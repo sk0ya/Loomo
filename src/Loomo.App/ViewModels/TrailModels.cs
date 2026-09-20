@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
@@ -44,8 +44,14 @@ public sealed partial class TrailEntryViewModel : ObservableObject
 {
     public TrailEntryViewModel(long id, TrailEntryKind kind, string target, string label, DateTime timestamp,
         DisplayMode displayMode = DisplayMode.Layout, PaneKind? stagePane = null, string? paneLayout = null)
+        : this(TrailRowRef.Resolved(id), kind, target, label, timestamp, displayMode, stagePane, paneLayout)
     {
-        Id = id;
+    }
+
+    public TrailEntryViewModel(TrailRowRef row, TrailEntryKind kind, string target, string label, DateTime timestamp,
+        DisplayMode displayMode = DisplayMode.Layout, PaneKind? stagePane = null, string? paneLayout = null)
+    {
+        Row = row;
         Kind = kind;
         Target = target;
         _label = label;
@@ -55,8 +61,12 @@ public sealed partial class TrailEntryViewModel : ObservableObject
         PaneLayout = paneLayout;
     }
 
-    /// <summary>SQLite の行 id（永続化に失敗したメモリ内エントリは -1）。</summary>
-    public long Id { get; }
+    /// <summary>SQLite の行への参照。書き込みは待ち行列を通るので、記録した直後は
+    /// まだ id が決まっていないことがある（<see cref="TrailRowRef.Pending"/>）。</summary>
+    public TrailRowRef Row { get; }
+
+    /// <summary>SQLite の行 id（未確定は -2、永続化に失敗したメモリ内エントリは -1）。</summary>
+    public long Id => Row.Id;
 
     public TrailEntryKind Kind { get; }
 

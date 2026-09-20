@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using System.IO;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -412,14 +412,19 @@ public sealed partial class WorkspaceListViewModel : ObservableObject
     /// 削除の<em>後</em>にその捕獲＝この保存が届く。ここで足していたせいで workspaces.json と
     /// state.json が書き戻り、消したはずのワークスペースが次の起動で戻ってきていた。
     /// 新しいワークスペースは <see cref="ActivateFolder"/> が先に一覧へ載せるので、足す口はここには要らない。</summary>
-    public void SaveSnapshot(WorkspaceSnapshot snapshot)
+    public void SaveSnapshot(WorkspaceSnapshot snapshot) => SaveSnapshot(snapshot, immediate: true);
+
+    /// <param name="immediate">false なら、ディスクへの書き出しだけを書き出し専用スレッドへ回す
+    /// （状態の組み立てと一覧の更新はこのスレッドのまま）。打鍵・タブ切替ごとの定期保存はこちら。</param>
+    public void SaveSnapshot(WorkspaceSnapshot snapshot, bool immediate)
     {
         var index = _state.Workspaces.FindIndex(w => w.Id == snapshot.Id);
         if (index < 0)
             return;
 
         _state.Workspaces[index] = snapshot;
-        _store.Save(_state);
+        if (immediate) _store.Save(_state);
+        else _store.SaveDeferred(_state);
         RefreshEntries();
     }
 

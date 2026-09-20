@@ -1,6 +1,7 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading;
 using Microsoft.Data.Sqlite;
 
 namespace sk0ya.Loomo.App.Services;
@@ -18,6 +19,31 @@ public sealed record TrailRecord(
     PaneKind? StagePane,
     string? PaneLayout);
 
+/// <summary>
+/// まだ書かれていないかもしれない軌跡1行への参照。<see cref="TrailStore.AppendDeferred"/> は即座にこれを返し、
+/// 書き出しスレッドが INSERT を終えた時点で id が入る。後続の更新（デデュープ・離脱位置・配置）も同じ
+/// 待ち行列を通るので、<b>id が決まる前に更新が走ることはない</b>（1本のスレッドで積んだ順に実行するため）。
+/// </summary>
+public sealed class TrailRowRef
+{
+    /// <summary>まだ書かれていない。</summary>
+    public const long Pending = -2;
+    /// <summary>書き込みに失敗した（＝メモリ内だけのエントリ）。</summary>
+    public const long Lost = -1;
+
+    private long _id = Pending;
+
+    private TrailRowRef(long id) => _id = id;
+    internal TrailRowRef() { }
+
+    /// <summary>読み込み済みの行（id が判っているもの）への参照。</summary>
+    public static TrailRowRef Resolved(long id) => new(id);
+
+    public long Id => Volatile.Read(ref _id);
+    public bool IsPersisted => Id >= 0;
+    internal void Resolve(long id) => Volatile.Write(ref _id, id);
+}
+
 /// <summary>軌跡（操作ログ）の SQLite 永続化。ワークスペース（workspace 列＝WorkspaceSnapshot.Id、
 /// 未オープンのスクラッチは空文字）×1日ごと（ローカル日付の day 列）に記録し、過去の日付の軌跡も
 /// 遡って読める。上限なし。既定の保存先は %APPDATA%/Loomo/trail.db。
@@ -30,6 +56,10 @@ public sealed class TrailStore : IDisposable
     private readonly string _dbPath;
     private SqliteConnection? _connection;
     private readonly object _gate = new();
+    /// <summary>書き込みを UI スレッドから外すための待ち行列（1本のスレッドで積んだ順に実行）。
+    /// 実測で INSERT 0.8ms／UPDATE 0.7ms——ペインを切り替えるたび、編集が落ち着くたびに
+    /// UI スレッドで払っていた。§31.15</summary>
+    private readonly DeferredWriteQueue _writes = new("LoomoTrailSave");
 
     public TrailStore()
         : this(DefaultPath())
@@ -164,6 +194,51 @@ public sealed class TrailStore : IDisposable
         }
     }
 
+    /// <summary>行を1つ足す。ディスクを叩くのは書き出しスレッドで、呼び出し側は参照だけ受け取って進む。</summary>
+    public TrailRowRef AppendDeferred(string workspace, DateTime timestamp, int kind, string target, string label,
+        int line, int column, DisplayMode displayMode = DisplayMode.Layout, PaneKind? stagePane = null,
+        string? paneLayout = null)
+    {
+        var row = new TrailRowRef();
+        _writes.Enqueue(() =>
+        {
+            try
+            {
+                row.Resolve(Append(workspace, timestamp, kind, target, label, line, column,
+                    displayMode, stagePane, paneLayout));
+            }
+            catch { row.Resolve(TrailRowRef.Lost); }
+        });
+        return row;
+    }
+
+    /// <summary><see cref="Update(long, DateTime, string, int, int, string?)"/> の遅延版。</summary>
+    public void UpdateDeferred(TrailRowRef row, DateTime timestamp, string label, int line, int column,
+        string? paneLayout)
+        => EnqueueRowUpdate(row, id => Update(id, timestamp, label, line, column, paneLayout));
+
+    /// <summary><see cref="UpdatePosition"/> の遅延版。</summary>
+    public void UpdatePositionDeferred(TrailRowRef row, int line, int column)
+        => EnqueueRowUpdate(row, id => UpdatePosition(id, line, column));
+
+    /// <summary><see cref="UpdatePaneLayout"/> の遅延版。</summary>
+    public void UpdatePaneLayoutDeferred(TrailRowRef row, string? paneLayout)
+        => EnqueueRowUpdate(row, id => UpdatePaneLayout(id, paneLayout));
+
+    private void EnqueueRowUpdate(TrailRowRef row, Action<long> update)
+        => _writes.Enqueue(() =>
+        {
+            // ここに来た時点で INSERT は済んでいる（同じ待ち行列を順に実行するため）。
+            // それでも負なら書き込みに失敗した行なので、黙って捨てる。
+            var id = row.Id;
+            if (id < 0) return;
+            try { update(id); }
+            catch { }
+        });
+
+    /// <summary>積んである書き込みが終わるまで待つ。読み取りは自分で通す。</summary>
+    public void Flush() => _writes.Flush();
+
     /// <summary>直前と同一地点の再通過（デデュープ）で、既存行の時刻・ラベル・位置を上書きする。</summary>
     public void Update(long id, DateTime timestamp, string label, int line, int column, string? paneLayout)
     {
@@ -241,6 +316,7 @@ public sealed class TrailStore : IDisposable
     /// <summary>指定ワークスペース×指定日（ローカル日付）の軌跡を古い順に読む。</summary>
     public IReadOnlyList<TrailRecord> LoadDay(string workspace, DateOnly day)
     {
+        _writes.Flush();   // 積んである書き込みより前を読まない
         lock (_gate)
         {
             var list = new List<TrailRecord>();
@@ -308,6 +384,7 @@ public sealed class TrailStore : IDisposable
     /// <summary>そのワークスペースに記録が1件でもあるか（バーの表示判定）。</summary>
     public bool HasAny(string workspace)
     {
+        _writes.Flush();   // 積んである書き込みより前を読まない
         lock (_gate)
         {
             using var cmd = Connection.CreateCommand();
@@ -320,6 +397,7 @@ public sealed class TrailStore : IDisposable
     /// <summary>そのワークスペースで記録のある日付一覧（新しい順）。カレンダーの参考・テスト用。</summary>
     public IReadOnlyList<DateOnly> ListDays(string workspace)
     {
+        _writes.Flush();   // 積んである書き込みより前を読まない
         lock (_gate)
         {
             var list = new List<DateOnly>();
@@ -335,6 +413,8 @@ public sealed class TrailStore : IDisposable
 
     public void Dispose()
     {
+        _writes.Flush();
+        _writes.Dispose();
         _connection?.Dispose();
         _connection = null;
     }

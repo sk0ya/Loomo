@@ -1,4 +1,4 @@
-using sk0ya.Loomo.App.ViewModels;
+﻿using sk0ya.Loomo.App.ViewModels;
 
 namespace sk0ya.Loomo.App.Services;
 
@@ -8,7 +8,10 @@ public sealed record TrailRecordRequest(
 
 public sealed record TrailRecordResult(TrailEntryViewModel Entry, bool Added, bool LiveDayChanged);
 
-/// <summary>軌跡のデデュープ、永続化、最新地点更新を担当する Command Handler。</summary>
+/// <summary>軌跡のデデュープ、永続化、最新地点更新を担当する Command Handler。
+/// <para>記録の呼び出し元は UI スレッド（ペイン切替・編集の確定・ファイル移動）なので、SQLite へ書くのは
+/// <see cref="TrailStore"/> の書き出しスレッドに任せ、ここでは行への参照だけ受け取って先へ進む。
+/// 追記と更新は同じ待ち行列を順に通るため、id が決まる前に更新が走ることはない。§31.15</para></summary>
 public sealed class TrailRecordHandler
 {
     private readonly TrailStore _store;
@@ -61,15 +64,14 @@ public sealed class TrailRecordHandler
             last.Timestamp = now;
             last.PaneLayout = request.PaneLayout;
             if (request.Line >= 0) { last.Line = request.Line; last.Column = request.Column; }
-            if (last.Id >= 0)
-                Try(() => _store.Update(last.Id, now, last.Label, last.Line, last.Column, request.PaneLayout));
+            Try(() => _store.UpdateDeferred(last.Row, now, last.Label, last.Line, last.Column, request.PaneLayout));
             return new TrailRecordResult(last, false, dayChanged);
         }
 
-        long id = -1;
-        Try(() => id = _store.Append(_workspaceKey, now, (int)request.Kind, request.Target, request.Label,
+        TrailRowRef row = TrailRowRef.Resolved(TrailRowRef.Lost);
+        Try(() => row = _store.AppendDeferred(_workspaceKey, now, (int)request.Kind, request.Target, request.Label,
             request.Line, request.Column, request.DisplayMode, request.StagePane, request.PaneLayout));
-        var entry = new TrailEntryViewModel(id, request.Kind, request.Target, request.Label, now,
+        var entry = new TrailEntryViewModel(row, request.Kind, request.Target, request.Label, now,
             request.DisplayMode, request.StagePane, request.PaneLayout)
             { Line = request.Line, Column = request.Column };
         Latest = entry;
@@ -82,14 +84,14 @@ public sealed class TrailRecordHandler
             || !string.Equals(latest.Target, path, StringComparison.OrdinalIgnoreCase)) return;
         latest.Line = line;
         latest.Column = column;
-        if (latest.Id >= 0) Try(() => _store.UpdatePosition(latest.Id, line, column));
+        Try(() => _store.UpdatePositionDeferred(latest.Row, line, column));
     }
 
     public void UpdateLatestPaneLayout(string? paneLayout)
     {
         if (Latest is not { } latest || string.Equals(latest.PaneLayout, paneLayout, StringComparison.Ordinal)) return;
         latest.PaneLayout = paneLayout;
-        if (latest.Id >= 0) Try(() => _store.UpdatePaneLayout(latest.Id, paneLayout));
+        Try(() => _store.UpdatePaneLayoutDeferred(latest.Row, paneLayout));
     }
 
     private static void Try(Action action)
