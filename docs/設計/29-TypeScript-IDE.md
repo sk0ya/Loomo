@@ -9,7 +9,7 @@
   （`PaneKind` は数値永続のため**末尾追加**）。ゲートは `TsDebugTargetResolver.HasTypeScriptProject`
   （tsconfig.json / package.json を深さ 3・node_modules 等スキップで探す。§28 の `HasCSharpProject` と同じ流儀）。
 - 両ペインは共存できる（C# と TS の混在リポジトリでは両トグルが出る）。エディタ連携（ガター・DataTip・実行行・
-  右クリック実行系メニュー・問題ジャンプ）は**拡張子ルーティング**（`ShellWindow.Debug.cs` の `ManagerForPath`：
+  右クリック実行系メニュー・問題ジャンプ）は**拡張子ルーティング**（`Views/Shell/Debugging/ShellWindow.Debug.cs` の `ManagerForPath`：
   `.ts/.mts/.cts/.tsx/.js/.jsx/.mjs/.cjs` → TS IDE、それ以外 → dotnet IDE）。同一ファイルが両方に属することはないので
   ブレークポイントストアは混線しない。「全エディタ」操作（実行行クリア・DataTip 有効化）は発生源マネージャの
   管轄拡張子のエディタに限定し、両デバッガ同時実行でも潰し合わない。

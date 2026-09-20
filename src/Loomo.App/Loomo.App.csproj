@@ -85,7 +85,7 @@
   <ItemGroup>
     <None Remove="Assets\Loomo.ico" />
     <Resource Include="Assets\Loomo.ico" />
-    <!-- ファイル種別アイコン（ViewModels/FileIconData.cs）の出典表示。図形データはソースに埋め込んで
+    <!-- ファイル種別アイコン（ViewModels/Files/FileIconData.cs）の出典表示。図形データはソースに埋め込んで
          いるので配布物にも MIT のライセンス本文を添える必要がある。 -->
     <Content Include="Assets\Icons\LICENSE-catppuccin-vscode-icons.txt" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>

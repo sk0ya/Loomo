@@ -9,7 +9,7 @@
      という意味名で入っている）。実際の色は `icons/mocha` と `icons/latte` の同じ位置のレイヤーから
      引き当てて、暗色テーマ用・明色テーマ用の 16 色パレット 2 本にする。
   3. `src/defaults/fileIcons.ts` の拡張子・ファイル名の対応表をそのまま使う
-  4. src/Loomo.App/ViewModels/FileIconData.cs を書き出す
+  4. src/Loomo.App/ViewModels/Files/FileIconData.cs を書き出す
 
 アイコンは全て**線画**（fill は none、色は stroke）。viewBox はほぼ 0 0 16 16 なので、描画側は
 拡大縮小なしでそのまま 16x16 に置ける。
@@ -22,7 +22,7 @@ import xml.etree.ElementTree as ET
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 CACHE = os.path.join(HERE, "cache")
-OUTPUT = os.path.join(HERE, "..", "..", "src", "Loomo.App", "ViewModels", "FileIconData.cs")
+OUTPUT = os.path.join(HERE, "..", "..", "src", "Loomo.App", "ViewModels", "Files", "FileIconData.cs")
 TARBALL = "https://codeload.github.com/catppuccin/vscode-icons/tar.gz/refs/heads/main"
 NS = "{http://www.w3.org/2000/svg}"
 

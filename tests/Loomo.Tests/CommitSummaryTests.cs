@@ -24,8 +24,8 @@ public sealed class CommitSummaryTests
         + "\n\n"
         + string.Join('\n', new[]
         {
-            $"12{Tab}3{Tab}src/Loomo.App/Views/GitSessionView.xaml",
-            $"4{Tab}0{Tab}src/Loomo.App/ViewModels/GitHistoryViewModel.cs",
+            $"12{Tab}3{Tab}src/Loomo.App/Views/Git/GitSessionView.xaml",
+            $"4{Tab}0{Tab}src/Loomo.App/ViewModels/Git/GitHistoryViewModel.cs",
             $"-{Tab}-{Tab}assets/icon.png",
             $"1{Tab}1{Tab}src/Loomo.Core/Git/{{CommitStatLinks.cs => CommitSummary.cs}}",
         }) + "\n";

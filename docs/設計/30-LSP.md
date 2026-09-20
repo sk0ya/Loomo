@@ -321,13 +321,13 @@ Editor 側の変更 → パッケージのローカル注入 → Loomo 側の追
 
 ### P3. 消費者の付け替え — 完了
 
-- [x] `ShellWindow.ViewportSplit.cs` — `LspWorkspace`/`LspServerAdmin` を渡す。
+- [x] `Views/Shell/Layout/ShellWindow.ViewportSplit.cs` — `LspWorkspace`/`LspServerAdmin` を渡す。
       `workspaceFoldersProvider` と `_editorLspManagers`（ConditionalWeakTable）を廃止し、
       `GetLspDocument(tab)` ＝ `tab.Control.LspDocument` へ。
 - [x] `WorkspaceSymbolSearch.cs` — `ConnectedManagers`/`MergeAsync` を削除し `ILspWorkspace` へ直接問い合わせ。
       マージ・重複排除はセッション側へ移動。**タブを開いていなくても効く**（ルートのプロジェクトマーカーから
       言語を割り出してサーバーを起こす）。
-- [x] `ShellWindow.EditorSupport.cs` / `CodeEditorSupportAnalysis.cs` — 文書スコープはハンドル、
+- [x] `Views/Shell/Editor/ShellWindow.EditorSupport.cs` / `CodeEditorSupportAnalysis.cs` — 文書スコープはハンドル、
       呼び出し階層はワークスペースへ。`LspMatchesFile` は `ILspDocument.FilePath` 比較になった。
 - [x] 促しバーの評価を `OnActiveEditorFileChanged(tab)` の1点へ集約し、`LoadFile` の**後**に呼ぶ。
       同じパスの二度目は捨てる。判定結果はアウトラインの案内（`EvaluateLspPrompt`）と共用。
@@ -575,7 +575,7 @@ initialize に失敗しても「言語サーバーへの接続待ちです」**�
   「この拡張子の担当サーバーが `Failed` か」を判定し、`LspNoticeModel.Build(prompt, failure)` が
   **失敗した事実＋理由（`LastError`）＋「LSP 設定を開く」**を返す（`Notice.IsFailure`）。
 - 拡張子→担当サーバーの解決は `LspManagementService.ResolveServerFor(ext)` に置いた（対応表の所有者は1つ）。
-- Shell 側は既存の1点（`EvaluateLspPrompt` の隣＝`ShellWindow.Tabs.cs`）に `EvaluateLspFailure` を足し、
+- Shell 側は既存の1点（`EvaluateLspPrompt` の隣＝`Views/Shell/Navigation/ShellWindow.Tabs.cs`）に `EvaluateLspFailure` を足し、
   **促しが無いときだけ**引く。促しがあるならそちらが具体的（インストール導線つき）なので優先。
   失敗は待っても解消しないので、待機文言の猶予（`CodeConnectingNoticeGraceTicks`）を待たずに出す。
 
@@ -622,7 +622,7 @@ initialize に失敗しても「言語サーバーへの接続待ちです」**�
 表示位置に関係が無く、分割時は操作していない側の上に出る。
 
 **対処**：配置を純ロジック `ReferencesPopupPlacement`（`Place` / `OffsetFrom`）へ切り出し、
-`ShellWindow.References.cs` の `PlaceReferencesPopup` が
+`Views/Shell/Editor/ShellWindow.References.cs` の `PlaceReferencesPopup` が
 
 - 基準を **`FindReferencesResult` の `sender`**（＝いま操作しているエディタビュー。分割・切り離しを
   問わず正しい。`_activeEditorTab` より正確）に取り、`PlacementMode.Relative` ＋ オフセットで置く。
@@ -651,8 +651,8 @@ initialize に失敗しても「言語サーバーへの接続待ちです」**�
 `Vim.Enabled = false`**（Vim 無効時のエンジンは常時 `Insert` を装う）ため**既定では一度も発火せず**、
 Vim を入れていても**編集中＝ Insert モードでは死んでいる**。
 
-そこで消費者をホスト側に置いた（`ShellWindow.SemanticSelection.cs` ＋ `Services/SemanticSelection.cs`）。
-`foldingRange` を使う `ShellAppearanceCoordinator`、`codeAction` を組む `ShellWindow.Refactoring.cs` と
+そこで消費者をホスト側に置いた（`Views/Shell/Editor/ShellWindow.SemanticSelection.cs` ＋ `Services/SemanticSelection.cs`）。
+`foldingRange` を使う `ShellAppearanceCoordinator`、`codeAction` を組む `Views/Shell/Editor/ShellWindow.Refactoring.cs` と
 同じ立場で、**Editor ライブラリは変更していない**。設計・罠（適用した範囲と読み戻した範囲が
 一致しないこと／来た道を捨てる条件／キーがエディタへ吸われるかの結論）は **§24.9**（03）に書いた。
 
@@ -749,7 +749,7 @@ Roslyn は正しい：`src/Loomo.App/GlobalUsings.cs` に `global using System.W
   警告＝橙、情報＝水色、ヒント＝地味な灰）。印を押すとその問題へ飛ぶ。印はサムの**後に**描く：
   いまいる場所の問題だけ隠れては意味がない。
 
-**電球列を出すファイルは部屋が決める**（`ShellWindow.CodeActionBulb.cs`）。この列は有効な間ずっと
+**電球列を出すファイルは部屋が決める**（`Views/Shell/Editor/ShellWindow.CodeActionBulb.cs`）。この列は有効な間ずっと
 幅を取る——電球はキャレット行にだけ出て消えるので、幅を出し入れすると本文が左右に踊るからで、
 テスト列が `EditorTestGlyphColumns` で学んだのと同じ判断。したがって出どころのあるファイルだけを
 対象にする：`.cs` は言語サーバーが無くても部屋が答えるので常に対象、それ以外は対応表に

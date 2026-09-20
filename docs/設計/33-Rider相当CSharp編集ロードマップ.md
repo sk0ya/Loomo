@@ -1230,7 +1230,7 @@ StyleCopだけを先に追加しても、Roslynがプロジェクトを正しく
 
 ## C# 文脈バーの撤去（2026-09-21）
 
-エディタの上に常駐していた **C# プロジェクト文脈バー**（`ShellWindow.xaml` の `CSharpContext` 帯：
+エディタの上に常駐していた **C# プロジェクト文脈バー**（`Views/Shell/ShellWindow.xaml` の `CSharpContext` 帯：
 プロジェクト名・TFM・`.editorconfig` 有無・参照/Analyzer 件数・StyleCop の導入状態・TFM/構成の
 コンボボックス）を削除した。常に見えている必要のない情報で、エディタの上端を 1 行ぶん狭めていたため。
 
