@@ -506,6 +506,21 @@ Rider相当を「コマンドの数」として追わない。プロジェクト
   同じ診断だけを重複排除する。compiler Quick Fixは中央スナップショットにある診断に限定し、Problems起点のStyleCop操作も
   同じ候補経路へ揃える。回帰テストで旧版拒否、同一本文の表示保持、スナップショット置換、未表示usingの候補除外を確認した。
   対象34件、全体3,397件（3,385成功・12スキップ・失敗0）、solution Build（エラー0・既存nullability警告2件）で確認した。
+- その集約で空いた3つの穴を塞いだ。
+  (1) **表示は解析元が揃うのを待たない**——届いた分から `Presentation` を進め、揃ったか（＝Quick Fixに
+  使えるか）は `HasCurrentResult` が言う。全員分を待つと、一番遅い解析元が一番速い解析元を人質に取る
+  （開いた直後にLSPがエラーを返していても、StyleCopのRoslyn解析が終わるまで波線もProblemsも空）。
+  同じ本文の再解析中は、まだ届いていない解析元ぶんだけ前回の結果で埋めるので、ちらつきも出ない。
+  (2) **Problemsの新旧判定を版番号からプロセス単調増加の `SnapshotId` へ**替えた。版番号はバッファごとに
+  進むのに、Problemsはファイルパスで束ねている——同じファイルを分割・切り離しで2枚開くと、後から開いた側の
+  更新が永久に弾かれていた。
+  (3) **「不要なusing」の個別表示**はcompiler fallbackのCS8019位置に依存していたが、LSP接続中はその
+  fallbackを走らせない設計にしたため、通常環境で常にグループ表示へ戻っていた。Roslynは
+  隣接するトークンの不要usingしか1範囲へまとめない（`GetContiguousSpans`）＝グループ範囲の中のusingは
+  全部不要と言い切れるので、意味解析を使わず `CSharpUsingDirectiveRanges` の構文解析から個別位置を出す。
+  あわせて、LSP push受信時の版合わせが「解析を1つも待たない版＝診断0件のまま確定」を作っていた経路を
+  解析の開始し直しへ替え、ペインを1枚閉じても同じファイルを見ている残りのペインの行が消えないようにした。
+  追加5件を含む全体3,402件（3,390成功・12スキップ・失敗0）、`sk0ya.Loomo.sln` Build（エラー0・既存警告2件）で確認した。
 - 実Roslyn Language Serverのsemantic token legend（`static`／`ReassignedVariable`／`deprecated`）を確認し、
   `Loomo.CSharp`のRoslyn fallbackにもstatic宣言・代入／増減／ref／out位置のmodifierを追加した。既存の
   readonly／abstract／deprecated描画契約を保ちつつ、実応答と同じmodifier名の回帰を追加した。C#関連311件と

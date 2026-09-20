@@ -17,8 +17,6 @@ public partial class ShellWindow
     private readonly Dictionary<VimEditorControl, CancellationTokenSource> _styleCopAnalysisCts = [];
     private readonly Dictionary<VimEditorControl, CancellationTokenSource> _compilerAnalysisCts = [];
     private readonly Dictionary<VimEditorControl, EditorDiagnosticSession> _diagnosticSessions = [];
-    private readonly Dictionary<VimEditorControl, IReadOnlyList<LspRange>> _compilerUnusedUsingRanges = [];
-    private readonly Dictionary<VimEditorControl, int> _compilerUnusedUsingVersions = [];
 
     private static IReadOnlyList<LspDiagnostic> EditorLspDiagnostics(VimEditorControl control)
     {
@@ -49,8 +47,10 @@ public partial class ShellWindow
         }
 
         var fullPath = Path.GetFullPath(path);
-        var session = GetDiagnosticSession(control);
-        var version = session.Ensure(fullPath, control.Text);
+        // ここで版を「本文に合わせるだけ」にしてはいけない。解析を一つも待たない版は<b>診断0件のまま確定</b>し、
+        // 走っている解析の結果まで版違いで捨ててしまう。ずれていたら解析ごと開始し直すのが正しい。
+        var session = EnsureCSharpDiagnosticAnalysisScheduled(control, fullPath, control.Text);
+        var version = session.Version;
         var document = control.LspDocument;
         if (document is not { IsReady: true, Version: { } lspVersion } ||
             !string.Equals(document.Text, control.Text, StringComparison.Ordinal))
@@ -229,10 +229,6 @@ public partial class ShellWindow
                 if (cts.IsCancellationRequested || !ReferenceEquals(_compilerAnalysisCts.GetValueOrDefault(control), cts) ||
                     !string.Equals(Path.GetFullPath(control.FilePath ?? ""), expectedPath, StringComparison.OrdinalIgnoreCase) ||
                     !string.Equals(control.Text, source, StringComparison.Ordinal)) return;
-                _compilerUnusedUsingRanges[control] = result.Error is null
-                    ? result.UnnecessaryUsingRanges ?? []
-                    : [];
-                _compilerUnusedUsingVersions[control] = version;
                 var diagnostics = result.Error is null
                     ? result.Diagnostics
                     : [new LspDiagnostic(new LspRange(new LspPosition(0, 0), new LspPosition(0, 0)),
@@ -288,17 +284,14 @@ public partial class ShellWindow
 
         var snapshot = GetDiagnosticSession(control).Presentation;
         if (snapshot is null) return;
-        var ranges = _compilerUnusedUsingVersions.GetValueOrDefault(control) == snapshot.Version
-            ? _compilerUnusedUsingRanges.GetValueOrDefault(control) ?? []
-            : [];
-        var entries = ExpandUnnecessaryUsingEntries(snapshot.Entries, ranges);
+        var entries = ExpandUnnecessaryUsingEntries(snapshot.Entries, UnnecessaryUsingRanges(snapshot));
         var diagnostics = entries.Select(entry => entry.Diagnostic).ToArray();
 
         // Editorの波線、Problems一覧、Quick Fixの入力を同じ診断スナップショットへ揃える。
         control.ReplaceLspDiagnosticPresentation(diagnostics);
         control.ReplaceDiagnostics([]);
-        _vm.Debug.Problems.SetEditorDiagnostics(path, snapshot.Version, entries);
-        _vm.TsIde.Problems.SetEditorDiagnostics(path, snapshot.Version, entries);
+        _vm.Debug.Problems.SetEditorDiagnostics(path, snapshot.SnapshotId, entries);
+        _vm.TsIde.Problems.SetEditorDiagnostics(path, snapshot.SnapshotId, entries);
     }
 
     private void ClearStyleCopPresentation(VimEditorControl control)
@@ -309,8 +302,6 @@ public partial class ShellWindow
             cts.Cancel();
         if (_compilerAnalysisCts.Remove(control, out var compilerCts))
             compilerCts.Cancel();
-        _compilerUnusedUsingRanges.Remove(control);
-        _compilerUnusedUsingVersions.Remove(control);
         var ownedPath = "";
         IReadOnlyList<LspDiagnostic> retainedLspDiagnostics = [];
         if (_diagnosticSessions.TryGetValue(control, out var session))
@@ -328,18 +319,32 @@ public partial class ShellWindow
             control.ClearDiagnostics();
             control.ReplaceLspDiagnosticPresentation(null);
         }
-        if (ownedPath.Length > 0)
+        if (ownedPath.Length == 0) return;
+
+        _vm.Debug.Problems.ClearEditorDiagnostics(ownedPath);
+        _vm.TsIde.Problems.ClearEditorDiagnostics(ownedPath);
+
+        // 同じファイルを分割・切り離しでもう1枚開いていることがある。Problemsはファイル単位なので、
+        // 1枚閉じただけで残り1枚ぶんの行まで消えたままにしない。
+        if (OtherEditorShowing(ownedPath, control) is { } sibling)
         {
-            _vm.Debug.Problems.ClearEditorDiagnostics(ownedPath);
-            _vm.TsIde.Problems.ClearEditorDiagnostics(ownedPath);
-            if (retainedLspDiagnostics.Count > 0)
-            {
-                var uri = LspUri.FromPath(ownedPath);
-                _vm.Debug.Problems.SetLspDiagnostics(uri, retainedLspDiagnostics);
-                _vm.TsIde.Problems.SetLspDiagnostics(uri, retainedLspDiagnostics);
-            }
+            RefreshStyleCopPresentation(sibling);
+            return;
+        }
+
+        if (retainedLspDiagnostics.Count > 0)
+        {
+            var uri = LspUri.FromPath(ownedPath);
+            _vm.Debug.Problems.SetLspDiagnostics(uri, retainedLspDiagnostics);
+            _vm.TsIde.Problems.SetLspDiagnostics(uri, retainedLspDiagnostics);
         }
     }
+
+    /// <summary>同じファイルを見ている別のエディタ（分割・切り離し）。</summary>
+    private VimEditorControl? OtherEditorShowing(string fullPath, VimEditorControl closing)
+        => _diagnosticSessions
+            .FirstOrDefault(pair => !ReferenceEquals(pair.Key, closing) &&
+                string.Equals(pair.Value.FilePath, fullPath, StringComparison.OrdinalIgnoreCase)).Key;
 
     private async Task<IReadOnlyList<LspCodeAction>> RequestStyleCopQuickFixesAsync(
         VimEditorControl control,
@@ -429,10 +434,7 @@ public partial class ShellWindow
             return [];
 
         var compilerClock = Stopwatch.StartNew();
-        var ranges = _compilerUnusedUsingVersions.GetValueOrDefault(control) == snapshot.Version
-            ? _compilerUnusedUsingRanges.GetValueOrDefault(control) ?? []
-            : [];
-        var diagnostics = ExpandUnnecessaryUsingEntries(snapshot.Entries, ranges)
+        var diagnostics = ExpandUnnecessaryUsingEntries(snapshot.Entries, UnnecessaryUsingRanges(snapshot))
             .Select(entry => entry.Diagnostic).ToArray();
         var snapshotId = snapshot.SnapshotId;
         var compiler = await sk0ya.Loomo.CSharp.Configuration.CSharpCompilerCodeFixService.GetForDiagnosticsAsync(
@@ -487,22 +489,6 @@ public partial class ShellWindow
         return Compare(diagnostic.Start, requested.End) < 0 && Compare(requested.Start, diagnostic.End) < 0;
     }
 
-    private static EditorDiagnostic ToEditorDiagnostic(LspDiagnostic diagnostic)
-        => new(EditorTextRange.Create(diagnostic.Range.Start.Line, diagnostic.Range.Start.Character,
-            diagnostic.Range.End.Line, diagnostic.Range.End.Character), diagnostic.Message,
-            diagnostic.Severity switch
-            {
-                DiagnosticSeverity.Error => EditorDiagnosticSeverity.Error,
-                DiagnosticSeverity.Warning => EditorDiagnosticSeverity.Warning,
-                DiagnosticSeverity.Information => EditorDiagnosticSeverity.Information,
-                _ => EditorDiagnosticSeverity.Hint,
-            }, diagnostic.Source, diagnostic.Code, null, diagnostic.CodeDescriptionHref,
-            diagnostic.Tags?.Select(static tag => tag switch
-            {
-                DiagnosticTag.Deprecated => EditorDiagnosticTag.Deprecated,
-                _ => EditorDiagnosticTag.Unnecessary,
-            }).ToArray());
-
     private EditorDiagnosticSession GetDiagnosticSession(VimEditorControl control)
     {
         if (!_diagnosticSessions.TryGetValue(control, out var session))
@@ -529,6 +515,22 @@ public partial class ShellWindow
         return session;
     }
 
+    /// <summary>グループ化された「不要な using」を1本ずつに割るための位置。
+    ///
+    /// <para>言語サーバーが繋がっている間は compiler フォールバックを走らせない（毎キー Compilation を
+    /// 作り直さないため）ので、CS8019 の個別位置はもう手元に来ない。代わりに構文解析から取る——
+    /// グループ範囲の中の using は全部不要だと言い切れる理由は
+    /// <see cref="CSharpUsingDirectiveRanges"/> に書いた。</para>
+    ///
+    /// <para>解析するのは不要using診断が実際に1件でもあるときだけ。打鍵のたびに通る道なので、
+    /// 何も無いファイルで構文解析を回さない。</para></summary>
+    private static IReadOnlyList<LspRange> UnnecessaryUsingRanges(EditorDiagnosticSnapshot snapshot)
+        => snapshot.Entries.Any(entry => entry.Diagnostic.Code is { } code &&
+               (code.Equals("IDE0005", StringComparison.OrdinalIgnoreCase) ||
+                code.Equals("CS8019", StringComparison.OrdinalIgnoreCase)))
+            ? CSharpUsingDirectiveRanges.Find(snapshot.Text)
+            : [];
+
     private static IReadOnlyList<EditorDiagnosticEntry> ExpandUnnecessaryUsingEntries(
         IReadOnlyList<EditorDiagnosticEntry> entries, IReadOnlyList<LspRange> individualRanges)
     {
@@ -553,8 +555,6 @@ public partial class ShellWindow
         _compilerAnalysisCts.Clear();
         foreach (var session in _diagnosticSessions.Values) session.Clear();
         _diagnosticSessions.Clear();
-        _compilerUnusedUsingRanges.Clear();
-        _compilerUnusedUsingVersions.Clear();
         _vm.Debug.Problems.ClearAllEditorDiagnostics();
         _vm.TsIde.Problems.ClearAllEditorDiagnostics();
     }

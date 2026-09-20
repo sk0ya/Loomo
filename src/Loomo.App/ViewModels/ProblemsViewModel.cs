@@ -128,7 +128,7 @@ public sealed partial class ProblemsViewModel : ObservableObject
     private IReadOnlyList<ProblemItemViewModel> _buildItems = [];
     private readonly Dictionary<string, IReadOnlyList<ProblemItemViewModel>> _lspItems =
         new(System.StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<string, (int Version, IReadOnlyList<ProblemItemViewModel> Items)> _editorItems =
+    private readonly Dictionary<string, (long SnapshotId, IReadOnlyList<ProblemItemViewModel> Items)> _editorItems =
         new(System.StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, IReadOnlyList<ProblemItemViewModel>> _compilerItems =
         new(System.StringComparer.OrdinalIgnoreCase);
@@ -240,12 +240,17 @@ public sealed partial class ProblemsViewModel : ObservableObject
         Rebuild();
     }
 
-    /// <summary>開いているEditor文書の統合診断スナップショットを、文書版付きで一括反映する。</summary>
+    /// <summary>開いているEditor文書の統合診断スナップショットを、識別子付きで一括反映する。
+    ///
+    /// <para>新旧の判定に<b>版番号を使わない</b>のが要点。版番号はバッファ（＝エディタコントロール）ごとに
+    /// 進むのに、ここはファイルパスで束ねている——同じファイルを分割・切り離しで2枚開くと、後から開いた側の
+    /// 版番号は必ず小さく、その更新が永久に弾かれる。<see cref="EditorDiagnosticSnapshot.SnapshotId"/> は
+    /// プロセス全体で単調増加するので、どのバッファが出した結果でも新しい方が勝つ。</para></summary>
     internal bool SetEditorDiagnostics(
-        string filePath, int version, IReadOnlyList<EditorDiagnosticEntry> entries)
+        string filePath, long snapshotId, IReadOnlyList<EditorDiagnosticEntry> entries)
     {
         var fullPath = Path.GetFullPath(filePath);
-        if (_editorItems.TryGetValue(fullPath, out var previous) && previous.Version > version)
+        if (_editorItems.TryGetValue(fullPath, out var previous) && previous.SnapshotId > snapshotId)
             return false;
 
         // 開いているC#エディタが版付きスナップショットを所有するため、旧経路のコピーを除いてから
@@ -271,7 +276,7 @@ public sealed partial class ProblemsViewModel : ObservableObject
                 hasCode: !string.IsNullOrWhiteSpace(diagnostic.Code));
         }).ToArray();
 
-        _editorItems[fullPath] = (version, items);
+        _editorItems[fullPath] = (snapshotId, items);
         Rebuild();
         return true;
     }

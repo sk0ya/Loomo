@@ -28,10 +28,27 @@ internal sealed record EditorDiagnosticSnapshot(
 /// <summary>
 /// エディターバッファごとの診断正本。解析元ごとの結果を本文版に結び付け、古い解析結果を拒否する。
 /// 同じ本文を再解析する間は表示を保ち、本文が変わったときは旧範囲を消す。Quick Fixには現行版の確定スナップショットだけを渡す。
+///
+/// <para><b>表示は待たせない。</b>解析元は速さが桁で違う（LSPのpushは数百ms、StyleCopは
+/// Roslyn Compilationで秒単位）。全員が揃うまで表示を止めると<b>一番遅い解析元が一番速い解析元を
+/// 人質に取る</b>——開いた直後にLSPがエラーを返していても、StyleCopが終わるまで波線もProblemsも
+/// 空、という壊れ方をする。そこで <see cref="Presentation"/> は届いた分だけ進め、揃ったかどうかは
+/// <see cref="EditorDiagnosticSnapshot.HasCurrentResult"/> が言う。<b>行動</b>（Quick Fix）だけが
+/// <see cref="TryGetCurrent"/>＝全員分が揃った現行版を要求する。</para>
 /// </summary>
 internal sealed class EditorDiagnosticSession
 {
+    /// <summary>スナップショット識別子はプロセス全体で単調増加させる。版番号（<see cref="Version"/>）は
+    /// バッファごとに進むので、<b>同じファイルを分割・切り離しで2枚開くと比較できない</b>——Problems は
+    /// ファイルパスで束ねているため、版番号で新旧を決めると片方の更新がもう片方に永久に弾かれる。</summary>
+    private static long _snapshotSequence;
+
     private readonly Dictionary<EditorDiagnosticOrigin, IReadOnlyList<LspDiagnostic>> _byOrigin = [];
+
+    /// <summary>同じ本文を再解析している間だけ使う、前回の解析元ごとの結果。まだ届いていない解析元の
+    /// 表示をここから埋めるので、再解析のたびに波線が一度消えてから戻る、というちらつきが起きない。</summary>
+    private readonly Dictionary<EditorDiagnosticOrigin, IReadOnlyList<LspDiagnostic>> _carriedOver = [];
+
     private readonly HashSet<EditorDiagnosticOrigin> _expectedOrigins = [];
     private string _filePath = "";
     private string _text = "";
@@ -48,14 +65,20 @@ internal sealed class EditorDiagnosticSession
     {
         var fullPath = Path.GetFullPath(filePath);
         var nextText = text ?? string.Empty;
-        var previousPresentation = _presentation;
-        var canKeepPresentation = previousPresentation is not null &&
-            string.Equals(previousPresentation.FilePath, fullPath, StringComparison.OrdinalIgnoreCase) &&
-            string.Equals(previousPresentation.Text, nextText, StringComparison.Ordinal);
+        // 同じ本文の再解析なら前回の結果を解析元ごとに引き継ぐ。本文が変わったなら捨てる——
+        // ずれた位置の波線ほど嘘に見えるものはない。
+        var sameBuffer = _version > 0 &&
+            string.Equals(_filePath, fullPath, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(_text, nextText, StringComparison.Ordinal);
+        _carriedOver.Clear();
+        if (sameBuffer)
+            foreach (var (origin, diagnostics) in _byOrigin)
+                _carriedOver[origin] = diagnostics;
+
         _filePath = fullPath;
         _text = nextText;
         _version++;
-        _languageServerVersion = null;
+        _languageServerVersion = sameBuffer ? _languageServerVersion : null;
         _hasCurrentResult = false;
         _byOrigin.Clear();
         _expectedOrigins.Clear();
@@ -64,34 +87,13 @@ internal sealed class EditorDiagnosticSession
         if (_expectedOrigins.Count == 0)
             CommitCurrent();
         else
-        {
-            // 同じ本文の再解析なら範囲が有効な表示だけを維持する。本文が変わった場合は古い範囲を
-            // 新しい本文へ描画しないよう空の更新中スナップショットへ切り替える。
-            _snapshotId++;
-            _presentation = canKeepPresentation
-                ? previousPresentation! with
-                {
-                    Version = _version,
-                    SnapshotId = _snapshotId,
-                    HasCurrentResult = false,
-                }
-                : CreateSnapshot();
-        }
+            UpdatePresentation();
         return _version;
     }
 
     public int Version => _version;
     public long SnapshotId => _snapshotId;
     public string FilePath => _filePath;
-
-    public int Ensure(string filePath, string text)
-    {
-        var fullPath = Path.GetFullPath(filePath);
-        if (_version == 0 || !string.Equals(_filePath, fullPath, StringComparison.OrdinalIgnoreCase) ||
-            !string.Equals(_text, text, StringComparison.Ordinal))
-            return Begin(fullPath, text);
-        return _version;
-    }
 
     public bool Publish(
         int version,
@@ -114,6 +116,7 @@ internal sealed class EditorDiagnosticSession
         if (version != _version) return false;
         _expectedOrigins.Remove(origin);
         _byOrigin.Remove(origin);
+        _carriedOver.Remove(origin);
         CommitIfReady();
         return true;
     }
@@ -142,6 +145,7 @@ internal sealed class EditorDiagnosticSession
         _languageServerVersion = null;
         _hasCurrentResult = false;
         _byOrigin.Clear();
+        _carriedOver.Clear();
         _expectedOrigins.Clear();
         _presentation = null;
     }
@@ -150,12 +154,19 @@ internal sealed class EditorDiagnosticSession
     {
         if (_expectedOrigins.All(_byOrigin.ContainsKey))
             CommitCurrent();
+        else
+            UpdatePresentation();
     }
 
     private void CommitCurrent()
     {
         _hasCurrentResult = true;
-        _snapshotId++;
+        UpdatePresentation();
+    }
+
+    private void UpdatePresentation()
+    {
+        _snapshotId = Interlocked.Increment(ref _snapshotSequence);
         _presentation = CreateSnapshot();
     }
 
@@ -169,7 +180,7 @@ internal sealed class EditorDiagnosticSession
                      EditorDiagnosticOrigin.StyleCop,
                  })
         {
-            if (!_byOrigin.TryGetValue(origin, out var diagnostics)) continue;
+            if (!TryGetDiagnostics(origin, out var diagnostics)) continue;
             foreach (var diagnostic in diagnostics)
             {
                 if (entries.Any(existing => IsSame(existing.Diagnostic, diagnostic))) continue;
@@ -179,6 +190,27 @@ internal sealed class EditorDiagnosticSession
 
         return new(_filePath, _version, _snapshotId, _text, Array.AsReadOnly(entries.ToArray()),
             _hasCurrentResult, _languageServerVersion);
+    }
+
+    /// <summary>この版の結果。まだ届いていない解析元は、同じ本文の前回結果で埋める（届いた時点で
+    /// 置き換わる）。<see cref="Skip"/> で降りた解析元は復活させない。</summary>
+    private bool TryGetDiagnostics(
+        EditorDiagnosticOrigin origin, out IReadOnlyList<LspDiagnostic> diagnostics)
+    {
+        if (_byOrigin.TryGetValue(origin, out var published))
+        {
+            diagnostics = published;
+            return true;
+        }
+
+        if (_expectedOrigins.Contains(origin) && _carriedOver.TryGetValue(origin, out var carried))
+        {
+            diagnostics = carried;
+            return true;
+        }
+
+        diagnostics = [];
+        return false;
     }
 
     private static bool IsSame(LspDiagnostic left, LspDiagnostic right)

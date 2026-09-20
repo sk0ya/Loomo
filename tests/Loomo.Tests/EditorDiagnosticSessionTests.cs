@@ -95,6 +95,58 @@ public sealed class EditorDiagnosticSessionTests
         Assert.Empty(vm.Groups);
     }
 
+    [Fact]
+    public void ShowsWhatHasArrivedWhileTheSlowestAnalyzerIsStillRunning()
+    {
+        // 表示は一番遅い解析元を待たない。待たせると、開いた直後にLSPがエラーを返していても
+        // StyleCopのRoslyn解析が終わるまで波線もProblemsも空、という壊れ方をする。
+        var session = new EditorDiagnosticSession();
+        var path = Path.Combine(Path.GetTempPath(), "DiagnosticSession.cs");
+        var text = "class A { }";
+        var version = session.Begin(path, text,
+            [EditorDiagnosticOrigin.LanguageServer, EditorDiagnosticOrigin.StyleCop]);
+        Assert.Empty(session.Presentation!.Diagnostics);
+
+        var lsp = Diagnostic("CS1002", 0, 8);
+        Assert.True(session.Publish(version, EditorDiagnosticOrigin.LanguageServer, [lsp], 1));
+
+        Assert.Equal(lsp, Assert.Single(session.Presentation!.Diagnostics));
+        Assert.False(session.Presentation.HasCurrentResult);
+        // 行動（Quick Fix）だけは全員分が揃うまで待つ。
+        Assert.False(session.TryGetCurrent(path, text, out _));
+
+        Assert.True(session.Publish(version, EditorDiagnosticOrigin.StyleCop, [Diagnostic("SA1200", 1, 0)]));
+        Assert.True(session.TryGetCurrent(path, text, out var current));
+        Assert.Equal(2, current.Entries.Count);
+    }
+
+    [Fact]
+    public void ProblemsTakesTheNewestSnapshotEvenFromABufferWithASmallerVersion()
+    {
+        // 同じファイルを分割・切り離しで2枚開くと、版番号は別々に進む。Problemsはファイルパスで
+        // 束ねているので、版番号で新旧を決めると後から開いた側の更新が永久に弾かれる。
+        var path = Path.Combine(Path.GetTempPath(), "DiagnosticSession.cs");
+        var text = "class A { }";
+        var first = new EditorDiagnosticSession();
+        first.Begin(path, text, [EditorDiagnosticOrigin.Compiler]);
+        var firstVersion = first.Begin(path, text, [EditorDiagnosticOrigin.Compiler]);
+        Assert.True(first.Publish(firstVersion, EditorDiagnosticOrigin.Compiler, [Diagnostic("CS1002", 0, 8)]));
+        var older = first.Presentation!;
+
+        var second = new EditorDiagnosticSession();
+        var secondVersion = second.Begin(path, text, [EditorDiagnosticOrigin.Compiler]);
+        Assert.True(second.Publish(secondVersion, EditorDiagnosticOrigin.Compiler, []));
+        var newer = second.Presentation!;
+
+        Assert.True(newer.Version < older.Version);
+        Assert.True(newer.SnapshotId > older.SnapshotId);
+
+        var vm = new ProblemsViewModel();
+        Assert.True(vm.SetEditorDiagnostics(path, older.SnapshotId, older.Entries));
+        Assert.True(vm.SetEditorDiagnostics(path, newer.SnapshotId, newer.Entries));
+        Assert.Empty(vm.Groups);
+    }
+
     private static LspDiagnostic Diagnostic(string code, int line, int character, string? message = null)
         => new(new(new(line, character), new(line, character + 1)), message ?? code,
             DiagnosticSeverity.Warning, code.StartsWith("SA", StringComparison.Ordinal) ? "StyleCop" : "Compiler", code);

@@ -1,5 +1,3 @@
-using sk0ya.Loomo.CSharp.Configuration;
-
 namespace sk0ya.Loomo.App.Views;
 
 /// <summary>IDE ペイン「問題」タブとエディタの橋渡し。中身（ビルド出力のパース）は
@@ -23,43 +21,29 @@ public partial class ShellWindow
     private void PublishLspDiagnosticsToProblems(
         string uri, IReadOnlyList<Editor.Core.Lsp.LspDiagnostic> diagnostics)
     {
+        // 開いているC#文書は EditorDiagnosticSession が正本。ここで別途流し込むと、同じ診断が
+        // 束ねられた姿（IDE0005のグループ）と1本ずつに割った姿の両方でProblemsに並ぶ。
+        // 見るのはタブ一覧ではなくセッション一覧——分割・切り離しのエディタもここに載る。
         if (Editor.Core.Lsp.LspUri.TryToLocalPath(uri) is { } localPath &&
             string.Equals(Path.GetExtension(localPath), ".cs", StringComparison.OrdinalIgnoreCase) &&
-            _editorTabs.Any(tab => tab.IsRealized && tab.Control.FilePath is { Length: > 0 } editorPath &&
-                string.Equals(Path.GetFullPath(editorPath), Path.GetFullPath(localPath),
-                    StringComparison.OrdinalIgnoreCase)))
-        {
-            // 開いているC#文書はEditorDiagnosticSessionから同じ版の診断を一括反映する。
+            _diagnosticSessions.Values.Any(session => session.FilePath is { Length: > 0 } ownedPath &&
+                string.Equals(ownedPath, Path.GetFullPath(localPath), StringComparison.OrdinalIgnoreCase)))
             return;
-        }
 
-        var presentationDiagnostics = ExpandUnnecessaryUsingDiagnostics(uri, diagnostics);
-        _vm.Debug.Problems.SetLspDiagnostics(uri, presentationDiagnostics);
-        _vm.TsIde.Problems.SetLspDiagnostics(uri, presentationDiagnostics);
-    }
-
-    private IReadOnlyList<Editor.Core.Lsp.LspDiagnostic> ExpandUnnecessaryUsingDiagnostics(
-        string uri, IReadOnlyList<Editor.Core.Lsp.LspDiagnostic> diagnostics)
-    {
-        if (!Uri.TryCreate(uri, UriKind.Absolute, out var documentUri) || !documentUri.IsFile ||
-            !string.Equals(Path.GetExtension(documentUri.LocalPath), ".cs", StringComparison.OrdinalIgnoreCase))
-            return diagnostics;
-
-        var path = Path.GetFullPath(documentUri.LocalPath);
-        var tab = _editorTabs.FirstOrDefault(candidate => candidate.IsRealized &&
-            string.Equals(Path.GetFullPath(candidate.Control.FilePath ?? ""), path,
-                StringComparison.OrdinalIgnoreCase));
-        if (tab is null)
-            return diagnostics;
-
-        var individualRanges = _compilerUnusedUsingRanges.GetValueOrDefault(tab.Control) ?? [];
-        return CSharpDiagnosticMerger.ExpandUnnecessaryUsingGroups(diagnostics, individualRanges);
+        _vm.Debug.Problems.SetLspDiagnostics(uri, diagnostics);
+        _vm.TsIde.Problems.SetLspDiagnostics(uri, diagnostics);
     }
 
     private void OnProblemWorkspaceFoldersChanged(object? sender, EventArgs e)
         => Dispatcher.BeginInvoke(new Action(() => {
             _vm.Debug.Problems.ClearLspDiagnostics();
             _vm.TsIde.Problems.ClearLspDiagnostics();
+            // 開いたままのエディタぶんも一度消して、今のスナップショットから出し直す。
+            // 消すだけだと、ワークスペースを切り替えても開き続けている文書の問題が空欄になる。
+            _vm.Debug.Problems.ClearAllEditorDiagnostics();
+            _vm.TsIde.Problems.ClearAllEditorDiagnostics();
+            foreach (var control in _diagnosticSessions.Keys.ToArray())
+                RefreshStyleCopPresentation(control);
         }));
 
     private async void OnProblemOpenRequested(ProblemItemViewModel item)
