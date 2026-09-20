@@ -30,11 +30,25 @@ public partial class PalettePreviewView : UserControl
         MessageText.Text = content.Message ?? "";
         MessageText.Visibility = string.IsNullOrEmpty(content.Message) ? Visibility.Collapsed : Visibility.Visible;
         BodyScroll.Visibility = string.IsNullOrEmpty(content.Message) ? Visibility.Visible : Visibility.Collapsed;
+        // 一言（読み込み中・候補なし）は真ん中へ。読み物（コマンドの詳細）は ShowDetail が上へ寄せ直す。
+        MessageText.VerticalAlignment = VerticalAlignment.Center;
+        MessageText.HorizontalAlignment = HorizontalAlignment.Center;
+        MessageText.TextAlignment = TextAlignment.Center;
     }
 
     /// <summary>読み込み中・対象なしの空表示（前の項目の中身を残さない）。</summary>
     public void ShowMessage(string header, string message)
         => Show(new PalettePreviewContent(header, "", message, Array.Empty<PalettePreviewLine>(), null));
+
+    /// <summary>選んでいるコマンドの詳細。一言ではなく読み物なので、真ん中ではなく見出しの続きとして
+    /// 左上から置く（真ん中に浮かぶと「まだ読み込んでいない」ように見える）。</summary>
+    public void ShowDetail(PalettePreviewContent content)
+    {
+        Show(content);
+        MessageText.VerticalAlignment = VerticalAlignment.Top;
+        MessageText.HorizontalAlignment = HorizontalAlignment.Left;
+        MessageText.TextAlignment = TextAlignment.Left;
+    }
 
     public void Clear() => Show(PalettePreviewContent.Empty);
 }

@@ -115,9 +115,8 @@ public sealed partial class FolderTreeViewModel
             return;
 
         var roots = (_multiRootStates.Count > 0
-                ? _multiRootStates.Values.SelectMany(s => new[] { s.FolderPath, s.DisplayedPath })
-                : new[] { _workspaceRoot, _currentRoot })
-            .OfType<string>()
+                ? _multiRootStates.Values.SelectMany(s => new[] { s.FolderPath, s.DisplayedPath }.OfType<string>())
+                : new[] { _workspaceRoot, _currentRoot }.OfType<string>())
             .ToList();
         RemovePendingWhere(p => !roots.Any(root => IsPathWithinSafe(p, root)));
     }

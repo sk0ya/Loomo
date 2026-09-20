@@ -10,7 +10,7 @@ using sk0ya.Loomo.App.Services;
 namespace sk0ya.Loomo.App.Views;
 
 /// <summary>
-/// コマンドパレット一覧のタイトルを、現在のクエリに一致した文字だけ強調（Accent＋太字）して描画する
+/// コマンドパレット一覧のタイトルを、現在のクエリに一致した文字だけ強調（地色＋太字）して描画する
 /// 添付ビヘイビア。<see cref="TextProperty"/>（タイトル）と <see cref="QueryProperty"/>（素のクエリ）を
 /// TextBlock にバインドすると、その Inlines を組み直す。一致判定は <see cref="PaletteFilter"/> と揃え、
 /// 部分一致（連続）を優先し、無ければ飛び石一致（順番どおりに全文字を拾えたときだけ）で印を付ける。
@@ -49,13 +49,14 @@ internal static class PaletteHighlight
             var run = new Run(text[start..i]);
             if (on)
             {
-                run.SetResourceReference(TextElement.ForegroundProperty, "Accent");
+                // 印は「文字の地色＋太字」。文字色をアクセントにすると、アクセントで塗った選択行の上で
+                // 同系色どうしになって消える——一番見ている行の一致だけ読めない、という裏返しになる。
+                // SearchHighlight は選択行・通常行のどちらでも読めるよう作ってある半透明色（Palette.*）。
+                run.SetResourceReference(TextElement.BackgroundProperty, "SearchHighlight");
                 run.FontWeight = FontWeights.Bold;
             }
-            else
-            {
-                run.SetResourceReference(TextElement.ForegroundProperty, "Fg");
-            }
+            // 印の無い文字は色を指定しない：行（ListBoxItem）の文字色をそのまま継ぐので、
+            // 選択行では地色に載る色へ一緒に変わる。
             tb.Inlines.Add(run);
         }
     }

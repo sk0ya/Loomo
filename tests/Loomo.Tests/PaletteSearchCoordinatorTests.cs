@@ -174,7 +174,46 @@ public class PaletteSearchCoordinatorTests
 
     [Fact]
     public async Task Command_mode_is_not_this_coordinators_job()
-        => Assert.Null(await Create(new FakeSearch()).SearchAsync(PaletteQuery.Parse("エディタ"), Noop, _ => { }));
+        => Assert.Null(await Create(new FakeSearch()).SearchAsync(PaletteQuery.Parse(">エディタ"), Noop, _ => { }));
+
+    [Fact]
+    public async Task All_mode_combines_command_file_text_and_symbol_results()
+    {
+        var search = new FakeSearch
+        {
+            Files = { new FileSearchHit(@"C:\w\src\File.cs", "src/File.cs", 0) },
+            Contents = { new ContentSearchHit(@"C:\w\src\Text.cs", "src/Text.cs", 4, 1, "needle") },
+        };
+        var coordinator = Create(search, (query, _) =>
+            Task.FromResult<IReadOnlyList<PaletteLocation>>(
+                new[] { new PaletteLocation(@"C:\w\src\Symbol.cs", "src/Symbol.cs", 8, 2, query) }));
+        var commands = new[] { new PaletteCommand("編集", "needle command", () => { }) };
+
+        var outcome = await coordinator.SearchAllAsync(PaletteQuery.Parse("needle"), commands, Noop, _ => { });
+
+        Assert.NotNull(outcome);
+        Assert.Equal(1, search.FindCalls);
+        Assert.Equal(1, search.GrepCalls);
+        Assert.Equal(4, outcome!.Items.Count);
+        Assert.Null(outcome.Items[0].Target);
+        Assert.Equal("File.cs", outcome.Items[1].Title);
+        Assert.Equal("needle", outcome.Items[2].Target!.Highlight);
+        Assert.Equal("Symbol.cs", outcome.Items[3].Target!.FullPath.Split(Path.DirectorySeparatorChar).Last());
+    }
+
+    [Fact]
+    public async Task All_mode_uses_command_matches_until_the_query_is_long_enough_for_workspace_search()
+    {
+        var search = new FakeSearch();
+        var commands = new[] { new PaletteCommand("編集", "alpha command", () => { }) };
+
+        var outcome = await Create(search).SearchAllAsync(PaletteQuery.Parse("a"), commands, Noop, _ => { });
+
+        Assert.Single(outcome!.Items);
+        Assert.Equal(0, search.FindCalls);
+        Assert.Equal(0, search.GrepCalls);
+        Assert.Contains("2 文字以上", outcome.Status);
+    }
 
     [Fact]
     public async Task Preview_reads_the_selected_file()

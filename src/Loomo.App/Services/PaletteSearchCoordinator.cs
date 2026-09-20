@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using sk0ya.Loomo.Core.Abstractions;
@@ -70,7 +71,7 @@ public sealed class PaletteSearchCoordinator
         PaletteQuery query, Func<PaletteTarget, Action> jump, Action<string> onStatus)
     {
         CancelSearch();
-        if (!query.IsNavigation || query.Mode == PaletteMode.Line)
+        if (!query.IsNavigation || query.Mode is PaletteMode.All or PaletteMode.Line)
             return null;
 
         // ファイル名だけは空クエリでも意味がある（全件の先頭が出る＝一覧代わりに使える）。
@@ -102,6 +103,86 @@ public sealed class PaletteSearchCoordinator
             return ct.IsCancellationRequested
                 ? null
                 : new PaletteSearchOutcome(Array.Empty<PaletteCommand>(), $"検索に失敗しました: {ex.Message}");
+        }
+    }
+
+    /// <summary>コマンド・ファイル・全文・シンボルを同時に検索し、結果を種別ごとにまとめて返す。</summary>
+    public async Task<PaletteSearchOutcome?> SearchAllAsync(
+        PaletteQuery query,
+        IReadOnlyList<PaletteCommand> commands,
+        Func<PaletteTarget, Action> jump,
+        Action<string> onStatus)
+    {
+        CancelSearch();
+        if (query.Mode != PaletteMode.All)
+            return null;
+
+        var commandItems = PaletteFilter.Filter(commands, query.Text)
+            .Take(PaletteNavigationItems.MaxResults)
+            .ToArray();
+        if (query.Text.Length < MinQueryChars)
+        {
+            var hint = query.Text.Length == 0
+                ? "入力すると全対象から検索します"
+                : $"{MinQueryChars} 文字以上で全対象を検索します";
+            return new PaletteSearchOutcome(commandItems, hint);
+        }
+
+        var cts = new CancellationTokenSource();
+        _searchCts = cts;
+        var ct = cts.Token;
+        onStatus("すべてを検索中…");
+        try
+        {
+            await Task.Delay(_searchDelayMs, ct);
+            var filesTask = CaptureSearchAsync(
+                () => _search.FindFilesAsync(query.Text, PaletteNavigationItems.MaxResults, ct), ct);
+            var textTask = CaptureSearchAsync(
+                () => _search.GrepAsync(query.Text,
+                    new GrepOptions(MaxResults: PaletteNavigationItems.MaxResults), ct), ct);
+            var symbolsTask = CaptureSearchAsync(() => _symbolSearch(query.Text, ct), ct);
+            await Task.WhenAll(filesTask, textTask, symbolsTask);
+            if (ct.IsCancellationRequested)
+                return null;
+
+            var files = await filesTask;
+            var text = await textTask;
+            var symbols = await symbolsTask;
+            var items = new List<PaletteCommand>(commandItems.Length + files.Items.Count + text.Items.Count + symbols.Items.Count);
+            items.AddRange(commandItems);
+            items.AddRange(PaletteNavigationItems.ForFiles(files.Items, jump));
+            items.AddRange(PaletteNavigationItems.ForText(text.Items, query.Text, jump));
+            items.AddRange(PaletteNavigationItems.ForLocations(symbols.Items, jump));
+
+            var failures = new[] { files.Error, text.Error, symbols.Error }
+                .Where(error => !string.IsNullOrWhiteSpace(error))
+                .ToArray();
+            var status = failures.Length == 0
+                ? StatusFor(query, items.Count)
+                : items.Count == 0
+                    ? $"検索に失敗しました: {string.Join(" / ", failures)}"
+                    : $"{items.Count} 件（一部の検索に失敗）";
+            return new PaletteSearchOutcome(items, status);
+        }
+        catch (OperationCanceledException) { return null; }
+    }
+
+    private sealed record SearchBatch<T>(IReadOnlyList<T> Items, string? Error);
+
+    private static async Task<SearchBatch<T>> CaptureSearchAsync<T>(
+        Func<Task<IReadOnlyList<T>>> search, CancellationToken ct)
+    {
+        try
+        {
+            return new SearchBatch<T>(await search(), null);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            return new SearchBatch<T>(Array.Empty<T>(), ex.Message);
         }
     }
 

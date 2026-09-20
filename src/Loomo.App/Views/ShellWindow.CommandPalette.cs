@@ -4,6 +4,8 @@ namespace sk0ya.Loomo.App.Views;
 /// <summary>ShellWindow: コマンドパレット（部屋全体の操作統一）。移動・ペイン表示・タブ・コンポーザ・ ペグボード・サイドバー・ワークスペース切替といった既存操作に名前を付け、 Ctrl+Shift+P（または Ctrl+W p）から検索して実行できるようにする。 一覧は開くたびに現在状態（ステージ中か・WS一覧など）から組み直す。 絞り込みロジックは <see cref="PaletteFilter"/>（純ロジック・テスト済み）。
 /// 先頭1文字（/ # @ :）で「探して飛ぶ」側へ切り替わり（<see cref="PaletteQuery"/>）、選んでいる場所は
 /// 開かずに右半分でプレビューする（<see cref="PalettePreviewLoader"/>／<see cref="PalettePreviewView"/>）。
+/// 右半分はコマンドのときも空けず、選んでいるコマンドの詳細を出す——探し方を切り替えても箱と列の
+/// 大きさが変わらないので、目で追っている行が横へ流れない。
 /// 設計書 §24.2。</summary>
 public partial class ShellWindow {
     private IReadOnlyList<PaletteCommand> _paletteCommands = Array.Empty<PaletteCommand>();
@@ -16,9 +18,9 @@ public partial class ShellWindow {
             CyclePaletteMode(+1);
             return;
         }
-        OpenCommandPalette(PaletteMode.Command);
+        OpenCommandPalette(PaletteMode.All);
     }
-    private void OpenCommandPalette() => OpenCommandPalette(PaletteMode.Command);
+    private void OpenCommandPalette() => OpenCommandPalette(PaletteMode.All);
     /// <summary>パレットを開く。<paramref name="mode"/> のプレフィックスを入れた状態で開くので、
     /// 「ファイルへ移動」のショートカットから開けばそのまま打ち始められる。
     /// <b>開いている最中に同じ種類のキーを押したら、開き直さずその場で探し方だけ変える</b>
@@ -30,13 +32,45 @@ public partial class ShellWindow {
         }
         _paletteCommands = BuildPaletteCommands();
         CommandPaletteOverlay.Visibility = Visibility.Visible;
-        PaletteHint.Text = PaletteQuery.HintWith(
-            _keybindings.For("palette.nextScope")?.Format(), _keybindings.For("palette.open")?.Format());
+        SetPaletteHint(mode);
         UpdatePaletteBoxSize();
         PaletteInput.Text = PaletteQuery.PrefixOf(mode);
         PaletteInput.CaretIndex = PaletteInput.Text.Length;
         RefilterPalette();
         PaletteInput.Focus();
+    }
+    /// <summary>探し方の案内をそのままクリックできるようにし、選択中のモードをアクセント色で示す。</summary>
+    private void SetPaletteHint(PaletteMode activeMode) {
+        PaletteHint.Inlines.Clear();
+        var modes = new[] {
+            PaletteMode.All, PaletteMode.File, PaletteMode.Text, PaletteMode.Symbol, PaletteMode.Line, PaletteMode.Command,
+        };
+        for (var i = 0; i < modes.Length; i++) {
+            if (i > 0)
+                PaletteHint.Inlines.Add(new Run("    "));
+
+            var mode = modes[i];
+            var prefix = PaletteQuery.PrefixOf(mode);
+            var label = mode == PaletteMode.All
+                ? PaletteQuery.LabelOf(mode)
+                : $"{prefix} {PaletteQuery.LabelOf(mode)}";
+            var hint = new Hyperlink(new Run(label)) {
+                Tag = mode,
+                Cursor = Cursors.Hand,
+                TextDecorations = null,
+                FontWeight = mode == activeMode ? FontWeights.SemiBold : FontWeights.Normal,
+            };
+            hint.SetResourceReference(TextElement.ForegroundProperty, mode == activeMode ? "Accent" : "FgDim");
+            hint.MouseEnter += (_, _) => hint.TextDecorations = TextDecorations.Underline;
+            hint.MouseLeave += (_, _) => hint.TextDecorations = null;
+            hint.Click += OnPaletteHintModeClick;
+            PaletteHint.Inlines.Add(hint);
+        }
+
+        var switchHint = PaletteQuery.HintWith(
+            _keybindings.For("palette.nextScope")?.Format(), _keybindings.For("palette.open")?.Format());
+        if (switchHint != PaletteQuery.ModesHint)
+            PaletteHint.Inlines.Add(new Run(switchHint[PaletteQuery.ModesHint.Length..]));
     }
     /// <summary>検索対象（探し方）を1つ進める／戻す。キーバインドから呼ばれる
     /// （<c>palette.nextScope</c> ／ <c>palette.previousScope</c>）。</summary>
@@ -54,6 +88,10 @@ public partial class ShellWindow {
         PaletteInput.CaretIndex = PaletteInput.Text.Length;
         PaletteInput.Focus();
     }
+    private void OnPaletteHintModeClick(object sender, RoutedEventArgs e) {
+        if (sender is Hyperlink { Tag: PaletteMode mode })
+            SetPaletteMode(mode);
+    }
     // 大きさの基準はウィンドウではなくオーバーレイ自身（＝実際に被せている領域）。ウィンドウ幅で
     // 計算すると、袖やドックで狭まった領域から箱がはみ出し、左右が切れて項目名が読めなくなる。
     private void UpdatePaletteBoxSize() {
@@ -68,7 +106,7 @@ public partial class ShellWindow {
             return;
         CommandPaletteOverlay.Visibility = Visibility.Collapsed;
         _paletteSearch.Cancel();
-        _paletteView.SetPreviewVisible(false);
+        _paletteView.SetNavigation(false);
         if (refocus && _focusedRegion?.Pane is { } pane)
             FocusPane(pane);
     }
@@ -76,9 +114,13 @@ public partial class ShellWindow {
     // 手元の一覧を絞り、それ以外は検索サービス／言語サーバーへ投げて結果を一覧に出す。
     private void RefilterPalette() {
         var query = PaletteQuery.Parse(PaletteInput.Text);
+        SetPaletteHint(query.Mode);
         _paletteSearch.CancelSearch();
-        _paletteView.SetPreviewVisible(query.IsNavigation);
+        _paletteView.SetNavigation(query.IsNavigation);
         switch (query.Mode) {
+            case PaletteMode.All:
+                _ = RunPaletteAllSearchAsync(query);
+                break;
             case PaletteMode.Command:
                 PaletteStatus.Text = "";
                 ShowPaletteItems(PaletteFilter.Filter(_paletteCommands, query.Text), query.Text);
@@ -91,14 +133,27 @@ public partial class ShellWindow {
                 break;
         }
     }
+    private async Task RunPaletteAllSearchAsync(PaletteQuery query) {
+        var outcome = await _paletteSearch.SearchAllAsync(
+            query, _paletteCommands, JumpToPaletteTarget, status => PaletteStatus.Text = status);
+        if (outcome is null || !IsPaletteOpen)
+            return;
+        ShowPaletteItems(outcome.Items, query.Text);
+        PaletteStatus.Text = outcome.Status;
+    }
     private void ShowPaletteItems(IReadOnlyList<PaletteCommand> items, string query) {
-        // 候補が無いときはプレビュー欄ごと畳む（空の枠だけ残ると、読み込み中との区別がつかない）。
-        // 空にすると選択が変わらない＝SelectionChanged が来ないので、残像もここで消す。
-        if (items.Count == 0) {
-            ClearPalettePreview();
-            _paletteView.SetPreviewVisible(false);
-        }
+        // 候補が0件のときも欄は畳まない（箱の形が変わると目が追い直しになる）。空にすると選択が
+        // 変わらない＝SelectionChanged が来ないので、前の項目の残像はここで消し、代わりに
+        // 「無い」ことを右の欄にも書く（枠だけ残ると読み込み中との区別がつかない）。
+        var hasNoResults = items.Count == 0;
+        if (hasNoResults)
+            _paletteSearch.CancelPreview();
+
+        // ItemsSource の更新で選択解除の SelectionChanged が発生し、右欄を消す。
+        // 先に一覧を更新してからメッセージを置けば、空状態の案内が消えない。
         _paletteView.ShowItems(items, query);
+        if (hasNoResults)
+            _paletteView.ShowPreviewMessage("", "候補がありません");
     }
     /// <summary>探して飛ぶ側の一覧。待ち・キャンセル・供給元の振り分けは
     /// <see cref="PaletteSearchCoordinator"/> の仕事で、ここは返ってきたものを描くだけ。</summary>
@@ -143,26 +198,40 @@ public partial class ShellWindow {
         FocusPane(sk0ya.Loomo.Core.Files.BinaryFileDetector.IsBinary(target.FullPath) ? PaneKind.EditorSupport : PaneKind.Editor);
     }
     private void OnPaletteSelectionChanged(object sender, SelectionChangedEventArgs e) => ShowPalettePreview();
-    /// <summary>選択が動くたびに、いま選んでいる場所の中身を出し直す。</summary>
+    /// <summary>選択が動くたびに、いま選んでいるものの中身を右の欄へ出し直す。場所（探して飛ぶ側）は
+    /// ファイルの中身、コマンドはその詳細——どちらの探し方でも右の欄は空けない（§24.2）。</summary>
     private void ShowPalettePreview() {
-        if (!IsPaletteOpen || !_paletteView.IsPreviewVisible)
+        if (!IsPaletteOpen)
             return;
-        if (PaletteList.SelectedItem is not PaletteCommand { Target: { } target }) {
+        if (PaletteList.SelectedItem is not PaletteCommand command) {
             ClearPalettePreview();
             return;
         }
-        _ = LoadPalettePreviewAsync(target);
+        if (command.Target is { } target)
+            _ = LoadPalettePreviewAsync(target);
+        else
+            ShowPaletteCommandDetail(command);
+    }
+    /// <summary>コマンドを選んでいるときの右の欄。押す前に分かるのは「何の仲間か・キーがあるか」なので、
+    /// それだけを出す（読み込みは要らないので同期）。</summary>
+    private void ShowPaletteCommandDetail(PaletteCommand command) {
+        _paletteSearch.CancelPreview();
+        var shortcut = string.IsNullOrEmpty(command.Shortcut)
+            ? "ショートカット: 未割当"
+            : $"ショートカット: {command.Shortcut}";
+        _paletteView.ShowPreviewDetail(new PalettePreviewContent(
+            command.Title, command.Category, $"{shortcut}{Environment.NewLine}{Environment.NewLine}Enter で実行・Esc で閉じる",
+            Array.Empty<PalettePreviewLine>(), null));
     }
     private async Task LoadPalettePreviewAsync(PaletteTarget target) {
         var content = await _paletteSearch.PreviewAsync(target, _workspace.ToDisplayPath(target.FullPath));
-        if (content is null || !IsPaletteOpen || !_paletteView.IsPreviewVisible)
+        if (content is null || !IsPaletteOpen || !_paletteView.IsNavigation)
             return;
         _paletteView.ShowPreview(content);
     }
     private void ClearPalettePreview() {
         _paletteSearch.CancelPreview();
-        if (_paletteView.IsPreviewVisible)
-            _paletteView.ShowPreview(PalettePreviewContent.Empty);
+        _paletteView.ClearPreview();
     }
     private void ExecutePaletteSelection() {
         if (PaletteList.SelectedItem is not PaletteCommand command)

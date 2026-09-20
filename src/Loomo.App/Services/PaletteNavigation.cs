@@ -12,7 +12,9 @@ namespace sk0ya.Loomo.App.Services;
 /// </summary>
 public enum PaletteMode
 {
-    /// <summary>部屋の操作（既定・プレフィックス無し）。</summary>
+    /// <summary>検索対象を絞らない（既定・プレフィックス無し）。</summary>
+    All,
+    /// <summary>部屋の操作。</summary>
     Command,
     /// <summary>ファイル名（ワークスペース全フォルダー横断）。</summary>
     File,
@@ -39,20 +41,21 @@ public readonly record struct PaletteQuery(PaletteMode Mode, string Text)
     /// <summary>Tab で巡回する順（ヒント行の並びとも揃える）。</summary>
     private static readonly PaletteMode[] Cycle =
     {
-        PaletteMode.Command, PaletteMode.File, PaletteMode.Text, PaletteMode.Symbol, PaletteMode.Line,
+        PaletteMode.All, PaletteMode.File, PaletteMode.Text, PaletteMode.Symbol, PaletteMode.Line, PaletteMode.Command,
     };
 
-    /// <summary>コマンド以外＝探して飛ぶモード（プレビューを出す）。</summary>
-    public bool IsNavigation => Mode != PaletteMode.Command;
+    /// <summary>場所を含む検索結果を扱うモード（プレビューを出す）。</summary>
+    public bool IsNavigation => Mode is PaletteMode.All or PaletteMode.File or PaletteMode.Text
+        or PaletteMode.Symbol or PaletteMode.Line;
 
     public static PaletteQuery Parse(string? input)
     {
         if (string.IsNullOrEmpty(input))
-            return new PaletteQuery(PaletteMode.Command, "");
+            return new PaletteQuery(PaletteMode.All, "");
 
         var mode = ModeOf(input[0]);
         return mode is null
-            ? new PaletteQuery(PaletteMode.Command, input.Trim())
+            ? new PaletteQuery(PaletteMode.All, input.Trim())
             : new PaletteQuery(mode.Value, input[1..].Trim());
     }
 
@@ -73,6 +76,7 @@ public readonly record struct PaletteQuery(PaletteMode Mode, string Text)
     /// <summary>モードを表すプレフィックス（コマンドは無印）。</summary>
     public static string PrefixOf(PaletteMode mode) => mode switch
     {
+        PaletteMode.Command => CommandPrefix.ToString(),
         PaletteMode.File => FilePrefix.ToString(),
         PaletteMode.Text => TextPrefix.ToString(),
         PaletteMode.Symbol => SymbolPrefix.ToString(),
@@ -89,6 +93,8 @@ public readonly record struct PaletteQuery(PaletteMode Mode, string Text)
 
     public static string LabelOf(PaletteMode mode) => mode switch
     {
+        PaletteMode.All => "すべて",
+        PaletteMode.Command => "コマンド",
         PaletteMode.File => "ファイル",
         PaletteMode.Text => "テキスト",
         PaletteMode.Symbol => "シンボル",
@@ -97,7 +103,7 @@ public readonly record struct PaletteQuery(PaletteMode Mode, string Text)
     };
 
     /// <summary>入力欄の下に出す道案内（どの文字でどこへ行けるか）。</summary>
-    public const string ModesHint = "/ ファイル    # テキスト    @ シンボル    : 行    > コマンド";
+    public const string ModesHint = "すべて    / ファイル    # テキスト    @ シンボル    : 行    > コマンド";
 
     /// <summary>道案内に「切替キー」を添える。キーは設定で変えられるので文言に埋めず、実効バインドを
     /// 受け取って組み立てる（<c>palette.nextScope</c> と、パレットを開くキー自身＝中では対象を次へ回す）。

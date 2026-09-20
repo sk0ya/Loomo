@@ -155,7 +155,7 @@ public partial class ShellWindow : Window {
             ?? Color.FromRgb(0x61, 0x48, 0xDE));
         EditorSyntaxColors.Apply(_appearance.BuildEditorTheme()); // Diff 本体の構文色（起動時の1回目）
         _paletteView = new CommandPaletteViewController(
-            PaletteList, PaletteBox, PalettePreview, PaletteListColumn, PalettePreviewColumn,
+            PaletteList, PaletteBox, PalettePreview,
             (DataTemplate)PaletteBox.FindResource("PaletteCommandRow"),
             (DataTemplate)PaletteBox.FindResource("PaletteNavigationRow"));
         // シンボルの供給口だけは部屋側（LSP セッションは ShellWindow が持つ）。表示パスの綴りは

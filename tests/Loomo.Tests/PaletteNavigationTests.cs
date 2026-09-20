@@ -16,8 +16,8 @@ public class PaletteNavigationTests
     private static Action Noop(PaletteTarget _) => () => { };
 
     [Theory]
-    [InlineData("", PaletteMode.Command, "")]
-    [InlineData("エディタ", PaletteMode.Command, "エディタ")]
+    [InlineData("", PaletteMode.All, "")]
+    [InlineData("エディタ", PaletteMode.All, "エディタ")]
     [InlineData(">エディタ", PaletteMode.Command, "エディタ")]
     [InlineData("/shell", PaletteMode.File, "shell")]
     [InlineData("/ shell ", PaletteMode.File, "shell")]
@@ -32,9 +32,10 @@ public class PaletteNavigationTests
     }
 
     [Fact]
-    public void Command_is_the_default_and_is_not_navigation()
+    public void All_is_the_default_while_explicit_command_mode_is_not_navigation()
     {
-        Assert.False(PaletteQuery.Parse("移動").IsNavigation);
+        Assert.True(PaletteQuery.Parse("移動").IsNavigation);
+        Assert.False(PaletteQuery.Parse(">移動").IsNavigation);
         Assert.True(PaletteQuery.Parse("/移動").IsNavigation);
     }
 
@@ -54,24 +55,24 @@ public class PaletteNavigationTests
 
         Assert.Equal(PaletteMode.Text, next);
         Assert.Equal("#shell", query.ToInput(next));
-        // Shift+Tab は逆回り（ファイル → コマンド）。
-        Assert.Equal(PaletteMode.Command, PaletteQuery.NextMode(query.Mode, -1));
-        Assert.Equal("shell", query.ToInput(PaletteMode.Command));
+        // Tab 巡回は案内行の順（ファイルの前は「すべて」）。
+        Assert.Equal(PaletteMode.All, PaletteQuery.NextMode(query.Mode, -1));
+        Assert.Equal(">shell", query.ToInput(PaletteMode.Command));
     }
 
     [Fact]
     public void NextMode_cycles_through_every_mode()
     {
-        var mode = PaletteMode.Command;
+        var mode = PaletteMode.All;
         var seen = new List<PaletteMode>();
-        for (var i = 0; i < 5; i++)
+        for (var i = 0; i < 6; i++)
         {
             seen.Add(mode);
             mode = PaletteQuery.NextMode(mode);
         }
 
-        Assert.Equal(PaletteMode.Command, mode);   // 5手で1周
-        Assert.Equal(5, seen.Distinct().Count());
+        Assert.Equal(PaletteMode.All, mode);   // 6手で1周
+        Assert.Equal(6, seen.Distinct().Count());
     }
 
     [Fact]
