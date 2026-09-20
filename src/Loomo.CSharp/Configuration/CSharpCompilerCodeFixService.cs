@@ -31,7 +31,27 @@ public static class CSharpCompilerCodeFixService
             return [];
 
         return await Task.Run(() => Get(
-            solution, filePath, source, range, openTexts, cancellationToken), cancellationToken);
+            solution, filePath, source, range, openTexts, allowedDiagnostics: null, cancellationToken), cancellationToken);
+    }
+
+    /// <summary>中央診断スナップショットに存在する診断だけを対象にQuick Fixを作る。</summary>
+    public static async Task<IReadOnlyList<LspCodeAction>> GetForDiagnosticsAsync(
+        SolutionModel? solution,
+        string filePath,
+        string source,
+        LspRange range,
+        IReadOnlyList<LspDiagnostic> diagnostics,
+        IReadOnlyList<string>? only = null,
+        IReadOnlyDictionary<string, string>? openTexts = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(diagnostics);
+        if (!string.Equals(Path.GetExtension(filePath), ".cs", StringComparison.OrdinalIgnoreCase) ||
+            !AllowsQuickFix(only))
+            return [];
+
+        return await Task.Run(() => Get(
+            solution, filePath, source, range, openTexts, diagnostics, cancellationToken), cancellationToken);
     }
 
     /// <summary>
@@ -135,6 +155,7 @@ public static class CSharpCompilerCodeFixService
         string source,
         LspRange range,
         IReadOnlyDictionary<string, string>? openTexts,
+        IReadOnlyList<LspDiagnostic>? allowedDiagnostics,
         CancellationToken cancellationToken)
     {
         var fullPath = Path.GetFullPath(filePath);
@@ -174,6 +195,8 @@ public static class CSharpCompilerCodeFixService
             .ToArray();
         var diagnostics = fileDiagnostics
             .Where(diagnostic => IsInRange(ToLspRange(text, diagnostic.Location.SourceSpan), range))
+            .Where(diagnostic => allowedDiagnostics is null || allowedDiagnostics.Any(allowed =>
+                MatchesSnapshotDiagnostic(allowed, diagnostic, text)))
             .ToArray();
         var actions = new List<LspCodeAction>();
         foreach (var diagnostic in diagnostics)
@@ -202,7 +225,10 @@ public static class CSharpCompilerCodeFixService
             }
         }
 
-        if (diagnostics.Any(diagnostic => diagnostic.Id == "CS8019") &&
+        var allUnusedUsingsAreCurrent = allowedDiagnostics is null || fileDiagnostics
+            .Where(diagnostic => diagnostic.Id == "CS8019")
+            .All(candidate => allowedDiagnostics.Any(allowed => MatchesSnapshotDiagnostic(allowed, candidate, text)));
+        if (diagnostics.Any(diagnostic => diagnostic.Id == "CS8019") && allUnusedUsingsAreCurrent &&
             TryCreateRemoveAllUnusedUsingsAction(fullPath, text, root, fileDiagnostics) is { } removeAll)
             actions.Add(removeAll);
 
@@ -213,6 +239,21 @@ public static class CSharpCompilerCodeFixService
             .Take(12)
             .ToArray();
         return uniqueActions;
+    }
+
+    private static bool MatchesSnapshotDiagnostic(
+        LspDiagnostic snapshot,
+        Diagnostic candidate,
+        SourceText text)
+    {
+        var snapshotCode = snapshot.Code;
+        if (string.Equals(snapshotCode, "IDE0005", StringComparison.OrdinalIgnoreCase))
+            snapshotCode = "CS8019";
+        if (!string.Equals(snapshotCode, candidate.Id, StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        var candidateRange = ToLspRange(text, candidate.Location.SourceSpan);
+        return IsInRange(candidateRange, snapshot.Range) || IsInRange(snapshot.Range, candidateRange);
     }
 
     private static IReadOnlyList<LspCodeAction> CreateUsingActions(

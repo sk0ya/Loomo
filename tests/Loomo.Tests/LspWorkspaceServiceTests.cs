@@ -5,7 +5,6 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Editor.Core.Lsp;
-using sk0ya.Loomo.CSharp.Projects;
 using sk0ya.Loomo.Core.Abstractions;
 using sk0ya.Loomo.Services.Lsp;
 using Xunit;
@@ -22,7 +21,6 @@ public sealed class LspWorkspaceServiceTests : IDisposable
     private readonly string _root;
     private readonly string _storePath;
     private readonly FakeWorkspaceService _workspace = new();
-    private readonly FakeSolutionModelService _solution;
     private readonly List<FakeLspClient> _created = [];
     private readonly LspServerTable _servers;
     private readonly LspWorkspaceService _sut;
@@ -38,15 +36,13 @@ public sealed class LspWorkspaceServiceTests : IDisposable
         // 実行ファイルの実在に依存しないよう、テスト専用のサーバーを割り当てる。
         _servers.Set(".cs", new LspServerDef("fake-cs-server", [], "csharp"));
         _servers.Set(".py", new LspServerDef("fake-py-server", [], "python"));
-        _solution = new FakeSolutionModelService(
-            new SolutionModel(null, "test", _root, [], ProjectLoadState.Ready));
 
         _sut = new LspWorkspaceService(_workspace, _servers, (def, root) =>
         {
             var client = new FakeLspClient(def.Executable, root);
             lock (_created) _created.Add(client);
             return client;
-        }, _solution);
+        });
     }
 
     public void Dispose()
@@ -590,68 +586,6 @@ public sealed class LspWorkspaceServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task ChangingSelectedTargetFramework_ReinitializesCSharpSessionAndReplaysDocuments()
-    {
-        var path = Write("A.cs");
-        var projectPath = Path.Combine(_root, "App.csproj");
-        var project = new ProjectModel("App", projectPath, _root, [],
-            [
-                new TargetFrameworkModel("net8.0", [], "latest",
-                    [new ProjectItem("A.cs", path)], [], [], []),
-                new TargetFrameworkModel("net9.0", [], "latest",
-                    [new ProjectItem("A.cs", path)], [], [], []),
-            ], "net8.0", false, ProjectLoadState.Ready);
-        _solution.Publish(new SolutionModel(null, "test", _root, [project], ProjectLoadState.Ready));
-
-        using var doc = _sut.OpenDocument(path, "class A {}")!;
-        await Settle();
-        Assert.Single(Clients);
-        Clients[0].PublishDiagnostics(doc.Uri,
-            [new LspDiagnostic(new LspRange(new LspPosition(0, 0), new LspPosition(0, 1)),
-                "old TFM diagnostic", DiagnosticSeverity.Warning, "StyleCop", "SA0001")]);
-        Assert.Single(doc.CurrentDiagnostics);
-
-        _solution.Publish(new SolutionModel(null, "test", _root,
-            [project with { SelectedTargetFramework = "net9.0" }], ProjectLoadState.Ready));
-        await Settle(1200);
-
-        Assert.Equal(2, Clients.Length);
-        var replacement = Clients.Single(c => !ReferenceEquals(c, Clients[0]));
-        Assert.True(Clients[0].Disposed);
-        Assert.Empty(doc.CurrentDiagnostics);
-        Assert.Equal(1, replacement.CountOf("didOpen", doc.Uri));
-        Assert.True(doc.IsReady);
-    }
-
-    [Fact]
-    public async Task ChangingSelectedConfiguration_ReinitializesCSharpSessionAndReplaysDocuments()
-    {
-        var path = Write("A.cs");
-        var projectPath = Path.Combine(_root, "App.csproj");
-        var project = new ProjectModel("App", projectPath, _root, [],
-            [new TargetFrameworkModel("net10.0", [], "latest",
-                [new ProjectItem("A.cs", path)], [], [], [])],
-            "net10.0", false, ProjectLoadState.Ready);
-        _solution.Publish(new SolutionModel(null, "test", _root, [project], ProjectLoadState.Ready,
-            Configurations: ["Debug", "Release"], SelectedConfiguration: "Debug"));
-
-        using var doc = _sut.OpenDocument(path, "class A {}")!;
-        await Settle();
-        Assert.Single(Clients);
-
-        _solution.Publish(new SolutionModel(null, "test", _root, [project], ProjectLoadState.Ready,
-            Configurations: ["Debug", "Release"], SelectedConfiguration: "Release"));
-        await Settle(1200);
-
-        Assert.Equal(2, Clients.Length);
-        var replacement = Clients.Single(c => !ReferenceEquals(c, Clients[0]));
-        Assert.True(Clients[0].Disposed);
-        Assert.Empty(doc.CurrentDiagnostics);
-        Assert.Equal(1, replacement.CountOf("didOpen", doc.Uri));
-        Assert.True(doc.IsReady);
-    }
-
-    [Fact]
     public async Task ServerCrash_ReconnectsAndReplaysTheLatestText()
     {
         var path = Write("A.cs");
@@ -673,24 +607,4 @@ public sealed class LspWorkspaceServiceTests : IDisposable
     /// <summary>バックグラウンドで進む didOpen/didChange/再接続を待ち合わせる。</summary>
     private static Task Settle(int ms = 150) => Task.Delay(ms);
 
-    private sealed class FakeSolutionModelService(SolutionModel initial) : ISolutionModelService
-    {
-        public SolutionModel Current { get; private set; } = initial;
-        public event EventHandler<SolutionModel>? Changed;
-
-        public Task<SolutionModel> ReloadAsync(CancellationToken cancellationToken = default)
-            => Task.FromResult(Current);
-
-        public ProjectModel? ProjectForFile(string filePath) => Current.ProjectForFile(filePath);
-        public ProjectLoadState FileState(string filePath) => Current.ResolveFileState(filePath);
-
-        public Task<bool> SelectTargetFrameworkAsync(string projectPath, string targetFramework,
-            CancellationToken cancellationToken = default) => Task.FromResult(false);
-
-        public void Publish(SolutionModel model)
-        {
-            Current = model;
-            Changed?.Invoke(this, model);
-        }
-    }
 }

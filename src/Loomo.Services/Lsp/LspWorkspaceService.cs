@@ -29,6 +29,11 @@ internal static class LspWorkspaceCompatibility
 /// **エディタタブを経由しない消費者**が LSP を直接使える。以前はセッションがタブに紐付いていたため、
 /// 「<c>.cs</c> タブを1枚も開いていないとクラス検索が 0 件」といった意味の壊れ方をしていた。</para>
 ///
+/// <para>Roslyn は <c>initialize</c> で渡したルートから独自の Workspace を作り、プロジェクト変更も
+/// 自分で再読み込みする。Loomo の <see cref="ISolutionModelService"/> が持つ選択 TFM／構成は LSP へ
+/// 渡していないため、そのモデル更新を理由に Roslyn を再起動しても選択内容は反映されない。
+/// 解析コンテキストの変更と LSP プロセスの寿命は連動させない。</para>
+///
 /// <para><b>スレッド:</b> スレッドセーフ。<see cref="DiagnosticsPublished"/>/<see cref="ServerStateChanged"/>
 /// と、配下の <see cref="ILspDocument"/> のイベントは**背景スレッドで発火する**。
 /// ディスパッチャへのマーシャリングは購読側（LspViewBridge・Problems ペイン・EditorSupport）の責務。</para>
@@ -36,28 +41,23 @@ internal static class LspWorkspaceCompatibility
 public sealed class LspWorkspaceService : ILspWorkspace, IDisposable
 {
     private readonly IWorkspaceService _workspace;
-    private readonly ISolutionModelService? _solution;
     private readonly LspServerTable _servers;
     private readonly LspClientPool _pool;
     private readonly LspDocumentTable _documents;
     private readonly object _gate = new();
 
     private string[] _folderSignature;
-    private string _projectContextSignature;
     private bool _disposed;
 
     /// <param name="connect">サーバー接続の生成。既定は実プロセス起動。テストが差し替える。</param>
     public LspWorkspaceService(
         IWorkspaceService workspace,
         LspServerTable servers,
-        Func<LspServerDef, string, ILspClient>? connect = null,
-        ISolutionModelService? solution = null)
+        Func<LspServerDef, string, ILspClient>? connect = null)
     {
         _workspace = workspace;
-        _solution = solution;
         _servers = servers;
         _folderSignature = CurrentFolders();
-        _projectContextSignature = ProjectContextSignature(solution?.Current);
 
         _pool = new LspClientPool(FoldersForRoot, Log, connect);
         _documents = new LspDocumentTable(
@@ -73,7 +73,6 @@ public sealed class LspWorkspaceService : ILspWorkspace, IDisposable
         _pool.StateChanged += () => ServerStateChanged?.Invoke();
         _servers.Changed += ext => _ = _documents.ReopenExtensionAsync(ext);
         _workspace.FoldersChanged += OnFoldersChanged;
-        if (_solution is not null) _solution.Changed += OnSolutionChanged;
     }
 
     public event Action<string, IReadOnlyList<LspDiagnostic>>? DiagnosticsPublished;
@@ -498,38 +497,6 @@ public sealed class LspWorkspaceService : ILspWorkspace, IDisposable
         _pool.DisposeAll();
     }
 
-    /// <summary>
-    /// C# プロジェクトの解析対象 TFM／Build構成が変わったとき、既存の Roslyn セッションを再初期化する。
-    ///
-    /// <para>LSP の標準仕様には「現在選択中の TargetFramework」という共通設定が無く、
-    /// サーバーごとに initialization option の形が違う。そのため汎用 Editor 側へ C# 固有設定を
-    /// 持ち込まず、ここでは少なくとも旧セッションのプロジェクト／診断キャッシュを破棄して
-    /// 最新テキストで開き直す。将来サーバー固有の設定を追加するときも、この C# サービスから
-    /// セッション境界を越えて渡す場所を一箇所にできる。</para>
-    /// </summary>
-    private void OnSolutionChanged(object? sender, SolutionModel model)
-    {
-        if (_disposed) return;
-        var next = ProjectContextSignature(model);
-        lock (_gate)
-        {
-            if (string.Equals(_projectContextSignature, next, StringComparison.Ordinal)) return;
-            _projectContextSignature = next;
-        }
-
-        var csharp = _servers.GetForExtension(".cs");
-        if (csharp is null) return;
-        Log($"[LSP] C# project context changed ({next}); restarting {csharp.Executable}");
-        _pool.Restart(csharp.Executable);
-    }
-
-    private static string ProjectContextSignature(SolutionModel? model)
-        => model is null
-            ? ""
-            : $"configuration={model.EffectiveConfiguration}|" + string.Join("|", model.Projects
-                .OrderBy(p => p.FullPath, StringComparer.OrdinalIgnoreCase)
-                .Select(p => $"{p.FullPath}={p.SelectedTargetFramework ?? "(none)"}"));
-
     private void OnDiagnosticsPublished(string uri, IReadOnlyList<LspDiagnostic> diagnostics)
     {
         _documents.OnDiagnostics(uri, diagnostics);
@@ -552,7 +519,6 @@ public sealed class LspWorkspaceService : ILspWorkspace, IDisposable
         if (_disposed) return;
         _disposed = true;
         _workspace.FoldersChanged -= OnFoldersChanged;
-        if (_solution is not null) _solution.Changed -= OnSolutionChanged;
         _documents.Clear();
         _pool.Dispose();
     }

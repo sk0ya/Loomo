@@ -6,6 +6,7 @@ using System.Text.RegularExpressions;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Editor.Core.Lsp;
+using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.Core.Abstractions;
 
 namespace sk0ya.Loomo.App.ViewModels;
@@ -127,6 +128,8 @@ public sealed partial class ProblemsViewModel : ObservableObject
     private IReadOnlyList<ProblemItemViewModel> _buildItems = [];
     private readonly Dictionary<string, IReadOnlyList<ProblemItemViewModel>> _lspItems =
         new(System.StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, (int Version, IReadOnlyList<ProblemItemViewModel> Items)> _editorItems =
+        new(System.StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, IReadOnlyList<ProblemItemViewModel>> _compilerItems =
         new(System.StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, IReadOnlyList<ProblemItemViewModel>> _styleCopItems =
@@ -237,6 +240,59 @@ public sealed partial class ProblemsViewModel : ObservableObject
         Rebuild();
     }
 
+    /// <summary>開いているEditor文書の統合診断スナップショットを、文書版付きで一括反映する。</summary>
+    internal bool SetEditorDiagnostics(
+        string filePath, int version, IReadOnlyList<EditorDiagnosticEntry> entries)
+    {
+        var fullPath = Path.GetFullPath(filePath);
+        if (_editorItems.TryGetValue(fullPath, out var previous) && previous.Version > version)
+            return false;
+
+        // 開いているC#エディタが版付きスナップショットを所有するため、旧経路のコピーを除いてから
+        // Problemsツリーを一度だけ組み直す。
+        _lspItems.Remove(fullPath);
+        _compilerItems.Remove(fullPath);
+        _styleCopItems.Remove(fullPath);
+
+        var items = entries.Select(entry =>
+        {
+            var diagnostic = entry.Diagnostic;
+            var source = entry.Origin switch
+            {
+                EditorDiagnosticOrigin.Compiler => ProblemSource.Compiler,
+                EditorDiagnosticOrigin.StyleCop => ProblemSource.StyleCop,
+                _ => ProblemSource.Lsp,
+            };
+            return new ProblemItemViewModel(fullPath,
+                diagnostic.Range.Start.Line + 1, diagnostic.Range.Start.Character + 1,
+                ToProblemSeverity(diagnostic.Severity), diagnostic.Code ?? source.ToString(),
+                diagnostic.Message, source,
+                diagnostic.Range.End.Line + 1, diagnostic.Range.End.Character + 1,
+                hasCode: !string.IsNullOrWhiteSpace(diagnostic.Code));
+        }).ToArray();
+
+        _editorItems[fullPath] = (version, items);
+        Rebuild();
+        return true;
+    }
+
+    internal void ClearEditorDiagnostics(string filePath)
+    {
+        var fullPath = Path.GetFullPath(filePath);
+        var changed = _editorItems.Remove(fullPath);
+        changed |= _lspItems.Remove(fullPath);
+        changed |= _compilerItems.Remove(fullPath);
+        changed |= _styleCopItems.Remove(fullPath);
+        if (changed) Rebuild();
+    }
+
+    internal void ClearAllEditorDiagnostics()
+    {
+        if (_editorItems.Count == 0) return;
+        _editorItems.Clear();
+        Rebuild();
+    }
+
     public void ClearLspDiagnostics()
     {
         if (_lspItems.Count == 0) return;
@@ -300,7 +356,8 @@ public sealed partial class ProblemsViewModel : ObservableObject
     private void Rebuild()
     {
         var expanded = Groups.ToDictionary(g => g.FilePath, g => g.IsExpanded, System.StringComparer.OrdinalIgnoreCase);
-        var items = _buildItems.Concat(_compilerItems.Values.SelectMany(x => x))
+        var items = _buildItems.Concat(_editorItems.Values.SelectMany(x => x.Items))
+            .Concat(_compilerItems.Values.SelectMany(x => x))
             .Concat(_lspItems.Values.SelectMany(x => x))
             .Concat(_styleCopItems.Values.SelectMany(x => x))
             // 発生源フィルターを重複排除より先に適用する。同じ診断が Build/LSP の双方にあるとき、

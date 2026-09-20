@@ -497,11 +497,15 @@ Rider相当を「コマンドの数」として追わない。プロジェクト
   参照全体を検査する操作はsolution範囲を維持し、大規模solutionで機能範囲を変えずに不要なRoslyn読み込みを減らした。
 - compilerの文書Quick Fixと、その対象ファイルごとのFix All再解析も同じProjectReferenceグラフを使うようにし、
   using候補探索や未使用using／localの修正でsolution全体をCompilationへ積まないようにした。C#関連309件とBuild警告0／エラー0を再確認した。
-- C# fallback診断は本文変更時に前の本文の結果を即時破棄し、解析中の古い波線・Problems・Quick Fixが残らないようにした。
-  最新LSP診断は保持し、fallbackだけを再解析結果まで空にすることで、解析中と候補なしを混同しない状態を維持する。
-- LSPが同一種類の診断を部分的に返す場合も、C#のStyleCop／compiler fallbackを診断ID・範囲単位で統合し、
-  同じ診断だけを重複排除するようにした。LSP診断からもpragma抑制Quick Fixを生成し、Problems起点のStyleCop操作を
-  エディタの共通Code Action経路へ揃えた。SourceFixAllのkindフィルターも修正し、C#関連310件、Problems 20件、Build警告0／エラー0で確認した。
+- C#のLSP／compiler／StyleCop診断をEditorバッファ単位の版付きスナップショットへ集約し、波線・Problems・Quick Fixで
+  同じ診断集合を使う。本文版が変わった後は前版の範囲を表示せず、同一本文の再解析中だけ表示を保つ。Quick Fixは
+  現行版のスナップショットにある診断から作り、取得中に本文版または診断スナップショットが変わった候補を破棄する。
+  LSPの診断pushイベントには公開Editor API上で発生文書版が含まれないため、イベント到着時の文書版と本文が一致する
+  ことを確認して取り込む。プロトコル応答自体の版照合はEditor APIの制約として残る。
+- LSPが同一種類の診断を部分的に返す場合も、C#のStyleCop／compiler診断を診断コード・範囲単位で統合し、
+  同じ診断だけを重複排除する。compiler Quick Fixは中央スナップショットにある診断に限定し、Problems起点のStyleCop操作も
+  同じ候補経路へ揃える。回帰テストで旧版拒否、同一本文の表示保持、スナップショット置換、未表示usingの候補除外を確認した。
+  対象34件、全体3,397件（3,385成功・12スキップ・失敗0）、solution Build（エラー0・既存nullability警告2件）で確認した。
 - 実Roslyn Language Serverのsemantic token legend（`static`／`ReassignedVariable`／`deprecated`）を確認し、
   `Loomo.CSharp`のRoslyn fallbackにもstatic宣言・代入／増減／ref／out位置のmodifierを追加した。既存の
   readonly／abstract／deprecated描画契約を保ちつつ、実応答と同じmodifier名の回帰を追加した。C#関連311件と

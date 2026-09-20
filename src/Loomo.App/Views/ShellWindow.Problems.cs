@@ -23,6 +23,16 @@ public partial class ShellWindow
     private void PublishLspDiagnosticsToProblems(
         string uri, IReadOnlyList<Editor.Core.Lsp.LspDiagnostic> diagnostics)
     {
+        if (Editor.Core.Lsp.LspUri.TryToLocalPath(uri) is { } localPath &&
+            string.Equals(Path.GetExtension(localPath), ".cs", StringComparison.OrdinalIgnoreCase) &&
+            _editorTabs.Any(tab => tab.IsRealized && tab.Control.FilePath is { Length: > 0 } editorPath &&
+                string.Equals(Path.GetFullPath(editorPath), Path.GetFullPath(localPath),
+                    StringComparison.OrdinalIgnoreCase)))
+        {
+            // 開いているC#文書はEditorDiagnosticSessionから同じ版の診断を一括反映する。
+            return;
+        }
+
         var presentationDiagnostics = ExpandUnnecessaryUsingDiagnostics(uri, diagnostics);
         _vm.Debug.Problems.SetLspDiagnostics(uri, presentationDiagnostics);
         _vm.TsIde.Problems.SetLspDiagnostics(uri, presentationDiagnostics);

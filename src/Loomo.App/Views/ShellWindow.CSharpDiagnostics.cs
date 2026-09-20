@@ -1,9 +1,11 @@
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Windows.Threading;
 using Editor.Controls;
 using Editor.Controls.HostIntegration;
 using Editor.Core.Lsp;
+using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.CSharp.Configuration;
 using sk0ya.Loomo.CSharp.Projects;
 
@@ -13,10 +15,10 @@ namespace sk0ya.Loomo.App.Views;
 public partial class ShellWindow
 {
     private readonly Dictionary<VimEditorControl, CancellationTokenSource> _styleCopAnalysisCts = [];
-    private readonly Dictionary<VimEditorControl, IReadOnlyList<LspDiagnostic>> _styleCopResults = [];
     private readonly Dictionary<VimEditorControl, CancellationTokenSource> _compilerAnalysisCts = [];
-    private readonly Dictionary<VimEditorControl, IReadOnlyList<LspDiagnostic>> _compilerResults = [];
+    private readonly Dictionary<VimEditorControl, EditorDiagnosticSession> _diagnosticSessions = [];
     private readonly Dictionary<VimEditorControl, IReadOnlyList<LspRange>> _compilerUnusedUsingRanges = [];
+    private readonly Dictionary<VimEditorControl, int> _compilerUnusedUsingVersions = [];
 
     private static IReadOnlyList<LspDiagnostic> EditorLspDiagnostics(VimEditorControl control)
     {
@@ -37,8 +39,33 @@ public partial class ShellWindow
 
     private void OnStyleCopLspDiagnosticsChanged(object? sender, EventArgs e)
     {
-        if (sender is VimEditorControl control)
+        if (sender is not VimEditorControl control || control.FilePath is not { Length: > 0 } path)
+            return;
+
+        if (!string.Equals(Path.GetExtension(path), ".cs", StringComparison.OrdinalIgnoreCase))
+        {
             RefreshStyleCopPresentation(control);
+            return;
+        }
+
+        var fullPath = Path.GetFullPath(path);
+        var session = GetDiagnosticSession(control);
+        var version = session.Ensure(fullPath, control.Text);
+        var document = control.LspDocument;
+        if (document is not { IsReady: true, Version: { } lspVersion } ||
+            !string.Equals(document.Text, control.Text, StringComparison.Ordinal))
+            return;
+
+        session.Skip(version, EditorDiagnosticOrigin.Compiler);
+        session.Publish(version, EditorDiagnosticOrigin.LanguageServer, EditorLspDiagnostics(control), lspVersion);
+
+        // LSP が compiler 診断を返し始めた後は、同じ Compilation を作り直す fallback を止める。
+        if (_compilerAnalysisCts.Remove(control, out var cts))
+        {
+            cts.Cancel();
+        }
+
+        RefreshStyleCopPresentation(control);
     }
 
     private void ScheduleStyleCopAnalysis(VimEditorControl control)
@@ -50,35 +77,73 @@ public partial class ShellWindow
         }
 
         if (control.FilePath is not { Length: > 0 } path ||
-            !string.Equals(Path.GetExtension(path), ".cs", StringComparison.OrdinalIgnoreCase) ||
-            _solutionModel?.ProjectForFile(path) is not { } project)
+            !string.Equals(Path.GetExtension(path), ".cs", StringComparison.OrdinalIgnoreCase))
         {
             ClearStyleCopPresentation(control);
             return;
         }
 
-        if (_styleCopAnalysisCts.TryGetValue(control, out var previous))
-            previous.Cancel();
-        var cts = new CancellationTokenSource();
-        _styleCopAnalysisCts[control] = cts;
         var source = control.Text;
         var expectedPath = Path.GetFullPath(path);
-        var openTexts = FindOpenCSharpEditorTexts();
-
-        // 新しい本文に対して解析中は、前の本文の診断／Quick Fixを残さない。
-        // LSP側の最新診断は保持し、fallback側だけを空にして「解析中」と一致させる。
-        _styleCopResults.Remove(control);
-        _compilerResults.Remove(control);
-        _compilerUnusedUsingRanges.Remove(control);
-        RefreshStyleCopPresentation(control);
-        _ = AnalyzeStyleCopAsync(control, project, expectedPath, source, openTexts, cts);
-
+        var session = GetDiagnosticSession(control);
+        var previousPresentation = session.Presentation;
+        var project = _solutionModel?.ProjectForFile(path);
+        var languageServerReady = control.LspDocument is { IsReady: true };
+        var expectedOrigins = new List<EditorDiagnosticOrigin>();
+        if (languageServerReady) expectedOrigins.Add(EditorDiagnosticOrigin.LanguageServer);
+        if (project is not null) expectedOrigins.Add(EditorDiagnosticOrigin.StyleCop);
+        if (!languageServerReady && project is not null && _solutionModel?.Current is not null)
+            expectedOrigins.Add(EditorDiagnosticOrigin.Compiler);
+        var version = session.Begin(expectedPath, source, expectedOrigins);
+        if (_styleCopAnalysisCts.TryGetValue(control, out var previous))
+            previous.Cancel();
         if (_compilerAnalysisCts.TryGetValue(control, out var previousCompiler))
             previousCompiler.Cancel();
+
+        if (languageServerReady && control.LspDocument is { } currentDocument &&
+            currentDocument.Version is { } lspVersion &&
+            string.Equals(currentDocument.Text, source, StringComparison.Ordinal) &&
+            previousPresentation is { } previousSnapshot &&
+            string.Equals(previousSnapshot.Text, source, StringComparison.Ordinal) &&
+            previousSnapshot.LanguageServerVersion == lspVersion)
+        {
+            // 本文もLSP版も同じ場合だけ前回のpush診断を新しい解析回へ引き継ぐ。
+            session.Publish(version, EditorDiagnosticOrigin.LanguageServer,
+                EditorLspDiagnostics(control), lspVersion);
+        }
+
+        if (project is null)
+        {
+            RefreshStyleCopPresentation(control);
+            return;
+        }
+
+        var cts = new CancellationTokenSource();
+        _styleCopAnalysisCts[control] = cts;
+        var openTexts = FindOpenCSharpEditorTexts();
+
+        // 同じ本文の再解析中は安定した表示を保つ。本文が変われば旧範囲を消し、Quick Fixは新しい版を待つ。
+        RefreshStyleCopPresentation(control);
+        _ = AnalyzeStyleCopAsync(control, project, expectedPath, source, openTexts, version, cts);
+
         var compilerCts = new CancellationTokenSource();
-        _compilerAnalysisCts[control] = compilerCts;
-        if (_solutionModel?.Current is { } solution)
-            _ = AnalyzeCompilerAsync(control, solution, expectedPath, source, openTexts, compilerCts);
+        var lspOwnsCompilerDiagnostics = control.LspDocument is { IsReady: true } readyDocument &&
+            string.Equals(Path.GetFullPath(readyDocument.FilePath), expectedPath, StringComparison.OrdinalIgnoreCase);
+        if (lspOwnsCompilerDiagnostics)
+        {
+            // 接続中のLSP文書がRoslyn compiler診断を返すため、本文変更ごとにCompilationを作り直さない。
+            _compilerAnalysisCts.Remove(control);
+            compilerCts.Dispose();
+        }
+        else if (_solutionModel?.Current is { } solution)
+        {
+            _compilerAnalysisCts[control] = compilerCts;
+            _ = AnalyzeCompilerAsync(control, solution, expectedPath, source, openTexts, version, compilerCts);
+        }
+        else
+        {
+            compilerCts.Dispose();
+        }
     }
 
     private async Task AnalyzeStyleCopAsync(
@@ -87,6 +152,7 @@ public partial class ShellWindow
         string expectedPath,
         string source,
         IReadOnlyDictionary<string, string> openTexts,
+        int version,
         CancellationTokenSource cts)
     {
         try
@@ -106,10 +172,11 @@ public partial class ShellWindow
                 if (cts.IsCancellationRequested || !ReferenceEquals(_styleCopAnalysisCts.GetValueOrDefault(control), cts) ||
                     !string.Equals(Path.GetFullPath(control.FilePath ?? ""), expectedPath, StringComparison.OrdinalIgnoreCase) ||
                     !string.Equals(control.Text, source, StringComparison.Ordinal)) return;
-                _styleCopResults[control] = result.Error is null
+                var diagnostics = result.Error is null
                     ? result.Diagnostics
                     : [new LspDiagnostic(new LspRange(new LspPosition(0, 0), new LspPosition(0, 0)),
                         result.Error, DiagnosticSeverity.Warning, "StyleCop", "LOOMO")];
+                GetDiagnosticSession(control).Publish(version, EditorDiagnosticOrigin.StyleCop, diagnostics);
                 RefreshStyleCopPresentation(control);
             });
         }
@@ -119,9 +186,12 @@ public partial class ShellWindow
             await Dispatcher.InvokeAsync(() =>
             {
                 if (!cts.IsCancellationRequested && ReferenceEquals(_styleCopAnalysisCts.GetValueOrDefault(control), cts))
-                    _vm.Debug.Problems.SetStyleCopDiagnostics(expectedPath, [new LspDiagnostic(
+                {
+                    GetDiagnosticSession(control).Publish(version, EditorDiagnosticOrigin.StyleCop, [new LspDiagnostic(
                         new LspRange(new LspPosition(0, 0), new LspPosition(0, 0)),
                         $"StyleCop解析に失敗しました: {ex.Message}", DiagnosticSeverity.Warning, "StyleCop", "LOOMO")]);
+                    RefreshStyleCopPresentation(control);
+                }
             });
         }
         finally
@@ -145,6 +215,7 @@ public partial class ShellWindow
         string expectedPath,
         string source,
         IReadOnlyDictionary<string, string> openTexts,
+        int version,
         CancellationTokenSource cts)
     {
         try
@@ -161,11 +232,12 @@ public partial class ShellWindow
                 _compilerUnusedUsingRanges[control] = result.Error is null
                     ? result.UnnecessaryUsingRanges ?? []
                     : [];
-                _compilerResults[control] = result.Error is null
+                _compilerUnusedUsingVersions[control] = version;
+                var diagnostics = result.Error is null
                     ? result.Diagnostics
                     : [new LspDiagnostic(new LspRange(new LspPosition(0, 0), new LspPosition(0, 0)),
                         result.Error, DiagnosticSeverity.Warning, "Compiler", "LOOMO")];
-                PublishLspDiagnosticsToProblems(LspUri.FromPath(expectedPath), EditorLspDiagnostics(control));
+                GetDiagnosticSession(control).Publish(version, EditorDiagnosticOrigin.Compiler, diagnostics);
                 RefreshStyleCopPresentation(control);
             });
         }
@@ -175,10 +247,13 @@ public partial class ShellWindow
             await Dispatcher.InvokeAsync(() =>
             {
                 if (!cts.IsCancellationRequested && ReferenceEquals(_compilerAnalysisCts.GetValueOrDefault(control), cts))
-                    _vm.Debug.Problems.SetCompilerDiagnostics(expectedPath, [new LspDiagnostic(
+                {
+                    GetDiagnosticSession(control).Publish(version, EditorDiagnosticOrigin.Compiler, [new LspDiagnostic(
                         new LspRange(new LspPosition(0, 0), new LspPosition(0, 0)),
                         $"C# compiler解析に失敗しました: {ex.Message}", DiagnosticSeverity.Warning,
                         "Compiler", "LOOMO")]);
+                    RefreshStyleCopPresentation(control);
+                }
             });
         }
         finally
@@ -204,22 +279,26 @@ public partial class ShellWindow
             return;
         }
 
-        // LSPが同じ種類の診断を1件でも返したからといって、fallback全体を捨てない。
-        // サーバーが部分的な診断しか返さない場合は、同じcode／rangeだけを除外して
-        // 残りの公式Analyzer／compiler診断を併記する。Problems側の重複排除も通るが、
-        // Editorの波線・gutterには重複を送らない。
-        var lspDiagnostics = EditorLspDiagnostics(control);
-        control.ReplaceLspDiagnosticPresentation(CSharpDiagnosticMerger.ExpandUnnecessaryUsingGroups(
-            lspDiagnostics, _compilerUnusedUsingRanges.GetValueOrDefault(control) ?? []));
-        var fallbackStyleCop = CSharpDiagnosticMerger.ExcludeDuplicates(
-            lspDiagnostics, _styleCopResults.GetValueOrDefault(control) ?? []);
-        var fallbackCompiler = CSharpDiagnosticMerger.ExcludeDuplicates(
-            lspDiagnostics, _compilerResults.GetValueOrDefault(control) ?? []);
-        _vm.Debug.Problems.SetStyleCopDiagnostics(path, fallbackStyleCop);
-        _vm.Debug.Problems.SetCompilerDiagnostics(path, fallbackCompiler);
+        if (!string.Equals(Path.GetExtension(path), ".cs", StringComparison.OrdinalIgnoreCase))
+        {
+            control.ReplaceLspDiagnosticPresentation(null);
+            control.ReplaceDiagnostics([]);
+            return;
+        }
 
-        var fallbackDiagnostics = fallbackStyleCop.Concat(fallbackCompiler).Select(ToEditorDiagnostic);
-        control.ReplaceDiagnostics(fallbackDiagnostics);
+        var snapshot = GetDiagnosticSession(control).Presentation;
+        if (snapshot is null) return;
+        var ranges = _compilerUnusedUsingVersions.GetValueOrDefault(control) == snapshot.Version
+            ? _compilerUnusedUsingRanges.GetValueOrDefault(control) ?? []
+            : [];
+        var entries = ExpandUnnecessaryUsingEntries(snapshot.Entries, ranges);
+        var diagnostics = entries.Select(entry => entry.Diagnostic).ToArray();
+
+        // Editorの波線、Problems一覧、Quick Fixの入力を同じ診断スナップショットへ揃える。
+        control.ReplaceLspDiagnosticPresentation(diagnostics);
+        control.ReplaceDiagnostics([]);
+        _vm.Debug.Problems.SetEditorDiagnostics(path, snapshot.Version, entries);
+        _vm.TsIde.Problems.SetEditorDiagnostics(path, snapshot.Version, entries);
     }
 
     private void ClearStyleCopPresentation(VimEditorControl control)
@@ -230,38 +309,44 @@ public partial class ShellWindow
             cts.Cancel();
         if (_compilerAnalysisCts.Remove(control, out var compilerCts))
             compilerCts.Cancel();
-        _styleCopResults.Remove(control);
-        _compilerResults.Remove(control);
         _compilerUnusedUsingRanges.Remove(control);
-        if (control.FilePath is { Length: > 0 } path)
+        _compilerUnusedUsingVersions.Remove(control);
+        var ownedPath = "";
+        IReadOnlyList<LspDiagnostic> retainedLspDiagnostics = [];
+        if (_diagnosticSessions.TryGetValue(control, out var session))
+        {
+            ownedPath = session.FilePath;
+            retainedLspDiagnostics = session.Presentation?.Entries
+                .Where(entry => entry.Origin == EditorDiagnosticOrigin.LanguageServer)
+                .Select(entry => entry.Diagnostic)
+                .ToArray() ?? [];
+            session.Clear();
+        }
+        _diagnosticSessions.Remove(control);
+        if (control.FilePath is { Length: > 0 })
         {
             control.ClearDiagnostics();
             control.ReplaceLspDiagnosticPresentation(null);
-            _vm.Debug.Problems.ClearStyleCopDiagnostics(path);
-            _vm.Debug.Problems.ClearCompilerDiagnostics(path);
         }
-    }
-
-    /// <summary>MSBuild評価が終わるのを<b>読み込み中のあいだだけ</b>待つ。
-    /// 評価がまだ始まっていない・失敗した・そもそもプロジェクト外のファイルは待っても
-    /// Ready にならないので、その場で今の状態を返す。</summary>
-    private async Task<ProjectModel?> WaitForProjectEvaluationAsync(string path)
-    {
-        var deadline = DateTime.UtcNow + StyleCopProjectEvaluationTimeout;
-        while (true)
+        if (ownedPath.Length > 0)
         {
-            var project = _solutionModel?.Current.ProjectForFile(path);
-            if (project is not { State: ProjectLoadState.Loading }) return project;
-            if (DateTime.UtcNow >= deadline) return project;
-            await Task.Delay(100);
+            _vm.Debug.Problems.ClearEditorDiagnostics(ownedPath);
+            _vm.TsIde.Problems.ClearEditorDiagnostics(ownedPath);
+            if (retainedLspDiagnostics.Count > 0)
+            {
+                var uri = LspUri.FromPath(ownedPath);
+                _vm.Debug.Problems.SetLspDiagnostics(uri, retainedLspDiagnostics);
+                _vm.TsIde.Problems.SetLspDiagnostics(uri, retainedLspDiagnostics);
+            }
         }
     }
-
-    /// <summary>Quick Fixが評価完了を待つ上限。長すぎると「候補を取得しています…」が居座る。</summary>
-    private static readonly TimeSpan StyleCopProjectEvaluationTimeout = TimeSpan.FromSeconds(3);
 
     private async Task<IReadOnlyList<LspCodeAction>> RequestStyleCopQuickFixesAsync(
-        VimEditorControl control, LspRange range, IReadOnlyList<string>? only)
+        VimEditorControl control,
+        LspRange range,
+        IReadOnlyList<string>? only,
+        EditorDiagnosticSession session,
+        EditorDiagnosticSnapshot snapshot)
     {
         if (only is not null && only.Count > 0 &&
             !only.Any(kind =>
@@ -273,54 +358,39 @@ public partial class ShellWindow
         if (control.FilePath is not { Length: > 0 } path)
             return [];
 
-        // 起動直後はSolution Explorerが表示済みでもMSBuild評価が継続していることがある。
-        // Quick Fixをその瞬間の「候補なし」で終わらせず、短時間だけ評価完了を待つ。
-        // ただし待つのは「読み込み中」のときだけ。Ready にならない状態（対象外・失敗・
-        // プロジェクト外）で待つと、Quick Fixを押すたびに「候補を取得しています…」のまま
-        // 待たされ、ライトバルブの再要求ごとにその待ちが積み上がる。
-        var project = await WaitForProjectEvaluationAsync(path);
-        if (project is not { State: ProjectLoadState.Ready })
+        if (_solutionModel?.Current.ProjectForFile(path) is not { State: ProjectLoadState.Ready } project ||
+            !string.Equals(Path.GetFullPath(snapshot.FilePath), Path.GetFullPath(path), StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(control.Text, snapshot.Text, StringComparison.Ordinal) ||
+            !session.TryGetCurrent(path, snapshot.Text, out var current) ||
+            current.SnapshotId != snapshot.SnapshotId)
             return [];
 
-        // StyleCop の診断は、LSP が返す環境と Loomo.CSharp のフォールバックが返す環境がある。
-        // CodeFix はどちらの診断でも同じ公式 StyleCop DLLへ委譲できるため、Quick Fixでは
-        // 両方を候補源にする（表示時の重複は診断マージ側で抑制される）。
-        var diagnostics = (_styleCopResults.GetValueOrDefault(control) ?? [])
-            .Concat(EditorLspDiagnostics(control))
-            .GroupBy(d => $"{d.Code}|{d.Range.Start.Line}|{d.Range.Start.Character}|" +
-                          $"{d.Range.End.Line}|{d.Range.End.Character}", StringComparer.OrdinalIgnoreCase)
-            .Select(group => group.First())
-            .ToArray();
-        var candidates = diagnostics.Where(d => d.Code?.StartsWith("SA", StringComparison.OrdinalIgnoreCase) == true)
+        // 確定済みスナップショットに含まれるStyleCop診断だけから候補を作る。
+        var candidates = snapshot.Entries.Select(entry => entry.Diagnostic)
+            .Where(d => d.Code?.StartsWith("SA", StringComparison.OrdinalIgnoreCase) == true)
             .Where(d => IsInRange(d.Range, range)).ToArray();
-
-        // 解析のdebounce中にユーザーがQuick Fixを押しても、キャッシュが空のまま
-        // 「候補なし」にならないよう、StyleCop診断をその場の本文で再確認する。
-        // 公式Analyzerを正本にするため、ここでもルールを再実装しない。
-        if (candidates.Length == 0 && _styleCopCodeFix.IsAvailable(project))
-        {
-            var analysis = await _styleCopDiagnostics.AnalyzeAsync(
-                project, path, control.Text, cancellationToken: default,
-                openTexts: FindOpenCSharpEditorTexts());
-            if (analysis.Error is null)
-            {
-                _styleCopResults[control] = analysis.Diagnostics;
-                RefreshStyleCopPresentation(control);
-                candidates = analysis.Diagnostics
-                    .Where(d => d.Code?.StartsWith("SA", StringComparison.OrdinalIgnoreCase) == true)
-                    .Where(d => IsInRange(d.Range, range)).ToArray();
-            }
-        }
-        if (candidates.Length == 0) return [];
+        if (candidates.Length == 0 || !_styleCopCodeFix.IsAvailable(project))
+            return [];
 
         var actions = new List<LspCodeAction>();
+        var version = snapshot.Version;
+        var diagnosticSnapshotId = snapshot.SnapshotId;
+        var fixClock = Stopwatch.StartNew();
         foreach (var diagnostic in candidates)
         {
-            var result = await _styleCopCodeFix.ApplyAsync(project, path, control.Text, diagnostic);
+            if (session.Version != version || session.SnapshotId != diagnosticSnapshotId ||
+                !string.Equals(control.Text, snapshot.Text, StringComparison.Ordinal))
+                return [];
+            var result = await _styleCopCodeFix.ApplyAsync(project, path, snapshot.Text, diagnostic);
             if (result.Edit is not { } edit || result.Error is not null) continue;
             actions.Add(new LspCodeAction(result.Title ?? $"{diagnostic.Code}を修正",
                 LspCodeActionKinds.QuickFix, edit, IsPreferred: true));
         }
+        RefactorDebugLog.Write(
+            $"quickfix host StyleCop-fix file={path} elapsed={fixClock.ElapsedMilliseconds}ms candidates={candidates.Length} actions={actions.Count}");
+        if (session.Version != version || session.SnapshotId != diagnosticSnapshotId ||
+            !string.Equals(control.Text, snapshot.Text, StringComparison.Ordinal))
+            return [];
         return actions;
     }
 
@@ -343,20 +413,47 @@ public partial class ShellWindow
             return await RequestCSharpCompilerFixAllAsync(control, path);
         }
 
-        var styleCop = await RequestStyleCopQuickFixesAsync(control, range, only);
-        var compiler = await sk0ya.Loomo.CSharp.Configuration.CSharpCompilerCodeFixService.GetAsync(
-            _solutionModel?.Current, path, control.Text, range, only,
+        var source = control.Text;
+        var session = EnsureCSharpDiagnosticAnalysisScheduled(control, path, source);
+        var version = session.Version;
+        var snapshot = session.TryGetCurrent(path, source, out var current) ? current : null;
+        if (snapshot is null)
+            return [];
+
+        var styleClock = Stopwatch.StartNew();
+        var styleCop = await RequestStyleCopQuickFixesAsync(control, range, only, session, snapshot);
+        RefactorDebugLog.Write(
+            $"quickfix host StyleCop file={path} elapsed={styleClock.ElapsedMilliseconds}ms actions={styleCop.Count}");
+        if (session.Version != version || session.SnapshotId != snapshot.SnapshotId ||
+            !string.Equals(control.Text, source, StringComparison.Ordinal))
+            return [];
+
+        var compilerClock = Stopwatch.StartNew();
+        var ranges = _compilerUnusedUsingVersions.GetValueOrDefault(control) == snapshot.Version
+            ? _compilerUnusedUsingRanges.GetValueOrDefault(control) ?? []
+            : [];
+        var diagnostics = ExpandUnnecessaryUsingEntries(snapshot.Entries, ranges)
+            .Select(entry => entry.Diagnostic).ToArray();
+        var snapshotId = snapshot.SnapshotId;
+        var compiler = await sk0ya.Loomo.CSharp.Configuration.CSharpCompilerCodeFixService.GetForDiagnosticsAsync(
+            _solutionModel?.Current, path, source, range, diagnostics, only,
             FindOpenCSharpEditorTexts());
-        var suppressions = (_styleCopResults.GetValueOrDefault(control) ?? [])
-            .Concat(_compilerResults.GetValueOrDefault(control) ?? [])
-            .Concat(EditorLspDiagnostics(control))
-            .Where(diagnostic => IsInRange(diagnostic.Range, range))
+        RefactorDebugLog.Write(
+            $"quickfix host compiler file={path} elapsed={compilerClock.ElapsedMilliseconds}ms actions={compiler.Count}");
+        var suppressionClock = Stopwatch.StartNew();
+        var suppressions = snapshot.Entries.Select(entry => entry.Diagnostic).Where(diagnostic => IsInRange(diagnostic.Range, range))
             .GroupBy(diagnostic => $"{diagnostic.Code}|{diagnostic.Range.Start.Line}|{diagnostic.Range.Start.Character}|" +
                                    $"{diagnostic.Range.End.Line}|{diagnostic.Range.End.Character}",
                 StringComparer.OrdinalIgnoreCase)
             .Select(group => group.First())
             .SelectMany(diagnostic => sk0ya.Loomo.CSharp.Configuration.CSharpSuppressionService.Get(
-                path, control.Text, diagnostic));
+                path, source, diagnostic))
+            .ToArray();
+        RefactorDebugLog.Write(
+            $"quickfix host suppressions file={path} elapsed={suppressionClock.ElapsedMilliseconds}ms actions={suppressions.Length}");
+        if (session.Version != version || session.SnapshotId != snapshotId ||
+            !string.Equals(control.Text, source, StringComparison.Ordinal))
+            return [];
         return styleCop.Concat(compiler).Concat(suppressions).ToArray();
     }
 
@@ -406,6 +503,44 @@ public partial class ShellWindow
                 _ => EditorDiagnosticTag.Unnecessary,
             }).ToArray());
 
+    private EditorDiagnosticSession GetDiagnosticSession(VimEditorControl control)
+    {
+        if (!_diagnosticSessions.TryGetValue(control, out var session))
+            _diagnosticSessions[control] = session = new EditorDiagnosticSession();
+        return session;
+    }
+
+    private EditorDiagnosticSession EnsureCSharpDiagnosticAnalysisScheduled(
+        VimEditorControl control, string filePath, string text)
+    {
+        var session = GetDiagnosticSession(control);
+        var snapshot = session.Presentation;
+        if (session.Version == 0 || snapshot is null || snapshot.Version != session.Version ||
+            !string.Equals(session.FilePath, Path.GetFullPath(filePath), StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(snapshot.Text, text, StringComparison.Ordinal))
+        {
+            // 入力直後にQuick Fixが開かれても、未開始の版を「診断0件」として確定させない。
+            if (Dispatcher.CheckAccess())
+                ScheduleStyleCopAnalysis(control);
+            else
+                Dispatcher.Invoke(() => ScheduleStyleCopAnalysis(control), DispatcherPriority.DataBind);
+            session = GetDiagnosticSession(control);
+        }
+        return session;
+    }
+
+    private static IReadOnlyList<EditorDiagnosticEntry> ExpandUnnecessaryUsingEntries(
+        IReadOnlyList<EditorDiagnosticEntry> entries, IReadOnlyList<LspRange> individualRanges)
+    {
+        var expanded = new List<EditorDiagnosticEntry>();
+        foreach (var entry in entries)
+        {
+            var diagnostics = CSharpDiagnosticMerger.ExpandUnnecessaryUsingGroups([entry.Diagnostic], individualRanges);
+            expanded.AddRange(diagnostics.Select(diagnostic => entry with { Diagnostic = diagnostic }));
+        }
+        return expanded;
+    }
+
     private void DisposeCSharpDiagnosticsWiring()
     {
         if (_solutionModel is not null)
@@ -416,10 +551,11 @@ public partial class ShellWindow
         foreach (var cts in _compilerAnalysisCts.Values) cts.Dispose();
         _styleCopAnalysisCts.Clear();
         _compilerAnalysisCts.Clear();
-        _styleCopResults.Clear();
-        _compilerResults.Clear();
+        foreach (var session in _diagnosticSessions.Values) session.Clear();
+        _diagnosticSessions.Clear();
         _compilerUnusedUsingRanges.Clear();
-        _vm.Debug.Problems.ClearAllStyleCopDiagnostics();
-        _vm.Debug.Problems.ClearAllCompilerDiagnostics();
+        _compilerUnusedUsingVersions.Clear();
+        _vm.Debug.Problems.ClearAllEditorDiagnostics();
+        _vm.TsIde.Problems.ClearAllEditorDiagnostics();
     }
 }

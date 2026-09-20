@@ -48,6 +48,29 @@ public sealed class CSharpCompilerCodeFixServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Snapshot_scoped_fixes_do_not_offer_another_unused_using_or_file_wide_fix()
+    {
+        var path = Write("SnapshotUnusedUsings.cs",
+            "using System.Text;\nusing System.Xml;\nclass Sample { }\n");
+        var source = await File.ReadAllTextAsync(path);
+        var solution = CreateSolution(path);
+        var firstUnusedUsing = new LspDiagnostic(
+            new LspRange(new(0, 0), new(0, "using System.Text;".Length)),
+            "Using directive is unnecessary.", DiagnosticSeverity.Warning, "Compiler", "CS8019");
+
+        var actions = await CSharpCompilerCodeFixService.GetForDiagnosticsAsync(
+            solution, path, source,
+            new LspRange(new(0, 0), new(2, source.Split('\n')[2].Length)),
+            [firstUnusedUsing]);
+
+        var action = Assert.Single(actions);
+        Assert.Equal("未使用のusingを削除", action.Title);
+        var edit = Assert.Single(action.Edit!.Changes.Values.SelectMany(edits => edits));
+        Assert.Equal("using System.Text;\n", source[ToOffset(source, edit.Range.Start)..ToOffset(source, edit.Range.End)]);
+        Assert.Equal(string.Empty, edit.NewText);
+    }
+
+    [Fact]
     public async Task Removes_only_a_single_plain_unused_local_declaration()
     {
         var path = Write("UnusedLocal.cs",
