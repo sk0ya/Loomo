@@ -54,6 +54,7 @@ public partial class GitSessionView : UserControl
         InitializeComponent();
         DataContextChanged += OnDataContextChanged;
         SetupLogColumnResize();
+        SetupLogFilter();
         // 無選択で立ち上がるので、選んだ1本に効く操作は最初から押せない状態にしておく
         UpdateBranchOpButtons();
         if (BranchList.ContextMenu is { } menu)

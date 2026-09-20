@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Linq;
 using System.Windows.Controls;
 using System.Windows.Data;
@@ -31,7 +31,7 @@ public enum GitLogKeyAction
     /// <summary>選択中のコミットの差分を出す（ダブルクリックと同じ）。</summary>
     OpenDiff,
 
-    /// <summary>ヘッダーの絞り込み欄へ移る。</summary>
+    /// <summary>一覧の上の絞り込み欄へ移る。</summary>
     FocusFilter,
 
     /// <summary>絞り込みをすべて解除する。</summary>
@@ -167,15 +167,11 @@ public partial class GitSessionView
             Key.OemQuestion or Key.Divide when !shift => new(GitLogKeyAction.FocusFilter, false),
             // 絞り込んでいないときの Esc は<b>何もしない</b>。解除は git への引き直しで、読み込み済みの
             // ページを全部捨てて先頭へ戻す＝深く手繰った場所と選択を、消すものが無いのに失う。
-            // ヘッダーの「✕ 解除」も同じ条件でしか出ない。
+            // 絞り込み帯の「✕ 解除」も同じ条件でしか出ない。
             Key.Escape when hasFilters => new(GitLogKeyAction.ClearFilter, false),
             _ => new(GitLogKeyAction.None, false),
         };
     }
-
-    /// <summary>ヘッダー（ShellWindow 側）のコミット絞り込み欄へフォーカスを移してほしい。
-    /// 絞り込み欄はペインの外に住んでいるので、ここからは触れない。</summary>
-    public event EventHandler? LogFilterFocusRequested;
 
     /// <summary>
     /// ペインへフォーカスが来たときの着地点。一覧に居ればそのままキーが効く。
@@ -226,7 +222,7 @@ public partial class GitSessionView
                 OnCommitShowDiff(sender, e);
                 break;
             case GitLogKeyAction.FocusFilter:
-                LogFilterFocusRequested?.Invoke(this, EventArgs.Empty);
+                FocusLogFilter();
                 break;
             case GitLogKeyAction.ClearFilter:
                 Vm?.History.ClearLogFiltersCommand.Execute(null);
