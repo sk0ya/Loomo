@@ -707,3 +707,17 @@ Roslyn は正しい：`src/Loomo.App/GlobalUsings.cs` に `global using System.W
 フォールバック側（`CSharpCompilerDiagnosticService`）も Roslyn の `CustomTags`／`HelpLinkUri` を
 そのまま渡すようにした。**出どころが LSP かホストかで見え方が変わらない**ことが要点で、
 `EditorDiagnostic` 側にも `HelpLink` / `Tags` を足してある。
+
+### 30.19.1 「候補がわからない」の側 —— 電球は押せていなかった
+
+もう半分の「修正候補がわからない」は、文言ではなく**押せなかった**ことだった。ホバーの電球と
+修正候補は、選択できる `FlowDocumentScrollViewer` の中に `BlockUIContainer` として埋めた
+`Border` で、**実機のマウスでは一度も押せていない**——文書の選択層がマウスを先に取るので、
+埋め込み要素には `MouseEnter` すら届かない（乗せても強調が出ないのが唯一の兆候だった）。
+当たり判定を撃つテストは通り、単体テストは `RaiseEvent` で直接叩いていたので、ずっと緑のまま
+「押せない機能」が居座っていた。**当たり判定はレイアウトの話で、入力の経路の証明にならない。**
+
+文書の中で押せるのは選択層が通す `Hyperlink` だけなので、押せる行を Hyperlink に作り替えた
+（Editor 側）。開閉は枠の色ではなく `▸`/`▾` で示す。実機確認：電球 →「💡 未使用のusingを削除」→
+編集プレビューまで到達する。診断の出どころ（`IDE0005`）も押せるリンクで、`LinkClicked` 経由で
+**ブラウザペイン**に規則の説明が開く。
