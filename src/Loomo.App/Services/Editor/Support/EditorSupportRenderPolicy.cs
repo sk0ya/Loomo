@@ -20,4 +20,20 @@ public static class EditorSupportRenderPolicy
     /// </summary>
     public static bool ShouldRender(bool onStage, bool paneVisibleInLayout, bool inThumbnail)
         => onStage || paneVisibleInLayout || inThumbnail;
+
+    /// <summary>袖／俯瞰用のミニチュアとして EditorSupport を描くか。</summary>
+    public static bool IsInThumbnail(
+        bool dockActive,
+        bool sessionEnabled,
+        bool stageActive,
+        bool overviewActive,
+        bool stagePaneIsEditorSupport,
+        bool shownInMain)
+    {
+        if (dockActive || !sessionEnabled)
+            return false;
+        if (stageActive)
+            return overviewActive || !stagePaneIsEditorSupport;
+        return !shownInMain;
+    }
 }

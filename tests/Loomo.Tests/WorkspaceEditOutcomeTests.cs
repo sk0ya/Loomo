@@ -1,4 +1,4 @@
-using sk0ya.Loomo.App.Views;
+using sk0ya.Loomo.App.Services;
 
 namespace sk0ya.Loomo.Tests;
 
@@ -9,13 +9,13 @@ public class WorkspaceEditOutcomeTests
     [Fact]
     public void 適用できたときは呼び出し側の成功文に任せる()
     {
-        Assert.Null(ShellWindow.WorkspaceEditOutcome.Ok().Describe("using整理"));
+        Assert.Null(WorkspaceEditOutcome.Ok().Describe("using整理"));
     }
 
     [Fact]
     public void 取り消しは失敗として出さない()
     {
-        var text = ShellWindow.WorkspaceEditOutcome.Cancel().Describe("using整理");
+        var text = WorkspaceEditOutcome.Cancel().Describe("using整理");
 
         Assert.Equal("「using整理」は取り消しました。", text);
         Assert.DoesNotContain("できませんでした", text);
@@ -24,7 +24,7 @@ public class WorkspaceEditOutcomeTests
     [Fact]
     public void 失敗は理由つきで出す()
     {
-        var text = ShellWindow.WorkspaceEditOutcome.Fail("ワークスペースが開かれていません。")
+        var text = WorkspaceEditOutcome.Fail("ワークスペースが開かれていません。")
             .Describe("using整理");
 
         Assert.Equal("「using整理」を適用できませんでした: ワークスペースが開かれていません。", text);

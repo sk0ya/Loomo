@@ -28,6 +28,23 @@ public sealed record PalettePreviewContent(
         new("", "", null, Array.Empty<PalettePreviewLine>(), null);
 }
 
+/// <summary>選択中のコマンドを説明するプレビュー内容を組み立てる。</summary>
+public static class PaletteCommandPreview
+{
+    public static PalettePreviewContent Create(PaletteCommand command)
+    {
+        var shortcut = string.IsNullOrEmpty(command.Shortcut)
+            ? "ショートカット: 未割当"
+            : $"ショートカット: {command.Shortcut}";
+        return new PalettePreviewContent(
+            command.Title,
+            command.Category,
+            $"{shortcut}{Environment.NewLine}{Environment.NewLine}Enter で実行・Esc で閉じる",
+            Array.Empty<PalettePreviewLine>(),
+            null);
+    }
+}
+
 /// <summary>プレビューに出す範囲の切り出し（純ロジック・テスト対象）。</summary>
 public static class PalettePreviewSlice
 {
@@ -211,5 +228,47 @@ internal static class PalettePreviewSyntax
             result[i] = at >= 0 && at < tokens.Length ? slice[i] with { Tokens = tokens[at] } : slice[i];
         }
         return result;
+    }
+}
+
+/// <summary>ナビゲーション候補の周辺ソースを peek 表示用に切り出す。</summary>
+public static class NavigationSourceReader
+{
+    /// <summary>peek一覧で使う、指定行だけの簡易プレビュー。</summary>
+    public static string ReadLine(string filePath, int line)
+    {
+        if (string.IsNullOrWhiteSpace(filePath) || line < 0) return "";
+        try { return File.ReadLines(filePath).Skip(line).FirstOrDefault()?.Trim() ?? ""; }
+        catch { return ""; }
+    }
+
+    public static string Read(string filePath, int line, int radius = 2, int maxLineCharacters = 240)
+    {
+        if (string.IsNullOrWhiteSpace(filePath) || line < 0) return "";
+        radius = Math.Clamp(radius, 0, 20);
+        maxLineCharacters = Math.Clamp(maxLineCharacters, 40, 2000);
+
+        try
+        {
+            var start = Math.Max(0, line - radius);
+            var lines = File.ReadLines(filePath).Skip(start).Take(radius * 2 + 1).ToArray();
+            if (lines.Length == 0) return "";
+
+            var builder = new StringBuilder();
+            for (var index = 0; index < lines.Length; index++)
+            {
+                var actualLine = start + index;
+                var text = lines[index].TrimEnd('\r', '\n');
+                if (text.Length > maxLineCharacters)
+                    text = text[..maxLineCharacters] + "…";
+                builder.Append(actualLine == line ? "▶" : " ")
+                    .Append($" {actualLine + 1,4}  ")
+                    .Append(text)
+                    .Append('\n');
+            }
+            return builder.ToString().TrimEnd();
+        }
+        catch (IOException) { return ""; }
+        catch (UnauthorizedAccessException) { return ""; }
     }
 }

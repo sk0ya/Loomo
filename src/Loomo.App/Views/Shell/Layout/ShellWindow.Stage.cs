@@ -2,15 +2,18 @@ namespace sk0ya.Loomo.App.Views;
 /// <summary>ShellWindow: ソロモード（舞台＋袖）。1ペインを全面の「舞台」に立て、残りのペインは 右端の「袖」でペインを VisualBrush として縮小表示する。袖カードは実コントロールを 子に持たず、元の表示を描くだけなので、袖表示のためにペインを動かさない。 レイアウトモード（タイル表示／PaneHost）とは表示の差し替えだけで切替わり、 レイアウトツリー（_root）には一切触れない — レイアウトへ戻せば元のタイル配置・比率がそのまま戻る。 「俯瞰」は全セッションをカードで一望する Exposé 風レイヤ（クリックで舞台へダイブ）。 ソロ中に <c>FocusPane</c> が呼ばれると対象が自動で舞台に立つので、AI がファイルを 開いた・差分を出した等の既存フローがそのまま「舞台の自動転換」になる。</summary>
 public partial class ShellWindow {
     private readonly StageModeCoordinator _stageMode = new();
+    private StageSurfacePresenter? _stageSurfacePresenter;
+    private StageSurfacePresenter StageSurfacePresentation
+        => _stageSurfacePresenter ??= new StageSurfacePresenter(
+            PaneHost, StageHost, StageArea, WingStrip, OverviewPanel, OverviewLayer,
+            StageThumbnailSources, StageCardPresentation, DetachPaneElementsExcept,
+            () => _stageActivityBadges.Clear(), BuildLiveSlot);
     private bool _stageActive { get => _stageMode.Active; set => _stageMode.Active = value; }
     private PaneKind _stagePane { get => _stageMode.Pane; set => _stageMode.Pane = value; }
     private bool OnStage(PaneKind kind) => _stageMode.IsOnStage(kind);
     private bool _overviewActive { get => _stageMode.Overview; set => _stageMode.Overview = value; }
     private DispatcherTimer? _stageResizeTimer;
     private Size _stageBuiltSize;
-    private readonly Dictionary<PaneKind, Grid> _stageThumbnailHosts = new();
-    private readonly Dictionary<PaneKind, ImageBrush> _webThumbnailBrushes = new();
-    private readonly Dictionary<PaneKind, int> _webThumbnailCaptureSequences = new();
     private HashSet<PaneKind> _enabledSessions => _stageMode.EnabledSessions;
     /// <summary>袖で選択中のタブ（メイン／サブ／すべて）。所属は固定
     /// （<see cref="StageModeCoordinator.MainGroup"/>）で、切り替えるのは「どれを見るか」だけ。</summary>
@@ -29,20 +32,6 @@ public partial class ShellWindow {
     private double _wingWidth = DefaultWingWidth;
     private bool _isWingCollapsed;
     private double EffectiveWingWidth => _isWingCollapsed ? CollapsedWingWidth : _wingWidth;
-    private Point _wingDragStart;
-    private bool _wingDragArmed;
-    private static readonly PaneKind[] StageOrder =
-    [
-        PaneKind.Editor, PaneKind.Terminal, PaneKind.Browser, PaneKind.EditorSupport, PaneKind.Git, PaneKind.Diff, PaneKind.Ai, PaneKind.Debug, PaneKind.TsIde, PaneKind.Search, PaneKind.Files,
-    ];
-    /// <summary>新規ワークスペース（保存された有効セッションが無いとき）に部屋へ出しておくペイン。
-    /// <see cref="StageOrder"/> は「並び順」であって「既定の顔ぶれ」ではない——全部入りだと集中モードの
-    /// 袖が初手から11枚になる。IDE / TS IDE / AI / 検索 / ファイル一覧は用があるときに呼ぶ面なので外す
-    /// （ビュー・スイッチャーの目のトグル、コマンドパレット、AI へ送る等の導線から出せる）。</summary>
-    private static readonly PaneKind[] DefaultEnabledSessions =
-    [
-        PaneKind.Editor, PaneKind.Terminal, PaneKind.Browser, PaneKind.EditorSupport, PaneKind.Git, PaneKind.Diff,
-    ];
     private void OnToggleStageMode(object sender, RoutedEventArgs e) => ToggleDisplayMode();
     /// <summary>いまの表示モード。3択（集中／分割／ドック）の唯一の導出点で、
     /// <c>_stageActive</c>／<c>_dockActive</c> の組から判断する場所をここ以外に作らない。</summary>
@@ -50,11 +39,6 @@ public partial class ShellWindow {
         => _stageActive ? DisplayMode.Solo : _dockActive ? DisplayMode.Dock : DisplayMode.Layout;
     /// <summary>表示モードの UI 名。「表示」は付けない——ヘッダーやセグメントでは常にモード名として
     /// 並ぶので、両方に付くと字数だけ増えて読み分けの助けにならない。</summary>
-    private static string DisplayModeName(DisplayMode mode) => mode switch {
-        DisplayMode.Solo => "集中",
-        DisplayMode.Dock => "ドック",
-        _ => "分割",
-    };
     // モード切替は「まだ選んでいる途中」の操作（切り替えてからメイン画面を選び直すことが多い）なので
     // ポップアップは閉じず、中身だけ作り直す。閉じるのは行き先を決める操作（メイン画面・配置）だけ。
     private void OnChooseConcentratedMode(object sender, RoutedEventArgs e) {
@@ -93,11 +77,9 @@ public partial class ShellWindow {
     private void EnterStageMode(PaneKind? pane) {
         if (_dockActive)
             ExitDockMode();   // 舞台と袖なしのドックは同時に成り立たない
-        var selectedPane = pane is { } requested && _paneElements.ContainsKey(requested)
-            ? requested
-            : _focusedRegion?.Pane
-            ?? AllLeaves().FirstOrDefault(l => !l.Hidden)?.Kind
-            ?? PaneKind.Editor;
+        var selectedPane = StageModeCoordinator.ResolvePane(
+            [pane, _focusedRegion?.Pane, AllLeaves().FirstOrDefault(l => !l.Hidden)?.Kind],
+            _paneElements.ContainsKey);
         if (!_stageMode.Enter(selectedPane))
             return;
         _zoomedPane = null;
@@ -115,15 +97,7 @@ public partial class ShellWindow {
             return;
         StageHost.SizeChanged -= OnStageHostSizeChanged;
         _stageResizeTimer?.Stop();
-        DetachPaneElements();
-        StageArea.Children.Clear();
-        WingStrip.Children.Clear();
-        OverviewPanel.Children.Clear();
-        ClearThumbnailSources();
-        OverviewLayer.Visibility = Visibility.Collapsed;
-        StageHost.Visibility = Visibility.Collapsed;
-        PaneHost.Opacity = 1;
-        PaneHost.IsHitTestVisible = true;
+        StageSurfacePresentation.Clear();
         UpdateModeButtons();
     }
     private void PrepareStageSnapshot(bool solo, StageSnapshot? snapshot) {
@@ -133,11 +107,10 @@ public partial class ShellWindow {
         if (!solo)
             return;
         snapshot ??= StageSnapshot.Default();
-        var restoredPane = snapshot.Pane is { } requested && _paneElements.ContainsKey(requested)
-            && (requested != PaneKind.Debug || _idePaneApplicable)
-            && (requested != PaneKind.TsIde || _tsIdePaneApplicable)
-            ? requested
-            : PaneKind.Editor;
+        var restoredPane = StageModeCoordinator.ResolvePane(
+            [snapshot.Pane], pane => _paneElements.ContainsKey(pane)
+                && (pane != PaneKind.Debug || _idePaneApplicable)
+                && (pane != PaneKind.TsIde || _tsIdePaneApplicable));
         _stageMode.Restore(active: true, overview: snapshot.Overview, pane: restoredPane);
         _zoomedPane = null;
         PaneHost.Opacity = 0;
@@ -162,15 +135,7 @@ public partial class ShellWindow {
             return;
         StageHost.SizeChanged -= OnStageHostSizeChanged;
         _stageResizeTimer?.Stop();
-        DetachPaneElements();
-        StageArea.Children.Clear();
-        WingStrip.Children.Clear();
-        OverviewPanel.Children.Clear();
-        ClearThumbnailSources();
-        OverviewLayer.Visibility = Visibility.Collapsed;
-        StageHost.Visibility = Visibility.Collapsed;
-        PaneHost.Opacity = 1;
-        PaneHost.IsHitTestVisible = true;
+        StageSurfacePresentation.Clear();
         UpdateModeButtons();
         RebuildPaneLayout();
         FocusPane(_stagePane);
@@ -198,26 +163,15 @@ public partial class ShellWindow {
             CycleLayout(direction);
     }
     private void CycleStage(int direction) {
-        var index = Array.IndexOf(StageOrder, _stagePane);
-        var next = StageOrder[((index < 0 ? 0 : index) + direction + StageOrder.Length) % StageOrder.Length];
+        var next = StageModeCoordinator.CyclePane(StageModeCoordinator.StageOrder, _stagePane, direction);
         SetStagePane(next);
         FocusPane(next);
     }
-    private void DetachPaneElements() => DetachPaneElementsExcept(Array.Empty<PaneKind>());
     /// <summary>ペインを現在の親から外す。<paramref name="keep"/>（＝袖ミニチュアに据え置くもの）は触らない。</summary>
     private void DetachPaneElementsExcept(IReadOnlyCollection<PaneKind> keep) {
         foreach (var (kind, element) in _paneElements)
             if (!keep.Contains(kind) && element.Parent is Panel parent)
                 parent.Children.Remove(element);
-    }
-    private Size StageVirtualSize() {
-        if (StageArea.ActualWidth > 0 && StageArea.ActualHeight > 0)
-            return new Size(StageArea.ActualWidth, StageArea.ActualHeight);
-        var hostW = StageHost.ActualWidth > 0 ? StageHost.ActualWidth : PaneHost.ActualWidth;
-        var hostH = StageHost.ActualHeight > 0 ? StageHost.ActualHeight : PaneHost.ActualHeight;
-        return new Size(
-            Math.Max(hostW - EffectiveWingWidth - 16, 480), // 16 ≒ StageArea の左右マージン
-            Math.Max(hostH - 18, 320));                      // 18 ≒ 上下マージン
     }
     private void SetWingWidth(double width) {
         _wingWidth = Math.Clamp(width, MinWingWidth, MaxWingWidth);
@@ -254,7 +208,7 @@ public partial class ShellWindow {
     private void RebuildStageIfResized() {
         if (!_stageActive || _paneSplitterDragging)
             return;
-        var size = StageVirtualSize();
+        var size = StageSurfacePresentation.VirtualSize(EffectiveWingWidth);
         if (Math.Abs(size.Width - _stageBuiltSize.Width) > 1
             || Math.Abs(size.Height - _stageBuiltSize.Height) > 1)
             RebuildStage();
@@ -270,29 +224,17 @@ public partial class ShellWindow {
         return IsPaneVisible(kind);
     }
     private void LoadEnabledSessions(IEnumerable<PaneKind>? enabled) {
-        _enabledSessions.Clear();
-        if (enabled is not null)
-            foreach (var kind in enabled)
-                if (_paneElements.ContainsKey(kind))
-                    _enabledSessions.Add(kind);
-        if (_enabledSessions.Count == 0)
-            foreach (var kind in DefaultEnabledSessions)
-                _enabledSessions.Add(kind);
-        if (!_idePaneApplicable)
-            _enabledSessions.Remove(PaneKind.Debug);
-        if (!_tsIdePaneApplicable)
-            _enabledSessions.Remove(PaneKind.TsIde);
+        _stageMode.LoadEnabledSessions(enabled, _paneElements.Keys, StageModeCoordinator.DefaultEnabledSessions);
     }
     private void OnWingTabClick(object sender, RoutedEventArgs e) {
         if (sender is FrameworkElement { Tag: string tag } && Enum.TryParse<WingTab>(tag, out var tab))
             SelectWingTab(tab);
     }
     private void SelectWingTab(WingTab tab) {
-        if (_activeWingTab == tab) {
+        if (!_stageMode.SelectWingTab(tab)) {
             UpdateWingTabs();   // 選択中のタブを押しても選択は外れない（ToggleButton の解除を戻す）
             return;
         }
-        _activeWingTab = tab;
         UpdateWingTabs();       // レイアウトモードの袖組み直しは ContextIdle 送りなので、印だけ先に合わせる
         RebuildSessionsView();
     }
@@ -303,21 +245,13 @@ public partial class ShellWindow {
         RefreshOpenPaneMenu();   // 行の集合が変わるので、開いていれば作り直す
     }
     private void ToggleSessionEnabled(PaneKind kind) {
-        if (_enabledSessions.Contains(kind)) {
-            if (IsPaneVisible(kind)) {
-                SetPaneVisible(kind, false);
-                if (IsPaneVisible(kind))
-                    return;
-            }
-            _enabledSessions.Remove(kind);
+        if (_stageMode.ToggleEnabledSession(
+                kind,
+                () => IsPaneVisible(kind),
+                () => SetPaneVisible(kind, false),
+                () => FindLeaf(kind) is { Hidden: true },
+                () => SetPaneVisible(kind, true)))
             RebuildSessionsView();
-        } else {
-            _enabledSessions.Add(kind);
-            if (FindLeaf(kind) is { Hidden: true })
-                SetPaneVisible(kind, true);
-            else
-                RebuildSessionsView();
-        }
     }
     private void RebuildSessionsView() {
         UpdatePaneToggleStates();
@@ -330,7 +264,8 @@ public partial class ShellWindow {
         }
         SaveActiveWorkspaceSnapshot();
     }
-    private IEnumerable<PaneKind> OverviewKinds() => StageOrder.Where(k => IsSessionEnabled(k) || OnStage(k));
+    private IEnumerable<PaneKind> OverviewKinds()
+        => StageModeCoordinator.StageOrder.Where(k => IsSessionEnabled(k) || OnStage(k));
     private void RebuildStage() {
         PaneLayoutDebugLog.Time("RebuildStage", RebuildStageCore);
         UpdateEditorSupportFileWatch();   // 舞台・袖の入れ替えで見え方が変わる（§24.8）
@@ -339,25 +274,22 @@ public partial class ShellWindow {
     private void RebuildStageCore() {
         if (!_stageActive)
             return;
-        var virtualSize = StageVirtualSize();
+        var virtualSize = StageSurfacePresentation.VirtualSize(EffectiveWingWidth);
         _stageBuiltSize = virtualSize;
         // 袖ミニチュアは差分で寄せる（据え置けるものは親の付け替えもレイアウトも走らせない）。
         // 舞台・俯瞰へ出すペインだけを親から外す。
-        SyncThumbnailSources(
-            (_overviewActive ? OverviewKinds().ToList() : WingKinds()),
-            StageThumbnailPlanner.SourceSize(virtualSize.Width, CardAspect));
-        DetachPaneElementsExcept(_stageThumbnailHosts.Keys);
-        StageArea.Children.Clear();
-        OverviewPanel.Children.Clear();
-        _stageActivityBadges.Clear();
-        if (_overviewActive) {
-            OverviewLayer.Visibility = Visibility.Visible;
-            foreach (var kind in OverviewKinds())
-                OverviewPanel.Children.Add(BuildSessionCard(kind, OverviewCardWidth, isOverview: true));
-        } else {
-            OverviewLayer.Visibility = Visibility.Collapsed;
-            StageArea.Children.Add(BuildLiveSlot(_stagePane));
-        }
+        IReadOnlyCollection<PaneKind> overviewKinds = _overviewActive
+            ? OverviewKinds().ToList()
+            : Array.Empty<PaneKind>();
+        IReadOnlyCollection<PaneKind> thumbnailKinds = _overviewActive ? overviewKinds : WingKinds();
+        StageSurfacePresentation.Rebuild(new StageSurfaceState(
+            _overviewActive,
+            _stagePane,
+            thumbnailKinds,
+            overviewKinds,
+            StageThumbnailPlanner.SourceSize(virtualSize.Width, CardAspect),
+            OverviewCardWidth,
+            kind => { SetStagePane(kind); FocusPane(kind); }));
         RebuildWings();
         UpdatePaneToggleStates();
         UpdateWingHostVisibility();
@@ -365,15 +297,12 @@ public partial class ShellWindow {
     }
     private void OnToggleOverview(object sender, RoutedEventArgs e) => ToggleOverview();
     private void ToggleOverview() {
-        if (!_stageActive)
+        if (!_stageMode.ToggleOverview())
             return;
-        _overviewActive = !_overviewActive;
         RebuildStage();
     }
     private void OnOverviewBackgroundClick(object sender, MouseButtonEventArgs e) {
-        if (_overviewActive) {
-            _overviewActive = false;
+        if (_stageMode.CloseOverview())
             RebuildStage();
-        }
     }
 }

@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Windows;
@@ -9,36 +8,36 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
+using sk0ya.Loomo.App.Services.Infrastructure;
 using sk0ya.Loomo.App.ViewModels;
 
 namespace sk0ya.Loomo.App.Views;
 
 public partial class FolderTreeView : UserControl
 {
-    // gg（先頭へ）の 1 つ目の g を受け取った状態。
-    private bool _pendingG;
-
-    // Explorer と同じ type-ahead 選択。キー入力が途切れたら次の入力を新しい検索にする。
-    private string _typeAheadText = string.Empty;
-    private readonly DispatcherTimer _typeAheadResetTimer =
-        new() { Interval = TimeSpan.FromMilliseconds(800) };
-
-    // キーボード移動（j/k・矢印・gg/G）で選択が変わったときのプレビュー。押しっぱなしのキーリピートで
-    // 通り過ぎる行まで読み込むと重いので、少し落ち着いてから「そのとき選択されている行」を開く。
-    private readonly DispatcherTimer _selectionPreviewTimer =
-        new() { Interval = TimeSpan.FromMilliseconds(120) };
-
-    // プログラムからの選択（エディタの現在ファイル同期・ドロップ後の表示）では自動プレビューしない。
-    private bool _suppressSelectionPreview;
-    private CancellationTokenSource? _zipOperationCts;
-
-    // ワークスペース復元で選ばれたノード。コンテナ生成が後になると SelectedItemChanged も遅れて届くため、
-    // フラグではなく「どのノードの選択か」で見分けてプレビューを開かない。
-    private FileNodeViewModel? _restoredSelection;
+    private readonly FolderTreeFileOperationSession _fileOperations = new();
+    private readonly FolderTreeKeyboardController _keyboardController;
+    private readonly FolderTreeSelectionInteractionController _selectionInteraction;
 
     public FolderTreeView()
     {
         InitializeComponent();
+        _keyboardController = new FolderTreeKeyboardController(new FolderTreeKeyboardActions(
+            CurrentSelection,
+            SelectAllVisibleNodes,
+            PasteInto,
+            DuplicateNodes,
+            undo => { if (undo) UndoFileOperation(); else RedoFileOperation(); },
+            OpenSelectedContextMenu,
+            ClearMultiSelection,
+            MoveVisibleSelection,
+            (tree, key) => RaiseKey(tree, key),
+            Activate,
+            GoToEdge,
+            RenameNode,
+            DeleteNodes));
+        _selectionInteraction = new FolderTreeSelectionInteractionController(
+            FileTree, () => DataContext as FolderTreeViewModel, ClearMultiSelection);
         DataContextChanged += (_, e) =>
         {
             if (e.OldValue is FolderTreeViewModel oldVm)
@@ -48,18 +47,9 @@ public partial class FolderTreeView : UserControl
         };
         Unloaded += (_, _) =>
         {
-            CancelPropertiesLoad();
-            _zipOperationCts?.Cancel();
-        };
-        _selectionPreviewTimer.Tick += (_, _) =>
-        {
-            _selectionPreviewTimer.Stop();
-            PreviewSelectedNode();
-        };
-        _typeAheadResetTimer.Tick += (_, _) =>
-        {
-            _typeAheadResetTimer.Stop();
-            _typeAheadText = string.Empty;
+            _fileOperations.CancelPending();
+            _selectionInteraction.StopPendingSelectionPreview();
+            _selectionInteraction.StopTypeAheadTimer();
         };
     }
 
@@ -68,53 +58,7 @@ public partial class FolderTreeView : UserControl
     /// 側の実装）ので、必ず項目コンテナへ入れる。パネルを開いた直後はコンテナがまだ生成されて
     /// いないことがあるため、その場合はレイアウト確定後にもう一度試す。</summary>
     public void FocusTree()
-    {
-        if (FocusCurrentItem())
-            return;
-
-        FileTree.Focus();
-        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() => FocusCurrentItem()));
-    }
-
-    // 選択中（無ければ先頭を選んで）の項目コンテナへキーボードフォーカスを入れる。
-    // コンテナが未生成などで入れられなければ false。
-    private bool FocusCurrentItem()
-    {
-        if (!FileTree.IsVisible || FileTree.Items.Count == 0)
-            return false;
-
-        if (FileTree.SelectedItem is FileNodeViewModel selected)
-            return FindContainer(FileTree, selected) is { } container && container.Focus();
-
-        if (FileTree.ItemContainerGenerator.ContainerFromIndex(0) is not TreeViewItem first)
-            return false;
-
-        first.IsSelected = true;
-        return first.Focus();
-    }
-
-    /// <summary>プレビュー表示（ActivateEditorTab → PaneSplitView.FocusFocused）でエディタへ
-    /// 同期的に奪われたキーボードフォーカスをツリーへ戻す。単クリックのプレビューは「まだツリーを
-    /// 操作している」状態なので、続けて j/k や次のクリックで選択を送れるようにする（ダブルクリック／
-    /// Enter の明示的な Activate は対象外＝そのままエディタへ移る）。読み込み直しなどが非同期に走って
-    /// あとからフォーカスを奪い返すことがあるため、アイドル時にもう一度確認する
-    /// （SearchPanelView.RestoreResultTreeFocus と同じ手当て）。</summary>
-    private void RestoreTreeFocus(FileNodeViewModel node)
-    {
-        FocusNode(node);
-        Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(() => FocusNode(node)));
-    }
-
-    private void FocusNode(FileNodeViewModel node)
-    {
-        if (FileTree.IsKeyboardFocusWithin)
-            return;
-
-        if (FindContainer(FileTree, node) is { } container)
-            container.Focus();
-        else
-            FileTree.Focus();
-    }
+        => _selectionInteraction.FocusTree();
 
     // 「フォルダーをワークスペースに追加」ボタン。選んだフォルダーをマルチルートワークスペースへ
     // 追加する（既存フォルダーと同一・祖先/子孫関係のときは ViewModel 側で無視される）。
@@ -138,7 +82,7 @@ public partial class FolderTreeView : UserControl
         // 「変更のみ表示」でディレクトリ配下にネストした変更ファイルではディレクトリの
         // コンテナが返り、IsDirectory 判定で弾かれてしまう。クリック位置から最も近い
         // TreeViewItem をビジュアルツリーを遡って取得する。
-        var item = FindAncestorTreeViewItem(source);
+        var item = WpfTreeTraversal.FindAncestor<TreeViewItem>(source);
         if (item?.DataContext is not FileNodeViewModel node || node.IsDirectory)
             return;
 
@@ -147,20 +91,6 @@ public partial class FolderTreeView : UserControl
             vm.NotifyActivated(node.FullPath);
             e.Handled = true;
         }
-    }
-
-    private static TreeViewItem? FindAncestorTreeViewItem(DependencyObject source)
-        => FindAncestor<TreeViewItem>(source);
-
-    private static T? FindAncestor<T>(DependencyObject source) where T : DependencyObject
-    {
-        var current = source;
-        while (current is not null and not T)
-            current = current is Visual or System.Windows.Media.Media3D.Visual3D
-                ? VisualTreeHelper.GetParent(current)
-                : LogicalTreeHelper.GetParent(current);
-
-        return current as T;
     }
 
     // 1 クリック操作：フォルダ行は開閉（クリックした階層だけをトグルし、配下は遅延読込の
@@ -172,7 +102,7 @@ public partial class FolderTreeView : UserControl
         if (e.ClickCount != 1 || e.OriginalSource is not DependencyObject source)
             return;
 
-        if (FindAncestor<ToggleButton>(source) is not null)
+        if (WpfTreeTraversal.FindAncestor<ToggleButton>(source) is not null)
             return;
 
         // Ctrl/Shift+クリックは複数選択の操作なので、フォルダ開閉・ファイルのプレビュー表示は
@@ -180,7 +110,7 @@ public partial class FolderTreeView : UserControl
         if ((Keyboard.Modifiers & (ModifierKeys.Control | ModifierKeys.Shift)) != 0)
             return;
 
-        if (FindAncestorTreeViewItem(source)?.DataContext is not FileNodeViewModel node)
+        if (WpfTreeTraversal.FindAncestor<TreeViewItem>(source)?.DataContext is not FileNodeViewModel node)
             return;
 
         if (node.IsDirectory)
@@ -189,7 +119,7 @@ public partial class FolderTreeView : UserControl
         {
             vm.NotifyPreviewRequested(node.FullPath);
             // プレビューでエディタがフォーカスを奪うため、ツリーへ戻して選択操作を続けられるようにする。
-            RestoreTreeFocus(node);
+            _selectionInteraction.RestoreFocusAfterPreview(node);
         }
     }
 
@@ -198,48 +128,12 @@ public partial class FolderTreeView : UserControl
     /// <see cref="OnTreeMouseLeftButtonUp"/> 側が出すので二重に開かない。右クリック（メニューを出すための
     /// 選択）でも開かない。</summary>
     private void OnTreeSelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
-    {
-        if (_restoredSelection is not null && ReferenceEquals(e.NewValue, _restoredSelection))
-        {
-            _restoredSelection = null;
-            return;
-        }
-
-        if (_suppressSelectionPreview
-            || Mouse.LeftButton == MouseButtonState.Pressed
-            || Mouse.RightButton == MouseButtonState.Pressed)
-            return;
-
-        // 移動中は据え置き、止まったところの行を開く（Start だけでは再スタートしない）。
-        _selectionPreviewTimer.Stop();
-        _selectionPreviewTimer.Start();
-    }
+        => _selectionInteraction.OnSelectedItemChanged(e.NewValue);
 
     // 復元された選択は「見せるだけ」：プレビューもフォーカス移動もせず、展開したコンテナの生成・
     // レイアウト確定を待ってから縦方向に見える位置へスクロールする。
     private void OnSelectionRestored(object? sender, FileNodeViewModel node)
-    {
-        _restoredSelection = node;
-        Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
-        {
-            if (ReferenceEquals(FileTree.SelectedItem, node))
-                _restoredSelection = null;   // 選択変更は届き済み（取り残すと次の同一ノード選択を黙らせる）
-            if (node.IsSelected)
-                FindContainer(FileTree, node)?.BringIntoView();
-        }));
-    }
-
-    private void PreviewSelectedNode()
-    {
-        if (FileTree.SelectedItem is not FileNodeViewModel { IsDirectory: false } node
-            || DataContext is not FolderTreeViewModel vm)
-            return;
-
-        var hadFocus = FileTree.IsKeyboardFocusWithin;
-        vm.NotifyPreviewRequested(node.FullPath);
-        if (hadFocus)
-            RestoreTreeFocus(node);
-    }
+        => _selectionInteraction.OnSelectionRestored(node);
 
     // Vim 風キーボード操作:
     //   j/k 上下移動、h 折りたたみ/親へ、l 展開/ファイルを開く、gg 先頭、G 末尾。
@@ -252,178 +146,19 @@ public partial class FolderTreeView : UserControl
         // PreviewKeyDown で標準の入力・選択操作を奪わない。アドレスバーはツリー外だが、
         // このガードは同じ PreviewKeyDown の経路に追加された子コントロールにも効く。
         if (e.OriginalSource is DependencyObject source
-            && (FindAncestor<TextBoxBase>(source) is not null
-                || FindAncestor<ComboBox>(source) is not null
-                || FindAncestor<PasswordBox>(source) is not null))
+            && (WpfTreeTraversal.FindAncestor<TextBoxBase>(source) is not null
+                || WpfTreeTraversal.FindAncestor<ComboBox>(source) is not null
+                || WpfTreeTraversal.FindAncestor<PasswordBox>(source) is not null))
             return;
 
-        // gg 判定用。g 以外のキーが来たらプレフィックス状態を解除する。
-        var wasPendingG = _pendingG;
-        _pendingG = false;
-
-        // Ctrl+A/C/X/V/D は全選択／コピー／切り取り／貼り付け／複製、Ctrl+Z/Ctrl+Shift+Z/Ctrl+Y はファイル操作の
-        // 元に戻す／やり直す（下の Ctrl 早期 return より前で処理する）。
-        if ((e.KeyboardDevice.Modifiers & ModifierKeys.Control) != 0
-            && (e.KeyboardDevice.Modifiers & (ModifierKeys.Alt | ModifierKeys.Windows)) == 0)
-        {
-            var node = tree.SelectedItem as FileNodeViewModel;
-            switch (e.Key)
-            {
-                case Key.A:
-                    SelectAllVisibleNodes();
-                    e.Handled = true;
-                    return;
-                case Key.C:
-                    FileClipboard.SetFiles(CurrentSelection(node).Where(n => !n.IsShellItem).Select(n => n.FullPath), move: false);
-                    e.Handled = true;
-                    return;
-                case Key.X:
-                    FileClipboard.SetFiles(CurrentSelection(node).Where(n => !n.IsShellItem).Select(n => n.FullPath), move: true);
-                    e.Handled = true;
-                    return;
-                case Key.V:
-                    PasteInto(node);
-                    e.Handled = true;
-                    return;
-                case Key.D:
-                    DuplicateNodes(CurrentSelection(node));
-                    e.Handled = true;
-                    return;
-                // エディタの Undo とは別系統。ツリーにフォーカスがある間だけ、ファイル操作
-                // （作成・名前の変更・移動・コピー・削除）の履歴を 1 手ずつ戻す／進める。
-                case Key.Z:
-                    if ((e.KeyboardDevice.Modifiers & ModifierKeys.Shift) != 0)
-                        RedoFileOperation();
-                    else
-                        UndoFileOperation();
-                    e.Handled = true;
-                    return;
-                case Key.Y:
-                    RedoFileOperation();
-                    e.Handled = true;
-                    return;
-            }
-        }
-
-        // Ctrl/Alt/Win 付きの組み合わせは対象外。上位（ウィンドウ）のショートカットへ通す。
-        // Shift は N（前のヒット）や G（末尾）の判定に使うので許容する。
-        if ((e.KeyboardDevice.Modifiers & (ModifierKeys.Control | ModifierKeys.Alt | ModifierKeys.Windows)) != 0)
-            return;
-
-        if (e.Key == Key.F10 && (e.KeyboardDevice.Modifiers & ModifierKeys.Shift) != 0)
-        {
-            OpenSelectedContextMenu(tree);
+        if (_keyboardController.HandleKeyDown(tree, e, _multiSelection.Count > 0))
             e.Handled = true;
-            return;
-        }
-
-        // 素の移動キーは複数選択を解除して単一選択のキーボード移動へ戻す（Explorer 等と同じ）。
-        // TreeView が処理する矢印／ページ移動もここで先に解除する。Delete/F2/Escape は現在の複数選択を
-        // 活かしたいので対象外。
-        if (_multiSelected.Count > 0 && e.Key is
-            Key.J or Key.K or Key.H or Key.L or Key.Enter or Key.G
-            or Key.Up or Key.Down or Key.Left or Key.Right or Key.Home or Key.End
-            or Key.PageUp or Key.PageDown)
-            ClearMultiSelection();
-
-        switch (e.Key)
-        {
-            case Key.J:
-                MoveVisibleSelection(tree, delta: 1);
-                e.Handled = true;
-                break;
-
-            case Key.K:
-                MoveVisibleSelection(tree, delta: -1);
-                e.Handled = true;
-                break;
-
-            case Key.H:
-                // 展開中ディレクトリは折りたたみ、それ以外は親へフォーカス（標準の Left 挙動）。
-                RaiseKey(tree, Key.Left);
-                e.Handled = true;
-                break;
-
-            case Key.L:
-            case Key.Enter:
-                if (tree.SelectedItem is FileNodeViewModel { IsDirectory: false } file)
-                    Activate(file);
-                else
-                    // 折りたたみ中ディレクトリは展開、展開中なら最初の子へ（標準の Right 挙動）。
-                    RaiseKey(tree, Key.Right);
-                e.Handled = true;
-                break;
-
-            case Key.G:
-                if ((e.KeyboardDevice.Modifiers & ModifierKeys.Shift) != 0)
-                    GoToEdge(last: true);          // G で末尾へ
-                else if (wasPendingG)
-                    GoToEdge(last: false);         // gg で先頭へ
-                else
-                    _pendingG = true;              // 1 つ目の g
-                e.Handled = true;
-                break;
-
-            case Key.Home:
-                GoToEdge(last: false);
-                e.Handled = true;
-                break;
-
-            case Key.End:
-                GoToEdge(last: true);
-                e.Handled = true;
-                break;
-
-            case Key.F2:
-                RenameNode(tree.SelectedItem as FileNodeViewModel);
-                e.Handled = true;
-                break;
-
-            case Key.Delete:
-                DeleteNodes(CurrentSelection(tree.SelectedItem as FileNodeViewModel));
-                e.Handled = true;
-                break;
-        }
     }
 
     // ツリーへの直接の文字入力は Explorer の type-ahead 選択として扱う。j/k/g などは
     // KeyDown 側で Vim 操作として処理されるため、ここには通常の文字入力だけが届く。
     private void OnTreePreviewTextInput(object sender, TextCompositionEventArgs e)
-    {
-        if (sender is not TreeView tree
-            || DataContext is not FolderTreeViewModel vm
-            || string.IsNullOrEmpty(e.Text)
-            || (Keyboard.Modifiers & (ModifierKeys.Control | ModifierKeys.Alt | ModifierKeys.Windows)) != 0)
-            return;
-
-        var visible = VisibleNodes(vm.Nodes).ToList();
-        if (visible.Count == 0)
-            return;
-
-        _typeAheadResetTimer.Stop();
-        _typeAheadText += e.Text;
-        var current = tree.SelectedItem as FileNodeViewModel;
-        var currentIndex = current is null ? -1 : visible.IndexOf(current);
-        var matchIndex = FolderTreeKeyboardNavigation.FindTypeAheadMatch(
-            visible.Select(n => n.Name).ToList(), _typeAheadText, currentIndex);
-
-        // 入力が続いて一致しなくなった場合は、最後の文字を新しい検索の先頭として試す。
-        if (matchIndex < 0 && _typeAheadText.Length > e.Text.Length)
-        {
-            _typeAheadText = e.Text;
-            matchIndex = FolderTreeKeyboardNavigation.FindTypeAheadMatch(
-                visible.Select(n => n.Name).ToList(), _typeAheadText, currentIndex);
-        }
-
-        if (matchIndex >= 0)
-        {
-            ClearMultiSelection();
-            SelectAndReveal(visible[matchIndex], focus: true);
-        }
-
-        _typeAheadResetTimer.Start();
-        e.Handled = true;
-    }
+        => _selectionInteraction.OnPreviewTextInput(sender, e);
 
     private void SelectAllVisibleNodes()
     {
@@ -441,9 +176,9 @@ public partial class FolderTreeView : UserControl
         // フォーカスだけツリーに入っている、または折りたたみでネイティブ選択が非表示になっている
         // 状態でも、表示中の現在地を作る。Shift+F10 が常に表示中の項目へ届くようにする。
         if (FileTree.SelectedItem is not FileNodeViewModel current || !visible.Contains(current))
-            SelectAndReveal(visible[0], focus: true);
+            _selectionInteraction.SelectAndReveal(visible[0], focus: true);
         else
-            FindContainer(FileTree, current)?.Focus();
+            _selectionInteraction.FindContainer(current)?.Focus();
     }
 
     private void OpenSelectedContextMenu(TreeView tree)
@@ -455,43 +190,23 @@ public partial class FolderTreeView : UserControl
             return;
         }
 
-        var container = FindContainer(tree, node);
+        var container = _selectionInteraction.FindContainer(node);
         if (container is null)
             return;
 
         // キーボード移動直後の遅延プレビューがメニュー表示中にファイルを開いてフォーカスを
         // 奪わないようにする。右クリック経路は Mouse.RightButton の判定で既に抑止される。
-        _selectionPreviewTimer.Stop();
-        var wasSuppressingPreview = _suppressSelectionPreview;
-        _suppressSelectionPreview = true;
-        try
+        _selectionInteraction.StopPendingSelectionPreview();
+        _selectionInteraction.SuppressSelectionPreview(() =>
         {
             container.IsSelected = true;
             container.Focus();
-            if (FindContextMenuTarget(container) is { ContextMenu: { } menu } target)
+            if (WpfTreeTraversal.FindContextMenuHost(container) is { ContextMenu: { } menu } target)
             {
                 menu.PlacementTarget = target;
                 menu.IsOpen = true;
             }
-        }
-        finally
-        {
-            _suppressSelectionPreview = wasSuppressingPreview;
-        }
-    }
-
-    private static FrameworkElement? FindContextMenuTarget(DependencyObject root)
-    {
-        if (root is FrameworkElement element && element.ContextMenu is not null)
-            return element;
-
-        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
-        {
-            if (FindContextMenuTarget(VisualTreeHelper.GetChild(root, i)) is { } found)
-                return found;
-        }
-
-        return null;
+        });
     }
 
     private void Activate(FileNodeViewModel node)
@@ -504,15 +219,7 @@ public partial class FolderTreeView : UserControl
 
     // 展開済みノードを表示順（深さ優先）で列挙する。gg/G の対象範囲。
     private static IEnumerable<FileNodeViewModel> VisibleNodes(IEnumerable<FileNodeViewModel> nodes)
-    {
-        foreach (var node in nodes)
-        {
-            yield return node;
-            if (node.IsDirectory && node.IsExpanded)
-                foreach (var child in VisibleNodes(node.Children))
-                    yield return child;
-        }
-    }
+        => FolderTreeKeyboardNavigation.EnumerateVisibleNodes(nodes);
 
     private void GoToEdge(bool last)
     {
@@ -523,7 +230,7 @@ public partial class FolderTreeView : UserControl
         if (all.Count == 0)
             return;
 
-        SelectAndReveal(last ? all[^1] : all[0], focus: true);
+        _selectionInteraction.SelectAndReveal(last ? all[^1] : all[0], focus: true);
     }
 
     /// <summary>展開状態を反映した表示順で、現在の選択を一つ前後へ移動する。</summary>
@@ -542,7 +249,7 @@ public partial class FolderTreeView : UserControl
         var targetIndex = FolderTreeKeyboardNavigation.FindAdjacentIndex(
             visible.Count, currentIndex, delta);
         if (targetIndex >= 0)
-            SelectAndReveal(visible[targetIndex], focus: true);
+            _selectionInteraction.SelectAndReveal(visible[targetIndex], focus: true);
     }
 
     // 遅延読込ツリーで指定パスを上から順に展開し、たどり着いたノードを選択・表示する。
@@ -555,20 +262,14 @@ public partial class FolderTreeView : UserControl
 
     private void RevealStep(IEnumerable<FileNodeViewModel> level, string fullPath)
     {
-        FileNodeViewModel? target = null;
-        FileNodeViewModel? descend = null;
-        foreach (var node in level)
-        {
-            if (PathEquals(node.FullPath, fullPath)) { target = node; break; }
-            if (node.IsDirectory && IsAncestor(node.FullPath, fullPath)) { descend = node; break; }
-        }
+        var (target, descend) = FilePathRelations.FindPathMatch(
+            level, fullPath, node => node.FullPath, node => node.IsDirectory);
 
         if (target is not null)
         {
             // 同期表示・ドロップ後の表示は「見せるだけ」。プレビューは開かない。
-            _suppressSelectionPreview = true;
-            try { SelectAndReveal(target, focus: true); }
-            finally { _suppressSelectionPreview = false; }
+            _selectionInteraction.SuppressSelectionPreview(
+                () => _selectionInteraction.SelectAndReveal(target, focus: true));
             return;
         }
 
@@ -579,33 +280,6 @@ public partial class FolderTreeView : UserControl
         // 展開したコンテナの生成・レイアウト確定を待ってから次階層へ降りる。
         Dispatcher.BeginInvoke(DispatcherPriority.Background,
             new Action(() => RevealStep(descend.Children, fullPath)));
-    }
-
-    private static bool PathEquals(string a, string b)
-        => string.Equals(
-            Path.GetFullPath(a).TrimEnd('\\', '/'),
-            Path.GetFullPath(b).TrimEnd('\\', '/'),
-            StringComparison.OrdinalIgnoreCase);
-
-    private static bool IsAncestor(string directory, string path)
-    {
-        var dir = Path.GetFullPath(directory).TrimEnd('\\', '/');
-        var full = Path.GetFullPath(path);
-        return full.StartsWith(dir + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
-            || full.StartsWith(dir + Path.AltDirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
-    }
-
-    private void SelectAndReveal(FileNodeViewModel node, bool focus)
-    {
-        node.IsSelected = true;
-
-        var container = FindContainer(FileTree, node);
-        if (container is null)
-            return;
-
-        container.BringIntoView();
-        if (focus)
-            container.Focus();
     }
 
     // TreeViewItem 既定の BringIntoView は、インデントの深い項目を丸ごと見せようと
@@ -625,7 +299,7 @@ public partial class FolderTreeView : UserControl
         if (Mouse.LeftButton == MouseButtonState.Pressed)
             return;
 
-        if (FindDescendant<ScrollViewer>(FileTree) is not { } scrollViewer)
+        if (WpfTreeTraversal.FindDescendant<ScrollViewer>(FileTree) is not { } scrollViewer)
             return;
 
         // 対象はヘッダ行（Bd）のみ。item 全体だと展開済みの子を含む高さになる。
@@ -640,36 +314,6 @@ public partial class FolderTreeView : UserControl
             scrollViewer.ScrollToVerticalOffset(scrollViewer.VerticalOffset + top);
         else if (bottom > scrollViewer.ViewportHeight)
             scrollViewer.ScrollToVerticalOffset(scrollViewer.VerticalOffset + (bottom - scrollViewer.ViewportHeight));
-    }
-
-    private static T? FindDescendant<T>(DependencyObject root) where T : DependencyObject
-    {
-        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
-        {
-            var child = VisualTreeHelper.GetChild(root, i);
-            if (child is T match)
-                return match;
-            if (FindDescendant<T>(child) is { } found)
-                return found;
-        }
-
-        return null;
-    }
-
-    // データ項目に対応する TreeViewItem を、展開済みコンテナを辿って探す。
-    private static TreeViewItem? FindContainer(ItemsControl parent, FileNodeViewModel target)
-    {
-        if (parent.ItemContainerGenerator.ContainerFromItem(target) is TreeViewItem direct)
-            return direct;
-
-        foreach (var item in parent.Items)
-        {
-            if (parent.ItemContainerGenerator.ContainerFromItem(item) is TreeViewItem container
-                && FindContainer(container, target) is { } found)
-                return found;
-        }
-
-        return null;
     }
 
     // 指定キーの KeyDown を再発行し、TreeView/TreeViewItem 標準のキーボード操作へ委譲する。

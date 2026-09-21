@@ -1,6 +1,8 @@
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Media;
+using System.Linq;
+using sk0ya.Loomo.App.Services;
+using sk0ya.Loomo.App.Services.Infrastructure;
 using sk0ya.Loomo.App.ViewModels;
 
 namespace sk0ya.Loomo.App.Views;
@@ -13,71 +15,26 @@ public sealed class FilesGroupItemsPanel : Panel
     protected override Size MeasureOverride(Size availableSize)
     {
         EnsureOwner();
-        if (!IsIconMode)
-        {
-            var width = 0d;
-            var height = 0d;
-            foreach (UIElement child in InternalChildren)
-            {
-                child.Measure(new Size(availableSize.Width, double.PositiveInfinity));
-                width = Math.Max(width, child.DesiredSize.Width);
-                height += child.DesiredSize.Height;
-            }
-            return new Size(Math.Min(width, availableSize.Width), height);
-        }
-
-        var rowWidth = 0d;
-        var rowHeight = 0d;
-        var totalHeight = 0d;
-        var totalWidth = 0d;
         foreach (UIElement child in InternalChildren)
-        {
-            child.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-            if (rowWidth > 0 && rowWidth + child.DesiredSize.Width > availableSize.Width)
-            {
-                totalWidth = Math.Max(totalWidth, rowWidth);
-                totalHeight += rowHeight;
-                rowWidth = 0;
-                rowHeight = 0;
-            }
-            rowWidth += child.DesiredSize.Width;
-            rowHeight = Math.Max(rowHeight, child.DesiredSize.Height);
-        }
-        totalWidth = Math.Max(totalWidth, rowWidth);
-        totalHeight += rowHeight;
-        return new Size(Math.Min(totalWidth, availableSize.Width), totalHeight);
+            child.Measure(IsIconMode
+                ? new Size(double.PositiveInfinity, double.PositiveInfinity)
+                : new Size(availableSize.Width, double.PositiveInfinity));
+
+        var sizes = InternalChildren.Cast<UIElement>().Select(child => child.DesiredSize).ToArray();
+        return IsIconMode
+            ? FilesGroupItemsLayoutPolicy.MeasureWrapped(sizes, availableSize.Width)
+            : FilesGroupItemsLayoutPolicy.MeasureStack(sizes, availableSize.Width);
     }
 
     protected override Size ArrangeOverride(Size finalSize)
     {
         EnsureOwner();
-        if (!IsIconMode)
-        {
-            var y = 0d;
-            foreach (UIElement child in InternalChildren)
-            {
-                child.Arrange(new Rect(0, y, finalSize.Width, child.DesiredSize.Height));
-                y += child.DesiredSize.Height;
-            }
-            return finalSize;
-        }
-
-        var x = 0d;
-        var yIcon = 0d;
-        var rowHeight = 0d;
-        foreach (UIElement child in InternalChildren)
-        {
-            var width = child.DesiredSize.Width;
-            if (x > 0 && x + width > finalSize.Width)
-            {
-                x = 0;
-                yIcon += rowHeight;
-                rowHeight = 0;
-            }
-            child.Arrange(new Rect(x, yIcon, width, child.DesiredSize.Height));
-            x += width;
-            rowHeight = Math.Max(rowHeight, child.DesiredSize.Height);
-        }
+        var sizes = InternalChildren.Cast<UIElement>().Select(child => child.DesiredSize).ToArray();
+        var bounds = IsIconMode
+            ? FilesGroupItemsLayoutPolicy.ArrangeWrapped(sizes, finalSize.Width)
+            : FilesGroupItemsLayoutPolicy.ArrangeStack(sizes, finalSize.Width);
+        for (var i = 0; i < InternalChildren.Count; i++)
+            InternalChildren[i].Arrange(bounds[i]);
         return finalSize;
     }
 
@@ -86,17 +43,8 @@ public sealed class FilesGroupItemsPanel : Panel
 
     private void EnsureOwner()
     {
-        FilesColumnViewModel? owner = null;
-        DependencyObject? current = this;
-        while (current is not null)
-        {
-            if (current is FrameworkElement element && element.DataContext is FilesColumnViewModel candidate)
-            {
-                owner = candidate;
-                break;
-            }
-            current = VisualTreeHelper.GetParent(current);
-        }
+        var owner = WpfTreeTraversal.FindAncestor<FrameworkElement>(
+            this, element => element.DataContext is FilesColumnViewModel)?.DataContext as FilesColumnViewModel;
 
         if (ReferenceEquals(owner, _owner))
             return;

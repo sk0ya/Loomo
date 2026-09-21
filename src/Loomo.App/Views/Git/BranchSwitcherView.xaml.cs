@@ -3,9 +3,7 @@ using System;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Controls.Primitives;
 using System.Windows.Input;
-using System.Windows.Media;
 using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.App.ViewModels;
 using sk0ya.Loomo.Services;
@@ -28,11 +26,15 @@ namespace sk0ya.Loomo.App.Views;
 /// </summary>
 public partial class BranchSwitcherView : UserControl
 {
+    private GitBranchTreeMenuController _branchMenuController = null!;
+
     public BranchSwitcherView()
     {
         InitializeComponent();
-        if (Tree.ContextMenu is { } menu)
-            menu.Closed += (_, _) => _branchMenuTarget = null;
+        _branchMenuController = new GitBranchTreeMenuController(
+            Tree, () => Vm?.HasRemote == true,
+            MenuCheckout, MenuMerge, MenuRebase, MenuDelete, MenuDeleteRemote,
+            MenuSetUpstream, MenuUnsetUpstream, MenuPull, MenuPush, MenuPushForce);
     }
 
     /// <summary>ポップアップを閉じてほしい（チェックアウト成功・ダイアログを出す直前など）。
@@ -40,7 +42,6 @@ public partial class BranchSwitcherView : UserControl
     public event EventHandler? CloseRequested;
 
     private GitSessionViewModel? Vm => DataContext as GitSessionViewModel;
-    private GitBranchInfo? _branchMenuTarget;
 
     private void Close() => CloseRequested?.Invoke(this, EventArgs.Empty);
 
@@ -64,6 +65,30 @@ public partial class BranchSwitcherView : UserControl
         StatusText.Visibility = Visibility.Visible;
     }
 
+    private string? PromptGitOperation(GitOperationPrompt request) => InputDialog.Prompt(
+        Window.GetWindow(this), request.Title, request.Message, request.InitialValue,
+        allowEmpty: request.AllowEmpty, multiline: request.Multiline);
+
+    private bool ConfirmGitOperation(GitOperationConfirmation request) =>
+        MessageBox.Show(Window.GetWindow(this), request.Message, request.Title,
+            MessageBoxButton.YesNo,
+            request.Severity == GitConfirmationSeverity.Warning
+                ? MessageBoxImage.Warning : MessageBoxImage.Question) == MessageBoxResult.Yes;
+
+    private async Task ExecuteSelectedBranchOperationAsync(GitBranchOperation operation)
+    {
+        if (Vm is not { } vm || Target is not { } branch)
+            return;
+        var owner = Window.GetWindow(this);
+        Close();
+        await GitSessionOperationController.ExecuteBranchAsync(vm, branch, operation,
+            confirmForcePush: target => GitBranchDialogs.ConfirmForcePush(owner, target),
+            confirmRemoteDelete: target => GitBranchDialogs.ConfirmDeleteRemoteBranch(owner, target),
+            promptUpstream: (session, target) => GitBranchDialogs.PromptUpstream(owner, session, target),
+            prompt: PromptGitOperation,
+            confirm: ConfirmGitOperation);
+    }
+
     /// <summary>Esc で絞り込みを消す（空ならポップアップごと閉じる）。</summary>
     private void OnFilterKeyDown(object sender, KeyEventArgs e)
     {
@@ -77,125 +102,10 @@ public partial class BranchSwitcherView : UserControl
 
     // ===== 一覧 =====
 
-    /// <summary>クリック行の TreeViewItem を辿る。展開矢印（ToggleButton, ClickMode=Press）上なら
-    /// 既に開閉が処理済みなので null を返して二重に反応しない。</summary>
-    private static TreeViewItem? FindRow(object? originalSource)
-    {
-        var element = originalSource as DependencyObject;
-        while (element is not null and not TreeViewItem)
-        {
-            if (element is ToggleButton)
-                return null;
-            // OriginalSource が Run 等の FrameworkContentElement のことがある（VisualTreeHelper だと例外）
-            element = element is Visual or System.Windows.Media.Media3D.Visual3D
-                ? VisualTreeHelper.GetParent(element)
-                : LogicalTreeHelper.GetParent(element);
-        }
-        return element as TreeViewItem;
-    }
-
-    /// <summary>
-    /// フォルダ・見出しは行のどこをクリックしても開閉する（メニューとしての手触り）。
-    /// ブランチ行のクリックは選択状態を確定して、そのブランチを対象にしたメニューを開く。
-    /// </summary>
-    private void OnTreeClick(object sender, MouseButtonEventArgs e)
-    {
-        if (FindRow(e.OriginalSource) is not { DataContext: BranchTreeNode node } item)
-            return;
-
-        if (node.Branch is null)
-        {
-            _branchMenuTarget = null;
-            item.IsExpanded = !item.IsExpanded;
-        }
-        else
-        {
-            item.IsSelected = true;
-            OpenBranchMenu(item);
-            e.Handled = true;
-        }
-    }
-
     // ===== 行の右クリックメニュー =====
 
     private BranchTreeNode? SelectedNode => Tree.SelectedItem as BranchTreeNode;
-    private GitBranchInfo? Target => _branchMenuTarget ?? SelectedNode?.Branch;
-
-    private void OnTreeRightClickSelect(object sender, MouseButtonEventArgs e)
-    {
-        _branchMenuTarget = null;
-        if (FindRow(e.OriginalSource) is { } item)
-        {
-            item.IsSelected = true;
-            _branchMenuTarget = (item.DataContext as BranchTreeNode)?.Branch;
-        }
-    }
-
-    /// <summary>左クリックで開くブランチメニューを、クリックされた行の下に配置する。</summary>
-    private void OpenBranchMenu(TreeViewItem item)
-    {
-        if (Tree.ContextMenu is not { } menu)
-            return;
-        if (item is not { IsLoaded: true, DataContext: BranchTreeNode { Branch: { } branch } })
-            return;
-
-        if (menu.IsOpen)
-            menu.IsOpen = false;
-        _branchMenuTarget = branch;
-        if (!TryPrepareBranchMenu(branch))
-            return;
-
-        PlaceBranchMenu(menu, item);
-        menu.IsOpen = true;
-    }
-
-    private static void PlaceBranchMenu(ContextMenu menu, TreeViewItem item)
-    {
-        menu.PlacementTarget = item;
-        menu.Placement = PlacementMode.Right;
-        menu.HorizontalOffset = 4;
-        menu.StaysOpen = false;
-    }
-
-    /// <summary>
-    /// 対象が無い（フォルダ・見出しを右クリックした）ならメニューごと出さない。ブランチ行なら、
-    /// そのブランチに意味を成さない項目を落とす（自分自身へのマージ／リベース、現在ブランチの削除、
-    /// リモートブランチの削除＝git branch -d では消せない）。
-    /// </summary>
-    private void OnTreeContextMenuOpening(object sender, ContextMenuEventArgs e)
-    {
-        var item = FindRow(e.OriginalSource);
-        _branchMenuTarget = item?.DataContext is BranchTreeNode { Branch: { } branch }
-            ? branch
-            : SelectedNode?.Branch;
-        if (!TryPrepareBranchMenu(_branchMenuTarget))
-        {
-            e.Handled = true;
-            return;
-        }
-
-        if (item is not null && Tree.ContextMenu is { } menu)
-            PlaceBranchMenu(menu, item);
-    }
-
-    private bool TryPrepareBranchMenu(GitBranchInfo? target)
-    {
-        if (target is not { } branch)
-            return false;
-
-        MenuCheckout.IsEnabled = !branch.IsCurrent;
-        MenuMerge.IsEnabled = !branch.IsCurrent;
-        MenuRebase.IsEnabled = !branch.IsCurrent;
-        MenuDelete.IsEnabled = !branch.IsCurrent && !branch.IsRemote;
-        // リモート行にだけ出す（ローカルの「削除」と並べると取り違えるので、要らない側は消す）
-        MenuDeleteRemote.Visibility = branch.IsRemote ? Visibility.Visible : Visibility.Collapsed;
-        MenuSetUpstream.IsEnabled = !branch.IsRemote && Vm?.HasRemote == true;
-        MenuUnsetUpstream.IsEnabled = !branch.IsRemote && branch.Upstream is not null;
-        MenuPull.IsEnabled = !branch.IsRemote && branch.Upstream is not null && Vm?.HasRemote == true;
-        MenuPush.IsEnabled = !branch.IsRemote && Vm?.HasRemote == true;
-        MenuPushForce.IsEnabled = MenuPush.IsEnabled;
-        return true;
-    }
+    private GitBranchInfo? Target => _branchMenuController.Target ?? SelectedNode?.Branch;
 
     // ===== 同期帯の「▾」（方式を選ぶ） =====
 
@@ -231,7 +141,7 @@ public partial class BranchSwitcherView : UserControl
     {
         if (Vm is not { } vm) return;
         var owner = Window.GetWindow(this);
-        var target = vm.UpstreamLabel.Length > 0 ? vm.UpstreamLabel : "現在のブランチ";
+        var target = GitBranchActionPolicy.ForcePushTarget(vm.UpstreamLabel);
         Close();
         if (GitBranchDialogs.ConfirmForcePush(owner, target))
             await vm.PushForceAsync();
@@ -247,113 +157,42 @@ public partial class BranchSwitcherView : UserControl
             ShowError(result.Message);
     }
 
-    private async void OnMenuMerge(object sender, RoutedEventArgs e)
-    {
-        if (Vm is not { } vm || Target is not { } branch) return;
-        Close();
-        await vm.Commands.MergeAsync(branch);
-    }
+    private async void OnMenuMerge(object sender, RoutedEventArgs e) =>
+        await ExecuteSelectedBranchOperationAsync(GitBranchOperation.Merge);
 
-    private async void OnMenuRebase(object sender, RoutedEventArgs e)
-    {
-        if (Vm is not { } vm || Target is not { } branch) return;
-        Close();
-        var answer = MessageBox.Show(Window.GetWindow(this),
-            $"現在のブランチを {branch.Name} の上へリベースします。コミットは作り直されます（履歴が書き換わります）。\n実行しますか？",
-            "リベース", MessageBoxButton.YesNo, MessageBoxImage.Question);
-        if (answer == MessageBoxResult.Yes)
-            await vm.Commands.RebaseAsync(branch);
-    }
+    private async void OnMenuRebase(object sender, RoutedEventArgs e) =>
+        await ExecuteSelectedBranchOperationAsync(GitBranchOperation.Rebase);
 
-    private async void OnMenuCreateFrom(object sender, RoutedEventArgs e)
-    {
-        if (Vm is not { } vm || Target is not { } branch) return;
-        Close();
-        var name = InputDialog.Prompt(Window.GetWindow(this), "新しいブランチ",
-            $"{branch.Name} から作成するブランチ名を入力してください");
-        if (!string.IsNullOrWhiteSpace(name))
-            await vm.Commands.CreateBranchAsync(name, branch.Name);
-    }
+    private async void OnMenuCreateFrom(object sender, RoutedEventArgs e) =>
+        await ExecuteSelectedBranchOperationAsync(GitBranchOperation.CreateFrom);
 
     private void OnMenuCopyName(object sender, RoutedEventArgs e)
     {
         if (Target is { } branch)
-        {
-            try { Clipboard.SetText(branch.Name); } catch { /* クリップボード占有中は無視 */ }
-        }
+            ClipboardText.Set(branch.Name);
         Close();
     }
 
-    private async void OnMenuPull(object sender, RoutedEventArgs e)
-    {
-        if (Vm is not { } vm || Target is not { } branch) return;
-        Close();
-        await vm.PullBranchAsync(branch);
-    }
+    private async void OnMenuPull(object sender, RoutedEventArgs e) =>
+        await ExecuteSelectedBranchOperationAsync(GitBranchOperation.Pull);
 
-    private async void OnMenuPush(object sender, RoutedEventArgs e)
-    {
-        if (Vm is not { } vm || Target is not { } branch) return;
-        Close();
-        await vm.PushBranchAsync(branch);
-    }
+    private async void OnMenuPush(object sender, RoutedEventArgs e) =>
+        await ExecuteSelectedBranchOperationAsync(GitBranchOperation.Push);
 
-    private async void OnMenuPushForce(object sender, RoutedEventArgs e)
-    {
-        if (Vm is not { } vm || Target is not { } branch) return;
-        var owner = Window.GetWindow(this);
-        Close();
-        if (GitBranchDialogs.ConfirmForcePush(owner, branch.Name))
-            await vm.PushBranchAsync(branch, force: true);
-    }
+    private async void OnMenuPushForce(object sender, RoutedEventArgs e) =>
+        await ExecuteSelectedBranchOperationAsync(GitBranchOperation.ForcePush);
 
-    private async void OnMenuDeleteRemote(object sender, RoutedEventArgs e)
-    {
-        if (Vm is not { } vm || Target is not { IsRemote: true } branch) return;
-        var owner = Window.GetWindow(this);
-        Close();
-        if (GitBranchDialogs.ConfirmDeleteRemoteBranch(owner, branch.Name))
-            await vm.DeleteRemoteBranchAsync(branch);
-    }
+    private async void OnMenuDeleteRemote(object sender, RoutedEventArgs e) =>
+        await ExecuteSelectedBranchOperationAsync(GitBranchOperation.DeleteRemote);
 
-    private async void OnMenuSetUpstream(object sender, RoutedEventArgs e)
-    {
-        if (Vm is not { } vm || Target is not { } branch) return;
-        var owner = Window.GetWindow(this);
-        Close();
-        var upstream = GitBranchDialogs.PromptUpstream(owner, vm, branch);
-        if (!string.IsNullOrWhiteSpace(upstream))
-            await vm.SetUpstreamAsync(branch, upstream);
-    }
+    private async void OnMenuSetUpstream(object sender, RoutedEventArgs e) =>
+        await ExecuteSelectedBranchOperationAsync(GitBranchOperation.SetUpstream);
 
-    private async void OnMenuUnsetUpstream(object sender, RoutedEventArgs e)
-    {
-        if (Vm is not { } vm || Target is not { } branch) return;
-        Close();
-        await vm.UnsetUpstreamAsync(branch);
-    }
+    private async void OnMenuUnsetUpstream(object sender, RoutedEventArgs e) =>
+        await ExecuteSelectedBranchOperationAsync(GitBranchOperation.UnsetUpstream);
 
-    private async void OnMenuDelete(object sender, RoutedEventArgs e)
-    {
-        if (Vm is not { } vm || Target is not { } branch) return;
-        Close();
-        var owner = Window.GetWindow(this);
-        var answer = MessageBox.Show(owner, $"ブランチ {branch.Name} を削除しますか？",
-            "ブランチ削除", MessageBoxButton.YesNo, MessageBoxImage.Warning);
-        if (answer != MessageBoxResult.Yes)
-            return;
-
-        var result = await vm.Commands.DeleteBranchAsync(branch, force: false);
-        if (result is { Success: false } &&
-            result.Message.Contains("not fully merged", StringComparison.OrdinalIgnoreCase))
-        {
-            var forceAnswer = MessageBox.Show(owner,
-                $"{branch.Name} はマージされていないコミットを含みます。強制削除（-D）しますか？\nコミットが失われる可能性があります。",
-                "ブランチの強制削除", MessageBoxButton.YesNo, MessageBoxImage.Warning);
-            if (forceAnswer == MessageBoxResult.Yes)
-                await vm.Commands.DeleteBranchAsync(branch, force: true);
-        }
-    }
+    private async void OnMenuDelete(object sender, RoutedEventArgs e) =>
+        await ExecuteSelectedBranchOperationAsync(GitBranchOperation.Delete);
 
     // ===== 新規作成 =====
 
@@ -361,8 +200,6 @@ public partial class BranchSwitcherView : UserControl
     {
         if (Vm is not { } vm) return;
         Close();
-        var name = InputDialog.Prompt(Window.GetWindow(this), "新しいブランチ", "ブランチ名を入力してください");
-        if (!string.IsNullOrWhiteSpace(name))
-            await vm.Commands.CreateBranchAsync(name);
+        await GitSessionOperationController.CreateBranchAsync(vm, start: null, prompt: PromptGitOperation);
     }
 }

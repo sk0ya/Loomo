@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
+using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.CSharp.Refactoring;
 
 namespace sk0ya.Loomo.App.Views;
@@ -28,12 +29,9 @@ public sealed partial class SignatureParameterRowVm : ObservableObject
     /// <summary>追加したパラメーターに対して、既存の呼び出し元へ書き込む式。</summary>
     [ObservableProperty] private string _callSiteArgument = "";
 
-    public SignatureParameterChange ToChange() => new(
-        OriginalIndex,
-        new SignatureParameter(
-            Name.Trim(), Type.Trim(), Modifiers.Trim(),
-            DefaultValue.Trim() is { Length: > 0 } value ? value : null),
-        CallSiteArgument.Trim() is { Length: > 0 } argument ? argument : null);
+    public SignatureParameterChange ToChange()
+        => CSharpSignatureInputPolicy.ToChange(
+            OriginalIndex, Modifiers, Type, Name, DefaultValue, CallSiteArgument);
 }
 
 /// <summary>
@@ -68,11 +66,8 @@ public partial class ChangeSignatureDialog : Window
     private void Move(int delta)
     {
         if (ParameterList.SelectedItem is not SignatureParameterRowVm row) return;
-        int index = _rows.IndexOf(row);
-        int target = index + delta;
-        if (target < 0 || target >= _rows.Count) return;
-        _rows.Move(index, target);
-        ParameterList.SelectedItem = row;
+        if (OrderedItemMovePolicy.Move(_rows, _rows.IndexOf(row), delta) is not null)
+            ParameterList.SelectedItem = row;
     }
 
     private void OnAdd(object sender, RoutedEventArgs e)
@@ -90,11 +85,10 @@ public partial class ChangeSignatureDialog : Window
 
     private void OnOk(object sender, RoutedEventArgs e)
     {
-        var change = new SignatureChange(
-            _signature.IsConstructor ? "" : ReturnTypeBox.Text.Trim(),
-            [.. _rows.Select(r => r.ToChange())]);
+        var change = CSharpSignatureInputPolicy.BuildChange(
+            _signature.IsConstructor, ReturnTypeBox.Text, _rows.Select(row => row.ToChange()));
 
-        if (Validate(change) is { } error)
+        if (CSharpSignatureInputPolicy.Validate(change) is { } error)
         {
             ErrorText.Text = error;
             ErrorText.Visibility = Visibility.Visible;
@@ -104,23 +98,4 @@ public partial class ChangeSignatureDialog : Window
         DialogResult = true;
     }
 
-    /// <summary>「押してから失敗が返ってくる」のを減らすための手前の検証。
-    /// 呼び出し元の書き換え可否は計画時（<see cref="CSharpSignatureRefactoring.PlanAsync"/>）にしか
-    /// 分からないので、ここでは入力そのものの整合だけを見る。</summary>
-    private static string? Validate(SignatureChange change)
-    {
-        foreach (var parameter in change.Parameters)
-        {
-            if (parameter.Parameter.Name.Length == 0) return "名前が空のパラメーターがあります。";
-            if (parameter.Parameter.Type.Length == 0) return "型が空のパラメーターがあります。";
-            if (parameter.IsNew &&
-                parameter.CallSiteArgument is null &&
-                parameter.Parameter.DefaultValue is null)
-                return $"追加したパラメーター '{parameter.Parameter.Name}' には、既定値か呼び出し側の値のどちらかが必要です。";
-        }
-        var names = change.Parameters.Select(p => p.Parameter.Name).ToList();
-        return names.Distinct(StringComparer.Ordinal).Count() != names.Count
-            ? "パラメーター名が重複しています。"
-            : null;
-    }
 }

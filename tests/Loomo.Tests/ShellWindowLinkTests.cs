@@ -1,4 +1,4 @@
-using sk0ya.Loomo.App.Views;
+using sk0ya.Loomo.App.Services;
 
 namespace sk0ya.Loomo.Tests;
 
@@ -11,12 +11,12 @@ public sealed class ShellWindowLinkTests
     {
         Assert.True(Uri.TryCreate(target, UriKind.Absolute, out var uri));
         Assert.True(uri.IsFile);
-        Assert.True(ShellWindow.IsWindowsPathTarget(target));
+        Assert.True(TerminalLinkTargetResolver.IsWindowsPathTarget(target));
     }
 
     [Theory]
     [InlineData("mailto:user@example.com")]
     [InlineData("https://example.com")]
     public void Windows絶対パス以外はパス扱いにしない(string target)
-        => Assert.False(ShellWindow.IsWindowsPathTarget(target));
+        => Assert.False(TerminalLinkTargetResolver.IsWindowsPathTarget(target));
 }

@@ -23,53 +23,13 @@ namespace sk0ya.Loomo.App.Views;
 /// 同じ位置で置き換える。</para></summary>
 public partial class ShellWindow
 {
-    /// <summary>メニューから外すネイティブ項目の見出し。</summary>
-    internal static readonly string[] DroppedNativeEditorMenuHeaders =
-    [
-        EditorMenuLabels.Undo,
-        EditorMenuLabels.Redo,
-        EditorMenuLabels.SelectAll,
-    ];
-
     /// <summary>ネイティブ項目を Loomo の方針へ整える。<paramref name="anchor"/> は右クリック位置
     /// （＝キャレット位置）で、説明ポップアップの表示位置に使う。</summary>
     private void AdjustNativeEditorMenuItems(
         ContextMenu menu, VimEditorControl? control, Point anchor)
-    {
-        RemoveMenuItemsByHeader(menu, DroppedNativeEditorMenuHeaders);
-        if (control is null)
-            return;
-        ReplaceMenuItemByHeader(menu, EditorMenuLabels.CodeActions,
-            () => BuildQuickFixMenuItem(control));
-        ReplaceMenuItemByHeader(menu, EditorMenuLabels.HoverInfo,
-            () => BuildHoverInfoMenuItem(control, anchor));
-    }
-
-    /// <summary>見出しが一致する項目を落とす。区切り線の後始末はライブラリ側
-    /// （<c>TrimMenuSeparators</c>）が最後に行うので、ここでは項目だけを見る。</summary>
-    internal static void RemoveMenuItemsByHeader(ContextMenu menu, IReadOnlyList<string> headers)
-    {
-        for (var i = menu.Items.Count - 1; i >= 0; i--)
-            if (menu.Items[i] is MenuItem item && HasHeader(item, headers))
-                menu.Items.RemoveAt(i);
-    }
-
-    /// <summary>見出しが一致する項目を、同じ位置で差し替える。見つからなければ何もしない
-    /// （＝古い Editor で見出しが英語のままなら、ネイティブ項目をそのまま残す）。</summary>
-    internal static bool ReplaceMenuItemByHeader(
-        ContextMenu menu, string header, Func<MenuItem> replacement)
-    {
-        for (var i = 0; i < menu.Items.Count; i++)
-        {
-            if (menu.Items[i] is not MenuItem item || !HasHeader(item, [header]))
-                continue;
-            menu.Items[i] = replacement();
-            return true;
-        }
-        return false;
-    }
-
-    private static bool HasHeader(MenuItem item, IReadOnlyList<string> headers)
-        => item.Header is string text &&
-           headers.Any(header => string.Equals(header, text, StringComparison.Ordinal));
+        => EditorNativeMenuCoordinator.Adjust(
+            menu,
+            control is not null,
+            () => BuildQuickFixMenuItem(control!),
+            () => BuildHoverInfoMenuItem(control!, anchor));
 }

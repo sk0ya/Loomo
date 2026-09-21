@@ -1,11 +1,26 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using sk0ya.Loomo.App.ViewModels;
 
 namespace sk0ya.Loomo.App.Services;
 
 /// <summary>FolderTree の標準キーボード検索で使う、UI に依存しない選択ヘルパー。</summary>
 internal static class FolderTreeKeyboardNavigation
 {
+    /// <summary>展開中の枝だけを表示順（深さ優先）で列挙する。</summary>
+    public static IEnumerable<FileNodeViewModel> EnumerateVisibleNodes(
+        IEnumerable<FileNodeViewModel> nodes)
+    {
+        foreach (var node in nodes)
+        {
+            yield return node;
+            if (node.IsDirectory && node.IsExpanded)
+                foreach (var child in EnumerateVisibleNodes(node.Children))
+                    yield return child;
+        }
+    }
+
     /// <summary>
     /// 表示中ノード列における相対移動先を返す。端ではそこで止まり、未選択時は
     /// 最初のノードを現在地として扱う（FolderTree の初期フォーカスと同じ）。
@@ -48,5 +63,33 @@ internal static class FolderTreeKeyboardNavigation
         }
 
         return -1;
+    }
+
+    /// <summary>連続入力で名前を探し、累積入力で不一致なら直近の文字だけで再検索する。</summary>
+    public static (string Input, int MatchIndex) ResolveTypeAheadSearch(
+        IReadOnlyList<FileNodeViewModel> nodes,
+        string previousInput,
+        string latestInput,
+        int currentIndex)
+        => ResolveTypeAheadSearch(nodes, node => node.Name, previousInput, latestInput, currentIndex);
+
+    /// <summary>連続入力と直近入力の両方を試し、項目名から検索位置を求める。</summary>
+    public static (string Input, int MatchIndex) ResolveTypeAheadSearch<T>(
+        IReadOnlyList<T> items,
+        Func<T, string> getName,
+        string previousInput,
+        string latestInput,
+        int currentIndex)
+    {
+        var names = items.Select(getName).ToArray();
+        var input = previousInput + latestInput;
+        var matchIndex = FindTypeAheadMatch(names, input, currentIndex);
+        if (matchIndex < 0 && input.Length > latestInput.Length)
+        {
+            input = latestInput;
+            matchIndex = FindTypeAheadMatch(names, input, currentIndex);
+        }
+
+        return (input, matchIndex);
     }
 }

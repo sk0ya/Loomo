@@ -1,3 +1,6 @@
+using Microsoft.Web.WebView2.Core;
+using sk0ya.Loomo.Core.Abstractions;
+
 namespace sk0ya.Loomo.App.Services;
 
 /// <summary>表示中の Web ページを Markdown にしてエディタへ渡す（「ページをエディタへ送る」）ための変換。
@@ -104,6 +107,35 @@ public static class BrowserPageMarkdown
 })()
 """;
 
+    /// <summary>表示中ページの本文を抽出し、Markdown 文書としてエディタへ渡す。</summary>
+    internal static async Task<BrowserPageSendResult> SendToEditorAsync(
+        CoreWebView2 core, IEditorService editor, Action showEditorPane)
+    {
+        string body;
+        try
+        {
+            var json = await core.ExecuteScriptAsync(ExtractScript);
+            body = JsonSerializer.Deserialize<string>(json) ?? "";
+        }
+        catch (Exception ex)
+        {
+            return new(ErrorMessage: ex.Message, HasContent: false);
+        }
+
+        if (string.IsNullOrWhiteSpace(body))
+            return new(ErrorMessage: null, HasContent: false);
+
+        var url = core.Source;
+        showEditorPane();
+        await editor.OpenDocumentAsync(new EditorDocument
+        {
+            FileName = FileNameFor(url),
+            Content = BuildDocument(core.DocumentTitle, url, body),
+            OnSaved = _ => { },
+        });
+        return new(ErrorMessage: null, HasContent: true);
+    }
+
     /// <summary>抽出結果に出所（タイトルと URL）を付けて 1 つの Markdown 文書にする。
     /// 空行の詰めもここで行う（ページ側は素直に段落を並べるだけにして、整形はこちらの責務）。</summary>
     public static string BuildDocument(string? title, string? url, string? body)
@@ -137,3 +169,5 @@ public static class BrowserPageMarkdown
         return host + ".md";
     }
 }
+
+internal sealed record BrowserPageSendResult(string? ErrorMessage, bool HasContent);

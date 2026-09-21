@@ -45,6 +45,21 @@ public sealed class PaneSplit : PaneNode
 /// </summary>
 public static class PaneLayoutTree
 {
+    /// <summary>既定のタイル配置を作る。</summary>
+    public static PaneNode CreateDefault()
+    {
+        var top = new PaneSplit { Orientation = SplitKind.Columns, Weight = 2 };
+        top.Children.Add(new PaneLeaf { Kind = PaneKind.Editor });
+        top.Children.Add(new PaneLeaf { Kind = PaneKind.EditorSupport, Hidden = true });
+        top.Children.Add(new PaneLeaf { Kind = PaneKind.Browser });
+        var root = new PaneSplit { Orientation = SplitKind.Rows };
+        root.Children.Add(top);
+        root.Children.Add(new PaneLeaf { Kind = PaneKind.Terminal });
+        // AI は既定で隠すが、リーフを残しておくことで表示時に元の位置へ戻せる。
+        root.Children.Add(new PaneLeaf { Kind = PaneKind.Ai, Hidden = true });
+        return root;
+    }
+
     /// <summary>ツリー内のすべてのリーフ（ペイン）を列挙する。</summary>
     public static IEnumerable<PaneLeaf> AllLeaves(PaneNode? node)
     {
@@ -374,6 +389,19 @@ public static class PaneLayoutTree
             Orientation = split.Orientation == SplitKind.Columns ? "Columns" : "Rows",
             Children = split.Children.Select(ToSnapshot).ToList()
         };
+    }
+
+    /// <summary>保存スナップショットに含まれるリーフのペイン種別を深さ優先順で列挙する。</summary>
+    public static IEnumerable<PaneKind> SnapshotPaneKinds(PaneNodeSnapshot node)
+    {
+        if (node.Kind is { } kind)
+        {
+            yield return kind;
+            yield break;
+        }
+        foreach (var child in node.Children)
+            foreach (var pane in SnapshotPaneKinds(child))
+                yield return pane;
     }
 
     /// <summary>スナップショットからツリーを再構築する（重複・未知のペインは捨てる）。</summary>

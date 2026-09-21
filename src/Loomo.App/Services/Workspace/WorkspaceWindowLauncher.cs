@@ -25,10 +25,43 @@ internal static class WorkspaceWindowLauncher
     /// ポップアップの中に理由を出したいので、ここでは握り潰さない。</summary>
     public static void Launch(string folder)
     {
+        EnsureFolderExists(folder);
         var applicationPath = Environment.ProcessPath;
         if (string.IsNullOrWhiteSpace(applicationPath))
             throw new InvalidOperationException("Loomo の実行ファイルが特定できません。");
 
         Process.Start(BuildStartInfo(applicationPath, folder));
+    }
+
+    /// <summary>Explorerでフォルダーを開く。見つからない場合や起動失敗は呼び出し側へ返す。</summary>
+    public static void Reveal(string folder)
+    {
+        EnsureFolderExists(folder);
+        var info = new ProcessStartInfo("explorer.exe") { UseShellExecute = true };
+        info.ArgumentList.Add(Path.GetFullPath(folder));
+        Process.Start(info);
+    }
+
+    /// <summary>ワークスペース切替ポップアップからの起動。起動理由を表示するため例外メッセージを返す。</summary>
+    public static string? TryOpen(string folder, bool revealInExplorer)
+    {
+        try
+        {
+            if (revealInExplorer)
+                Reveal(folder);
+            else
+                Launch(folder);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            return ex.Message;
+        }
+    }
+
+    private static void EnsureFolderExists(string folder)
+    {
+        if (!Directory.Exists(folder))
+            throw new DirectoryNotFoundException($"フォルダが見つかりません: {folder}");
     }
 }

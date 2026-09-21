@@ -17,7 +17,7 @@ public class WorkspaceSwitcherViewTests
     public void Row_context_menu_is_not_declared_inside_the_item_container_style()
     {
         var xaml = File.ReadAllText(Path.Combine(
-            RepoRoot(), "src", "Loomo.App", "Views", "WorkspaceSwitcherView.xaml"));
+            RepoRoot(), "src", "Loomo.App", "Views", "Workspace", "WorkspaceSwitcherView.xaml"));
 
         var style = Between(xaml, "<ListBox.ItemContainerStyle>", "</ListBox.ItemContainerStyle>");
         Assert.DoesNotContain("ContextMenu", style);
@@ -47,7 +47,7 @@ public class WorkspaceSwitcherViewTests
     public void Open_in_new_window_is_on_the_row_context_menu()
     {
         var xaml = File.ReadAllText(Path.Combine(
-            RepoRoot(), "src", "Loomo.App", "Views", "WorkspaceSwitcherView.xaml"));
+            RepoRoot(), "src", "Loomo.App", "Views", "Workspace", "WorkspaceSwitcherView.xaml"));
         var template = Between(xaml, "<ListBox.ItemTemplate>", "</ListBox.ItemTemplate>");
 
         Assert.Contains("Click=\"OnMenuOpenInNewWindow\"", template);

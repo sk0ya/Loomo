@@ -66,10 +66,10 @@ public partial class ShellWindow {
         }
         foreach (var item in items) {
             var captured = item;
-            var display = NavigationLocationFormatter.Resolve(
+            var display = NavigationLocationResolver.Resolve(
                 captured.FilePath, _workspace.Folders, _solutionModel?.Current);
             var location = display.Format(captured.Line, captured.Col);
-            var preview = captured.Preview ?? ReadSourceLine(captured.FilePath, captured.Line);
+            var preview = captured.Preview ?? NavigationSourceReader.ReadLine(captured.FilePath, captured.Line);
             var content = new TextBlock { TextTrimming = TextTrimming.CharacterEllipsis };
             content.Inlines.Add(new System.Windows.Documents.Run(location) {
                 Foreground = (Brush)FindResource("Accent"), });
@@ -93,23 +93,15 @@ public partial class ShellWindow {
 
     private void ShowReferencePeek(FindReferenceItem item)
     {
-        var display = NavigationLocationFormatter.Resolve(
+        var display = NavigationLocationResolver.Resolve(
             item.FilePath, _workspace.Folders, _solutionModel?.Current);
         // 定義Peekでは、同一バッファの未保存行をディスク上の内容より優先する。
         var context = string.IsNullOrWhiteSpace(item.Preview)
-            ? NavigationSourceContext.Read(item.FilePath, item.Line)
+            ? NavigationSourceReader.Read(item.FilePath, item.Line)
             : item.Preview;
         ReferencesPopupPeek.Text = string.IsNullOrWhiteSpace(context)
             ? $"プレビュー: {display.Format(item.Line, item.Col)}\n（ソースを読み取れません）"
             : $"プレビュー: {display.Format(item.Line, item.Col)}\n{context}";
         ReferencesPopupPeek.Visibility = Visibility.Visible;
-    }
-    private static string ReadSourceLine(string filePath, int line) {
-        try {
-            using var reader = new StreamReader(filePath);
-            for (var i = 0; i < line; i++)
-                if (reader.ReadLine() == null) return "";
-            return (reader.ReadLine() ?? "").Trim();
-        } catch { return ""; }
     }
 }

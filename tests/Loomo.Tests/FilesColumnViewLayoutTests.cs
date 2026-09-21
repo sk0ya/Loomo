@@ -328,17 +328,20 @@ public sealed class FilesColumnViewLayoutTests
                     window.Show();
                     window.UpdateLayout();
 
+                    var list = FindDescendant<ListBox>(view)!;
+                    var widths = new FilesColumnWidthPresenter(list, view);
+                    widths.Attach(column);
+
                     foreach (var key in new[]
                     {
                         FilesColumnKey.Name, FilesColumnKey.Size,
                         FilesColumnKey.Modified, FilesColumnKey.Type
                     })
                     {
-                        view.AutoFitColumn(key);
+                        widths.AutoFitColumn(key);
                     }
                     window.UpdateLayout();
 
-                    var list = FindDescendant<ListBox>(view)!;
                     var rows = 0;
                     foreach (var entry in column.Entries)
                     {
@@ -367,7 +370,7 @@ public sealed class FilesColumnViewLayoutTests
                     var 全体 = column.ColumnWidth(FilesColumnKey.Name);
                     column.Filter = "a.txt";
                     window.UpdateLayout();
-                    view.AutoFitColumn(FilesColumnKey.Name);
+                    widths.AutoFitColumn(FilesColumnKey.Name);
                     Assert.True(column.ColumnWidth(FilesColumnKey.Name) < 全体);
                     column.Filter = "";
                     window.UpdateLayout();
@@ -430,12 +433,14 @@ public sealed class FilesColumnViewLayoutTests
                 {
                     window.Show();
                     window.UpdateLayout();
-                    view.ApplyAutoColumnWidths();
+                    var list = (ListBox)view.FindName("EntryList")!;
+                    var widths = new FilesColumnWidthPresenter(list, view);
+                    widths.Attach(column);
+                    widths.ApplyAutoColumnWidths();
                     window.UpdateLayout();
 
                     // 使える幅は一覧の幅から右端の逃げ（スクロールバーぶん 8px）を引いたもの。
                     // 見出しの帯は列がはみ出すと「はみ出した合計」を返すので物差しにしない。
-                    var list = (ListBox)view.FindName("EntryList")!;
                     double 使える幅() => list.ActualWidth - 8;
                     double 合計() => column.ColumnSettings.Where(setting => setting.IsVisible)
                         .Sum(setting => setting.Width);
@@ -451,7 +456,7 @@ public sealed class FilesColumnViewLayoutTests
                     var 元の名前幅 = column.ColumnWidth(FilesColumnKey.Name);
                     view.Width = 700;
                     window.UpdateLayout();
-                    view.ApplyAutoColumnWidths();
+                    widths.ApplyAutoColumnWidths();
                     window.UpdateLayout();
                     Assert.True(使える幅() < 元の幅);   // 本当に狭くなっている
                     Assert.Equal(使える幅(), 合計(), 0);
@@ -473,7 +478,7 @@ public sealed class FilesColumnViewLayoutTests
                     // 別のフォルダーへ行けばまたそこの中身に合わせて始まる。
                     column.Navigate(別);
                     window.UpdateLayout();
-                    view.ApplyAutoColumnWidths();
+                    widths.ApplyAutoColumnWidths();
                     window.UpdateLayout();
                     Assert.True(column.ColumnWidthsAreAuto);
                     Assert.Equal(使える幅(), 合計(), 0);

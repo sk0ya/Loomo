@@ -243,7 +243,7 @@ public sealed class GitTreeStateTests
     [Fact]
     public void 一覧の1件ずつの状態取得はcheck_ignoreを起動しない()
     {
-        var source = ReadSource("src", "Loomo.App", "ViewModels", "FolderTreeViewModel.cs");
+        var source = ReadSource("src", "Loomo.App", "ViewModels", "Files", "FolderTreeViewModel.cs");
         var start = source.IndexOf("internal GitChangeKind GitStatusForPath(", StringComparison.Ordinal);
         Assert.True(start >= 0, "GitStatusForPath が見つからない");
         var batch = source.IndexOf("GitStatusesForPaths(", start, StringComparison.Ordinal);

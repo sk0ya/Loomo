@@ -9,6 +9,10 @@ namespace sk0ya.Loomo.App.Views;
 /// 設計書 §24.2。</summary>
 public partial class ShellWindow {
     private IReadOnlyList<PaletteCommand> _paletteCommands = Array.Empty<PaletteCommand>();
+    private CommandPaletteSearchPresenter? _paletteSearchPresenter;
+    private CommandPaletteSearchPresenter PaletteSearchPresentation
+        => _paletteSearchPresenter ??= new CommandPaletteSearchPresenter(
+            _paletteSearch, _paletteView, PaletteStatus, () => IsPaletteOpen, JumpToPaletteTarget);
     private bool IsPaletteOpen => CommandPaletteOverlay.Visibility == Visibility.Visible;
     /// <summary>パレットを開くキー（<c>palette.open</c> / <c>palette.openFromPrefix</c>）の実体。
     /// <b>外からなら開く、中でもう一度押したら検索対象を次へ回す</b>——検索ペインの
@@ -42,18 +46,11 @@ public partial class ShellWindow {
     /// <summary>探し方の案内をそのままクリックできるようにし、選択中のモードをアクセント色で示す。</summary>
     private void SetPaletteHint(PaletteMode activeMode) {
         PaletteHint.Inlines.Clear();
-        var modes = new[] {
-            PaletteMode.All, PaletteMode.File, PaletteMode.Text, PaletteMode.Symbol, PaletteMode.Line, PaletteMode.Command,
-        };
-        for (var i = 0; i < modes.Length; i++) {
+        for (var i = 0; i < PaletteHintPolicy.Modes.Count; i++) {
             if (i > 0)
                 PaletteHint.Inlines.Add(new Run("    "));
 
-            var mode = modes[i];
-            var prefix = PaletteQuery.PrefixOf(mode);
-            var label = mode == PaletteMode.All
-                ? PaletteQuery.LabelOf(mode)
-                : $"{prefix} {PaletteQuery.LabelOf(mode)}";
+            var (mode, label) = PaletteHintPolicy.Modes[i];
             var hint = new Hyperlink(new Run(label)) {
                 Tag = mode,
                 Cursor = Cursors.Hand,
@@ -112,78 +109,12 @@ public partial class ShellWindow {
     }
     // ここから下がパレットの「探して飛ぶ」側（§24.2）。先頭1文字でモードを決め、コマンドのときだけ
     // 手元の一覧を絞り、それ以外は検索サービス／言語サーバーへ投げて結果を一覧に出す。
-    private void RefilterPalette() {
-        var query = PaletteQuery.Parse(PaletteInput.Text);
-        SetPaletteHint(query.Mode);
-        _paletteSearch.CancelSearch();
-        _paletteView.SetNavigation(query.IsNavigation);
-        switch (query.Mode) {
-            case PaletteMode.All:
-                _ = RunPaletteAllSearchAsync(query);
-                break;
-            case PaletteMode.Command:
-                PaletteStatus.Text = "";
-                ShowPaletteItems(PaletteFilter.Filter(_paletteCommands, query.Text), query.Text);
-                break;
-            case PaletteMode.Line:
-                ShowPaletteLineItem(query);
-                break;
-            default:
-                _ = RunPaletteSearchAsync(query);
-                break;
-        }
-    }
-    private async Task RunPaletteAllSearchAsync(PaletteQuery query) {
-        var outcome = await _paletteSearch.SearchAllAsync(
-            query, _paletteCommands, JumpToPaletteTarget, status => PaletteStatus.Text = status);
-        if (outcome is null || !IsPaletteOpen)
-            return;
-        ShowPaletteItems(outcome.Items, query.Text);
-        PaletteStatus.Text = outcome.Status;
-    }
-    private void ShowPaletteItems(IReadOnlyList<PaletteCommand> items, string query) {
-        // 候補が0件のときも欄は畳まない（箱の形が変わると目が追い直しになる）。空にすると選択が
-        // 変わらない＝SelectionChanged が来ないので、前の項目の残像はここで消し、代わりに
-        // 「無い」ことを右の欄にも書く（枠だけ残ると読み込み中との区別がつかない）。
-        var hasNoResults = items.Count == 0;
-        if (hasNoResults)
-            _paletteSearch.CancelPreview();
-
-        // ItemsSource の更新で選択解除の SelectionChanged が発生し、右欄を消す。
-        // 先に一覧を更新してからメッセージを置けば、空状態の案内が消えない。
-        _paletteView.ShowItems(items, query);
-        if (hasNoResults)
-            _paletteView.ShowPreviewMessage("", "候補がありません");
-    }
-    /// <summary>探して飛ぶ側の一覧。待ち・キャンセル・供給元の振り分けは
-    /// <see cref="PaletteSearchCoordinator"/> の仕事で、ここは返ってきたものを描くだけ。</summary>
-    private async Task RunPaletteSearchAsync(PaletteQuery query) {
-        var outcome = await _paletteSearch.SearchAsync(query, JumpToPaletteTarget, s => PaletteStatus.Text = s);
-        if (outcome is null || !IsPaletteOpen)
-            return;
-        ShowPaletteItems(outcome.Items, query.Text);
-        PaletteStatus.Text = outcome.Status;
-    }
-    /// <summary>「: 行番号」モード。対象はいま見ているファイルなので、検索は要らずその場で1件作る。</summary>
-    private void ShowPaletteLineItem(PaletteQuery query) {
-        if (ActiveEditorFilePath() is not { } path) {
-            ShowPaletteItems(Array.Empty<PaletteCommand>(), "");
-            PaletteStatus.Text = "開いているファイルがありません";
-            return;
-        }
-        if (query.LineNumber is not { } line) {
-            ShowPaletteItems(Array.Empty<PaletteCommand>(), "");
-            PaletteStatus.Text = "行番号を入力してください";
-            return;
-        }
-        ShowPaletteItems(
-            PaletteNavigationItems.ForLine(path, _workspace.ToDisplayPath(path), line, JumpToPaletteTarget), "");
-        PaletteStatus.Text = "";
-    }
-    private string? ActiveEditorFilePath() {
-        var path = _activeEditorTab is { } tab ? (tab.IsRealized ? tab.Control.FilePath : tab.PeekFilePath) : null;
-        return string.IsNullOrEmpty(path) ? null : path;
-    }
+    private void RefilterPalette()
+        => _ = PaletteSearchPresentation.RefilterAsync(
+            PaletteInput.Text, _paletteCommands, SetPaletteHint,
+            ActiveEditorFilePath(), _workspace.ToDisplayPath);
+    private string? ActiveEditorFilePath()
+        => EditorTabNavigationPolicy.ActiveFilePath(_activeEditorTab);
     /// <summary>確定（Enter／クリック）で実際に飛ぶ。プレビューで見ていた場所と同じ <see cref="PaletteTarget"/>
     /// を使うので、見えていた行と開いた行がズレない。</summary>
     private Action JumpToPaletteTarget(PaletteTarget target) => () => _ = OpenPaletteTargetAsync(target);
@@ -216,12 +147,7 @@ public partial class ShellWindow {
     /// それだけを出す（読み込みは要らないので同期）。</summary>
     private void ShowPaletteCommandDetail(PaletteCommand command) {
         _paletteSearch.CancelPreview();
-        var shortcut = string.IsNullOrEmpty(command.Shortcut)
-            ? "ショートカット: 未割当"
-            : $"ショートカット: {command.Shortcut}";
-        _paletteView.ShowPreviewDetail(new PalettePreviewContent(
-            command.Title, command.Category, $"{shortcut}{Environment.NewLine}{Environment.NewLine}Enter で実行・Esc で閉じる",
-            Array.Empty<PalettePreviewLine>(), null));
+        _paletteView.ShowPreviewDetail(PaletteCommandPreview.Create(command));
     }
     private async Task LoadPalettePreviewAsync(PaletteTarget target) {
         var content = await _paletteSearch.PreviewAsync(target, _workspace.ToDisplayPath(target.FullPath));
@@ -260,10 +186,6 @@ public partial class ShellWindow {
                 break;
         }
     }
-    /// <summary>パレットを開いている間に通すコマンド（＝この面自身の操作）。
-    /// 「探し方の切替」と「別の探し方で開き直す」はここに入り、それ以外は入力欄へ素通しする。</summary>
-    private static bool IsPaletteScopedCommand(string id)
-        => id.StartsWith("palette.", StringComparison.Ordinal);
     private void MovePaletteSelection(int delta) {
         _paletteView.MoveSelection(delta);
     }
@@ -377,15 +299,7 @@ public partial class ShellWindow {
 
     private void AddSearchScopeCommand(List<PaletteCommand> list, string label, SearchScope scope)
     {
-        var id = $"search.scope.{scope switch
-        {
-            SearchScope.Text => "text",
-            SearchScope.FileName => "fileName",
-            SearchScope.Terminal => "terminal",
-            SearchScope.Class => "class",
-            SearchScope.Symbol => "symbol",
-            _ => throw new ArgumentOutOfRangeException(nameof(scope)),
-        }}";
+        var id = PaletteSearchScopePolicy.KeybindingId(scope);
         list.Add(new("検索", $"検索対象を{label}にする", () => OpenSearch(scope),
             _keybindings.For(id)?.Format(), id));
     }

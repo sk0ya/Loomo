@@ -726,7 +726,7 @@ public sealed partial class GitPanelViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanPushForce))]
     private async Task PushForceAsync()
     {
-        if (!Views.GitBranchDialogs.ConfirmForcePush(
+        if (!GitBranchDialogs.ConfirmForcePush(
             Application.Current?.MainWindow, BranchLabel))
             return;
         await RunOpAsync("強制プッシュ", () => _git.PushAsync(force: true));

@@ -38,7 +38,7 @@ internal static class PaletteHighlight
         if (string.IsNullOrEmpty(text))
             return;
 
-        var mask = ComputeMask(text, GetQuery(tb));
+        var mask = PaletteHighlightPolicy.TitleMask(text, GetQuery(tb));
         var i = 0;
         while (i < text.Length)
         {
@@ -61,47 +61,6 @@ internal static class PaletteHighlight
         }
     }
 
-    /// <summary>タイトル各文字を強調するか否かのマスク。空白区切りの各語について、まず連続一致（部分一致）を、
-    /// 無ければ飛び石一致（全文字を順番どおり拾えたときだけ）で印を付ける。</summary>
-    private static bool[] ComputeMask(string title, string? query)
-    {
-        var mask = new bool[title.Length];
-        if (string.IsNullOrWhiteSpace(query))
-            return mask;
-
-        var tokens = query.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        foreach (var token in tokens)
-        {
-            var idx = title.IndexOf(token, StringComparison.OrdinalIgnoreCase);
-            if (idx >= 0)
-            {
-                for (var k = 0; k < token.Length; k++)
-                    mask[idx + k] = true;
-                continue;
-            }
-            MarkSubsequence(title, token, mask);
-        }
-        return mask;
-    }
-
-    /// <summary>飛び石一致：token の全文字を title 内で順番どおり拾えたときだけ、その位置に印を付ける
-    /// （途中までしか拾えない語は誤ハイライトを避けて何も付けない）。</summary>
-    private static void MarkSubsequence(string title, string token, bool[] mask)
-    {
-        var hit = new List<int>(token.Length);
-        var n = 0;
-        for (var i = 0; i < title.Length && n < token.Length; i++)
-        {
-            if (char.ToUpperInvariant(title[i]) == char.ToUpperInvariant(token[n]))
-            {
-                hit.Add(i);
-                n++;
-            }
-        }
-        if (n == token.Length)
-            foreach (var i in hit)
-                mask[i] = true;
-    }
 }
 
 /// <summary>
@@ -142,7 +101,7 @@ internal static class PaletteMatchHighlight
         // 色（構文）と印（検索語）は別の理由で変わるので、文字ごとに両方を決めてから、
         // 同じ組み合わせが続く区間をまとめて1つの Run にする（Run を1文字ずつ作らない）。
         var colors = Colors(text, GetTokens(tb));
-        var hits = Hits(text, GetTerm(tb));
+        var hits = PaletteHighlightPolicy.LiteralMask(text, GetTerm(tb));
 
         var at = 0;
         while (at < text.Length)
@@ -187,23 +146,4 @@ internal static class PaletteMatchHighlight
         return colors;
     }
 
-    /// <summary>文字ごとの「検索語に当たったか」。リテラル一致の全出現（大文字小文字は無視）。</summary>
-    private static bool[] Hits(string text, string? term)
-    {
-        var hits = new bool[text.Length];
-        if (string.IsNullOrEmpty(term))
-            return hits;
-
-        var at = 0;
-        while (at < text.Length)
-        {
-            var found = text.IndexOf(term, at, StringComparison.OrdinalIgnoreCase);
-            if (found < 0)
-                break;
-            for (var i = found; i < found + term.Length && i < text.Length; i++)
-                hits[i] = true;
-            at = found + term.Length;
-        }
-        return hits;
-    }
 }

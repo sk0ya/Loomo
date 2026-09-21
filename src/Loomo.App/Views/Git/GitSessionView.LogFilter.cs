@@ -15,43 +15,8 @@ public partial class GitSessionView
 {
     private void SetupLogFilter() => PopupReopenGuard.Track(LogDatePopup);
 
-    /// <summary>一覧の "/" からの着地点。打ち直しが前の語の後ろへ続かないよう全選択して渡す。</summary>
-    private void FocusLogFilter()
-    {
-        LogFilterBox.Focus();
-        LogFilterBox.SelectAll();
-    }
-
-    /// <summary>
-    /// 絞り込み欄から一覧へ戻る道。Esc は語があれば消し、無ければ一覧へ返す。
-    /// <b>Esc は必ず握る</b>——TextBox の既定の Esc は Undo で、握らないと
-    /// <c>ApplicationCommands.Undo</c> が昇っていき、編集していないエディタの取り消しまで巻き込む。
-    /// </summary>
     private void OnLogFilterKeyDown(object sender, KeyEventArgs e)
-    {
-        if (sender is not TextBox box) return;
-        switch (e.Key)
-        {
-            case Key.Escape:
-                e.Handled = true;
-                if (box.Text.Length > 0)
-                {
-                    box.Clear();
-                    // Delay=200 を待たずに反映する（Esc の手応えを遅らせない）
-                    box.GetBindingExpression(TextBox.TextProperty)?.UpdateSource();
-                }
-                else
-                {
-                    FocusCommitList();
-                }
-                break;
-            case Key.Down:
-            case Key.Enter:
-                e.Handled = true;
-                FocusCommitList();
-                break;
-        }
-    }
+        => _keyboardController.OnLogFilterKeyDown(sender, e);
 
     private void OnLogDateToggle(object sender, MouseButtonEventArgs e)
         => PopupReopenGuard.SuppressReopen(sender, e, LogDatePopup);

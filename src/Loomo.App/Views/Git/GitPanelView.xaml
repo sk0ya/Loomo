@@ -121,7 +121,7 @@
                     <ControlTemplate TargetType="TreeViewItem">
                         <StackPanel>
                             <!-- 行クリックで開閉できるよう、矢印だけでなく行全体を当たり判定にする
-                                 （実際のトグルはコードビハインドの ChangeTree_PreviewMouseLeftButtonDown）。 -->
+                                 （実際のトグルは GitPanelInteractionController が処理）。 -->
                             <Border x:Name="Bd" Background="Transparent" CornerRadius="3" Padding="0,1">
                                 <Grid>
                                     <Grid.ColumnDefinitions>
@@ -501,13 +501,10 @@
                             </Border>
                         </StackPanel>
                     </DockPanel>
-                    <ListBox ItemsSource="{Binding Staged}" SelectionMode="Extended"
+                    <ListBox x:Name="StagedList" ItemsSource="{Binding Staged}" SelectionMode="Extended"
                              Background="Transparent" BorderThickness="0" Padding="0"
                              ItemContainerStyle="{StaticResource ChangeRowItem}"
                              ScrollViewer.VerticalScrollBarVisibility="Auto"
-                             SelectionChanged="StagedList_SelectionChanged"
-                             MouseDoubleClick="ChangeList_MouseDoubleClick"
-                             PreviewMouseRightButtonDown="ChangeList_PreviewMouseRightButtonDown"
                              ContextMenu="{StaticResource StagedRowMenu}">
                         <ListBox.InputBindings>
                             <KeyBinding Key="Delete" Command="{Binding UnstageSelectedCommand}" />
@@ -537,14 +534,11 @@
                               Visibility="{Binding Staged.Count, Converter={StaticResource CountToVis}}" />
 
                 <!-- 変更／バージョン管理外をトップレベルノードに持つコミット対象ツリー -->
-                <TreeView Grid.Row="2" ItemsSource="{Binding WorkingTreeSections}" Margin="0,2,0,0"
+                <TreeView x:Name="WorkingTree" Grid.Row="2" ItemsSource="{Binding WorkingTreeSections}" Margin="0,2,0,0"
                           ItemTemplate="{StaticResource GitChangeTreeTemplate}"
                           ItemContainerStyle="{StaticResource GitChangeTreeItem}"
                           Background="Transparent" BorderThickness="0" Padding="0"
                           ScrollViewer.VerticalScrollBarVisibility="Auto"
-                          MouseDoubleClick="ChangeList_MouseDoubleClick"
-                          PreviewMouseLeftButtonDown="ChangeTree_PreviewMouseLeftButtonDown"
-                          PreviewMouseRightButtonDown="ChangeTree_PreviewMouseRightButtonDown"
                           ContextMenu="{StaticResource WorkingTreeRowMenu}" />
 
                 <GridSplitter Grid.Row="3" Height="6" HorizontalAlignment="Stretch"

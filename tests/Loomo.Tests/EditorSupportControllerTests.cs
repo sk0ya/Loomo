@@ -12,9 +12,10 @@ public class EditorSupportControllerTests
         var first = Tab("first.md");
         var second = Tab("second.md");
 
-        Assert.True(controller.TryChangeSource(first, false, out var initial));
-        Assert.Null(initial);
-        Assert.True(controller.TryChangeSource(second, false, out var previous));
+        Assert.Null(controller.Source);
+        Assert.True(ChangeSource(controller, first, force: false));
+        var previous = controller.Source;
+        Assert.True(ChangeSource(controller, second, force: false));
         Assert.Same(first, previous);
         Assert.Same(second, controller.Source);
         Assert.True(controller.History.CanGoBack);
@@ -26,12 +27,12 @@ public class EditorSupportControllerTests
         var controller = new EditorSupportController();
         var first = Tab("first.md");
         var second = Tab("second.md");
-        controller.TryChangeSource(first, false, out _);
+        ChangeSource(controller, first, force: false);
         controller.IsPinned = true;
 
-        Assert.False(controller.TryChangeSource(second, false, out _));
+        Assert.False(ChangeSource(controller, second, force: false));
         Assert.Same(first, controller.Source);
-        Assert.True(controller.TryChangeSource(second, true, out _));
+        Assert.True(ChangeSource(controller, second, force: true));
         Assert.Same(second, controller.Source);
     }
 
@@ -41,12 +42,12 @@ public class EditorSupportControllerTests
         var controller = new EditorSupportController();
         var first = Tab("first.md");
         var second = Tab("second.md");
-        controller.TryChangeSource(first, false, out _);
-        controller.TryChangeSource(second, false, out _);
+        ChangeSource(controller, first, force: false);
+        ChangeSource(controller, second, force: false);
 
         Assert.Equal("first.md", controller.History.GoBack());
         controller.IsNavigating = true;
-        controller.TryChangeSource(first, true, out _);
+        ChangeSource(controller, first, force: true);
 
         Assert.False(controller.History.CanGoBack);
         Assert.True(controller.History.CanGoForward);
@@ -62,8 +63,8 @@ public class EditorSupportControllerTests
         var controller = new EditorSupportController();
         var first = Tab(@"C:\a\First.cs");
         var second = Tab(@"C:\a\Second.cs");
-        controller.TryChangeSource(first, false, out _);
-        controller.TryChangeSource(second, false, out _);
+        ChangeSource(controller, first, force: false);
+        ChangeSource(controller, second, force: false);
         controller.IsPinned = true;
         controller.CommitOutline(new EditorSupportOutlineCommit(
             EditorSupportOutlineCommitKind.Replace, second, @"C:\a\Second.cs", [], null, (1, 0)));
@@ -88,13 +89,13 @@ public class EditorSupportControllerTests
         // ②だけの差し替えへ進む。言語サーバーは切替で落とされているので、ツリーは古いまま動かない。
         var controller = new EditorSupportController();
         var tab = Tab(@"C:\a\Foo.cs");
-        controller.TryChangeSource(tab, false, out _);
+        ChangeSource(controller, tab, force: false);
         controller.CommitOutline(new EditorSupportOutlineCommit(
             EditorSupportOutlineCommitKind.Replace, tab, @"C:\a\Foo.cs", [], null, (1, 0)));
 
         controller.ResetForWorkspaceSwitch();
 
-        Assert.True(controller.TryChangeSource(tab, false, out _));
+        Assert.True(ChangeSource(controller, tab, force: false));
         Assert.False(controller.OutlineMatches(tab, @"C:\a\Foo.cs"));
     }
 
@@ -115,4 +116,8 @@ public class EditorSupportControllerTests
 
     private static EditorTab Tab(string path)
         => new(Guid.NewGuid()) { Pending = new EditorTabSnapshot { FilePath = path } };
+
+    private static bool ChangeSource(EditorSupportController controller, EditorTab source, bool force)
+        => controller.TryChangeSource(source, force,
+            static (_, _) => { }, static (_, _) => { });
 }

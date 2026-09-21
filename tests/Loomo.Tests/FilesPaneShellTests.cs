@@ -132,19 +132,18 @@ public sealed class FilesPaneShellTests : IDisposable
     [Fact]
     public void 右クリックとキー操作の入口がファイル一覧側にもある()
     {
-        var xaml = Read("src", "Loomo.App", "Views", "FilesColumnView.xaml");
+        var xaml = Read("src", "Loomo.App", "Views", "Files", "FilesColumnView.xaml");
         foreach (var header in new[] { "アプリで開く…", "共有", "送る", "ZIPに圧縮", "プロパティ",
                                        "クイックアクセスにピン留め", "クイックアクセスから解除" })
             Assert.Contains($"Header=\"{header}\"", xaml);
 
         Assert.Contains("PreviewTextInput=\"OnListPreviewTextInput\"", xaml);
 
-        var code = Read("src", "Loomo.App", "Views", "FilesColumnView.xaml.cs");
+        var code = Read("src", "Loomo.App", "Services", "FileSystem", "FilesColumnKeyboardInteractionController.cs");
         // Alt+Enter＝プロパティ、j/k＝上下移動、文字入力＝type-ahead 選択。
-        Assert.Contains("ShowProperties()", code);
-        Assert.Contains("case Key.J:", code);
-        Assert.Contains("case Key.K:", code);
-        Assert.Contains("FolderTreeKeyboardNavigation.FindTypeAheadMatch", code);
+        Assert.Contains("_showProperties", code);
+        Assert.Contains("FolderTreeKeyboardNavigation.FindAdjacentIndex", code);
+        Assert.Contains("ResolveTypeAheadSearch", code);
     }
 
     private static string Read(params string[] parts)

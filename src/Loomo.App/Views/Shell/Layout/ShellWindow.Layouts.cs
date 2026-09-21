@@ -25,22 +25,19 @@ public partial class ShellWindow {
         ApplyModeChoiceState(SplitModeChoice, SplitModeIcon, SplitModeText, mode == DisplayMode.Layout);
         ApplyModeChoiceState(ConcentratedModeChoice, ConcentratedModeIcon, ConcentratedModeText, mode == DisplayMode.Solo);
         ApplyModeChoiceState(DockModeChoice, DockModeIcon, DockModeText, mode == DisplayMode.Dock);
-        DisplayModeLabel.Text = DisplayModeName(mode);
+        DisplayModeLabel.Text = ShellLayoutPresentation.ModeName(mode);
         // 1行に収める。折り返すとショートカットが途中で割れて読めなくなる。
         ModeDescription.Text = (mode switch {
             DisplayMode.Solo => "1つを大きく、ほかは右側で待機。",
             DisplayMode.Dock => "中央はタイル、道具は下と右の領域へ。",
             _ => "複数の画面をタイル状に並べる。",
         })
-            + ShortcutSuffix("mode.toggle", "で切り替え");
-        LayoutCycleHint.Text = ShortcutHint("stage.cycle", "で順に切り替え");
+            + ShellLayoutPresentation.ShortcutSuffix(_keybindings.For("mode.toggle")?.Format(), "で切り替え");
+        LayoutCycleHint.Text = ShellLayoutPresentation.ShortcutHint(
+            _keybindings.For("stage.cycle")?.Format(), "で順に切り替え");
         UpdateMainPaneHeader();
     }
     /// <summary>割り当てが無ければ何も出さない（未割り当てのキーを案内しないため）。</summary>
-    private string ShortcutHint(string commandId, string suffix)
-        => _keybindings.For(commandId)?.Format() is { Length: > 0 } key ? $"{key} {suffix}" : "";
-    private string ShortcutSuffix(string commandId, string suffix)
-        => ShortcutHint(commandId, suffix) is { Length: > 0 } hint ? $"（{hint}）" : "";
     /// <summary>表示モードのセグメント2択。選択中は面で塗り、アイコンと字面もアクセントへ寄せる
     /// （小さな印だけだと、どちらに居るのかポップアップを開くたび探すことになる）。</summary>
     private void ApplyModeChoiceState(Button choice, System.Windows.Shapes.Path icon, TextBlock text, bool active) {
@@ -57,20 +54,15 @@ public partial class ShellWindow {
         if (_stageActive || _dockActive)   // 配置（タイルの組み方）は分割表示だけの概念
             return;
         CaptureLayoutSizes();
-        if ((_layoutDirty || _activeLayoutIndex < 0) && _root is not null) {
-            var current = ToSnapshot(_root);
-            var sameAsSaved = _layouts.FindIndex(l => PaneLayoutTree.SnapshotsEquivalent(l.Tree, current));
-            if (sameAsSaved >= 0) {
-                _activeLayoutIndex = sameAsSaved;
-                _layoutDirty = false;
-            } else {
-                _scratchLayout = current;
-            }
-        }
-        var next = LayoutCycleLogic.NextIndex( _activeLayoutIndex, _layouts.Count, _scratchLayout is not null, direction);
-        if (next == _activeLayoutIndex && !_layoutDirty)
+        var transition = LayoutCycleLogic.Advance(
+            _layouts, _activeLayoutIndex, _layoutDirty, _scratchLayout,
+            _root is null ? null : ToSnapshot(_root), direction);
+        _activeLayoutIndex = transition.ActiveIndex;
+        _layoutDirty = transition.IsDirty;
+        _scratchLayout = transition.ScratchLayout;
+        if (!transition.ShouldLoad)
             return;   // 1枚しかない等、行き先が無い
-        LoadLayoutAt(next);
+        LoadLayoutAt(transition.NextIndex);
         SaveActiveWorkspaceSnapshot();
     }
     private void LoadLayoutAt(int index) {
@@ -96,27 +88,15 @@ public partial class ShellWindow {
         if (name.Length == 0 || _stageActive || _root is null)
             return;
         CaptureLayoutSizes();
-        var layout = new SavedLayout { Name = name, Tree = ToSnapshot(_root) };
-        var existing = _layouts.FindIndex(p => p.Name == name);
-        if (existing >= 0) {
-            _layouts[existing] = layout;
-            _activeLayoutIndex = existing;
-        } else {
-            _layouts.Add(layout);
-            _activeLayoutIndex = _layouts.Count - 1;
-        }
+        _activeLayoutIndex = LayoutCycleLogic.Save(_layouts, name, ToSnapshot(_root));
         _layoutDirty = false;
         UpdateModeButtons();
         SaveActiveWorkspaceSnapshot();
     }
     private void DeleteLayout(int index) {
-        if (index < 0 || index >= _layouts.Count)
+        if (!LayoutCycleLogic.TryDelete(_layouts, index, _activeLayoutIndex, out var nextActiveIndex))
             return;
-        _layouts.RemoveAt(index);
-        if (_activeLayoutIndex == index)
-            _activeLayoutIndex = -1;
-        else if (_activeLayoutIndex > index)
-            _activeLayoutIndex--;
+        _activeLayoutIndex = nextActiveIndex;
         UpdateModeButtons();
         SaveActiveWorkspaceSnapshot();
     }
@@ -141,7 +121,7 @@ public partial class ShellWindow {
             row.Children.Add(del);
             var item = BuildPopupRow(layout.Name, LayoutRowIcon);
             item.SetState(!_layoutDirty && index == _activeLayoutIndex, enabled: true, accent, fg, fgDim);
-            item.Button.ToolTip = LayoutSummary(layout);
+            item.Button.ToolTip = ShellLayoutPresentation.LayoutSummary(layout, PaneLabel);
             item.Button.Click += (_, _) => {
                 PaneTogglePopup.IsOpen = false;
                 LoadLayout(index);
@@ -170,19 +150,6 @@ public partial class ShellWindow {
             return;
         e.Handled = true;
         OnLayoutSaveClick(sender, e);
-    }
-    private static string LayoutSummary(SavedLayout layout) {
-        var panes = LeafKinds(layout.Tree).Select(PaneLabel);
-        return $"{layout.Name}  ({string.Join(" · ", panes)})";
-    }
-    private static IEnumerable<PaneKind> LeafKinds(PaneNodeSnapshot node) {
-        if (node.Kind is { } kind) {
-            yield return kind;
-            yield break;
-        }
-        foreach (var child in node.Children)
-            foreach (var k in LeafKinds(child))
-                yield return k;
     }
     private void OnLayoutSaveClick(object sender, RoutedEventArgs e) {
         var name = LayoutNameInput.Text;

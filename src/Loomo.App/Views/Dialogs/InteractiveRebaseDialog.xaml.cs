@@ -4,6 +4,7 @@ using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using CommunityToolkit.Mvvm.ComponentModel;
+using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.Services;
 
 namespace sk0ya.Loomo.App.Views;
@@ -44,7 +45,9 @@ public sealed partial class RebaseRowVm : ObservableObject
     /// <summary>Reword 選択時の新しいメッセージ（未入力なら null）。</summary>
     public string? Message { get; set; }
 
-    public RebasePlanEntry ToEntry() => new(Hash, ShortHash, Subject, Action);
+    internal RebasePlanEdit ToEdit() => new(Hash, ShortHash, Subject, Action, Message);
+
+    public RebasePlanEntry ToEntry() => InteractiveRebasePlanPolicy.ToEntry(ToEdit());
 }
 
 /// <summary>
@@ -70,10 +73,8 @@ public partial class InteractiveRebaseDialog : Window
         if (dialog.ShowDialog() != true)
             return null;
 
-        var plan = dialog._rows.Select(r => r.ToEntry()).ToList();
-        var messages = dialog._rows
-            .Where(r => r.Action == RebaseAction.Reword && !string.IsNullOrWhiteSpace(r.Message))
-            .ToDictionary(r => r.Hash, r => r.Message!);
+        var (plan, rewordMessages) = InteractiveRebasePlanPolicy.Build(dialog._rows.Select(row => row.ToEdit()));
+        var messages = InteractiveRebasePlanPolicy.NonEmptyMessages(rewordMessages);
         return (plan, messages);
     }
 
@@ -84,18 +85,14 @@ public partial class InteractiveRebaseDialog : Window
 
     private void OnMoveUp(object sender, RoutedEventArgs e)
     {
-        var index = RowsList.SelectedIndex;
-        if (index <= 0) return;
-        _rows.Move(index, index - 1);
-        RowsList.SelectedIndex = index - 1;
+        if (OrderedItemMovePolicy.Move(_rows, RowsList.SelectedIndex, -1) is { } target)
+            RowsList.SelectedIndex = target;
     }
 
     private void OnMoveDown(object sender, RoutedEventArgs e)
     {
-        var index = RowsList.SelectedIndex;
-        if (index < 0 || index >= _rows.Count - 1) return;
-        _rows.Move(index, index + 1);
-        RowsList.SelectedIndex = index + 1;
+        if (OrderedItemMovePolicy.Move(_rows, RowsList.SelectedIndex, +1) is { } target)
+            RowsList.SelectedIndex = target;
     }
 
     private void OnEditMessage(object sender, RoutedEventArgs e)
@@ -110,22 +107,10 @@ public partial class InteractiveRebaseDialog : Window
 
     private void OnOk(object sender, RoutedEventArgs e)
     {
-        var firstNonDrop = _rows.FirstOrDefault(r => r.Action != RebaseAction.Drop);
-        if (firstNonDrop is null)
+        var (plan, rewordMessages) = InteractiveRebasePlanPolicy.Build(_rows.Select(row => row.ToEdit()));
+        if (InteractiveRebasePlanPolicy.Validate(plan, rewordMessages) is { } error)
         {
-            ShowError("少なくとも1件は Pick / Reword / Edit にしてください。");
-            return;
-        }
-        if (firstNonDrop.Action is RebaseAction.Squash or RebaseAction.Fixup)
-        {
-            ShowError("先頭のコミットは Pick / Reword / Edit のいずれかにしてください。");
-            return;
-        }
-        var missingMessage = _rows.FirstOrDefault(
-            r => r.Action == RebaseAction.Reword && string.IsNullOrWhiteSpace(r.Message));
-        if (missingMessage is not null)
-        {
-            ShowError($"{missingMessage.ShortHash}（Reword）のメッセージを入力してください。");
+            ShowError(error);
             return;
         }
 

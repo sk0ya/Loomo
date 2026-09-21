@@ -22,7 +22,7 @@ public partial class ShellWindow {
             return;
         }
         await ExecuteCSharpTargetAsync(projectPath, CSharpSolutionAction.Run,
-            SelectedTargetFrameworkFor(projectPath));
+            CSharpSolutionExplorerPolicy.SelectedTargetFrameworkFor(_solutionModel?.Current, projectPath));
     }
     /// <summary>IDE ペインを部屋に出して前に出す。タイトルバーから開始したデバッグの出力・変数を見に行く
     /// ための導線で、勝手に部屋を組み替えないよう「開く」と明示したときだけ呼ぶ（開始そのものでは動かさない

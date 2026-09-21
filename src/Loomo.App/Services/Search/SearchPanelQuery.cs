@@ -1,10 +1,234 @@
 using System.Text.RegularExpressions;
+using System.Windows.Input;
 using sk0ya.Loomo.App.ViewModels;
 using sk0ya.Loomo.Core.Abstractions;
 
 namespace sk0ya.Loomo.App.Services;
 
 public sealed record SearchPanelResult(IReadOnlyList<object> Roots, string StatusMessage);
+
+/// <summary>検索欄へ表示する一致範囲（文字列内オフセット）。描画方式から独立した検索ポリシー。</summary>
+public readonly record struct SearchTextMatch(int Start, int Length);
+
+/// <summary>検索結果ツリーの展開と、次に置換する一致の選択規則。</summary>
+internal static class SearchResultTreePolicy
+{
+    public static bool CanToggleExpansion(object? node) => node switch
+    {
+        SearchFolderNode => true,
+        SearchFileGroup { Count: > 0 } => true,
+        _ => false,
+    };
+
+    public static void SetExpanded(object node, bool expanded)
+    {
+        switch (node)
+        {
+            case SearchFolderNode folder:
+                folder.IsExpanded = expanded;
+                foreach (var child in folder.Children)
+                    SetExpanded(child, expanded);
+                break;
+            case SearchFileGroup group:
+                group.IsExpanded = expanded;
+                break;
+        }
+    }
+
+    public static bool PreviewSelection(object? selected,
+        Action<SearchMatchItem> previewMatch, Action<SearchFileGroup> previewFile)
+        => DispatchSelection(selected, previewMatch, previewFile);
+
+    public static bool ActivateSelection(object? selected,
+        Action<SearchMatchItem> activateMatch, Action<SearchFileGroup> activateFile)
+        => DispatchSelection(selected, activateMatch, activateFile);
+
+    private static bool DispatchSelection(object? selected,
+        Action<SearchMatchItem> onMatch, Action<SearchFileGroup> onFile)
+    {
+        switch (selected)
+        {
+            case SearchMatchItem match:
+                onMatch(match);
+                return true;
+            case SearchFileGroup { Count: 0 } group:
+                onFile(group);
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    public static (SearchMatchItem? Target, SearchMatchItem? Next) NextUnreplaced(
+        IEnumerable<SearchFileGroup> groups, SearchMatchItem? current)
+    {
+        var pending = groups.SelectMany(group => group.Matches).Where(match => !match.IsReplaced).ToList();
+        if (pending.Count == 0)
+            return (null, null);
+
+        var index = current is not null ? pending.IndexOf(current) : -1;
+        var targetIndex = index >= 0 ? index : 0;
+        var nextIndex = targetIndex + 1;
+        return (pending[targetIndex], nextIndex < pending.Count ? pending[nextIndex] : null);
+    }
+}
+
+/// <summary>リテラル／正規表現検索で、文字列のどこを強調するかを求める。</summary>
+public static class SearchTextMatcher
+{
+    public static IReadOnlyList<SearchTextMatch> FindMatches(
+        string text, string query, bool useRegex, bool caseSensitive)
+    {
+        if (string.IsNullOrEmpty(text) || string.IsNullOrEmpty(query))
+            return Array.Empty<SearchTextMatch>();
+
+        if (!useRegex)
+        {
+            var comparison = caseSensitive ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
+            var matches = new List<SearchTextMatch>();
+            var index = 0;
+            while (index < text.Length)
+            {
+                var hit = text.IndexOf(query, index, comparison);
+                if (hit < 0) break;
+                matches.Add(new SearchTextMatch(hit, query.Length));
+                index = hit + query.Length;
+            }
+            return matches;
+        }
+
+        Regex regex;
+        try
+        {
+            var options = caseSensitive ? RegexOptions.None : RegexOptions.IgnoreCase;
+            regex = new Regex(query, options, TimeSpan.FromMilliseconds(100));
+        }
+        catch (ArgumentException) { return Array.Empty<SearchTextMatch>(); }
+
+        var results = new List<SearchTextMatch>();
+        try
+        {
+            foreach (Match match in regex.Matches(text))
+                if (match.Length > 0)
+                    results.Add(new SearchTextMatch(match.Index, match.Length));
+        }
+        catch (RegexMatchTimeoutException)
+        {
+            // 取得できた範囲だけを返す。描画側は残りを通常文字として表示する。
+        }
+        return results;
+    }
+}
+
+/// <summary>検索ルート入力に対するワークスペースフォルダー候補を作る。</summary>
+public static class WorkspaceFolderSuggestions
+{
+    public const int MaxResults = 20;
+
+    internal static bool ShouldShow(IReadOnlyList<string> matches, string? input)
+    {
+        if (matches.Count == 0)
+            return false;
+        var text = (input ?? "").Replace('\\', '/').TrimEnd('/');
+        return matches.Count != 1
+            || !string.Equals(matches[0], text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    internal static int MoveSelectionIndex(int count, int currentIndex, int delta)
+        => count <= 0 ? -1 : Math.Clamp(currentIndex + delta, 0, count - 1);
+
+    internal static RootSuggestionKeyAction ResolveKeyAction(
+        Key key, ModifierKeys modifiers, bool popupOpen, bool hasSelectedItem)
+    {
+        if (popupOpen)
+        {
+            if (key == Key.Down) return RootSuggestionKeyAction.MoveNext;
+            if (key == Key.Up) return RootSuggestionKeyAction.MovePrevious;
+            if (key == Key.Escape) return RootSuggestionKeyAction.Dismiss;
+            if ((key is Key.Enter or Key.Tab) && hasSelectedItem)
+                return RootSuggestionKeyAction.Accept;
+        }
+
+        if (key == Key.Space && modifiers == ModifierKeys.Control)
+            return RootSuggestionKeyAction.Show;
+        return key == Key.Enter ? RootSuggestionKeyAction.Commit : RootSuggestionKeyAction.None;
+    }
+
+    public static List<string> Compute(IReadOnlyList<string>? folders, string? input)
+    {
+        var empty = new List<string>();
+        if (folders is null || folders.Count == 0)
+            return empty;
+
+        var text = (input ?? "").Replace('\\', '/');
+        var lastSep = text.LastIndexOf('/');
+        var dirPart = lastSep >= 0 ? text[..lastSep] : "";
+        var prefix = lastSep >= 0 ? text[(lastSep + 1)..] : text;
+
+        if (folders.Count == 1)
+            return SuggestSubfolders(folders[0], dirPart, prefix);
+
+        if (string.IsNullOrEmpty(dirPart))
+            return folders.Select(LabelFor)
+                .Where(name => name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+                .Take(MaxResults)
+                .ToList();
+
+        var nameSep = dirPart.IndexOf('/');
+        var rootName = nameSep >= 0 ? dirPart[..nameSep] : dirPart;
+        var restDir = nameSep >= 0 ? dirPart[(nameSep + 1)..] : "";
+        var folder = folders.FirstOrDefault(path =>
+            string.Equals(LabelFor(path), rootName, StringComparison.OrdinalIgnoreCase));
+        if (folder is null)
+            return empty;
+
+        return SuggestSubfolders(folder, restDir, prefix)
+            .Select(path => rootName + "/" + path)
+            .ToList();
+    }
+
+    private static List<string> SuggestSubfolders(string root, string dirPart, string prefix)
+    {
+        var empty = new List<string>();
+        string baseDir;
+        try { baseDir = string.IsNullOrEmpty(dirPart) ? root : Path.GetFullPath(dirPart, root); }
+        catch { return empty; }
+        if (!Directory.Exists(baseDir))
+            return empty;
+
+        try
+        {
+            return Directory.EnumerateDirectories(baseDir)
+                .Select(Path.GetFileName)
+                .Where(name => !string.IsNullOrEmpty(name)
+                    && !name!.StartsWith('.')
+                    && name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+                .Take(MaxResults)
+                .Select(name => string.IsNullOrEmpty(dirPart) ? name! : dirPart + "/" + name)
+                .ToList();
+        }
+        catch { return empty; }
+    }
+
+    private static string LabelFor(string fullPath)
+    {
+        var name = Path.GetFileName(fullPath.TrimEnd('\\', '/'));
+        return string.IsNullOrEmpty(name) ? fullPath : name;
+    }
+}
+
+internal enum RootSuggestionKeyAction
+{
+    None,
+    MoveNext,
+    MovePrevious,
+    Dismiss,
+    Accept,
+    Show,
+    Commit,
+}
 
 /// <summary>ワークスペース検索を実行し、表示可能な結果へ変換する Query。</summary>
 public sealed class SearchPanelQuery

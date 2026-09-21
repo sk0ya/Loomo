@@ -6,68 +6,57 @@ namespace sk0ya.Loomo.App.Views;
 public partial class ShellWindow {
     private DetachedWindowManager? _detached;
     private DetachedWindowManager Detached => _detached ??= new DetachedWindowManager(this, () => SaveActiveWorkspaceSnapshot());
-    private DetachedItemSnapshot? CaptureDetachedItem(DetachedItem item) {
-        var snapshot = new DetachedItemSnapshot { Kind = item.Kind.ToString() };
-        switch (item.Content) {
-            case VimEditorControl editor:
-                snapshot.FilePath = editor.FilePath;
-                snapshot.Text = editor.IsModified || string.IsNullOrWhiteSpace(editor.FilePath) ? editor.Text : null;
-                snapshot.IsModified = editor.IsModified;
-                break;
-            case TerminalTabView terminal:
-                snapshot.WorkingDirectory = terminal.WorkingDirectory;
-                break;
-            case WebView2CompositionControl browser:
-                snapshot.Url = browser.TryUrl();
-                break;
-            // 切り離したブラウザは作り直せるよう器（Grid）越しに載っている（CreateBrowserSpinoffItem）。
-            // 器のまま素通りさせると復元対象から外れ、切り替え・再起動でその窓だけ消える。
-            case Panel host when host.Children.OfType<WebView2CompositionControl>().FirstOrDefault() is { } hosted:
-                // 実体から読めないうち（切り離し直後は生成に約1秒かかる。保存はその前に走る）は
-                // 器に添えた行き先を使う。読めた値は次の作り直しのために控えておく。
-                var address = SpinoffBrowserAddress.Of(host);
-                address?.Note(hosted.TryUrl());
-                snapshot.Url = hosted.TryUrl() ?? address?.Value;
-                break;
-            case DetachedEditorSupportView preview:
-                snapshot.FilePath = preview.SourceFilePath;
-                break;
-            default:
-                return null;
-        }
-        return snapshot;
-    }
+    private PaneTabDragInteractionController? _paneTabDragInteraction;
+    private PaneTabDragInteractionController PaneTabDragInteraction
+        => _paneTabDragInteraction ??= new PaneTabDragInteractionController(
+            this, MovePaneTab, StartPaneTabTearOff, () => SaveActiveWorkspaceSnapshot());
+    private PaneTabOverflowPresenter? _paneTabOverflowPresenter;
+    private PaneTabOverflowPresenter PaneTabOverflow
+        => _paneTabOverflowPresenter ??= new PaneTabOverflowPresenter(
+            TabOverflowPopup, TabOverflowPopupList, _vm.Tabs, ActivatePaneTab);
+    private DetachedBrowserLifecycleController? _detachedBrowserLifecycle;
+    private DetachedBrowserLifecycleController DetachedBrowserLifecycle
+        => _detachedBrowserLifecycle ??= new DetachedBrowserLifecycleController(
+            Dispatcher, () => CreateBrowserView(), item => _detached?.AllItems.Contains(item) == true,
+            OpenUrlInDetachedWindow, DefaultBrowserUrl);
+    private DetachedItemSnapshot? CaptureDetachedItem(DetachedItem item)
+        => DetachedItemStateCoordinator.Capture(item);
+
     private DetachedItem? RestoreDetachedItem(DetachedItemSnapshot snapshot) {
-        if (!Enum.TryParse<DetachKind>(snapshot.Kind, out var kind)) return null;
-        if (kind == DetachKind.EditorMirror && !string.IsNullOrWhiteSpace(snapshot.FilePath)) {
-            var source = _editorTabs.FirstOrDefault(t => string.Equals( t.PeekFilePath, snapshot.FilePath, StringComparison.OrdinalIgnoreCase));
-            if (source is not null) return TryCreateEditorMirrorItem(source.Id);
-        }
-        if (kind is DetachKind.EditorMirror or DetachKind.EditorMove) {
-            var tab = CreateEditorTab();
-            var editor = tab.Control;
-            if (!string.IsNullOrWhiteSpace(snapshot.FilePath) && File.Exists(snapshot.FilePath))
-                LoadEditorFile(editor, snapshot.FilePath);
-            if (snapshot.Text is not null) editor.SetText(snapshot.Text);
-            var title = string.IsNullOrWhiteSpace(snapshot.FilePath) ? "Untitled" : Path.GetFileName(snapshot.FilePath);
-            return new DetachedItem(DetachKind.EditorMove, title, editor, _tabIcons.GetFileIcon(snapshot.FilePath), editor.Dispose) {
-                Return = new DetachReturn(TabEntryKind.Editor, () => AdoptEditorTab(tab))
-            };
-        }
-        if (kind == DetachKind.EditorSupportMirror && !string.IsNullOrWhiteSpace(snapshot.FilePath)) {
-            var source = _editorTabs.FirstOrDefault(t => string.Equals( t.PeekFilePath, snapshot.FilePath, StringComparison.OrdinalIgnoreCase));
-            if (source is null) return null;
-            var view = new DetachedEditorSupportView(_editorSupportResolver, _editorSupport.Pipeline, _editorSupport.WebView.ViewFactory, _settings, _workspace, source.Control);
-            var item = new DetachedItem(kind, $"Preview: {Path.GetFileName(snapshot.FilePath)}", view, dispose: view.Dispose);
-            view.TitleChanged += (_, title) => item.Title = title;
-            AttachEditorSupportMirrorLinks(view);
-            return item;
-        }
-        if (kind is DetachKind.TerminalSpinoff or DetachKind.TerminalMove)
-            return CreateTerminalSpinoffItem(snapshot.WorkingDirectory);
-        if (kind == DetachKind.BrowserSpinoff)
-            return CreateBrowserSpinoffItem(snapshot.Url);
-        return null;
+        return DetachedItemStateCoordinator.Restore(
+            snapshot,
+            path => _editorTabs.FirstOrDefault(tab => string.Equals(
+                tab.PeekFilePath, path, StringComparison.OrdinalIgnoreCase))?.Id,
+            TryCreateEditorMirrorItem,
+            CreateRestoredEditorMove,
+            CreateRestoredEditorSupportMirror,
+            CreateTerminalSpinoffItem,
+            CreateBrowserSpinoffItem);
+    }
+
+    private DetachedItem CreateRestoredEditorMove(DetachedItemSnapshot snapshot) {
+        var tab = CreateEditorTab();
+        var editor = tab.Control;
+        if (!string.IsNullOrWhiteSpace(snapshot.FilePath) && File.Exists(snapshot.FilePath))
+            LoadEditorFile(editor, snapshot.FilePath);
+        if (snapshot.Text is not null) editor.SetText(snapshot.Text);
+        var title = string.IsNullOrWhiteSpace(snapshot.FilePath) ? "Untitled" : Path.GetFileName(snapshot.FilePath);
+        return new DetachedItem(DetachKind.EditorMove, title, editor, _tabIcons.GetFileIcon(snapshot.FilePath), editor.Dispose) {
+            Return = new DetachReturn(TabEntryKind.Editor, () => AdoptEditorTab(tab))
+        };
+    }
+
+    private DetachedItem? CreateRestoredEditorSupportMirror(string path) {
+        var source = _editorTabs.FirstOrDefault(tab => string.Equals(
+            tab.PeekFilePath, path, StringComparison.OrdinalIgnoreCase));
+        if (source is null) return null;
+        var view = new DetachedEditorSupportView(
+            _editorSupportResolver, _editorSupport.Pipeline, _editorSupport.WebView.ViewFactory,
+            _settings, _workspace, source.Control);
+        var item = new DetachedItem(DetachKind.EditorSupportMirror, $"Preview: {Path.GetFileName(path)}", view, dispose: view.Dispose);
+        view.TitleChanged += (_, title) => item.Title = title;
+        AttachEditorSupportMirrorLinks(view);
+        return item;
     }
     private void OnSidebarTabDetachRequested(object? sender, TabEntryViewModel tab) {
         DetachedItem? item = tab.Kind switch {
@@ -152,77 +141,23 @@ public partial class ShellWindow {
                 break;
         }
     }
-    private DetachedItem? TryCreateEditorMirrorItem(Guid sourceTabId) {
-        var src = _editorTabs.FirstOrDefault(t => t.Id == sourceTabId);
-        if (src is null)
-            return null;
-        var srcCtl = src.Control;                 // 未実体化なら実体化
-        var mirrorTab = CreateEditorTab();         // 独立コントロール（_editorTabs には加えない＝非永続）
-        var mirror = mirrorTab.Control;
-        if (!string.IsNullOrWhiteSpace(srcCtl.FilePath) && File.Exists(srcCtl.FilePath) && !srcCtl.IsModified)
-            LoadEditorFile(mirror, srcCtl.FilePath);
-        else
-            mirror.SetText(srcCtl.Text);
-        var syncing = false;
-        void Sync(VimEditorControl from, VimEditorControl to) {
-            if (syncing || string.Equals(to.Text, from.Text, StringComparison.Ordinal))
-                return;
-            syncing = true;
-            try {
-                var caret = to.Caret;
-                to.SetText(from.Text);
-                try { to.NavigateTo(caret.Line, caret.Column); } catch { /* 縮んだ本文で範囲外なら内部でクランプ */ }
-            } finally { syncing = false; }
-        }
-        EventHandler srcHandler = (_, _) => Sync(srcCtl, mirror);
-        EventHandler mirHandler = (_, _) => Sync(mirror, srcCtl);
-        srcCtl.BufferChanged += srcHandler;
-        mirror.BufferChanged += mirHandler;
-        void Unsync() {
-            srcCtl.BufferChanged -= srcHandler;
-            mirror.BufferChanged -= mirHandler;
-        }
-        var title = string.IsNullOrWhiteSpace(srcCtl.FilePath) ? "Untitled" : Path.GetFileName(srcCtl.FilePath!);
-        return new DetachedItem( DetachKind.EditorMirror, title, mirror, _tabIcons.GetFileIcon(srcCtl.FilePath), dispose: () => {
-                Unsync();
-                mirror.Dispose();
-            }) {
-            // 帯へ戻すときは追従を切ってから独立したタブとして迎える——同期したまま並ぶと、
-            // 同じファイルの2枚が一緒に動いて別々に編集できない。
-            Return = new DetachReturn(TabEntryKind.Editor, () => { Unsync(); AdoptEditorTab(mirrorTab); })
-        };
-    }
+    private DetachedItem? TryCreateEditorMirrorItem(Guid sourceTabId)
+        => DetachedEditorMirrorCoordinator.TryCreate(
+            _editorTabs, sourceTabId, () => CreateEditorTab(),
+            (editor, path) => LoadEditorFile(editor, path),
+            path => _tabIcons.GetFileIcon(path), AdoptEditorTab);
     private DetachedItem CreateTerminalSpinoffItem(TerminalTab? sourceTab)
         => CreateTerminalSpinoffItem(sourceTab?.View.WorkingDirectory);
     private DetachedItem CreateTerminalSpinoffItem(string? sourceDirectory) {
-        var cwd = sourceDirectory;
-        if (string.IsNullOrWhiteSpace(cwd) || !Directory.Exists(cwd))
-            cwd = _activeWorkspace?.RootPath ?? _terminal.CurrentDirectory;
+        var cwd = DetachedLaunchTargetPolicy.ResolveTerminalWorkingDirectory(
+            sourceDirectory, _activeWorkspace?.RootPath, _terminal.CurrentDirectory);
         var view = new TerminalTabView("pwsh.exe", cwd) { AutoFocusOnStart = false };
         _appearance.ApplyTerminalAppearance(view);
         // メインの帯へ戻すときはここで張った見出し追従を外し、メインのタブとしての配線を張り直す
         // （タブの実体＝生きたセッションはそのまま運ぶ）。
-        return CreateDetachedTerminalItem(DetachKind.TerminalSpinoff, view, () => HookTerminalTab(new TerminalTab(Guid.NewGuid(), view)));
-    }
-    /// <summary>切り離しウィンドウのターミナルタブ（スピンオフも移動も同じ形）。見出しはセッションに追従し、
-    /// メインの帯へ落とせば <paramref name="mainTab"/> が返すタブとして戻る。</summary>
-    private DetachedItem CreateDetachedTerminalItem(
-        DetachKind kind, TerminalTabView view, Func<TerminalTab> mainTab) {
-        DetachedItem? item = null;
-        void OnTitle(object? _, string title)
-            => item!.Title = string.IsNullOrWhiteSpace(title) ? "Terminal" : title;
-        item = new DetachedItem(
-            kind,
-            string.IsNullOrWhiteSpace(view.HeaderTitle) ? "Terminal" : view.HeaderTitle,
-            view, _tabIcons.GetTerminalIcon(),
-            dispose: () => { view.HeaderTitleChanged -= OnTitle; _ = view.CloseAsync(); }) {
-            Return = new DetachReturn(TabEntryKind.Terminal, () => {
-                view.HeaderTitleChanged -= OnTitle;
-                AdoptTerminalTab(mainTab());
-            })
-        };
-        view.HeaderTitleChanged += OnTitle;
-        return item;
+        return DetachedTerminalLifecycleController.CreateItem(
+            DetachKind.TerminalSpinoff, view, _tabIcons.GetTerminalIcon(),
+            () => HookTerminalTab(new TerminalTab(Guid.NewGuid(), view)), AdoptTerminalTab);
     }
     private DetachedItem CreateBrowserSpinoffItem(BrowserTab? sourceTab)
         => CreateBrowserSpinoffItem(BrowserUrlOf(sourceTab));
@@ -232,19 +167,20 @@ public partial class ShellWindow {
     /// 器はもう1つ、<b>別の切り離し窓へタブを移したとき</b>の作り直しにも効く（<see cref="ReparentRebuild"/>）。</summary>
     private DetachedItem CreateBrowserSpinoffItem(string? sourceUrl) {
         // 行き先は器より長生きさせる（実体を作り直しても、いま見ているページを見失わないため）。
-        var address = new SpinoffBrowserAddress(sourceUrl ?? DefaultBrowserUrl);
+        var address = new SpinoffBrowserAddress(
+            DetachedLaunchTargetPolicy.InitialBrowserAddress(sourceUrl, DefaultBrowserUrl));
         var host = new Grid();
         address.AttachTo(host);   // スナップショット保存が実体より先に走っても行き先を見失わない
         var view = CreateBrowserView();
         view.Visibility = Visibility.Visible;
         host.Children.Add(view);
         DetachedItem? item = null;
-        item = new DetachedItem( DetachKind.BrowserSpinoff, "Browser", host, _tabIcons.GetBrowserDefaultIcon(), dispose: () => DisposeSpinoffBrowser(host)) {
+        item = new DetachedItem( DetachKind.BrowserSpinoff, "Browser", host, _tabIcons.GetBrowserDefaultIcon(), dispose: () => DetachedBrowserLifecycleController.DisposeContent(host)) {
             // 戻すときは<b>作り直す</b>——WebView2（コンポジション版）は窓をまたいで載せ替えると
             // コンポジタが元の窓に残って空表示になる（引き出すときも同じ理由で新規生成している）。
             Return = new DetachReturn(TabEntryKind.Browser, () => {
-                address.Note(SpinoffBrowserUrl(host));   // 行き先は手放す前に控える（捨てた器から読まない）
-                DisposeSpinoffBrowser(host);
+                address.Note(DetachedBrowserLifecycleController.CurrentUrl(host));   // 行き先は手放す前に控える（捨てた器から読まない）
+                DetachedBrowserLifecycleController.DisposeContent(host);
                 _ = CreateBrowserTabAsync(address.Value);
                 FocusPane(PaneKind.Browser);
             })
@@ -252,16 +188,14 @@ public partial class ShellWindow {
         // 切り離し窓から<b>別の切り離し窓へ</b>タブを移したときも同じ——載せ替えただけでは空表示に
         // なるので、いま見ている URL のまま器の中身を作り直す。ここが抜けていて、窓をまたいで移した
         // ブラウザのタブが真っ白になっていた（引き出す・戻すの両端だけ手当てされていた）。
-        ReparentRebuild.Watch(host, () => RebuildSpinoffBrowser(host, item!, address));
-        _ = RealizeSpinoffBrowserAsync(host, view, address, item);
+        ReparentRebuild.Watch(host, () => DetachedBrowserLifecycle.Rebuild(host, item!, address));
+        _ = DetachedBrowserLifecycle.RealizeAsync(host, view, address, item);
         return item;
     }
     /// <summary>切り離しブラウザの器がいま見ている URL（まだ生成前・生成に失敗していれば null）。
     /// 読み方は本体ペインの <see cref="BrowserUrlOf"/> と同じ <see cref="WebViewSafe.TryUrl"/>——ここは
     /// 器の中身を<b>作り直す</b>ときの行き先なので、ラッパーの <c>Source</c> を読んで取り残された古い値を
     /// 掴むと、見ていたページが黙って1つ前へ戻る。</summary>
-    private static string? SpinoffBrowserUrl(Panel host)
-        => host.Children.OfType<WebView2CompositionControl>().FirstOrDefault().TryUrl();
     /// <summary>
     /// 差分ひとつを、切り離しウィンドウのタブ1枚として作る（Git のコミット詳細のダブルクリック＝
     /// 送るたびに新しい窓と、Diff ペインが隠れているときの差分の行き先＝同じ窓へタブを足す、の共通の実体）。
@@ -299,7 +233,7 @@ public partial class ShellWindow {
         };
         var item = new DetachedItem(
             DetachKind.DiffSpinoff, target.WindowTitle, view, _tabIcons.GetFileIcon(target.IconPath),
-            vm.Dispose);
+            () => { try { view.Dispose(); } finally { vm.Dispose(); } });
         // 「次の差分」はファイルの端を越えると隣のファイルへ移る（＝窓の中身が別ファイルになる）ので、
         // タブのタイトルとアイコンも今見ているファイルへ追従させる——開いたときの名前のままだと、
         // どのファイルを読んでいるのか窓の側から分からなくなる。
@@ -314,250 +248,32 @@ public partial class ShellWindow {
         _ = ShowDiffInWindowAsync(vm, target);
         return item;
     }
-    /// <summary>器の中の WebView2 を捨てる。<b>器からも外す</b>のが肝——生成待ちの
-    /// <see cref="RealizeSpinoffBrowserAsync"/> は「自分がまだ器の子か」で、作り直し（別窓へ移した・
-    /// メインへ戻した・窓を閉じた）に追い越されたかどうかを見分ける。</summary>
-    private static void DisposeSpinoffBrowser(Panel host) {
-        foreach (var view in host.Children.OfType<WebView2CompositionControl>().ToList()) {
-            host.Children.Remove(view);
-            try { view.Dispose(); } catch { }
-        }
-    }
-    /// <summary>その WebView2 がいまも器の中身か（＝<see cref="DisposeSpinoffBrowser"/> に捨てられていないか）。</summary>
-    private static bool IsLiveSpinoffBrowser(Panel host, WebView2CompositionControl view)
-        => host.Children.Contains(view);
-    private async Task RealizeSpinoffBrowserAsync(
-        Panel host, WebView2CompositionControl view, SpinoffBrowserAddress address, DetachedItem item) {
-        try { await view.EnsureCoreWebView2Async(); }
-        catch {
-            // 器から外れていたら、作り直しに<b>追い越された</b>実体の失敗（生成には1秒ほどかかるので、
-            // その間に別の窓へ移されると器ごと作り直される）。捨てた物の失敗なので黙る——作り直しは
-            // 成功しているのに偽のエラーが出るうえ、ReportUnavailable は一度きりのラッチなので
-            // 後から起きる<b>本物の</b>失敗まで握り潰してしまう。
-            if (!IsLiveSpinoffBrowser(host, view))
-                return;
-            // 本物の失敗。現実的な原因は「別の Loomo が同じプロファイルを違うブラウザ引数で握っている」
-            // （0x8007139F、§21.5.3）なので、本体ペインと同じくポートを引き当て直して<b>コントロール
-            // ごと作り直して</b>一度だけやり直す。直せないなら黙らずに知らせる。
-            if (WebViewEnvironment.TryRecover())
-                RebuildSpinoffBrowser(host, item, address);
-            else
-                WebViewEnvironment.ReportUnavailable("ブラウザ");
-            return;
-        }
-        if (!IsLiveSpinoffBrowser(host, view)) {
-            // 生成の途中で追い越された（成功した側）。誰にも見えない WebView2 を残さない。
-            try { view.Dispose(); } catch { }
-            return;
-        }
-        WebViewEnvironment.NoteCreated();
-        if (view.TryCore() is not { } core)
-            return;   // 生成直後に落ちた（作り直しは ProcessFailed 経由）
-        ConfigureBrowserCoreBasics(core);
-        var rendererReloads = 0;
-        view.NavigationCompleted += (_, e) => {
-            if (!e.IsSuccess)
-                return;
-            rendererReloads = 0;        // 描けたら仕切り直す
-            address.Note(view.TryUrl());
-        };
-        // 見ているページが変わるたびに行き先を控える（同一ドキュメント内の遷移はこちらだけが来る）。
-        // 器を作り直す合図は実体の生成中にも届き、その間は実体から URL を読めないので、ここで
-        // 控えた最後の値が唯一の手掛かりになる。
-        core.SourceChanged += (_, _) => address.Note(view.TryUrl());
-        core.ProcessFailed += (_, e) => {
-            if (e.ProcessFailedKind != CoreWebView2ProcessFailedKind.BrowserProcessExited) {
-                // 描画プロセスだけの死は読み直しで戻る。ただし回数を区切る（確実に描画を殺すページだと
-                // 読み直すたびに落ちて堂々巡りになる。本体ペインと同じ歯止め）。
-                if (rendererReloads++ < MaxRendererReloads)
-                    try { view.TryCore()?.Reload(); } catch { }
-                return;
-            }
-            // 落ちる前の行き先を控えてから、器の中身を作り直す（イベント配布中に壊さない）。
-            address.Note(view.TryUrl());
-            Dispatcher.BeginInvoke(new Action(() => RebuildSpinoffBrowser(host, item, address)));
-        };
-        // 切り離した窓の target="_blank" は、素の WebView2 の既定（ツールバーの無い素っ気ない窓）ではなく
-        // もう1枚の切り離しウィンドウで受ける（本体ペインの新しいタブと同じ考え方）。
-        core.NewWindowRequested += (_, e) => {
-            e.Handled = true;
-            var uri = e.Uri;
-            Dispatcher.BeginInvoke(new Action(() => OpenUrlInDetachedWindow(uri)));
-        };
-        core.DocumentTitleChanged += (_, _) => {
-            var title = view.TryCore()?.DocumentTitle;
-            item.Title = string.IsNullOrWhiteSpace(title) ? "Browser" : title!;
-        };
-        try { view.Source = new Uri(WorkspaceSessionCoordinator.NormalizeBrowserAddress(address.Value, DefaultBrowserUrl)); }
-        catch { /* 不正 URL は無視（空ページのまま） */ }
-    }
-    private void RebuildSpinoffBrowser(Panel host, DetachedItem item, SpinoffBrowserAddress address) {
-        // 落ちた知らせは窓から外れた後にも届く（Dispatcher 経由なので1拍遅れる）。手放した器へ作り直すと、
-        // 誰にも見えない WebView2 が残る——メインへ<b>戻した</b>ときは新しいタブとして作り直し済みなので、
-        // ブラウザが2つに増えてしまう。どの窓にも居ない項目なら何もしない。
-        if (!Detached.AllItems.Contains(item))
-            return;
-        address.Note(SpinoffBrowserUrl(host));   // 捨てる前に、読めるなら実体の行き先を正本へ取り込む
-        DisposeSpinoffBrowser(host);
-        host.Children.Clear();
-        var view = CreateBrowserView();
-        view.Visibility = Visibility.Visible;
-        host.Children.Add(view);
-        _ = RealizeSpinoffBrowserAsync(host, view, address, item);
-    }
-    private Point _paneTabDragStart;
-    private Guid _paneTabDragId;
-    private bool _paneTabDragArmed;
-    private void OnPaneTabPreviewMouseDown(object sender, MouseButtonEventArgs e) {
-        _paneTabDragArmed = false;
-        if (ResolvePaneTabId(e.OriginalSource) is { } id) {
-            _paneTabDragStart = e.GetPosition(this);
-            _paneTabDragId = id;
-            _paneTabDragArmed = true;
-        }
-    }
-    private void OnPaneTabPreviewMouseMove(object sender, MouseEventArgs e) {
-        if (_paneTabReordering) {
-            HandlePaneTabReorderMove(e);
-            return;
-        }
-        if (!_paneTabDragArmed || e.LeftButton != MouseButtonState.Pressed)
-            return;
-        var pos = e.GetPosition(this);
-        var dx = Math.Abs(pos.X - _paneTabDragStart.X);
-        var dy = Math.Abs(pos.Y - _paneTabDragStart.Y);
-        if (dx < SystemParameters.MinimumHorizontalDragDistance && dy < SystemParameters.MinimumVerticalDragDistance)
-            return;
-        _paneTabDragArmed = false;
-        // ほぼ水平のドラッグだけ並べ替えとして扱う。縦方向にも動いた場合は既存の切り離し（別ウィンドウ化）を優先する
-        // ―― 切り離しは既存のドキュメント化済み機能なので、その発火条件を極力変えないため。
-        if (dy <= PaneTabReorderVerticalTolerance && dx >= SystemParameters.MinimumHorizontalDragDistance
-            && sender is ItemsControl host) {
-            StartPaneTabReorder(_paneTabDragId, host);
-            return;
-        }
-        StartPaneTabTearOff(_paneTabDragId, sender as UIElement);
-    }
-    private const double PaneTabReorderVerticalTolerance = 6.0;
-    private bool _paneTabReordering;
-    private ItemsControl? _paneTabReorderHost;
-    private Guid _paneTabReorderId;
-    private void StartPaneTabReorder(Guid id, ItemsControl host) {
-        _paneTabReordering = true;
-        _paneTabReorderHost = host;
-        _paneTabReorderId = id;
-        host.PreviewMouseLeftButtonUp += OnPaneTabReorderMouseUp;
-        Mouse.Capture(host);
-    }
-    private void HandlePaneTabReorderMove(MouseEventArgs e) {
-        if (e.LeftButton != MouseButtonState.Pressed) {
-            EndPaneTabReorder();
-            return;
-        }
-        if (_paneTabReorderHost is not { } host)
-            return;
-        var pos = e.GetPosition(host);
-        if (pos.X < 0 || pos.Y < 0 || pos.X > host.ActualWidth || pos.Y > host.ActualHeight)
-            return;
-        if (VisualTreeHelper.HitTest(host, pos)?.VisualHit is not { } hit)
-            return;
-        if (ResolvePaneTabId(hit) is not { } targetId || targetId == _paneTabReorderId)
-            return;
-        MovePaneTab(_paneTabReorderId, targetId);
-    }
-    private void OnPaneTabReorderMouseUp(object sender, MouseButtonEventArgs e) => EndPaneTabReorder();
-    private void EndPaneTabReorder() {
-        if (_paneTabReorderHost is { } host)
-            host.PreviewMouseLeftButtonUp -= OnPaneTabReorderMouseUp;
-        if (Mouse.Captured is not null)
-            Mouse.Capture(null);
-        var wasReordering = _paneTabReordering;
-        _paneTabReordering = false;
-        _paneTabReorderHost = null;
-        if (wasReordering)
-            SaveActiveWorkspaceSnapshot();
-    }
+    private void OnPaneTabPreviewMouseDown(object sender, MouseButtonEventArgs e)
+        => PaneTabDragInteraction.OnPreviewMouseDown(e);
+    private void OnPaneTabPreviewMouseMove(object sender, MouseEventArgs e)
+        => PaneTabDragInteraction.OnPreviewMouseMove(sender, e);
     /// <summary>タブ帯上のドラッグ並べ替え。コードビハインドの実体リスト（<see cref="_editorTabs"/> 等、
     /// タブ切替・ワークスペース復元が位置参照する）と ViewModel 側の <see cref="TabsViewModel"/> 表示用
     /// コレクションの両方を同じ並びに保つ。</summary>
     private void MovePaneTab(Guid draggedId, Guid targetId) {
-        if (TryReorderList(_editorTabs, t => t.Id, draggedId, targetId, out var index)) {
-            MoveObservableTab(_vm.Tabs.EditorTabs, draggedId, index);
+        if (PaneTabDragPolicy.TryMoveTabAndEntry(_editorTabs, _vm.Tabs.EditorTabs, t => t.Id, draggedId, targetId))
             return;
-        }
-        if (TryReorderList(_terminalTabs, t => t.Id, draggedId, targetId, out index)) {
-            MoveObservableTab(_vm.Tabs.TerminalTabs, draggedId, index);
+        if (PaneTabDragPolicy.TryMoveTabAndEntry(_terminalTabs, _vm.Tabs.TerminalTabs, t => t.Id, draggedId, targetId))
             return;
-        }
-        if (TryReorderList(_browserTabs, t => t.Id, draggedId, targetId, out index))
-            MoveObservableTab(_vm.Tabs.BrowserTabs, draggedId, index);
-    }
-    private static bool TryReorderList<T>(List<T> list, Func<T, Guid> idOf, Guid draggedId, Guid targetId, out int newIndex) {
-        newIndex = -1;
-        var oldIndex = list.FindIndex(t => idOf(t) == draggedId);
-        if (oldIndex < 0)
-            return false;
-        var targetIndex = list.FindIndex(t => idOf(t) == targetId);
-        if (targetIndex < 0 || targetIndex == oldIndex)
-            return false;
-        var item = list[oldIndex];
-        list.RemoveAt(oldIndex);
-        list.Insert(targetIndex, item);
-        newIndex = targetIndex;
-        return true;
-    }
-    private static void MoveObservableTab(ObservableCollection<TabEntryViewModel> tabs, Guid id, int newIndex) {
-        var oldIndex = -1;
-        for (var i = 0; i < tabs.Count; i++) {
-            if (tabs[i].Id == id) { oldIndex = i; break; }
-        }
-        if (oldIndex >= 0 && oldIndex != newIndex)
-            tabs.Move(oldIndex, newIndex);
+        PaneTabDragPolicy.TryMoveTabAndEntry(_browserTabs, _vm.Tabs.BrowserTabs, t => t.Id, draggedId, targetId);
     }
     /// <summary>タブ帯の「▾」：あふれて見えなくなったタブも含む全件を一覧表示し、クリックで直接アクティブ化する。</summary>
     private void OnTabOverflowClick(object sender, RoutedEventArgs e) {
-        if (sender is not FrameworkElement { Tag: string kind } button)
-            return;
-        var tabs = kind switch {
-            "Terminal" => _vm.Tabs.TerminalTabs,
-            "Editor" => _vm.Tabs.EditorTabs,
-            "Browser" => _vm.Tabs.BrowserTabs,
-            _ => null,
-        };
-        if (tabs is null)
-            return;
-        BuildTabOverflowPopup(kind, tabs);
-        TabOverflowPopup.PlacementTarget = button;
-        TabOverflowPopup.IsOpen = true;
+        if (sender is FrameworkElement { Tag: string kind } button)
+            PaneTabOverflow.Show(
+                button, kind, (Style)FindResource("BranchMenuItem"),
+                (Brush)FindResource("FgDim"), UiFontManager.Scaled(12));
     }
-    private void BuildTabOverflowPopup(string kind, ObservableCollection<TabEntryViewModel> tabs) {
-        TabOverflowPopupList.Children.Clear();
-        if (tabs.Count == 0) {
-            TabOverflowPopupList.Children.Add(new TextBlock {
-                Text = "タブがありません", FontSize = UiFontManager.Scaled(12), Margin = new Thickness(10, 6, 10, 6),
-                Foreground = (Brush)FindResource("FgDim"),
-            });
-            return;
-        }
-        foreach (var tab in tabs) {
-            var captured = tab;
-            var content = new TextBlock {
-                Text = tab.Title, TextTrimming = TextTrimming.CharacterEllipsis,
-                FontWeight = tab.IsActive ? FontWeights.SemiBold : FontWeights.Normal,
-            };
-            var row = new Button {
-                Style = (Style)FindResource("BranchMenuItem"), FontSize = UiFontManager.Scaled(12),
-                ToolTip = tab.FilePath ?? tab.Title, Content = content, HorizontalContentAlignment = HorizontalAlignment.Left,
-            };
-            row.Click += (_, _) => {
-                TabOverflowPopup.IsOpen = false;
-                switch (kind) {
-                    case "Terminal": ActivateTerminalTab(captured.Id); break;
-                    case "Editor": ActivateEditorTab(captured.Id); break;
-                    case "Browser": ActivateBrowserTab(captured.Id); break;
-                }
-            };
-            TabOverflowPopupList.Children.Add(row);
+    private void ActivatePaneTab(TabEntryViewModel tab) {
+        switch (tab.Kind) {
+            case TabEntryKind.Terminal: ActivateTerminalTab(tab.Id); break;
+            case TabEntryKind.Editor: ActivateEditorTab(tab.Id); break;
+            case TabEntryKind.Browser: ActivateBrowserTab(tab.Id); break;
         }
     }
     /// <summary>ペインのタブを帯の外へ引き出すドラッグ。切り離しウィンドウ側と同じ演出——運んでいるタブを
@@ -565,31 +281,7 @@ public partial class ShellWindow {
     private void StartPaneTabTearOff(Guid id, UIElement? source) {
         if (source is null || BuildTearOffFactory(id) is not { } factory)
             return;
-        if (Mouse.Captured is not null)
-            Mouse.Capture(null);
-        var entry = FindPaneTabEntry(id);
-        var container = entry is not null && source is ItemsControl host
-            ? host.ItemContainerGenerator.ContainerFromItem(entry) as FrameworkElement
-            : null;
-        if (container is not null)
-            container.Opacity = TabDragGhost.TornSourceOpacity;
-        using var ghost = TabDragGhost.Show(this, entry?.Title ?? "タブ", entry?.Icon);
-        void OnGiveFeedback(object _, GiveFeedbackEventArgs e) => ghost.Follow(e.Effects);
-        source.GiveFeedback += OnGiveFeedback;
-        Detached.BeginExternalDrag(factory, ghost);
-        QueryContinueDragEventHandler onQcd = (_, e) => { if (e.EscapePressed) Detached.CancelDrag(); };
-        source.QueryContinueDrag += onQcd;
-        try {
-            var data = new DataObject(DetachedPaneWindow.DetachDragFormat, "external");
-            var result = DragDrop.DoDragDrop(source, data, DragDropEffects.Move);
-            Detached.EndDrag(result);
-        } finally {
-            source.QueryContinueDrag -= onQcd;
-            source.GiveFeedback -= OnGiveFeedback;
-            if (container is not null)
-                container.Opacity = 1;   // 引き出せていれば元タブごと消えている（残ったときのために戻す）
-            Detached.ClearDrag();
-        }
+        PaneTabTearOffPresenter.Start(this, source, FindPaneTabEntry(id), factory, Detached);
     }
     /// <summary>タブ帯の表示用エントリ（ゴーストに出す名前とアイコンの出どころ）。</summary>
     private TabEntryViewModel? FindPaneTabEntry(Guid id)
@@ -611,7 +303,8 @@ public partial class ShellWindow {
         if (_terminalTabs.Any(t => t.Id == id))
             return () => {
                 var tab = RemoveTerminalTabForMove(id)!;
-                return CreateDetachedTerminalItem(DetachKind.TerminalMove, tab.View, () => tab);
+                return DetachedTerminalLifecycleController.CreateItem(
+                    DetachKind.TerminalMove, tab.View, _tabIcons.GetTerminalIcon(), () => tab, AdoptTerminalTab);
             };
         if (_browserTabs.Any(t => t.Id == id))
             return () => {
@@ -651,14 +344,7 @@ public partial class ShellWindow {
         => e.Data.GetDataPresent(DetachedPaneWindow.DetachDragFormat)
            && sender is FrameworkElement { Tag: string tag }
            && Detached.DraggingReturn is { } ret
-           && PaneTabKind(tag) == ret.Kind;
-    /// <summary>ペインヘッダーの <c>Tag</c>（PaneKind の綴り）に対応するタブ種別（帯を持たないペインは null）。</summary>
-    private static TabEntryKind? PaneTabKind(string paneTag) => paneTag switch {
-        "Editor" => TabEntryKind.Editor,
-        "Terminal" => TabEntryKind.Terminal,
-        "Browser" => TabEntryKind.Browser,
-        _ => null,
-    };
+           && PaneTabDragPolicy.CanReturnToPane(tag, ret.Kind);
     /// <summary>切り離しウィンドウから戻ってきたエディタタブを帯へ迎える。<b>実体はそのまま</b>——
     /// 引き出すときに <see cref="RemoveEditorTabForMove"/> が返した同じ <see cref="EditorTab"/> なので、
     /// タブ ID・コントロールに張った配線・未保存の本文・カーソル位置が切り離す前のまま続く。</summary>
@@ -678,12 +364,8 @@ public partial class ShellWindow {
         FocusPane(PaneKind.Terminal);
         SaveActiveWorkspaceSnapshot();
     }
-    private static Guid? ResolvePaneTabId(object originalSource) {
-        for (var d = originalSource as DependencyObject; d is not null; d = VisualTreeHelper.GetParent(d))
-            if (d is FrameworkElement { Tag: Guid id })
-                return id;
-        return null;
-    }
+    private static Guid? ResolvePaneTabId(object originalSource)
+        => PaneTabDragInteractionController.ResolveTabId(originalSource);
     /// <summary>エディタタブをメインから外して<b>実体（<see cref="EditorTab"/>）ごと</b>返す（Dispose はしない
     /// ＝別ウィンドウへ移すため）。戻すときは同じ実体を <see cref="AdoptEditorTab"/> で帯へ戻す。</summary>
     private EditorTab? RemoveEditorTabForMove(Guid id) {
@@ -705,21 +387,15 @@ public partial class ShellWindow {
         _editorTabs.RemoveAt(index);
         _vm.Tabs.RemoveEditorTab(id);
         _editorViews?.RemoveTab(id);
-        if (_editorTabs.Count == 0) {
-            var newTab = CreateEditorTab();
-            _editorTabs.Add(newTab);
-            _vm.Tabs.AddEditorTab(newTab.Id, null, false, false);
-            ActivateEditorTab(newTab.Id);
-        } else {
-            _editorViews?.RepairTabs(_editorTabs.Select(t => t.Id));
-            if (wasActive)
-                ActivateEditorTab(_editorTabs[Math.Min(index, _editorTabs.Count - 1)].Id);
-            else {
-                _editorViews?.Rebuild();
-                if (_editorViews?.FocusedTabId is { } fid && _editorTabs.FirstOrDefault(t => t.Id == fid) is { } ft)
-                    SetActiveEditorTab(ft);
-            }
-        }
+        PaneTabTransferCoordinator.CompleteRemoval(
+            _editorTabs, tab => tab.Id, _editorViews, index, wasActive, id => ActivateEditorTab(id),
+            id => { if (_editorTabs.FirstOrDefault(t => t.Id == id) is { } focused) SetActiveEditorTab(focused); },
+            () => {
+                var newTab = CreateEditorTab();
+                _editorTabs.Add(newTab);
+                _vm.Tabs.AddEditorTab(newTab.Id, null, false, false);
+                ActivateEditorTab(newTab.Id);
+            });
         SaveActiveWorkspaceSnapshot();
         return tab;
     }
@@ -735,22 +411,16 @@ public partial class ShellWindow {
         _vm.Tabs.RemoveTerminalTab(id);
         _terminalViews?.RemoveTab(id);
         ForgetTerminalActivity(id);
-        if (_terminalTabs.Count == 0) {
-            var startDir = _activeWorkspace?.RootPath ?? _terminal.CurrentDirectory;
-            var newTab = CreateTerminalTab(startDir);
-            _terminalTabs.Add(newTab);
-            _vm.Tabs.AddTerminalTab(newTab.Id, "Terminal", false);
-            ActivateTerminalTab(newTab.Id);
-        } else {
-            _terminalViews?.RepairTabs(_terminalTabs.Select(t => t.Id));
-            if (wasActive)
-                ActivateTerminalTab(_terminalTabs[Math.Min(index, _terminalTabs.Count - 1)].Id);
-            else {
-                _terminalViews?.Rebuild();
-                if (_terminalViews?.FocusedTabId is { } fid && _terminalTabs.FirstOrDefault(t => t.Id == fid) is { } ft)
-                    SetActiveTerminalTab(ft);
-            }
-        }
+        PaneTabTransferCoordinator.CompleteRemoval(
+            _terminalTabs, tab => tab.Id, _terminalViews, index, wasActive, id => ActivateTerminalTab(id),
+            id => { if (_terminalTabs.FirstOrDefault(t => t.Id == id) is { } focused) SetActiveTerminalTab(focused); },
+            () => {
+                var startDir = _activeWorkspace?.RootPath ?? _terminal.CurrentDirectory;
+                var newTab = CreateTerminalTab(startDir);
+                _terminalTabs.Add(newTab);
+                _vm.Tabs.AddTerminalTab(newTab.Id, "Terminal", false);
+                ActivateTerminalTab(newTab.Id);
+            });
         SaveActiveWorkspaceSnapshot();
         return tab;
     }

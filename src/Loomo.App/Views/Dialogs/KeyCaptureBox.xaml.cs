@@ -1,11 +1,10 @@
 using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Threading;
 using sk0ya.Loomo.App.Input;
+using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.App.ViewModels;
 
 namespace sk0ya.Loomo.App.Views;
@@ -24,7 +23,7 @@ public partial class KeyCaptureBox : UserControl
 {
     private const int ChordTimeoutMs = 700;
 
-    private readonly List<KeyChord> _buffer = new();
+    private readonly KeySequenceCaptureState _capture = new();
     private DispatcherTimer? _timer;
     private bool _capturing;
 
@@ -45,7 +44,7 @@ public partial class KeyCaptureBox : UserControl
     {
         if (_capturing) return;
         _capturing = true;
-        _buffer.Clear();
+        _capture.Clear();
         if (Row is { } row) row.IsCapturing = true;
         Display.Visibility = Visibility.Collapsed;
         Prompt.Visibility = Visibility.Visible;
@@ -78,8 +77,8 @@ public partial class KeyCaptureBox : UserControl
 
         if (KeyChord.FromEvent(e) is not { } chord) return; // 修飾子のみ：確定を待つ
 
-        _buffer.Add(chord);
-        if (_buffer.Count >= KeySequence.MaxChords)
+        _capture.Add(chord);
+        if (_capture.IsComplete)
         {
             Commit();
             return;
@@ -92,9 +91,7 @@ public partial class KeyCaptureBox : UserControl
 
     /// <summary>キャプチャ中の表示を「押した分＋続きの促し」に更新する。</summary>
     private void UpdatePrompt()
-        => Prompt.Text = _buffer.Count == 0
-            ? "キーを押す…"
-            : string.Join(" ", _buffer.Select(c => c.Format())) + " …";
+        => Prompt.Text = _capture.PromptText;
 
     private void RestartTimer()
     {
@@ -111,7 +108,7 @@ public partial class KeyCaptureBox : UserControl
     {
         StopTimer();
         if (!_capturing) return;
-        var sequence = _buffer.Count > 0 ? new KeySequence(_buffer.ToArray()) : null;
+        var sequence = _capture.ToSequence();
         ResetUi();
         Row?.ApplyCapture(sequence);
     }
@@ -130,7 +127,7 @@ public partial class KeyCaptureBox : UserControl
     private void ResetUi()
     {
         _capturing = false;
-        _buffer.Clear();
+        _capture.Clear();
         if (Row is { } row) row.IsCapturing = false;
         Prompt.Visibility = Visibility.Collapsed;
         Display.Visibility = Visibility.Visible;

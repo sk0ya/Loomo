@@ -24,14 +24,11 @@ internal static class ReparentRebuild
     /// そのまま使えるので、作り直すと表示が無駄に1往復する。</summary>
     public static void Watch(FrameworkElement host, Action rebuild)
     {
-        var reattachPending = false;
-        host.Unloaded += (_, _) => reattachPending = true;
+        var policy = new ReparentRebuildPolicy();
+        host.Unloaded += (_, _) => policy.OnUnloaded();
         host.Loaded += (_, _) =>
         {
-            if (!reattachPending)
-                return;
-            reattachPending = false;
-            rebuild();
+            if (policy.ConsumeLoaded()) rebuild();
         };
     }
 }

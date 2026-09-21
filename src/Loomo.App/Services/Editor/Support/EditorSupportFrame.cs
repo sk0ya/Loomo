@@ -47,7 +47,7 @@ internal enum EditorSupportOutlineCommitKind
 ///
 /// <para>
 /// だから状態は描画の途中で書かず、フレームの一部として運ぶ。書き込む場所は
-/// <c>EditorSupportRenderFlow.Emit</c> ただ一つで、そこは<b>キャンセル確認の直後</b>なので、
+/// <c>EditorSupportRenderEngine.Emit</c> ただ一つで、そこは<b>キャンセル確認の直後</b>なので、
 /// 追い越されて捨てられた描画が状態を書くことが型として起こり得ない。
 /// </para>
 /// </summary>

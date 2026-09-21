@@ -1,5 +1,3 @@
-using System;
-using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 
@@ -31,34 +29,19 @@ public partial class NewFileDialog : Window
 
     private void OnOk(object sender, RoutedEventArgs e)
     {
-        var name = NameBox.Text.Trim();
-        if (string.IsNullOrWhiteSpace(name))
+        if (!NewFileNamePolicy.TryComposeFileName(NameBox.Text, ExtensionBox.Text, out var fileName))
         {
             ShowError("ファイル名を入力してください。");
             return;
         }
 
-        var extension = ExtensionBox.Text.Trim();
-        ResultName = ComposeFileName(name, extension);
+        ResultName = fileName;
         DialogResult = true;
     }
 
-    /// <summary>ファイル名と拡張子を結合する。既に拡張子があれば二重付与しない。</summary>
-    internal static string ComposeFileName(string name, string extension)
-    {
-        name = name.Trim();
-        extension = extension.Trim();
-
-        if (string.IsNullOrEmpty(extension)
-            || extension == "（なし）"
-            || Path.HasExtension(name)
-            || Path.GetFileName(name).StartsWith(".", StringComparison.Ordinal))
-            return name;
-
-        if (!extension.StartsWith(".", StringComparison.Ordinal))
-            extension = "." + extension;
-        return extension.Length == 1 ? name : name + extension;
-    }
+    /// <summary>既存の呼び出し元向けに、ファイル名の結合規則を公開する。</summary>
+    public static string ComposeFileName(string name, string extension)
+        => NewFileNamePolicy.ComposeFileName(name, extension);
 
     private void ShowError(string message)
     {

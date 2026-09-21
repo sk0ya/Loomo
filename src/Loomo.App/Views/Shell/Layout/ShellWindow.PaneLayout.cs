@@ -1,6 +1,7 @@
 namespace sk0ya.Loomo.App.Views;
 /// <summary>ShellWindow: ペインレイアウト（2D並べ替え・ドラッグ移動・ズーム・表示切替・スナップショット適用）</summary>
 public partial class ShellWindow {
+    private const double SplitterThickness = 6;
     private bool _paneSplitterDragging;
     private void InitializePanes() {
         _paneElements[PaneKind.Terminal] = TerminalPane;
@@ -20,21 +21,9 @@ public partial class ShellWindow {
     }
     private void ApplyDefaultLayout() {
         _zoomedPane = null;
-        var top = new PaneSplit { Orientation = SplitKind.Columns, Weight = 2 };
-        top.Children.Add(NewLeaf(PaneKind.Editor));
-        top.Children.Add(new PaneLeaf { Kind = PaneKind.EditorSupport, Hidden = true });
-        top.Children.Add(NewLeaf(PaneKind.Browser));
-        var root = new PaneSplit { Orientation = SplitKind.Rows };
-        root.Children.Add(top);
-        root.Children.Add(NewLeaf(PaneKind.Terminal));
-        // AI は既定でしまっておく（EditorSupport と同じく、リーフは残して Hidden にするので
-        // 出したときに元の位置・比率へ戻る）。出す導線は EnsurePaneVisibleOrSwapTopLeft／
-        // ビュー・スイッチャーの目のトグル。
-        root.Children.Add(new PaneLeaf { Kind = PaneKind.Ai, Hidden = true });
-        _root = root;
+        _root = PaneLayoutTree.CreateDefault();
         RebuildPaneLayout();
     }
-    private PaneLeaf NewLeaf(PaneKind kind) => new() { Kind = kind };
     private IEnumerable<PaneLeaf> AllLeaves(PaneNode? node = null) => _paneLayout.Leaves(node);
     private PaneLeaf? FindLeaf(PaneKind kind) => _paneLayout.Find(kind);
     private PaneSplit? FindParent(PaneNode target, PaneNode? current = null)
@@ -230,44 +219,7 @@ public partial class ShellWindow {
         else if (_focusedRegion?.Pane is { } prev)
             FocusPane(prev);
     }
-    private void CaptureLayoutSizes() => CaptureNode(_root);
-    private static void CaptureNode(PaneNode? node) {
-        if (node is not PaneSplit split)
-            return;
-        if (split.Host is { } grid) {
-            var cols = split.Orientation == SplitKind.Columns;
-            foreach (var child in split.Children)
-            {
-                var index = child.TrackIndex;
-                if (index < 0)
-                    continue;
-                var oldWeight = child.Weight;
-                if (cols) {
-                    if (index < grid.ColumnDefinitions.Count) {
-                        var definition = grid.ColumnDefinitions[index];
-                        child.Weight = definition.ActualWidth > 0
-                            ? definition.ActualWidth
-                            : PositiveGridLengthValue(definition.Width, child.Weight);
-                    }
-                } else {
-                    if (index < grid.RowDefinitions.Count) {
-                        var definition = grid.RowDefinitions[index];
-                        child.Weight = definition.ActualHeight > 0
-                            ? definition.ActualHeight
-                            : PositiveGridLengthValue(definition.Height, child.Weight);
-                    }
-                }
-                if (PaneLayoutDebugLog.Enabled && Math.Abs(oldWeight - child.Weight) > 0.5) {
-                    var label = child is PaneLeaf leaf ? leaf.Kind.ToString() : "split";
-                    PaneLayoutDebugLog.Log($"    CaptureNode: {label}[{index}] weight {oldWeight:0.#} -> {child.Weight:0.#}");
-                }
-            }
-        }
-        foreach (var child in split.Children)
-            CaptureNode(child);
-    }
-    private static double PositiveGridLengthValue(GridLength length, double fallback)
-        => length.Value > 0 ? length.Value : (fallback > 0 ? fallback : 1);
+    private void CaptureLayoutSizes() => PaneLayoutSizeCapture.Capture(_root);
     private void ApplyPaneLayout(PaneNodeSnapshot? snapshot) {
         _zoomedPane = null;
         var built = snapshot is null ? null : BuildFromSnapshot(snapshot, new HashSet<PaneKind>());

@@ -530,9 +530,7 @@
                                   MouseDoubleClick="OnBranchDoubleClick"
                                   SelectedItemChanged="OnBranchSelectionChanged"
                                   PreviewKeyDown="OnBranchListKeyDown"
-                                  PreviewMouseLeftButtonUp="OnBranchTreeClick"
-                                  PreviewMouseRightButtonDown="OnListRightClickSelect"
-                                  ContextMenuOpening="OnBranchContextMenuOpening">
+                                  PreviewMouseRightButtonDown="OnListRightClickSelect">
                             <!-- 行のクリック／右クリック＝そのブランチ1本に効く操作。フォルダ／見出しではメニューを出さず、
                                  現在ブランチやリモートブランチに意味を成さない項目は無効化する。 -->
                             <TreeView.ContextMenu>

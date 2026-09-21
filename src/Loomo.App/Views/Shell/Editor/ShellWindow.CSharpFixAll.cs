@@ -64,77 +64,24 @@ public partial class ShellWindow
                 .Where(item => files.Contains(item.Path, StringComparer.OrdinalIgnoreCase))
                 .GroupBy(item => item.Path, StringComparer.OrdinalIgnoreCase)
                 .ToDictionary(group => group.Key, group => group.First().Text, StringComparer.OrdinalIgnoreCase);
-            LspSourceFixAllResult? result = null;
-            try
-            {
-                // 一部のRoslynサーバー／CodeFixProviderはsource.fixAllを受理したまま
-                // 応答しないことがある。CSharp DLL側のCodeFixフォールバックを阻害しない。
-                var lspCts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
-                // プロバイダーによっては要求の作成前に同期処理を行うため、UIスレッドから
-                // 直接呼ばず、タイムアウト判定もUIへ戻れるようにする。
-                var lspTask = Task.Run(
-                    () => _lspWorkspace.RequestSourceFixAllAsync(files, openTexts, lspCts.Token));
-                _ = lspTask.ContinueWith(
-                    task =>
-                    {
-                        _ = task.Exception;
-                        lspCts.Dispose();
-                    },
-                    CancellationToken.None,
-                    TaskContinuationOptions.ExecuteSynchronously,
-                    TaskScheduler.Default);
-                var completed = await Task.WhenAny(lspTask, Task.Delay(TimeSpan.FromSeconds(15)));
-                if (completed == lspTask)
-                    result = await lspTask;
-                else
-                {
-                    try
-                    {
-                        lspCts.Cancel();
-                    }
-                    catch (ObjectDisposedException)
-                    {
-                        // timeoutとLSP完了が同時に起きた場合、完了継続処理が先に
-                        // CTSを破棄してもCSharp DLL fallbackは継続する。
-                    }
-                }
-            }
-            catch (OperationCanceledException)
-            {
-                // LSP側のキャンセルはCSharp DLL側のフォールバックへ引き継ぐ。
-            }
-            if (result?.Error is { Length: > 0 } resultError)
+            var result = await CSharpFixAllLspRequestController.ExecuteAsync(
+                model, plan, openTexts, TimeSpan.FromSeconds(15),
+                (paths, texts, token) => _lspWorkspace.RequestSourceFixAllAsync(paths, texts, token));
+            if (result.Error is { Length: > 0 } resultError)
             {
                 ShowRefactorStatus($"Fix allを統合できませんでした: {resultError}");
                 return;
             }
-            if (result?.Edit is null)
+            if (result.Edit is null)
             {
-                // Roslyn LSPはStyleCopのsource.fixAllを返さないことがある。Loomo.CSharpの
-                // 公式CodeFixProviderへフォールバックし、同じpreview／一括Undo経路へ乗せる。
-                var fallback = await Task.Run(() => CSharpFixAllService.ApplyAsync(
-                    model, plan, openTexts));
-                if (fallback.Error is { Length: > 0 } fallbackError)
-                {
-                    ShowRefactorStatus($"Fix allを統合できませんでした: {fallbackError}");
-                    return;
-                }
-                if (fallback.Edit is null)
-                {
-                    ShowRefactorStatus(
-                        $"Fix all: 候補がありません（{result?.DocumentsScanned ?? 0} ファイルを確認）。");
-                    return;
-                }
-                var fallbackOutcome = ApplyLspWorkspaceEdit(
-                    fallback.Edit.Changes, null, null,
-                    expectedTexts: fallback.ExpectedTexts);
-                ShowRefactorStatus(DescribeFixAll(
-                    fallbackOutcome, $"Fix all: {fallback.ActionsFound} 件の修正を適用しました。"));
+                ShowRefactorStatus(
+                    $"Fix all: 候補がありません（{result.DocumentsScanned} ファイルを確認）。");
                 return;
             }
 
             var outcome = ApplyLspWorkspaceEdit(
-                result.Edit.Changes, result.Edit.DocumentVersions, result.Edit.FileOperations);
+                result.Edit.Changes, result.Edit.DocumentVersions, result.Edit.FileOperations,
+                expectedTexts: result.Edit.ExpectedTexts);
             ShowRefactorStatus(DescribeFixAll(
                 outcome, $"Fix all: {result.ActionsFound} 件の修正を適用しました。"));
         }
@@ -150,7 +97,7 @@ public partial class ShellWindow
 
     /// <summary>Fix all の結果文。編集プレビューでの取り消しは失敗ではないので、
     /// 上の <c>OperationCanceledException</c>（探索中の中断）と同じ言い方に揃える。</summary>
-    private static string DescribeFixAll(WorkspaceEditOutcome outcome, string applied) =>
+    private static string DescribeFixAll(sk0ya.Loomo.App.Services.WorkspaceEditOutcome outcome, string applied) =>
         outcome.Cancelled ? "Fix allをキャンセルしました。"
         : outcome.Error is { } error ? $"Fix allを適用できませんでした: {error}"
         : applied;

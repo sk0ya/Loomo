@@ -2,7 +2,9 @@
 using System.Collections.Generic;
 using System.Linq;
 using Editor.Core.Lsp;
+using sk0ya.Loomo.CSharp.Projects;
 using sk0ya.Loomo.Core.Abstractions;
+using sk0ya.Loomo.Core.Files;
 
 namespace sk0ya.Loomo.App.Services;
 
@@ -119,6 +121,64 @@ public readonly record struct PaletteQuery(PaletteMode Mode, string Text)
     }
 }
 
+/// <summary>モード切替ヒントに表示する項目を作る。</summary>
+public readonly record struct PaletteHintMode(PaletteMode Mode, string Label);
+
+public static class PaletteHintPolicy
+{
+    private static readonly PaletteMode[] ModeOrder =
+    {
+        PaletteMode.All, PaletteMode.File, PaletteMode.Text, PaletteMode.Symbol, PaletteMode.Line, PaletteMode.Command,
+    };
+
+    public static IReadOnlyList<PaletteHintMode> Modes { get; } = ModeOrder
+        .Select(mode => new PaletteHintMode(mode, LabelOf(mode)))
+        .ToArray();
+
+    private static string LabelOf(PaletteMode mode)
+    {
+        var label = PaletteQuery.LabelOf(mode);
+        return mode == PaletteMode.All ? label : $"{PaletteQuery.PrefixOf(mode)} {label}";
+    }
+}
+
+/// <summary>行モードの入力と現在のファイルから一覧と案内を決める。</summary>
+public readonly record struct PaletteLineNavigationResult(
+    IReadOnlyList<PaletteCommand> Items, string Status);
+
+public static class PaletteLineNavigationPolicy
+{
+    public static PaletteLineNavigationResult Resolve(
+        string? activeFilePath,
+        int? line,
+        Func<string, string> toDisplayPath,
+        Func<PaletteTarget, Action> jump)
+    {
+        if (string.IsNullOrEmpty(activeFilePath))
+            return new(Array.Empty<PaletteCommand>(), "開いているファイルがありません");
+        if (line is not { } lineNumber)
+            return new(Array.Empty<PaletteCommand>(), "行番号を入力してください");
+
+        return new(PaletteNavigationItems.ForLine(
+            activeFilePath, toDisplayPath(activeFilePath), lineNumber, jump), "");
+    }
+}
+
+/// <summary>検索対象を選ぶパレット項目のキーバインド識別子。</summary>
+public static class PaletteSearchScopePolicy
+{
+    public static string KeybindingId(SearchScope scope)
+        => $"search.scope.{scope switch
+        {
+            SearchScope.Text => "text",
+            SearchScope.FileName => "fileName",
+            SearchScope.Terminal => "terminal",
+            SearchScope.Class => "class",
+            SearchScope.Symbol => "symbol",
+            _ => throw new ArgumentOutOfRangeException(nameof(scope)),
+        }}";
+}
+
 /// <summary>ナビゲーション1件分の場所（供給元＝LSP シンボル等を、パレットの語彙へ写した中間形）。</summary>
 public readonly record struct PaletteLocation(
     string FullPath, string DisplayPath, int Line, int Column, string Title, string? Note = null);
@@ -215,4 +275,86 @@ public static class PaletteNavigationItems
 
     private static string Truncate(string text)
         => text.Length <= MaxTitleChars ? text : text[..MaxTitleChars] + "…";
+}
+
+/// <summary>コマンド一覧とプレビュー行の一致位置を求める検索ポリシー。</summary>
+public static class PaletteHighlightPolicy
+{
+    /// <summary>タイトル内でクエリを強調する文字位置。各語は連続一致を優先し、なければ完全な飛び石一致。</summary>
+    public static bool[] TitleMask(string title, string? query)
+    {
+        var mask = new bool[title.Length];
+        if (string.IsNullOrWhiteSpace(query))
+            return mask;
+
+        var tokens = query.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        foreach (var token in tokens)
+        {
+            var index = title.IndexOf(token, StringComparison.OrdinalIgnoreCase);
+            if (index >= 0)
+            {
+                for (var i = 0; i < token.Length; i++)
+                    mask[index + i] = true;
+                continue;
+            }
+
+            var matched = new List<int>(token.Length);
+            var tokenIndex = 0;
+            for (var i = 0; i < title.Length && tokenIndex < token.Length; i++)
+            {
+                if (char.ToUpperInvariant(title[i]) != char.ToUpperInvariant(token[tokenIndex]))
+                    continue;
+                matched.Add(i);
+                tokenIndex++;
+            }
+            if (tokenIndex == token.Length)
+                foreach (var i in matched)
+                    mask[i] = true;
+        }
+        return mask;
+    }
+
+    /// <summary>本文内のリテラル一致を全て返す（大文字小文字を区別しない）。</summary>
+    public static bool[] LiteralMask(string text, string? term)
+    {
+        var mask = new bool[text.Length];
+        if (string.IsNullOrEmpty(term))
+            return mask;
+
+        var at = 0;
+        while (at < text.Length)
+        {
+            var found = text.IndexOf(term, at, StringComparison.OrdinalIgnoreCase);
+            if (found < 0)
+                break;
+            for (var i = found; i < found + term.Length && i < text.Length; i++)
+                mask[i] = true;
+            at = found + term.Length;
+        }
+        return mask;
+    }
+}
+
+/// <summary>ワークスペース／プロジェクト文脈へ解決したナビゲーション位置。</summary>
+public readonly record struct NavigationLocationInfo(string DisplayPath, string Scope, bool IsExternalSource)
+{
+    public string Format(int line, int column)
+        => $"{DisplayPath}:{line + 1}:{column + 1} [{Scope}]";
+}
+
+/// <summary>LSP のファイル位置をワークスペース／C# プロジェクト文脈へ解決する。</summary>
+public static class NavigationLocationResolver
+{
+    public static NavigationLocationInfo Resolve(
+        string filePath, IReadOnlyList<string> workspaceFolders, SolutionModel? solution)
+    {
+        if (Uri.TryCreate(filePath, UriKind.Absolute, out var uri) && !uri.IsFile)
+            return new NavigationLocationInfo(filePath, "外部ソース", true);
+
+        var project = solution?.ProjectForFile(filePath);
+        var isExternal = !WorkspacePaths.Contains(workspaceFolders, filePath);
+        var scope = project?.Name ?? (isExternal ? "外部ソース" : "ワークスペース");
+        return new NavigationLocationInfo(
+            WorkspacePaths.ToDisplayPath(workspaceFolders, filePath), scope, isExternal);
+    }
 }

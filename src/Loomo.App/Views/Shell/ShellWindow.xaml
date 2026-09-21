@@ -1846,8 +1846,7 @@
                              大きさは読み込み後に測って合わせる（manifest は寸法を持たない）。 -->
                         <Popup x:Name="BrowserExtensionPopup"
                                PlacementTarget="{Binding ElementName=BrowserExtensionsButton}" Placement="Bottom"
-                               StaysOpen="False" AllowsTransparency="False" HorizontalOffset="-368"
-                               Closed="OnBrowserExtensionPopupClosed">
+                               StaysOpen="False" AllowsTransparency="False" HorizontalOffset="-368">
                             <Border Background="{DynamicResource Panel}" BorderBrush="{DynamicResource Border}"
                                     BorderThickness="1" Padding="1">
                                 <Border x:Name="BrowserExtensionPopupHost" Width="400" Height="560" />

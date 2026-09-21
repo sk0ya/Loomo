@@ -29,15 +29,12 @@ public partial class ShellWindow {
             BuildPaneMenu();
     }
     private void OnMainPaneClick(object sender, RoutedEventArgs e) => TogglePopup(PaneTogglePopup, BuildPaneMenu);
-    private PaneKind? CurrentMainPane()
-        => _stageActive ? _stagePane
-        : _dockActive ? _dockMode.CenterPane
-        : TopLeftPane();
     private static string PaneIconKey(PaneKind kind) => $"PaneIcon.{kind}";
     private void UpdateMainPaneHeader() {
-        var main = CurrentMainPane();
+        var main = PaneVisibilityPresentation.ResolveMainPane(
+            _stageActive, _stagePane, _dockActive, _dockMode.CenterPane, TopLeftPane());
         var layoutLabel = CurrentLayoutLabel();
-        var modeLabel = DisplayModeName(CurrentDisplayMode);
+        var modeLabel = ShellLayoutPresentation.ModeName(CurrentDisplayMode);
         MainPaneIcon.Data = main is { } kind && TryFindResource(PaneIconKey(kind)) is Geometry geo ? geo : null;
         // 集中表示＝舞台のペイン名、分割表示＝配置名。名前の無い配置に「未保存の配置」と出すのは
         // 情報が無いのに幅だけ取るので、その場合はモード名だけにする。
@@ -45,17 +42,13 @@ public partial class ShellWindow {
         // 中央を畳んだドックには「いま立っている面」が無い。名前の代わりに「選択」のような
         // 置き字を出すのは、名前の無い配置に「未保存の配置」と出すのと同じ空振りなので、
         // 言うことが無いときはモード名だけにする。
-        MainPaneLabel.Text = _stageActive || _dockActive
-            ? main is { } labelKind ? PaneLabel(labelKind) : ""
-            : layoutLabel == UnsavedLayoutLabel ? "" : layoutLabel;
-        var hasDetail = MainPaneLabel.Text.Length > 0;
+        var header = PaneVisibilityPresentation.MainHeader(
+            main, layoutLabel, UnsavedLayoutLabel, modeLabel, _stageActive || _dockActive);
+        MainPaneLabel.Text = header.Label;
+        var hasDetail = header.HasDetail;
         MainPaneLabel.Visibility = hasDetail ? Visibility.Visible : Visibility.Collapsed;
         MainPaneLabelSeparator.Visibility = hasDetail ? Visibility.Visible : Visibility.Collapsed;
-        MainPaneButton.ToolTip = main is { } k
-            ? _stageActive || _dockActive
-                ? $"{modeLabel}／メイン: {PaneLabel(k)}"
-                : $"{modeLabel}／配置: {(hasDetail ? layoutLabel : UnsavedLayoutLabel)}／メイン: {PaneLabel(k)}"
-            : "並べ方、配置、メイン画面を変更";
+        MainPaneButton.ToolTip = header.ToolTip;
     }
     /// <summary>ポップアップの1行。<c>[現在印 6px][8][アイコン 16px][7][ラベル]</c> という同じ文法を、
     /// 「メイン画面」も「配置」もこの1関数から作る（作り分けると左端が3種類に割れる）。</summary>
@@ -150,32 +143,21 @@ public partial class ShellWindow {
     private void RefreshPaneMenuStates() {
         if (_paneMenuRows.Count == 0)
             return;
-        var main = CurrentMainPane();
+        var main = PaneVisibilityPresentation.ResolveMainPane(
+            _stageActive, _stagePane, _dockActive, _dockMode.CenterPane, TopLeftPane());
         var accent = (Brush)FindResource("Accent");
         var fg = (Brush)FindResource("Fg");
         var fgDim = (Brush)FindResource("FgDim");
         foreach (var row in _paneMenuRows) {
-            // ドックでは「部屋に出す／しまう」ではなく「出ている／畳んである」。印の意味を揃えないと、
-            // 出ているのに淡色（＝しまってある）の行が並ぶ。
             var docked = _dockActive;
-            var enabled = docked ? _dockMode.IsOpen(row.Kind) : IsSessionEnabled(row.Kind);
-            var active = docked ? _dockMode.IsOpen(row.Kind) : main == row.Kind;
-            var regionLabel = docked
-                ? _dockMode.RegionOf(row.Kind) switch {
-                    DockRegion.Right => "右の領域",
-                    DockRegion.Bottom => "下の領域",
-                    _ => "中央",
-                }
-                : "";
-            row.Row.SetState(active, enabled, accent, fg, fgDim);
-            row.Row.Button.ToolTip = docked
-                ? $"{PaneLabel(row.Kind)} を{regionLabel}に出す（右クリックで場所を変更）"
-                : $"{PaneLabel(row.Kind)} をメインにする";
-            row.EyeIcon.Data = enabled ? EyeOnIcon : EyeOffIcon;
-            row.EyeIcon.Stroke = enabled ? fg : fgDim;
-            row.Eye.ToolTip = docked
-                ? enabled ? $"{PaneLabel(row.Kind)} を畳む" : $"{PaneLabel(row.Kind)} を{regionLabel}に出す"
-                : enabled ? $"{PaneLabel(row.Kind)} を部屋からしまう" : $"{PaneLabel(row.Kind)} を部屋に出す";
+            var state = PaneVisibilityPresentation.MenuState(
+                row.Kind, main, docked, _dockMode.IsOpen(row.Kind), IsSessionEnabled(row.Kind),
+                docked ? _dockMode.RegionOf(row.Kind) : DockRegion.Center);
+            row.Row.SetState(state.Active, state.Enabled, accent, fg, fgDim);
+            row.Row.Button.ToolTip = state.ToolTips.MainAction;
+            row.EyeIcon.Data = state.Enabled ? EyeOnIcon : EyeOffIcon;
+            row.EyeIcon.Stroke = state.Enabled ? fg : fgDim;
+            row.Eye.ToolTip = state.ToolTips.VisibilityAction;
         }
     }
     private bool IsPaneApplicable(PaneKind kind)
@@ -222,9 +204,7 @@ public partial class ShellWindow {
         if (_dockActive)
             RebuildDockBar();   // 中央の面の印はタイルの表示状態なので、ここでも帯を合わせ直す
     }
-    private static string PaneLabel(PaneKind kind) => kind switch {
-        PaneKind.Terminal => "ターミナル", PaneKind.Editor => "エディタ", PaneKind.EditorSupport => "エディタサポート", PaneKind.Browser => "ブラウザ", PaneKind.Ai => "AI", PaneKind.Git => "Git", PaneKind.Diff => "Diff", PaneKind.Trace => "トレース", PaneKind.Debug => "IDE", PaneKind.Search => "検索", PaneKind.TsIde => "TS IDE", PaneKind.Files => "ファイル一覧", _ => kind.ToString(),
-    };
+    private static string PaneLabel(PaneKind kind) => PaneVisibilityPresentation.Label(kind);
     private bool IsPaneVisible(PaneKind kind) => FindLeaf(kind) is { Hidden: false };
     private int VisibleLeafCount() => AllLeaves().Count(l => !l.Hidden);
     private void SetPaneVisible(PaneKind kind, bool visible) {
@@ -234,34 +214,20 @@ public partial class ShellWindow {
             _enabledSessions.Add(kind);
         if (currentlyVisible == visible)
             return;
+        if (!visible && VisibleLeafCount() <= 1)
+            return;
         CaptureLayoutSizes();
-        if (visible) {
-            if (leaf is null) {
-                var newLeaf = NewLeaf(kind);
-                if (_isSpanMaximized && _root is PaneSplit { Orientation: SplitKind.Columns } columns
-                    && columns.Children.Count > 0)
-                    columns.Children[^1] = AddLeafAtBottom(columns.Children[^1], newLeaf);
-                else
-                    AddLeafAtBottom(newLeaf);
-            } else
-                leaf.Hidden = false;
-        } else {
-            if (VisibleLeafCount() <= 1)
-                return;
-            leaf!.Hidden = true;
+        _paneLayout.SetVisible(kind, visible, appendToLastColumn: _isSpanMaximized);
+        if (!visible) {
             if (_focusedRegion?.Pane == kind)
                 _focusedRegion = null; // 起点が消えたので次回ナビゲーションは可視ペインから選び直す
         }
         if (_isSpanMaximized && _spanSavedRoot is { } savedRoot) {
-            if (AllLeaves(savedRoot).FirstOrDefault(l => l.Kind == kind) is { } savedLeaf)
-                savedLeaf.Hidden = !visible;
-            else if (visible)
-                _spanSavedRoot = AddLeafAtBottom(savedRoot, NewLeaf(kind));
+            _spanSavedRoot = PaneLayoutCoordinator.SetVisibleOnSavedTree(savedRoot, kind, visible);
         }
         if (kind == PaneKind.EditorSupport && visible)
             InvalidateEditorSupport();
         _zoomedPane = null; // 表示構成が変わるのでズームは解除する
-        _root = Normalize(_root);
         MarkLayoutDirty();
         RebuildPaneLayout();
         SaveActiveWorkspaceSnapshot();
@@ -282,79 +248,53 @@ public partial class ShellWindow {
             FocusPane(next);
     }
     private void EnsureEditorPaneForOpenedFile(string path) {
-        var target = BinaryFileDetector.IsBinary(path) ? PaneKind.EditorSupport : PaneKind.Editor;
-        if (_dockActive) {
-            EnsureDockPaneShown(target);
-            return;
+        var plan = PaneRevealPolicy.ForOpenedFile(
+            BinaryFileDetector.IsBinary(path),
+            _dockActive, _stageActive,
+            IsPaneVisible(PaneKind.Editor), IsPaneVisible(PaneKind.EditorSupport),
+            OnStage(PaneKind.Editor), OnStage(PaneKind.EditorSupport));
+        switch (plan.Action)
+        {
+            case PaneRevealAction.OpenDock: EnsureDockPaneShown(plan.Target); break;
+            case PaneRevealAction.SelectStage: SetStagePane(plan.Target); break;
+            case PaneRevealAction.PlaceInLayout: PlacePaneByBehavior(plan.Target); break;
         }
-        if (_stageActive) {
-            if (!OnStage(PaneKind.Editor) && !OnStage(PaneKind.EditorSupport))
-                SetStagePane(target);
-            return;
-        }
-        if (IsPaneVisible(PaneKind.Editor) || IsPaneVisible(PaneKind.EditorSupport))
-            return;
-        PlacePaneByBehavior(target);
     }
     private void EnsurePaneVisibleOrSwapTopLeft(PaneKind target) {
-        if (_stageActive) {
-            if (!OnStage(target))
-                SetStagePane(target);
-            return;
+        switch (PaneRevealPolicy.ForPane(
+            _stageActive, _dockActive, IsPaneVisible(target), OnStage(target)))
+        {
+            case PaneRevealAction.OpenDock: EnsureDockPaneShown(target); break;
+            case PaneRevealAction.SelectStage: SetStagePane(target); break;
+            case PaneRevealAction.PlaceInLayout: PlacePaneByBehavior(target); break;
         }
-        if (_dockActive) {
-            EnsureDockPaneShown(target);
-            return;
-        }
-        if (IsPaneVisible(target))
-            return;
-        PlacePaneByBehavior(target);
     }
     private void PlacePaneByBehavior(PaneKind target) {
-        switch (_settings.PaneOpenBehavior) {
-            case PaneOpenBehavior.Sub:
-                PlaceIntoSubPane(target);
-                break;
-            case PaneOpenBehavior.Loop:
-                PlaceIntoLoopPane(target);
-                break;
-            default:
-                SwapIntoTopLeft(target);
-                break;
+        var behavior = _settings.PaneOpenBehavior;
+        var targetVisible = IsPaneVisible(target);
+        var topLeft = (behavior is PaneOpenBehavior.Sub or PaneOpenBehavior.Loop) ? null : TopLeftPane();
+        PaneKind? main = null;
+        PaneKind? sub = null;
+        if ((behavior is PaneOpenBehavior.Sub or PaneOpenBehavior.Loop) && !targetVisible)
+            (main, sub) = MainAndSubPanes();
+        var plan = PanePlacementPolicy.Resolve(
+            behavior, target, targetVisible, topLeft, main, sub,
+            _focusedRegion?.Pane, SubAxis());
+        ApplyPanePlacementPlan(plan);
+    }
+    private void SwapIntoTopLeft(PaneKind target)
+    {
+        var plan = PanePlacementPolicy.Resolve(
+            PaneOpenBehavior.Main, target, IsPaneVisible(target), TopLeftPane(),
+            null, null, _focusedRegion?.Pane, SubAxis());
+        ApplyPanePlacementPlan(plan);
+    }
+    private void ApplyPanePlacementPlan(IReadOnlyList<PanePlacementStep> plan) {
+        foreach (var step in plan) {
+            if (step.MakesVisible)
+                SetPaneVisible(step.Pane, true);
+            else if (step.RelativeTo is { } relativeTo)
+                PlaceWingPane(step.Pane, relativeTo, step.Center, step.Zone);
         }
     }
-    private void SwapIntoTopLeft(PaneKind target) {
-        if (TopLeftPane() is { } topLeft && topLeft != target)
-            PlaceWingPane(target, topLeft, center: true, zone: null);
-        else
-            SetPaneVisible(target, true);
-    }
-    /// <summary>サブをメインの隣へ足すときの辺。横に並べる設定なら右、縦に並べる設定なら下。</summary>
-    private DropZone SubDropZone() => SubAxis() == SplitKind.Rows ? DropZone.Below : DropZone.Right;
-    private void PlaceIntoSubPane(PaneKind target) {
-        if (IsPaneVisible(target))
-            return;
-        var (main, sub) = MainAndSubPanes();
-        if (sub is { } s && s != target)
-            PlaceWingPane(target, s, center: true, zone: null);                 // サブと入れ替え
-        else if (main is { } m && m != target)
-            PlaceWingPane(target, m, center: false, zone: SubDropZone());       // サブが無い → 右／下に追加
-        else
-            SetPaneVisible(target, true);
-    }
-    private void PlaceIntoLoopPane(PaneKind target) {
-        if (IsPaneVisible(target))
-            return;
-        var (main, sub) = MainAndSubPanes();
-        var originFromSub = _focusedRegion?.Pane is { } origin
-            && sub is { } s && origin == s;
-        if (originFromSub && main is { } m && sub is { } current && current != target) {
-            PlaceWingPane(current, m, center: true, zone: null);
-            PlaceWingPane(target, current, center: false, zone: SubDropZone());
-        } else {
-            PlaceIntoSubPane(target);
-        }
-    }
-    private void AddLeafAtBottom(PaneLeaf leaf) => _root = AddLeafAtBottom(_root, leaf);
-    private static PaneNode AddLeafAtBottom(PaneNode? root, PaneLeaf leaf) => PaneLayoutTree.AddLeafAtBottom(root, leaf);
 }

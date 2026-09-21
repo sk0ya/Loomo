@@ -89,8 +89,7 @@ public partial class CodeOutlineView : UserControl
         // Range.Start ではなく SelectionRange.Start を使い、doc コメント／属性の先頭や宣言行の左端ではなく
         // シンボル名そのものへ着地させる。
         if (sender is FrameworkElement { DataContext: CodeOutlineItem item })
-            SourceLocationActivated?.Invoke(
-                this, new SourceLocationActivatedEventArgs(item.JumpLine1, item.JumpColumn0));
+            SourceLocationActivated?.Invoke(this, new SourceLocationActivatedEventArgs(item));
     }
 
     /// <summary>
@@ -108,8 +107,7 @@ public partial class CodeOutlineView : UserControl
     private void CallRow_Click(object sender, MouseButtonEventArgs e)
     {
         if (sender is FrameworkElement { DataContext: CodeCallRow row } && row.CanJump)
-            FileLocationActivated?.Invoke(this,
-                new FileLocationActivatedEventArgs(row.Path!, row.Line1, row.Column0));
+            FileLocationActivated?.Invoke(this, new FileLocationActivatedEventArgs(row));
     }
 
     private void Install_Click(object sender, RoutedEventArgs e)
@@ -123,32 +121,4 @@ public partial class CodeOutlineView : UserControl
         if (_vm.NoticeDocsUrl is { Length: > 0 } url)
             OpenDocsRequested?.Invoke(this, url);
     }
-}
-
-/// <summary>アウトラインクリックのジャンプ先（1 始まり行＋0 始まり列）。</summary>
-public sealed class SourceLocationActivatedEventArgs : EventArgs
-{
-    public SourceLocationActivatedEventArgs(int line1, int column0)
-    {
-        Line1 = line1;
-        Column0 = column0;
-    }
-
-    public int Line1 { get; }
-    public int Column0 { get; }
-}
-
-/// <summary>②パネル行クリックのジャンプ先（ローカルパス＋1 始まり行＋0 始まり列）。</summary>
-public sealed class FileLocationActivatedEventArgs : EventArgs
-{
-    public FileLocationActivatedEventArgs(string path, int line1, int column0 = 0)
-    {
-        Path = path;
-        Line1 = line1;
-        Column0 = column0;
-    }
-
-    public string Path { get; }
-    public int Line1 { get; }
-    public int Column0 { get; }
 }

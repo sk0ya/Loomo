@@ -1,10 +1,8 @@
 using sk0ya.Loomo.App.ViewModels;
-using sk0ya.Loomo.CSharp.Build;
 using sk0ya.Loomo.CSharp.Debug;
 using sk0ya.Loomo.CSharp.Projects;
 using sk0ya.Loomo.CSharp.Refactoring;
 using sk0ya.Loomo.CSharp.Testing;
-using sk0ya.Loomo.Core.Models;
 
 namespace sk0ya.Loomo.App.Views;
 
@@ -83,16 +81,10 @@ public partial class ShellWindow
         }
 
         var tfm = e.Node.Kind == CSharpSolutionNodeKind.Project
-            ? SelectedTargetFrameworkFor(target)
+            ? CSharpSolutionExplorerPolicy.SelectedTargetFrameworkFor(_solutionModel?.Current, target)
             : null;
         await ExecuteCSharpTargetAsync(target, e.Action, tfm);
     }
-
-    /// <summary>プロジェクトに選ばれている TFM（複数ターゲットのとき）。見つからなければ null。</summary>
-    private string? SelectedTargetFrameworkFor(string projectPath)
-        => _solutionModel?.Current.Projects.FirstOrDefault(project =>
-            string.Equals(Path.GetFullPath(project.FullPath), Path.GetFullPath(projectPath),
-                StringComparison.OrdinalIgnoreCase))?.SelectedTargetFramework;
 
     /// <summary>C# 対象（.sln／.csproj）のビルド／テスト／実行そのもの。出力は可視ターミナルへ流し、
     /// 同じ全文を Problems のビルド診断へ渡す。Solution Explorer とタイトルバーのデバッグメニュー
@@ -126,50 +118,20 @@ public partial class ShellWindow
         CSharpTestExecutionResult? testExecution = null;
         try
         {
-            CommandResult result;
-            if (launchProfile?.IsIisExpress == true)
+            var execution = await CSharpTargetExecutionCoordinator.ExecuteAsync(
+                _terminal, target, action, configuration, tfm, launchProfile);
+            testExecution = execution.TestExecution;
+            if (execution.Error is { } executionError)
             {
-                var command = IisExpressLaunchCommand.Build(target, launchProfile, out var launchError);
-                if (command is null)
-                {
-                    SetStatus($"{actionName}失敗");
-                    ShowRefactorStatus($"IIS Expressを起動できません: {launchError}");
-                    return;
-                }
-                result = await _terminal.RunCommandInVisibleTerminalAsync(command, CancellationToken.None);
+                SetStatus($"{actionName}失敗");
+                ShowRefactorStatus(executionError);
+                return;
             }
-            else if (action == CSharpSolutionAction.Build)
-                result = await CSharpBuildService.RunAsync(
-                    _terminal, target, configuration, CancellationToken.None, tfm);
-            else if (action == CSharpSolutionAction.Test)
-            {
-                testExecution = await CSharpTestExecutionService.RunAsync(
-                    _terminal, target, null, configuration, CancellationToken.None,
-                    targetFramework: tfm);
-                if (testExecution.PreparationError is { } preparationError)
-                {
-                    SetStatus($"{actionName}失敗");
-                    ShowRefactorStatus(preparationError);
-                    return;
-                }
-                if (testExecution.Command is not { } testResult)
-                {
-                    SetStatus($"{actionName}失敗");
-                    ShowRefactorStatus("テストを実行できませんでした。");
-                    return;
-                }
-                // Solution Explorerの実行結果もTest Explorerの一覧・集計・ガターへ戻す。
+            var result = execution.Command;
+            if (result is null)
+                throw new InvalidOperationException("実行結果がありません。");
+            if (testExecution is not null)
                 _vm.Debug.Tests.ApplyExternalExecutionResult(testExecution);
-                result = testResult;
-            }
-            else
-            {
-                var launchProfileName = launchProfile is { IsSupported: true, Name.Length: > 0 }
-                    ? launchProfile.Name
-                    : null;
-                result = await CSharpRunService.RunAsync(
-                    _terminal, target, configuration, tfm, launchProfileName, CancellationToken.None);
-            }
 
             _vm.Debug.WriteConsole(result.Output);
             _vm.Debug.ReportBuildOutput(result.Output, Path.GetDirectoryName(target));

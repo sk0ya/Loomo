@@ -104,7 +104,9 @@ public sealed class GitSessionCommandHandler
         RunAsync("インタラクティブリベース", () => _git.InteractiveRebaseAsync(fromHash, plan, messages));
 
     public Task<GitCommandResult?> CreateTagAsync(string name, string? target, string? message) =>
-        RunAsync($"タグ作成 {name}", () => _git.CreateTagAsync(name, target, message));
+        RunAsync($"タグ作成 {name}", () => _git.CreateTagAsync(name, target,
+            string.IsNullOrWhiteSpace(message) ? null : message));
+
     public Task<GitCommandResult?> DeleteTagAsync(GitTagInfo tag) =>
         RunAsync($"タグ削除 {tag.Name}", () => _git.DeleteTagAsync(tag.Name));
     public Task<GitCommandResult?> PushTagAsync(GitTagInfo tag) =>

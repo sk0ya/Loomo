@@ -363,17 +363,27 @@ public static class VGridTextSync
     {
         var format = DelimiterStrategyFactory.DetectFromExtension(filePath);
         var strategy = DelimiterStrategyFactory.Create(format);
+        var parsedRows = strategy.ParseContent(text)
+            .Select(row => (IReadOnlyList<string>)row)
+            .ToArray();
+        return BuildDocument(filePath, parsedRows, format);
+    }
 
-        var parsedRows = strategy.ParseContent(text);
-        var rows = new List<Row>(parsedRows.Count);
-        for (int i = 0; i < parsedRows.Count; i++)
-            rows.Add(new Row(i, parsedRows[i]));
+    /// <summary>行列データから VGrid の文書を作る。Markdown テーブルの一時編集にも使う。</summary>
+    internal static TsvDocument BuildDocument(
+        string filePath,
+        IReadOnlyList<IReadOnlyList<string>> rows,
+        DelimiterFormat format)
+    {
+        var documentRows = new List<Row>(rows.Count);
+        for (var i = 0; i < rows.Count; i++)
+            documentRows.Add(new Row(i, rows[i]));
 
-        var document = new TsvDocument(rows)
+        var document = new TsvDocument(documentRows)
         {
             FilePath = filePath,
             IsDirty = false,
-            DelimiterFormat = format
+            DelimiterFormat = format,
         };
         // 実データの少し先まで余白を確保（VGrid 本体と同じ初期サイズ方針）。
         document.EnsureSize(Math.Max(document.RowCount + 5, 20), Math.Max(document.ColumnCount + 3, 15));

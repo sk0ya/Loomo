@@ -33,6 +33,50 @@ public sealed class PaneLayoutCoordinator
         return true;
     }
 
+    /// <summary>ペインを表示／非表示にし、必要なら末尾へ追加する。</summary>
+    public bool SetVisible(PaneKind kind, bool visible, bool appendToLastColumn = false)
+    {
+        var leaf = Find(kind);
+        if (visible == (leaf is { Hidden: false }))
+            return false;
+
+        if (visible)
+        {
+            if (leaf is null)
+            {
+                var added = new PaneLeaf { Kind = kind };
+                if (appendToLastColumn && Root is PaneSplit { Orientation: SplitKind.Columns } columns
+                    && columns.Children.Count > 0)
+                    columns.Children[^1] = PaneLayoutTree.AddLeafAtBottom(columns.Children[^1], added);
+                else
+                    Root = PaneLayoutTree.AddLeafAtBottom(Root, added);
+            }
+            else
+                leaf.Hidden = false;
+        }
+        else
+            leaf!.Hidden = true;
+
+        Root = PaneLayoutTree.Normalize(Root);
+        return true;
+    }
+
+    /// <summary>スパン最大化前の退避ツリーにも、表示状態の変更を反映する。</summary>
+    public static PaneNode? SetVisibleOnSavedTree(PaneNode? root, PaneKind kind, bool visible)
+    {
+        var leaf = PaneLayoutTree.FindLeaf(root, kind);
+        if (leaf is null)
+        {
+            if (!visible)
+                return root;
+            root = PaneLayoutTree.AddLeafAtBottom(root, new PaneLeaf { Kind = kind });
+        }
+        else
+            leaf.Hidden = !visible;
+
+        return root;
+    }
+
     public static PaneNode? Place(
         PaneNode? root, PaneKind dragged, PaneKind target, bool center, DropZone? zone, bool span = false)
     {

@@ -126,6 +126,9 @@ public sealed class BrowserExtensionStore
 
     public string FolderFor(string id) => Path.Combine(_rootPath, id);
 
+    internal static bool HasManifest(string folderPath)
+        => File.Exists(Path.Combine(folderPath, "manifest.json"));
+
     /// <summary>ストアから crx を取り、<c>%APPDATA%/Loomo/BrowserExtensions/&lt;ID&gt;/</c> へ展開する。
     /// Chrome ストアで見つからなければ Edge アドオンも試す（貼られた ID だけでは出所が分からないため）。</summary>
     public async Task<CrxExtractResult> DownloadAsync(

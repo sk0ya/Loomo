@@ -1,12 +1,10 @@
-using System.Diagnostics;
 using System.Windows;
-using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
-using System.Windows.Media;
 using sk0ya.Loomo.CSharp.Projects;
 using sk0ya.Loomo.App.ViewModels;
+using sk0ya.Loomo.App.Services.Infrastructure;
 
 namespace sk0ya.Loomo.App.Views;
 
@@ -59,12 +57,9 @@ public partial class CSharpSolutionExplorerView : UserControl
     /// 2打目の <b>Down</b> は <see cref="OnTreePreviewMouseLeftButtonDown"/> が止める。</summary>
     private void OnTreeMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
-        if (e.ClickCount != 1 || e.OriginalSource is not DependencyObject source) return;
-        if (FindAncestor<ToggleButton>(source) is not null) return;
-        if (FindAncestor<TreeViewItem>(source) is not { } item) return;
-        if (item.DataContext is not CSharpSolutionNodeViewModel { Children.Count: > 0 }) return;
-
-        item.IsExpanded = !item.IsExpanded;
+        if (CSharpSolutionExplorerPolicy.ExpansionTargetOnMouseUp(
+                e.ClickCount, e.OriginalSource as DependencyObject) is { } item)
+            item.IsExpanded = !item.IsExpanded;
     }
 
     /// <summary>ダブルクリックの2打目（WPF の TreeViewItem が内蔵する開閉）を、子を持つ行では止める。
@@ -73,18 +68,16 @@ public partial class CSharpSolutionExplorerView : UserControl
     /// そこは <see cref="OnTreeDoubleClick"/> が「開く」に使う。</summary>
     private void OnTreePreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        if (e.ClickCount != 2 || e.OriginalSource is not DependencyObject source) return;
-        if (FindAncestor<TreeViewItem>(source) is not { } item) return;
-        if (item.DataContext is not CSharpSolutionNodeViewModel { Children.Count: > 0 }) return;
-
-        e.Handled = true;
+        if (CSharpSolutionExplorerPolicy.ShouldSuppressDoubleClickExpansion(
+                e.ClickCount, e.OriginalSource as DependencyObject))
+            e.Handled = true;
     }
 
     private void OnTreeDoubleClick(object sender, MouseButtonEventArgs e)
     {
         if (DataContext is not CSharpSolutionExplorerViewModel vm) return;
         if (e.OriginalSource is not DependencyObject source ||
-            FindAncestor<TreeViewItem>(source) is not { } item ||
+            WpfTreeTraversal.FindAncestor<TreeViewItem>(source) is not { } item ||
             item.DataContext is not CSharpSolutionNodeViewModel node) return;
 
         // 開けない行（開閉するだけの行）は WPF 既定の扱いへ渡す。ここで握ると、
@@ -129,7 +122,7 @@ public partial class CSharpSolutionExplorerView : UserControl
 
         // マウスで掴めた行は既に見えている。押下中は現在位置を保ち、キーボード移動だけ追従させる。
         if (Mouse.LeftButton == MouseButtonState.Pressed) return;
-        if (FindDescendant<ScrollViewer>(SolutionTree) is not { } scrollViewer) return;
+        if (WpfTreeTraversal.FindDescendant<ScrollViewer>(SolutionTree) is not { } scrollViewer) return;
 
         // 対象はヘッダ行（Bd）のみ。item 全体だと展開済みの子を含む高さになる。
         var header = item.Template?.FindName("Bd", item) as FrameworkElement ?? item;
@@ -137,33 +130,10 @@ public partial class CSharpSolutionExplorerView : UserControl
 
         var top = header.TransformToVisual(scrollViewer).Transform(default).Y;
         var bottom = top + header.ActualHeight;
-        if (top < 0)
-            scrollViewer.ScrollToVerticalOffset(scrollViewer.VerticalOffset + top);
-        else if (bottom > scrollViewer.ViewportHeight)
-            scrollViewer.ScrollToVerticalOffset(scrollViewer.VerticalOffset + (bottom - scrollViewer.ViewportHeight));
-    }
-
-    /// <summary>クリック位置から最も近い祖先を探す（フォルダーツリーと同じ探索）。
-    /// ItemsControl.ContainerFromElement はトップレベルのコンテナを返してしまうので使わない。</summary>
-    private static T? FindAncestor<T>(DependencyObject source) where T : DependencyObject
-    {
-        var current = source;
-        while (current is not null and not T)
-            current = current is Visual or System.Windows.Media.Media3D.Visual3D
-                ? VisualTreeHelper.GetParent(current)
-                : LogicalTreeHelper.GetParent(current);
-        return current as T;
-    }
-
-    private static T? FindDescendant<T>(DependencyObject root) where T : DependencyObject
-    {
-        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
-        {
-            var child = VisualTreeHelper.GetChild(root, i);
-            if (child is T match) return match;
-            if (FindDescendant<T>(child) is { } found) return found;
-        }
-        return null;
+        var correction = CSharpSolutionExplorerPolicy.VerticalScrollCorrection(
+            top, bottom, scrollViewer.ViewportHeight);
+        if (correction != 0)
+            scrollViewer.ScrollToVerticalOffset(scrollViewer.VerticalOffset + correction);
     }
 
     /// <summary>行の右クリックメニュー。どの行でも何かしら出す——以前はソリューションと
@@ -181,16 +151,7 @@ public partial class CSharpSolutionExplorerView : UserControl
         // 右クリックした行を選択へ入れる。ビルド対象（ActionTarget）もここから決まる。
         item.IsSelected = true;
 
-        var menu = new ContextMenu();
-        // 動的に生成するため、UI Automationからもソリューション操作の
-        // メニューであることを安定して識別できるようにする。
-        AutomationProperties.SetAutomationId(menu, "CSharpSolutionActions");
-        AutomationProperties.SetName(menu, "C#ソリューション操作");
-
-        if (node.Kind is CSharpSolutionNodeKind.Solution or CSharpSolutionNodeKind.Project)
-            AddSolutionActions(menu, vm, node);
-        else
-            AddItemActions(menu, vm, node);
+        var menu = CSharpSolutionExplorerContextMenuPresenter.Create(vm, node);
 
         if (menu.Items.Count == 0)
         {
@@ -207,94 +168,4 @@ public partial class CSharpSolutionExplorerView : UserControl
         menu.IsOpen = true;
     }
 
-    private static void AddSolutionActions(
-        ContextMenu menu, CSharpSolutionExplorerViewModel vm, CSharpSolutionNodeViewModel node)
-    {
-        AddAction(menu, vm, node, CSharpSolutionAction.Build, "ビルド");
-        if (node.CanRunTests)
-        {
-            AddAction(menu, vm, node, CSharpSolutionAction.Test, "テスト");
-            AddAction(menu, vm, node, CSharpSolutionAction.DebugTests, "テストをデバッグ");
-        }
-        menu.Items.Add(new Separator());
-        if (node.Kind == CSharpSolutionNodeKind.Project)
-            AddAction(menu, vm, node, CSharpSolutionAction.FixAllProject, "Fix All（プロジェクト）");
-        else
-            AddAction(menu, vm, node, CSharpSolutionAction.FixAllSolution, "Fix All（ソリューション）");
-        if (node.Kind == CSharpSolutionNodeKind.Project)
-        {
-            menu.Items.Add(new Separator());
-            AddAction(menu, vm, node, CSharpSolutionAction.Run, "実行");
-            AddAction(menu, vm, node, CSharpSolutionAction.Debug, "デバッグ");
-        }
-        menu.Items.Add(new Separator());
-        // フォルダーだけの C# ワークスペースには .sln の実体が無い（FullPath が null）。
-        // 押しても何も起きない項目を出さないよう、下の AddPathCommands と同じ条件で守る。
-        if (!string.IsNullOrWhiteSpace(node.FullPath))
-            AddCommand(menu, "OpenProjectFile",
-                node.Kind == CSharpSolutionNodeKind.Solution ? "ソリューションファイルを開く" : "プロジェクトファイルを開く",
-                () => vm.OpenPath(node.FullPath));
-        AddPathCommands(menu, node.FullPath);
-    }
-
-    /// <summary>ファイル・フォルダー・参照などの行。開く／パス／所属プロジェクトのビルド。</summary>
-    private static void AddItemActions(
-        ContextMenu menu, CSharpSolutionExplorerViewModel vm, CSharpSolutionNodeViewModel node)
-    {
-        if (CSharpSolutionExplorerViewModel.CanOpen(node))
-            AddCommand(menu, "Open", "開く", () => vm.Open(node));
-        AddPathCommands(menu, node.FullPath);
-
-        // 所属プロジェクトを遡って提示する。ファイルを選んだままビルドしたい、が普通の流れ。
-        var owner = node.Parent;
-        while (owner is not null && owner.Kind != CSharpSolutionNodeKind.Project) owner = owner.Parent;
-        if (owner is null) return;
-        if (menu.Items.Count > 0) menu.Items.Add(new Separator());
-        AddAction(menu, vm, owner, CSharpSolutionAction.Build, $"{owner.Name} をビルド");
-        if (owner.CanRunTests)
-            AddAction(menu, vm, owner, CSharpSolutionAction.Test, $"{owner.Name} をテスト");
-    }
-
-    private static void AddPathCommands(ContextMenu menu, string? fullPath)
-    {
-        if (string.IsNullOrWhiteSpace(fullPath)) return;
-        AddCommand(menu, "CopyPath", "パスをコピー", () =>
-        {
-            try { Clipboard.SetText(fullPath); } catch { /* クリップボード占有中は無視 */ }
-        });
-        AddCommand(menu, "RevealInExplorer", "エクスプローラーで表示", () =>
-        {
-            try
-            {
-                Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{fullPath}\"")
-                {
-                    UseShellExecute = true,
-                });
-            }
-            catch { /* 失敗しても左列の操作は続行できる */ }
-        });
-    }
-
-    private static void AddAction(
-        ContextMenu menu,
-        CSharpSolutionExplorerViewModel vm,
-        CSharpSolutionNodeViewModel node,
-        CSharpSolutionAction action,
-        string header)
-    {
-        var item = new MenuItem { Header = header };
-        AutomationProperties.SetAutomationId(item, $"CSharpSolutionAction.{action}");
-        AutomationProperties.SetName(item, header);
-        item.Click += (_, _) => vm.RequestAction(node, action);
-        menu.Items.Add(item);
-    }
-
-    private static void AddCommand(ContextMenu menu, string id, string header, Action execute)
-    {
-        var item = new MenuItem { Header = header };
-        AutomationProperties.SetAutomationId(item, $"CSharpSolutionCommand.{id}");
-        AutomationProperties.SetName(item, header);
-        item.Click += (_, _) => execute();
-        menu.Items.Add(item);
-    }
 }

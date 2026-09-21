@@ -1,5 +1,6 @@
 using System;
 using System.Windows;
+using sk0ya.Loomo.App.Services;
 
 namespace sk0ya.Loomo.App.Views;
 
@@ -43,19 +44,15 @@ public partial class InputDialog : Window
         dialog.Loaded += (_, _) =>
         {
             dialog.InputBox.Focus();
-            var dot = selectNameOnly ? initial.LastIndexOf('.') : -1;
-            if (dot > 0)
-                dialog.InputBox.Select(0, dot);   // 拡張子手前まで選択
-            else
-                dialog.InputBox.SelectAll();
+            dialog.InputBox.Select(0, DialogTextPolicy.NameSelectionLength(initial, selectNameOnly));
         };
 
-        return dialog.ShowDialog() == true ? dialog.InputBox.Text.Trim() : null;
+        return dialog.ShowDialog() == true ? DialogTextPolicy.Trim(dialog.InputBox.Text) : null;
     }
 
     private void OnOk(object sender, RoutedEventArgs e)
     {
-        if (!_allowEmpty && string.IsNullOrWhiteSpace(InputBox.Text))
+        if (!_allowEmpty && DialogTextPolicy.IsMissingRequiredText(InputBox.Text))
         {
             ErrorText.Text = "名前を入力してください。";
             ErrorText.Visibility = Visibility.Visible;

@@ -7,26 +7,26 @@ public partial class ShellWindow {
     /// <summary>最後に「ペイン／サイドバーの内部」が持っていたキーボードフォーカス（位置と要素の対）。
     /// アクティビティバーのボタンや本体外のウィンドウは内部ではないので更新しない。設定ウィンドウを
     /// 挟んだあとの戻り先の起点になる（設計書 §31.8）。</summary>
-    private (FocusTarget Target, WeakReference<IInputElement> Element)? _lastInnerFocus;
+    private (PaneFocusTarget Target, WeakReference<IInputElement> Element)? _lastInnerFocus;
 
     private void OnWindowPreviewGotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e) {
         _keyboard?.OnExternalFocusChange(suppressModeExit: _suppressResizeExit);
         if (e.NewFocus is not DependencyObject d)
             return;
-        if (FindPaneOf(d) is { } kind) {
-            if (kind is PaneKind.Debug or PaneKind.TsIde or PaneKind.Ai or PaneKind.Git or PaneKind.Diff or PaneKind.Trace
-                && e.NewFocus is not System.Windows.Controls.Primitives.ButtonBase)
+        if (PaneFocusElementResolver.FindPaneOf(d, _paneElements) is { } kind) {
+            if (PaneFocusNavigationPolicy.ShouldRememberPaneFocus(
+                    kind, e.NewFocus is System.Windows.Controls.Primitives.ButtonBase))
                 _lastPaneFocus[kind] = new WeakReference<IInputElement>(e.NewFocus);
             if (ViewsFor(kind) is { } views && views.SetFocusedFromElement(d) is { } viewId)
-                _focusedRegion = FocusTarget.Viewport(kind, viewId);
+                _focusedRegion = PaneFocusTarget.Viewport(kind, viewId);
             else
-                _focusedRegion = FocusTarget.Of(kind);
+                _focusedRegion = PaneFocusTarget.Of(kind);
             _lastInnerFocus = (_focusedRegion.Value, new WeakReference<IInputElement>(e.NewFocus));
             RecordTrailPane(kind);
         } else if (IsWithin(d, SidebarContainer)) {
-            _focusedRegion = FocusTarget.Sidebar;
+            _focusedRegion = PaneFocusTarget.Sidebar;
             _lastSidebarFocus = new WeakReference<IInputElement>(e.NewFocus);
-            _lastInnerFocus = (FocusTarget.Sidebar, _lastSidebarFocus);
+            _lastInnerFocus = (PaneFocusTarget.Sidebar, _lastSidebarFocus);
         }
     }
 
@@ -84,7 +84,7 @@ public partial class ShellWindow {
         }
         switch (decision.Kind) {
             case FocusReturnKind.Viewport when decision.Pane is { } viewportPane:
-                ApplyFocusTarget(FocusTarget.Viewport(viewportPane, decision.ViewportId));
+                ApplyFocusTarget(PaneFocusTarget.Viewport(viewportPane, decision.ViewportId));
                 break;
             case FocusReturnKind.Pane when decision.Pane is { } panePane:
                 FocusPane(panePane);
@@ -102,94 +102,44 @@ public partial class ShellWindow {
         => FocusReturnElement.IsWithin(element, ancestor);
     private void OnWindowDeactivated(object? sender, EventArgs e)
         => _keyboard?.Reset();
-    private PaneKind? FindPaneOf(DependencyObject element) {
-        for (var current = element; current is not null; current = GetAnyParent(current)) {
-            foreach (var (kind, paneElement) in _paneElements)
-                if (ReferenceEquals(paneElement, current))
-                    return kind;
-        }
-        return null;
-    }
-    private static DependencyObject? GetAnyParent(DependencyObject d)
-        => d is Visual or System.Windows.Media.Media3D.Visual3D
-            ? VisualTreeHelper.GetParent(d)
-            : LogicalTreeHelper.GetParent(d);
     private void FocusPaneInDirection(DropZone direction) {
         if (_stageActive && _focusedRegion?.Pane is { } stageFocused
             && ViewsFor(stageFocused) is { LeafCount: > 1 } stageViews) {
             if (stageViews.FocusInDirection(direction, PaneHost)
                 && stageViews.FocusedViewportId is { } viewportId) {
-                _focusedRegion = FocusTarget.Viewport(stageFocused, viewportId);
+                _focusedRegion = PaneFocusTarget.Viewport(stageFocused, viewportId);
                 SyncActiveFromViewport(stageFocused);
                 return;
             }
         }
         if (_stageActive) {
-            CycleStage(StageCycleDirection(direction));
+            CycleStage(PaneFocusNavigationPolicy.StageCycleDirection(direction));
             return;
         }
-        var targets = FocusTargets().ToList();
-        if (targets.Count == 0)
-            return;
-        var originIndex = _focusedRegion is { } region
-            ? targets.FindIndex(t => t.Target == region)
-            : -1;
-        if (originIndex < 0)
-            originIndex = 0;
-        var (originTarget, from) = targets[originIndex];
-        var fromCenter = new Point(from.X + from.Width / 2, from.Y + from.Height / 2);
-        FocusTarget? best = null;
-        var bestScore = double.MaxValue;
-        foreach (var (target, r) in targets) {
-            if (target == originTarget)
-                continue;
-            const double tolerance = 1.0;
-            var inDirection = direction switch {
-                DropZone.Left => r.X + r.Width <= from.X + tolerance, DropZone.Right => r.X >= from.X + from.Width - tolerance, DropZone.Above => r.Y + r.Height <= from.Y + tolerance, _ => r.Y >= from.Y + from.Height - tolerance, };
-            if (!inDirection)
-                continue;
-            var center = new Point(r.X + r.Width / 2, r.Y + r.Height / 2);
-            var (axis, perpendicular) = direction is DropZone.Left or DropZone.Right
-                ? (Math.Abs(center.X - fromCenter.X), Math.Abs(center.Y - fromCenter.Y))
-                : (Math.Abs(center.Y - fromCenter.Y), Math.Abs(center.X - fromCenter.X));
-            var score = axis + perpendicular * 2;
-            if (score < bestScore) {
-                bestScore = score;
-                best = target;
-            }
-        }
-        if (best is { } target2)
-            ApplyFocusTarget(target2);
+        if (PaneFocusNavigationPolicy.FindNeighbor(FocusTargets().ToList(), _focusedRegion, direction) is { } target)
+            ApplyFocusTarget(target);
     }
-    private static int StageCycleDirection(DropZone direction)
-        => direction is DropZone.Below or DropZone.Right ? 1 : -1;
-    private IEnumerable<(FocusTarget Target, Rect Rect)> FocusTargets() {
+    private IEnumerable<PaneFocusCandidate> FocusTargets() {
         foreach (var leaf in AllLeaves()) {
             if (leaf.Hidden)
                 continue;
             if (ViewsFor(leaf.Kind) is { LeafCount: > 1 } views) {
                 foreach (var (id, rect) in views.ViewportRects(PaneHost))
-                    yield return (FocusTarget.Viewport(leaf.Kind, id), rect);
-            } else if (TryGetPaneRect(leaf.Kind, out var rect)) {
-                yield return (FocusTarget.Of(leaf.Kind), rect);
+                    yield return PaneFocusElementResolver.CreateCandidate(
+                        PaneFocusTarget.Viewport(leaf.Kind, id), rect);
+            } else if (_paneElements.TryGetValue(leaf.Kind, out var element)
+                && PaneFocusElementResolver.TryGetVisibleBounds(element, PaneHost, out var bounds)) {
+                yield return new PaneFocusCandidate(PaneFocusTarget.Of(leaf.Kind), bounds);
             }
         }
-        if (TryGetSidebarRect(out var sidebarRect))
-            yield return (FocusTarget.Sidebar, sidebarRect);
+        if (_vm.IsSidebarVisible && SidebarContainer.IsVisible
+            && PaneFocusElementResolver.TryGetVisibleBounds(SidebarContainer, PaneHost, out var sidebarBounds))
+            yield return new PaneFocusCandidate(PaneFocusTarget.Sidebar, sidebarBounds);
     }
     private PaneSplitView? ViewsFor(PaneKind kind) => kind switch {
         PaneKind.Editor => _editorViews, PaneKind.Terminal => _terminalViews, _ => null
     };
-    private bool TryGetSidebarRect(out Rect rect) {
-        rect = default;
-        if (!_vm.IsSidebarVisible || !SidebarContainer.IsVisible
-            || SidebarContainer.ActualWidth <= 0 || SidebarContainer.ActualHeight <= 0)
-            return false;
-        var topLeft = SidebarContainer.TransformToVisual(PaneHost).Transform(new Point(0, 0));
-        rect = new Rect(topLeft, new Size(SidebarContainer.ActualWidth, SidebarContainer.ActualHeight));
-        return true;
-    }
-    private void ApplyFocusTarget(FocusTarget target) {
+    private void ApplyFocusTarget(PaneFocusTarget target) {
         if (target.IsSidebar) {
             FocusSidebar();
             return;
@@ -214,41 +164,15 @@ public partial class ShellWindow {
     private void FocusSidebar() {
         if (!_vm.IsSidebarVisible)
             return;
-        var view = SidebarContainer.Children.OfType<UIElement>()
-            .FirstOrDefault(c => c.Visibility == Visibility.Visible);
-        if (view is null)
-            return;
-        _focusedRegion = FocusTarget.Sidebar;
-        if (TryRestoreFocus(_lastSidebarFocus, SidebarContainer))
-            return;
-        // Explorer は中身のツリーへ直接フォーカス（先頭未選択なら選ぶ）。ツリーはセクション
-        // （ExplorerSection）の中なので、可視の子がそのまま FolderTreeView とは限らない。
-        if (view is FolderTreeView tree)
-            tree.FocusTree();
-        else if (ReferenceEquals(view, ExplorerSection))
-            SidebarFolderTree.FocusTree();
-        else
-            FocusFirstFocusable(view);  // 他パネルは最初のフォーカス可能要素へ
-    }
-    private static bool FocusFirstFocusable(DependencyObject root) {
-        if (root is UIElement { Focusable: true, IsVisible: true, IsEnabled: true } element) {
-            element.Focus();
-            return true;
-        }
-        var count = VisualTreeHelper.GetChildrenCount(root);
-        for (var i = 0; i < count; i++)
-            if (FocusFirstFocusable(VisualTreeHelper.GetChild(root, i)))
-                return true;
-        return false;
-    }
-    private bool TryGetPaneRect(PaneKind kind, out Rect rect) {
-        rect = default;
-        if (!_paneElements.TryGetValue(kind, out var element)
-            || !element.IsVisible || element.ActualWidth <= 0 || element.ActualHeight <= 0)
-            return false;
-        var topLeft = element.TransformToVisual(PaneHost).Transform(new Point(0, 0));
-        rect = new Rect(topLeft, new Size(element.ActualWidth, element.ActualHeight));
-        return true;
+        PaneFocusElementResolver.FocusSidebar(SidebarContainer, _lastSidebarFocus, view => {
+            // Explorer はセクションの中にツリーがあるため、可視の子を直接探索する。
+            if (view is FolderTreeView tree)
+                tree.FocusTree();
+            else if (ReferenceEquals(view, ExplorerSection))
+                SidebarFolderTree.FocusTree();
+            else
+                PaneFocusElementResolver.FocusFirstFocusable(view);
+        }, () => _focusedRegion = PaneFocusTarget.Sidebar);
     }
     private void FocusPane(PaneKind kind) {
         // ドックに置かない面（Diff 等）は出せないので、現在地も動かさない。動かすと軌跡の点や
@@ -259,7 +183,7 @@ public partial class ShellWindow {
             SetStagePane(kind);
         else if (_dockActive && !_dockMode.IsOpen(kind))
             EnsureDockPaneShown(kind);   // 出ていない面へフォーカスが来たら、その領域に出して見せる
-        _focusedRegion = FocusTarget.Of(kind);
+        _focusedRegion = PaneFocusTarget.Of(kind);
         if (_paneElements.TryGetValue(kind, out var pane) &&
             _lastPaneFocus.TryGetValue(kind, out var previous) && TryRestoreFocus(previous, pane))
         {
@@ -300,10 +224,10 @@ public partial class ShellWindow {
                 TraceSessionHost.Focus();
                 break;
             case PaneKind.Debug:
-                FocusFirstFocusable(DebugPane);
+                PaneFocusElementResolver.FocusFirstFocusable(DebugPane);
                 break;
             case PaneKind.TsIde:
-                FocusFirstFocusable(TsIdePane);
+                PaneFocusElementResolver.FocusFirstFocusable(TsIdePane);
                 break;
             case PaneKind.Search:
                 SearchPaneHost.FocusQuery();
@@ -316,24 +240,27 @@ public partial class ShellWindow {
     }
 
     private static bool TryRestoreFocus(WeakReference<IInputElement>? reference, DependencyObject owner)
+        => PaneFocusElementResolver.TryRestoreFocus(reference, owner);
+
+    private bool TryGetPaneRect(PaneKind kind, out Rect rect)
     {
-        if (reference?.TryGetTarget(out var target) != true || target is not DependencyObject d ||
-            target is not UIElement { IsVisible: true, IsEnabled: true })
+        rect = default;
+        if (!_paneElements.TryGetValue(kind, out var element)
+            || !PaneFocusElementResolver.TryGetVisibleBounds(element, PaneHost, out var bounds))
             return false;
-        if (!IsWithin(d, owner)) return false;
-        return target.Focus();
+        rect = new Rect(bounds.X, bounds.Y, bounds.Width, bounds.Height);
+        return true;
     }
 
     /// <summary>ワークスペース復元の最後に、見えている場所と内部の現在地を同じペインへ揃える。</summary>
     private void RestoreActivePane(WorkspaceSnapshot workspace) {
-        var target = _stageActive ? _stagePane : workspace.ActivePane;
-        if (target is not { } pane || !_paneElements.ContainsKey(pane))
-            return;
-        // ドックでは「タイルに出ている」だけでは足りない（下／右に開いている面も現在地になり得る）。
-        if (!_stageActive && !IsPaneMaterialized(pane))
+        var target = PaneFocusNavigationPolicy.ResolveRestorePane(
+            _stageActive, _stagePane, workspace.ActivePane,
+            pane => _paneElements.ContainsKey(pane) && (_stageActive || IsPaneMaterialized(pane)));
+        if (target is not { } pane)
             return;
         if (_overviewActive) {
-            _focusedRegion = FocusTarget.Of(pane);
+            _focusedRegion = PaneFocusTarget.Of(pane);
             return;
         }
         FocusPane(pane);

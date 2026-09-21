@@ -1,31 +1,30 @@
-﻿namespace sk0ya.Loomo.App.Views;
+namespace sk0ya.Loomo.App.Views;
 /// <summary>ShellWindow: ペイン内分割（vim 風 Ctrl+W v/s/q）と外観適用・PaneSplitView 実装</summary>
 public partial class ShellWindow {
+    private readonly WorkspaceEditTransactionCoordinator _workspaceEditTransactions = new();
+
     private bool CloseFocusedViewport() {
-        switch (_focusedRegion?.Pane) {
-            case PaneKind.Editor when _editorViews is { LeafCount: > 1 }:
-                CloseEditorView();
-                return true;
-            case PaneKind.Terminal when _terminalViews is { LeafCount: > 1 }:
-                CloseTerminalView();
-                return true;
-            default:
-                return false;
-        }
+        var pane = _focusedRegion?.Pane;
+        if (!ViewportSplitPolicy.CanCloseFocused(
+                pane, _editorViews?.LeafCount ?? 0, _terminalViews?.LeafCount ?? 0))
+            return false;
+        if (pane == PaneKind.Editor) CloseEditorView();
+        else CloseTerminalView();
+        return true;
     }
     private void HandleViewportSplitKey(Key key) {
-        switch (_focusedRegion?.Pane) {
-            case PaneKind.Editor:
-                if (key == Key.V) SplitEditorView(SplitKind.Columns);
-                else if (key == Key.S) SplitEditorView(SplitKind.Rows);
-                else CloseEditorView();
-                break;
-            case PaneKind.Terminal:
-                if (key == Key.V) SplitTerminalView(SplitKind.Columns);
-                else if (key == Key.S) SplitTerminalView(SplitKind.Rows);
-                else CloseTerminalView();
-                break;
-        }
+        var input = key switch {
+            Key.V => ViewportSplitKey.Vertical,
+            Key.S => ViewportSplitKey.Horizontal,
+            _ => ViewportSplitKey.Close,
+        };
+        if (ViewportSplitPolicy.ResolveKey(_focusedRegion?.Pane, input) is not { } action)
+            return;
+        if (action.Pane == PaneKind.Editor) {
+            if (action.Orientation is { } orientation) SplitEditorView(orientation);
+            else CloseEditorView();
+        } else if (action.Orientation is { } terminalOrientation) SplitTerminalView(terminalOrientation);
+        else CloseTerminalView();
     }
     private void SplitEditorView(SplitKind orientation, string? filePath = null) {
         if (_editorViews is null)
@@ -33,43 +32,23 @@ public partial class ShellWindow {
         var src = _editorViews.FocusedTabId is { } sid
             ? _editorTabs.FirstOrDefault(t => t.Id == sid)
             : _activeEditorTab;
-        var openPath = ResolveEditorPath(filePath, src);
+        var openPath = ViewportSplitPolicy.ResolveEditorPath(
+            filePath, src?.Control.FilePath, _activeWorkspace?.RootPath, _terminal.CurrentDirectory);
         var newTab = CreateEditorTab();
         _editorTabs.Add(newTab);
         _vm.Tabs.AddEditorTab(newTab.Id, openPath ?? src?.Control.FilePath, src?.Control.IsModified ?? false, false);
-        if (openPath is not null) {
-            LoadEditorFile(newTab.Control, openPath);
-        } else if (src is not null) {
-            if (!string.IsNullOrWhiteSpace(src.Control.FilePath) && File.Exists(src.Control.FilePath) && !src.Control.IsModified)
-                LoadEditorFile(newTab.Control, src.Control.FilePath);
-            else
-                newTab.Control.SetText(src.Control.Text);
-        }
+        var splitContent = ViewportSplitPolicy.ResolveEditorSplitContent(
+            openPath, src?.Control.FilePath, src?.Control.IsModified ?? false, src?.Control.Text);
+        if (splitContent.FilePath is { } splitPath) LoadEditorFile(newTab.Control, splitPath);
+        else if (splitContent.Text is { } text) newTab.Control.SetText(text);
         _editorViews.SplitFocused(orientation, newTab.Id);
         SetActiveEditorTab(newTab);
         UpdateEditorTab(newTab);
         SaveActiveWorkspaceSnapshot();
     }
-    private string? ResolveEditorPath(string? filePath, EditorTab? src) {
-        if (string.IsNullOrWhiteSpace(filePath))
-            return null;
-        if (Path.IsPathRooted(filePath))
-            return File.Exists(filePath) ? Path.GetFullPath(filePath) : null;
-        var bases = new[] {
-            src is { } s && !string.IsNullOrWhiteSpace(s.Control.FilePath)
-                ? Path.GetDirectoryName(s.Control.FilePath)
-                : null, _activeWorkspace?.RootPath, _terminal.CurrentDirectory, };
-        foreach (var dir in bases) {
-            if (string.IsNullOrWhiteSpace(dir))
-                continue;
-            var candidate = Path.GetFullPath(Path.Combine(dir, filePath));
-            if (File.Exists(candidate))
-                return candidate;
-        }
-        return null;
-    }
     private async Task OpenEditorTabFromEditorAsync(string? filePath) {
-        var openPath = ResolveEditorPath(filePath, _activeEditorTab);
+        var openPath = ViewportSplitPolicy.ResolveEditorPath(
+            filePath, _activeEditorTab?.Control.FilePath, _activeWorkspace?.RootPath, _terminal.CurrentDirectory);
         if (openPath is not null)
         {
             await OpenFileInNewEditorTabAsync(openPath);
@@ -83,13 +62,9 @@ public partial class ShellWindow {
         SaveActiveWorkspaceSnapshot();
     }
     private void CycleEditorTab(int step) {
-        if (_editorTabs.Count <= 1)
-            return;
         var index = _activeEditorTab is { } active ? _editorTabs.FindIndex(t => t.Id == active.Id) : 0;
-        if (index < 0)
-            index = 0;
-        var count = _editorTabs.Count;
-        var next = ((index + step) % count + count) % count;
+        if (ViewportSplitPolicy.NextTabIndex(index, _editorTabs.Count, step) is not { } next)
+            return;
         ActivateEditorTab(_editorTabs[next].Id);
     }
     private void CloseActiveEditorTab() {
@@ -111,9 +86,8 @@ public partial class ShellWindow {
         var src = _terminalViews.FocusedTabId is { } sid
             ? _terminalTabs.FirstOrDefault(t => t.Id == sid)
             : _activeTerminalTab;
-        var cwd = src?.View.WorkingDirectory;
-        if (string.IsNullOrWhiteSpace(cwd) || !Directory.Exists(cwd))
-            cwd = _activeWorkspace?.RootPath ?? _terminal.CurrentDirectory;
+        var cwd = ViewportSplitPolicy.ResolveTerminalDirectory(
+            src?.View.WorkingDirectory, _activeWorkspace?.RootPath ?? _terminal.CurrentDirectory);
         var newTab = CreateTerminalTab(cwd);
         _terminalTabs.Add(newTab);
         _vm.Tabs.AddTerminalTab(newTab.Id, $"Terminal {CurrentTerminalWorkspace.NextTabNumber++}", false);
@@ -170,19 +144,7 @@ public partial class ShellWindow {
 
     /// <summary>未実体化／Untitledタブの空パスを通常ファイルとして正規化しない。</summary>
     private static bool EditorPathMatches(VimEditorControl editor, string? path)
-    {
-        if (editor.FilePath is not { Length: > 0 } editorPath || string.IsNullOrWhiteSpace(path))
-            return false;
-        try
-        {
-            return string.Equals(Path.GetFullPath(editorPath), Path.GetFullPath(path),
-                StringComparison.OrdinalIgnoreCase);
-        }
-        catch (ArgumentException)
-        {
-            return false;
-        }
-    }
+        => ViewportSplitPolicy.EditorPathMatches(editor.FilePath, path);
 
     /// <summary>
     /// エディタからの先読み要求を FIM エンジンへ渡す。打鍵のたびに呼ばれ、古い要求は
@@ -275,15 +237,14 @@ public partial class ShellWindow {
             VimEnabled = _settings.Vim.Enabled, Visibility = Visibility.Collapsed
         };
         control.HostCodeActionProvider = (range, only) =>
-            RequestCSharpQuickFixesAsync(control, range, only);
+            QuickFixCoordinator.RequestAsync(control, range, only);
         _appearance.ApplyEditorOptions(control);
         _appearance.ApplyEditorAppearance(control);
         control.SetSharedStatusBar(EditorSharedStatusBar);
         control.BufferChanged += (_, _) => {
-            if (!_restoringWorkspaceEdit)
-                _workspaceEditRedo.Clear();
+            _workspaceEditTransactions.OnEditorBufferChanged();
             UpdateEditorTab(tab);
-            RecordTrailEdit(tab);
+            _trailEditCommit.Request(tab);
             if (ReferenceEquals(_editorSupport.Source, tab))
                 ScheduleEditorSupportUpdate();
             ScheduleStyleCopAnalysis(control);
@@ -333,530 +294,42 @@ public partial class ShellWindow {
         e.Handled = !outcome.Cancelled && outcome.Error is null;
     }
 
-    /// <summary>workspace edit の適用結果。<b>取り消しは失敗ではない</b>——編集プレビューで
-    /// 「キャンセル」を押しただけなのに「適用できませんでした: 編集プレビューでキャンセルされました。」と
-    /// 出すのは、利用者が自分で止めた操作をエラーとして突き返している。</summary>
-    internal readonly record struct WorkspaceEditOutcome(string? Error, bool Cancelled)
-    {
-        internal static WorkspaceEditOutcome Ok() => new(null, false);
-        internal static WorkspaceEditOutcome Fail(string error) => new(error, false);
-        internal static WorkspaceEditOutcome Cancel() => new(null, true);
-
-        /// <summary>ステータスバーへ出す文言。適用できたときだけ null を返す（成功文は呼び出し側が持つ）。</summary>
-        internal string? Describe(string what) =>
-            Cancelled ? $"「{what}」は取り消しました。"
-            : Error is { } error ? $"「{what}」を適用できませんでした: {error}"
-            : null;
-    }
-    /// <summary>workspace edit をワークスペースへ適用する。適用できたか、失敗か、利用者が取り消したかを返す。
-    /// 全対象を先に検証し、編集プレビューで確認してからファイル操作と本文変更を行う。
-    /// 新規作成／名前変更されたファイルへの本文変更も、仮想的な適用後の内容を先に組み立てる。</summary>
-    private WorkspaceEditOutcome ApplyLspWorkspaceEdit(
+    /// <summary>WorkspaceEdit の適用本体はトランザクション coordinator へ委譲する。</summary>
+    private sk0ya.Loomo.App.Services.WorkspaceEditOutcome ApplyLspWorkspaceEdit(
         IReadOnlyDictionary<string, IReadOnlyList<Editor.Core.Lsp.LspTextEdit>> changes,
         IReadOnlyDictionary<string, int?>? documentVersions,
         IReadOnlyList<Editor.Core.Lsp.LspFileOperation>? fileOperations,
         WorkspaceEditPreviewFile? currentPreview = null,
-        IReadOnlyDictionary<string, string>? expectedTexts = null) {
-        // マルチルート（プライマリ＋追加フォルダー）の全件で判定する。プライマリだけを見ていた頃は、
-        // あとから追加したフォルダーのファイルが「ワークスペース外」になり編集ごと失敗していた。
-        // 正本は _workspace.Folders——LSP のサーバー自身もこの一覧で initialize されている。
-        var folders = _workspace.Folders;
-        if (folders.Count == 0)
-            return WorkspaceEditOutcome.Fail("ワークスペースが開かれていません。");
-        Dictionary<string, LspFileSnapshot>? fileSnapshots = null;
-        Dictionary<VimEditorControl, string>? editorSnapshots = null;
-        var mutationStarted = false;
-        try {
-            var operations = fileOperations ?? [];
-            VerifyExpectedCSharpTexts(expectedTexts, folders);
-            ValidateLspFileOperations(operations, folders);
-            var plans = new List<(string Path, IReadOnlyList<Editor.Core.Lsp.LspTextEdit> Edits,
-                int? Version, List<VimEditorControl> Open, string OriginalText,
-                string UpdatedText, string? DiskText, System.Text.Encoding? Encoding)>();
-            foreach (var (uri, edits) in changes) {
-                var path = LspWorkspaceEditPaths.ResolveInWorkspace(uri, folders);
+        IReadOnlyDictionary<string, string>? expectedTexts = null)
+        => _workspaceEditTransactions.Apply(changes, documentVersions, fileOperations,
+            currentPreview, expectedTexts, _workspace.Folders, _editorTabs,
+            EditorPathMatches, ShowWorkspaceEditPreview);
 
-                int? expectedVersion = null;
-                documentVersions?.TryGetValue(uri, out expectedVersion);
-                var open = _editorTabs
-                    .Where(tab => tab.IsRealized && EditorPathMatches(tab.Control, path))
-                    .Select(tab => tab.Control)
-                    .ToList();
-                if (open.Count > 0) {
-                    var openOriginal = open[0].Text;
-                    var openUpdated = openOriginal;
-                    foreach (var editor in open) {
-                        if (expectedVersion is not null && editor.LspDocument?.Version is { } actual && actual != expectedVersion)
-                            throw new InvalidOperationException($"{path}: 文書版が一致しません（要求 {expectedVersion} / 現在 {actual}）。");
-                        var candidate = VimEditorControl.ApplyTextEdits(editor.Text, edits);
-                        if (ReferenceEquals(editor, open[0])) openUpdated = candidate;
-                    }
-                    plans.Add((path, edits, expectedVersion, open, openOriginal, openUpdated, null, null));
-                    continue;
-                }
-                if (expectedVersion is not null)
-                    throw new InvalidOperationException($"{path}: 文書版 {expectedVersion} を検証できません。ファイルを開いて再度実行してください。");
-                string original;
-                System.Text.Encoding encoding;
-                if (File.Exists(path)) {
-                    using var reader = new StreamReader(path, detectEncodingFromByteOrderMarks: true);
-                    original = reader.ReadToEnd();
-                    encoding = reader.CurrentEncoding;
-                } else if (IsCreatedByOperation(path, operations)) {
-                    original = "";
-                    encoding = new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
-                } else if (FindRenameSource(path, operations) is { } source && File.Exists(source)) {
-                    using var reader = new StreamReader(source, detectEncodingFromByteOrderMarks: true);
-                    original = reader.ReadToEnd();
-                    encoding = reader.CurrentEncoding;
-                } else {
-                    throw new InvalidOperationException($"{path}: 編集対象のファイルが見つかりません。");
-                }
-                var updated = VimEditorControl.ApplyTextEdits(original, edits);
-                plans.Add((path, edits, null, [], original, updated, updated, encoding));
-            }
-
-            var previewFiles = plans
-                .Where(plan => !string.Equals(plan.OriginalText, plan.UpdatedText, StringComparison.Ordinal))
-                .Select(plan => new WorkspaceEditPreviewFile(plan.Path, plan.OriginalText, plan.UpdatedText))
-                .ToList();
-            if (currentPreview is not null &&
-                !string.Equals(currentPreview.OriginalText, currentPreview.UpdatedText, StringComparison.Ordinal))
-                previewFiles.Insert(0, currentPreview);
-            var previewOperations = operations.Select(ToPreviewOperation).ToList();
-            fileSnapshots = CaptureLspFileSnapshots(operations, plans, currentPreview);
-            editorSnapshots = CaptureLspEditorSnapshots(plans, currentPreview);
-            if (previewFiles.Count > 0 || previewOperations.Count > 0) {
-                var preview = new WorkspaceEditPreviewDialog("WorkspaceEdit", previewFiles, previewOperations)
-                { Owner = this };
-                if (preview.ShowDialog() != true)
-                    return WorkspaceEditOutcome.Cancel();
-            }
-
-            // Preview中にユーザーや別プロセスが触った場合は、確認済みの差分をそのまま上書きしない。
-            VerifyLspTransactionSnapshots(fileSnapshots, editorSnapshots);
-            if (operations.Count > 0)
-            {
-                mutationStarted = true;
-                ApplyLspFileOperations(operations, folders);
-            }
-            foreach (var plan in plans) {
-                // 読み取り側を先に同期し、LSPへdidChangeを送るwriterは最後に1回だけ適用する。
-                foreach (var editor in plan.Open.OrderBy(editor => editor.LspDocument?.IsWriter == true))
-                {
-                    mutationStarted = true;
-                    if (!editor.TryApplyLspTextEdits(plan.Edits, expectedVersion: null, out var error))
-                        throw new InvalidOperationException($"{plan.Path}: {error}");
-                }
-                if (plan.DiskText is not null)
-                {
-                    mutationStarted = true;
-                    File.WriteAllText(plan.Path, plan.DiskText, plan.Encoding!);
-                }
-            }
-            RecordWorkspaceEditHistory(
-                "LSP／Roslyn WorkspaceEdit",
-                fileSnapshots,
-                CaptureLspFileSnapshots(fileSnapshots.Keys),
-                CaptureLspEditorTextSnapshots(editorSnapshots),
-                CaptureLspEditorTextSnapshots(editorSnapshots, currentPreview, useCurrentText: true));
-            return WorkspaceEditOutcome.Ok();
-        }
-        catch (Exception ex) {
-            // 適用後のI/O失敗でも、既に動かしたEditor／ファイルを確認済みの状態へ戻す。
-            // rollback自体の失敗は元の失敗を隠さず、ユーザーに明示する。
-            try
-            {
-                // 検証・キャンセル段階の例外では余計な書き込みをしない。
-                if (mutationStarted && fileSnapshots is not null && editorSnapshots is not null)
-                    RestoreLspTransactionSnapshots(fileSnapshots, editorSnapshots);
-            }
-            catch (Exception rollback)
-            {
-                return WorkspaceEditOutcome.Fail($"{ex.Message} 復元にも失敗しました: {rollback.Message}");
-            }
-            return WorkspaceEditOutcome.Fail(ex.Message);
-        }
-    }
-
-    /// <summary>C#専用DLLが編集計画を作った時点の本文を、非同期処理後の適用直前に照合する。
-    /// 最新本文へ古い範囲を適用すると、成功して見える破壊的編集になるため、差分表示より前に止める。</summary>
-    private void VerifyExpectedCSharpTexts(
-        IReadOnlyDictionary<string, string>? expectedTexts,
-        IReadOnlyList<string> folders)
+    private bool ShowWorkspaceEditPreview(
+        IReadOnlyList<WorkspaceEditPreviewFile> files,
+        IReadOnlyList<WorkspaceEditPreviewOperation> operations)
     {
-        var error = sk0ya.Loomo.CSharp.Refactoring.CSharpEditSnapshotValidator.Validate(
-            expectedTexts, folders, path =>
-            {
-                var editor = _editorTabs
-                    .Where(tab => tab.IsRealized && EditorPathMatches(tab.Control, path))
-                    .Select(tab => tab.Control)
-                    .FirstOrDefault();
-                if (editor is not null) return editor.Text;
-                return File.Exists(path) ? File.ReadAllText(path) : null;
-            });
-        if (error is not null) throw new InvalidOperationException(error);
-    }
-
-    private sealed record LspFileSnapshot(bool Exists, byte[] Content);
-
-    private static Dictionary<string, LspFileSnapshot> CaptureLspFileSnapshots(
-        IReadOnlyList<Editor.Core.Lsp.LspFileOperation> operations,
-        IReadOnlyList<(string Path, IReadOnlyList<Editor.Core.Lsp.LspTextEdit> Edits, int? Version,
-            List<VimEditorControl> Open, string OriginalText, string UpdatedText, string? DiskText,
-            System.Text.Encoding? Encoding)> plans,
-        WorkspaceEditPreviewFile? currentPreview = null)
-    {
-        var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var operation in operations)
-        {
-            if (LspUri.TryToLocalPath(operation.Uri) is { } path)
-                paths.Add(Path.GetFullPath(path));
-            if (operation.NewUri is not null && LspUri.TryToLocalPath(operation.NewUri) is { } newPath)
-                paths.Add(Path.GetFullPath(newPath));
-        }
-        // Open editors are still backed by a real file.  Snapshot their disk bytes as well
-        // as their in-memory text so an external write during the preview cannot be
-        // overwritten by a later save.  DiskText is null for an open editor because the
-        // editor buffer is the writer, but the file itself remains part of the transaction.
-        foreach (var plan in plans)
-            paths.Add(Path.GetFullPath(plan.Path));
-        if (currentPreview is not null && currentPreview.Path.Length > 0)
-            paths.Add(Path.GetFullPath(currentPreview.Path));
-
-        var result = new Dictionary<string, LspFileSnapshot>(StringComparer.OrdinalIgnoreCase);
-        foreach (var path in paths)
-        {
-            if (File.Exists(path))
-                result[path] = new LspFileSnapshot(true, File.ReadAllBytes(path));
-            else
-                result[path] = new LspFileSnapshot(false, []);
-        }
-        return result;
-    }
-
-    private static Dictionary<string, LspFileSnapshot> CaptureLspFileSnapshots(
-        IEnumerable<string> paths)
-    {
-        var result = new Dictionary<string, LspFileSnapshot>(StringComparer.OrdinalIgnoreCase);
-        foreach (var rawPath in paths)
-        {
-            var path = Path.GetFullPath(rawPath);
-            result[path] = File.Exists(path)
-                ? new LspFileSnapshot(true, File.ReadAllBytes(path))
-                : new LspFileSnapshot(false, []);
-        }
-        return result;
-    }
-
-    private Dictionary<VimEditorControl, string> CaptureLspEditorSnapshots(
-        IReadOnlyList<(string Path, IReadOnlyList<Editor.Core.Lsp.LspTextEdit> Edits, int? Version,
-            List<VimEditorControl> Open, string OriginalText, string UpdatedText, string? DiskText,
-            System.Text.Encoding? Encoding)> plans,
-        WorkspaceEditPreviewFile? currentPreview)
-    {
-        var editors = plans.SelectMany(plan => plan.Open).ToHashSet();
-        if (currentPreview is not null)
-        {
-            foreach (var tab in _editorTabs.Where(tab => tab.IsRealized &&
-                EditorPathMatches(tab.Control, currentPreview.Path)))
-                editors.Add(tab.Control);
-        }
-        return editors.ToDictionary(editor => editor, editor => editor.Text);
-    }
-
-    private static Dictionary<string, string> CaptureLspEditorTextSnapshots(
-        IReadOnlyDictionary<VimEditorControl, string> editors,
-        WorkspaceEditPreviewFile? currentPreview = null,
-        bool useCurrentText = false)
-    {
-        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var (editor, text) in editors)
-            if (editor.FilePath is { Length: > 0 } path)
-                result[Path.GetFullPath(path)] = useCurrentText ? editor.Text : text;
-        if (currentPreview is not null && currentPreview.Path.Length > 0)
-            result[Path.GetFullPath(currentPreview.Path)] = currentPreview.UpdatedText;
-        return result;
-    }
-
-    private static void VerifyLspTransactionSnapshots(
-        IReadOnlyDictionary<string, LspFileSnapshot> files,
-        IReadOnlyDictionary<VimEditorControl, string> editors)
-    {
-        foreach (var (path, expected) in files)
-        {
-            var actual = File.Exists(path)
-                ? new LspFileSnapshot(true, File.ReadAllBytes(path))
-                : new LspFileSnapshot(false, []);
-            if (!SameLspFileSnapshot(expected, actual))
-                throw new InvalidOperationException($"{path}: preview後に外部変更が検出されました。再度実行してください。");
-        }
-        foreach (var (editor, expected) in editors)
-            if (!string.Equals(editor.Text, expected, StringComparison.Ordinal))
-                throw new InvalidOperationException($"{editor.FilePath}: preview後に編集中の内容が変更されました。再度実行してください。");
-    }
-
-    private static void RestoreLspTransactionSnapshots(
-        IReadOnlyDictionary<string, LspFileSnapshot> files,
-        IReadOnlyDictionary<VimEditorControl, string> editors)
-    {
-        foreach (var (editor, text) in editors)
-            if (!string.Equals(editor.Text, text, StringComparison.Ordinal))
-                if (!editor.TryRestoreWorkspaceText(text, out var error))
-                    throw new InvalidOperationException($"{editor.FilePath}: {error}");
-
-        foreach (var (path, snapshot) in files)
-        {
-            if (snapshot.Exists)
-            {
-                Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-                File.WriteAllBytes(path, snapshot.Content);
-            }
-            else if (File.Exists(path))
-                File.Delete(path);
-        }
-    }
-
-    private static bool SameLspFileSnapshot(LspFileSnapshot left, LspFileSnapshot right)
-        => left.Exists == right.Exists && left.Content.AsSpan().SequenceEqual(right.Content);
-
-    private void RecordWorkspaceEditHistory(
-        string description,
-        IReadOnlyDictionary<string, LspFileSnapshot> beforeFiles,
-        IReadOnlyDictionary<string, LspFileSnapshot> afterFiles,
-        IReadOnlyDictionary<string, string> beforeEditors,
-        IReadOnlyDictionary<string, string> afterEditors)
-    {
-        if (beforeFiles.Count == 0 && beforeEditors.Count == 0)
-            return;
-        _workspaceEditUndo.Add(new WorkspaceEditHistoryEntry(
-            description,
-            new Dictionary<string, LspFileSnapshot>(beforeFiles, StringComparer.OrdinalIgnoreCase),
-            new Dictionary<string, LspFileSnapshot>(afterFiles, StringComparer.OrdinalIgnoreCase),
-            new Dictionary<string, string>(beforeEditors, StringComparer.OrdinalIgnoreCase),
-            new Dictionary<string, string>(afterEditors, StringComparer.OrdinalIgnoreCase)));
-        if (_workspaceEditUndo.Count > 50)
-            _workspaceEditUndo.RemoveAt(0);
-        _workspaceEditRedo.Clear();
+        var preview = new WorkspaceEditPreviewDialog("WorkspaceEdit", files, operations) { Owner = this };
+        return preview.ShowDialog() == true;
     }
 
     private bool TryHandleWorkspaceEditUndo(KeyEventArgs e)
     {
         var modifiers = Keyboard.Modifiers;
-        if (_focusedRegion?.Pane != PaneKind.Editor ||
-            e.Key != Key.Z ||
+        if (_focusedRegion?.Pane != PaneKind.Editor || e.Key != Key.Z ||
             !modifiers.HasFlag(ModifierKeys.Control) ||
             (modifiers & ~(ModifierKeys.Control | ModifierKeys.Shift)) != ModifierKeys.None)
             return false;
 
         var redo = modifiers.HasFlag(ModifierKeys.Shift);
-        var history = redo ? _workspaceEditRedo : _workspaceEditUndo;
-        if (history.Count == 0)
-            return false;
-        var entry = history[^1];
-        // 実体化していないタブの Control を読むと、その場でタブを作ってしまう（遅延復元の意味が消える）。
-        // 未実体化のタブがワークスペース編集の Undo 対象になることはないので、そのまま素通しする。
         var activePath = _activeEditorTab is { IsRealized: true } activeTab
             ? activeTab.Control.FilePath
             : null;
-        if (activePath is null ||
-            !entry.AfterEditors.ContainsKey(Path.GetFullPath(activePath)))
+        if (!_workspaceEditTransactions.TryRestoreHistory(redo, activePath, _editorTabs,
+            EditorPathMatches, status => EditorSharedStatusBar?.UpdateStatus(status)))
             return false;
-        bool stateMatches;
-        try
-        {
-            stateMatches = WorkspaceEditStateMatches(
-                redo ? entry.BeforeFiles : entry.AfterFiles,
-                redo ? entry.BeforeEditors : entry.AfterEditors);
-        }
-        catch
-        {
-            return false;
-        }
-        if (!stateMatches)
-            return false;
-        try
-        {
-            _restoringWorkspaceEdit = true;
-            RestoreLspTransactionSnapshots(
-                redo ? entry.AfterFiles : entry.BeforeFiles,
-                redo ? entry.AfterEditors : entry.BeforeEditors);
-            history.RemoveAt(history.Count - 1);
-            (redo ? _workspaceEditUndo : _workspaceEditRedo).Add(entry);
-            EditorSharedStatusBar?.UpdateStatus(redo
-                ? $"{entry.Description} をやり直しました。"
-                : $"{entry.Description} を元に戻しました。");
-            e.Handled = true;
-            return true;
-        }
-        catch (Exception ex)
-        {
-            try
-            {
-                // Undo/Redo中にディスクがロックされた場合も、先に戻せたEditorだけを
-                // 残さないよう、元の状態へ再度戻す。
-                RestoreLspTransactionSnapshots(
-                    redo ? entry.BeforeFiles : entry.AfterFiles,
-                    redo ? entry.BeforeEditors : entry.AfterEditors);
-            }
-            catch (Exception rollback)
-            {
-                EditorSharedStatusBar?.UpdateStatus(
-                    $"WorkspaceEditの復元に失敗しました: {ex.Message} 復元にも失敗しました: {rollback.Message}");
-                e.Handled = true;
-                return true;
-            }
-            EditorSharedStatusBar?.UpdateStatus($"WorkspaceEditの復元に失敗しました: {ex.Message}");
-            e.Handled = true;
-            return true;
-        }
-        finally
-        {
-            _restoringWorkspaceEdit = false;
-        }
-    }
-
-    private bool WorkspaceEditStateMatches(
-        IReadOnlyDictionary<string, LspFileSnapshot> files,
-        IReadOnlyDictionary<string, string> editors)
-    {
-        foreach (var (path, expected) in files)
-        {
-            var actual = File.Exists(path)
-                ? new LspFileSnapshot(true, File.ReadAllBytes(path))
-                : new LspFileSnapshot(false, []);
-            if (!SameLspFileSnapshot(expected, actual))
-                return false;
-        }
-        foreach (var (path, expected) in editors)
-        {
-            var open = _editorTabs.Where(tab => tab.IsRealized &&
-                EditorPathMatches(tab.Control, path)).Select(tab => tab.Control).ToArray();
-            if (open.Length == 0 || open.Any(editor => !string.Equals(editor.Text, expected, StringComparison.Ordinal)))
-                return false;
-        }
+        e.Handled = true;
         return true;
-    }
-
-    private void RestoreLspTransactionSnapshots(
-        IReadOnlyDictionary<string, LspFileSnapshot> files,
-        IReadOnlyDictionary<string, string> editors)
-    {
-        foreach (var (path, text) in editors)
-        {
-            var open = _editorTabs.Where(tab => tab.IsRealized &&
-                EditorPathMatches(tab.Control, path)).Select(tab => tab.Control).ToArray();
-            if (open.Length == 0)
-                throw new InvalidOperationException($"{path}: 対応するエディタタブが閉じられています。");
-            foreach (var editor in open)
-                if (!string.Equals(editor.Text, text, StringComparison.Ordinal) &&
-                    !editor.TryRestoreWorkspaceText(text, out var error))
-                    throw new InvalidOperationException($"{path}: {error}");
-        }
-        RestoreLspFileSnapshots(files);
-    }
-
-    private static void RestoreLspFileSnapshots(
-        IReadOnlyDictionary<string, LspFileSnapshot> files)
-    {
-        foreach (var (path, snapshot) in files)
-        {
-            if (snapshot.Exists)
-            {
-                Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-                File.WriteAllBytes(path, snapshot.Content);
-            }
-            else if (File.Exists(path))
-                File.Delete(path);
-        }
-    }
-
-    private static void ValidateLspFileOperations(
-        IReadOnlyList<Editor.Core.Lsp.LspFileOperation> operations,
-        IReadOnlyList<string> folders)
-    {
-        foreach (var operation in operations) {
-            var path = LspWorkspaceEditPaths.ResolveInWorkspace(operation.Uri, folders);
-            switch (operation.Kind) {
-                case Editor.Core.Lsp.LspFileOperationKind.Create:
-                    if (File.Exists(path) && !operation.IgnoreIfExists && !operation.Overwrite)
-                        throw new InvalidOperationException($"{path}: すでに存在します。");
-                    break;
-                case Editor.Core.Lsp.LspFileOperationKind.Rename:
-                    if (!File.Exists(path))
-                        throw new InvalidOperationException($"{path}: 名前変更元のファイルが見つかりません。");
-                    var destination = LspWorkspaceEditPaths.ResolveInWorkspace(
-                        operation.NewUri ?? throw new InvalidOperationException("改名先が指定されていません。"), folders);
-                    if (File.Exists(destination) && !operation.IgnoreIfExists && !operation.Overwrite)
-                        throw new InvalidOperationException($"{destination}: すでに存在します。");
-                    break;
-                case Editor.Core.Lsp.LspFileOperationKind.Delete:
-                    if (!File.Exists(path) && !operation.IgnoreIfNotExists)
-                        throw new InvalidOperationException($"{path}: 削除対象のファイルが見つかりません。");
-                    break;
-            }
-        }
-    }
-
-    private static bool IsCreatedByOperation(
-        string path, IReadOnlyList<Editor.Core.Lsp.LspFileOperation> operations)
-        => operations.Any(operation => operation.Kind == Editor.Core.Lsp.LspFileOperationKind.Create &&
-            string.Equals(LspUri.TryToLocalPath(operation.Uri), path, StringComparison.OrdinalIgnoreCase));
-
-    private static string? FindRenameSource(
-        string path, IReadOnlyList<Editor.Core.Lsp.LspFileOperation> operations)
-    {
-        var operation = operations.FirstOrDefault(candidate =>
-            candidate.Kind == Editor.Core.Lsp.LspFileOperationKind.Rename &&
-            string.Equals(LspUri.TryToLocalPath(candidate.NewUri ?? ""), path, StringComparison.OrdinalIgnoreCase));
-        return operation is null ? null : LspUri.TryToLocalPath(operation.Uri);
-    }
-
-    private static WorkspaceEditPreviewOperation ToPreviewOperation(Editor.Core.Lsp.LspFileOperation operation)
-        => new(
-            operation.Kind switch {
-                Editor.Core.Lsp.LspFileOperationKind.Create => "create",
-                Editor.Core.Lsp.LspFileOperationKind.Rename => "rename",
-                Editor.Core.Lsp.LspFileOperationKind.Delete => "delete",
-                _ => "file operation",
-            },
-            LspUri.TryToLocalPath(operation.Uri) ?? operation.Uri,
-            operation.NewUri is null ? null : LspUri.TryToLocalPath(operation.NewUri) ?? operation.NewUri);
-    /// <summary>workspace edit のファイル操作（作成・改名・削除）。対象はワークスペース内に限る
-    /// （<see cref="LspWorkspaceEditPaths.ResolveInWorkspace"/>）。</summary>
-    private void ApplyLspFileOperations(
-        IReadOnlyList<Editor.Core.Lsp.LspFileOperation> operations, IReadOnlyList<string> folders) {
-        foreach (var operation in operations) {
-            var path = LspWorkspaceEditPaths.ResolveInWorkspace(operation.Uri, folders);
-            switch (operation.Kind) {
-                case Editor.Core.Lsp.LspFileOperationKind.Create:
-                    if (File.Exists(path)) {
-                        if (operation.IgnoreIfExists) break;
-                        if (!operation.Overwrite)
-                            throw new InvalidOperationException($"{path}: すでに存在します。");
-                    }
-                    Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-                    File.WriteAllText(path, "");
-                    break;
-                case Editor.Core.Lsp.LspFileOperationKind.Rename:
-                    var destination = LspWorkspaceEditPaths.ResolveInWorkspace(
-                        operation.NewUri ?? throw new InvalidOperationException("改名先が指定されていません。"), folders);
-                    if (File.Exists(destination) && !operation.Overwrite) {
-                        if (operation.IgnoreIfExists) break;
-                        throw new InvalidOperationException($"{destination}: すでに存在します。");
-                    }
-                    Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
-                    File.Move(path, destination, operation.Overwrite);
-                    break;
-                case Editor.Core.Lsp.LspFileOperationKind.Delete:
-                    if (!File.Exists(path)) {
-                        if (operation.IgnoreIfNotExists) break;
-                        throw new InvalidOperationException($"{path}: 存在しません。");
-                    }
-                    File.Delete(path);
-                    break;
-            }
-        }
     }
     /// <summary>エディタへファイルを読み込ませる。<b>Loomo 側の <c>LoadFile</c> の唯一の漏斗</b>で、
     /// ここを通る経路は現在このとおり:

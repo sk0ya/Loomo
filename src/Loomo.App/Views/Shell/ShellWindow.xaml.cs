@@ -31,6 +31,7 @@ public partial class ShellWindow : Window {
     private readonly EditorSupportResolver _editorSupportResolver;
     private readonly CodeEditorSupport _codeSupport;
     private readonly sk0ya.Loomo.Services.Lsp.LspManagementService _lspManagement;
+    private readonly EditorLspNoticeCoordinator _editorLspNotices;
     // LSP セッションはワークスペース単位でアプリに1つ。タブ経由ではなくここから直接使う（設計書 §30）。
     // 型が実装（ILspWorkspace ではなく）なのは、サーバーの実行時状態（ServerStatuses＝起動失敗の理由）が
     // Loomo 側の概念で、エディタへ渡すインターフェースには載っていないため（案内の出し分けに要る）。
@@ -68,11 +69,6 @@ public partial class ShellWindow : Window {
     private EditorTab? _activeEditorTab;
     private BrowserTab? _activeBrowserTab;
     private EditorTab? _previewEditorTab;
-    // Roslyn/LSP の WorkspaceEdit は複数文書を一手で変更するため、Editor個別のUndoとは別に
-    // 前後のスナップショットを保持する。通常の入力が混ざった場合は一致検証で安全に拒否する。
-    private readonly List<WorkspaceEditHistoryEntry> _workspaceEditUndo = [];
-    private readonly List<WorkspaceEditHistoryEntry> _workspaceEditRedo = [];
-    private bool _restoringWorkspaceEdit;
     private readonly EditorSupportController _editorSupport;
     private DispatcherTimer? _editorSupportDebounceTimer;
     private static readonly string EditorSupportPreviewFolder = Services.WebViewProfile.PreviewPageFolder;
@@ -85,8 +81,6 @@ public partial class ShellWindow : Window {
     private WorkspaceSnapshot? _activeWorkspace;
     private DispatcherOperation? _pendingWorkspaceSnapshotSave;
     private const string DefaultBrowserUrl = "https://www.google.com/";
-    private GridLength _savedSidebarWidth = new(220);
-    private const double SplitterThickness = 6;
     private PaneKind? _zoomedPane;
     private readonly PaneLayoutCoordinator _paneLayout = new();
     private PaneNode? _root { get => _paneLayout.Root; set => _paneLayout.Root = value; }
@@ -94,10 +88,6 @@ public partial class ShellWindow : Window {
     private FrameworkElement? _dragHandle;
     private Point _paneDragStart;
     private bool _paneDragArmed;
-    private Canvas? _dragCanvas;
-    private Border? _dragPreview;       // ドロップ先の半分を塗るプレビュー矩形
-    private Border? _dragTargetOutline; // ドロップ先ペイン全体の枠
-    private Border? _dragGhost;         // 掴んでいるペインをカーソル追従で示すチップ
     private bool _paneDragging;
     private PaneKind _dragSource;
     private PaneKind? _dragTarget;
@@ -107,24 +97,12 @@ public partial class ShellWindow : Window {
     private bool _dragCenter;
     private bool _dragSpan;
     private bool _dragToWing;   // 袖の上で離す＝舞台から降ろして袖へしまう
-    private FocusTarget? _focusedRegion;
+    private PaneFocusTarget? _focusedRegion;
     private bool _resizeMode;
     private bool _suppressResizeExit;
     private Popup? _resizeHintPopup;
     private PaneSplitView? _editorViews;
     private PaneSplitView? _terminalViews;
-    private readonly record struct FocusTarget(PaneKind? Pane, Guid ViewportId = default) {
-        public bool IsSidebar => Pane is null;
-        public static FocusTarget Sidebar => new((PaneKind?)null);
-        public static FocusTarget Of(PaneKind kind) => new(kind);
-        public static FocusTarget Viewport(PaneKind kind, Guid viewportId) => new(kind, viewportId);
-    }
-    private sealed record WorkspaceEditHistoryEntry(
-        string Description,
-        IReadOnlyDictionary<string, LspFileSnapshot> BeforeFiles,
-        IReadOnlyDictionary<string, LspFileSnapshot> AfterFiles,
-        IReadOnlyDictionary<string, string> BeforeEditors,
-        IReadOnlyDictionary<string, string> AfterEditors);
     public ShellWindow( ShellViewModel vm, TerminalService terminal, EditorService editor, BrowserService browser, IWorkspaceService workspace, TabIconService tabIcons, LoomoSettings settings, TaskbarWorkspaceRecentService taskbarWorkspaceRecent, EditorSupportRegistry editorSupports, EditorSupportResolver editorSupportResolver, CodeEditorSupport codeSupport, IEditorSupportViewFactory editorSupportViewFactory, sk0ya.Loomo.Services.Lsp.LspManagementService lspManagement, sk0ya.Loomo.Services.Lsp.LspWorkspaceService lspWorkspace, ILspServerAdmin lspServerAdmin, Editor.Core.Engine.VimEngineServices editorEngineServices, sk0ya.Loomo.Services.GitService git, KeybindingService keybindings, DiffSessionFactory diffSessions, sk0ya.Loomo.CSharp.Configuration.StyleCopDiagnosticService styleCopDiagnostics, sk0ya.Loomo.CSharp.Configuration.StyleCopCodeFixService styleCopCodeFix, sk0ya.Loomo.CSharp.Configuration.CSharpCompilerDiagnosticService compilerDiagnostics, sk0ya.Loomo.CSharp.Configuration.CSharpEditorConfigService csharpEditorConfig, sk0ya.Loomo.CSharp.Configuration.CSharpDiagnosticExplanationService diagnosticExplanations, IWorkspaceSearchService search, sk0ya.Loomo.Ai.Completion.FimCompletionClient fimCompletion, sk0ya.Loomo.CSharp.Projects.ISolutionModelService? solutionModel = null) {
         StartupProfiler.Mark("ShellWindow ctor 開始");
         InitializeComponent();
@@ -132,6 +110,17 @@ public partial class ShellWindow : Window {
         DataContext = vm;
         _trailBar = new TrailBarController(vm.Trail, TrailScroll, TrailDots, TrailDateTimePopup, TrailCalendar, TrailDateTimePopupRoot, JumpToTrailEntry);
         _vm = vm;
+        _ = new ShellWindowStateController(
+            this,
+            vm,
+            SidebarColumn,
+            SidebarSplitterColumn,
+            SidebarContainer,
+            SidebarSplitter,
+            RecordTrailPanel,
+            FocusSidebar,
+            CaptureFocusReturnOrigin,
+            RestoreFocusReturnOrigin);
         _terminal = terminal;
         _editor = editor;
         _browser = browser;
@@ -185,6 +174,7 @@ public partial class ShellWindow : Window {
         _codeSupport = codeSupport;
         _lspManagement = lspManagement;
         _lspWorkspace = lspWorkspace;
+        _editorLspNotices = new EditorLspNoticeCoordinator(lspManagement, lspWorkspace, vm.LspPrompt);
         _editorEngineServices = editorEngineServices;
         _lspServerAdmin = lspServerAdmin;
         _fimCompletion = fimCompletion;
@@ -235,7 +225,6 @@ public partial class ShellWindow : Window {
         }
         InitializeSidebarSections();
         HookAiActivity();
-        vm.PropertyChanged += OnShellPropertyChanged;
         vm.Settings.Saved += ApplyVimEnabledToOpenEditorTabs;
         vm.Settings.Saved += ApplyEditorSettingsToOpenEditorTabs;
         vm.Appearance.AppearanceChanged += ApplyAppearanceToOpenTabs;
@@ -470,82 +459,15 @@ public partial class ShellWindow : Window {
                 PrepareStageSnapshot(solo: true, StageSnapshot.Default());
                 PrepareDockSnapshot(dock: false, snapshot: null);
                 ApplyDefaultLayout();
-                SetBrowserAddressText(DefaultBrowserUrl);
+                BrowserAddressSuggestions.SetText(DefaultBrowserUrl);
                 CreateBrowserTab(DefaultBrowserUrl);
                 CompleteStageSnapshotRestore();
             }
         } catch (Exception ex) {
-            SetBrowserAddressText($"WebView2 initialization failed: {ex.Message}");
+            BrowserAddressSuggestions.SetText($"WebView2 initialization failed: {ex.Message}");
         }
         _ = Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(() => _vm.GitSession.EnsureLoaded()));
         _ = Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(EnsureDragOverlay));
         StartupProfiler.Mark("OnLoaded 完了");
-    }
-    private void OnShellPropertyChanged(object? sender, PropertyChangedEventArgs e) {
-        if (sender is not ShellViewModel vm) return;
-        if (e.PropertyName == nameof(ShellViewModel.IsSidebarVisible)) {
-            ApplySidebarVisibility(vm.IsSidebarVisible);
-            if (vm.IsSidebarVisible) {
-                RecordTrailPanel(vm.ActivePanel);
-                QueueSidebarFocus();
-            }
-        } else if (e.PropertyName == nameof(ShellViewModel.IsSettingsOverlayOpen))
-            ApplySettingsWindowState(vm.IsSettingsOverlayOpen);
-        else if (e.PropertyName == nameof(ShellViewModel.SettingsCategory) && vm.IsSettingsOverlayOpen)
-            _settingsWindow?.Activate();    // 開いたままカテゴリだけ切り替えたとき（IsOpen は変化しない）
-        else if (e.PropertyName == nameof(ShellViewModel.ActivePanel) && !vm.IsPanelChangeAutomatic) {
-            RecordTrailPanel(vm.ActivePanel);   // サイドバーのパネル切替も軌跡（操作ログ）へ
-            QueueSidebarFocus();                // 自動退避（C# が消えて戻る等）は人間の操作ではないので書かない
-        }
-    }
-
-    /// <summary>サイドバーを開いた／パネルを切り替えたら、その中身へキーボードフォーカスを入れる
-    /// （エクスプローラなら選択中の項目へ＝そのまま j/k で動かせる）。表示切替とコンテナ生成が
-    /// 済んでいないと項目へ入れられないので、レイアウト確定後に実行する。起動時は既定値のままで
-    /// PropertyChanged が飛ばないため、この経路はユーザー操作のときだけ通る。</summary>
-    private void QueueSidebarFocus()
-        => Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(FocusSidebar));
-
-    /// <summary>設定の独立ウィンドウを VM の開閉状態に追従させる。起動を軽くするため初回オープンまで生成しない。
-    /// ウィンドウ側（✕/Esc/Alt+F4）で閉じられたときは Closed で VM を閉状態へ戻す。
-    /// 開く直前の内部フォーカスを控え、閉じたらそこへ戻す（設計書 §31.8。放っておくと本体の再アクティブ化で
-    /// ブラウザペインの WebView2 がフォーカスを取り、入力先が直前の場所と食い違う）。</summary>
-    private void ApplySettingsWindowState(bool open) {
-        if (!open) {
-            _settingsWindow?.Close();
-            return;
-        }
-        if (_settingsWindow is null) {
-            CaptureFocusReturnOrigin();
-            _settingsWindow = new SettingsWindow {
-                Owner = this,                                       // 常に本体の手前・本体終了で一緒に閉じる
-                DataContext = _vm,                                  // 中身の SettingsView は同じ ShellViewModel を見る
-                WindowStartupLocation = WindowStartupLocation.CenterOwner,
-            };
-            _settingsWindow.Closed += (_, _) => {
-                _settingsWindow = null;
-                _vm.IsSettingsOverlayOpen = false;
-                RestoreFocusReturnOrigin();
-            };
-            _settingsWindow.Show();
-        }
-        _settingsWindow.Activate();     // 開いている状態でカテゴリを切り替えたときは手前へ
-    }
-    private SettingsWindow? _settingsWindow;
-    private void ApplySidebarVisibility(bool visible) {
-        if (visible) {
-            SidebarColumn.MinWidth = 120;
-            SidebarColumn.Width = _savedSidebarWidth.Value > 0 ? _savedSidebarWidth : new GridLength(220);
-            SidebarSplitterColumn.Width = new GridLength(SplitterThickness);
-            SidebarContainer.Visibility = Visibility.Visible;
-            SidebarSplitter.Visibility = Visibility.Visible;
-        } else {
-            _savedSidebarWidth = SidebarColumn.Width;
-            SidebarColumn.MinWidth = 0;
-            SidebarColumn.Width = new GridLength(0);
-            SidebarSplitterColumn.Width = new GridLength(0);
-            SidebarContainer.Visibility = Visibility.Collapsed;
-            SidebarSplitter.Visibility = Visibility.Collapsed;
-        }
     }
 }

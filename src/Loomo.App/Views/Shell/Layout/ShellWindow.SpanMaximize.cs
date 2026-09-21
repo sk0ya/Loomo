@@ -67,66 +67,30 @@ public partial class ShellWindow {
         _spanSavedRoot = _root is null ? null : BuildFromSnapshot(ToSnapshot(_root), new HashSet<PaneKind>());
         var infos = visible.Select(leaf => {
             if (TryGetPaneRect(leaf.Kind, out var r))
-                return (Leaf: leaf, Cx: (r.X + r.Width / 2) / hostWidth, Cy: (r.Y + r.Height / 2) / hostHeight, Height: Math.Max(r.Height, 1.0));
-            return (Leaf: leaf, Cx: 0.5, Cy: 0.5, Height: 1.0);
+                return new SpanPanePosition(leaf.Kind, (r.X + r.Width / 2) / hostWidth,
+                    (r.Y + r.Height / 2) / hostHeight, Math.Max(r.Height, 1.0));
+            return new SpanPanePosition(leaf.Kind, 0.5, 0.5, 1.0);
         }).ToList();
-        var spanWidth = (double)(span.Right - span.Left);
-        var groups = areas.Select(_ => new List<(PaneLeaf Leaf, double Cx, double Cy, double Height)>()).ToList();
-        foreach (var info in infos) {
-            var index = areas.FindIndex(a => info.Cx < (a.Right - span.Left) / spanWidth);
-            groups[index < 0 ? areas.Count - 1 : index].Add(info);
-        }
-        if (groups.Any(g => g.Count == 0) && infos.Count >= areas.Count) {
-            var ordered = infos.OrderBy(i => i.Cx).ThenBy(i => i.Cy).ToList();
-            groups = areas.Select(_ => new List<(PaneLeaf Leaf, double Cx, double Cy, double Height)>()).ToList();
-            for (var i = 0; i < ordered.Count; i++)
-                groups[i * areas.Count / ordered.Count].Add(ordered[i]);
-        }
-        foreach (var hiddenLeaf in hiddenLeaves) {
-            var group = groups.FirstOrDefault(g => g.Count > 0) ?? groups[0];
-            group.Add((hiddenLeaf, 0.0, double.MaxValue, group.Count > 0 ? group.Average(i => i.Height) : 1.0));
-        }
         var dpi = VisualTreeHelper.GetDpi(this);
         var hostLeft = PaneHost.TransformToVisual(this).Transform(new Point(0, 0)).X * dpi.DpiScaleX;
         var hostRightGap = ActualWidth * dpi.DpiScaleX - hostLeft - hostWidth * dpi.DpiScaleX;
-        var root = new PaneSplit { Orientation = SplitKind.Columns };
-        double pending = 0;
-        for (var i = 0; i < areas.Count; i++) {
-            double width = areas[i].Right - areas[i].Left;
-            if (i == 0)
-                width -= hostLeft;
-            if (i == areas.Count - 1)
-                width -= hostRightGap;
-            width += pending;
-            if (groups[i].Count == 0) {
-                pending = width; // 置くものが無いモニタの幅は右隣の列が吸収する
-                continue;
-            }
-            pending = 0;
-            root.Children.Add(BuildSpanColumn(groups[i], Math.Max(width, 1)));
-        }
-        if (pending > 0 && root.Children.Count > 0)
-            root.Children[^1].Weight += pending;
-        if (root.Children.Count < 2) {
+        var columns = SpanPaneLayoutPolicy.Plan(
+            infos,
+            hiddenLeaves.Select(leaf => leaf.Kind).ToList(),
+            areas.Select(area => new SpanPaneArea(area.Left, area.Right)).ToList(),
+            span.Left,
+            span.Right - span.Left,
+            hostLeft,
+            hostRightGap);
+        if (columns.Count < 2) {
             _spanSavedRoot = null; // 列分割が成立しないなら現状のまま
             return;
         }
+        var leavesByKind = AllLeaves().ToDictionary(leaf => leaf.Kind);
+        var root = SpanPaneLayoutPolicy.BuildTree(columns, leavesByKind);
         _zoomedPane = null;
         _root = root;
         RebuildPaneLayout();
-    }
-    private static PaneNode BuildSpanColumn(List<(PaneLeaf Leaf, double Cx, double Cy, double Height)> group, double weight) {
-        var ordered = group.OrderBy(g => g.Cy).ThenBy(g => g.Cx).ToList();
-        if (ordered.Count == 1) {
-            ordered[0].Leaf.Weight = weight;
-            return ordered[0].Leaf;
-        }
-        var rows = new PaneSplit { Orientation = SplitKind.Rows, Weight = weight };
-        foreach (var item in ordered) {
-            item.Leaf.Weight = item.Height;
-            rows.Children.Add(item.Leaf);
-        }
-        return rows;
     }
     private void ReapplySpanPaneLayout() {
         var hwnd = new WindowInteropHelper(this).Handle;
@@ -152,12 +116,11 @@ public partial class ShellWindow {
             return;
         if (!GetWindowRect(hwnd, out var current) || !GetCursorPos(out var cursor))
             return;
-        var width = restore.Right - restore.Left;
-        var height = restore.Bottom - restore.Top;
-        var spanWidth = Math.Max(current.Right - current.Left, 1);
-        var ratio = Math.Clamp((cursor.X - current.Left) / (double)spanWidth, 0.0, 1.0);
-        var left = cursor.X - (int)Math.Round(width * ratio);
-        SetWindowPos(hwnd, IntPtr.Zero, left, current.Top, width, height, SWP_NOZORDER | SWP_NOACTIVATE);
+        var placement = SpanPaneLayoutPolicy.RestorePlacement(
+            current.Left, current.Top, current.Right - current.Left, cursor.X,
+            restore.Left, restore.Top, restore.Right, restore.Bottom);
+        SetWindowPos(hwnd, IntPtr.Zero, placement.Left, placement.Top, placement.Width, placement.Height,
+            SWP_NOZORDER | SWP_NOACTIVATE);
     }
     private void ExitSpanState() {
         _isSpanMaximized = false;

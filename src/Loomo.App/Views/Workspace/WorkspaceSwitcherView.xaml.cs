@@ -1,11 +1,10 @@
 using System;
-using System.Diagnostics;
-using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using sk0ya.Loomo.App.Services;
+using sk0ya.Loomo.App.Services.Infrastructure;
 using sk0ya.Loomo.App.ViewModels;
 
 namespace sk0ya.Loomo.App.Views;
@@ -106,17 +105,10 @@ public partial class WorkspaceSwitcherView : UserControl
     /// null を返す。展開したフォルダー行（<c>Tag="folder"</c>）も、ワークスペースの切替対象ではないので同様。</summary>
     private static ListBoxItem? FindRow(object? originalSource)
     {
-        var element = originalSource as DependencyObject;
-        while (element is not null and not ListBoxItem)
-        {
-            if (element is Button or FrameworkElement { Tag: "folder" })
-                return null;
-            // OriginalSource が Run 等の FrameworkContentElement のことがある（VisualTreeHelper だと例外）
-            element = element is Visual or System.Windows.Media.Media3D.Visual3D
-                ? VisualTreeHelper.GetParent(element)
-                : LogicalTreeHelper.GetParent(element);
-        }
-        return element as ListBoxItem;
+        var rowOrExcludedControl = WpfTreeTraversal.FindAncestor<FrameworkElement>(
+            originalSource as DependencyObject,
+            element => element is ListBoxItem or Button || element.Tag as string == "folder");
+        return rowOrExcludedControl as ListBoxItem;
     }
 
     /// <summary>行のクリック＝そのワークスペースへ切替。ブランチのチェックアウトと違って、
@@ -181,15 +173,7 @@ public partial class WorkspaceSwitcherView : UserControl
     /// （<c>FolderTreeView.ContextNode</c> と同じ作法）。子メニュー項目の <c>Parent</c> は
     /// 親 MenuItem なので ContextMenu まで遡る。</summary>
     private static object? MenuContext(object sender)
-    {
-        var current = sender as DependencyObject;
-        while (current is MenuItem item)
-            current = item.Parent;
-
-        return current is ContextMenu { PlacementTarget: FrameworkElement target }
-            ? target.DataContext
-            : (sender as FrameworkElement)?.DataContext;
-    }
+        => WpfContextMenuDataContext.Resolve(sender, () => (sender as FrameworkElement)?.DataContext);
 
     // ===== 追加フォルダー行の右クリックメニュー =====
 
@@ -199,28 +183,19 @@ public partial class WorkspaceSwitcherView : UserControl
     private void OnFolderMenuCopyPath(object sender, RoutedEventArgs e)
     {
         if (FolderTarget(sender) is { } folder)
-            CopyPath(folder.Path);
+            WorkspaceSwitcherActionPresenter.CopyPath(folder.Path, Close);
     }
 
     private void OnFolderMenuReveal(object sender, RoutedEventArgs e)
     {
         if (FolderTarget(sender) is { } folder)
-            Reveal(folder.Path);
+            WorkspaceSwitcherActionPresenter.OpenPath(folder.Path, revealInExplorer: true, Close, ShowError);
     }
 
     private void OnFolderMenuRemove(object sender, RoutedEventArgs e)
     {
-        if (FolderTarget(sender) is not { } folder)
-            return;
-
-        var owner = Window.GetWindow(this);
-        Close();
-        var answer = MessageBox.Show(owner,
-            $"「{folder.Owner.Label}」からフォルダー {folder.Path} を取り除きますか？\n" +
-            "フォルダ自体は削除されません。", "ワークスペースフォルダーの削除",
-            MessageBoxButton.OKCancel, MessageBoxImage.Warning);
-        if (answer == MessageBoxResult.OK)
-            Vm?.RemoveFolder(folder);
+        if (FolderTarget(sender) is { } folder)
+            WorkspaceSwitcherActionPresenter.RemoveFolder(Window.GetWindow(this), Vm, folder, Close);
     }
 
     // ===== 行の右クリックメニュー =====
@@ -235,7 +210,7 @@ public partial class WorkspaceSwitcherView : UserControl
     private void OnMenuOpenInNewWindow(object sender, RoutedEventArgs e)
     {
         if (MenuTarget(sender) is { } entry)
-            OpenInNewWindow(entry.RootPath);
+            WorkspaceSwitcherActionPresenter.OpenPath(entry.RootPath, revealInExplorer: false, Close, ShowError);
     }
 
     private void OnMenuTogglePin(object sender, RoutedEventArgs e)
@@ -247,19 +222,19 @@ public partial class WorkspaceSwitcherView : UserControl
     private void OnMenuRename(object sender, RoutedEventArgs e)
     {
         if (MenuTarget(sender) is { } entry)
-            Rename(entry);
+            WorkspaceSwitcherActionPresenter.Rename(Window.GetWindow(this), Vm, entry, Close);
     }
 
     private void OnMenuCopyPath(object sender, RoutedEventArgs e)
     {
         if (MenuTarget(sender) is { } entry)
-            CopyPath(entry.RootPath);
+            WorkspaceSwitcherActionPresenter.CopyPath(entry.RootPath, Close);
     }
 
     private void OnMenuReveal(object sender, RoutedEventArgs e)
     {
         if (MenuTarget(sender) is { } entry)
-            Reveal(entry.RootPath);
+            WorkspaceSwitcherActionPresenter.OpenPath(entry.RootPath, revealInExplorer: true, Close, ShowError);
     }
 
     private void OnMenuRemove(object sender, RoutedEventArgs e)
@@ -291,60 +266,4 @@ public partial class WorkspaceSwitcherView : UserControl
 
     // ===== 共通の小物 =====
 
-    /// <summary>表示名の変更。空にすると既定（フォルダ名）へ戻る＝リセットも同じ入口で行える。</summary>
-    private void Rename(WorkspaceEntryViewModel entry)
-    {
-        if (Vm is not { } vm)
-            return;
-
-        // 透明ポップアップはモーダルダイアログの上に浮くので、出す前に畳む（ブランチ側と同じ作法）。
-        var owner = Window.GetWindow(this);
-        Close();
-        var name = InputDialog.Prompt(owner, "ワークスペースの表示名",
-            $"「{entry.Label}」の表示名を入力してください（空にするとフォルダ名 {entry.Name} に戻ります）",
-            entry.HasCustomName ? entry.Label : "", allowEmpty: true);
-        if (name is null)
-            return;
-
-        vm.Rename(entry, name);
-    }
-
-    private void CopyPath(string path)
-    {
-        try { Clipboard.SetText(path); }
-        catch { /* クリップボードのロック等は無視 */ }
-        Close();
-    }
-
-    private void OpenInNewWindow(string path)
-    {
-        // 理由はこのポップアップ内に出すので、成功したときだけ閉じる（Reveal と同じ作法）。
-        if (!Directory.Exists(path))
-        {
-            ShowError($"フォルダが見つかりません: {path}");
-            return;
-        }
-        try
-        {
-            WorkspaceWindowLauncher.Launch(path);
-            Close();
-        }
-        catch (Exception ex) { ShowError(ex.Message); }
-    }
-
-    private void Reveal(string path)
-    {
-        // 失敗の理由はこのポップアップ内に出すので、成功したときだけ閉じる。
-        if (!Directory.Exists(path))
-        {
-            ShowError($"フォルダが見つかりません: {path}");
-            return;
-        }
-        try
-        {
-            Process.Start("explorer.exe", $"\"{path}\"");
-            Close();
-        }
-        catch (Exception ex) { ShowError(ex.Message); }
-    }
 }

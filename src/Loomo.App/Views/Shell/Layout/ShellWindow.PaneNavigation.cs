@@ -13,7 +13,7 @@ public partial class ShellWindow {
             // パレットの中で効かせるのは<b>パレット自身のコマンドだけ</b>（検索対象の切替・別の探し方で開き直し）。
             // ほかのショートカットまで通すと、入力欄に打っている最中に部屋が動いてしまう。当たらなかった
             // キーは消費されないので、そのまま文字として入力欄へ届く。
-            _keyboard?.TryExecuteScoped(e, IsPaletteScopedCommand);
+            _keyboard?.TryExecuteScoped(e, static id => id.StartsWith("palette.", StringComparison.Ordinal));
             return;
         }
         // ブラウザ専用キー（Ctrl+L/F/D、F5、Alt+←→ 等）はペインにフォーカスがあるときだけ効かせる。

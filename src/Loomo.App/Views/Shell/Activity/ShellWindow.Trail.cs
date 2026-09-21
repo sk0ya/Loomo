@@ -1,27 +1,26 @@
 ﻿namespace sk0ya.Loomo.App.Views;
 /// <summary>ShellWindow: 軌跡（操作ログ）バーの配線。エディタのファイル活性化・ブラウザ遷移・ ペイン／パネル切替を <see cref="TrailViewModel"/> へ記録し、ドットのクリックや バー上の Shift+ホイール（現在地の前後移動）でその地点へ戻る（素のホイールはバーの水平スクロール）。 バー左端の日付クリック→カレンダーで 過去の日の軌跡も表示できる。アイデア.md「Semantic Depth」構想の Thread Rail の種。 <para><b>新しい軌跡ソースの足し方（登録側はこれだけ）</b>： ①<see cref="TrailEntryKind"/> に enum 値を1つ追加し <c>Glyph</c>（ツールチップ・一意性テスト用）と <c>IconGeometry</c>（バーに描く絵姿）を対で1本ずつ足す。 ②<see cref="RegisterTrailJumps"/> にその種別の「戻る」処理を1行登録する。 ③記録したい場所（イベントハンドラ等）で <see cref="RecordTrail"/> を呼ぶ。 記録の抑制（復元・ジャンプ中）と離脱位置の上書きは <see cref="RecordTrail"/> が共通で面倒を見るので、 各ソースはこの3点以外を書かなくてよい。</para></summary>
 public partial class ShellWindow {
-    private readonly Dictionary<TrailEntryKind, Func<TrailEntryViewModel, Task>> _trailJumps = new();
+    private TrailJumpCoordinator _trailJumpCoordinator = null!;
     private readonly sk0ya.Loomo.Services.GitService _git;
     private bool _trailSuppressed;
-    private PaneKind? _trailLastPane;
-    private DisplayMode? _trailLastPaneMode;
-    private DispatcherTimer? _trailPaneCommitTimer;
-    private PaneKind? _trailPendingPane;
-    private DispatcherTimer? _trailEditCommitTimer;
-    private EditorTab? _trailPendingEditTab;
+    private TrailPaneCommitController _trailPaneCommit = null!;
+    private TrailEditCommitController _trailEditCommit = null!;
     private TrailBarController _trailBar = null!;
     private bool _trailBrowsingPast {
         get => _trailBar.BrowsingPast;
         set => _trailBar.BrowsingPast = value;
     }
-    private TrailEntryViewModel? _trailPendingJumpEntry;
-    private bool _trailJumpRunning;
-    private DispatcherTimer? _trailJumpSettleTimer;
-    private bool _trailJumpBaseSuppressed;
     private string? _trailLastLayoutKey;
     private void InitializeTrail() {
         RegisterTrailJumps();
+        _trailEditCommit = new TrailEditCommitController(_vm.Trail, () => _trailSuppressed, RecordTrail);
+        _trailPaneCommit = new TrailPaneCommitController(
+            () => _trailSuppressed,
+            () => _stageActive,
+            () => CurrentDisplayMode,
+            () => _focusedRegion?.Pane,
+            CommitTrailPane);
         _vm.Trail.JumpRequested += (_, entry) => JumpToTrailEntry(entry);
         _vm.AiBar.SessionActivated += (_, e) => RecordTrailSession(e.Id, e.Title);
         _git.OperationExecuted += (_, e) =>
@@ -45,49 +44,38 @@ public partial class ShellWindow {
             return;
         RefreshLatestTrailFilePosition();
         var mode = CurrentDisplayMode;
-        var paneLayout = _root is null ? null : JsonSerializer.Serialize(ToSnapshot(_root), TrailLayoutJson);
+        var paneLayout = TrailLogic.SerializeLayout(_root is null ? null : ToSnapshot(_root));
         _vm.Trail.UpdateLatestPaneLayout(paneLayout);
         record(mode, _stageActive ? _stagePane : null, paneLayout);
     }
     private void RefreshLatestTrailPaneLayout() {
         if (_trailSuppressed)
             return;
-        var paneLayout = _root is null ? null : JsonSerializer.Serialize(ToSnapshot(_root), TrailLayoutJson);
+        var paneLayout = TrailLogic.SerializeLayout(_root is null ? null : ToSnapshot(_root));
         _vm.Trail.UpdateLatestPaneLayout(paneLayout);
     }
     private void RecordTrailLayoutIfChanged() {
-        var (layoutKey, mode, stagePane, paneLayout) = CurrentTrailLayoutState();
-        if (_trailLastLayoutKey is null) {
-            _trailLastLayoutKey = layoutKey;
+        var state = CurrentTrailLayoutState();
+        var transition = TrailLogic.AdvanceLayoutKey(_trailLastLayoutKey, state.Key, _trailSuppressed);
+        _trailLastLayoutKey = transition.Key;
+        if (!transition.ShouldRecord)
             return;
-        }
-        if (string.Equals(_trailLastLayoutKey, layoutKey, StringComparison.Ordinal))
-            return;
-        _trailLastLayoutKey = layoutKey;
-        if (_trailSuppressed)
-            return;
-        var label = mode == DisplayMode.Solo
-            ? $"集中 · {TrailLogic.PaneDisplayName(stagePane ?? PaneKind.Editor)}"
-            : mode == DisplayMode.Dock
-                ? "ドック変更"
-                : "レイアウト変更";
+        var label = TrailLogic.LayoutChangeLabel(state.Mode, state.StagePane);
         RecordTrail((recordMode, recordStagePane, layout) =>
-            _vm.Trail.RecordLayout(layoutKey, label, recordMode, recordStagePane, layout));
+            _vm.Trail.RecordLayout(state.Key, label, recordMode, recordStagePane, layout));
     }
     private void BeginTrailLayoutChange() {
         _trailLastLayoutKey = CurrentTrailLayoutState().Key;
     }
-    private (string Key, DisplayMode Mode, PaneKind? StagePane, string? PaneLayout) CurrentTrailLayoutState() {
+    private TrailLayoutState CurrentTrailLayoutState() {
         var mode = CurrentDisplayMode;
         var stagePane = _stageActive ? _stagePane : (PaneKind?)null;
         var snapshot = _root is null ? null : ToSnapshot(_root);
-        var paneLayout = snapshot is null ? null : JsonSerializer.Serialize(snapshot, TrailLayoutJson);
-        var key = TrailLogic.LayoutKey(mode, stagePane, snapshot, CurrentDockKey());
-        return (key, mode, stagePane, paneLayout);
+        return TrailLogic.CreateLayoutState(mode, stagePane, snapshot, CurrentDockKey());
     }
     private void RecordTrailEditorTab(EditorTab tab) {
         var path = tab.PeekFilePath;
-        if (string.IsNullOrWhiteSpace(path) || tab.PeekIsVirtual)
+        if (!TrailLogic.IsRecordableFile(path, tab.PeekIsVirtual))
             return;
         var line = -1;
         var column = -1;
@@ -106,42 +94,6 @@ public partial class ShellWindow {
         if (tab is not null)
             _vm.Trail.UpdateLatestFilePosition(target, tab.Control.Caret.Line, tab.Control.Caret.Column);
     }
-    private void RecordTrailEdit(EditorTab tab) {
-        if (_trailSuppressed || !tab.IsRealized || !tab.Control.IsModified)
-            return;
-        var path = tab.PeekFilePath;
-        if (string.IsNullOrWhiteSpace(path) || tab.PeekIsVirtual)
-            return;
-        if (_trailPendingEditTab is { } pending && !ReferenceEquals(pending, tab))
-            CommitTrailEdit();
-        _trailPendingEditTab = tab;
-        _trailEditCommitTimer ??= CreateTrailEditCommitTimer();
-        _trailEditCommitTimer.Stop();
-        _trailEditCommitTimer.Start();
-    }
-    private DispatcherTimer CreateTrailEditCommitTimer() {
-        var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1500) };
-        timer.Tick += (_, _) => {
-            timer.Stop();
-            CommitTrailEdit();
-        };
-        return timer;
-    }
-    private void CommitTrailEdit() {
-        _trailEditCommitTimer?.Stop();
-        if (_trailPendingEditTab is not { } tab)
-            return;
-        _trailPendingEditTab = null;
-        if (_trailSuppressed || !tab.IsRealized || !tab.Control.IsModified)
-            return;
-        var path = tab.PeekFilePath;
-        if (string.IsNullOrWhiteSpace(path) || tab.PeekIsVirtual)
-            return;
-        var line = tab.Control.Caret.Line;
-        var column = tab.Control.Caret.Column;
-        RecordTrail((mode, stagePane, layout) =>
-            _vm.Trail.RecordEdit(path, line, column, mode, stagePane, layout));
-    }
     private void RecordTrailGit(string command, bool success) {
         if (!success)
             return;
@@ -153,7 +105,7 @@ public partial class ShellWindow {
     }
     private void RecordTrailPreview(EditorTab? sourceTab) {
         var path = sourceTab?.PeekFilePath;
-        if (string.IsNullOrWhiteSpace(path) || sourceTab!.PeekIsVirtual)
+        if (!TrailLogic.IsRecordableFile(path, sourceTab?.PeekIsVirtual ?? true))
             return;
         RecordTrail((mode, stagePane, layout) =>
             _vm.Trail.RecordPreview(path, mode, stagePane, layout));
@@ -164,71 +116,32 @@ public partial class ShellWindow {
         RecordTrail((mode, stagePane, layout) =>
             _vm.Trail.RecordBrowser(url!, title, mode, stagePane, layout));
     }
-    private string? CurrentBrowserTrailUrl() {
-        var url = BrowserUrlOf(_activeBrowserTab);
-        if (!TrailLogic.IsRecordableBrowserUrl(url, DefaultBrowserUrl))
-            return null;
-        return url;
-    }
     private void RecordTrailTerminalTab(TerminalTab tab) {
-        var label = _vm.Tabs.TerminalTabs.FirstOrDefault(t => t.Id == tab.Id)?.Title;
-        if (string.IsNullOrWhiteSpace(label))
-            label = string.IsNullOrWhiteSpace(tab.View.HeaderTitle) ? "ターミナル" : tab.View.HeaderTitle;
+        var label = TrailLogic.TerminalLabel(
+            _vm.Tabs.TerminalTabs.FirstOrDefault(t => t.Id == tab.Id)?.Title,
+            tab.View.HeaderTitle);
         RecordTrail((mode, stagePane, layout) =>
             _vm.Trail.RecordTerminal(tab.Id, label, mode, stagePane, layout));
     }
-    private void RecordTrailPane(PaneKind kind) {
-        if (_trailSuppressed || _stageActive)
-            return;
-        var mode = CurrentDisplayMode;
-        if (_trailLastPane == kind && _trailLastPaneMode == mode) {
-            _trailPendingPane = null;
-            _trailPaneCommitTimer?.Stop();
-            return;
-        }
-        _trailPendingPane = kind;
-        _trailPaneCommitTimer ??= CreateTrailPaneCommitTimer();
-        _trailPaneCommitTimer.Stop();
-        _trailPaneCommitTimer.Start();
-    }
-    private DispatcherTimer CreateTrailPaneCommitTimer() {
-        var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1000) };
-        timer.Tick += (_, _) => {
-            timer.Stop();
-            if (_trailPendingPane is not { } kind)
-                return;
-            _trailPendingPane = null;
-            var mode = CurrentDisplayMode;
-            if (_trailSuppressed
-                || _stageActive
-                || (_trailLastPane == kind && _trailLastPaneMode == mode)
-                || _focusedRegion?.Pane != kind)
-                return;
-            _trailLastPane = kind;
-            _trailLastPaneMode = mode;
-            if (kind == PaneKind.Editor && _activeEditorTab is { } et
-                && !string.IsNullOrWhiteSpace(et.PeekFilePath) && !et.PeekIsVirtual) {
-                RecordTrailEditorTab(et);
-                return;
-            }
-            if (kind == PaneKind.Terminal && _activeTerminalTab is { } tt) {
-                RecordTrailTerminalTab(tt);
-                return;
-            }
-            if (kind == PaneKind.EditorSupport && _editorSupport.Source is { } est
-                && !string.IsNullOrWhiteSpace(est.PeekFilePath) && !est.PeekIsVirtual) {
-                RecordTrailPreview(est);
-                return;
-            }
-            if (kind == PaneKind.Browser && CurrentBrowserTrailUrl() is { } browserUrl)
-            {
-                RecordTrailBrowser(browserUrl, _activeBrowserTab?.View.TryCore()?.DocumentTitle);
-                return;
-            }
-            RecordTrail((mode, stagePane, layout) =>
-                _vm.Trail.RecordPane(kind.ToString(), TrailLogic.PaneDisplayName(kind), mode, stagePane, layout));
-        };
-        return timer;
+    private void RecordTrailPane(PaneKind kind) => _trailPaneCommit.Request(kind);
+
+    private void CommitTrailPane(PaneKind kind) {
+        var editor = _activeEditorTab;
+        var terminal = _activeTerminalTab;
+        var preview = _editorSupport.Source;
+        var line = editor is { IsRealized: true } ? editor.Control.Caret.Line : -1;
+        var column = editor is { IsRealized: true } ? editor.Control.Caret.Column : -1;
+        var terminalLabel = terminal is null ? null : TrailLogic.TerminalLabel(
+            _vm.Tabs.TerminalTabs.FirstOrDefault(t => t.Id == terminal.Id)?.Title,
+            terminal.View.HeaderTitle);
+        var target = TrailLogic.CreatePaneRecordTarget(
+            kind, editor?.PeekFilePath, editor?.PeekIsVirtual ?? true, line, column,
+            terminal?.Id, terminalLabel, preview?.PeekFilePath, preview?.PeekIsVirtual ?? true,
+            BrowserUrlOf(_activeBrowserTab), _activeBrowserTab?.View.TryCore()?.DocumentTitle,
+            DefaultBrowserUrl);
+        RecordTrail((recordMode, recordStagePane, recordLayout) =>
+            _vm.Trail.Record(target.Kind, target.Target, target.Label, target.Line, target.Column,
+                recordMode, recordStagePane, recordLayout));
     }
     private void RecordTrailSession(string id, string title) {
         if (string.IsNullOrWhiteSpace(id))
@@ -239,81 +152,42 @@ public partial class ShellWindow {
     private void RecordTrailPanel(SidebarPanel panel)
         => RecordTrail((mode, stagePane, layout) =>
             _vm.Trail.RecordPanel(panel.ToString(), TrailLogic.PanelDisplayName(panel), mode, stagePane, layout));
-    private static readonly JsonSerializerOptions TrailLayoutJson = new();
     private void RegisterTrailJumps() {
-        _trailJumps[TrailEntryKind.File] = JumpToFileAsync;
-        _trailJumps[TrailEntryKind.Browser] = entry => { JumpToBrowser(entry); return Task.CompletedTask; };
-        _trailJumps[TrailEntryKind.Pane] = entry => { JumpToPane(entry); return Task.CompletedTask; };
-        _trailJumps[TrailEntryKind.Panel] = entry => { JumpToPanel(entry); return Task.CompletedTask; };
-        _trailJumps[TrailEntryKind.Terminal] = entry => { JumpToTerminal(entry); return Task.CompletedTask; };
-        _trailJumps[TrailEntryKind.Preview] = JumpToPreviewAsync;
-        _trailJumps[TrailEntryKind.Session] = entry => { JumpToSession(entry); return Task.CompletedTask; };
-        _trailJumps[TrailEntryKind.Layout] = _ => Task.CompletedTask;
-        _trailJumps[TrailEntryKind.Edit] = JumpToFileAsync;
-        _trailJumps[TrailEntryKind.Git] = _ => Task.CompletedTask;
+        _trailJumpCoordinator = new TrailJumpCoordinator(
+            _vm.Trail,
+            CanJumpToTrailEntry,
+            RestoreTrailDisplayContext,
+            () => _trailSuppressed,
+            value => _trailSuppressed = value,
+            value => _trailBrowsingPast = value);
+        _trailJumpCoordinator.Register(TrailEntryKind.File, JumpToFileAsync);
+        _trailJumpCoordinator.Register(TrailEntryKind.Browser, entry => { JumpToBrowser(entry); return Task.CompletedTask; });
+        _trailJumpCoordinator.Register(TrailEntryKind.Pane, entry => { JumpToPane(entry); return Task.CompletedTask; });
+        _trailJumpCoordinator.Register(TrailEntryKind.Panel, entry => { JumpToPanel(entry); return Task.CompletedTask; });
+        _trailJumpCoordinator.Register(TrailEntryKind.Terminal, entry => { JumpToTerminal(entry); return Task.CompletedTask; });
+        _trailJumpCoordinator.Register(TrailEntryKind.Preview, JumpToPreviewAsync);
+        _trailJumpCoordinator.Register(TrailEntryKind.Session, entry => { JumpToSession(entry); return Task.CompletedTask; });
+        _trailJumpCoordinator.Register(TrailEntryKind.Layout, _ => Task.CompletedTask);
+        _trailJumpCoordinator.Register(TrailEntryKind.Edit, JumpToFileAsync);
+        _trailJumpCoordinator.Register(TrailEntryKind.Git, _ => Task.CompletedTask);
     }
     private void JumpToTrailEntry(TrailEntryViewModel entry) {
-        _trailPendingJumpEntry = entry; // 実行中なら中間要求を捨て、最後の要求だけ残す
-        if (!_trailJumpRunning)
-            ProcessTrailJumpsAsync();
+        _trailJumpCoordinator.Request(entry);
     }
-    private async void ProcessTrailJumpsAsync() {
-        if (_trailJumpRunning)
-            return;
-        _trailJumpRunning = true;
-        if (_trailJumpSettleTimer is not { IsEnabled: true })
-            _trailJumpBaseSuppressed = _trailSuppressed;
-        _trailJumpSettleTimer?.Stop();
-        _trailSuppressed = true;
-        try {
-            while (_trailPendingJumpEntry is { } entry) {
-                _trailPendingJumpEntry = null;
-                if (!_trailJumps.TryGetValue(entry.Kind, out var jump) || !CanJumpToTrailEntry(entry))
-                    continue;
-                RestoreTrailDisplayContext(entry);
-                await jump(entry);
-            }
-        } finally {
-            _trailJumpRunning = false;
-        }
-        _trailBrowsingPast = _vm.Trail.CurrentIndex < _vm.Trail.Entries.Count - 1;
-        _trailJumpSettleTimer ??= CreateTrailJumpSettleTimer();
-        _trailJumpSettleTimer.Stop();
-        _trailJumpSettleTimer.Start();
-    }
-    private DispatcherTimer CreateTrailJumpSettleTimer() {
-        var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(700) };
-        timer.Tick += (_, _) => {
-            timer.Stop();
-            if (!_trailJumpRunning)   // 次のジャンプが走り出していれば、そちらの settle に任せる
-                _trailSuppressed = _trailJumpBaseSuppressed;
-        };
-        return timer;
-    }
-    private bool CanJumpToTrailEntry(TrailEntryViewModel entry) {
-        if (!string.IsNullOrWhiteSpace(entry.PaneLayout)) {
-            try {
-                if (JsonSerializer.Deserialize<PaneNodeSnapshot>(entry.PaneLayout, TrailLayoutJson) is null)
-                    return false;
-            } catch { return false; }
-        }
-        return entry.Kind switch {
-            TrailEntryKind.File => File.Exists(entry.Target), TrailEntryKind.Browser => !string.IsNullOrWhiteSpace(entry.Target), TrailEntryKind.Pane => Enum.TryParse<PaneKind>(entry.Target, out var pane)
-                                   && _paneElements.ContainsKey(pane), TrailEntryKind.Panel => Enum.TryParse<SidebarPanel>(entry.Target, out _), TrailEntryKind.Terminal => Guid.TryParse(entry.Target, out var id)
-                                       && _terminalTabs.Any(t => t.Id == id), TrailEntryKind.Preview => File.Exists(entry.Target), TrailEntryKind.Session => _vm.AiBar.SessionExists(entry.Target), TrailEntryKind.Layout => !string.IsNullOrWhiteSpace(entry.PaneLayout), TrailEntryKind.Edit => File.Exists(entry.Target),
-            TrailEntryKind.Git => false,   // ログ専用：クリックしても復元しない
-            _ => false
-        };
-    }
+    private bool CanJumpToTrailEntry(TrailEntryViewModel entry) => TrailLogic.CanJumpToEntry(
+        entry.Kind,
+        entry.Target,
+        entry.PaneLayout,
+        pane => _paneElements.ContainsKey(pane),
+        id => _terminalTabs.Any(t => t.Id == id),
+        id => _vm.AiBar.SessionExists(id));
     private void RestoreTrailDisplayContext(TrailEntryViewModel entry) {
         if (_stageActive)
             ExitStageMode();
         if (!string.IsNullOrWhiteSpace(entry.PaneLayout)) {
-            try {
-                var snapshot = JsonSerializer.Deserialize<PaneNodeSnapshot>(entry.PaneLayout, TrailLayoutJson);
-                if (snapshot is not null)
-                    ApplyPaneLayout(snapshot);
-            } catch { /* 壊れた1件だけ配置復元を省略し、対象へのジャンプは続ける */ }
+            // 壊れた1件だけ配置復元を省略し、対象へのジャンプは続ける。
+            if (TrailLogic.TryDeserializeLayout(entry.PaneLayout, out var snapshot) && snapshot is not null)
+                ApplyPaneLayout(snapshot);
         }
         if (entry.Mode == DisplayMode.Solo) {
             EnterStageMode(entry.StagePane);
@@ -344,8 +218,7 @@ public partial class ShellWindow {
             return;
         EnsurePaneVisibleOrSwapTopLeft(pane);
         FocusPane(pane);
-        _trailLastPane = pane;   // 戻った先を「直近のペイン」として同期する
-        _trailLastPaneMode = entry.Mode;
+        _trailPaneCommit.Remember(pane, entry.Mode);
     }
     private void JumpToPanel(TrailEntryViewModel entry) {
         if (!Enum.TryParse<SidebarPanel>(entry.Target, out var panel))

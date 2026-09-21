@@ -1,8 +1,6 @@
-using System;
-using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Documents;
+using sk0ya.Loomo.App.Services;
 
 namespace sk0ya.Loomo.App.Views;
 
@@ -50,93 +48,8 @@ public static class SearchHighlightBehavior
         if (d is not TextBlock textBlock)
             return;
 
-        var text = GetText(textBlock) ?? string.Empty;
-        var query = GetQuery(textBlock) ?? string.Empty;
-
-        textBlock.Inlines.Clear();
-
-        if (string.IsNullOrEmpty(query) || string.IsNullOrEmpty(text))
-        {
-            textBlock.Inlines.Add(new Run(text));
-            return;
-        }
-
-        if (GetUseRegex(textBlock))
-            BuildRegex(textBlock, text, query, GetCaseSensitive(textBlock));
-        else
-            BuildLiteral(textBlock, text, query, GetCaseSensitive(textBlock));
-    }
-
-    private static void BuildLiteral(TextBlock textBlock, string text, string query, bool caseSensitive)
-    {
-        var comparison = caseSensitive ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
-        var index = 0;
-        while (index < text.Length)
-        {
-            var hit = text.IndexOf(query, index, comparison);
-            if (hit < 0)
-            {
-                textBlock.Inlines.Add(new Run(text[index..]));
-                break;
-            }
-
-            if (hit > index)
-                textBlock.Inlines.Add(new Run(text[index..hit]));
-
-            AddHighlight(textBlock, text.Substring(hit, query.Length));
-            index = hit + query.Length;
-        }
-    }
-
-    private static void BuildRegex(TextBlock textBlock, string text, string query, bool caseSensitive)
-    {
-        Regex regex;
-        try
-        {
-            var options = caseSensitive ? RegexOptions.None : RegexOptions.IgnoreCase;
-            regex = new Regex(query, options, TimeSpan.FromMilliseconds(100));
-        }
-        catch (ArgumentException)
-        {
-            // 不正な正規表現（入力途中など）はハイライトせず素のまま見せる。
-            textBlock.Inlines.Add(new Run(text));
-            return;
-        }
-
-        var index = 0;
-        try
-        {
-            foreach (Match match in regex.Matches(text))
-            {
-                if (match.Index < index) // 念のため（ゼロ幅一致の巻き戻り対策）
-                    continue;
-                if (match.Index > index)
-                    textBlock.Inlines.Add(new Run(text[index..match.Index]));
-
-                if (match.Length > 0)
-                {
-                    AddHighlight(textBlock, match.Value);
-                    index = match.Index + match.Length;
-                }
-                else
-                {
-                    index = match.Index; // ゼロ幅一致はスキップして無限ループを防ぐ
-                }
-            }
-        }
-        catch (RegexMatchTimeoutException)
-        {
-            // タイムアウトしたら以降は素のまま。
-        }
-
-        if (index < text.Length)
-            textBlock.Inlines.Add(new Run(text[index..]));
-    }
-
-    private static void AddHighlight(TextBlock textBlock, string value)
-    {
-        var match = new Run(value) { FontWeight = FontWeights.Bold };
-        match.SetResourceReference(TextElement.BackgroundProperty, "SearchHighlight");
-        textBlock.Inlines.Add(match);
+        SearchHighlightRenderer.Render(
+            textBlock, GetText(textBlock), GetQuery(textBlock),
+            GetUseRegex(textBlock), GetCaseSensitive(textBlock));
     }
 }

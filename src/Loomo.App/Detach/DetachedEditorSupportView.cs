@@ -114,7 +114,7 @@ internal sealed class DetachedEditorSupportView : Grid, IDisposable
         _searchCaseSensitive = caseSensitive;
         _searchUseRegex = useRegex;
         if (_web.TryCore() is { } core)
-            EditorSupportSearchHighlight.Post(core, _searchTerm, _searchCaseSensitive, _searchUseRegex);
+            EditorSupportSearchHighlightBridge.Post(core, _searchTerm, _searchCaseSensitive, _searchUseRegex);
         _visuals.SetSearchHighlight(_searchTerm, _searchCaseSensitive, _searchUseRegex);
     }
 
@@ -296,17 +296,17 @@ internal sealed class DetachedEditorSupportView : Grid, IDisposable
 
         // 検索ハイライト（メイン側の EditorSupport と同じ仕込み）。ページを組み直すたびに条件は消えるので、
         // ナビゲーション完了で送り直す。
-        try { await core.AddScriptToExecuteOnDocumentCreatedAsync(EditorSupportSearchHighlight.Script); }
+        try { await core.AddScriptToExecuteOnDocumentCreatedAsync(EditorSupportSearchHighlightBridge.Script); }
         catch { /* 失敗しても塗られないだけ */ }
 
         // 右クリック位置のリンク（生 href）を拾う仕込みと、それを使う「別ウィンドウで開く」項目。
-        try { await core.AddScriptToExecuteOnDocumentCreatedAsync(EditorSupportContextLink.Script); }
+        try { await core.AddScriptToExecuteOnDocumentCreatedAsync(EditorSupportContextLinkBridge.Script); }
         catch { /* 失敗しても項目が出ないだけ */ }
         core.ContextMenuRequested += OnContextMenuRequested;
         core.NavigationCompleted += (_, e) =>
         {
             if (e.IsSuccess)
-                EditorSupportSearchHighlight.Post(core, _searchTerm, _searchCaseSensitive, _searchUseRegex);
+                EditorSupportSearchHighlightBridge.Post(core, _searchTerm, _searchCaseSensitive, _searchUseRegex);
         };
 
         // ページ側スクリプトからのメッセージ（リンククリック等）を受ける。WebView2 は再ペアレント時に
@@ -354,7 +354,7 @@ internal sealed class DetachedEditorSupportView : Grid, IDisposable
     {
         if (sender is not CoreWebView2 core || LinkWindowMenu is null)
             return;
-        EditorSupportContextLink.RemoveBuiltInOpenInNewWindow(e.MenuItems);
+        EditorSupportContextLinkBridge.RemoveBuiltInOpenInNewWindow(e.MenuItems);
         _ = AddLinkMenuItemAsync(core, e, e.GetDeferral());
     }
 
@@ -363,7 +363,7 @@ internal sealed class DetachedEditorSupportView : Grid, IDisposable
     {
         try
         {
-            var href = await EditorSupportContextLink.ReadHrefAsync(core);
+            var href = await EditorSupportContextLinkBridge.ReadHrefAsync(core);
             if (LinkWindowMenu?.Invoke(href) is not { } menu)
                 return;
             var item = core.Environment.CreateContextMenuItem(

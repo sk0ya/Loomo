@@ -30,11 +30,7 @@ public partial class FileConflictDialog : Window
 
     private void SetDecision(FileConflictAction action, string? name = null)
     {
-        // 名前変更は項目ごとに新しい名前が必要で、キャンセルは以降の処理を止めるため、
-        // 「全件適用」は上書き／スキップだけを有効とする。
-        var applyToAll = ApplyAllBox.IsChecked == true
-            && action is (FileConflictAction.Overwrite or FileConflictAction.Skip);
-        Decision = new FileConflictDecision(action, name, applyToAll);
+        Decision = FileConflictDecisionPolicy.Create(action, name, ApplyAllBox.IsChecked == true);
         DialogResult = true;
     }
 
@@ -43,8 +39,8 @@ public partial class FileConflictDialog : Window
 
     private void OnRename(object sender, RoutedEventArgs e)
     {
-        var name = NameBox.Text.Trim();
-        if (string.IsNullOrWhiteSpace(name))
+        var name = FileConflictDecisionPolicy.NormalizeRenameName(NameBox.Text);
+        if (name is null)
         {
             NameBox.Focus();
             return;

@@ -34,7 +34,7 @@ public partial class MarkdownTableGridWindow : Window
     {
         InitializeComponent();
 
-        _document = BuildDocument(region.Rows);
+        _document = VGridTextSync.BuildDocument("table.md", region.Rows, DelimiterFormat.Tsv);
         _grid = new TsvEditorControl { IsVimModeEnabled = true };
         ApplyTheme(_grid, theme);
 
@@ -62,10 +62,7 @@ public partial class MarkdownTableGridWindow : Window
     /// </summary>
     public static IReadOnlyList<IReadOnlyList<string>>? Insert(Window owner, AppTheme theme)
     {
-        var region = new MarkdownTableRegion(
-            0, 0,
-            new IReadOnlyList<string>[] { new[] { string.Empty } },
-            Array.Empty<MarkdownColumnAlignment>());
+        var region = MarkdownTableGridResultMapper.CreateEmptyRegion();
         var window = new MarkdownTableGridWindow(region, theme)
         {
             Owner = owner,
@@ -80,26 +77,7 @@ public partial class MarkdownTableGridWindow : Window
 
     /// <summary>グリッドの現在値を行列として取り出す（末尾の空行・空列は <see cref="MarkdownTableSync"/> 側で整形）。</summary>
     private IReadOnlyList<IReadOnlyList<string>> ResultRows =>
-        _document.Rows
-            .Select(r => (IReadOnlyList<string>)r.Cells.Select(c => c.Value ?? string.Empty).ToArray())
-            .ToArray();
-
-    private static TsvDocument BuildDocument(IReadOnlyList<IReadOnlyList<string>> rows)
-    {
-        var docRows = new List<Row>(rows.Count);
-        for (int i = 0; i < rows.Count; i++)
-            docRows.Add(new Row(i, rows[i]));
-
-        var document = new TsvDocument(docRows)
-        {
-            FilePath = "table.md",
-            IsDirty = false,
-            DelimiterFormat = DelimiterFormat.Tsv,
-        };
-        // 実データの少し先まで余白を確保（VGrid 本体・CSV/TSV サポートと同じ初期サイズ方針）。
-        document.EnsureSize(Math.Max(document.RowCount + 5, 20), Math.Max(document.ColumnCount + 3, 15));
-        return document;
-    }
+        MarkdownTableGridResultMapper.ToRows(_document);
 
     /// <summary>VGrid.Editor のテーマ辞書をグリッド自身の Resources へマージする（<see cref="VGridEditorSupport"/> と同じ流儀）。</summary>
     private static void ApplyTheme(TsvEditorControl grid, AppTheme theme)

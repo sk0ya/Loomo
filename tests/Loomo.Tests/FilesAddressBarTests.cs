@@ -167,7 +167,7 @@ public sealed class FilesAddressBarTests : IDisposable
     [Fact]
     public void アドレス欄はファイル一覧にありサイドバーには無い()
     {
-        var files = Read("src", "Loomo.App", "Views", "FilesColumnView.xaml");
+        var files = Read("src", "Loomo.App", "Views", "Files", "FilesColumnView.xaml");
         Assert.Contains("x:Name=\"AddressBox\"", files);
         Assert.Contains("PreviewKeyDown=\"OnAddressKeyDown\"", files);
         Assert.Contains("x:Name=\"AddressSuggestionPopup\"", files);
@@ -175,7 +175,7 @@ public sealed class FilesAddressBarTests : IDisposable
         Assert.Contains("x:Name=\"AddressArea\"", files);
         Assert.Contains("MouseLeftButtonDown=\"OnBreadcrumbBlankClick\"", files);
 
-        var tree = Read("src", "Loomo.App", "Views", "FolderTreeView.xaml");
+        var tree = Read("src", "Loomo.App", "Views", "Files", "FolderTreeView.xaml");
         Assert.DoesNotContain("AddressComboBox", tree);
         Assert.DoesNotContain("x:Name=\"AddressBar\"", tree);
         // 戻る／進むはアドレス欄の履歴専用だったので、ツリーからは消えている。

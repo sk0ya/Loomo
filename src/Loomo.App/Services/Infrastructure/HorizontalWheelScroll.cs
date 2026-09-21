@@ -1,0 +1,81 @@
+using System;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
+using Editor.Controls;
+using Microsoft.Web.WebView2.Wpf;
+using sk0ya.Loomo.App.Services.Infrastructure;
+
+namespace sk0ya.Loomo.App.Services;
+
+/// <summary>
+/// チルトホイール（横スクロール）対応。WPF は WM_MOUSEHWHEEL を標準では処理しないため、
+/// ウィンドウの WndProc フックから呼び出して水平スクロールを行う。
+/// エディタ（VimEditorControl）は独自キャンバス描画で標準 ScrollViewer を持たないため、
+/// 公開 API の ScrollHorizontalByWheelDelta を直接呼ぶ。WebView2（ブラウザペイン・プレビュー）も
+/// 同様に WPF 側の ScrollViewer を持たないので <see cref="WebViewHorizontalWheel"/> で Chromium へ
+/// 入力を送る。それ以外（FolderTree・タブストリップなど横にあふれる ScrollViewer）はカーソル直下の
+/// ScrollViewer を辿ってスクロールさせる。
+/// </summary>
+internal static class HorizontalWheelScroll
+{
+    public const int WM_MOUSEHWHEEL = 0x020E;
+
+    /// <summary>WM_MOUSEHWHEEL を処理する。スクロールできたら true（呼び元で handled にする）。</summary>
+    public static bool Handle(IntPtr wParam)
+    {
+        // wParam の上位ワードが回転量（120/ノッチ、正＝右）。
+        var delta = (short)(((long)wParam >> 16) & 0xFFFF);
+        return Handle(Mouse.DirectlyOver as DependencyObject, delta);
+    }
+
+    /// <summary>指定した入力元を起点に横スクロールする。UI テストからも同じ解決経路を検証できる。</summary>
+    internal static bool Handle(DependencyObject? source, int delta)
+    {
+        if (delta == 0)
+            return false;
+
+        // エディタは独自キャンバスで描画され ScrollViewer を持たないので専用 API へ委譲する。
+        var editor = WpfTreeTraversal.FindAncestor<VimEditorControl>(source);
+        if (editor is not null && editor.ScrollHorizontalByWheelDelta(delta))
+            return true;
+
+        // WebView2（ブラウザペイン・切り離したプレビュー等）も WPF のツリー上に ScrollViewer を持たない。
+        // スクロールするのは Chromium 側なので、横ホイールの入力そのものを送り込む。
+        // ページ側スクリプトを持つエディタサポートのプレビューは呼び元がこれより先に処理する。
+        var webView = WpfTreeTraversal.FindAncestor<WebView2CompositionControl>(source);
+        if (webView is not null && WebViewHorizontalWheel.TrySend(webView, delta))
+            return true;
+
+        var viewer = FindHorizontallyScrollable(source);
+        if (viewer is null)
+            return false;
+
+        viewer.ScrollToHorizontalOffset(
+            Math.Clamp(viewer.HorizontalOffset + delta, 0, viewer.ScrollableWidth));
+        return true;
+    }
+
+    /// <summary>カーソル直下の要素から、横スクロール余地のある最も近い ScrollViewer を探す。</summary>
+    private static ScrollViewer? FindHorizontallyScrollable(DependencyObject? source)
+    {
+        for (var current = source; current is not null; current = WpfTreeTraversal.GetParent(current))
+        {
+            if (current is ScrollViewer { ScrollableWidth: > 0 } viewer)
+                return viewer;
+
+            // RichTextBox 自体が DirectlyOver になる場合、スクロールを担う PART_ContentHost は
+            // 祖先ではなくテンプレート内の子なので、通常の祖先探索だけでは到達できない。
+            if (current is RichTextBox box && InnerScrollViewer(box) is { ScrollableWidth: > 0 } inner)
+                return inner;
+        }
+        return null;
+    }
+
+    private static ScrollViewer? InnerScrollViewer(RichTextBox box)
+    {
+        box.ApplyTemplate();
+        return box.Template?.FindName("PART_ContentHost", box) as ScrollViewer;
+    }
+
+}

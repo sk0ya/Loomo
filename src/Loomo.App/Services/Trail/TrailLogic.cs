@@ -1,8 +1,112 @@
 namespace sk0ya.Loomo.App.Services;
 
+/// <summary>ペインから記録する軌跡の基本情報。</summary>
+internal readonly record struct TrailPaneRecordTarget(
+    TrailEntryKind Kind, string Target, string Label, int Line = -1, int Column = -1);
+internal readonly record struct TrailLayoutState(
+    string Key, DisplayMode Mode, PaneKind? StagePane, string? PaneLayout);
+internal readonly record struct TrailLayoutKeyTransition(string Key, bool ShouldRecord);
+
 /// <summary>軌跡の分類・表示・変更検出に使うUI非依存ロジック。</summary>
 public static class TrailLogic
 {
+    private static readonly JsonSerializerOptions LayoutJson = new();
+
+    internal static string? SerializeLayout(PaneNodeSnapshot? snapshot)
+        => snapshot is null ? null : JsonSerializer.Serialize(snapshot, LayoutJson);
+
+    internal static TrailLayoutState CreateLayoutState(
+        DisplayMode mode, PaneKind? stagePane, PaneNodeSnapshot? snapshot, string? dock)
+    {
+        var paneLayout = SerializeLayout(snapshot);
+        return new(LayoutKey(mode, stagePane, snapshot, dock), mode, stagePane, paneLayout);
+    }
+
+    internal static TrailLayoutKeyTransition AdvanceLayoutKey(
+        string? previousKey, string currentKey, bool suppressed)
+        => new(currentKey,
+            previousKey is not null
+            && !string.Equals(previousKey, currentKey, StringComparison.Ordinal)
+            && !suppressed);
+
+    internal static bool TryDeserializeLayout(string? json, out PaneNodeSnapshot? snapshot)
+    {
+        snapshot = null;
+        if (string.IsNullOrWhiteSpace(json))
+            return false;
+        try
+        {
+            snapshot = JsonSerializer.Deserialize<PaneNodeSnapshot>(json, LayoutJson);
+            return snapshot is not null;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    internal static string LayoutChangeLabel(DisplayMode mode, PaneKind? stagePane)
+        => mode == DisplayMode.Solo
+            ? $"集中 · {PaneDisplayName(stagePane ?? PaneKind.Editor)}"
+            : mode == DisplayMode.Dock ? "ドック変更" : "レイアウト変更";
+
+    /// <summary>ペインの現在対象から、記録する軌跡の種類と表示情報を決める。</summary>
+    internal static TrailPaneRecordTarget CreatePaneRecordTarget(
+        PaneKind pane, string? editorPath, bool editorIsVirtual, int editorLine, int editorColumn,
+        Guid? terminalId, string? terminalLabel, string? previewPath, bool previewIsVirtual,
+        string? browserUrl, string? browserTitle, string defaultBrowserUrl)
+    {
+        if (pane == PaneKind.Editor && IsRecordableFile(editorPath, editorIsVirtual))
+            return new(TrailEntryKind.File, editorPath!, Path.GetFileName(editorPath!)!, editorLine, editorColumn);
+        if (pane == PaneKind.Terminal && terminalId is { } id)
+            return new(TrailEntryKind.Terminal, id.ToString("D"),
+                TerminalLabel(terminalLabel, null));
+        if (pane == PaneKind.EditorSupport && IsRecordableFile(previewPath, previewIsVirtual))
+            return new(TrailEntryKind.Preview, previewPath!, Path.GetFileName(previewPath!)!);
+        if (pane == PaneKind.Browser && IsRecordableBrowserUrl(browserUrl, defaultBrowserUrl))
+            return new(TrailEntryKind.Browser, browserUrl!, BrowserLabel(browserUrl!, browserTitle));
+        return new(TrailEntryKind.Pane, pane.ToString(), PaneDisplayName(pane));
+    }
+
+    internal static string TerminalLabel(string? title, string? headerTitle)
+        => !string.IsNullOrWhiteSpace(title) ? title
+            : !string.IsNullOrWhiteSpace(headerTitle) ? headerTitle : "ターミナル";
+
+    private static string BrowserLabel(string url, string? title)
+        => !string.IsNullOrWhiteSpace(title) ? title.Trim()
+            : Uri.TryCreate(url, UriKind.Absolute, out var uri) && !string.IsNullOrEmpty(uri.Host)
+                ? uri.Host : url;
+
+    internal static bool IsRecordableFile(
+        [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] string? path, bool isVirtual)
+        => !isVirtual && !string.IsNullOrWhiteSpace(path);
+
+    /// <summary>軌跡項目の保存データと、呼び出し元から渡された実行時存在条件を検証する。</summary>
+    internal static bool CanJumpToEntry(
+        TrailEntryKind kind,
+        string? target,
+        string? paneLayout,
+        Func<PaneKind, bool> hasPane,
+        Func<Guid, bool> hasTerminal,
+        Func<string, bool> hasSession)
+    {
+        if (!string.IsNullOrWhiteSpace(paneLayout) && !TryDeserializeLayout(paneLayout, out _))
+            return false;
+
+        return kind switch
+        {
+            TrailEntryKind.File or TrailEntryKind.Preview or TrailEntryKind.Edit => File.Exists(target),
+            TrailEntryKind.Browser => !string.IsNullOrWhiteSpace(target),
+            TrailEntryKind.Pane => Enum.TryParse(target, out PaneKind pane) && hasPane(pane),
+            TrailEntryKind.Panel => Enum.TryParse<SidebarPanel>(target, out _),
+            TrailEntryKind.Terminal => Guid.TryParse(target, out var id) && hasTerminal(id),
+            TrailEntryKind.Session => target is not null && hasSession(target),
+            TrailEntryKind.Layout => !string.IsNullOrWhiteSpace(paneLayout),
+            TrailEntryKind.Git => false,
+            _ => false,
+        };
+    }
+
     /// <summary><paramref name="dock"/> はドックモードで開いている領域（例 "Git+EditorSupport"）。
     /// 中央のタイルが同じでも道具の開閉で見え方は変わるので、これも配置の一部として鍵に入れる
     /// ——入れないと、ドックモード中の操作が軌跡に1点も残らない。</summary>

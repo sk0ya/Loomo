@@ -11,7 +11,7 @@ public sealed class ExplorerLayoutTests
     [Fact]
     public void ExplorerはFolderTreeを表示し最近項目もCSharpソリューションも重複表示しない()
     {
-        var xaml = Read("src", "Loomo.App", "Views", "ShellWindow.xaml");
+        var xaml = Read("src", "Loomo.App", "Views", "Shell", "ShellWindow.xaml");
         var start = xaml.IndexOf("<Grid x:Name=\"ExplorerSection\"", StringComparison.Ordinal);
         var end = xaml.IndexOf("<views:GitPanelView", start, StringComparison.Ordinal);
         Assert.True(start >= 0 && end > start);
@@ -38,7 +38,7 @@ public sealed class ExplorerLayoutTests
     [Fact]
     public void CSharpソリューションツリーはサイドバーの独立パネルとして置かれる()
     {
-        var xaml = Read("src", "Loomo.App", "Views", "ShellWindow.xaml");
+        var xaml = Read("src", "Loomo.App", "Views", "Shell", "ShellWindow.xaml");
 
         // ActivityBar のアイコンは C# のある部屋でだけ現れる。
         var button = xaml.IndexOf("AutomationProperties.AutomationId=\"SolutionPanelButton\"",
@@ -64,7 +64,7 @@ public sealed class ExplorerLayoutTests
             sidebar[panel..]);
 
         // IDE ペイン（実行タブ）にはもう置かない。
-        var debug = Read("src", "Loomo.App", "Views", "DebugView.xaml");
+        var debug = Read("src", "Loomo.App", "Views", "Debugging", "DebugView.xaml");
         Assert.DoesNotContain("CSharpSolutionExplorerView", debug);
         Assert.DoesNotContain("SolutionSectionRow", debug);
     }
@@ -72,11 +72,11 @@ public sealed class ExplorerLayoutTests
     [Fact]
     public void 場所Expanderはファイル一覧のフォルダーアイコンで開閉する()
     {
-        var xaml = Read("src", "Loomo.App", "Views", "FilesPaneView.xaml");
+        var xaml = Read("src", "Loomo.App", "Views", "Files", "FilesPaneView.xaml");
         Assert.DoesNotContain("RecentItemsView", xaml);
         Assert.Contains("<Grid x:Name=\"ColumnHost\" />", xaml);
 
-        var column = Read("src", "Loomo.App", "Views", "FilesColumnView.xaml");
+        var column = Read("src", "Loomo.App", "Views", "Files", "FilesColumnView.xaml");
         Assert.Contains("x:Name=\"PlacesButton\"", column);
         Assert.Contains("IsChecked=\"{Binding IsExpanded, ElementName=PlacesExpander, Mode=TwoWay}\"", column);
         Assert.Contains("<Expander x:Name=\"PlacesExpander\" Grid.Column=\"0\" ExpandDirection=\"Right\"", column);
@@ -89,7 +89,7 @@ public sealed class ExplorerLayoutTests
     [Fact]
     public void 最近項目は場所Expander内の通常グループである()
     {
-        var vm = Read("src", "Loomo.App", "ViewModels", "FilesColumnViewModel.cs");
+        var vm = Read("src", "Loomo.App", "ViewModels", "Files", "FilesColumnViewModel.cs");
         Assert.Contains("FilesPlaceGroup(\"最近使ったファイル\"", vm);
         Assert.Contains("FilesPlaceGroup(\"よく使うフォルダー\"", vm);
         Assert.Contains("FilesPlaceKind.RecentFile", vm);
@@ -102,12 +102,12 @@ public sealed class ExplorerLayoutTests
     {
         // 住所は「いま見ている場所」なので、その場所を持っているファイル一覧の道具にする。
         // ツリーに置いていたときは、打ったパスがワークスペース切替へ流れて部屋ごと入れ替わった。
-        var files = Read("src", "Loomo.App", "Views", "FilesColumnView.xaml");
+        var files = Read("src", "Loomo.App", "Views", "Files", "FilesColumnView.xaml");
         Assert.Contains("x:Name=\"AddressBox\"", files);
         Assert.Contains("Text=\"{Binding AddressText, UpdateSourceTrigger=PropertyChanged}\"", files);
         Assert.Contains("PreviewKeyDown=\"OnAddressKeyDown\"", files);
 
-        var tree = Read("src", "Loomo.App", "Views", "FolderTreeView.xaml");
+        var tree = Read("src", "Loomo.App", "Views", "Files", "FolderTreeView.xaml");
         Assert.DoesNotContain("AddressComboBox", tree);
         Assert.DoesNotContain("AddressText", tree);
     }
@@ -119,19 +119,19 @@ public sealed class ExplorerLayoutTests
         // (1) 候補一覧へ降りたあとは入力欄の LostKeyboardFocus がもう鳴らない、
         // (2) フォーカスを取れない要素（余白・見出し・他ペインの地）を押しても
         //     キーボードフォーカスは動かないので何も鳴らない。
-        var xaml = Read("src", "Loomo.App", "Views", "FilesColumnView.xaml");
+        var xaml = Read("src", "Loomo.App", "Views", "Files", "FilesColumnView.xaml");
         var box = xaml.IndexOf("x:Name=\"AddressBox\"", StringComparison.Ordinal);
         var list = xaml.IndexOf("x:Name=\"AddressSuggestionList\"", StringComparison.Ordinal);
         Assert.True(box >= 0 && list > box);
         Assert.Contains("LostKeyboardFocus=\"OnAddressLostFocus\"", xaml[box..list]);
         Assert.Contains("LostKeyboardFocus=\"OnAddressLostFocus\"", xaml[list..]);
 
-        var code = Read("src", "Loomo.App", "Views", "FilesColumnView.Address.cs");
-        Assert.Contains("PreviewMouseDownEvent", code);
+        var code = Read("src", "Loomo.App", "Services", "FileSystem", "FilesColumnAddressInteractionController.cs");
+        Assert.Contains("UIElement.PreviewMouseDownEvent", code);
         Assert.Contains("handledEventsToo: true", code);
         // 見張りは入力中だけ。畳んだら（＝カラムを閉じたら）ウィンドウから外す。
-        Assert.Contains("RemoveHandler(PreviewMouseDownEvent", code);
-        var view = Read("src", "Loomo.App", "Views", "FilesColumnView.xaml.cs");
+        Assert.Contains("RemoveHandler(UIElement.PreviewMouseDownEvent", code);
+        var view = Read("src", "Loomo.App", "Views", "Files", "FilesColumnView.xaml.cs");
         Assert.Contains("Vm?.CancelAddressEdit();", view);
     }
 

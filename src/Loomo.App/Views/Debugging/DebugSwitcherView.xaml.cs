@@ -19,7 +19,17 @@ namespace sk0ya.Loomo.App.Views;
 /// </summary>
 public partial class DebugSwitcherView : UserControl
 {
-    public DebugSwitcherView() => InitializeComponent();
+    private readonly DebugSwitcherController _controller;
+
+    public DebugSwitcherView()
+    {
+        InitializeComponent();
+        _controller = new DebugSwitcherController(
+            () => DataContext as DebugViewModel,
+            () => CloseRequested?.Invoke(this, EventArgs.Empty),
+            project => RunRequested?.Invoke(this, project),
+            () => OpenIdePaneRequested?.Invoke(this, EventArgs.Empty));
+    }
 
     /// <summary>ポップアップを閉じてほしい。実際に閉じるのは Popup を持つ側（ShellWindow）。</summary>
     public event EventHandler? CloseRequested;
@@ -31,68 +41,25 @@ public partial class DebugSwitcherView : UserControl
     /// ——Solution Explorer の「実行」と同じ経路をウィンドウ側が持っている。</summary>
     public event EventHandler<string>? RunRequested;
 
-    private DebugViewModel? Vm => DataContext as DebugViewModel;
-
-    private void Close() => CloseRequested?.Invoke(this, EventArgs.Empty);
-
     /// <summary>開く直前に、アダプタ（netcoredbg）の有無と実行ターゲット一覧を作り直す。開いている間に
     /// 導入されたり、プロジェクトの launchSettings.json が増えたりするので、起動時の結果のままにしない。</summary>
     public void PrepareForOpen()
-    {
-        if (Vm is not { } vm) return;
-        vm.Refresh();
-        vm.Profiles.RefreshRunTargets();
-    }
+        => _controller.PrepareForOpen();
 
     /// <summary>帯の操作（デバッグ／ビルド／テスト／続行・ステップ／中断・再起動・停止）。コマンド自体は
     /// Command バインディングが実行する（IsEnabled も CanExecute に従う）ので、ここは閉じるだけ。</summary>
-    private void OnActionClick(object sender, RoutedEventArgs e) => Close();
+    private void OnActionClick(object sender, RoutedEventArgs e) => _controller.Close();
 
     /// <summary>帯の「▶ 実行」＝いま選んでいる対象をデバッグなしで実行する。</summary>
-    private void OnRunCurrentClick(object sender, RoutedEventArgs e)
-    {
-        if (Vm?.Profiles.SelectedProjectPath is not { } project) return;
-        Close();
-        RunRequested?.Invoke(this, project);
-    }
+    private void OnRunCurrentClick(object sender, RoutedEventArgs e) => _controller.RunCurrent();
 
-    private void OnTargetClick(object sender, RoutedEventArgs e)
-    {
-        if (SelectTarget(sender) is null) return;
-        Close();
-    }
+    private void OnTargetClick(object sender, RoutedEventArgs e) => _controller.SelectCurrentTarget(sender);
 
     /// <summary>行の 🐞 ＝その対象に切り替えてそのままデバッグを開始する。</summary>
-    private void OnTargetDebugClick(object sender, RoutedEventArgs e)
-    {
-        e.Handled = true;   // 外側の行ボタンへは伝えない（同じ選択が二度走るのを避ける）
-        if (SelectTarget(sender) is null || Vm is not { } vm) return;
-        Close();
-        if (vm.Launch.StartCommand.CanExecute(null))
-            vm.Launch.StartCommand.Execute(null);
-    }
+    private void OnTargetDebugClick(object sender, RoutedEventArgs e) => _controller.DebugTarget(sender, e);
 
     /// <summary>行の ▶ ＝その対象に切り替えてデバッグなしで実行する。</summary>
-    private void OnTargetRunClick(object sender, RoutedEventArgs e)
-    {
-        e.Handled = true;
-        if (SelectTarget(sender) is not { RunProjectPath: { } project }) return;
-        Close();
-        RunRequested?.Invoke(this, project);
-    }
+    private void OnTargetRunClick(object sender, RoutedEventArgs e) => _controller.RunTarget(sender, e);
 
-    /// <summary>押された行の対象へ切り替える（切り替えた行を返す）。</summary>
-    private DebugRunTargetItem? SelectTarget(object sender)
-    {
-        if (Vm is not { } vm || sender is not FrameworkElement { Tag: DebugRunTargetItem item })
-            return null;
-        vm.Profiles.SelectRunTarget(item);
-        return item;
-    }
-
-    private void OnOpenIdePaneClick(object sender, RoutedEventArgs e)
-    {
-        Close();
-        OpenIdePaneRequested?.Invoke(this, EventArgs.Empty);
-    }
+    private void OnOpenIdePaneClick(object sender, RoutedEventArgs e) => _controller.OpenIdePane();
 }

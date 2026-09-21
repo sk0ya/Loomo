@@ -1,6 +1,11 @@
 namespace sk0ya.Loomo.App.Views;
 /// <summary>ShellWindow: ペインのドラッグ＆ドロップ操作（タイトルバーからの掴み・袖/舞台からのドラッグ・ オーバーレイ上のプレビュー描画・ドロップ確定）。レイアウトツリーの構築は <c>ShellWindow.PaneLayout.cs</c>。</summary>
 public partial class ShellWindow {
+    private PaneDragVisualPresenter? _paneDragVisuals;
+    private PaneDragVisualPresenter DragVisuals
+        => _paneDragVisuals ??= new PaneDragVisualPresenter(
+            PaneDragOverlay, DragGhostLayer, this, PaneLabel);
+
     private void OnPaneTitleMouseDown(object sender, MouseButtonEventArgs e) {
         if (_stageActive)
             return;
@@ -10,7 +15,7 @@ public partial class ShellWindow {
         // 代わりに「割り当てを変えるドラッグ」を仕込む（行き先は右帯の3区画）。
         if (_dockActive) {
             if (!IsWithinButton(e.OriginalSource) && ResolvePaneTabId(e.OriginalSource) is null)
-                ArmDockDrag((UIElement)sender, kind, e.GetPosition(null));
+                DockPaneDrag.Arm((UIElement)sender, kind, e.GetPosition(null));
             return;
         }
         if (e.ClickCount == 2) {
@@ -30,7 +35,7 @@ public partial class ShellWindow {
     private void OnPaneTitleMouseMove(object sender, MouseEventArgs e) {
         if (_stageActive)
             return;
-        // ドックのヘッダーは「割り当てを変えるドラッグ」（ArmDockDrag で仕込み済み・しきい値の
+        // ドックのヘッダーは「割り当てを変えるドラッグ」（DockPaneDrag.Arm で仕込み済み・しきい値の
         // 監視はウィンドウ側）なので、タイルの並べ替えには進ませない。
         if (_dockActive)
             return;
@@ -83,10 +88,9 @@ public partial class ShellWindow {
         _dragCenter = false;
         _dragSpan = false;
         _paneDragging = true;
-        _dragPreview!.Visibility = Visibility.Collapsed;
-        _dragTargetOutline!.Visibility = Visibility.Collapsed;
+        DragVisuals.HidePreview();
         ShowDragGhost(source);
-        MoveDragGhost(Mouse.GetPosition(DragGhostLayer));
+        DragVisuals.MoveGhost(Mouse.GetPosition(DragGhostLayer));
         BeginDragCapture();
     }
     private void BeginWingDrag(PaneKind source) {
@@ -100,10 +104,9 @@ public partial class ShellWindow {
         _dragCenter = false;
         _dragSpan = false;
         _paneDragging = true;
-        _dragPreview!.Visibility = Visibility.Collapsed;
-        _dragTargetOutline!.Visibility = Visibility.Collapsed;
+        DragVisuals.HidePreview();
         ShowDragGhost(source);
-        MoveDragGhost(Mouse.GetPosition(DragGhostLayer));
+        DragVisuals.MoveGhost(Mouse.GetPosition(DragGhostLayer));
         BeginDragCapture();
     }
     private void BeginStageDrag(PaneKind source) {
@@ -118,14 +121,13 @@ public partial class ShellWindow {
         _dragSpan = false;
         _stageDrag = true;
         _paneDragging = true;
-        _dragPreview!.Visibility = Visibility.Collapsed;
-        _dragTargetOutline!.Visibility = Visibility.Collapsed;
+        DragVisuals.HidePreview();
         ShowDragGhost(source);
-        MoveDragGhost(Mouse.GetPosition(DragGhostLayer));
+        DragVisuals.MoveGhost(Mouse.GetPosition(DragGhostLayer));
         BeginDragCapture();
     }
     private void BeginDragCapture() {
-        _dragCanvas!.IsHitTestVisible = true;   // 素通し→掴める状態へ（EndPaneDrag で false へ戻す）
+        DragVisuals.DragCanvas!.IsHitTestVisible = true;   // 素通し→掴める状態へ（EndPaneDrag で false へ戻す）
         if (TryCaptureDragCanvas())
             return;
         var attempts = 0;
@@ -138,28 +140,16 @@ public partial class ShellWindow {
         }
         Dispatcher.BeginInvoke(new Action(Retry), System.Windows.Threading.DispatcherPriority.Input);
     }
-    private bool TryCaptureDragCanvas()
-        => ReferenceEquals(Mouse.Captured, _dragCanvas)
-           || Mouse.Capture(_dragCanvas, CaptureMode.SubTree);
+    private bool TryCaptureDragCanvas() {
+        var canvas = DragVisuals.DragCanvas;
+        return canvas is not null && (ReferenceEquals(Mouse.Captured, canvas)
+            || Mouse.Capture(canvas, CaptureMode.SubTree));
+    }
     private void EnsureDragOverlay() {
-        if (_dragCanvas is not null)
-            return;
-        var accent = (Brush)FindResource("Accent");
-        _dragTargetOutline = new Border {
-            BorderBrush = accent, BorderThickness = new Thickness(1), Background = MakeTranslucent(accent, 0.10), Visibility = Visibility.Collapsed, IsHitTestVisible = false
-        };
-        _dragPreview = new Border {
-            BorderBrush = accent, BorderThickness = new Thickness(2), Background = MakeTranslucent(accent, 0.35), CornerRadius = new CornerRadius(2), Visibility = Visibility.Collapsed, IsHitTestVisible = false
-        };
-        _dragCanvas = new Canvas {
-            Background = Brushes.Transparent, ClipToBounds = true, IsHitTestVisible = false, };
-        _dragCanvas.Children.Add(_dragTargetOutline);
-        _dragCanvas.Children.Add(_dragPreview);
-        _dragCanvas.MouseMove += OnDragCanvasMouseMove;
-        _dragCanvas.MouseLeftButtonUp += OnDragCanvasMouseUp;
-        _dragCanvas.LostMouseCapture += OnDragCanvasLostCapture;
-        PaneDragOverlay.Children.Add(_dragCanvas);
-        PaneDragOverlay.Visibility = Visibility.Visible;
-        PaneDragOverlay.UpdateLayout();
+        DragVisuals.EnsureOverlay(canvas => {
+            canvas.MouseMove += OnDragCanvasMouseMove;
+            canvas.MouseLeftButtonUp += OnDragCanvasMouseUp;
+            canvas.LostMouseCapture += OnDragCanvasLostCapture;
+        });
     }
 }

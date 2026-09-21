@@ -22,6 +22,24 @@ public sealed record FileConflictDecision(
     string? NewName = null,
     bool ApplyToAll = false);
 
+/// <summary>競合ダイアログと一括貼り付けで共有する決定規則。</summary>
+internal static class FileConflictDecisionPolicy
+{
+    public static FileConflictDecision Create(
+        FileConflictAction action, string? newName, bool applyToAllRequested)
+    {
+        // 名前変更は項目ごとに別名が必要なので、全件適用は上書き／スキップだけを許す。
+        var applyToAll = applyToAllRequested && CanApplyToAll(action);
+        return new FileConflictDecision(action, newName, applyToAll);
+    }
+
+    public static bool CanApplyToAll(FileConflictAction action)
+        => action is FileConflictAction.Overwrite or FileConflictAction.Skip;
+
+    public static string? NormalizeRenameName(string? name)
+        => DialogTextPolicy.TrimOrNull(name);
+}
+
 /// <summary>1件の貼り付け結果。キャンセルとスキップは履歴へ記録しない。</summary>
 public sealed record FilePasteResult(
     string? DestinationPath,

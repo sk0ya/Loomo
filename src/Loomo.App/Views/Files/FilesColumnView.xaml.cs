@@ -1,7 +1,7 @@
 ﻿using System.Collections.Specialized;
-using System.Globalization;
 
 using sk0ya.Loomo.App.Services;
+using sk0ya.Loomo.App.Services.Infrastructure;
 
 namespace sk0ya.Loomo.App.Views;
 
@@ -13,39 +13,34 @@ namespace sk0ya.Loomo.App.Views;
 /// 実体は ViewModel 経由で同じ <see cref="FolderTreeCommandHandler"/> に落ちる。</para></summary>
 public partial class FilesColumnView : UserControl
 {
-    private Point _dragStart;
-    private FileEntryViewModel? _dragCandidate;
-    // Loomo 自身が発生源のドラッグ中フラグ。カラムをまたぐドラッグ（左のカラム → 右のカラム）でも
-    // 「内部＝移動」と扱うため、インスタンスではなく型で持つ（ドラッグは同時に1つしか走らない）。
-    private static bool _internalDrag;
     private FilesColumnViewModel? _boundVm;
-    private string _breadcrumbPickerSelectionPath = "";
+    private readonly FilesColumnWidthPresenter _columnWidths;
+    private readonly FilesColumnBreadcrumbPickerPresenter _breadcrumbPicker;
     private double _placesPaneWidth = 240;
-    private bool _autoWidthsQueued;
-    private Dictionary<FilesColumnKey, double>? _contentWidths;
-
-    // Explorer と同じ type-ahead 選択。キー入力が途切れたら次の入力を新しい検索にする
-    // （間隔はツリーと同じ 800ms）。
-    private string _typeAheadText = string.Empty;
-    private readonly DispatcherTimer _typeAheadResetTimer =
-        new() { Interval = TimeSpan.FromMilliseconds(800) };
+    private readonly FilesColumnCommandController _fileCommands;
+    private readonly FilesColumnKeyboardInteractionController _keyboardInteraction;
+    private readonly FilesColumnDragDropController _dragDrop;
 
     public FilesColumnView()
     {
         InitializeComponent();
+        _fileCommands = new FilesColumnCommandController(
+            context => FileConflictDialog.Show(OwnerWindow, context));
+        _keyboardInteraction = new FilesColumnKeyboardInteractionController(
+            EntryList, FilterBox, () => Vm, _fileCommands, ShowProperties, RenameEntry, DeleteEntries);
+        _dragDrop = new FilesColumnDragDropController(EntryList, () => Vm, Selection, _fileCommands);
+        _columnWidths = new FilesColumnWidthPresenter(EntryList, this);
+        _breadcrumbPicker = new FilesColumnBreadcrumbPickerPresenter(
+            BreadcrumbPickerPopup, BreadcrumbPickerTree, BreadcrumbScroll, () => Vm);
+        _shellInteraction = new FilesColumnShellInteractionController(
+            () => Vm, Selection, () => OwnerWindow, () => IsLoaded, SelectPath, ShowError, Dispatcher);
         DataContextChanged += OnDataContextChanged;
-        _typeAheadResetTimer.Tick += (_, _) =>
-        {
-            _typeAheadResetTimer.Stop();
-            _typeAheadText = string.Empty;
-        };
         // 閉じたカラムの裏で ZIP 生成やプロパティ読み取りを走らせ続けない
         // （ZIP は途中の一時ファイルもコマンド側が片付ける）。
         Unloaded += (_, _) =>
         {
-            _typeAheadResetTimer.Stop();
-            _propertiesLoadCts?.Cancel();
-            _zipOperationCts?.Cancel();
+            _keyboardInteraction.StopTypeAheadTimer();
+            _shellInteraction.CancelPending();
             // 住所欄を開いたまま外されたら、畳んでウィンドウの見張りも外す（見張りが残ると
             // 閉じたカラムがウィンドウのクリックを掴み続ける）。
             Vm?.CancelAddressEdit();
@@ -56,253 +51,36 @@ public partial class FilesColumnView : UserControl
         PreviewGotKeyboardFocus += (_, _) => Vm?.NotifyActivated();
         // Ctrl+L はペイン全体で受ける（一覧・絞り込み欄、どこにフォーカスがあっても住所へ飛べる）。
         PreviewKeyDown += OnColumnPreviewKeyDown;
-        EntryList.SizeChanged += OnEntryListSizeChanged;
     }
 
     private FilesColumnViewModel? Vm => DataContext as FilesColumnViewModel;
 
     private Window? OwnerWindow => Window.GetWindow(this);
 
-    // 列幅の変更は見出しの境目に重ねたつまみ（FilesColumnGrip）が受ける。並べ替えは見出しボタンの
-    // まま——同じ場所を「押したら並べ替え・端を掴んだら幅」と読み分けさせないのが狙い。
-    private static FilesColumnKey? GripColumn(object sender)
-        => sender is Thumb { Tag: string tag } && Enum.TryParse<FilesColumnKey>(tag, out var key)
-            ? key
-            : null;
-
-    // ダブルクリックは幅をその列の中身に合わせる。Thumb のドラッグが始まる前に止めるため
-    // Preview で受ける（開始させると2打目でわずかに幅が動く）。
     private void OnColumnGripMouseDown(object sender, MouseButtonEventArgs e)
-    {
-        if (e.ClickCount != 2 || GripColumn(sender) is not { } key)
-            return;
-        AutoFitColumn(key);
-        e.Handled = true;
-    }
-
-    /// <summary>その列の幅を中身に合わせる（境目のダブルクリック）。ここから先はユーザーの
-    /// 指定なので、ペインの幅が変わっても配り直さないし、フォルダーにも覚える。</summary>
-    internal void AutoFitColumn(FilesColumnKey key)
-    {
-        if (Vm is not { } vm)
-            return;
-        vm.SetColumnWidth(key, ContentWidth(key));
-        vm.EndColumnWidthDrag();
-    }
-
-    /// <summary>既定の列で開いたフォルダーの幅を、中身に合わせて配る（VM からの合図と、
-    /// 自動のあいだのペイン幅の変化で走る）。名前以外は中身ぴったり、名前が残りを受け持つ
-    /// ——余れば広げ、はみ出すぶんは名前から削る（名前だけが省略して読める列なので）。</summary>
-    internal void ApplyAutoColumnWidths()
-    {
-        if (Vm is not { } vm || !vm.ColumnWidthsAreAuto)
-            return;
-
-        // 中身の幅は測り直さない限り変わらない。ペインの幅を変えている間じゅう測ると、
-        // 3000件のフォルダーでドラッグのたびに数msずつ積む——配り直しだけを毎回やる。
-        var content = _contentWidths ??= vm.ColumnSettings.ToDictionary(
-            setting => setting.Key,
-            setting => setting.IsVisible ? ContentWidth(setting.Key) : setting.Width);
-        var widths = new Dictionary<FilesColumnKey, double>(content);
-
-        // 使える横幅は一覧の幅から右端の逃げ（重ねて描くスクロールバーぶん）を引いたもの。
-        var inset = TryFindResource("FilesRowInset") is Thickness rowInset ? rowInset.Right : 0;
-        var available = EntryList.ActualWidth - inset;
-        if (available > 0 && vm.IsNameColumnVisible)
-        {
-            var others = vm.ColumnSettings
-                .Where(setting => setting.IsVisible && setting.Key != FilesColumnKey.Name)
-                .Sum(setting => widths[setting.Key]);
-            widths[FilesColumnKey.Name] = available - others;   // 下限・上限は VM 側で丸める
-        }
-        vm.ApplyAutoColumnWidths(widths);
-    }
+        => _columnWidths.OnColumnGripMouseDown(sender, e);
 
     private void OnColumnGripDragStarted(object sender, DragStartedEventArgs e)
-        => Vm?.BeginColumnWidthDrag();
+        => _columnWidths.OnColumnGripDragStarted(sender, e);
 
-    // Thumb の HorizontalChange はつまみ自身から見た移動量で、つまみは幅の変更に追随して動く。
-    // そのぶん「いまの幅＋差分」で積むのが正しく、下限で止まっている間も暴走しない。
     private void OnColumnGripDragDelta(object sender, DragDeltaEventArgs e)
-    {
-        if (GripColumn(sender) is not { } key || Vm is null)
-            return;
-        Vm.SetColumnWidth(key, Vm.ColumnWidth(key) + e.HorizontalChange);
-    }
+        => _columnWidths.OnColumnGripDragDelta(sender, e);
 
     private void OnColumnGripDragCompleted(object sender, DragCompletedEventArgs e)
-        => Vm?.EndColumnWidthDrag();
-
-    /// <summary>その列の中身（と見出し）がちょうど収まる幅。
-    /// 文字の大きさは <c>Fs*</c> をその場で引く——UI の文字サイズは設定で変わるので（§UIフォント）、
-    /// ここに数字を焼き込むと大きくしたときだけ測り足りず、合わせたはずの列が見切れる。</summary>
-    private double ContentWidth(FilesColumnKey key)
-    {
-        var vm = Vm;
-        if (vm is null)
-            return 0;
-
-        var headerSize = FontSizeResource("Fs11", 11);
-        var nameSize = FontSizeResource("Fs12", 12);
-        var text = new TextMeasure(FontFamily, FontStyles.Normal, FontWeights.Normal, this);
-        // 状態バッジだけは行の書体が違う（Consolas・SemiBold）。
-        var badge = new TextMeasure(new FontFamily("Consolas"), FontStyles.Normal, FontWeights.SemiBold, this);
-
-        var setting = vm.ColumnSettings.FirstOrDefault(candidate => candidate.Key == key);
-        // 見出しも隠れない幅にする（並べ替え記号は今出ていなくても場所を空ける——
-        // 並べ替えた瞬間に見出しが欠ける方が驚く）。
-        var width = text.Width(setting?.Label + " ▲", headerSize) + HeaderCellExtra;
-        // 測るのは「いま出ている行」（絞り込み中は残っている行だけ）。
-        foreach (var entry in vm.EntriesView.Cast<FileEntryViewModel>())
-        {
-            var cell = key switch
-            {
-                FilesColumnKey.Name => text.Width(entry.Name, nameSize) + NameCellExtra
-                    + badge.Width(entry.GitStatusBadge, headerSize),
-                FilesColumnKey.Size => text.Width(entry.SizeText, headerSize) + SizeCellExtra,
-                FilesColumnKey.Modified => text.Width(entry.ModifiedText, headerSize) + CellExtra,
-                FilesColumnKey.Type => text.Width(entry.TypeText, headerSize) + CellExtra,
-                _ => 0,
-            };
-            if (cell > width)
-                width = cell;
-        }
-        // FormattedText の実測と TextBlock の折り返し判定は端数で食い違うことがある。
-        // 足りない側へ外すと「合わせたのに…」で終わるので、必ず切り上げてから 1px 足す。
-        return Math.Ceiling(width) + 1;
-    }
-
-    private double FontSizeResource(string key, double fallback)
-        => TryFindResource(key) is double size && size > 0 ? size : fallback;
-
-    /// <summary>1書体ぶんの文字幅の物差し。1行ずつ <see cref="FormattedText"/> を作ると
-    /// 3000件のフォルダーで列1つ 220ms かかる（実測）。ふだんはグリフの送り幅——WPF が実際に
-    /// 文字送りに使う値——を1文字ずつ覚えながら足し、その書体に無い文字（絵文字など・別フォントで
-    /// 描かれる）を含む行だけ <see cref="FormattedText"/> へ落とす。同じ3000件が 4ms になる。</summary>
-    private readonly struct TextMeasure
-    {
-        // 書体ごとの「文字→送り幅（em）」。UIスレッドからしか触らないので素の Dictionary でよい。
-        private static readonly Dictionary<(string Family, int Weight, int Style), Dictionary<char, double>> Advances = new();
-
-        private readonly Typeface _typeface;
-        private readonly GlyphTypeface? _glyphs;
-        private readonly Dictionary<char, double>? _advances;
-        private readonly double _dpi;
-
-        public TextMeasure(FontFamily family, FontStyle style, FontWeight weight, Visual owner)
-        {
-            _typeface = new Typeface(family, style, weight, FontStretches.Normal);
-            _glyphs = _typeface.TryGetGlyphTypeface(out var glyphs) ? glyphs : null;
-            _dpi = VisualTreeHelper.GetDpi(owner).PixelsPerDip;
-            if (_glyphs is null)
-            {
-                _advances = null;
-                return;
-            }
-            var key = (family.Source, weight.ToOpenTypeWeight(), style == FontStyles.Normal ? 0 : 1);
-            if (!Advances.TryGetValue(key, out var table))
-                Advances[key] = table = new Dictionary<char, double>();
-            _advances = table;
-        }
-
-        public double Width(string? text, double size)
-        {
-            if (string.IsNullOrEmpty(text))
-                return 0;
-            if (_glyphs is { } glyphs && _advances is { } advances)
-            {
-                var em = 0.0;
-                var measured = true;
-                foreach (var ch in text)
-                {
-                    if (!advances.TryGetValue(ch, out var advance))
-                    {
-                        advance = glyphs.CharacterToGlyphMap.TryGetValue(ch, out var index)
-                            ? glyphs.AdvanceWidths[index]
-                            : double.NaN;   // この書体に無い＝別フォントで描かれるので実測に回す
-                        advances[ch] = advance;
-                    }
-                    if (double.IsNaN(advance))
-                    {
-                        measured = false;
-                        break;
-                    }
-                    em += advance;
-                }
-                if (measured)
-                    return em * size;
-            }
-            return new FormattedText(text, CultureInfo.CurrentCulture, FlowDirection.LeftToRight,
-                _typeface, size, Brushes.Black, _dpi).WidthIncludingTrailingWhitespace;
-        }
-    }
-
-    // 文字の左右に要る余白。行テンプレートの Margin をそのまま足したもの——XAML 側を変えたらここも合わせる。
-    // 名前セル：DockPanel の Margin 6+4 ＋ アイコン 16 ＋ アイコン右 6 ＋ バッジの Margin 6+2（バッジ幅は実測）。
-    private const double NameCellExtra = 40;
-    // サイズセル：右寄せで Margin 0,0,8,0。左は隣の列との詰まりを避けて 8 見る。
-    private const double SizeCellExtra = 16;
-    // 更新日時・種類セル：Margin 6,0,0,0 ＋ 右の余裕 8。
-    private const double CellExtra = 14;
-    // 見出しボタンの Padding 6,0（左右）＋ つまみの線ぶん。
-    private const double HeaderCellExtra = 14;
+        => _columnWidths.OnColumnGripDragCompleted(sender, e);
 
     /// <summary>このカラムへフォーカスを移す（ペインのフォーカス受け口から呼ばれる）。</summary>
     public void FocusList()
-    {
-        if (EntryList.Items.Count > 0 && EntryList.SelectedIndex < 0)
-            EntryList.SelectedIndex = 0;
-        var container = EntryList.ItemContainerGenerator.ContainerFromIndex(
-            Math.Max(0, EntryList.SelectedIndex)) as ListBoxItem;
-        if (container is not null)
-            container.Focus();
-        else
-            EntryList.Focus();
-    }
+        => _keyboardInteraction.FocusList();
 
     private void OnDataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
     {
         if (_boundVm is not null)
-        {
             _boundVm.PropertyChanged -= OnVmPropertyChanged;
-            _boundVm.AutoColumnWidthsRequested -= OnAutoColumnWidthsRequested;
-        }
         _boundVm = Vm;
+        _columnWidths.Attach(_boundVm);
         if (_boundVm is not null)
-        {
             _boundVm.PropertyChanged += OnVmPropertyChanged;
-            _boundVm.AutoColumnWidthsRequested += OnAutoColumnWidthsRequested;
-            // 復元は View がつながる前に済んでいることがあるので、つながった時点でも一度配る。
-            QueueAutoColumnWidths();
-        }
-    }
-
-    private void OnAutoColumnWidthsRequested(object? sender, EventArgs e)
-    {
-        _contentWidths = null;   // 別のフォルダー＝別の中身
-        QueueAutoColumnWidths();
-    }
-
-    // 幅を配るにはペインの実寸が要る（開いた直後・畳んだ見出しはまだ 0）。レイアウトが済んでから走らせる。
-    private void QueueAutoColumnWidths()
-    {
-        if (_autoWidthsQueued)
-            return;
-        _autoWidthsQueued = true;
-        Dispatcher.BeginInvoke(new Action(() =>
-        {
-            _autoWidthsQueued = false;
-            ApplyAutoColumnWidths();
-        }), DispatcherPriority.Loaded);
-    }
-
-    // 自動のあいだはペインの幅に追随する（掴んで決めた幅は動かさない）。幅を見張るのは一覧の方
-    // ——見出しの帯は列がはみ出すと「はみ出した合計」を ActualWidth に返すので、狭くなったことに
-    // 気づけないし、使える幅の物差しにもならない。
-    private void OnEntryListSizeChanged(object sender, SizeChangedEventArgs e)
-    {
-        if (e.WidthChanged && Vm is { ColumnWidthsAreAuto: true })
-            QueueAutoColumnWidths();
     }
 
     // VM が「この行を選んでほしい」と言ってきたら（作成・名前変更・貼り付けの直後、Reveal）、
@@ -320,12 +98,9 @@ public partial class FilesColumnView : UserControl
         }
 
         // 一覧の形が変わると列見出しの出入りも変わる。自動のあいだは出した時点で配り直す。
-        if (e.PropertyName == nameof(FilesColumnViewModel.DisplayMode) && Vm is { ColumnWidthsAreAuto: true })
+        if (e.PropertyName == nameof(FilesColumnViewModel.DisplayMode))
         {
-            // 測り直す。隠れていた列の控えは「中身の幅」ではなく設定値のままなので、
-            // 使い回すと、いま出てきた列だけが次にフォルダーを移るまで見当違いの幅で出る。
-            _contentWidths = null;
-            QueueAutoColumnWidths();
+            _columnWidths.OnDisplayModeChanged();
             return;
         }
 
@@ -340,7 +115,7 @@ public partial class FilesColumnView : UserControl
         if (Vm is null)
             return;
         var target = Vm.Entries.FirstOrDefault(
-            entry => string.Equals(entry.FullPath, fullPath, StringComparison.OrdinalIgnoreCase));
+            entry => FilePathRelations.AreEqual(entry.FullPath, fullPath));
         if (target is null)
             return;
         EntryList.SelectedItems.Clear();
@@ -367,145 +142,23 @@ public partial class FilesColumnView : UserControl
         Vm?.SetPlacesOpen(false);
     }
 
-    private bool _breadcrumbPickerButtonPressed;
-
-    // Popup は外側クリックを先に受けて閉じるため、同じボタンのマウスアップだけが後から届き、
-    // そのままだと Click が再発火してポップアップを開き直してしまう。
     private void OnBreadcrumbPickerMouseDown(object sender, MouseButtonEventArgs e)
-        => _breadcrumbPickerButtonPressed = true;
+        => _breadcrumbPicker.OnPickerMouseDown();
 
     private void OnBreadcrumbPickerMouseUp(object sender, MouseButtonEventArgs e)
-    {
-        if (!_breadcrumbPickerButtonPressed)
-            e.Handled = true;
-        _breadcrumbPickerButtonPressed = false;
-    }
+        => _breadcrumbPicker.OnPickerMouseUp(e);
 
-    /// <summary>パンくずが幅に収まらないときは末尾（現在地）を見せる。左端から切ると、
-    /// 狭いカラムで「今どこにいるか」だけが消えることになる。</summary>
     private void OnBreadcrumbScrollChanged(object sender, ScrollChangedEventArgs e)
-    {
-        if (e.ExtentWidthChange != 0 || e.ViewportWidthChange != 0)
-            BreadcrumbScroll.ScrollToRightEnd();
-    }
+        => _breadcrumbPicker.OnBreadcrumbScrollChanged(e);
 
-    /// <summary>VS Code のパンくずと同じく、選んだ階層の直下をツリーで開く。
-    /// 現在の次階層は選択状態にする。</summary>
     private void OnBreadcrumbPickerClick(object sender, RoutedEventArgs e)
-    {
-        if (sender is not FrameworkElement { Tag: FilesBreadcrumb breadcrumb } target || Vm is null)
-            return;
-
-        // キーボード操作など、Popup のマウスキャプチャを経由しない場合も同じトグルにする。
-        if (BreadcrumbPickerPopup.IsOpen
-            && ReferenceEquals(BreadcrumbPickerPopup.PlacementTarget, target))
-        {
-            BreadcrumbPickerPopup.IsOpen = false;
-            e.Handled = true;
-            return;
-        }
-
-        if (!Directory.Exists(breadcrumb.FullPath))
-            return;
-
-        var crumbIndex = Vm.Breadcrumbs.IndexOf(breadcrumb);
-        _breadcrumbPickerSelectionPath = crumbIndex >= 0 && crumbIndex + 1 < Vm.Breadcrumbs.Count
-            ? Vm.Breadcrumbs[crumbIndex + 1].FullPath
-            : "";
-        BreadcrumbPickerTree.Items.Clear();
-        foreach (var path in EnumerateDirectories(breadcrumb.FullPath))
-            BreadcrumbPickerTree.Items.Add(CreateBreadcrumbPickerItem(path, _breadcrumbPickerSelectionPath));
-
-        if (BreadcrumbPickerTree.Items.Count == 0)
-            return;
-
-        BreadcrumbPickerPopup.PlacementTarget = target;
-        BreadcrumbPickerPopup.IsOpen = true;
-        e.Handled = true;
-    }
-
-    private TreeViewItem CreateBreadcrumbPickerItem(string path, string currentPath)
-    {
-        var item = new TreeViewItem
-        {
-            Header = CreateBreadcrumbPickerHeader(path),
-            Tag = path,
-            IsSelected = string.Equals(path, currentPath, StringComparison.OrdinalIgnoreCase),
-        };
-        item.Expanded += OnBreadcrumbPickerItemExpanded;
-        if (HasDirectories(path))
-            item.Items.Add(new TreeViewItem { Tag = null, IsHitTestVisible = false });
-        return item;
-    }
-
-    private static StackPanel CreateBreadcrumbPickerHeader(string path)
-    {
-        var name = Path.GetFileName(path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
-        var header = new StackPanel { Orientation = Orientation.Horizontal };
-        header.Children.Add(new Image
-        {
-            Source = FileIcons.FolderImage(open: false),
-            Width = 14,
-            Height = 14,
-            Margin = new Thickness(1, 0, 5, 0),
-        });
-        header.Children.Add(new TextBlock
-        {
-            Text = string.IsNullOrEmpty(name) ? path : name,
-            VerticalAlignment = VerticalAlignment.Center,
-        });
-        return header;
-    }
+        => _breadcrumbPicker.OnPickerClick(sender, e);
 
     private void OnBreadcrumbPickerItemExpanded(object sender, RoutedEventArgs e)
-    {
-        if (sender is not TreeViewItem item || item.Tag is not string path
-            || item.Items.Count != 1 || item.Items[0] is not TreeViewItem { Tag: null })
-            return;
-
-        item.Items.Clear();
-        foreach (var child in EnumerateDirectories(path))
-            item.Items.Add(CreateBreadcrumbPickerItem(child, _breadcrumbPickerSelectionPath));
-        e.Handled = true;
-    }
+        => _breadcrumbPicker.OnItemExpanded(sender, e);
 
     private void OnBreadcrumbPickerPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
-    {
-        if (e.OriginalSource is not DependencyObject source
-            || FindVisualParent<ToggleButton>(source) is not null
-            || FindVisualParent<TreeViewItem>(source) is not { Tag: string path })
-            return;
-
-        Vm?.Navigate(path);
-        BreadcrumbPickerPopup.IsOpen = false;
-        e.Handled = true;
-    }
-
-    private static IEnumerable<string> EnumerateDirectories(string parent)
-    {
-        try
-        {
-            return Directory.EnumerateDirectories(parent)
-                .OrderBy(path => Path.GetFileName(path), StringComparer.OrdinalIgnoreCase)
-                .ToArray();
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            return Array.Empty<string>();
-        }
-    }
-
-    private static bool HasDirectories(string path) => EnumerateDirectories(path).Any();
-
-    private static T? FindVisualParent<T>(DependencyObject source) where T : DependencyObject
-    {
-        for (var current = source; current is not null; current = VisualTreeHelper.GetParent(current))
-        {
-            if (current is T match)
-                return match;
-        }
-        return null;
-    }
+        => _breadcrumbPicker.OnPreviewMouseLeftButtonDown(sender, e);
 
     /// <summary>場所は常設の縦パネルであってポップアップではないので、項目を開いても畳まない。
     /// 閉じるのはツールバーの「場所」ボタンを押したときだけにする（続けて別の場所へ飛べる）。</summary>
@@ -517,7 +170,7 @@ public partial class FilesColumnView : UserControl
 
     /// <summary>ピン留めの対象＝選んでいるフォルダー行、無ければ現在地。</summary>
     private string? PinTarget()
-        => SingleSelection() is { IsDirectory: true } entry ? entry.FullPath : Vm?.CurrentFolder;
+        => _fileCommands.PinTarget(Vm, SingleSelection());
 
     private void OnPinClick(object sender, RoutedEventArgs e) => Vm?.TogglePin(PinTarget());
 
@@ -534,7 +187,7 @@ public partial class FilesColumnView : UserControl
 
     private void OnListMouseDoubleClick(object sender, MouseButtonEventArgs e)
     {
-        if (EntryAt(e.OriginalSource) is { } entry)
+        if (FilesColumnDragDropController.EntryAt(e.OriginalSource) is { } entry)
         {
             Vm?.OpenEntry(entry);
             e.Handled = true;
@@ -543,15 +196,14 @@ public partial class FilesColumnView : UserControl
 
     private void OnListPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        _dragStart = e.GetPosition(null);
-        _dragCandidate = EntryAt(e.OriginalSource);
+        _dragDrop.OnPreviewMouseLeftButtonDown(e);
     }
 
     private void OnListPreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
     {
         // 右クリックした行を操作対象にする。選択集合の中を右クリックしたときは集合を保つ
         // （一括操作の対象にするため）。集合の外ならその1件へ絞る（エクスプローラーと同じ）。
-        if (EntryAt(e.OriginalSource) is not { } entry)
+        if (FilesColumnDragDropController.EntryAt(e.OriginalSource) is not { } entry)
             return;
         if (!EntryList.SelectedItems.Contains(entry))
         {
@@ -561,165 +213,12 @@ public partial class FilesColumnView : UserControl
     }
 
     private void OnListPreviewKeyDown(object sender, KeyEventArgs e)
-    {
-        if (Vm is null)
-            return;
-
-        // Alt+←／→ は戻る／進む、Alt+Enter はプロパティ（Alt 付きは SystemKey に入る）。
-        if ((e.KeyboardDevice.Modifiers & ModifierKeys.Alt) != 0)
-        {
-            var systemKey = e.Key == Key.System ? e.SystemKey : e.Key;
-            if (systemKey == Key.Left && Vm.GoBackCommand.CanExecute(null))
-            {
-                Vm.GoBackCommand.Execute(null);
-                e.Handled = true;
-            }
-            else if (systemKey == Key.Right && Vm.GoForwardCommand.CanExecute(null))
-            {
-                Vm.GoForwardCommand.Execute(null);
-                e.Handled = true;
-            }
-            else if (systemKey is Key.Enter or Key.Return)
-            {
-                ShowProperties();
-                e.Handled = true;
-            }
-            return;
-        }
-
-        if ((e.KeyboardDevice.Modifiers & ModifierKeys.Control) != 0)
-        {
-            switch (e.Key)
-            {
-                case Key.C:
-                    FileClipboard.SetFiles(Selection().Select(entry => entry.FullPath), move: false);
-                    e.Handled = true;
-                    return;
-                case Key.X:
-                    FileClipboard.SetFiles(Selection().Select(entry => entry.FullPath), move: true);
-                    e.Handled = true;
-                    return;
-                case Key.V:
-                    PasteFromClipboard();
-                    e.Handled = true;
-                    return;
-                case Key.D:
-                    DuplicateEntries(Selection());
-                    e.Handled = true;
-                    return;
-                // ファイル操作の元に戻す／やり直す（履歴はエクスプローラーのツリーと共有）。
-                case Key.Z:
-                    if ((e.KeyboardDevice.Modifiers & ModifierKeys.Shift) != 0)
-                        RedoFileOperation();
-                    else
-                        UndoFileOperation();
-                    e.Handled = true;
-                    return;
-                case Key.Y:
-                    RedoFileOperation();
-                    e.Handled = true;
-                    return;
-            }
-            return;
-        }
-
-        switch (e.Key)
-        {
-            // 「/」で絞り込みバーを開く（エディタの検索と同じ入り方）。
-            case Key.OemQuestion or Key.Divide:
-                OpenFilter();
-                e.Handled = true;
-                break;
-            case Key.Escape when Vm.IsFilterBarOpen:
-                Vm.CloseFilter();
-                e.Handled = true;
-                break;
-            case Key.Enter:
-                Vm.OpenEntry(EntryList.SelectedItem as FileEntryViewModel);
-                e.Handled = true;
-                break;
-            case Key.Back:
-                if (Vm.GoUpCommand.CanExecute(null))
-                    Vm.GoUpCommand.Execute(null);
-                e.Handled = true;
-                break;
-            case Key.F2:
-                RenameEntry(SingleSelection());
-                e.Handled = true;
-                break;
-            case Key.Delete:
-                DeleteEntries(Selection());
-                e.Handled = true;
-                break;
-            case Key.F5:
-                Vm.RefreshCommand.Execute(null);
-                e.Handled = true;
-                break;
-            // TUI ファイラーと同じ j/k 移動。ツリーと同じ語彙にそろえる（そちらは §Vim 操作として
-            // 先に入っていた）。1文字目が j/k のファイルへは type-ahead ではなく「/」の絞り込みで届く。
-            case Key.J:
-                MoveSelection(delta: 1);
-                e.Handled = true;
-                break;
-            case Key.K:
-                MoveSelection(delta: -1);
-                e.Handled = true;
-                break;
-        }
-    }
-
-    /// <summary>表示順（絞り込み・並べ替え・グループ化の後）の隣へ選択を移す。端では止まる。</summary>
-    private void MoveSelection(int delta)
-    {
-        var items = EntryList.Items.OfType<FileEntryViewModel>().ToList();
-        var currentIndex = EntryList.SelectedItem is FileEntryViewModel current
-            ? items.IndexOf(current)
-            : -1;
-        var index = FolderTreeKeyboardNavigation.FindAdjacentIndex(items.Count, currentIndex, delta);
-        if (index < 0)
-            return;
-        EntryList.SelectedItems.Clear();
-        EntryList.SelectedItem = items[index];
-        EntryList.ScrollIntoView(items[index]);
-    }
+        => _keyboardInteraction.OnListPreviewKeyDown(e);
 
     // 一覧への直接の文字入力は Explorer と同じ type-ahead 選択にする。j/k は上の KeyDown で
     // 移動として処理済みなので、ここには通常の文字入力だけが届く。
     private void OnListPreviewTextInput(object sender, TextCompositionEventArgs e)
-    {
-        if (string.IsNullOrEmpty(e.Text)
-            || (Keyboard.Modifiers & (ModifierKeys.Control | ModifierKeys.Alt | ModifierKeys.Windows)) != 0)
-            return;
-
-        var items = EntryList.Items.OfType<FileEntryViewModel>().ToList();
-        if (items.Count == 0)
-            return;
-
-        _typeAheadResetTimer.Stop();
-        _typeAheadText += e.Text;
-        var names = items.Select(entry => entry.Name).ToList();
-        var currentIndex = EntryList.SelectedItem is FileEntryViewModel current
-            ? items.IndexOf(current)
-            : -1;
-        var matchIndex = FolderTreeKeyboardNavigation.FindTypeAheadMatch(names, _typeAheadText, currentIndex);
-
-        // 入力が続いて一致しなくなった場合は、最後の文字を新しい検索の先頭として試す。
-        if (matchIndex < 0 && _typeAheadText.Length > e.Text.Length)
-        {
-            _typeAheadText = e.Text;
-            matchIndex = FolderTreeKeyboardNavigation.FindTypeAheadMatch(names, _typeAheadText, currentIndex);
-        }
-
-        if (matchIndex >= 0)
-        {
-            EntryList.SelectedItems.Clear();
-            EntryList.SelectedItem = items[matchIndex];
-            EntryList.ScrollIntoView(items[matchIndex]);
-        }
-
-        _typeAheadResetTimer.Start();
-        e.Handled = true;
-    }
+        => _keyboardInteraction.OnPreviewTextInput(e);
 
     // ===== コンテキストメニュー =====
 
@@ -730,92 +229,18 @@ public partial class FilesColumnView : UserControl
     /// フォルダー、<c>Pinnable</c>／<c>Unpinnable</c>＝ピン留めの可否。</summary>
     private void OnContextMenuOpened(object sender, RoutedEventArgs e)
     {
-        if (sender is not ContextMenu menu || Vm is null)
+        if (sender is not ContextMenu menu || Vm is not { } vm)
             return;
 
         var selection = Selection();
-        var single = selection.Count == 1 ? selection[0] : null;
-        var files = selection.Where(entry => !entry.IsDirectory).ToList();
-        var pinTarget = PinTarget();
-        // Explorer のクイックアクセスの照会は数秒かかる（FolderTreeView.UpdateQuickAccessMenuItems の
-        // 注記を参照）。ここでは照会済みのときだけ答え、まだならこの下でバックグラウンドに回す。
-        var quickAccessReady = Vm.QuickAccess.IsSnapshotReady;
+        // Explorer のクイックアクセス照会は数秒かかるため、準備済みの状態だけ先に反映する。
+        var menuState = _fileCommands.CreateContextMenuState(vm, selection);
+        var quickAccessReady = menuState.QuickAccessReady;
 
-        foreach (var item in Descendants(menu))
-        {
-            var visible = (item.Tag as string) switch
-            {
-                "Selection" => selection.Count > 0,
-                "Single" => single is not null,
-                "FileOnly" => single is { IsDirectory: false },
-                "DirOnly" => single is { IsDirectory: true },
-                "Html" => single is { IsHtml: true },
-                "CompareTwo" => files.Count == 2,
-                "SearchableDir" => single is { IsDirectory: true } && Vm.CanSearchIn(single.FullPath),
-                "Pinnable" => Vm.CanPin(pinTarget),
-                "Unpinnable" => Vm.IsPinned(pinTarget),
-                // Windows Explorer 側のクイックアクセス（Loomo のルートピンとは別物）。
-                "QuickAccessPinnable" => quickAccessReady && Vm.CanPinToQuickAccess(selection),
-                "QuickAccessUnpinnable" => quickAccessReady && Vm.CanUnpinFromQuickAccess(selection),
-                "GitMenu" => Vm.CanGitFor(single),
-                "GitBlame" => single is { IsDirectory: false } && Vm.CanGitFor(single),
-                "GitIgnore" => Vm.CanAddToGitignoreFor(single),
-                "AiMenu" => selection.Count > 0 && Vm.CanRunFileAi,
-                // Undo/Redo は選択ではなく履歴で決まる（下の UpdateHistoryMenuItems が出し分ける）。
-                "UndoItem" or "RedoItem" => item.Visibility == Visibility.Visible,
-                _ => true,
-            };
-            item.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
-        }
-
-        UpdateHistoryMenuItems(menu);
-        FolderTreeView.NormalizeSeparators(menu);
-        foreach (var submenu in menu.Items.OfType<MenuItem>())
-            FolderTreeView.NormalizeSeparators(submenu);
-
-        if (!quickAccessReady && Vm.QuickAccess.IsAvailable && selection.Any(entry => entry.IsDirectory))
-            _ = FillQuickAccessMenuItemsAsync(menu, selection);
-    }
-
-    /// <summary>クイックアクセスの照会を UI スレッドの外で済ませ、メニューが開いたままなら
-    /// ピン留め／解除の項目を後から差し込む。</summary>
-    private async Task FillQuickAccessMenuItemsAsync(
-        ContextMenu menu, IReadOnlyList<FileEntryViewModel> selection)
-    {
-        try
-        {
-            var vm = Vm;
-            if (vm is null || !await vm.QuickAccess.RefreshAsync() || !menu.IsOpen)
-                return;
-
-            foreach (var item in Descendants(menu))
-            {
-                var visible = (item.Tag as string) switch
-                {
-                    "QuickAccessPinnable" => vm.CanPinToQuickAccess(selection),
-                    "QuickAccessUnpinnable" => vm.CanUnpinFromQuickAccess(selection),
-                    _ => (bool?)null,
-                };
-                if (visible is { } value)
-                    item.Visibility = value ? Visibility.Visible : Visibility.Collapsed;
-            }
-
-            FolderTreeView.NormalizeSeparators(menu);
-        }
-        catch (Exception)
-        {
-            // Explorer に聞けない環境では、この2項目が出ないだけ。
-        }
-    }
-
-    private static IEnumerable<MenuItem> Descendants(ItemsControl menu)
-    {
-        foreach (var item in menu.Items.OfType<MenuItem>())
-        {
-            yield return item;
-            foreach (var child in Descendants(item))
-                yield return child;
-        }
+        FileContextMenuPresenter.PrepareFilesColumnMenu(
+            menu, menuState, vm.History.UndoDescription, vm.History.RedoDescription);
+        FileContextMenuPresenter.UpdateFilesColumnQuickAccessItems(
+            menu, vm, selection, _fileCommands, quickAccessReady);
     }
 
     private void OnOpenClick(object sender, RoutedEventArgs e)
@@ -823,38 +248,8 @@ public partial class FilesColumnView : UserControl
 
     // ===== 絞り込み（「/」で開く下端のバー） =====
 
-    private void OpenFilter()
-    {
-        if (Vm is null)
-            return;
-        Vm.IsFilterBarOpen = true;
-        // 出したばかりのバーはまだ配置されていないので、レイアウト後にフォーカスする。
-        Dispatcher.BeginInvoke(DispatcherPriority.Input, new Action(() =>
-        {
-            FilterBox.Focus();
-            FilterBox.SelectAll();
-        }));
-    }
-
     private void OnFilterKeyDown(object sender, KeyEventArgs e)
-    {
-        if (Vm is null)
-            return;
-        switch (e.Key)
-        {
-            case Key.Escape:
-                Vm.CloseFilter();
-                FocusList();
-                e.Handled = true;
-                break;
-            case Key.Enter:
-            case Key.Down:
-                // 絞り込みは効かせたまま一覧へ戻る（バーは開いたまま＝効いていることが見える）。
-                FocusList();
-                e.Handled = true;
-                break;
-        }
-    }
+        => _keyboardInteraction.OnFilterKeyDown(e);
 
     private void OnOpenInBrowserClick(object sender, RoutedEventArgs e)
     {
@@ -865,30 +260,16 @@ public partial class FilesColumnView : UserControl
     // 拡張子に紐づく既定のアプリで開く（PDF・画像・Office 等、エディタペインで扱えない素材の逃げ道）。
     private void OnOpenWithDefaultAppClick(object sender, RoutedEventArgs e)
     {
-        if (SingleSelection() is not { IsDirectory: false } entry || !File.Exists(entry.FullPath))
+        if (SingleSelection() is not { IsDirectory: false } entry)
             return;
-        try
-        {
-            Process.Start(new ProcessStartInfo(entry.FullPath) { UseShellExecute = true });
-        }
-        catch (Exception ex)
-        {
-            ShowError($"既定のアプリで開けませんでした: {ex.Message}");
-        }
+        FileExplorerLauncher.OpenWithDefaultApp(entry.FullPath);
     }
 
     private void OnRevealInExplorerClick(object sender, RoutedEventArgs e)
     {
         if (SingleSelection() is not { } entry)
             return;
-        try
-        {
-            if (File.Exists(entry.FullPath))
-                Process.Start("explorer.exe", $"/select,\"{entry.FullPath}\"");
-            else if (Directory.Exists(entry.FullPath))
-                Process.Start("explorer.exe", $"\"{entry.FullPath}\"");
-        }
-        catch { /* explorer 起動失敗は無視 */ }
+        FileExplorerLauncher.RevealInExplorer(entry.FullPath);
     }
 
     private void OnSetInTerminalClick(object sender, RoutedEventArgs e)
@@ -904,11 +285,7 @@ public partial class FilesColumnView : UserControl
     }
 
     private void OnCompareSelectedClick(object sender, RoutedEventArgs e)
-    {
-        var files = Selection().Where(entry => !entry.IsDirectory).ToList();
-        if (files.Count == 2)
-            Vm?.RequestCompare(files[0].FullPath, files[1].FullPath);
-    }
+        => _fileCommands.CompareSelectedFiles(Vm, Selection());
 
     private void OnSearchInFolderClick(object sender, RoutedEventArgs e)
     {
@@ -920,14 +297,7 @@ public partial class FilesColumnView : UserControl
     {
         if (Vm is null)
             return;
-        var action = ((sender as MenuItem)?.Tag as string) switch
-        {
-            "FileAiSummarize" => FileAiAction.Summarize,
-            "FileAiReview" => FileAiAction.Review,
-            "FileAiGenerateTests" => FileAiAction.GenerateTests,
-            "FileAiFindRelated" => FileAiAction.FindRelated,
-            _ => (FileAiAction?)null,
-        };
+        var action = FileContextMenuPolicy.ResolveFileAiAction((sender as MenuItem)?.Tag as string);
         if (action is { } selectedAction)
             Vm.RequestFileAi(selectedAction, Selection());
     }
@@ -945,13 +315,7 @@ public partial class FilesColumnView : UserControl
     }
 
     private void OnAddToGitignoreClick(object sender, RoutedEventArgs e)
-    {
-        if (SingleSelection() is { } entry)
-        {
-            try { Vm?.AddToGitignore(entry); }
-            catch (InvalidOperationException ex) { ShowError(ex.Message); }
-        }
-    }
+        => _fileCommands.AddToGitignore(Vm, SingleSelection());
 
     private void OnNewFileClick(object sender, RoutedEventArgs e) => CreateEntry(isDirectory: false);
 
@@ -959,128 +323,45 @@ public partial class FilesColumnView : UserControl
 
     private void CreateEntry(bool isDirectory)
     {
-        if (Vm is not { TargetDirectory: not null })
-            return;
-        var title = isDirectory ? "新規フォルダー" : "新規ファイル";
-        var name = isDirectory
-            ? InputDialog.Prompt(OwnerWindow, title, $"{title}名を入力:")
-            : NewFileDialog.Prompt(OwnerWindow);
-        if (name is null)
-            return;
-        try
+        _fileCommands.CreateEntry(Vm, isDirectory, requestedDirectory =>
         {
-            var created = Vm.CreateEntry(name, isDirectory);
-            if (!isDirectory)
-                Vm.OpenEntry(Vm.Entries.FirstOrDefault(
-                    entry => string.Equals(entry.FullPath, created, StringComparison.OrdinalIgnoreCase)));
-        }
-        catch (InvalidOperationException ex)
-        {
-            ShowError(ex.Message);
-        }
+            var title = requestedDirectory ? "新規フォルダー" : "新規ファイル";
+            return requestedDirectory
+                ? InputDialog.Prompt(OwnerWindow, title, $"{title}名を入力:")
+                : NewFileDialog.Prompt(OwnerWindow);
+        });
     }
 
     private void OnRenameClick(object sender, RoutedEventArgs e) => RenameEntry(SingleSelection());
 
     private void RenameEntry(FileEntryViewModel? entry)
-    {
-        if (entry is null || Vm is null)
-            return;
-        var newName = InputDialog.Prompt(
-            OwnerWindow, "名前の変更", "新しい名前を入力:", entry.Name, selectNameOnly: !entry.IsDirectory);
-        if (newName is null)
-            return;
-        try { Vm.RenameEntry(entry, newName); }
-        catch (InvalidOperationException ex) { ShowError(ex.Message); }
-    }
+        => _fileCommands.RenameEntry(Vm, entry, target => InputDialog.Prompt(
+            OwnerWindow, "名前の変更", "新しい名前を入力:", target.Name,
+            selectNameOnly: !target.IsDirectory));
 
     private void OnDeleteClick(object sender, RoutedEventArgs e) => DeleteEntries(Selection());
 
     /// <summary>選択をまとめてゴミ箱へ送る（確認は1回だけ）。</summary>
     private void DeleteEntries(IReadOnlyList<FileEntryViewModel> entries)
-    {
-        if (entries.Count == 0 || Vm is null)
-            return;
-        var message = entries.Count == 1
-            ? $"{(entries[0].IsDirectory ? "フォルダー" : "ファイル")}「{entries[0].Name}」をゴミ箱へ移動しますか？"
-            : $"選択した {entries.Count} 件をゴミ箱へ移動しますか？";
-        if (MessageBox.Show(message, "削除の確認", MessageBoxButton.OKCancel, MessageBoxImage.Warning)
-            != MessageBoxResult.OK)
-            return;
-
-        // 選択ぶんは 1 回の Undo でまとめて戻す。
-        using (Vm.BeginFileOperationBatch())
-            foreach (var entry in entries)
-            {
-                try { Vm.DeleteEntry(entry); }
-                catch (InvalidOperationException ex) { ShowError(ex.Message); }
-            }
-    }
+        => _fileCommands.DeleteEntries(Vm, entries, message =>
+            MessageBox.Show(message, "削除の確認", MessageBoxButton.OKCancel, MessageBoxImage.Warning)
+            == MessageBoxResult.OK);
 
     private void OnDuplicateClick(object sender, RoutedEventArgs e) => DuplicateEntries(Selection());
 
     private void DuplicateEntries(IReadOnlyList<FileEntryViewModel> entries)
-    {
-        if (Vm is null)
-            return;
-        using (Vm.BeginFileOperationBatch())
-            foreach (var entry in entries)
-            {
-                try { Vm.DuplicateEntry(entry); }
-                catch (InvalidOperationException ex) { ShowError(ex.Message); }
-            }
-    }
+        => _fileCommands.DuplicateEntries(Vm, entries);
 
     private void OnCopyClick(object sender, RoutedEventArgs e)
-        => FileClipboard.SetFiles(Selection().Select(entry => entry.FullPath), move: false);
+        => _fileCommands.CopyFiles(Selection(), move: false);
 
     private void OnCutClick(object sender, RoutedEventArgs e)
-        => FileClipboard.SetFiles(Selection().Select(entry => entry.FullPath), move: true);
+        => _fileCommands.CopyFiles(Selection(), move: true);
 
     private void OnPasteClick(object sender, RoutedEventArgs e) => PasteFromClipboard();
 
     private void PasteFromClipboard()
-    {
-        if (Vm is not { TargetDirectory: { } target } || !FileClipboard.ContainsFiles())
-            return;
-
-        var move = FileClipboard.PrefersMove();
-        FileConflictDecision? applyToAll = null;
-        var cancelled = false;
-
-        FileConflictDecision ResolveConflict(FileConflictContext context)
-        {
-            if (applyToAll is { } remembered)
-                return remembered;
-            var decision = FileConflictDialog.Show(OwnerWindow, context);
-            if (decision.ApplyToAll && decision.Action is (FileConflictAction.Overwrite or FileConflictAction.Skip))
-                applyToAll = decision with { ApplyToAll = false };
-            return decision;
-        }
-
-        try
-        {
-            using (Vm.BeginFileOperationBatch())
-                foreach (var source in FileClipboard.GetFiles())
-                {
-                    var result = Vm.PasteEntry(target, source, move, ResolveConflict);
-                    if (result.Cancelled)
-                    {
-                        cancelled = true;
-                        break;
-                    }
-                }
-        }
-        catch (InvalidOperationException ex)
-        {
-            ShowError(ex.Message);
-            return;
-        }
-
-        // 切り取り→貼り付け（移動）はエクスプローラー同様、成功後にクリップボードを空にする。
-        if (move && !cancelled)
-            FileClipboard.Clear();
-    }
+        => _fileCommands.PasteFromClipboard(Vm);
 
     // ===== 元に戻す／やり直す（ファイル操作の Undo/Redo・ツリーと共有の履歴） =====
 
@@ -1093,173 +374,34 @@ public partial class FilesColumnView : UserControl
     private void RedoFileOperation() => RunHistoryStep(undo: false);
 
     private async void RunHistoryStep(bool undo)
-    {
-        if (Vm is null || (undo ? !Vm.History.CanUndo : !Vm.History.CanRedo))
-            return;
-
-        try
-        {
-            var result = undo
-                ? Vm.UndoFileOperation()
-                : await Vm.RedoFileOperationAsync();
-            ToastService.Info($"{(undo ? "元に戻しました" : "やり直しました")}: {result.Description}");
-        }
-        catch (InvalidOperationException ex)
-        {
-            ShowError(ex.Message);
-        }
-    }
-
-    // 「元に戻す」「やり直す」の見出しを次の一手に合わせ、無いときは項目ごと隠す。
-    private void UpdateHistoryMenuItems(ContextMenu menu)
-    {
-        foreach (var item in menu.Items.OfType<MenuItem>())
-            switch (item.Tag as string)
-            {
-                case "UndoItem": ApplyHistoryHeader(item, "元に戻す", Vm?.History.UndoDescription); break;
-                case "RedoItem": ApplyHistoryHeader(item, "やり直す", Vm?.History.RedoDescription); break;
-            }
-    }
-
-    private static void ApplyHistoryHeader(MenuItem item, string verb, string? description)
-    {
-        item.Visibility = description is null ? Visibility.Collapsed : Visibility.Visible;
-        item.Header = description is null ? verb : $"{verb}（{description}）";
-    }
+        => await _fileCommands.RunHistoryStepAsync(Vm, undo);
 
     private void OnCopyPathClick(object sender, RoutedEventArgs e)
-        => FileClipboard.CopyLines(Selection().Select(entry => entry.FullPath));
+        => _fileCommands.CopyPaths(Selection());
 
     private void OnCopyRelativePathClick(object sender, RoutedEventArgs e)
     {
         if (Vm is { } vm)
-            FileClipboard.CopyLines(Selection().Select(vm.RelativePathFor));
+            _fileCommands.CopyRelativePaths(vm, Selection());
     }
 
     private void OnCopyNameClick(object sender, RoutedEventArgs e)
-        => FileClipboard.CopyLines(Selection().Select(entry => entry.Name));
+        => _fileCommands.CopyNames(Selection());
 
     // ===== ドラッグ＆ドロップ =====
     // カラム内・カラム間のドロップで移動、外部（エクスプローラー等）からのドロップでコピー。
     // 修飾キー: Ctrl=コピー強制 / Shift=移動強制。ツリー（FolderTreeView.DragDrop.cs）と同じ規則。
 
     private void OnListPreviewMouseMove(object sender, MouseEventArgs e)
-    {
-        if (e.LeftButton != MouseButtonState.Pressed || _dragCandidate is null)
-            return;
-
-        var position = e.GetPosition(null);
-        if (Math.Abs(position.X - _dragStart.X) < SystemParameters.MinimumHorizontalDragDistance
-            && Math.Abs(position.Y - _dragStart.Y) < SystemParameters.MinimumVerticalDragDistance)
-            return;
-
-        var origin = _dragCandidate;
-        _dragCandidate = null;
-
-        // 掴んだ行が選択に含まれていれば選択ぜんぶ、含まれなければその1件だけを運ぶ。
-        var sources = EntryList.SelectedItems.Contains(origin)
-            ? Selection()
-            : new List<FileEntryViewModel> { origin };
-        var paths = sources
-            .Where(entry => File.Exists(entry.FullPath) || Directory.Exists(entry.FullPath))
-            .Select(entry => entry.FullPath)
-            .ToList();
-        if (paths.Count == 0)
-            return;
-
-        var data = new DataObject();
-        FileDragDrop.SetPaths(data, paths);
-
-        _internalDrag = true;
-        try { DragDrop.DoDragDrop(EntryList, data, DragDropEffects.Copy | DragDropEffects.Move); }
-        catch { /* ドラッグ中の例外は無視 */ }
-        finally { _internalDrag = false; }
-    }
+        => _dragDrop.OnPreviewMouseMove(e);
 
     private void OnListDragOver(object sender, DragEventArgs e)
-    {
-        e.Effects = ResolveDropEffect(e, out _);
-        e.Handled = true;
-    }
+        => _dragDrop.OnDragOver(e);
 
     private void OnListDrop(object sender, DragEventArgs e)
-    {
-        var effect = ResolveDropEffect(e, out var targetDirectory);
-        e.Handled = true;
-        var sources = FileDragDrop.TryGetPaths(e.Data);
-        if (effect == DragDropEffects.None || targetDirectory is null || Vm is null
-            || sources.Count == 0)
-            return;
-
-        var move = (effect & DragDropEffects.Move) != 0;
-        FileConflictDecision? applyToAll = null;
-        FileConflictDecision ResolveConflict(FileConflictContext context)
-        {
-            if (applyToAll is { } remembered)
-                return remembered;
-            var decision = FileConflictDialog.Show(OwnerWindow, context);
-            if (decision.ApplyToAll && decision.Action is (FileConflictAction.Overwrite or FileConflictAction.Skip))
-                applyToAll = decision with { ApplyToAll = false };
-            return decision;
-        }
-
-        try
-        {
-            using (Vm.BeginFileOperationBatch())
-                foreach (var source in sources)
-                    if (!string.IsNullOrEmpty(source))
-                    {
-                        var result = Vm.PasteEntry(targetDirectory, source, move, ResolveConflict);
-                        if (result.Cancelled)
-                            break;
-                    }
-        }
-        catch (InvalidOperationException ex)
-        {
-            ShowError(ex.Message);
-        }
-    }
-
-    private DragDropEffects ResolveDropEffect(DragEventArgs e, out string? targetDirectory)
-    {
-        targetDirectory = null;
-        if (!e.Data.GetDataPresent(DataFormats.FileDrop) || Vm is null)
-            return DragDropEffects.None;
-
-        targetDirectory = Vm.DropTargetFor(EntryAt(e.OriginalSource));
-        if (targetDirectory is null)
-            return DragDropEffects.None;
-
-        var sources = FileDragDrop.TryGetPaths(e.Data);
-        foreach (var source in sources)
-        {
-            // フォルダを自身／配下へは不可（無限再帰）。
-            if (Directory.Exists(source)
-                && (PathsEqual(source, targetDirectory) || IsAncestor(source, targetDirectory)))
-                return DragDropEffects.None;
-            // 同じフォルダーへの移動は何も起きない（「 - コピー」が増えるだけ）ので受けない。
-            if (_internalDrag && PathsEqual(Path.GetDirectoryName(source) ?? "", targetDirectory)
-                && (e.KeyStates & DragDropKeyStates.ControlKey) == 0)
-                return DragDropEffects.None;
-        }
-
-        if ((e.KeyStates & DragDropKeyStates.ControlKey) != 0)
-            return DragDropEffects.Copy;
-        if ((e.KeyStates & DragDropKeyStates.ShiftKey) != 0)
-            return DragDropEffects.Move;
-        return _internalDrag ? DragDropEffects.Move : DragDropEffects.Copy;
-    }
+        => _dragDrop.OnDrop(e);
 
     // ===== 小物 =====
-
-    /// <summary>クリック位置の行（行の外＝空き領域なら null）。</summary>
-    private static FileEntryViewModel? EntryAt(object? source)
-    {
-        var current = source as DependencyObject;
-        while (current is not null and not ListBoxItem)
-            current = VisualTreeHelper.GetParent(current);
-        return (current as ListBoxItem)?.DataContext as FileEntryViewModel;
-    }
 
     /// <summary>選択中の行（一覧の並び順）。</summary>
     private List<FileEntryViewModel> Selection()
@@ -1270,15 +412,6 @@ public partial class FilesColumnView : UserControl
         var selection = Selection();
         return selection.Count == 1 ? selection[0] : null;
     }
-
-    private static bool PathsEqual(string a, string b)
-        => a.Length > 0 && b.Length > 0
-            && string.Equals(
-                Path.TrimEndingDirectorySeparator(a), Path.TrimEndingDirectorySeparator(b),
-                StringComparison.OrdinalIgnoreCase);
-
-    private static bool IsAncestor(string folder, string path)
-        => sk0ya.Loomo.Core.Files.WorkspacePaths.IsWithin(folder, path) && !PathsEqual(folder, path);
 
     private static void ShowError(string message) => ToastService.Error(message);
 }

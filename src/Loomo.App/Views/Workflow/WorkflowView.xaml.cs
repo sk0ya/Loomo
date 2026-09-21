@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using sk0ya.Loomo.Core.Agent;
+using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.App.ViewModels;
 
 namespace sk0ya.Loomo.App.Views;
@@ -32,8 +33,8 @@ public partial class WorkflowView : UserControl
     {
         if (e.ExtentHeightChange == 0)
         {
-            const double tolerance = 1.0;
-            _logAtBottom = e.VerticalOffset + e.ViewportHeight >= e.ExtentHeight - tolerance;
+            _logAtBottom = DebugOutputCollectionUpdater.IsAtBottom(
+                e.ExtentHeight, e.ViewportHeight, e.VerticalOffset, tolerance: 1.0);
         }
         else if (_logAtBottom)
         {
@@ -132,33 +133,18 @@ public partial class WorkflowView : UserControl
         var isProgressVisible = _workflow?.IsProgressVisible == true;
         var isWarmingUp = _workflow?.IsWarmingUp == true;
         var showProgressDetails = _workflow?.IsProgressDetailsExpanded == true || _workflow?.IsWarmingUp == true;
+        var layout = WorkflowProgressLayoutPolicy.Resolve(
+            hasFinalOutput,
+            isProgressVisible,
+            isWarmingUp,
+            showProgressDetails,
+            ProgressAreaRow.Height);
 
-        // 外側（パイプライン↔進捗エリア）の分割。
-        // ここを詳細トグルのたびに Star へ再代入すると、ユーザーがドラッグで広げた分割や
-        // 外側 GridSplitter の状態とぶつかり、進捗エリアが 0 高さに潰れる／画面外へ押し出されて
-        // 戻らなくなる（＝「出力を出したあと詳細を表示/非表示すると全部閉じられる」不具合）。
-        // そこで“種類”が変わるとき（非表示↔表示↔ウォームアップ）だけ設定し、表示中の Star は
-        // ドラッグした高さを尊重してそのまま残す。さらに MinHeight の床でどの状態でも消さない。
-        var targetOuter = !isProgressVisible
-            ? new GridLength(0)
-            : isWarmingUp && !hasFinalOutput
-                ? GridLength.Auto
-                : new GridLength(1.4, GridUnitType.Star);
-        if (ProgressAreaRow.Height.GridUnitType != targetOuter.GridUnitType
-            || (targetOuter.GridUnitType != GridUnitType.Star
-                && ProgressAreaRow.Height.Value != targetOuter.Value))
-            ProgressAreaRow.Height = targetOuter;
-        ProgressAreaRow.MinHeight = isProgressVisible ? 96 : 0;
-
-        // 内側（進捗ログ↔出力）は詳細トグルで切替える。必ず両行をそろえて設定し、
-        // 片方だけ残って潰れることがないようにする。
-        ProgressLogRow.MinHeight = showProgressDetails ? 72 : 38;
-        ProgressLogRow.Height = showProgressDetails
-            ? new GridLength(1, GridUnitType.Star)
-            : GridLength.Auto;
-
-        FinalOutputRow.Height = hasFinalOutput
-            ? new GridLength(showProgressDetails ? 0.7 : 1.0, GridUnitType.Star)
-            : new GridLength(0);
+        if (layout.ShouldUpdateProgressAreaHeight)
+            ProgressAreaRow.Height = layout.ProgressAreaHeight;
+        ProgressAreaRow.MinHeight = layout.ProgressAreaMinHeight;
+        ProgressLogRow.MinHeight = layout.ProgressLogMinHeight;
+        ProgressLogRow.Height = layout.ProgressLogHeight;
+        FinalOutputRow.Height = layout.FinalOutputHeight;
     }
 }

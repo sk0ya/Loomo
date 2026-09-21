@@ -367,7 +367,7 @@
                                 <!-- 並びは「作る → 移す → 直す → 開く/送る → フォルダーを見る → 写す →
                                      Git → ワークスペース → AI」。区切り線は静的に置くだけで、実際の
                                      出し分け（グループが丸ごと隠れたときに線だけ残さない）は
-                                     OnNodeContextMenuOpened→NormalizeSeparators が行う。 -->
+                                     OnNodeContextMenuOpened から共有 Presenter が行う。 -->
                                 <ContextMenu Opened="OnNodeContextMenuOpened">
                                     <MenuItem Header="新規ファイル" Tag="FileSystemOnly" Click="OnNewFileClick"
                                               ToolTip="名前と拡張子を選んで作成します" />
@@ -386,7 +386,7 @@
                                     <MenuItem Header="名前の変更" Tag="FileSystemOnly" InputGestureText="F2" Click="OnRenameClick" />
                                     <MenuItem Header="削除" Tag="FileSystemOnly" InputGestureText="Delete" Click="OnDeleteClick" />
                                     <!-- ファイル操作の Undo/Redo。見出しと表示可否は
-                                         OnNodeContextMenuOpened→UpdateHistoryMenuItems が次の一手に合わせる。 -->
+                                         OnNodeContextMenuOpened から共有 Presenter が次の一手に合わせる。 -->
                                     <Separator />
                                     <MenuItem Header="元に戻す" Tag="UndoItem" InputGestureText="Ctrl+Z"
                                               Click="OnUndoFileOperationClick" />
@@ -482,7 +482,7 @@
                                     <MenuItem Header="ワークスペースから削除" Click="OnRemoveFromWorkspaceClick"
                                               Visibility="{Binding CanRemoveFromWorkspace, Converter={StaticResource BoolToVis}}" />
                                     <!-- AI 関連（一番下にまとめる）。AIの暖機完了時のみファイルに表示し、
-                                         「AI」親メニューは Opened で出し分ける（区切り線は NormalizeSeparators 任せ）。
+                                         「AI」親メニューは Opened で出し分ける（区切り線は共有 Presenter が整える）。
                                          AI 操作は「AI」の子メニューとして増やしていく想定。 -->
                                     <Separator />
                                     <MenuItem Header="AI" Tag="AiMenu" Visibility="Collapsed">

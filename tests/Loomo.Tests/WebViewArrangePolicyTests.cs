@@ -1,5 +1,6 @@
 using System.Windows;
 using sk0ya.Loomo.App.Layout;
+using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.App.Views;
 
 namespace sk0ya.Loomo.Tests;

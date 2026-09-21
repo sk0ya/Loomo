@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Text.RegularExpressions;
+using System.Windows.Documents;
 using sk0ya.Loomo.App.ViewModels;
 using sk0ya.Loomo.Core.Diff;
 
@@ -21,6 +22,58 @@ namespace sk0ya.Loomo.App.Services;
 public static class DiffRowLineMapper
 {
     private static readonly Regex SkippedLines = new(@"(\d+)\s*行省略", RegexOptions.Compiled);
+
+    /// <summary>FlowDocument 上で選ばれた両端の行番号を、差分行の添字集合へ整える。</summary>
+    internal static IReadOnlySet<int> RowIndicesInRange(int rowCount, int startIndex, int endIndex)
+    {
+        if (startIndex < 0 || endIndex < 0 || startIndex >= rowCount || endIndex >= rowCount)
+            return new HashSet<int>();
+        if (endIndex < startIndex)
+            (startIndex, endIndex) = (endIndex, startIndex);
+        return Enumerable.Range(startIndex, endIndex - startIndex + 1).ToHashSet();
+    }
+
+    /// <summary>FlowDocument の選択範囲を差分行インデックスの集合へ変換する。</summary>
+    internal static IReadOnlySet<int> SelectedRowIndices(FlowDocument document, TextSelection selection)
+    {
+        var start = selection.Start.Paragraph;
+        if (start is null) return new HashSet<int>();
+        var end = selection.End.Paragraph ?? start;
+        return RowIndicesInRange(document.Blocks.Count, IndexOfBlock(document, start), IndexOfBlock(document, end));
+    }
+
+    /// <summary>FlowDocument 内の段落を差分行インデックスへ変換する。</summary>
+    internal static int IndexOfBlock(FlowDocument document, Block target)
+    {
+        var index = 0;
+        foreach (var block in document.Blocks)
+        {
+            if (ReferenceEquals(block, target)) return index;
+            index++;
+        }
+        return -1;
+    }
+
+    /// <summary>指定行に対応する段落を取得する。</summary>
+    internal static Paragraph? ParagraphAt(FlowDocument document, int index)
+        => index >= 0 && index < document.Blocks.Count
+            ? document.Blocks.ElementAt(index) as Paragraph
+            : null;
+
+    /// <summary>左右本文の両方で到達できる横スクロール範囲へ位置を収める。</summary>
+    internal static double ClampToSharedHorizontalRange(
+        double requestedOffset,
+        double leftScrollableWidth,
+        double rightScrollableWidth)
+        => Math.Clamp(requestedOffset, 0, Math.Min(leftScrollableWidth, rightScrollableWidth));
+
+    /// <summary>左右本文が揃っているときは共有範囲へ、片方が未生成なら操作元の範囲へ位置を収める。</summary>
+    internal static double HorizontalOffsetForSync(
+        double requestedOffset, double sourceScrollableWidth,
+        double? leftScrollableWidth, double? rightScrollableWidth)
+        => leftScrollableWidth is { } left && rightScrollableWidth is { } right
+            ? ClampToSharedHorizontalRange(requestedOffset, left, right)
+            : Math.Clamp(requestedOffset, 0, sourceScrollableWidth);
 
     /// <summary>左右並びの行 → その側の行番号。その側に無い行（反対側だけの変更）は直前の行を指す。</summary>
     public static int LineForSideRow(IReadOnlyList<DiffSideRowVm> rows, int index, bool leftSide)

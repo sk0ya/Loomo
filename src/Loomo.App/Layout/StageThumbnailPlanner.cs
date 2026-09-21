@@ -20,6 +20,23 @@ public static class StageThumbnailPlanner
     /// <summary>描画元の最大仮想幅。Main がこれより広い場合はこの幅で頭打ちにする。</summary>
     public const double VirtualWidth = 800;
 
+    public readonly record struct WingCardLayout(int Columns, double CardWidth);
+
+    /// <summary>設定・折りたたみ状態・利用可能幅から袖カードの列数と幅を決める。</summary>
+    public static WingCardLayout PlanWingCards(
+        int configuredColumns, bool collapsed, double wingWidth, double viewportWidth, double columnGap)
+    {
+        if (collapsed)
+            return new WingCardLayout(1, 48);
+
+        var columns = Math.Clamp(configuredColumns, 1, 2);
+        var availableWidth = viewportWidth > 0 ? viewportWidth : Math.Max(0, wingWidth - 10);
+        var cardWidth = columns == 1
+            ? Math.Max(150, wingWidth - 10)
+            : Math.Max(1, (availableWidth - columnGap) / 2);
+        return new WingCardLayout(columns, cardWidth);
+    }
+
     /// <summary>
     /// ライブ VisualBrush ではなくスナップショットを使うペイン。WebView2 を抱える Browser /
     /// EditorSupport も他ペインと同じ VisualBrush で縮小表示できるようになったため、現在は該当なし。

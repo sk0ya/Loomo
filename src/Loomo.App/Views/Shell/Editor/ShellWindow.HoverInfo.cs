@@ -20,10 +20,14 @@ public partial class ShellWindow
     /// <summary>キャレット行と重ならないよう、右クリック位置から少し下へずらす量。</summary>
     private const double HoverPopupCaretGap = 18;
 
+    private readonly EditorHoverRequestController _hoverRequestController = new();
+    private CSharpHoverFallbackController? _csharpHoverFallbackController;
     private Popup? _hoverPopup;
     private TextBox? _hoverPopupText;
-    /// <summary>取得中に別の位置で開き直されたとき、古い応答を出さないための番兵。</summary>
-    private object? _hoverToken;
+
+    private CSharpHoverFallbackController CSharpHoverFallback
+        => _csharpHoverFallbackController ??= new(
+            () => _solutionModel?.Current, FindOpenCSharpEditorTexts);
 
     private MenuItem BuildHoverInfoMenuItem(VimEditorControl control, Point anchor)
     {
@@ -41,13 +45,12 @@ public partial class ShellWindow
 
     private async Task ShowHoverInfoAsync(VimEditorControl control, Point anchor)
     {
-        var token = new object();
-        _hoverToken = token;
+        var requestId = _hoverRequestController.BeginRequest();
 
         // 右クリックでキャレットはその位置へ移っている（選択の内側なら選択の位置のまま）。
         var caret = control.Caret;
         var text = await RequestHoverTextAsync(control, caret.Line, caret.Column);
-        if (!ReferenceEquals(_hoverToken, token)) return;
+        if (!_hoverRequestController.IsCurrent(requestId)) return;
 
         // 「説明が無い」ことも同じ場所に出す。ここを黙って終わらせると、
         // 押しても何も起きない項目に戻ってしまう。
@@ -56,23 +59,18 @@ public partial class ShellWindow
 
     private async Task<string?> RequestHoverTextAsync(VimEditorControl control, int line, int character)
     {
-        if (control.LspDocument is { IsConnected: true } document)
-        {
-            try
-            {
-                if (await document.RequestHoverAsync(line, character) is { Value: { } value } &&
-                    !string.IsNullOrWhiteSpace(value))
-                    return value;
-            }
-            catch (OperationCanceledException) { return null; }
-            catch { /* サーバーが応えないだけ。下の Roslyn へ落とす。 */ }
-        }
-
-        if (control.FilePath is not { Length: > 0 } path) return null;
         try
         {
-            return await RequestCSharpHoverFallbackAsync(
-                path, control.Text, line, character, CancellationToken.None);
+            Func<Task<string?>>? requestLsp = control.LspDocument is { IsConnected: true } document
+                ? async () => (await document.RequestHoverAsync(line, character))?.Value
+                : null;
+            return await _hoverRequestController.RequestTextAsync(requestLsp, () =>
+            {
+                if (control.FilePath is not { Length: > 0 } path)
+                    return Task.FromResult<string?>(null);
+                return RequestCSharpHoverFallbackAsync(
+                    path, control.Text, line, character, CancellationToken.None);
+            });
         }
         catch (OperationCanceledException) { return null; }
         catch (Exception ex)
@@ -86,13 +84,7 @@ public partial class ShellWindow
     /// <c>BuildEditorControl</c> の <c>HostHoverProvider</c> もここを通る（同じ答えにする）。</summary>
     private Task<string?> RequestCSharpHoverFallbackAsync(
         string path, string source, int line, int character, CancellationToken cancellationToken)
-    {
-        if (!IsCSharpFallbackTarget(path)) return Task.FromResult<string?>(null);
-
-        var openTexts = FindOpenCSharpEditorTexts();
-        return Task.Run(() => CSharpHoverService.Get(
-            _solutionModel?.Current, path, source, line, character, openTexts), cancellationToken);
-    }
+        => CSharpHoverFallback.RequestAsync(path, source, line, character, cancellationToken);
 
     private void ShowHoverPopup(VimEditorControl control, Point anchor, string text)
     {

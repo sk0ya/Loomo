@@ -3,141 +3,36 @@ namespace sk0ya.Loomo.App.Views;
 public partial class ShellWindow {
     private const double OverviewCardWidth = 320;
     private const double CardAspect = 3.0 / 2.0;
-    private const double WingRestOpacity = 0.90;
     private double _layoutWingSourceWidth;
-    /// <summary>今の描画元ホストを組んだ仮想幅（0＝未構築）。変わらない限りホストは据え置ける。</summary>
-    private double _thumbnailSourceWidth;
     private bool _layoutWingBuildQueued;
     private bool _layoutWingBuildPending;
     /// <summary>袖カードの列間の隙間（2列表示のとき）。</summary>
     private const double WingCardGap = 6;
-    /// <summary>実際に組む列数（設定「袖の列数」＝1列／2列。設定値が壊れていても 1〜2 に丸める）。
-    /// 袖幅が狭い場合も設定どおり2列で組む。カードは列間隔とスクロールバーぶんを差し引いた幅に
-    /// 収めるため、細くはなるが横にはみ出さない。</summary>
-    private int WingColumnCount
-        => Math.Clamp(_settings.Appearance.WingColumns, 1, 2);
-    /// <summary>2列のときのカード幅。実際のビューポート幅（縦スクロールバー表示後）から
-    /// 列間の隙間を引いて割る。初回の未配置時だけ袖幅から仮算出する。</summary>
-    private double TwoColumnCardWidth
-    {
-        get
-        {
-            var viewportWidth = WingScrollViewer?.ViewportWidth ?? 0;
-            var availableWidth = viewportWidth > 0 ? viewportWidth : Math.Max(0, _wingWidth - 10);
-            return Math.Max(1, (availableWidth - WingCardGap) / 2);
-        }
-    }
-    /// <summary>袖カードの幅。</summary>
-    private double CurrentWingCardWidth
-        => _isWingCollapsed
-            ? 48
-            : WingColumnCount <= 1 ? Math.Max(150, _wingWidth - 10) : TwoColumnCardWidth;
     /// <summary>袖の候補（タブで絞る<b>前</b>）。有効だが Main に出ていないペイン。
     /// 「袖そのものを出すか」はこちらで判断する——選択中のタブが空でも、ほかのタブにカードが
     /// あるなら袖ごと畳んではいけない（畳むとタブに戻れなくなる）。</summary>
     private IReadOnlyList<PaneKind> WingCandidates()
-        => (_stageActive
-            ? StageOrder.Where(k => !OnStage(k) && IsSessionEnabled(k))
-            : StageOrder.Where(k => IsSessionEnabled(k) && !IsShownInMain(k))).ToList();
+        => StageCardPolicy.WingCandidates(
+            StageModeCoordinator.StageOrder, _stageActive, OnStage, IsSessionEnabled, IsShownInMain);
     /// <summary>いま袖に並べるペイン（＝候補のうち選択中のタブぶん）。</summary>
     private IReadOnlyList<PaneKind> WingKinds()
         => WingCandidates().Where(InActiveWingTab).ToList();
-    /// <summary>ミニチュアの描画元を <paramref name="sourceSize"/>（= <see cref="StageThumbnailPlanner"/> が
-    /// 現在の Main 領域から決めた仮想サイズ）でレイアウトする。</summary>
-    private void ArrangeThumbnailSource(PaneKind kind, Size sourceSize)
-        => PaneLayoutDebugLog.Time($"  ArrangeThumbnailSource({kind}) {sourceSize.Width:0}x{sourceSize.Height:0}",
-            () => ArrangeThumbnailSourceCore(kind, sourceSize));
-    private void ArrangeThumbnailSourceCore(PaneKind kind, Size sourceSize) {
-        var element = _paneElements[kind];
-        var w = Math.Max(sourceSize.Width, 1);
-        var h = Math.Max(sourceSize.Height, 1);
-        var host = new Grid {
-            Width = w, Height = h, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top, Clip = new RectangleGeometry(new Rect(0, 0, w, h)), };
-        if (element.Parent is Panel parent)
-            parent.Children.Remove(element);
-        element.Visibility = Visibility.Visible;
-        host.Children.Add(element);
-        StageSourceArea.Children.Add(host);
-        var clamped = new Size(w, h);
-        host.Measure(clamped);
-        host.Arrange(new Rect(clamped));
-        host.UpdateLayout();
-        _stageThumbnailHosts[kind] = host;
-    }
-    /// <summary>描画元ホストを必要な集合へ差分で寄せる。据え置けるものは一切触らない
-    /// （ペインの親を付け替える行為自体が Measure/Arrange と同等に高いため）。</summary>
-    private void SyncThumbnailSources(IReadOnlyCollection<PaneKind> required, Size sourceSize) {
-        // Browser も他ペインと同じく「本体をそのまま縮小表示」する。以前はカード専用の
-        // WebView2 に同じ URL をもう一度読ませていたが、それは縮小表示ではなく二重読み込みで、
-        // 同じページの音声が二重（読み込み差の分ズレて）鳴っていた。
-        foreach (var kind in required.Where(kind =>
-                     StageThumbnailPlanner.UsesSnapshotThumbnail(kind)
-                     && SnapshotThumbnailNeedsSeed(kind)))
-            CaptureComposedPaneThumbnail(kind);
-        var liveRequired = required.Where(kind => !StageThumbnailPlanner.UsesSnapshotThumbnail(kind)).ToArray();
-        var sizeChanged = StageThumbnailPlanner.SourceSizeChanged(_thumbnailSourceWidth, sourceSize.Width);
-        var reusable = _stageThumbnailHosts.Keys.Where(IsThumbnailSourceIntact).ToArray();
-        var plan = StageThumbnailPlanner.PlanSources(
-            _stageThumbnailHosts.Keys.ToArray(), reusable, liveRequired);
-        PaneLayoutDebugLog.Log(
-            $"SyncThumbnailSources keep={plan.Keep.Count} add={plan.Add.Count} remove={plan.Remove.Count}"
-            + $" sizeChanged={sizeChanged}");
-        foreach (var kind in plan.Remove)
-            ReleaseThumbnailSource(kind);
-        foreach (var kind in plan.Add)
-            ArrangeThumbnailSource(kind, sourceSize);
-        // 幅が変わっただけなら据え置いたまま寸法を合わせ直す。ここで作り直していたころは、
-        // 仮想幅（800）より狭い窓ではリサイズの1刻みごとに全ペインを外して繋ぎ直していた
-        // ——付け替えは Git 15ms / Diff 20ms / TsIde 40ms で、まさに避けたかったコスト。
-        if (sizeChanged)
-            foreach (var kind in plan.Keep)
-                ResizeThumbnailSource(kind, sourceSize);
-        _thumbnailSourceWidth = sourceSize.Width;
-    }
-    /// <summary>ホストが健在で、そのペインを今も抱えているか。他の経路（タイル再構築・ワークスペース
-    /// 切替など）でペインが外されていたら false ＝作り直す。差分の取りこぼしで空のミニチュアが
-    /// 残らないための保険。</summary>
-    private bool IsThumbnailSourceIntact(PaneKind kind)
-        => _stageThumbnailHosts.TryGetValue(kind, out var host)
-        && host.Parent is not null
-        && host.Children.Count == 1
-        && ReferenceEquals(host.Children[0], _paneElements[kind]);
-    /// <summary>据え置いた描画元の寸法だけ合わせ直す（中のペインは親を替えない）。
-    /// 窓を狭めたときにミニチュアが古い幅のまま残らないための追従は、これで足りる。</summary>
-    private void ResizeThumbnailSource(PaneKind kind, Size sourceSize) {
-        if (!_stageThumbnailHosts.TryGetValue(kind, out var host))
-            return;
-        var w = Math.Max(sourceSize.Width, 1);
-        var h = Math.Max(sourceSize.Height, 1);
-        if (Math.Abs(host.Width - w) < 0.5 && Math.Abs(host.Height - h) < 0.5)
-            return;
-        host.Width = w;
-        host.Height = h;
-        host.Clip = new RectangleGeometry(new Rect(0, 0, w, h));
-        var clamped = new Size(w, h);
-        host.Measure(clamped);
-        host.Arrange(new Rect(clamped));
-        host.UpdateLayout();
-    }
-    private void ReleaseThumbnailSource(PaneKind kind) {
-        if (!_stageThumbnailHosts.Remove(kind, out var host))
-            return;
-        host.Children.Clear();   // ペインは親なしへ戻す（呼び出し側が別の場所へ据える）
-        StageSourceArea.Children.Remove(host);
-    }
-    /// <summary>描画元を全部捨てる（モード切替・ワークスペース切替など、据え置きが成り立たない場面用）。</summary>
-    private void ClearThumbnailSources() {
-        foreach (var host in _stageThumbnailHosts.Values)
-            host.Children.Clear();
-        StageSourceArea.Children.Clear();
-        _stageThumbnailHosts.Clear();
-        _thumbnailSourceWidth = 0;
-    }
+    private StageThumbnailSourceController? _stageThumbnailSources;
+    private StageThumbnailSourceController StageThumbnailSources
+        => _stageThumbnailSources ??= new StageThumbnailSourceController(StageSourceArea, _paneElements);
+    private StageCardPresenter? _stageCardPresenter;
+    private StageCardPresenter StageCardPresentation
+        => _stageCardPresenter ??= new StageCardPresenter(
+            this, StageThumbnailSources, _paneElements, AttachActivityBadge,
+            kind => { if (_stageActive) BeginStageDrag(kind); else BeginWingDrag(kind); });
+
+    /// <summary>描画元を全部捨て、通常レイアウトへペインを戻す。</summary>
+    private void ClearThumbnailSources() => StageThumbnailSources.Clear();
     private void RebuildWings() {
         try {
             PaneLayoutDebugLog.Time("RebuildWings", RebuildWingsCore);
         }
-        catch (InvalidOperationException ex) when (IsTreeWalkMutation(ex)) {
+        catch (InvalidOperationException ex) when (StageCardPolicy.IsTreeWalkMutation(ex.Message)) {
             // ScrollViewer.OnLayoutUpdated／バインディング更新の再入中は、Dispatcher に送った処理でも
             // WPF が論理ツリーを歩いている場合がある。ここで落ちると Loomo 本体だけでなく、共有している
             // WebView2 のブラウザプロセスまで孤児化し、次回起動の WebView2 初期化を壊す。
@@ -148,10 +43,6 @@ public partial class ShellWindow {
         }
     }
 
-    private static bool IsTreeWalkMutation(InvalidOperationException ex)
-        => ex.Message.Contains("論理子を変更できません", StringComparison.Ordinal)
-            || (ex.Message.Contains("logical child", StringComparison.OrdinalIgnoreCase)
-                && ex.Message.Contains("tree walk", StringComparison.OrdinalIgnoreCase));
     private void RebuildWingsCore() {
         PaneLayoutDebugLog.Log("RebuildWings()", withCaller: true);
         if (CollapseWingsForFullscreen())
@@ -165,34 +56,18 @@ public partial class ShellWindow {
         WingStrip.Children.Clear();
         if (!_stageActive)
             BuildLayoutWingSources();
-        var width = CurrentWingCardWidth;
+        var cardLayout = StageThumbnailPlanner.PlanWingCards(
+            _settings.Appearance.WingColumns, _isWingCollapsed, _wingWidth,
+            WingScrollViewer?.ViewportWidth ?? 0, WingCardGap);
+        var width = cardLayout.CardWidth;
         var cards = WingKinds()
             .Select(kind => _stageActive
                 ? BuildSessionCard(kind, width, isOverview: false, iconOnly: _isWingCollapsed)
                 : BuildLayoutWingCard(kind, width, iconOnly: _isWingCollapsed))
             .ToList();
-        foreach (var row in ArrangeWingRows(cards))
+        foreach (var row in StageCardPresenter.ArrangeWingRows(cards, cardLayout.Columns, WingCardGap))
             WingStrip.Children.Add(row);
         UpdateWingTabs();
-    }
-    /// <summary>袖カードを列数ぶんずつ横に束ねて行にする（1列ならカードをそのまま積む）。
-    /// 行を自前で組むのは、<c>UniformGrid</c> が行の高さを袖の高さで等分してカードが縦に間延びし、
-    /// <c>WrapPanel</c> は実効幅の 1px 差で3枚目が回り込む／回り込まないが変わるため。</summary>
-    private IEnumerable<UIElement> ArrangeWingRows(IReadOnlyList<Border> cards) {
-        var columns = _isWingCollapsed ? 1 : WingColumnCount;
-        if (columns <= 1)
-            return cards;
-        var rows = new List<UIElement>();
-        for (var i = 0; i < cards.Count; i += columns) {
-            var row = new StackPanel { Orientation = Orientation.Horizontal };
-            for (var j = i; j < Math.Min(i + columns, cards.Count); j++) {
-                if (j > i)
-                    cards[j].Margin = new Thickness(WingCardGap, 4, 0, 4);   // 2枚目以降の左に列間の隙間
-                row.Children.Add(cards[j]);
-            }
-            rows.Add(row);
-        }
-        return rows;
     }
     /// <summary>袖のタブ（メイン／サブ／すべて）の選択印を現在のタブへ合わせる。</summary>
     private void UpdateWingTabs() {
@@ -216,7 +91,7 @@ public partial class ShellWindow {
     private void OnWingTabsSizeChanged(object sender, SizeChangedEventArgs e) => UpdateWingTabLabels();
     private void BuildLayoutWingSources() {
         _layoutWingSourceWidth = StageSourceArea.ActualWidth;
-        SyncThumbnailSources(
+        StageThumbnailSources.Sync(
             WingKinds(), StageThumbnailPlanner.SourceSize(_layoutWingSourceWidth, CardAspect));
     }
     /// <summary>袖を出さない状況（F11 の全画面、および袖なしのドックモード）なら畳んで true。
@@ -309,47 +184,33 @@ public partial class ShellWindow {
         UpdateWingToolbar();
     }
     private Border BuildSessionCard(PaneKind kind, double width, bool isOverview, bool iconOnly = false) {
-        if (StageThumbnailPlanner.UsesSnapshotThumbnail(kind))
-            return BuildCard(kind, width, SnapshotThumbnailBrush(kind), isOverview,
-                iconOnly,
-                () => { SetStagePane(kind); FocusPane(kind); });
-        Visual source = _stageThumbnailHosts.TryGetValue(kind, out var host) ? host : _paneElements[kind];
-        return BuildCard(kind, width, VisualThumbnailBrush(source), isOverview,
-            iconOnly,
+        return StageCardPresentation.BuildSessionCard(
+            kind, width, isOverview, iconOnly, isOverview && OnStage(kind),
             () => { SetStagePane(kind); FocusPane(kind); });
     }
     private Border BuildLayoutWingCard(PaneKind kind, double width, bool iconOnly = false) {
-        var brush = StageThumbnailPlanner.UsesSnapshotThumbnail(kind)
-            ? SnapshotThumbnailBrush(kind)
-            : VisualThumbnailBrush(_stageThumbnailHosts.TryGetValue(kind, out var host) ? host : _paneElements[kind]);
-        return BuildCard(kind, width, brush, isOverview: false, iconOnly, () => {
-                if (_zoomedPane is not null) {
-                    if (IsPaneVisible(kind))
-                        ZoomPane(kind);   // ズーム中の袖カード＝そのペインを舞台（ズーム）へ昇格
-                    return;
-                }
-                if (IsPaneVisible(kind)) {
-                    FocusPane(kind);
-                    return;
-                }
-                PlacePaneByBehavior(kind);
+        return StageCardPresentation.BuildLayoutWingCard(kind, width, iconOnly, onStage: false, onClick: () => {
+            if (_zoomedPane is not null) {
+                if (IsPaneVisible(kind))
+                    ZoomPane(kind);   // ズーム中の袖カード＝そのペインを舞台（ズーム）へ昇格
+                return;
+            }
+            if (IsPaneVisible(kind)) {
                 FocusPane(kind);
-            });
+                return;
+            }
+            PlacePaneByBehavior(kind);
+            FocusPane(kind);
+        });
     }
     private PaneKind? TopLeftPane() {
-        PaneKind? best = null;
-        Rect bestRect = default;
+        var positioned = new List<PaneStagePosition>();
         foreach (var leaf in AllLeaves()) {
             if (leaf.Hidden || !TryGetPaneRect(leaf.Kind, out var rect))
                 continue;
-            if (best is null
-                || rect.Y < bestRect.Y - 0.5
-                || (Math.Abs(rect.Y - bestRect.Y) <= 0.5 && rect.X < bestRect.X)) {
-                best = leaf.Kind;
-                bestRect = rect;
-            }
+            positioned.Add(new PaneStagePosition(leaf.Kind, rect.X, rect.Y));
         }
-        return best ?? AllLeaves().FirstOrDefault(l => !l.Hidden)?.Kind;
+        return StageCardPolicy.TopLeftPane(positioned, PaneLayoutTree.FirstVisibleLeaf(_root)?.Kind);
     }
     /// <summary>メインとサブの並べ方（設定）。Columns＝横に並べる（サブ＝右）、Rows＝縦に並べる（サブ＝下）。</summary>
     private SplitKind SubAxis()
@@ -361,186 +222,20 @@ public partial class ShellWindow {
         var (main, sub) = PaneLayoutTree.MainAndSub(_root, SubAxis());
         return (main?.Kind ?? AllLeaves().FirstOrDefault(l => !l.Hidden)?.Kind, sub?.Kind);
     }
-    private static Brush VisualThumbnailBrush(Visual source) {
-        var sourceWidth = source is FrameworkElement sourceElement
-            ? double.IsFinite(sourceElement.Width) && sourceElement.Width > 0
-                ? sourceElement.Width
-                : sourceElement.ActualWidth
-            : 1;
-        var sourceHeight = source is FrameworkElement sourceElement2
-            ? double.IsFinite(sourceElement2.Height) && sourceElement2.Height > 0
-                ? sourceElement2.Height
-                : sourceElement2.ActualHeight
-            : 1;
-        return new VisualBrush(source) {
-            ViewboxUnits = BrushMappingMode.Absolute,
-            Viewbox = new Rect(0, 0, Math.Max(sourceWidth, 1), Math.Max(sourceHeight, 1)),
-            Stretch = Stretch.Uniform,
-            AlignmentX = AlignmentX.Left,
-            AlignmentY = AlignmentY.Top,
-        };
-    }
-    private ImageBrush SnapshotThumbnailBrush(PaneKind kind) {
-        if (_webThumbnailBrushes.TryGetValue(kind, out var existing))
-            return existing;
-        var brush = new ImageBrush {
-            Stretch = Stretch.Uniform,
-            AlignmentX = AlignmentX.Left,
-            AlignmentY = AlignmentY.Top,
-        };
-        _webThumbnailBrushes[kind] = brush;
-        return brush;
-    }
 
-    /// <summary>同期 RenderTargetBitmap は初回の空カード回避にだけ使う。いったん画像を得た後は
-    /// WebView2 の非同期 CapturePreview 更新を再利用し、分割ドラッグ完了時の UI 停止を避ける。</summary>
-    private bool SnapshotThumbnailNeedsSeed(PaneKind kind)
-        => !_webThumbnailBrushes.TryGetValue(kind, out var brush) || brush.ImageSource is null;
-
-    /// <summary>
-    /// 現在画面へ合成済みのペインを即座にカード画像へ写す。WebView2 の API キャプチャは非同期で、
-    /// 非表示化と競合すると失敗し得るため、これは初回表示を保証する同期フォールバック。
-    /// 元要素を再ペアレントもリサイズもしない。
-    /// </summary>
-    private void CaptureComposedPaneThumbnail(PaneKind kind) {
-        if (!_paneElements.TryGetValue(kind, out var element)
-            || element.ActualWidth <= 0 || element.ActualHeight <= 0)
-            return;
-        try {
-            const double maxWidth = StageThumbnailPlanner.VirtualWidth * 2;
-            var scale = Math.Min(1, maxWidth / element.ActualWidth);
-            var width = Math.Max(1, (int)Math.Ceiling(element.ActualWidth * scale));
-            var height = Math.Max(1, (int)Math.Ceiling(element.ActualHeight * scale));
-            var drawing = new DrawingVisual();
-            using (var dc = drawing.RenderOpen()) {
-                dc.PushTransform(new ScaleTransform(scale, scale));
-                dc.DrawRectangle(new VisualBrush(element), null,
-                    new Rect(0, 0, element.ActualWidth, element.ActualHeight));
-            }
-            var bitmap = new System.Windows.Media.Imaging.RenderTargetBitmap(
-                width, height, 96, 96, PixelFormats.Pbgra32);
-            bitmap.Render(drawing);
-            bitmap.Freeze();
-            SnapshotThumbnailBrush(kind).ImageSource = bitmap;
-        } catch {
-            // 合成面の取得に失敗しても、前回画像または後続の CapturePreviewAsync を使用する。
-        }
-    }
-    private Border BuildCard(PaneKind kind, double width, Brush thumbnail, bool isOverview, bool iconOnly, Action onClick) {
-        var borderBrush = (Brush)FindResource("Border");
-        var accent = (Brush)FindResource("Accent");
-        var onStage = isOverview && OnStage(kind);
-        var height = iconOnly ? width : Math.Round(width / CardAspect);
-        var card = new Border {
-            Width = width, Height = height,
-            Margin = isOverview ? new Thickness(10) : iconOnly ? new Thickness(0) : new Thickness(0, 4, 0, 4),
-            CornerRadius = new CornerRadius(iconOnly ? 0 : 6),
-            Background = iconOnly ? Brushes.Transparent : (Brush)FindResource("Panel"),
-            BorderBrush = iconOnly ? Brushes.Transparent : onStage ? accent : borderBrush,
-            BorderThickness = iconOnly ? new Thickness(0) : new Thickness(1),
-            Cursor = Cursors.Hand, ToolTip = isOverview ? PaneLabel(kind) : $"{PaneLabel(kind)} — クリックで舞台へ",
-            Clip = new RectangleGeometry(new Rect(0, 0, width, height), iconOnly ? 0 : 6, iconOnly ? 0 : 6), };
-        var root = new Grid { ClipToBounds = true };
-        if (iconOnly) {
-            root.Children.Add(new System.Windows.Shapes.Path {
-                Data = TryFindResource(PaneIconKey(kind)) as Geometry,
-                Width = 16, Height = 16, Stretch = Stretch.None,
-                Stroke = (Brush)FindResource("FgDim"), StrokeThickness = 1.3,
-                StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round,
-                StrokeLineJoin = PenLineJoin.Round,
-                HorizontalAlignment = HorizontalAlignment.Center,
-                VerticalAlignment = VerticalAlignment.Center,
-            });
-        } else {
-            root.Children.Add(new Border {
-                IsHitTestVisible = false, Background = thumbnail, });
-            root.Children.Add(new Border {
-                VerticalAlignment = VerticalAlignment.Bottom, Background = new SolidColorBrush(Color.FromArgb(0xB4, 0x10, 0x10, 0x10)), Child = new TextBlock {
-                    Text = PaneLabel(kind), TextTrimming = TextTrimming.CharacterEllipsis,
-                    FontSize = UiFontManager.Scaled(isOverview ? 12 : 11), Margin = new Thickness(8, 3, 8, 3), Foreground = Brushes.White, }, });
-        }
-        card.Child = root;
-        AttachActivityBadge(root, kind, isOverview);
-        var rest = isOverview ? 1.0 : WingRestOpacity;
-        card.Opacity = rest;
-        card.MouseEnter += (_, _) => {
-            if (iconOnly)
-                card.Background = (Brush)FindResource("BgAlt");
-            else
-                card.BorderBrush = accent;
-            card.Opacity = 1;
-        };
-        card.MouseLeave += (_, _) => {
-            if (iconOnly) {
-                card.Background = Brushes.Transparent;
-                card.BorderBrush = Brushes.Transparent;
-            } else {
-                card.BorderBrush = onStage ? accent : borderBrush;
-            }
-            card.Opacity = rest;
-        };
-        card.MouseLeftButtonUp += (_, e) => {
-            _wingDragArmed = false;
-            e.Handled = true; // 俯瞰レイヤの背景クリック（＝俯瞰を閉じる）と区別する
-            onClick();
-        };
-        card.PreviewMouseLeftButtonDown += (_, e) => {
-            _wingDragStart = e.GetPosition(this);
-            _wingDragArmed = true;
-        };
-        card.PreviewMouseMove += (_, e) => {
-            if (isOverview || !_wingDragArmed || e.LeftButton != MouseButtonState.Pressed)
-                return;
-            var pos = e.GetPosition(this);
-            if (Math.Abs(pos.X - _wingDragStart.X) < SystemParameters.MinimumHorizontalDragDistance
-                && Math.Abs(pos.Y - _wingDragStart.Y) < SystemParameters.MinimumVerticalDragDistance)
-                return;
-            _wingDragArmed = false;
-            if (_stageActive)
-                BeginStageDrag(kind);
-            else
-                BeginWingDrag(kind);
-        };
-        return card;
-    }
 
     /// <summary>
     /// WebView2 の現在表示をカード用 PNG として非同期取得する。連続更新は最新だけを採用し、
     /// 失敗時は前回画像を維持する。実 WebView のサイズ・親・Visibility は一切変更しない。
     /// </summary>
-    private async Task CaptureWebThumbnailAsync(PaneKind kind) {
-        if (!StageThumbnailPlanner.UsesSnapshotThumbnail(kind))
-            return;
-        var sequence = _webThumbnailCaptureSequences.GetValueOrDefault(kind) + 1;
-        _webThumbnailCaptureSequences[kind] = sequence;
-        // NavigationCompleted 直後や本文差し替え直後の最終描画フレームを待つ。
-        await Task.Delay(80);
-        if (_webThumbnailCaptureSequences.GetValueOrDefault(kind) != sequence)
-            return;
-        var core = kind switch {
-            PaneKind.EditorSupport => _editorSupport.WebView.Core,
-            PaneKind.Browser => ActiveBrowserView.TryCore(),
-            _ => null,
-        };
-        if (core is null)
-            return;
-        try {
-            using var stream = new MemoryStream();
-            await core.CapturePreviewAsync(CoreWebView2CapturePreviewImageFormat.Png, stream);
-            if (_webThumbnailCaptureSequences.GetValueOrDefault(kind) != sequence)
-                return;
-            stream.Position = 0;
-            var image = new System.Windows.Media.Imaging.BitmapImage();
-            image.BeginInit();
-            image.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
-            image.StreamSource = stream;
-            image.EndInit();
-            image.Freeze();
-            SnapshotThumbnailBrush(kind).ImageSource = image;
-        } catch {
-            // 非表示化・ナビゲーション競合時は取得できないことがある。前回画像をそのまま使う。
-        }
-    }
+    private Task CaptureWebThumbnailAsync(PaneKind kind)
+        => StageThumbnailSources.CaptureWebThumbnailAsync(kind, ResolveThumbnailWebCore);
+
+    private CoreWebView2? ResolveThumbnailWebCore(PaneKind kind) => kind switch {
+        PaneKind.EditorSupport => _editorSupport.WebView.Core,
+        PaneKind.Browser => ActiveBrowserView.TryCore(),
+        _ => null,
+    };
     private Border BuildLiveSlot(PaneKind kind) {
         var element = _paneElements[kind];
         element.Visibility = Visibility.Visible;

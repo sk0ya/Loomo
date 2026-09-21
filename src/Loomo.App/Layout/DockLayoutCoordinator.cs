@@ -102,6 +102,32 @@ public sealed class DockLayoutCoordinator
         return true;
     }
 
+    /// <summary>ドック表示を保存形式へ投影する。</summary>
+    public DockSnapshot CaptureSnapshot() => new()
+    {
+        Placements = ChangedRegions()
+            .Select(pair => new DockPlacementSnapshot { Kind = pair.Key, Region = pair.Value })
+            .ToList(),
+        CenterPane = CenterPane,
+        CenterClosed = CenterClosed,
+        BottomPane = BottomPane,
+        RightPane = RightPane,
+        BottomHeight = BottomHeight,
+        RightWidth = RightWidth,
+    };
+
+    /// <summary>保存形式からドック状態を復元する。</summary>
+    public void Restore(bool active, DockSnapshot? snapshot)
+        => Restore(active,
+            snapshot?.Placements?.Select(placement =>
+                new KeyValuePair<PaneKind, DockRegion>(placement.Kind, placement.Region)),
+            snapshot?.CenterPane,
+            snapshot?.CenterClosed ?? false,
+            snapshot?.BottomPane,
+            snapshot?.RightPane,
+            snapshot?.BottomHeight,
+            snapshot?.RightWidth);
+
     public DockRegion RegionOf(PaneKind kind)
         => _regions.TryGetValue(kind, out var region) ? region : DockRegion.Center;
 
@@ -121,6 +147,46 @@ public sealed class DockLayoutCoordinator
         DockRegion.Right => RightPane,
         _ => CenterPane,
     };
+
+    /// <summary>操作対象を画面に出ているペインへ寄せる。</summary>
+    public PaneKind? ResolveShownPane(PaneKind? preferred)
+        => preferred is { } kind && IsOpen(kind)
+            ? kind
+            : OpenPanes().Cast<PaneKind?>().FirstOrDefault();
+
+    /// <summary>現在のモードに並べるペインを選ぶ。</summary>
+    public static IEnumerable<PaneKind> PaneOrderForMode(
+        IEnumerable<PaneKind> stageOrder, bool dockActive)
+        => dockActive ? stageOrder.Where(IsDockable) : stageOrder;
+
+    /// <summary>親から外さず各ドック領域に据えておくペインを返す。</summary>
+    public IReadOnlyCollection<PaneKind> PanesToKeepAttached(
+        bool fullscreen, Func<IEnumerable<PaneKind>> wingKinds)
+        => fullscreen ? Array.Empty<PaneKind>()
+            : Active ? OpenPanes().ToList()
+            : wingKinds().ToArray();
+
+    /// <summary>軌跡へ保存する現在のドック配置キー。</summary>
+    public string? LayoutKey()
+        => Active
+            ? $"{CenterPane?.ToString() ?? "-"}+{BottomPane?.ToString() ?? "-"}+{RightPane?.ToString() ?? "-"}"
+            : null;
+
+    /// <summary>領域内を指定方向へ巡回する。対象が1つ以下なら切替先は無い。</summary>
+    public PaneKind? NextInRegion(DockRegion region, PaneKind? current, int direction, Func<PaneKind, bool> applicable)
+    {
+        var panes = PanesIn(region).Where(applicable).ToList();
+        if (panes.Count == 0)
+            return null;
+        if (current is null)
+            return panes[0];
+        if (panes.Count <= 1)
+            return null;
+        var index = panes.IndexOf(current.Value);
+        if (index < 0)
+            return panes[0];
+        return panes[((index + direction) % panes.Count + panes.Count) % panes.Count];
+    }
 
     /// <summary>いまその領域に出て見えているペインか。</summary>
     public bool IsOpen(PaneKind kind) => Active && OpenPaneIn(RegionOf(kind)) == kind;

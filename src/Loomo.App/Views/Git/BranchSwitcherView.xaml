@@ -194,17 +194,14 @@
 
             <!-- ===== ブランチ一覧 =====
                  クリック＝リーフは選択して操作メニューを表示、
-                 フォルダ／見出しは開閉（OnTreeClick）。 -->
+                 フォルダ／見出しは開閉し、ブランチ行は操作メニューを開く。 -->
             <TreeView x:Name="Tree" MaxHeight="360"
                       Background="Transparent" BorderThickness="0"
                       Foreground="{DynamicResource Fg}"
                       ItemsSource="{Binding FilteredBranchTree}"
                       ItemContainerStyle="{StaticResource BranchTreeItem}"
                       ItemTemplate="{StaticResource BranchNodeTemplate}"
-                      ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                      PreviewMouseLeftButtonUp="OnTreeClick"
-                      PreviewMouseRightButtonDown="OnTreeRightClickSelect"
-                      ContextMenuOpening="OnTreeContextMenuOpening">
+                      ScrollViewer.HorizontalScrollBarVisibility="Disabled">
                 <!-- 行のクリック／右クリック＝そのブランチだけに効く操作。リポジトリ全体の同期帯とは別に、
                      選択したローカルブランチのプル／プッシュもここから実行できる。 -->
                 <TreeView.ContextMenu>

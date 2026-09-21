@@ -7,7 +7,7 @@ namespace sk0ya.Loomo.App.Services;
 /// （<c>EditorSupportWebViewController.ReloadShowing</c>）はホスト側にあるが、「そもそも見張るのか」
 /// 「届いた変更で読み直してよいのか」を決めているのはこの2つの関数で、そこが間違うと
 /// <b>隠れたペインや別ファイルのために WebView2 を読み直す</b>ことになる。ホストの partial に埋めると
-/// テストから触れないので外へ出してある（§26.9 で <c>EditorSupportPageState</c> を切り出したのと同じ理由）。
+/// テストから触れないので外へ出してある（§26.9 で <c>EditorSupportPageStateMachine</c> を切り出したのと同じ理由）。
 /// </para>
 /// </summary>
 public static class EditorSupportAutoReload

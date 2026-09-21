@@ -3,7 +3,7 @@ using System.Windows;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Interop;
-using System.Windows.Media;
+using sk0ya.Loomo.App.Services.Infrastructure;
 
 namespace sk0ya.Loomo.App.Views;
 
@@ -39,7 +39,8 @@ public partial class SettingsWindow : Window
     /// 最大化中のドラッグは掴んだ位置への復元処理が要るので、ここでは受けない（ダブルクリックで戻せる）。</summary>
     private void OnCaptionMouseDown(object sender, MouseButtonEventArgs e)
     {
-        if (IsWithinButton(e.OriginalSource))
+        if (WpfTreeTraversal.FindVisualAncestor<ButtonBase>(
+                e.OriginalSource as DependencyObject) is not null)
             return;
         if (e.ClickCount == 2)
         {
@@ -53,30 +54,15 @@ public partial class SettingsWindow : Window
         SendMessage(new WindowInteropHelper(this).Handle, WM_NCLBUTTONDOWN, HTCAPTION, IntPtr.Zero);
     }
 
-    private static bool IsWithinButton(object source)
-    {
-        for (var d = source as DependencyObject; d is not null; d = VisualTreeHelper.GetParent(d))
-            if (d is ButtonBase)
-                return true;
-        return false;
-    }
-
     /// <summary>Esc で閉じる。キーキャプチャ中（KeyCaptureBox にフォーカス）は取消に使うので横取りしない。</summary>
     private void OnPreviewKeyDown(object sender, KeyEventArgs e)
     {
-        if (e.Key != Key.Escape || IsWithinCaptureBox(e.OriginalSource as DependencyObject))
+        if (e.Key != Key.Escape || WpfTreeTraversal.FindVisualAncestor<KeyCaptureBox>(
+                e.OriginalSource as DependencyObject) is not null)
             return;
 
         Close();
         e.Handled = true;
-    }
-
-    private static bool IsWithinCaptureBox(DependencyObject? source)
-    {
-        for (var node = source; node is not null; node = VisualTreeHelper.GetParent(node))
-            if (node is KeyCaptureBox)
-                return true;
-        return false;
     }
 
     private const int WM_NCLBUTTONDOWN = 0x00A1;

@@ -147,7 +147,7 @@ public sealed class FolderTreeContextMenuTests : IDisposable
         Assert.False(b.IsExpanded);
     }
 
-    // ===== 区切り線の出し分け（FolderTreeView.NormalizeSeparators） =====
+    // ===== 区切り線の出し分け（FileContextMenuPresenter.NormalizeSeparators） =====
     // このメニューは項目の大半が条件付き表示なので、XAML に静的に置いた区切り線をそのまま出すと
     // 「先頭・末尾に線」「線が2本続く」といった見え方になる。
 
@@ -158,7 +158,7 @@ public sealed class FolderTreeContextMenuTests : IDisposable
         {
             var menu = BuildMenu("sep", "hidden", "sep", "visible", "sep", "visible", "sep", "hidden", "sep");
 
-            FolderTreeView.NormalizeSeparators(menu);
+            FileContextMenuPresenter.NormalizeSeparators(menu);
 
             // 残るのは可視項目に挟まれた3本目だけ。先頭・空グループの手前・末尾は消える。
             Assert.Equal(new[] { false, false, true, false, false }, Separators(menu));
@@ -172,7 +172,7 @@ public sealed class FolderTreeContextMenuTests : IDisposable
         {
             var menu = BuildMenu("visible", "sep", "hidden", "hidden", "sep", "visible");
 
-            FolderTreeView.NormalizeSeparators(menu);
+            FileContextMenuPresenter.NormalizeSeparators(menu);
 
             // 間のグループが空なので線は1本だけ（2本続けて出さない）。
             Assert.Equal(new[] { false, true }, Separators(menu));

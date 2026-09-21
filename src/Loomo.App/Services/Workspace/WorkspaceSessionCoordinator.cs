@@ -5,6 +5,231 @@ namespace sk0ya.Loomo.App.Services;
 /// <summary>ワークスペースセッションの復元判断と表示モデル変換。</summary>
 public static class WorkspaceSessionCoordinator
 {
+    /// <summary>ワークスペースごとのタブ状態を初回だけ生成してキャッシュする。</summary>
+    internal static TWorkspace GetOrCreateWorkspace<TWorkspace>(
+        Dictionary<Guid, TWorkspace> workspaces,
+        Guid workspaceId,
+        Func<TWorkspace> create)
+    {
+        if (workspaces.TryGetValue(workspaceId, out var workspace))
+            return workspace;
+
+        workspace = create();
+        workspaces.Add(workspaceId, workspace);
+        return workspace;
+    }
+
+    /// <summary>使わなくなったワークスペースのタブ実体を閉じ、キャッシュから取り除く。</summary>
+    internal static async Task DisposeWorkspaceTabsAsync(
+        Guid workspaceId,
+        Dictionary<Guid, TerminalWorkspaceTabs> terminalWorkspaces,
+        Dictionary<Guid, EditorWorkspaceTabs> editorWorkspaces,
+        Dictionary<Guid, BrowserWorkspaceTabs> browserWorkspaces)
+    {
+        if (terminalWorkspaces.Remove(workspaceId, out var terminal))
+            foreach (var tab in terminal.Tabs)
+                await tab.View.CloseAsync();
+        if (browserWorkspaces.Remove(workspaceId, out var browser))
+            foreach (var tab in browser.Tabs)
+                tab.View.Dispose();
+        if (editorWorkspaces.Remove(workspaceId, out var editor))
+            foreach (var tab in editor.Tabs)
+                if (tab.IsRealized)
+                    tab.Control.Dispose();
+    }
+
+    /// <summary>スナップショットに記録されたプライマリ／追加フォルダーを復元用の順序で返す。</summary>
+    public static List<string> WorkspaceFolders(WorkspaceSnapshot workspace)
+    {
+        var folders = new List<string>();
+        if (!string.IsNullOrWhiteSpace(workspace.RootPath))
+            folders.Add(workspace.RootPath);
+        folders.AddRange(workspace.AdditionalFolders
+            .Select(folder => folder.FolderPath)
+            .Where(path => !string.IsNullOrWhiteSpace(path)));
+        return folders;
+    }
+
+    /// <summary>保存対象の作業フォルダー。存在しない場合は現在の既定フォルダーへ戻す。</summary>
+    public static string? ResolveWorkingDirectory(string? workingDirectory, string? fallbackDirectory)
+        => Directory.Exists(workingDirectory) ? workingDirectory : fallbackDirectory;
+
+    /// <summary>旧 single-editor 鏡へ使うタブ。アクティブ ID が無ければ先頭のタブを使う。</summary>
+    public static EditorTabSnapshot? SelectActiveEditorSnapshot(
+        IReadOnlyList<EditorTabSnapshot> snapshots, Guid? activeTabId)
+        => snapshots.FirstOrDefault(snapshot => snapshot.Id == activeTabId)
+           ?? snapshots.FirstOrDefault();
+
+    /// <summary>保存済みタブが無い旧データでは互換スナップショットを使い、復元対象とアクティブ位置を決める。</summary>
+    public static WorkspaceTabRestorePlan<TSnapshot> ResolveTabRestorePlan<TSnapshot>(
+        IReadOnlyList<TSnapshot> saved, TSnapshot fallback, Func<TSnapshot, bool> isActive)
+    {
+        IReadOnlyList<TSnapshot> snapshots = saved.Count == 0 ? new[] { fallback } : saved;
+        var activeIndex = 0;
+        for (var index = 0; index < snapshots.Count; index++)
+            if (isActive(snapshots[index]))
+            {
+                activeIndex = index;
+                break;
+            }
+        return new(snapshots, activeIndex);
+    }
+
+    public static WorkspaceTabRestorePlan<TerminalTabSnapshot> ResolveTerminalTabRestorePlan(
+        WorkspaceSnapshot workspace)
+        => ResolveTabRestorePlan(workspace.TerminalTabs, new TerminalTabSnapshot
+        {
+            WorkingDirectory = workspace.Terminal.WorkingDirectory,
+            Title = workspace.Terminal.Title ?? "Terminal",
+            IsActive = true,
+        }, snapshot => snapshot.IsActive);
+
+    public static WorkspaceTabRestorePlan<EditorTabSnapshot> ResolveEditorTabRestorePlan(
+        WorkspaceSnapshot workspace)
+        => ResolveTabRestorePlan(workspace.EditorTabs, new EditorTabSnapshot
+        {
+            FilePath = workspace.Editor.FilePath,
+            Text = workspace.Editor.Text,
+            IsModified = workspace.Editor.IsModified,
+            IsActive = true,
+        }, snapshot => snapshot.IsActive);
+
+    public static WorkspaceTabRestorePlan<BrowserTabSnapshot> ResolveBrowserTabRestorePlan(
+        WorkspaceSnapshot workspace, string defaultUrl)
+        => ResolveTabRestorePlan(workspace.BrowserTabs, new BrowserTabSnapshot
+        {
+            Url = defaultUrl,
+            Title = "Browser",
+            IsActive = true,
+        }, snapshot => snapshot.IsActive);
+
+    /// <summary>端末タブと旧 single-terminal 鏡を永続化形式へ写す。</summary>
+    internal static void CaptureTerminalTabs(WorkspaceSnapshot snapshot,
+        IEnumerable<TerminalTab> tabs, Guid? activeTabId, string? fallbackDirectory)
+    {
+        var tabList = tabs.ToList();
+        snapshot.TerminalTabs = tabList.Select(tab => new TerminalTabSnapshot
+        {
+            Id = tab.Id,
+            WorkingDirectory = ResolveWorkingDirectory(tab.View.WorkingDirectory, fallbackDirectory),
+            Title = tab.View.HeaderTitle,
+            IsActive = tab.Id == activeTabId,
+        }).ToList();
+
+        var active = tabList.FirstOrDefault(tab => tab.Id == activeTabId) ?? tabList.FirstOrDefault();
+        if (active is null)
+            return;
+        snapshot.Terminal.WorkingDirectory = ResolveWorkingDirectory(active.View.WorkingDirectory, fallbackDirectory);
+        snapshot.Terminal.Title = active.View.HeaderTitle;
+    }
+
+    /// <summary>仮想ドキュメントを除いたエディタタブと旧 single-editor 鏡を永続化形式へ写す。</summary>
+    internal static void CaptureEditorTabs(WorkspaceSnapshot snapshot,
+        IEnumerable<EditorTab> tabs, Guid? activeTabId)
+    {
+        snapshot.EditorTabs = tabs.Where(tab => !tab.PeekIsVirtual)
+            .Select(tab => CaptureEditorTab(tab, activeTabId))
+            .ToList();
+
+        // 鏡は保存済みタブから引き、本文の複製を余分に作らない。
+        var active = SelectActiveEditorSnapshot(snapshot.EditorTabs, activeTabId);
+        if (active is null)
+            return;
+        snapshot.Editor.FilePath = active.FilePath;
+        snapshot.Editor.Text = active.Text;
+        snapshot.Editor.IsModified = active.IsModified;
+    }
+
+    /// <summary>プレビュー専用ブラウザータブを除いて保存形式へ写す。</summary>
+    public static BrowserTabSnapshot? CaptureBrowserTab(
+        Guid id, string? url, string? title, bool isActive)
+        => EditorSupportNavigationService.IsPreviewUrl(url)
+            ? null
+            : new BrowserTabSnapshot { Id = id, Url = url, Title = title, IsActive = isActive };
+
+    /// <summary>一時プレビューを除いたブラウザータブ一覧を保存形式へ写す。</summary>
+    internal static List<BrowserTabSnapshot> CaptureBrowserTabs(
+        IEnumerable<BrowserTab> tabs, Guid? activeTabId)
+        => tabs.Select(tab => CaptureBrowserTab(
+                tab.Id,
+                BrowserDisplayMapper.CurrentUrl(tab.View.TryUrl(), tab.PendingUrl),
+                tab.View.TryCore()?.DocumentTitle,
+                tab.Id == activeTabId))
+            .OfType<BrowserTabSnapshot>()
+            .ToList();
+
+    /// <summary>現在のペイン木から、最大化前に保存する木か表示中の木をスナップショットへ写す。</summary>
+    internal static void CapturePaneLayout(
+        WorkspaceSnapshot snapshot,
+        bool spanMaximized,
+        PaneNode? savedRoot,
+        PaneNode? currentRoot,
+        Action captureCurrentSizes,
+        Func<PaneNode, PaneNodeSnapshot> toSnapshot)
+    {
+        var useSavedRoot = spanMaximized && savedRoot is not null;
+        if (!useSavedRoot)
+            captureCurrentSizes();
+        var root = useSavedRoot ? savedRoot : currentRoot;
+        snapshot.PaneLayout = root is null ? null : toSnapshot(root);
+    }
+
+    /// <summary>名前付き配置と表示中レイアウトの選択情報をスナップショットへ写す。</summary>
+    internal static void CaptureLayouts(
+        WorkspaceSnapshot snapshot,
+        IEnumerable<SavedLayout> layouts,
+        PaneNodeSnapshot? scratchLayout,
+        int activeLayoutIndex,
+        bool layoutDirty,
+        ViewportNodeSnapshot? editorViewLayout,
+        ViewportNodeSnapshot? terminalViewLayout)
+    {
+        snapshot.Layouts = layouts.Select(layout => new SavedLayout { Name = layout.Name, Tree = layout.Tree }).ToList();
+        snapshot.ScratchLayout = scratchLayout;
+        snapshot.ActiveLayoutIndex = activeLayoutIndex;
+        snapshot.LayoutDirty = layoutDirty;
+        snapshot.EditorViewLayout = editorViewLayout;
+        snapshot.TerminalViewLayout = terminalViewLayout;
+    }
+
+    /// <summary>表示モード、ステージ、ドック、選択位置をスナップショットへまとめる。</summary>
+    internal static void CaptureDisplayState(
+        WorkspaceSnapshot snapshot,
+        DisplayMode mode,
+        IEnumerable<PaneKind> enabledSessions,
+        WingTab activeWingTab,
+        StageSnapshot stage,
+        DockSnapshot dock,
+        bool stageActive,
+        PaneKind stagePane,
+        PaneKind? focusedPane)
+    {
+        snapshot.Mode = mode;
+        snapshot.EnabledSessions = enabledSessions.ToList();
+        snapshot.ActiveWingTab = activeWingTab;
+        snapshot.Stage = stage;
+        snapshot.Dock = dock;
+        // サイドバーへ一時的にフォーカスしていても、最後のメインペインという現在地は失わない。
+        snapshot.ActivePane = ResolveActivePane(stageActive, stagePane, focusedPane, snapshot.ActivePane);
+    }
+
+    /// <summary>表示中のステージ状態を永続化用スナップショットへ写す。</summary>
+    public static StageSnapshot CaptureStage(
+        bool isActive, PaneKind stagePane, bool overview, double wingWidth, bool wingCollapsed)
+        => new()
+        {
+            IsActive = isActive,
+            Pane = isActive ? stagePane : null,
+            Overview = isActive && overview,
+            WingWidth = wingWidth,
+            WingCollapsed = wingCollapsed,
+        };
+
+    /// <summary>復元するアクティブペイン。ステージ／現在のフォーカスがなければ保存値を使う。</summary>
+    public static PaneKind? ResolveActivePane(
+        bool stageActive, PaneKind stagePane, PaneKind? focusedPane, PaneKind? savedPane)
+        => stageActive ? stagePane : focusedPane ?? savedPane;
+
     public static bool ResolveSoloMode(WorkspaceSnapshot workspace)
         => ResolveDisplayMode(workspace) == DisplayMode.Solo;
 
@@ -166,3 +391,6 @@ public static class WorkspaceSessionCoordinator
                 new Action(() => editor.ScrollToVerticalRatio(Math.Clamp(ratio, 0, 1))), DispatcherPriority.Loaded);
     }
 }
+
+public sealed record WorkspaceTabRestorePlan<TSnapshot>(
+    IReadOnlyList<TSnapshot> Snapshots, int ActiveIndex);

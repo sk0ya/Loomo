@@ -912,7 +912,7 @@
                             <MenuItem Header="名前の変更" InputGestureText="F2" Tag="Single" Click="OnRenameClick" />
                             <MenuItem Header="削除" InputGestureText="Delete" Tag="Selection" Click="OnDeleteClick" />
                             <!-- ファイル操作の Undo/Redo（履歴はエクスプローラーのツリーと共有）。
-                                 見出しと表示可否は Opened→UpdateHistoryMenuItems が次の一手に合わせる。 -->
+                                 見出しと表示可否は Opened から共有 Presenter が次の一手に合わせる。 -->
                             <Separator />
                             <MenuItem Header="元に戻す" Tag="UndoItem" InputGestureText="Ctrl+Z"
                                       Click="OnUndoFileOperationClick" />

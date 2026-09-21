@@ -2,6 +2,7 @@ using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.App.Views;
 
 namespace sk0ya.Loomo.Tests;

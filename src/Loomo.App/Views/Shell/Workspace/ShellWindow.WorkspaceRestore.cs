@@ -3,7 +3,8 @@ namespace sk0ya.Loomo.App.Views;
 public partial class ShellWindow {
     private void RestoreTerminalTabs(
         WorkspaceSnapshot workspace, WorkspaceSwitchProfiler? profile = null) {
-        var terminalWorkspace = GetOrCreateTerminalWorkspace(workspace.Id);
+        var terminalWorkspace = WorkspaceSessionCoordinator.GetOrCreateWorkspace(
+            _terminalWorkspaces, workspace.Id, static () => new TerminalWorkspaceTabs());
         _activeTerminalWorkspace = terminalWorkspace;
         _terminalTabs = terminalWorkspace.Tabs;
         if (terminalWorkspace.IsInitialized && _terminalTabs.Count > 0) {
@@ -15,28 +16,21 @@ public partial class ShellWindow {
             return;
         }
         terminalWorkspace.IsInitialized = true;
-        var snapshots = workspace.TerminalTabs.Count == 0
-            ? new[] {
-                new TerminalTabSnapshot {
-                    WorkingDirectory = workspace.Terminal.WorkingDirectory, Title = workspace.Terminal.Title ?? "Terminal", IsActive = true
-                }
-            }
-            : workspace.TerminalTabs.ToArray();
-        foreach (var snapshot in snapshots) {
-            var cwd = Directory.Exists(snapshot.WorkingDirectory) ? snapshot.WorkingDirectory! : workspace.RootPath;
+        var restore = WorkspaceSessionCoordinator.ResolveTerminalTabRestorePlan(workspace);
+        foreach (var snapshot in restore.Snapshots) {
+            var cwd = WorkspaceSessionCoordinator.ResolveWorkingDirectory(
+                snapshot.WorkingDirectory, workspace.RootPath)!;
             var tab = CreateTerminalTab(cwd, snapshot.Id == Guid.Empty ? null : snapshot.Id);
             _terminalTabs.Add(tab);
             _vm.Tabs.AddTerminalTab(tab.Id, snapshot.Title ?? tab.View.HeaderTitle, false);
         }
-        var active = snapshots.FirstOrDefault(t => t.IsActive) ?? snapshots.First();
-        ActivateTerminalTab(
-            active.Id == Guid.Empty ? _terminalTabs[0].Id : active.Id,
-            focusView: false);
+        ActivateTerminalTab(_terminalTabs[restore.ActiveIndex].Id, focusView: false);
         _terminalViews?.Restore(workspace.TerminalViewLayout, _terminalTabs.Select(t => t.Id));
     }
     private void RestoreEditorTabs(
         WorkspaceSnapshot workspace, WorkspaceSwitchProfiler? profile = null) {
-        var editorWorkspace = GetOrCreateEditorWorkspace(workspace.Id);
+        var editorWorkspace = WorkspaceSessionCoordinator.GetOrCreateWorkspace(
+            _editorWorkspaces, workspace.Id, static () => new EditorWorkspaceTabs());
         _activeEditorWorkspace = editorWorkspace;
         _editorTabs = editorWorkspace.Tabs;
         if (editorWorkspace.IsInitialized && _editorTabs.Count > 0) {
@@ -48,37 +42,14 @@ public partial class ShellWindow {
             return;
         }
         editorWorkspace.IsInitialized = true;
-        var snapshots = workspace.EditorTabs.Count == 0
-            ? new[] {
-                new EditorTabSnapshot {
-                    FilePath = workspace.Editor.FilePath, Text = workspace.Editor.Text, IsModified = workspace.Editor.IsModified, IsActive = true
-                }
-            }
-            : workspace.EditorTabs.ToArray();
-        foreach (var snapshot in snapshots) {
+        var restore = WorkspaceSessionCoordinator.ResolveEditorTabRestorePlan(workspace);
+        foreach (var snapshot in restore.Snapshots) {
             var tab = CreatePendingEditorTab(snapshot);
             _editorTabs.Add(tab);
             _vm.Tabs.AddEditorTab(tab.Id, snapshot.FilePath, snapshot.IsModified, false);
         }
-        var active = snapshots.FirstOrDefault(t => t.IsActive) ?? snapshots.First();
-        ActivateEditorTab(
-            active.Id == Guid.Empty ? _editorTabs[0].Id : active.Id,
-            focusView: false);
+        ActivateEditorTab(_editorTabs[restore.ActiveIndex].Id, focusView: false);
         _editorViews?.Restore(workspace.EditorViewLayout, _editorTabs.Select(t => t.Id));
-    }
-    private TerminalWorkspaceTabs GetOrCreateTerminalWorkspace(Guid workspaceId) {
-        if (_terminalWorkspaces.TryGetValue(workspaceId, out var terminalWorkspace))
-            return terminalWorkspace;
-        terminalWorkspace = new TerminalWorkspaceTabs();
-        _terminalWorkspaces[workspaceId] = terminalWorkspace;
-        return terminalWorkspace;
-    }
-    private EditorWorkspaceTabs GetOrCreateEditorWorkspace(Guid workspaceId) {
-        if (_editorWorkspaces.TryGetValue(workspaceId, out var editorWorkspace))
-            return editorWorkspace;
-        editorWorkspace = new EditorWorkspaceTabs();
-        _editorWorkspaces[workspaceId] = editorWorkspace;
-        return editorWorkspace;
     }
     private void DetachTerminalTabs() {
         CurrentTerminalWorkspace.ActiveTabId = _activeTerminalTab?.Id;
@@ -107,7 +78,8 @@ public partial class ShellWindow {
             _vm.Tabs.AddEditorTab(tab.Id, tab.PeekFilePath, tab.PeekIsModified, false);
     }
     private async Task RestoreBrowserTabsAsync(WorkspaceSnapshot workspace) {
-        var browserWorkspace = GetOrCreateBrowserWorkspace(workspace.Id);
+        var browserWorkspace = WorkspaceSessionCoordinator.GetOrCreateWorkspace(
+            _browserWorkspaces, workspace.Id, static () => new BrowserWorkspaceTabs());
         _activeBrowserWorkspace = browserWorkspace;
         _browserTabs = browserWorkspace.Tabs;
         if (browserWorkspace.IsInitialized && _browserTabs.Count > 0) {
@@ -116,21 +88,11 @@ public partial class ShellWindow {
             return;
         }
         browserWorkspace.IsInitialized = true;
-        var snapshots = workspace.BrowserTabs;
-        var tabs = snapshots.Count == 0
-            ? new[] { new BrowserTabSnapshot { Url = DefaultBrowserUrl, Title = "Browser", IsActive = true } }
-            : snapshots.ToArray();
-        foreach (var snapshot in tabs)
-            CreateBrowserTab( snapshot.Url ?? DefaultBrowserUrl, snapshot.Id == Guid.Empty ? null : snapshot.Id, snapshot.Title);
-        var active = tabs.FirstOrDefault(t => t.IsActive) ?? tabs.First();
-        ActivateBrowserTab(active.Id);
-    }
-    private BrowserWorkspaceTabs GetOrCreateBrowserWorkspace(Guid workspaceId) {
-        if (_browserWorkspaces.TryGetValue(workspaceId, out var browserWorkspace))
-            return browserWorkspace;
-        browserWorkspace = new BrowserWorkspaceTabs();
-        _browserWorkspaces[workspaceId] = browserWorkspace;
-        return browserWorkspace;
+        var restore = WorkspaceSessionCoordinator.ResolveBrowserTabRestorePlan(workspace, DefaultBrowserUrl);
+        foreach (var snapshot in restore.Snapshots)
+            CreateBrowserTab(snapshot.Url ?? DefaultBrowserUrl,
+                snapshot.Id == Guid.Empty ? null : snapshot.Id, snapshot.Title);
+        ActivateBrowserTab(_browserTabs[restore.ActiveIndex].Id);
     }
     private void DetachBrowserTabs() {
         CurrentBrowserWorkspace.ActiveTabId = _activeBrowserTab?.Id;

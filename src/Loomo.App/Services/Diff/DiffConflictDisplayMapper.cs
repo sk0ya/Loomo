@@ -9,6 +9,9 @@ public sealed record DiffConflictDisplay(
 /// <summary>解析済みコンフリクトを3ペイン用の表示ブロックへ変換する。</summary>
 public sealed class DiffConflictDisplayMapper
 {
+    internal static ConflictRegionVm? FindRegion(IEnumerable<object> blocks, int index)
+        => blocks.OfType<ConflictRegionVm>().FirstOrDefault(region => region.Index == index);
+
     public DiffConflictDisplay Map(ParsedConflictFile parsed)
     {
         var blocks = new List<object>();

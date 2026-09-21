@@ -4,9 +4,8 @@ namespace sk0ya.Loomo.App.Views;
 /// <summary>ShellWindow: 本文中のリンク／ファイルパスのクリック（エディタ・ターミナルの URL/ファイル、 OSC8 ハイパーリンク）を内蔵ブラウザペインやエディタタブで開く振り分け。</summary>
 public partial class ShellWindow {
     private async Task OpenFileInBrowserAsync(string path) {
-        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
-            return;
-        await OpenUrlInBrowserAsync(new Uri(Path.GetFullPath(path)).AbsoluteUri, Path.GetFileName(path));
+        if (FileBrowserLinkTargetResolver.TryResolve(path, out var target))
+            await OpenUrlInBrowserAsync(target.Url, target.Title);
     }
     private void OnEditorLinkClicked(object? sender, LinkClickedEventArgs e) {
         if (string.IsNullOrWhiteSpace(e.Url))
@@ -32,41 +31,19 @@ public partial class ShellWindow {
         _ = OpenPathInEditorAsync(fullPath, line, column);
     }
     private void OnTerminalLinkActivated(object? sender, TerminalHyperlinkActivatedEventArgs e) {
-        var target = e.Target;
-        if (string.IsNullOrWhiteSpace(target))
-            return;
-        if (Uri.TryCreate(target, UriKind.Absolute, out var uri)) {
-            if (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps) {
+        var target = TerminalLinkTargetResolver.Resolve(
+            _workspace, e.Target, (sender as TerminalTabView)?.WorkingDirectory);
+        switch (target.Kind) {
+            case LinkOpenTargetKind.Url:
                 e.Handled = true;
-                _ = OpenUrlInBrowserAsync(uri.AbsoluteUri, null);
-                return;
-            }
-            // .NET は C:\\... も file URI として解釈する。行番号／列番号付きの
-            // Windows パスを uri.LocalPath に渡すと :10:5 がファイル名に残るため、
-            // Windows パスは URI 処理から外して SourceLocationResolver に任せる。
-            if (uri.IsFile && !IsWindowsPathTarget(target)) {
+                _ = OpenUrlInBrowserAsync(target.Value, null);
+                break;
+            case LinkOpenTargetKind.File:
                 e.Handled = true;
-                _ = OpenTerminalPathAsync(uri.LocalPath, line: 0, column: 0);
-                return;
-            }
-            // Windowsの絶対パス（C:\...）も Uri として解釈され、scheme="c" になる。
-            // それをここで捨てると、下の SourceLocationResolver に届かず行ジャンプできない。
-            if (!IsWindowsPathTarget(target))
-                return; // mailto: 等は既定の外部起動に委ねる。
-        }
-        // OSC8 のターゲットは素のパスのことも「パス:行:列」のこともある。
-        // 読み取りは選択テキストと同じ SourceLocationParser に寄せて、書式の解釈をここに二重化しない
-        // （相対パスの基準も cwd → ワークスペースの各フォルダーへ広がる＝マルチルートで解決できる）。
-        var cwd = (sender as TerminalTabView)?.WorkingDirectory;
-        if (SourceLocationResolver.TryResolve(_workspace, target, cwd, currentDocumentPath: null, out var location)) {
-            e.Handled = true;
-            _ = OpenTerminalPathAsync(location.Path, location.Line, location.Column);
+                _ = OpenTerminalPathAsync(target.Value, target.Line, target.Column);
+                break;
         }
     }
-    internal static bool IsWindowsPathTarget(string target)
-        => target.Length >= 3 && char.IsLetter(target[0]) && target[1] == ':' &&
-           (target[2] == '\\' || target[2] == '/');
-
     /// <summary>ターミナルからのリンクは、開くだけでなく着地点の Editor ペインへ移す。</summary>
     private async Task OpenTerminalPathAsync(string path, int line, int column)
     {
@@ -86,31 +63,18 @@ public partial class ShellWindow {
                 tab.Control.ScrollCursorToTop();
         }
     }
-    private async Task HandleEditorSupportLinkClickedAsync(string href, string? sourcePath = null) {
-        if (string.IsNullOrWhiteSpace(href))
-            return;
-        if (Uri.TryCreate(href, UriKind.Absolute, out var uri)) {
-            if (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps) {
-                await OpenUrlInBrowserAsync(uri.AbsoluteUri, null);
-                return;
-            }
-            if (uri.IsFile) {
-                await OpenPathInEditorAsync(uri.LocalPath, line: 0, column: 0);
-                return;
-            }
-            try { Process.Start(new ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true }); }
-            catch { /* 開けるハンドラが無い等でも落とさない。 */ }
-            return;
-        }
-        var currentPath = sourcePath ?? _editorSupport.Source?.Control.FilePath;
-        if (!FileLinkResolver.TryResolve( _workspace, href, currentPath, out var fullPath, out var line, out var column, out var isDirectory))
-            return;
-        if (isDirectory) {
-            _workspace.SelectedPath = fullPath;
-            return;
-        }
-        await OpenPathInEditorAsync(fullPath, line, column);
-    }
+    private Task HandleEditorSupportLinkClickedAsync(string href, string? sourcePath = null)
+        => EditorSupportLinkController.OpenAsync(
+            _workspace,
+            href,
+            sourcePath ?? _editorSupport.Source?.Control.FilePath,
+            url => OpenUrlInBrowserAsync(url, null),
+            (path, line, column) => OpenPathInEditorAsync(path, line, column),
+            path => _workspace.SelectedPath = path,
+            uri => {
+                try { Process.Start(new ProcessStartInfo(uri) { UseShellExecute = true }); }
+                catch { /* 開けるハンドラが無い等でも落とさない。 */ }
+            });
     private async Task OpenUrlInBrowserAsync(string url, string? title) {
         if (string.IsNullOrWhiteSpace(url))
             return;

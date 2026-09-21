@@ -25,6 +25,10 @@ internal sealed record EditorDiagnosticSnapshot(
     public IReadOnlyList<LspDiagnostic> Diagnostics => Entries.Select(entry => entry.Diagnostic).ToArray();
 }
 
+internal sealed record EditorDiagnosticSessionRelease(
+    string FilePath,
+    IReadOnlyList<LspDiagnostic> RetainedLanguageServerDiagnostics);
+
 /// <summary>
 /// エディターバッファごとの診断正本。解析元ごとの結果を本文版に結び付け、古い解析結果を拒否する。
 /// 同じ本文を再解析する間は表示を保ち、本文が変わったときは旧範囲を消す。Quick Fixには現行版の確定スナップショットだけを渡す。
@@ -148,6 +152,18 @@ internal sealed class EditorDiagnosticSession
         _carriedOver.Clear();
         _expectedOrigins.Clear();
         _presentation = null;
+    }
+
+    /// <summary>エディタタブを閉じるときに、別タブへ戻すLSP診断だけを退避して状態を解放する。</summary>
+    public EditorDiagnosticSessionRelease Release()
+    {
+        var retained = _presentation?.Entries
+            .Where(entry => entry.Origin == EditorDiagnosticOrigin.LanguageServer)
+            .Select(entry => entry.Diagnostic)
+            .ToArray() ?? [];
+        var release = new EditorDiagnosticSessionRelease(_filePath, retained);
+        Clear();
+        return release;
     }
 
     private void CommitIfReady()

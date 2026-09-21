@@ -1,4 +1,5 @@
 using System.Runtime.Versioning;
+using sk0ya.Loomo.App.ViewModels;
 
 namespace sk0ya.Loomo.App.Services;
 
@@ -31,6 +32,12 @@ public sealed record BrowserImportHarvest(
     public int Blocked => BlockedPasswords + BlockedCookies;
 }
 
+/// <summary>取り込みの結果表示と通知判定。</summary>
+public sealed record BrowserImportSummary(string Status, bool ImportedAnything);
+
+/// <summary>CSV パスワード取り込みの状態文と通知文。</summary>
+public sealed record BrowserCsvPasswordImportPresentation(string Status, string? SuccessMessage);
+
 /// <summary>
 /// 他所のブラウザから中身を読み出す入口（設計書 §21.5.4）。
 ///
@@ -50,6 +57,101 @@ public static class BrowserImportService
     /// <summary>持ち込む履歴の上限。<c>browser.json</c> は全件を毎回書き直す作りなので、
     /// 際限なく持ち込むと保存のたびに重くなる（候補の質に効くのは直近ぶんだけ）。</summary>
     public const int HistoryLimit = 500;
+
+    /// <summary>検出した取り込み元の件数から一覧の空状態文を返す。</summary>
+    public static string SourcesStatus(int sourceCount)
+        => sourceCount == 0 ? "取り込めるブラウザが見つかりませんでした。" : "";
+
+    /// <summary>他ブラウザと各プロファイルを検出し、選択一覧の表示モデルへ変換する。</summary>
+    public static IReadOnlyList<BrowserImportSourceViewModel> DetectSources()
+        => ChromiumBrowsers.Detect()
+            .SelectMany(ChromiumBrowsers.ProfilesOf)
+            .Select(DescribeSource)
+            .ToArray();
+
+    /// <summary>選択された場合だけ、読み出したパスワードを次回起動時の取り込みへ予約する。</summary>
+    public static int QueuePasswords(BrowserImportSelection selection, BrowserImportHarvest harvest)
+        => selection.Passwords ? QueuePasswords(harvest.Passwords) : 0;
+
+    /// <summary>CSV から予約した件数と飛ばした行数を表示用の文面へ変換する。</summary>
+    public static BrowserCsvPasswordImportPresentation SummarizeCsvQueue(int queued, int blocked)
+    {
+        var status = queued == 0
+            ? "CSV に取り込める行がありませんでした。"
+            : $"パスワード {queued} 件を読み込みました（次回起動時に取り込みます）。"
+                + (blocked == 0 ? "" : $" {blocked} 行は形が合わず飛ばしました。");
+        var success = queued > 0 ? $"パスワード {queued} 件を読み込みました。" : null;
+        return new(status, success);
+    }
+
+    /// <summary>各保管先へ反映した件数と読み込み時の注意から、利用者へ伝える結果を作る。</summary>
+    public static BrowserImportSummary Summarize(
+        BrowserImportSelection selection,
+        BrowserImportHarvest harvest,
+        int addedBookmarks,
+        int addedHistory,
+        int appliedCookies,
+        int queuedPasswords)
+    {
+        var summary = new List<string>();
+        var importedAnything = addedBookmarks > 0 || addedHistory > 0;
+        if (selection.Bookmarks)
+            summary.Add($"ブックマーク: {addedBookmarks} 件追加（{harvest.Bookmarks.Count} 件を読込）");
+        if (selection.History)
+            summary.Add($"履歴: {addedHistory} 件追加（{harvest.History.Count} 件を読込）");
+        if (harvest.Cookies.Count > 0)
+        {
+            summary.Add($"Cookie: {appliedCookies} 件反映");
+            importedAnything |= appliedCookies > 0;
+        }
+        if (selection.Passwords && harvest.Passwords.Count > 0)
+        {
+            summary.Add($"パスワード: {queuedPasswords} 件（次回起動時に取り込みます）");
+            importedAnything |= queuedPasswords > 0;
+        }
+        else if (selection.Passwords)
+            summary.Add("パスワード: 0 件");
+        if (selection.Cookies && harvest.Cookies.Count == 0)
+            summary.Add("Cookie: 0 件");
+
+        var notes = new List<string>(harvest.Errors);
+        if (harvest.Blocked > 0)
+            notes.Add($"{harvest.Blocked} 件はアプリ束縛暗号のため取り込めませんでした。");
+        if (harvest.SkippedCookies > 0)
+            notes.Add($"Cookie {harvest.SkippedCookies} 件は期限切れ・区画付き（埋め込み先ごとの Cookie）のため持ち込みませんでした。");
+
+        var status = summary.Count == 0
+            ? notes.Count == 0 ? "取り込むものがありませんでした。" : string.Join(" ", notes)
+            : string.Join("・", summary) + "。"
+                + (notes.Count == 0 ? "" : " " + string.Join(" ", notes));
+        return new BrowserImportSummary(status, importedAnything);
+    }
+
+    /// <summary>取り込み元で可能な操作と注意点を表示用モデルへ写す。
+    /// Cookie データベースのロック状態や暗号形式から分かる事実だけを案内する。</summary>
+    public static BrowserImportSourceViewModel DescribeSource(ChromiumProfileRef profile)
+    {
+        var notes = new List<string>();
+        var cookiesLocked = ChromiumImportReader.IsCookieDatabaseLocked(profile.Path);
+        var appBound = ChromiumCrypto.TryOpen(profile.Browser.UserDataFolder, out var crypto, out _)
+            && crypto!.IsAppBound;
+        var bookmarks = ChromiumImportReader.ReadBookmarks(profile.Path);
+        if (cookiesLocked)
+            notes.Add($"Cookie を取り込むには {profile.Browser.DisplayName} を終了してください");
+        if (appBound)
+            notes.Add("このブラウザは保存内容をアプリ束縛暗号で保護しているため、"
+                + "パスワードと Cookie は取り込めません（パスワードは CSV 書き出しから）");
+        if (!string.IsNullOrEmpty(bookmarks.Error))
+            notes.Add($"ブックマークを読めません: {bookmarks.Error}");
+        return new BrowserImportSourceViewModel
+        {
+            Profile = profile,
+            BookmarkCount = bookmarks.Count,
+            CanImportPasswords = !appBound,
+            CanImportCookies = !appBound && !cookiesLocked,
+            Note = string.Join(" / ", notes),
+        };
+    }
 
     public static BrowserImportHarvest Harvest(ChromiumProfileRef profile, BrowserImportSelection selection)
     {

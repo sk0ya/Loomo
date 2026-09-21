@@ -648,7 +648,7 @@
                 </Grid>
 
                 <!-- Markdown 差分のレンダリング表示（設計書 §24.10）。対象が .md/.markdown で
-                     「描画」モードのときだけ出る。中身（WebView2）は DiffSessionView.MarkdownRender.cs が
+                     「描画」モードのときだけ出る。WebView2 は DiffMarkdownRenderController が
                      モードを切った瞬間に実体化して差し込む——テキスト差分しか見ない間はブラウザプロセスを増やさない。 -->
                 <Grid x:Name="MarkdownRenderHost" Background="{DynamicResource BgAlt}"
                       Visibility="{Binding IsMarkdownRenderActive, Converter={StaticResource BoolToVis}}">

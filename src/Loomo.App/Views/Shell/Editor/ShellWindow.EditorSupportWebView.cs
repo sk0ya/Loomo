@@ -96,14 +96,14 @@ public partial class ShellWindow {
         if (_isSpanMaximized && _spanSavedRoot is { } savedRoot
             && AllLeaves(savedRoot).All(l => l.Kind != PaneKind.EditorSupport)
             && AllLeaves(savedRoot).FirstOrDefault(l => l.Kind == PaneKind.Editor) is { } savedEditor) {
-            _spanSavedRoot = InsertRelative( savedRoot, new PaneLeaf { Kind = PaneKind.EditorSupport, Hidden = true }, savedEditor, DropZone.Right);
+            _spanSavedRoot = PaneLayoutTree.InsertRelative(savedRoot, new PaneLeaf { Kind = PaneKind.EditorSupport, Hidden = true }, savedEditor, DropZone.Right);
         }
         if (FindLeaf(PaneKind.EditorSupport) is not null)
             return;
         if (FindLeaf(PaneKind.Editor) is not { } editorLeaf)
             return; // Editor がツリーに無い場合は SetPaneVisible の既定動作（最下段へ追加）に任せる
         CaptureLayoutSizes();
-        _root = InsertRelative(_root, new PaneLeaf { Kind = PaneKind.EditorSupport, Hidden = true }, editorLeaf, DropZone.Right);
+        _root = PaneLayoutTree.InsertRelative(_root, new PaneLeaf { Kind = PaneKind.EditorSupport, Hidden = true }, editorLeaf, DropZone.Right);
     }
     private void DetachEditorSupportSource() {
         _editorSupportFileWatcher?.Stop();   // 追従元がいなくなる＝見張る理由も無くなる（§24.8）
@@ -127,8 +127,7 @@ public partial class ShellWindow {
         }
         _editorSupport.WebView.ResetPageState();
         _editorSupportForceFullPage = false;
-        _markdownEditMode = false;
-        // コントローラー側も同じ旗を持つ。こちらだけ下ろすと、次の .md で編集面のまま開くのにボタンは未押下になる。
+        // 編集モードは WebView controller が所有する。次の .md に編集状態を持ち越さない。
         _editorSupport.WebView.SetMarkdownEditMode(false);
         UpdateEditorSupportPinToggle();
         UpdateEditorSupportNavAffordances();
@@ -138,58 +137,27 @@ public partial class ShellWindow {
             return;
         _editorSupport.WebView.PostScrollRatio(editor.VerticalScrollRatio);
     }
-    private void EditorSupport_WebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e) {
-        if (_editorSupport.Source is null)
+    private EditorSupportWebMessageDispatcher? _editorSupportMessageDispatcher;
+    private EditorSupportWebMessageDispatcher EditorSupportMessageDispatcher
+        => _editorSupportMessageDispatcher ??= new EditorSupportWebMessageDispatcher(
+            HandlePochiBridgeMessage,
+            ScrollEditorSupportSourceToRatio,
+            line => FocusEditorSupportSource(line),
+            href => _ = HandleEditorSupportLinkClickedAsync(href),
+            ToggleMarkdownTaskCheckbox,
+            ApplyMarkdownPreviewEdit);
+    private void EditorSupport_WebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
+        => EditorSupportMessageDispatcher.Dispatch(
+            e.WebMessageAsJson, sender, sourceAvailable: _editorSupport.Source is not null);
+    private void ScrollEditorSupportSourceToRatio(double ratio) {
+        if (_editorSupport.Source is not { } source)
             return;
-        try
-        {
-            using var doc = System.Text.Json.JsonDocument.Parse(e.WebMessageAsJson);
-            var root = doc.RootElement;
-            // ペインに載せた Pochi は type ではなく op（{id, op, …}）で話しかけてくる（ShellWindow.PochiBridge.cs）。
-            if (root.TryGetProperty("op", out var opElement) && sender is CoreWebView2 bridgeCore) {
-                HandlePochiBridgeMessage(bridgeCore, root, opElement.GetString());
-                return;
-            }
-            if (!root.TryGetProperty("type", out var typeElement))
-                return;
-            switch (typeElement.GetString()) {
-                case "markdownPreviewScroll":
-                    if (root.TryGetProperty("ratio", out var ratioElement)
-                        && ratioElement.TryGetDouble(out var ratio)) {
-                        _syncingEditorFromSupport = true;
-                        try { _editorSupport.Source.Control.ScrollToVerticalRatio(ratio); }
-                        finally { _syncingEditorFromSupport = false; }
-                    }
-                    break;
-                case "jumpToSource":
-                    var line = root.TryGetProperty("line", out var lineElement)
-                               && lineElement.TryGetInt32(out var l) ? l : 0;
-                    FocusEditorSupportSource(line > 0 ? line : null);
-                    break;
-                case "linkClicked":
-                    if (root.TryGetProperty("href", out var hrefElement) && hrefElement.GetString() is { } href)
-                        _ = HandleEditorSupportLinkClickedAsync(href);
-                    break;
-                case "toggleTaskCheckbox":
-                    if (root.TryGetProperty("line", out var taskLineElement) && taskLineElement.TryGetInt32(out var taskLine))
-                        ToggleMarkdownTaskCheckbox(taskLine);
-                    break;
-                case "markdownEdited":
-                    if (root.TryGetProperty("text", out var markdownTextElement)
-                        && markdownTextElement.GetString() is { } markdownText)
-                        ApplyMarkdownPreviewEdit(markdownText);
-                    break;
-            }
-        } catch {
-        }
+        _syncingEditorFromSupport = true;
+        try { source.Control.ScrollToVerticalRatio(ratio); }
+        finally { _syncingEditorFromSupport = false; }
     }
     private void OnToggleEditorSupportEdit(object sender, RoutedEventArgs e) {
-        _markdownEditMode = !_markdownEditMode;
-        _editorSupport.WebView.SetMarkdownEditMode(_markdownEditMode);
-        EditorSupportEditButton.IsChecked = _markdownEditMode;
-        EditorSupportEditButton.ToolTip = _markdownEditMode
-            ? "プレビューに戻る"
-            : "Markdownをこの画面で直接編集";
+        EditorSupportFramePresenter.ToggleMarkdownEditMode();
     }
     private void ApplyMarkdownPreviewEdit(string text) {
         var tab = _editorSupport.Source;
@@ -214,7 +182,7 @@ public partial class ShellWindow {
                 tab.Control.ScrollCursorToTop();
         }
         tab.Control.Focus();
-        _focusedRegion = FocusTarget.Of(PaneKind.Editor);
+        _focusedRegion = PaneFocusTarget.Of(PaneKind.Editor);
     }
     private void EditorSupport_ContextMenuRequested(object? sender, CoreWebView2ContextMenuRequestedEventArgs e) {
         if (_editorSupport.Source is null || sender is not CoreWebView2 core)
@@ -224,7 +192,7 @@ public partial class ShellWindow {
                 if (e.MenuItems[i].Name is "back" or "forward")
                     e.MenuItems.RemoveAt(i);
             }
-            EditorSupportContextLink.RemoveBuiltInOpenInNewWindow(e.MenuItems);
+            EditorSupportContextLinkBridge.RemoveBuiltInOpenInNewWindow(e.MenuItems);
             var item = core.Environment.CreateContextMenuItem( "エディタへフォーカス", null, CoreWebView2ContextMenuItemKind.Command);
             item.CustomItemSelected += (_, _) => Dispatcher.BeginInvoke(() => FocusEditorSupportSource(null));
             e.MenuItems.Insert(0, item);
@@ -241,7 +209,7 @@ public partial class ShellWindow {
     /// ファイル＝エディタ）はクリック時（<see cref="HandleEditorSupportLinkClickedAsync"/>）と同じ解決を使う。</summary>
     private async Task AddEditorSupportLinkMenuItemAsync( CoreWebView2 core, CoreWebView2ContextMenuRequestedEventArgs e, CoreWebView2Deferral deferral, string? sourcePath) {
         try {
-            var href = await EditorSupportContextLink.ReadHrefAsync(core);
+            var href = await EditorSupportContextLinkBridge.ReadHrefAsync(core);
             var target = LinkOpenTargetResolver.Resolve(_workspace, href, sourcePath);
             if (DescribeOpenLinkInWindow(target) is not { } header)
                 return;

@@ -41,7 +41,7 @@ public sealed class EditorNativeMenuTests
         {
             var menu = NativeMenu();
 
-            ShellWindow.RemoveMenuItemsByHeader(menu, ShellWindow.DroppedNativeEditorMenuHeaders);
+            EditorNativeMenuCoordinator.RemoveByHeader(menu, EditorNativeMenuCoordinator.DroppedHeaders);
 
             Assert.Equal(
                 [
@@ -63,7 +63,7 @@ public sealed class EditorNativeMenuTests
         {
             var menu = NativeMenu();
 
-            var replaced = ShellWindow.ReplaceMenuItemByHeader(
+            var replaced = EditorNativeMenuCoordinator.ReplaceByHeader(
                 menu, EditorMenuLabels.CodeActions, () => new MenuItem { Header = "Quick Fix" });
 
             Assert.True(replaced);
@@ -90,7 +90,7 @@ public sealed class EditorNativeMenuTests
         {
             var menu = new ContextMenu { Items = { new MenuItem { Header = "Code Actions" } } };
 
-            var replaced = ShellWindow.ReplaceMenuItemByHeader(
+            var replaced = EditorNativeMenuCoordinator.ReplaceByHeader(
                 menu, EditorMenuLabels.CodeActions, () => new MenuItem { Header = "Quick Fix" });
 
             Assert.False(replaced);
@@ -113,7 +113,7 @@ public sealed class EditorNativeMenuTests
                 },
             };
 
-            ShellWindow.RemoveMenuItemsByHeader(menu, ShellWindow.DroppedNativeEditorMenuHeaders);
+            EditorNativeMenuCoordinator.RemoveByHeader(menu, EditorNativeMenuCoordinator.DroppedHeaders);
 
             Assert.Single(menu.Items.OfType<Separator>());
             Assert.Equal([EditorMenuLabels.Paste], Headers(menu));

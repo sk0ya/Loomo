@@ -14,7 +14,7 @@ public sealed class FilesPanePresentationTests
     [Fact]
     public void ツールバーは素のComboBoxを使わずポップアップで選ばせる()
     {
-        var xaml = Read("src", "Loomo.App", "Views", "FilesColumnView.xaml");
+        var xaml = Read("src", "Loomo.App", "Views", "Files", "FilesColumnView.xaml");
 
         // 素の ComboBox は OS 既定の配色・行間で描かれ、暗色テーマの中でここだけ浮く。
         Assert.DoesNotContain("<ComboBox", xaml);
@@ -30,7 +30,7 @@ public sealed class FilesPanePresentationTests
     [Fact]
     public void Git状態は名前の色と行右端のバッジで示す()
     {
-        var xaml = Read("src", "Loomo.App", "Views", "FilesColumnView.xaml");
+        var xaml = Read("src", "Loomo.App", "Views", "Files", "FilesColumnView.xaml");
 
         // ツリー（FolderTreeView）と同じ作法。バッジを名前の前に置くと、状態のある行だけ
         // 名前が右へずれて一覧の左端が揃わない。
@@ -80,7 +80,7 @@ public sealed class FilesPanePresentationTests
     [Fact]
     public void アイコン表示の名前は折り返して省略する()
     {
-        var xaml = Read("src", "Loomo.App", "Views", "FilesColumnView.xaml");
+        var xaml = Read("src", "Loomo.App", "Views", "Files", "FilesColumnView.xaml");
 
         // 名前を横並び StackPanel に入れると幅の制約が届かず、TextTrimming が効かないまま
         // セルからはみ出して両端が切れる（実際にそう見えていた）。

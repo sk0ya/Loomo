@@ -10,19 +10,13 @@ public partial class ShellWindow {
             return;
         BeginTrailLayoutChange();
         CaptureLayoutSizes();
-        _root = RemoveNode(_root, sourceLeaf);
-        sourceLeaf.Weight = 1;
-        var insertTarget = span ? PaneLayoutTree.ResolveSpanTarget(_root, targetLeaf, zone) : targetLeaf;
-        _root = InsertRelative(_root, sourceLeaf, insertTarget, zone);
+        _paneLayout.Move(source, target, zone, span);
         if (_isSpanMaximized && _spanSavedRoot is { } savedRoot)
-            _spanSavedRoot = MoveInTree(savedRoot, source, target, zone, span);
-        _root = Normalize(_root);
+            _spanSavedRoot = PaneLayoutTree.MoveInTree(savedRoot, source, target, zone, span);
         MarkLayoutDirty();
         RebuildPaneLayout();
         SaveActiveWorkspaceSnapshot();
     }
-    private static PaneNode? MoveInTree(PaneNode root, PaneKind source, PaneKind target, DropZone zone, bool span = false)
-        => PaneLayoutTree.MoveInTree(root, source, target, zone, span);
     private void PlaceWingPane(PaneKind dragged, PaneKind target, bool center, DropZone? zone, bool span = false) {
         if (dragged == target || FindLeaf(target) is null)
             return;
@@ -37,7 +31,4 @@ public partial class ShellWindow {
         FocusPane(dragged);
         SaveActiveWorkspaceSnapshot();
     }
-    private static PaneNode? RemoveNode(PaneNode? root, PaneNode node) => PaneLayoutTree.RemoveNode(root, node);
-    private static PaneNode? InsertRelative(PaneNode? root, PaneNode node, PaneNode target, DropZone zone)
-        => PaneLayoutTree.InsertRelative(root, node, target, zone);
 }
