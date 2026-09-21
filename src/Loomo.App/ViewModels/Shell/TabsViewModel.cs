@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.Diagnostics;
 using System.IO;
@@ -95,10 +95,6 @@ public sealed partial class TabsViewModel : ObservableObject
     public event EventHandler<TabEntryViewModel>? TabCloseAllRequested;
     /// <summary>「別ウィンドウで開く」：このタブをフローティングウィンドウへ切り離す（複製／スピンオフ）。</summary>
     public event EventHandler<TabEntryViewModel>? TabDetachRequested;
-
-    /// <summary>エクスプローラ内の「タブ」セクションを展開しているか（見出しクリックで開閉）。
-    /// 折りたたむとフォルダーツリーが縦幅をすべて使える。</summary>
-    [ObservableProperty] private bool _isSectionExpanded = true;
 
     /// <summary>全タブ数。セクション見出しの件数表示に使う（折りたたみ時の手掛かり）。</summary>
     public int TotalCount => TerminalTabs.Count + EditorTabs.Count + BrowserTabs.Count;

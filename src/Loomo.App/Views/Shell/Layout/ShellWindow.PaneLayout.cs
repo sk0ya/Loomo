@@ -1,4 +1,4 @@
-namespace sk0ya.Loomo.App.Views;
+﻿namespace sk0ya.Loomo.App.Views;
 /// <summary>ShellWindow: ペインレイアウト（2D並べ替え・ドラッグ移動・ズーム・表示切替・スナップショット適用）</summary>
 public partial class ShellWindow {
     private const double SplitterThickness = 6;
@@ -185,7 +185,9 @@ public partial class ShellWindow {
     private void ToggleZoomFor(PaneKind kind) => ZoomPane(_zoomedPane == kind ? null : kind);
     private void HideFocusedRegion() {
         if (_focusedRegion is { IsSidebar: true }) {
+            // サイドバーは上段・中段の2区画。「いま居る領域を畳む」なら列ごと畳む。
             _vm.IsSidebarVisible = false;
+            _vm.IsSecondarySidebarVisible = false;
             return;
         }
         if (_stageActive)

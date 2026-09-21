@@ -210,6 +210,10 @@ internal static class LoomoServiceCollectionExtensions
         services.AddSingleton<WorkflowViewModel>();
         services.AddSingleton<AiBarViewModel>();
         services.AddSingleton<TabsViewModel>();
+        // ActivityBar（左端の縦帯）の項目配置。並べ替えを settings.json へ書き戻すので設定と保存先を渡す。
+        services.AddSingleton(sp => new ActivityBarViewModel(
+            sp.GetRequiredService<LoomoSettings>(),
+            sp.GetRequiredService<SettingsStore>()));
         services.AddSingleton<SessionsViewModel>();
         services.AddSingleton<SettingsViewModel>();
         services.AddSingleton<AppearanceViewModel>();

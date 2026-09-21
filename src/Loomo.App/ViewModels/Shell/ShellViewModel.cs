@@ -1,10 +1,10 @@
-using CommunityToolkit.Mvvm.ComponentModel;
+﻿using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
 namespace sk0ya.Loomo.App.ViewModels;
 
-/// <summary>サイドバーに表示するパネル種別。
-/// タブ一覧は独立パネルをやめ、エクスプローラ（<see cref="Explorer"/>）内のセクションへ統合した。</summary>
+/// <summary>サイドバーに表示するパネル種別。ActivityBar のアイコン1つにつき1面で、
+/// どの段（上段／中段）のバーに置くかは人間がドラッグで決める（<see cref="ActivityBarViewModel"/>）。</summary>
 public enum SidebarPanel
 {
     Explorer,
@@ -12,6 +12,9 @@ public enum SidebarPanel
     Appearance,
     Git,
     Pegboard,
+    /// <summary>開いているタブの一覧。エクスプローラ内のセクションから独立した面へ戻し、
+    /// 既定では中段バー（2本目の ActivityBar）に住む。</summary>
+    Tabs,
     /// <summary>C# ソリューションツリー。C# プロジェクトのあるワークスペースでだけ現れる
     /// （ActivityBar のアイコンごと出入りする）。フォルダーツリーとは別の面。</summary>
     Solution
@@ -72,34 +75,30 @@ public sealed partial class ShellViewModel : ObservableObject
     /// <summary>右下に積み上げて表示する非モーダルなトースト通知（<see cref="Services.ToastService"/>）。</summary>
     public ToastHostViewModel Toasts { get; } = new();
 
-    /// <summary>サイドバーの表示状態。ActivityBar のクリックで開閉する。</summary>
+    /// <summary>ActivityBar（左端の縦帯）2本ぶんの項目配置。どのアイコンがどちらの段に住むかを持ち、
+    /// ドラッグ＆ドロップの結果を settings.json へ持ち越す。</summary>
+    public ActivityBarViewModel ActivityBar { get; }
+
+    /// <summary>上段サイドバー区画の表示状態。上段 ActivityBar のクリックで開閉する。</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsExplorerSelected))]
-    [NotifyPropertyChangedFor(nameof(IsGitSelected))]
-    [NotifyPropertyChangedFor(nameof(IsSolutionSelected))]
-    [NotifyPropertyChangedFor(nameof(IsPegboardSelected))]
+    [NotifyPropertyChangedFor(nameof(IsSidebarColumnVisible))]
     private bool _isSidebarVisible = true;
 
-    /// <summary>サイドバーに現在表示しているパネル。</summary>
+    /// <summary>上段サイドバー区画に現在表示しているパネル。</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsExplorerSelected))]
-    [NotifyPropertyChangedFor(nameof(IsGitSelected))]
-    [NotifyPropertyChangedFor(nameof(IsSolutionSelected))]
-    [NotifyPropertyChangedFor(nameof(IsPegboardSelected))]
     private SidebarPanel _activePanel = SidebarPanel.Explorer;
 
-    // ===== ActivityBar のアイコン強調（いまどの面を見ているかを一目で分かるように） =====
-    // 「開いていて、かつそのパネル」のときだけ真。サイドバーを畳んだら何も選ばれていない状態に戻る。
-    private bool IsPanelSelected(SidebarPanel panel) => IsSidebarVisible && ActivePanel == panel;
+    /// <summary>中段サイドバー区画の表示状態。中段 ActivityBar のクリックで開閉する。</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsSidebarColumnVisible))]
+    private bool _isSecondarySidebarVisible = true;
 
-    /// <summary>エクスプローラを表示中か（ActivityBar のアイコン強調用）。</summary>
-    public bool IsExplorerSelected => IsPanelSelected(SidebarPanel.Explorer);
-    /// <summary>Git パネルを表示中か。</summary>
-    public bool IsGitSelected => IsPanelSelected(SidebarPanel.Git);
-    /// <summary>ソリューションパネルを表示中か。</summary>
-    public bool IsSolutionSelected => IsPanelSelected(SidebarPanel.Solution);
-    /// <summary>ペグボードを表示中か。</summary>
-    public bool IsPegboardSelected => IsPanelSelected(SidebarPanel.Pegboard);
+    /// <summary>中段サイドバー区画に現在表示しているパネル。既定はタブ一覧。</summary>
+    [ObservableProperty]
+    private SidebarPanel _secondaryPanel = SidebarPanel.Tabs;
+
+    /// <summary>サイドバーの列そのものを出すか。2つの区画のどちらかが見えていれば出す。</summary>
+    public bool IsSidebarColumnVisible => IsSidebarVisible || IsSecondarySidebarVisible;
 
     /// <summary>設定オーバーレイをキーボードカテゴリで開いているか（⌨ アイコンの強調用）。</summary>
     public bool IsKeyboardSettingsSelected =>
@@ -152,7 +151,8 @@ public sealed partial class ShellViewModel : ObservableObject
         TrailViewModel trail,
         RecentItemsViewModel? recent = null,
         CSharpSolutionExplorerViewModel? csharpSolutionExplorer = null,
-        StyleCopSettingsViewModel? styleCop = null)
+        StyleCopSettingsViewModel? styleCop = null,
+        ActivityBarViewModel? activityBar = null)
     {
         FolderTree = folderTree;
         Files = files;
@@ -181,15 +181,27 @@ public sealed partial class ShellViewModel : ObservableObject
         TsIde = tsIde;
         Trail = trail;
         CSharpSolutionExplorer = csharpSolutionExplorer;
+        ActivityBar = activityBar ?? new ActivityBarViewModel();
+        ActivityBar.SetAvailable(SidebarPanel.Solution, IsCSharpSolutionAvailable);
+        // 段を移した項目は移した先で開いて見せる（同じ段での並べ替えでは開き直さない——
+        // 人間がしていないナビゲーションになる）。取り残された区画は既定のパネルへ寄せ直す。
+        ActivityBar.ItemMoved += (_, moved) => {
+            if (moved.SlotChanged) Reveal(moved.Item.Panel);
+            NormalizeSections();
+        };
+        // 保存された配置は既定（上段＝エクスプローラ／中段＝タブ一覧）と食い違いうる。
+        // 突き合わせずに立ち上げると、前回エクスプローラを中段へ動かしていた部屋では
+        // 上段が空のまま開き、全部を上段へ集めていた部屋では「中身が無いのに畳めない列」が残る。
+        NormalizeSections();
+        RefreshActivitySelection();
         if (CSharpSolutionExplorer is { } solutionExplorer)
             solutionExplorer.PropertyChanged += (_, e) => {
                 if (e.PropertyName != nameof(CSharpSolutionExplorerViewModel.IsVisible)) return;
                 OnPropertyChanged(nameof(IsCSharpSolutionAvailable));
+                ActivityBar.SetAvailable(SidebarPanel.Solution, IsCSharpSolutionAvailable);
                 // ワークスペース切替で C# が消えたら、空のパネルを見せたままにしない。
-                if (IsCSharpSolutionAvailable || ActivePanel != SidebarPanel.Solution) return;
-                IsPanelChangeAutomatic = true;
-                try { ActivePanel = SidebarPanel.Explorer; }
-                finally { IsPanelChangeAutomatic = false; }
+                if (IsCSharpSolutionAvailable) return;
+                NormalizeSections();
             };
 
         // 設定保存時に AIバーのプロバイダ表示を更新する。
@@ -200,14 +212,16 @@ public sealed partial class ShellViewModel : ObservableObject
     [RelayCommand]
     private void ShowExplorer() => Activate(SidebarPanel.Explorer);
 
-    /// <summary>ActivityBar のタブ一覧アイコン。タブ一覧はエクスプローラ内のセクションなので、
-    /// エクスプローラを開いてタブセクションを展開する（展開済みなら畳む＝トグル）。</summary>
+    /// <summary>ActivityBar のタブ一覧アイコン。タブ一覧は独立した面で、既定では中段バーに住む。</summary>
     [RelayCommand]
-    private void ShowTabs()
+    private void ShowTabs() => Activate(SidebarPanel.Tabs);
+
+    /// <summary>ActivityBar のアイコンのクリック（どちらの段でも同じ経路）。</summary>
+    [RelayCommand]
+    private void ActivateActivityItem(ActivityBarItemViewModel? item)
     {
-        var alreadyShown = IsSidebarVisible && ActivePanel == SidebarPanel.Explorer && Tabs.IsSectionExpanded;
-        RevealExplorerPanel();
-        Tabs.IsSectionExpanded = !alreadyShown;
+        if (item is not { IsAvailable: true }) return;
+        Activate(item.Panel);
     }
 
     /// <summary>ActivityBar の設定（歯車）アイコン。中央オーバーレイの設定画面を外観カテゴリで開く
@@ -281,16 +295,24 @@ public sealed partial class ShellViewModel : ObservableObject
     public bool RestorePanel(SidebarPanel panel)
     {
         if (panel == SidebarPanel.Solution && !IsCSharpSolutionAvailable) return false;
-        ActivePanel = panel;
-        IsSidebarVisible = true;
+        Reveal(panel);
         return true;
     }
 
     /// <summary>エクスプローラを開く（トグルせず必ず開く）。エディタの現在ファイルをツリーで
     /// 選択・表示する「同期」機能用。</summary>
-    public void RevealExplorerPanel()
+    public void RevealExplorerPanel() => Reveal(SidebarPanel.Explorer);
+
+    /// <summary>そのパネルを、住んでいる段の区画で必ず開く（トグルしない）。</summary>
+    private void Reveal(SidebarPanel panel)
     {
-        ActivePanel = SidebarPanel.Explorer;
+        if (ActivityBar.SlotOf(panel) == ActivityBarSlot.Secondary)
+        {
+            SecondaryPanel = panel;
+            IsSecondarySidebarVisible = true;
+            return;
+        }
+        ActivePanel = panel;
         IsSidebarVisible = true;
     }
 
@@ -299,30 +321,84 @@ public sealed partial class ShellViewModel : ObservableObject
     [RelayCommand]
     private void ShowGit() => Activate(SidebarPanel.Git);
 
-    // サイドバーの表示状態・選択パネルが変わるたびに、Git パネルのライブ監視を入切する。
-    partial void OnActivePanelChanged(SidebarPanel value) => UpdateGitPanelLive();
-    partial void OnIsSidebarVisibleChanged(bool value) => UpdateGitPanelLive();
+    // サイドバーの表示状態・選択パネルが変わるたびに、Git パネルのライブ監視と
+    // ActivityBar のアイコン強調を入れ直す。
+    partial void OnActivePanelChanged(SidebarPanel value) => OnSectionStateChanged();
+    partial void OnIsSidebarVisibleChanged(bool value) => OnSectionStateChanged();
+    partial void OnSecondaryPanelChanged(SidebarPanel value) => OnSectionStateChanged();
+    partial void OnIsSecondarySidebarVisibleChanged(bool value) => OnSectionStateChanged();
 
-    /// <summary>Git パネルが「見えている」ときだけライブ監視する。開いた瞬間に最新化される。</summary>
+    private void OnSectionStateChanged()
+    {
+        UpdateGitPanelLive();
+        RefreshActivitySelection();
+    }
+
+    /// <summary>Git パネルが「見えている」ときだけライブ監視する。開いた瞬間に最新化される。
+    /// どちらの段の区画に出していても「見えている」。</summary>
     private void UpdateGitPanelLive()
     {
-        if (IsSidebarVisible && ActivePanel == SidebarPanel.Git)
+        if (IsPanelShowing(SidebarPanel.Git))
             GitPanel.StartLiveTracking();
         else
             GitPanel.StopLiveTracking();
     }
 
-    /// <summary>同じパネルを再クリックしたら閉じ、別パネルなら切替えて開く（VS Code 風）。</summary>
+    /// <summary>そのパネルがいまどちらかの区画に見えているか。</summary>
+    public bool IsPanelShowing(SidebarPanel panel)
+        => (IsSidebarVisible && ActivePanel == panel)
+           || (IsSecondarySidebarVisible && SecondaryPanel == panel);
+
+    /// <summary>ActivityBar のアイコン強調を今の区画の状態へ合わせる。強調は
+    /// 「その段の区画が開いていて、かつそのパネル」のときだけ。</summary>
+    private void RefreshActivitySelection()
+    {
+        foreach (var item in ActivityBar.Items)
+            item.IsSelected = item.Slot == ActivityBarSlot.Secondary
+                ? IsSecondarySidebarVisible && SecondaryPanel == item.Panel
+                : IsSidebarVisible && ActivePanel == item.Panel;
+    }
+
+    /// <summary>区画が「もうその段に居ない／出せないパネル」を映したままにならないよう寄せ直す。
+    /// 段が空になったらその区画ごと畳む。人間のナビゲーションではないので軌跡へは書かせない（§27）。</summary>
+    private void NormalizeSections()
+    {
+        IsPanelChangeAutomatic = true;
+        try
+        {
+            if (!ActivityBar.Holds(ActivityBarSlot.Primary, ActivePanel))
+            {
+                if (ActivityBar.FirstAvailablePanel(ActivityBarSlot.Primary) is { } fallback)
+                    ActivePanel = fallback;
+                else
+                    IsSidebarVisible = false;
+            }
+            if (!ActivityBar.Holds(ActivityBarSlot.Secondary, SecondaryPanel))
+            {
+                if (ActivityBar.FirstAvailablePanel(ActivityBarSlot.Secondary) is { } fallback)
+                    SecondaryPanel = fallback;
+                else
+                    IsSecondarySidebarVisible = false;
+            }
+        }
+        finally { IsPanelChangeAutomatic = false; }
+    }
+
+    /// <summary>同じパネルを再クリックしたら閉じ、別パネルなら切替えて開く（VS Code 風）。
+    /// 効く区画は、そのアイコンが住んでいる段のもの。</summary>
     private void Activate(SidebarPanel panel)
     {
+        if (ActivityBar.SlotOf(panel) == ActivityBarSlot.Secondary)
+        {
+            if (IsSecondarySidebarVisible && SecondaryPanel == panel)
+                IsSecondarySidebarVisible = false;
+            else
+                Reveal(panel);
+            return;
+        }
         if (IsSidebarVisible && ActivePanel == panel)
-        {
             IsSidebarVisible = false;
-        }
         else
-        {
-            ActivePanel = panel;
-            IsSidebarVisible = true;
-        }
+            Reveal(panel);
     }
 }

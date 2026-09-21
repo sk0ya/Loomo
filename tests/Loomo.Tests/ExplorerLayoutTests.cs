@@ -9,64 +9,61 @@ namespace sk0ya.Loomo.Tests;
 public sealed class ExplorerLayoutTests
 {
     [Fact]
-    public void ExplorerはFolderTreeを表示し最近項目もCSharpソリューションも重複表示しない()
+    public void サイドバーは上段と中段の2区画でどちらにもパネルを載せられる()
     {
         var xaml = Read("src", "Loomo.App", "Views", "Shell", "ShellWindow.xaml");
-        var start = xaml.IndexOf("<Grid x:Name=\"ExplorerSection\"", StringComparison.Ordinal);
-        var end = xaml.IndexOf("<views:GitPanelView", start, StringComparison.Ordinal);
+        var start = xaml.IndexOf("<Grid x:Name=\"SidebarContainer\"", StringComparison.Ordinal);
+        var end = xaml.IndexOf("<GridSplitter x:Name=\"SidebarSplitter\"", start, StringComparison.Ordinal);
         Assert.True(start >= 0 && end > start);
-        var section = xaml[start..end];
+        var sidebar = xaml[start..end];
 
-        // C# ソリューションツリーはサイドバーの独立パネル（SidebarPanel.Solution）で、
-        // エクスプローラ（フォルダーツリー）とは別の面。ここへ混ぜない。
-        Assert.DoesNotContain("<views:CSharpSolutionExplorerView", section);
+        // 2区画（上段／中段）と、その境目のスプリッター。
+        Assert.Contains("x:Name=\"PrimarySidebarRow\"", sidebar);
+        Assert.Contains("x:Name=\"SecondarySidebarRow\"", sidebar);
+        Assert.Contains("<Grid x:Name=\"PrimarySidebarHost\"", sidebar);
+        Assert.Contains("<Grid x:Name=\"SecondarySidebarHost\"", sidebar);
+        Assert.Contains("<GridSplitter x:Name=\"SidebarSectionSplitter\"", sidebar);
 
-        var tree = section.IndexOf("<views:FolderTreeView", StringComparison.Ordinal);
-        Assert.True(tree >= 0, "FolderTreeView は ExplorerSection の中にあること");
-        var tagEnd = section.IndexOf('>', tree);
-        Assert.True(tagEnd > tree, "FolderTreeView の開始タグが閉じていること");
-        Assert.True(section[tree..tagEnd].Contains("Grid.Row=\"0\"", StringComparison.Ordinal),
-            "FolderTreeView はエクスプローラの最上段に置くこと");
-        Assert.DoesNotContain("RecentItemsView", section);
-        Assert.Contains("ExplorerFolderTreeRow\" Height=\"*\" MinHeight=\"150\"", section);
-        Assert.Contains("<GridSplitter x:Name=\"SidebarTabsSplitter\" Grid.Row=\"1\"", section);
-        Assert.Contains("<views:TabsView Grid.Row=\"2\"", section);
-    }
+        // パネルのビューは1つずつ宣言し、どちらのホストへ載せるかは code-behind が決める。
+        // 「どのパネルか」を XAML の Visibility バインドで決めると、段を移せなくなる。
+        Assert.DoesNotContain("ConverterParameter=Explorer", sidebar);
+        Assert.DoesNotContain("ConverterParameter=Solution", sidebar);
+        foreach (var name in new[] {
+            "SidebarFolderTree", "SidebarGitPanel", "SidebarPegboard", "SidebarSolution", "SidebarTabs" })
+            Assert.Contains($"x:Name=\"{name}\"", sidebar);
 
-    /// <summary>C# ソリューションツリーはサイドバーの独立パネルに置き、ActivityBar のアイコンごと
-    /// C# のあるワークスペースでだけ出入りすること。IDE ペイン（実行タブ）へ戻る退行を防ぐ。</summary>
-    [Fact]
-    public void CSharpソリューションツリーはサイドバーの独立パネルとして置かれる()
-    {
-        var xaml = Read("src", "Loomo.App", "Views", "Shell", "ShellWindow.xaml");
-
-        // ActivityBar のアイコンは C# のある部屋でだけ現れる。
-        var button = xaml.IndexOf("AutomationProperties.AutomationId=\"SolutionPanelButton\"",
-            StringComparison.Ordinal);
-        Assert.True(button >= 0, "ActivityBar にソリューションアイコンがあること");
-        var buttonStart = xaml.LastIndexOf("<Button", button, StringComparison.Ordinal);
-        var buttonTag = xaml[buttonStart..button];
-        Assert.Contains("Command=\"{Binding ShowSolutionCommand}\"", buttonTag);
-        Assert.Contains(
-            "Visibility=\"{Binding IsCSharpSolutionAvailable, Converter={StaticResource BoolToVis}}\"",
-            buttonTag);
-
-        // パネル本体はサイドバー（SidebarContainer）の中、ActivePanel=Solution のときだけ見える。
-        var sidebarStart = xaml.IndexOf("<Grid x:Name=\"SidebarContainer\"", StringComparison.Ordinal);
-        var sidebarEnd = xaml.IndexOf("<GridSplitter x:Name=\"SidebarSplitter\"", sidebarStart,
-            StringComparison.Ordinal);
-        Assert.True(sidebarStart >= 0 && sidebarEnd > sidebarStart);
-        var sidebar = xaml[sidebarStart..sidebarEnd];
-        var panel = sidebar.IndexOf("<Grid x:Name=\"SolutionSection\"", StringComparison.Ordinal);
-        Assert.True(panel >= 0, "ソリューションパネルはサイドバーの中にあること");
-        Assert.Contains("ConverterParameter=Solution", sidebar[panel..]);
-        Assert.Contains("<views:CSharpSolutionExplorerView DataContext=\"{Binding CSharpSolutionExplorer}\" />",
-            sidebar[panel..]);
+        // 最近項目は中央の FilesPane 内のクイックアクセスへ移したので、サイドバーには重複表示しない。
+        // C# ソリューションツリーもフォルダーツリー（住所）とは別の独立した面のまま。
+        Assert.DoesNotContain("RecentItemsView", sidebar);
+        var tree = sidebar.IndexOf("<views:FolderTreeView", StringComparison.Ordinal);
+        var git = sidebar.IndexOf("<views:GitPanelView", StringComparison.Ordinal);
+        Assert.True(tree >= 0 && git > tree);
+        Assert.DoesNotContain("CSharpSolutionExplorerView", sidebar[tree..git]);
 
         // IDE ペイン（実行タブ）にはもう置かない。
         var debug = Read("src", "Loomo.App", "Views", "Debugging", "DebugView.xaml");
         Assert.DoesNotContain("CSharpSolutionExplorerView", debug);
         Assert.DoesNotContain("SolutionSectionRow", debug);
+    }
+
+    /// <summary>ActivityBar は上段・中段の2本。どちらも同じ項目テンプレートを使い、
+    /// 段まるごとが項目の落とし先になる（項目が1つも無い段にも落とせる）こと。</summary>
+    [Fact]
+    public void ActivityBarは2本ありどちらの段もドロップを受ける()
+    {
+        var xaml = Read("src", "Loomo.App", "Views", "Shell", "ShellWindow.xaml");
+        foreach (var group in new[] { "PrimaryActivityGroup", "SecondaryActivityGroup" })
+        {
+            var start = xaml.IndexOf($"<Grid x:Name=\"{group}\"", StringComparison.Ordinal);
+            Assert.True(start >= 0, $"{group} があること");
+            var tag = xaml[start..xaml.IndexOf('>', start)];
+            Assert.Contains("AllowDrop=\"True\"", tag);
+            Assert.Contains("Drop=\"OnActivityGroupDrop\"", tag);
+            Assert.Contains("Background=\"Transparent\"", tag);   // 空の段にも落とせる受け皿
+        }
+        Assert.Contains("ItemsSource=\"{Binding ActivityBar.PrimaryItems}\"", xaml);
+        Assert.Contains("ItemsSource=\"{Binding ActivityBar.SecondaryItems}\"", xaml);
+        Assert.Contains("<DataTemplate x:Key=\"ActivityBarItemTemplate\">", xaml);
     }
 
     [Fact]

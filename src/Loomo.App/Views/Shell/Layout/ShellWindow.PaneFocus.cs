@@ -1,4 +1,4 @@
-namespace sk0ya.Loomo.App.Views;
+﻿namespace sk0ya.Loomo.App.Views;
 /// <summary>ShellWindow: フォーカス追跡と方向移動（Ctrl+W h/j/k/l）。フォーカス領域の記録、隣接領域の探索、 ビューポート/サイドバー/ペインへのフォーカス適用、ペイン/サイドバー矩形の取得。 キー入口・リサイズモードは ShellWindow.PaneNavigation.cs。</summary>
 public partial class ShellWindow {
     private readonly Dictionary<PaneKind, WeakReference<IInputElement>> _lastPaneFocus = new();
@@ -70,7 +70,7 @@ public partial class ShellWindow {
         var paneAvailable = origin.Pane is { } pane && IsPaneFocusableNow(pane);
         var viewportAlive = origin.Pane is { } vpPane && origin.ViewportId != default
             && ViewsFor(vpPane)?.HasViewport(origin.ViewportId) == true;
-        var sidebarVisible = _vm.IsSidebarVisible && SidebarContainer.IsVisible;
+        var sidebarVisible = _vm.IsSidebarColumnVisible && SidebarContainer.IsVisible;
 
         var decision = FocusReturnPolicy.Decide(origin, target is not null, paneAvailable, viewportAlive, sidebarVisible);
         if (decision.Kind == FocusReturnKind.Element) {
@@ -132,7 +132,7 @@ public partial class ShellWindow {
                 yield return new PaneFocusCandidate(PaneFocusTarget.Of(leaf.Kind), bounds);
             }
         }
-        if (_vm.IsSidebarVisible && SidebarContainer.IsVisible
+        if (_vm.IsSidebarColumnVisible && SidebarContainer.IsVisible
             && PaneFocusElementResolver.TryGetVisibleBounds(SidebarContainer, PaneHost, out var sidebarBounds))
             yield return new PaneFocusCandidate(PaneFocusTarget.Sidebar, sidebarBounds);
     }
@@ -161,18 +161,27 @@ public partial class ShellWindow {
             && _terminalTabs.FirstOrDefault(t => t.Id == tid) is { } tt)
             SetActiveTerminalTab(tt);
     }
-    private void FocusSidebar() {
-        if (!_vm.IsSidebarVisible)
+    /// <summary>サイドバーへフォーカスを移す。行き先は段（上段／中段）ごとの区画で、
+    /// 指定の段が畳まれていればもう一方へ回す——2区画あるので「サイドバーへ」だけでは決まらない。</summary>
+    private void FocusSidebar(ActivityBarSlot slot = ActivityBarSlot.Primary) {
+        var host = ResolveSidebarHost(slot);
+        if (host is null)
             return;
-        PaneFocusElementResolver.FocusSidebar(SidebarContainer, _lastSidebarFocus, view => {
-            // Explorer はセクションの中にツリーがあるため、可視の子を直接探索する。
+        PaneFocusElementResolver.FocusSidebar(host, _lastSidebarFocus, view => {
             if (view is FolderTreeView tree)
                 tree.FocusTree();
-            else if (ReferenceEquals(view, ExplorerSection))
-                SidebarFolderTree.FocusTree();
             else
                 PaneFocusElementResolver.FocusFirstFocusable(view);
         }, () => _focusedRegion = PaneFocusTarget.Sidebar);
+    }
+
+    /// <summary>その段の区画（畳まれていれば見えている方、どちらも畳まれていれば null）。</summary>
+    private Panel? ResolveSidebarHost(ActivityBarSlot slot) {
+        var wanted = slot == ActivityBarSlot.Secondary ? SecondarySidebarHost : PrimarySidebarHost;
+        if (wanted.Visibility == Visibility.Visible)
+            return wanted;
+        var other = slot == ActivityBarSlot.Secondary ? PrimarySidebarHost : SecondarySidebarHost;
+        return other.Visibility == Visibility.Visible ? other : null;
     }
     private void FocusPane(PaneKind kind) {
         // ドックに置かない面（Diff 等）は出せないので、現在地も動かさない。動かすと軌跡の点や

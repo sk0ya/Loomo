@@ -1,4 +1,4 @@
-using sk0ya.Loomo.Core.Files;
+﻿using sk0ya.Loomo.Core.Files;
 
 namespace sk0ya.Loomo.App.Views;
 /// <summary>ShellWindow: ターミナル／エディタのタブ管理（作成・選択・クローズ・プレビュータブ）</summary>
@@ -247,8 +247,8 @@ public partial class ShellWindow {
         if (string.IsNullOrEmpty(path))
             return;
         _vm.RevealExplorerPanel();
-        // ツリーは SidebarContainer の直下ではなく ExplorerSection（タブ一覧と分割した行）の中に
-        // 入っているので、直下の子を探すと必ず null になって同期が黙って効かなくなる。名前で持つ。
+        // ツリーは SidebarContainer の直下ではなく、段ごとの区画ホスト（上段／中段）の子として
+        // 住む——しかもドラッグで段を移せる。可視の子を探す作りでは同期が黙って効かなくなるので名前で持つ。
         Dispatcher.BeginInvoke(DispatcherPriority.Loaded,
             new Action(() => SidebarFolderTree.RevealPath(path)));
     }

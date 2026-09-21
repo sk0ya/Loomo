@@ -131,6 +131,7 @@ public sealed class SettingsStore
         public PersistedKeybindings? Keybindings { get; set; }
         public PersistedLsp? Lsp { get; set; }
         public PersistedInlineCompletion? InlineCompletion { get; set; }
+        public PersistedActivityBar? ActivityBar { get; set; }
 
         public static PersistedSettings From(LoomoSettings s) => new()
         {
@@ -153,6 +154,7 @@ public sealed class SettingsStore
             Keybindings = PersistedKeybindings.From(s.Keybindings),
             Lsp = PersistedLsp.From(s.Lsp),
             InlineCompletion = PersistedInlineCompletion.From(s.InlineCompletion),
+            ActivityBar = PersistedActivityBar.From(s.ActivityBar),
         };
 
         public void ApplyTo(LoomoSettings s)
@@ -177,6 +179,40 @@ public sealed class SettingsStore
             Appearance?.ApplyTo(s.Appearance); // 旧設定（null）は in-memory 既定を維持
             Keybindings?.ApplyTo(s.Keybindings); // 旧設定（null）は既定割り当て（上書き無し）を維持
             Lsp?.ApplyTo(s.Lsp);                 // 旧設定（null）は空（=促しを抑止しない）を維持
+            ActivityBar?.ApplyTo(s.ActivityBar); // 旧設定（null）は空＝既定配置を維持
+        }
+    }
+
+    // ===== ActivityBar（左端の縦帯）の項目配置。項目 Id の並びだけ。平文で保持。 =====
+
+    private sealed class PersistedActivityBar
+    {
+        /// <summary>上段バーの項目 Id（上から順）。</summary>
+        public List<string> Primary { get; set; } = new();
+
+        /// <summary>中段バーの項目 Id（上から順）。</summary>
+        public List<string> Secondary { get; set; } = new();
+
+        public static PersistedActivityBar From(ActivityBarSettings a) => new()
+        {
+            Primary = a.Primary.ToList(),
+            Secondary = a.Secondary.ToList(),
+        };
+
+        // 既存インスタンスを書き換える（DI シングルトンの参照を保つため置き換えない）。
+        public void ApplyTo(ActivityBarSettings a)
+        {
+            Fill(a.Primary, Primary);
+            Fill(a.Secondary, Secondary);
+        }
+
+        private static void Fill(List<string> target, List<string>? source)
+        {
+            target.Clear();
+            if (source is null) return;
+            foreach (var id in source)
+                if (!string.IsNullOrWhiteSpace(id))
+                    target.Add(id.Trim());
         }
     }
 

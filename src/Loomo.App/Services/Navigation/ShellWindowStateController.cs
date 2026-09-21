@@ -1,4 +1,4 @@
-using System.ComponentModel;
+﻿using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Threading;
@@ -19,7 +19,7 @@ internal sealed class ShellWindowStateController
     private readonly FrameworkElement _sidebarContainer;
     private readonly UIElement _sidebarSplitter;
     private readonly Action<SidebarPanel> _recordTrailPanel;
-    private readonly Action _focusSidebar;
+    private readonly Action<ActivityBarSlot> _focusSidebar;
     private readonly Action _captureFocusReturnOrigin;
     private readonly Action _restoreFocusReturnOrigin;
     private GridLength _savedSidebarWidth = new(220);
@@ -33,7 +33,7 @@ internal sealed class ShellWindowStateController
         FrameworkElement sidebarContainer,
         UIElement sidebarSplitter,
         Action<SidebarPanel> recordTrailPanel,
-        Action focusSidebar,
+        Action<ActivityBarSlot> focusSidebar,
         Action captureFocusReturnOrigin,
         Action restoreFocusReturnOrigin)
     {
@@ -56,11 +56,11 @@ internal sealed class ShellWindowStateController
     {
         var effects = ShellPropertyTransitionPolicy.Resolve(_viewModel, e.PropertyName);
         if (effects.ApplySidebarVisibility)
-            ApplySidebarVisibility(_viewModel.IsSidebarVisible);
-        if (effects.RecordPanelTrail)
-            _recordTrailPanel(_viewModel.ActivePanel);
-        if (effects.FocusSidebar)
-            _owner.Dispatcher.BeginInvoke(DispatcherPriority.Loaded, _focusSidebar);
+            ApplySidebarVisibility(_viewModel.IsSidebarColumnVisible);
+        if (effects.RecordPanelTrail is { } panel)
+            _recordTrailPanel(panel);
+        if (effects.FocusSidebarSlot is { } slot)
+            _owner.Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () => _focusSidebar(slot));
         if (effects.ApplySettingsWindowState)
             ApplySettingsWindowState(_viewModel.IsSettingsOverlayOpen);
         if (effects.ActivateSettingsWindow)

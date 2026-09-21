@@ -32,7 +32,7 @@ public partial class ShellWindow {
         var horizontal = direction is DropZone.Left or DropZone.Right;
         var grow = direction is DropZone.Right or DropZone.Below;
         if (region.IsSidebar) {
-            if (!horizontal || !_vm.IsSidebarVisible)
+            if (!horizontal || !_vm.IsSidebarColumnVisible)
                 return;
             var width = SidebarColumn.ActualWidth > 0 ? SidebarColumn.ActualWidth : SidebarColumn.Width.Value;
             SidebarColumn.Width = new GridLength(Math.Max(SidebarColumn.MinWidth, width + (grow ? 24 : -24)));

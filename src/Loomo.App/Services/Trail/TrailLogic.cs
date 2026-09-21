@@ -1,4 +1,4 @@
-namespace sk0ya.Loomo.App.Services;
+﻿namespace sk0ya.Loomo.App.Services;
 
 /// <summary>ペインから記録する軌跡の基本情報。</summary>
 internal readonly record struct TrailPaneRecordTarget(
@@ -177,6 +177,7 @@ public static class TrailLogic
         SidebarPanel.Git => "Gitパネル",
         SidebarPanel.Pegboard => "ペグボード",
         SidebarPanel.Solution => "ソリューション",
+        SidebarPanel.Tabs => "タブ一覧",
         _ => panel.ToString()
     };
 }

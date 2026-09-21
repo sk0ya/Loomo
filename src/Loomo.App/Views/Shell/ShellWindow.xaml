@@ -499,6 +499,22 @@
             </Grid>
         </DataTemplate>
 
+        <!-- ActivityBar のアイコン1つ。どちらの段でもこの1枚を使う（段は ItemsSource が決める）。
+             押す＝その段の区画でそのパネルを開く／閉じる。掴んで動かす＝段の移動・並べ替え。 -->
+        <DataTemplate x:Key="ActivityBarItemTemplate">
+            <Button Style="{StaticResource ActivityIconButton}" Content="{Binding Icon}"
+                    ToolTip="{Binding Label}" Tag="{Binding IsSelected}"
+                    Command="{Binding DataContext.ActivateActivityItemCommand,
+                                      RelativeSource={RelativeSource AncestorType=Window}}"
+                    CommandParameter="{Binding}"
+                    Visibility="{Binding IsAvailable, Converter={StaticResource BoolToVis}}"
+                    AutomationProperties.AutomationId="{Binding AutomationId}"
+                    AutomationProperties.Name="{Binding Label}"
+                    PreviewMouseLeftButtonDown="OnActivityItemMouseDown"
+                    PreviewMouseLeftButtonUp="OnActivityItemMouseUp"
+                    PreviewMouseMove="OnActivityItemMouseMove" />
+        </DataTemplate>
+
     </Window.Resources>
 
     <!-- 最大化は code-behind で制御：通常は WM_GETMINMAXINFO でワーク領域に制限し、
@@ -515,7 +531,10 @@
                 <RowDefinition Height="Auto" />  <!-- 軌跡（操作ログ）バー：空なら高さ0 -->
             </Grid.RowDefinitions>
 
-            <!-- ActivityBar : ウィンドウ下端まで伸ばす。空き領域のドラッグでウィンドウを移動できる。 -->
+            <!-- ActivityBar : ウィンドウ下端まで伸ばす。空き領域のドラッグでウィンドウを移動できる。
+                 バーは2本——上段（ウィンドウ上端から）と中段（縦中央から）——で、それぞれが自分の
+                 サイドバー区画を持つ。どのアイコンがどちらの段に住むかは人間がドラッグ＆ドロップで
+                 決め、settings.json へ持ち越す（ShellWindow.ActivityBar.cs / ActivityBarViewModel）。 -->
             <DockPanel Grid.Column="0" Grid.Row="1" Background="{DynamicResource ActivityBarBg}"
                        MouseLeftButtonDown="OnActivityBarMouseDown">
                 <StackPanel DockPanel.Dock="Bottom">
@@ -526,24 +545,37 @@
                             Tag="{Binding IsSettingsSelected}"
                             Command="{Binding ShowSettingsCommand}" />
                 </StackPanel>
-                <StackPanel>
-                    <Button Style="{StaticResource ActivityIconButton}" Content="🗂" ToolTip="エクスプローラ"
-                            Tag="{Binding IsExplorerSelected}"
-                            Command="{Binding ShowExplorerCommand}" />
-                    <Button Style="{StaticResource ActivityIconButton}" Content="⎇" ToolTip="Git"
-                            Tag="{Binding IsGitSelected}"
-                            Command="{Binding ShowGitCommand}" />
-                    <!-- ソリューション：C# プロジェクトのある部屋にだけ現れる（IsCSharpSolutionAvailable）。 -->
-                    <Button Style="{StaticResource ActivityIconButton}" Content="◈" ToolTip="ソリューション（C#）"
-                            Tag="{Binding IsSolutionSelected}"
-                            Command="{Binding ShowSolutionCommand}"
-                            Visibility="{Binding IsCSharpSolutionAvailable, Converter={StaticResource BoolToVis}}"
-                            AutomationProperties.AutomationId="SolutionPanelButton"
-                            AutomationProperties.Name="ソリューション" />
-                    <Button Style="{StaticResource ActivityIconButton}" Content="📌" ToolTip="ペグボード（スニペット・URL・パスの作業台）"
-                            Tag="{Binding IsPegboardSelected}"
-                            Command="{Binding ShowPegboardCommand}" />
-                </StackPanel>
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*" />   <!-- 上段バー：上端から下へ -->
+                        <RowDefinition Height="*" />   <!-- 中段バー：縦中央から下へ -->
+                    </Grid.RowDefinitions>
+                    <!-- 段まるごとが落とし先。項目が1つも無い段にも落とせるよう、地を透明にして
+                         列の半分を受け皿にする（透明なのでウィンドウ移動のドラッグは下の DockPanel へ抜ける）。 -->
+                    <Grid x:Name="PrimaryActivityGroup" Grid.Row="0" Tag="Primary" Background="Transparent"
+                          AllowDrop="True" DragOver="OnActivityGroupDragOver"
+                          DragLeave="OnActivityGroupDragLeave" Drop="OnActivityGroupDrop">
+                        <ItemsControl x:Name="PrimaryActivityItems" VerticalAlignment="Top"
+                                      ItemsSource="{Binding ActivityBar.PrimaryItems}"
+                                      ItemTemplate="{StaticResource ActivityBarItemTemplate}" />
+                        <Border x:Name="PrimaryActivityDropMark" Height="2" Margin="6,0" VerticalAlignment="Top"
+                                Background="{DynamicResource Accent}" Visibility="Collapsed"
+                                IsHitTestVisible="False" />
+                    </Grid>
+                    <Grid x:Name="SecondaryActivityGroup" Grid.Row="1" Tag="Secondary" Background="Transparent"
+                          AllowDrop="True" DragOver="OnActivityGroupDragOver"
+                          DragLeave="OnActivityGroupDragLeave" Drop="OnActivityGroupDrop">
+                        <!-- 中段の始まりを示す細い線。ここから下が2本目のバー。 -->
+                        <Border Height="1" Margin="12,0" VerticalAlignment="Top"
+                                Background="{DynamicResource Border}" IsHitTestVisible="False" />
+                        <ItemsControl x:Name="SecondaryActivityItems" VerticalAlignment="Top" Margin="0,7,0,0"
+                                      ItemsSource="{Binding ActivityBar.SecondaryItems}"
+                                      ItemTemplate="{StaticResource ActivityBarItemTemplate}" />
+                        <Border x:Name="SecondaryActivityDropMark" Height="2" Margin="6,0" VerticalAlignment="Top"
+                                Background="{DynamicResource Accent}" Visibility="Collapsed"
+                                IsHitTestVisible="False" />
+                    </Grid>
+                </Grid>
             </DockPanel>
 
             <!-- ===== カスタムタイトルバー ===== -->
@@ -817,40 +849,38 @@
                     <RowDefinition x:Name="DockBottomRow" Height="0" />              <!-- 下ドック（ツールウィンドウ） -->
                 </Grid.RowDefinitions>
 
-                <!-- Sidebar : Explorer / Git / Pegboard を ActivePanel で切替 -->
+                <!-- Sidebar : 上段区画（上段 ActivityBar が選ぶ面）と中段区画（中段 ActivityBar が
+                     選ぶ面）の2段。どのパネルをどちらのホストへ載せるか・どれを見せるかは
+                     ShellWindow.ActivityBar.cs が受け持つ（XAML では宣言だけして親を動かす）。
+                     設定／外観はサイドバーではなく独立ウィンドウ（SettingsWindow）で開く。 -->
                 <Grid x:Name="SidebarContainer" Grid.Column="0" Grid.RowSpan="3">
-                    <!-- エクスプローラ：フォルダーツリーを常に最上段へ置く。
-                         最近／頻繁項目は中央の FilesPane 内のクイックアクセスへ移したため、
-                         サイドバーには重複表示しない。 -->
-                    <Grid x:Name="ExplorerSection"
-                          Visibility="{Binding ActivePanel, Converter={StaticResource EnumToVis}, ConverterParameter=Explorer}">
-                        <Grid.RowDefinitions>
-                            <RowDefinition x:Name="ExplorerFolderTreeRow" Height="*" MinHeight="150" /> <!-- フォルダーツリー（操作列・表示ルート。住所欄はファイル一覧ペインが持つ） -->
-                            <RowDefinition Height="Auto" />            <!-- 上下幅のスプリッター -->
-                            <!-- タブセクションの高さ。折りたたみ時は code-behind が Auto（見出しのみ）へ
-                                 落とし、展開時に直前の高さへ戻す（ShellWindow.SidebarSections.cs）。 -->
-                            <RowDefinition x:Name="SidebarTabsRow" Height="200" MinHeight="26" />
-                        </Grid.RowDefinitions>
-                        <!-- C# ソリューションツリーはこの下の SolutionSection（独立パネル）に住む。
-                             エクスプローラはフォルダー（＝部屋の住所）に専念させ、別の面として分ける。 -->
-                        <views:FolderTreeView x:Name="SidebarFolderTree" Grid.Row="0"
-                            DataContext="{Binding FolderTree}" />
-                        <GridSplitter x:Name="SidebarTabsSplitter" Grid.Row="1" Height="5"
-                                      HorizontalAlignment="Stretch" VerticalAlignment="Center"
-                                      ResizeDirection="Rows" ResizeBehavior="PreviousAndNext"
-                                      Background="{DynamicResource Border}" />
-                        <views:TabsView Grid.Row="2" DataContext="{Binding Tabs}" />
+                    <Grid.RowDefinitions>
+                        <RowDefinition x:Name="PrimarySidebarRow" Height="*" MinHeight="80" />
+                        <RowDefinition x:Name="SidebarSectionSplitterRow" Height="Auto" />
+                        <!-- 中段区画の高さ。中段が空／畳まれていれば code-behind が 0 にする。 -->
+                        <RowDefinition x:Name="SecondarySidebarRow" Height="200" MinHeight="26" />
+                    </Grid.RowDefinitions>
+
+                    <!-- 上段区画。子＝上段バーに住むパネルたち（起動時と段の移動時に載せ替える）。 -->
+                    <Grid x:Name="PrimarySidebarHost" Grid.Row="0">
+                        <!-- エクスプローラ：フォルダーツリーだけの面。最近／頻繁項目は中央の FilesPane 内の
+                             クイックアクセスへ、C# ソリューションツリーは独立パネルへ分けてある。 -->
+                        <views:FolderTreeView x:Name="SidebarFolderTree" DataContext="{Binding FolderTree}" />
+                        <views:GitPanelView x:Name="SidebarGitPanel" DataContext="{Binding GitPanel}" />
+                        <views:PegboardView x:Name="SidebarPegboard" DataContext="{Binding Pegboard}" />
+                        <!-- ソリューション：フォルダーツリー（住所）とは別の、評価済み C# 構造の面。 -->
+                        <views:CSharpSolutionExplorerView x:Name="SidebarSolution"
+                                                          DataContext="{Binding CSharpSolutionExplorer}" />
                     </Grid>
-                    <views:GitPanelView DataContext="{Binding GitPanel}"
-                                        Visibility="{Binding DataContext.ActivePanel, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource EnumToVis}, ConverterParameter=Git}" />
-                    <!-- 設定／外観はサイドバーではなく中央オーバーレイ（SettingsOverlayView）で開く。 -->
-                    <views:PegboardView DataContext="{Binding Pegboard}"
-                                        Visibility="{Binding DataContext.ActivePanel, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource EnumToVis}, ConverterParameter=Pegboard}" />
-                    <!-- ソリューション：フォルダーツリー（住所）とは別の、評価済み C# 構造の面。
-                         ビュー自身も C# が無ければ畳むので、包む Grid は「どのパネルか」だけを見る。 -->
-                    <Grid x:Name="SolutionSection"
-                          Visibility="{Binding ActivePanel, Converter={StaticResource EnumToVis}, ConverterParameter=Solution}">
-                        <views:CSharpSolutionExplorerView DataContext="{Binding CSharpSolutionExplorer}" />
+
+                    <GridSplitter x:Name="SidebarSectionSplitter" Grid.Row="1" Height="5"
+                                  HorizontalAlignment="Stretch" VerticalAlignment="Center"
+                                  ResizeDirection="Rows" ResizeBehavior="PreviousAndNext"
+                                  Background="{DynamicResource Border}" />
+
+                    <!-- 中段区画。既定ではタブ一覧だけが住む。 -->
+                    <Grid x:Name="SecondarySidebarHost" Grid.Row="2">
+                        <views:TabsView x:Name="SidebarTabs" DataContext="{Binding Tabs}" />
                     </Grid>
                 </Grid>
 

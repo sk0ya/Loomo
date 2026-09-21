@@ -18,7 +18,8 @@ namespace sk0ya.Loomo.Tests;
 /// </summary>
 public class ShellViewModelTests
 {
-    private static ShellViewModel CreateSut(CSharpSolutionExplorerViewModel? solutionExplorer = null)
+    private static ShellViewModel CreateSut(CSharpSolutionExplorerViewModel? solutionExplorer = null,
+        ActivityBarViewModel? activityBar = null)
     {
         var workspace = new FakeWorkspaceService();
         var folderTree = new FolderTreeViewModel(workspace, new FakeAiWarmup(),
@@ -115,7 +116,7 @@ public class ShellViewModelTests
             searchVm, debugVm, tsIdeVm,
             new TrailViewModel(new TrailStore(
                 Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-loomo-trail.db"))),
-            csharpSolutionExplorer: solutionExplorer);
+            csharpSolutionExplorer: solutionExplorer, activityBar: activityBar);
     }
 
     [Fact]
@@ -158,23 +159,127 @@ public class ShellViewModelTests
         Assert.Equal(SettingsCategory.Appearance, sut.SettingsCategory);
     }
 
+    /// <summary>タブ一覧は独立した面で、既定では中段バーに住む。押しても上段の面（エクスプローラ）は
+    /// 閉じない——2本のバーが別々の区画を持つのが要点。</summary>
     [Fact]
-    public void ShowTabs_reveals_explorer_and_toggles_tab_section()
+    public void ShowTabs_toggles_the_secondary_section_without_touching_the_primary()
     {
         var sut = CreateSut();
-        sut.Tabs.IsSectionExpanded = false;
+        Assert.Equal(ActivityBarSlot.Secondary, sut.ActivityBar.SlotOf(SidebarPanel.Tabs));
 
-        // タブ一覧はエクスプローラ内のセクション：開く＝エクスプローラ＋セクション展開
-        sut.ShowTabsCommand.Execute(null);
+        sut.ShowTabsCommand.Execute(null);   // 既定で開いているので畳む
+        Assert.False(sut.IsSecondarySidebarVisible);
         Assert.True(sut.IsSidebarVisible);
         Assert.Equal(SidebarPanel.Explorer, sut.ActivePanel);
-        Assert.True(sut.Tabs.IsSectionExpanded);
 
-        // 展開済みで再実行 → セクションだけ畳む（サイドバーは開いたまま）
-        sut.ShowTabsCommand.Execute(null);
+        sut.ShowTabsCommand.Execute(null);   // もう一度で開く
+        Assert.True(sut.IsSecondarySidebarVisible);
+        Assert.Equal(SidebarPanel.Tabs, sut.SecondaryPanel);
         Assert.True(sut.IsSidebarVisible);
         Assert.Equal(SidebarPanel.Explorer, sut.ActivePanel);
-        Assert.False(sut.Tabs.IsSectionExpanded);
+    }
+
+    /// <summary>2本のバーはそれぞれ自分の区画を持つ：上段の面と中段の面が同時に見えていること。</summary>
+    [Fact]
+    public void 上段と中段のパネルは同時に見える()
+    {
+        var sut = CreateSut();
+
+        Assert.True(sut.IsSidebarVisible);
+        Assert.Equal(SidebarPanel.Explorer, sut.ActivePanel);
+        Assert.True(sut.IsSecondarySidebarVisible);
+        Assert.Equal(SidebarPanel.Tabs, sut.SecondaryPanel);
+        Assert.True(sut.IsSidebarColumnVisible);
+
+        // 上段を畳んでも中段は残り、列そのものは立ったまま。
+        sut.ShowExplorerCommand.Execute(null);
+        Assert.False(sut.IsSidebarVisible);
+        Assert.True(sut.IsSecondarySidebarVisible);
+        Assert.True(sut.IsSidebarColumnVisible);
+
+        // 両方畳めば列ごと消える。
+        sut.ShowTabsCommand.Execute(null);
+        Assert.False(sut.IsSidebarColumnVisible);
+    }
+
+    /// <summary>保存された配置で立ち上げたときも、区画が「その段に居ない面」を映さないこと。
+    /// 既定の <c>ActivePanel</c>／<c>SecondaryPanel</c> と保存された段割りは食い違いうる。</summary>
+    [Fact]
+    public void 保存された配置で起動しても区画は自分の段の面を映す()
+    {
+        var settings = new LoomoSettings();
+        // 前回：エクスプローラを中段へ、タブ一覧を上段へ動かしていた部屋。
+        settings.ActivityBar.Primary = ["tabs", "git", "solution", "pegboard"];
+        settings.ActivityBar.Secondary = ["explorer"];
+        var sut = CreateSut(activityBar: new ActivityBarViewModel(settings));
+
+        Assert.Equal(SidebarPanel.Tabs, sut.ActivePanel);
+        Assert.Equal(SidebarPanel.Explorer, sut.SecondaryPanel);
+        Assert.True(sut.IsSidebarVisible);
+        Assert.True(sut.IsSecondarySidebarVisible);
+    }
+
+    /// <summary>全部を上段へ集めてあった部屋では、中身の無い中段は畳んだ状態で立ち上げること。
+    /// 開いたままだと「上段を閉じても空の列が残り、閉じる導線が無い」状態になる。</summary>
+    [Fact]
+    public void 空の段は畳んだ状態で起動する()
+    {
+        var settings = new LoomoSettings();
+        settings.ActivityBar.Primary = ["explorer", "git", "solution", "pegboard", "tabs"];
+        settings.ActivityBar.Secondary = [];
+        var sut = CreateSut(activityBar: new ActivityBarViewModel(settings));
+
+        Assert.False(sut.IsSecondarySidebarVisible);
+        Assert.True(sut.IsSidebarColumnVisible);
+
+        sut.ShowExplorerCommand.Execute(null);   // 上段も閉じる
+        Assert.False(sut.IsSidebarColumnVisible);
+    }
+
+    /// <summary>同じ段での並べ替えでは面を開き直さない（人間がしていないナビゲーション＝§27）。</summary>
+    [Fact]
+    public void 同じ段での並べ替えでは面を開き直さない()
+    {
+        var sut = CreateSut();
+        sut.ShowExplorerCommand.Execute(null);   // 上段を畳む
+        Assert.False(sut.IsSidebarVisible);
+
+        sut.ActivityBar.Move(sut.ActivityBar.ItemFor(SidebarPanel.Git)!, ActivityBarSlot.Primary, 0);
+
+        Assert.False(sut.IsSidebarVisible);      // 畳んだまま
+    }
+
+    /// <summary>ドラッグで段を移した項目は、移した先の区画で開いて見せる。取り残された区画は
+    /// その段の先頭の面へ寄せ直し、段が空になったら畳む。</summary>
+    [Fact]
+    public void 段を移した項目は移した先で開き元の区画は寄せ直す()
+    {
+        var sut = CreateSut();
+
+        sut.ActivityBar.Move(sut.ActivityBar.ItemFor(SidebarPanel.Explorer)!, ActivityBarSlot.Secondary, 0);
+
+        Assert.Equal(SidebarPanel.Explorer, sut.SecondaryPanel);
+        Assert.True(sut.IsSecondarySidebarVisible);
+        // 上段はエクスプローラを失ったので先頭（Git）へ。
+        Assert.Equal(SidebarPanel.Git, sut.ActivePanel);
+        Assert.True(sut.IsSidebarVisible);
+
+        // 以後、エクスプローラのアイコンは中段の区画を開閉する。
+        sut.ShowExplorerCommand.Execute(null);
+        Assert.False(sut.IsSecondarySidebarVisible);
+        Assert.Equal(SidebarPanel.Git, sut.ActivePanel);
+    }
+
+    [Fact]
+    public void 段が空になったらその区画は畳む()
+    {
+        var sut = CreateSut();
+
+        sut.ActivityBar.Move(sut.ActivityBar.ItemFor(SidebarPanel.Tabs)!, ActivityBarSlot.Primary, 0);
+
+        Assert.Equal(SidebarPanel.Tabs, sut.ActivePanel);
+        Assert.True(sut.IsSidebarVisible);
+        Assert.False(sut.IsSecondarySidebarVisible);   // 中段は空になった
     }
 
     [Fact]

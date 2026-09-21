@@ -224,7 +224,7 @@ public partial class ShellWindow : Window {
                 ?.AddValueChanged(WingColumn, (_, _) =>
                     PaneLayoutDebugLog.Log($"WingColumn.Width -> {WingColumn.Width}", withCaller: true));
         }
-        InitializeSidebarSections();
+        InitializeActivityBar();
         HookAiActivity();
         vm.Settings.Saved += ApplyVimEnabledToOpenEditorTabs;
         vm.Settings.Saved += ApplyEditorSettingsToOpenEditorTabs;
