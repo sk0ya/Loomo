@@ -23,6 +23,10 @@ internal sealed class ShellWindowStateController
     private readonly Action _captureFocusReturnOrigin;
     private readonly Action _restoreFocusReturnOrigin;
     private GridLength _savedSidebarWidth = new(220);
+    /// <summary>直前に列が出ていたか。幅の記録・復元をしてよいのは「出ている⇄畳んでいる」が
+    /// 実際に切り替わった瞬間だけ——上段と中段のどちらが変わってもこの経路は通るので、
+    /// 出たままの再入で書き戻すと、人がスプリッターで広げた今の幅を古い記録で潰してしまう。</summary>
+    private bool _sidebarColumnShown;
     private SettingsWindow? _settingsWindow;
 
     public ShellWindowStateController(
@@ -47,6 +51,8 @@ internal sealed class ShellWindowStateController
         _focusSidebar = focusSidebar;
         _captureFocusReturnOrigin = captureFocusReturnOrigin;
         _restoreFocusReturnOrigin = restoreFocusReturnOrigin;
+
+        _sidebarColumnShown = _viewModel.IsSidebarColumnVisible;
 
         _viewModel.PropertyChanged += OnViewModelPropertyChanged;
         _owner.Closed += OnOwnerClosed;
@@ -98,23 +104,36 @@ internal sealed class ShellWindowStateController
 
     private void ApplySidebarVisibility(bool visible)
     {
+        var wasShown = _sidebarColumnShown;
+        _sidebarColumnShown = visible;
+
         if (visible)
         {
             _sidebarColumn.MinWidth = 120;
-            _sidebarColumn.Width = _savedSidebarWidth.Value > 0 ? _savedSidebarWidth : new GridLength(220);
+            // 畳んでいたものを開き直すときだけ幅を書き戻す。出たまま区画が入れ替わっただけなら
+            // 今の幅がそのまま正しい。
+            if (!wasShown)
+                _sidebarColumn.Width = _savedSidebarWidth.Value > 0 ? _savedSidebarWidth : new GridLength(220);
             _sidebarSplitterColumn.Width = new GridLength(SplitterThickness);
             _sidebarContainer.Visibility = Visibility.Visible;
             _sidebarSplitter.Visibility = Visibility.Visible;
             return;
         }
 
-        _savedSidebarWidth = _sidebarColumn.Width;
+        // 覚えるのも畳む瞬間だけ。二度目に入って 0 を覚えてしまわないようにする。
+        if (wasShown)
+            _savedSidebarWidth = CurrentSidebarWidth();
         _sidebarColumn.MinWidth = 0;
         _sidebarColumn.Width = new GridLength(0);
         _sidebarSplitterColumn.Width = new GridLength(0);
         _sidebarContainer.Visibility = Visibility.Collapsed;
         _sidebarSplitter.Visibility = Visibility.Collapsed;
     }
+
+    /// <summary>いまの列幅。スプリッターのドラッグ後は Width が実測とずれることがあるので、
+    /// 出ている間は実測（ActualWidth）を正とする。</summary>
+    private GridLength CurrentSidebarWidth()
+        => _sidebarColumn.ActualWidth > 0 ? new GridLength(_sidebarColumn.ActualWidth) : _sidebarColumn.Width;
 
     private void OnOwnerClosed(object? sender, EventArgs e)
     {
