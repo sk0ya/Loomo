@@ -108,7 +108,7 @@ public partial class ShellWindow {
 
     /// <summary>現在のエディター文書を保存する。Ctrl+S は言語に依存しないホスト操作なので、
     /// C# 専用 DLL ではなく ShellWindow から Editor の保存 API へ接続する。</summary>
-    private void SaveActiveEditor()
+    private async void SaveActiveEditor()
     {
         if (_activeEditorTab is not { IsRealized: true } tab)
             return;
@@ -124,7 +124,7 @@ public partial class ShellWindow {
 
         try
         {
-            control.Save();
+            await _editor.SaveFileAsync(control);
         }
         catch (Exception ex)
         {

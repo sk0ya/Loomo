@@ -297,6 +297,7 @@ public sealed class SettingsStore
         public bool ShowMinimap { get; set; }
         public bool ShowIndentGuides { get; set; }
         public bool CollapseUsingsOnOpen { get; set; }
+        public bool CleanCSharpOnSave { get; set; }
         public bool AutoClosePairs { get; set; }
         public bool ShowInlayHints { get; set; }
         public bool InlineSuggest { get; set; } = true;
@@ -313,6 +314,7 @@ public sealed class SettingsStore
             ShowMinimap = e.ShowMinimap,
             ShowIndentGuides = e.ShowIndentGuides,
             CollapseUsingsOnOpen = e.CollapseUsingsOnOpen,
+            CleanCSharpOnSave = e.CleanCSharpOnSave,
             AutoClosePairs = e.AutoClosePairs,
             ShowInlayHints = e.ShowInlayHints,
             InlineSuggest = e.InlineSuggest,
@@ -330,6 +332,7 @@ public sealed class SettingsStore
             e.ShowMinimap = ShowMinimap;
             e.ShowIndentGuides = ShowIndentGuides;
             e.CollapseUsingsOnOpen = CollapseUsingsOnOpen;
+            e.CleanCSharpOnSave = CleanCSharpOnSave;
             e.AutoClosePairs = AutoClosePairs;
             e.ShowInlayHints = ShowInlayHints;
             e.InlineSuggest = InlineSuggest;

@@ -1242,3 +1242,42 @@ StyleCopだけを先に追加しても、Roslynがプロジェクトを正しく
 - **失われたのは多ターゲット（multi-targeting）プロジェクトの TFM 切替 UI だけ**。解析対象 TFM は
   `ISolutionModelService.SelectTargetFrameworkAsync` に残っているので、必要になったら
   ソリューションツリーの TFM の段（●／○ が出ている行）か、タイトルバーのデバッグメニュー（§28.11）へ足す。
+
+## §33.17 Rider比較からの編集改善計画（2026-09-21）
+
+### 現状をコードで確認した結果
+
+Rider相当の機能をゼロから足す段階ではない。既存実装を調べると、C#専用コマンドは約40個あり、
+rename／navigation／Quick Fix／format／cleanup／複数のrefactoringとgenerationが登録済みである。
+Problems、solution/project/file範囲のFix all、複数文書WorkspaceEditのpreview／rollback／Undoもある。
+そのため当面は機能数を増やすより、毎日の編集ループで不足している導線、意味解析の範囲、適用前後の信頼性を埋める。
+
+| 領域 | 既存実装 | Riderと比べた具体的な差 |
+|---|---|---|
+| 診断とQuick Fix | Roslyn LSP／compiler／StyleCopの診断をProblemsへ集約し、Alt+EnterとFix allを提供 | Riderは標準で2,500超のinspectionを持ち、重大度を個別設定できる。Loomoは主にcompiler／Analyzer／server由来で、独自inspectionの範囲は限定的。まず既存LSP診断との重複を避け、実際に欠ける高価値診断を特定する |
+| Cleanup | C#専用cleanupを手動コマンドから実行。`.editorconfig`、using整理、整形、改行、末尾改行を扱い、生成コードを除外 | 明示保存時にcleanupする設定、複数cleanup profile、選択範囲／変更行／solutionを対象にする導線が無い。Riderはcleanup profileとActions on Saveを提供する |
+| Snippet／Live Template | Editorにextension別snippet、ユーザーsnippet、数値tab stopがある | LSP snippetの変数は値へ展開されず除去され、選択肢は最初の候補を採用する。キャレット位置やC#構文コンテキストに応じた候補、文脈変数、展開前の説明UIは無い |
+| Refactoring／Generation | Command catalogに多数の操作があり、保守的な条件とWorkspaceEditで安全適用 | 一部は構文上安全なケースに限定され、partial／generic／overload／method group／プロジェクト境界などで候補外になる。件数追加より、主要操作ごとの成功・拒否条件と不足ケースを可視化して広げる |
+
+比較基準は[公式Rider Code Inspections](https://www.jetbrains.com/help/rider/Code_Analysis__Code_Inspections.html)、
+[Code Cleanup](https://www.jetbrains.com/help/rider/Code_Cleanup__Index.html)、
+[Live Templates](https://www.jetbrains.com/help/rider/Creating_and_Editing_Live_Templates.html)。Rider全体の機能同等を目標にせず、
+LoomoのC#編集ループに対する効果と保守コストで順番を決める。
+
+### 実施順序
+
+1. **保存時C# cleanup（今回実装）** — 設定で任意に有効化し、Ctrl+SとVim `:w`の共通保存経路から、開いているC#ファイルのcleanupを保存前に適用する。既定OFF、`.editorconfig`準拠、生成コード除外、単一ファイルWorkspaceEdit限定、プレビューなし、Undo可能とする。cleanup失敗時も保存そのものは続ける。Roslyn意味解析が使える場合だけ未使用usingを削除し、利用できない場合は安全な整形・using整理に留める。
+2. **cleanup範囲とprofile** — 手動cleanupのファイル／選択範囲／変更行を区別できるようにし、整形のみ／using整理／full cleanupの選択と`.editorconfig`との優先順位を定義する。保存時にどの処理を行うかも同じprofileから選ぶ。solution一括はpreview・原子的rollback・Undoの既存契約を維持する。
+3. **C# Live Template** — まず`prop`、`ctor`、`foreach`、`try`など頻用テンプレートを追加し、選択文字列、型名、ファイル名、namespaceなど安全に決められる変数とtab stopを扱う。LSP由来snippetのchoice／variable解釈は既存snippet機能と分けて仕様化し、値が不明な変数を無言で削除しない。
+4. **診断の実効範囲を拡張** — Roslyn LSP／StyleCop／compilerで既に報告される問題をfixtureで一覧化し、重複・未対応・設定反映漏れを分ける。その後、Loomo内でしか出せない高価値inspectionを少数ずつ加え、severity／抑制／Quick FixをProblemsの既存契約へ接続する。Riderのinspection数を数値目標にしない。
+5. **Refactoringの適用範囲を実測で広げる** — rename、extract／inline、safe delete、move type、signature changeを対象に、multi-project／multi-TFM／partial／generic／overload／未保存Editor／外部変更のシナリオ表を作る。各機能の不足ケースを一つずつ追加し、危険な曖昧ケースでは候補を出さず理由を説明する。
+6. **一連の受入れ** — キーボードだけで「開く→編集→cleanup→Quick Fix→複数ファイルrefactoring→Undo→保存→Build」まで実WPFで確認する。Roslyn server有り／無し、未保存バッファ、生成コード、cleanup無変更、編集競合を含め、既存WorkspaceEditの保護条件も確認する。
+
+### 今回の変更範囲と完了条件
+
+- `EditorSettings.CleanCSharpOnSave`を追加し、既定値は`false`。設定UIで有効化し、その場で永続化する。
+- Ctrl+SとVim `:w`を`EditorService.SaveFileAsync`へ集約し、保存前フックから既存のC# cleanupを呼ぶ。
+- cleanupは現在の`.cs`文書だけに許可し、ファイル操作や他文書変更が返った場合は適用しない。WorkspaceEditの期待本文照合、snapshot、rollback、Undo履歴を通す。
+- cleanupで変更が無い通常保存は通知を出さない。生成コードは従来どおり除外する。
+- 設定OFF、非C#ファイル、Save As先が別パスの場合にはcleanupしない。cleanup失敗で保存を中断せず、現本文を保存する。
+- `dotnet build sk0ya.Loomo.sln`で全solutionのコンパイルを確認する。UIを含む保存／Undoの実機旅程は§33.15の受入れ条件に追加し、今回のbuildだけで実機確認済みとは扱わない。今回テストは実行していない。

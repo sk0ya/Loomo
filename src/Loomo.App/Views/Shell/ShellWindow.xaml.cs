@@ -123,6 +123,7 @@ public partial class ShellWindow : Window {
             RestoreFocusReturnOrigin);
         _terminal = terminal;
         _editor = editor;
+        _editor.BeforeSaveAsync = PrepareEditorSaveAsync;
         _browser = browser;
         // フロントデバッグ（TS IDE）が dev URL をペインへ出すためのフック：可視化＋フォーカス＋実体化して遷移。
         _browser.ShowAndNavigateRequested = url => ShowBrowserPaneAndNavigateAsync(url);

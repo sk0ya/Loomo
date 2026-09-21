@@ -300,10 +300,11 @@ public partial class ShellWindow {
         IReadOnlyDictionary<string, int?>? documentVersions,
         IReadOnlyList<Editor.Core.Lsp.LspFileOperation>? fileOperations,
         WorkspaceEditPreviewFile? currentPreview = null,
-        IReadOnlyDictionary<string, string>? expectedTexts = null)
+        IReadOnlyDictionary<string, string>? expectedTexts = null,
+        bool showPreview = true)
         => _workspaceEditTransactions.Apply(changes, documentVersions, fileOperations,
             currentPreview, expectedTexts, _workspace.Folders, _editorTabs,
-            EditorPathMatches, ShowWorkspaceEditPreview);
+            EditorPathMatches, ShowWorkspaceEditPreview, showPreview);
 
     private bool ShowWorkspaceEditPreview(
         IReadOnlyList<WorkspaceEditPreviewFile> files,

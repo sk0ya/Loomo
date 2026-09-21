@@ -46,7 +46,8 @@ internal sealed class WorkspaceEditTransactionCoordinator
         IReadOnlyList<string> folders,
         IReadOnlyList<EditorTab> editorTabs,
         Func<VimEditorControl, string?, bool> editorPathMatches,
-        Func<IReadOnlyList<WorkspaceEditPreviewFile>, IReadOnlyList<WorkspaceEditPreviewOperation>, bool> showPreview)
+        Func<IReadOnlyList<WorkspaceEditPreviewFile>, IReadOnlyList<WorkspaceEditPreviewOperation>, bool> showPreview,
+        bool requirePreview = true)
     {
         if (folders.Count == 0)
             return WorkspaceEditOutcome.Fail("ワークスペースが開かれていません。");
@@ -105,7 +106,8 @@ internal sealed class WorkspaceEditTransactionCoordinator
             var previewOperations = operations.Select(ToPreviewOperation).ToList();
             fileSnapshots = CaptureFileSnapshots(operations, plans, currentPreview);
             editorSnapshots = CaptureEditorSnapshots(plans, currentPreview, editorTabs, editorPathMatches);
-            if ((previewFiles.Count > 0 || previewOperations.Count > 0) && !showPreview(previewFiles, previewOperations))
+            if (requirePreview && (previewFiles.Count > 0 || previewOperations.Count > 0) &&
+                !showPreview(previewFiles, previewOperations))
                 return WorkspaceEditOutcome.Cancel();
 
             // プレビュー中にユーザーや別プロセスが触った場合は、確認済みの差分を上書きしない。

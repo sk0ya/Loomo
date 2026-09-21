@@ -49,6 +49,9 @@ public sealed class EditorService : IEditorService
     /// </summary>
     public event Action<string>? FileOpenRequested;
 
+    /// <summary>通常ファイルの保存直前にApp層が編集を整えるためのフック。仮想文書では呼ばない。</summary>
+    public Func<VimEditorControl, string?, Task>? BeforeSaveAsync { get; set; }
+
     public void Attach(VimEditorControl ctrl)
     {
         if (_ctrl is not null)
@@ -106,7 +109,7 @@ public sealed class EditorService : IEditorService
     /// </summary>
     private void OnSaveRequested(object? sender, SaveRequestedEventArgs e)
     {
-        var ctrl = _ctrl;
+        var ctrl = sender as VimEditorControl ?? _ctrl;
         if (ctrl is null) return;
 
         if (e.IsVirtual)
@@ -126,15 +129,48 @@ public sealed class EditorService : IEditorService
             return;
         }
 
-        // 通常ファイル: エディタにディスク保存を委譲（modified 解除・ウォッチャ抑制も内部で処理）。
-        var path = e.FilePath ?? ctrl.FilePath;
-        if (string.IsNullOrEmpty(path))
+        _ = SaveRequestedFileAsync(ctrl, e.FilePath);
+    }
+
+    /// <summary>Ctrl+SとVimの:wが共有する通常ファイル保存経路。</summary>
+    public async Task<bool> SaveFileAsync(VimEditorControl control, string? path = null)
+    {
+        ArgumentNullException.ThrowIfNull(control);
+        if (control.IsVirtualDocument) return false;
+
+        var targetPath = path ?? control.FilePath;
+        if (string.IsNullOrWhiteSpace(targetPath))
+            targetPath = PromptSaveAsPath();
+        if (string.IsNullOrWhiteSpace(targetPath)) return false;
+
+        if (BeforeSaveAsync is { } prepare)
         {
-            // Untitled（パス未確定）タブの保存：保存先が無いのでファイル保存ダイアログで確定させる。
-            path = PromptSaveAsPath();
-            if (string.IsNullOrEmpty(path)) return;   // キャンセル：未保存のまま維持
+            try
+            {
+                await prepare(control, targetPath);
+            }
+            catch (Exception ex)
+            {
+                // 保存前の任意処理で利用者の保存を失敗させない。処理側のWorkspaceEditは
+                // 失敗時にrollbackされるため、ここでは現在の本文をそのまま保存する。
+                control.ShowStatusMessage($"保存前処理に失敗しました。本文をそのまま保存します: {ex.Message}");
+            }
         }
-        ctrl.Save(path);
+
+        control.Save(targetPath);
+        return true;
+    }
+
+    private async Task SaveRequestedFileAsync(VimEditorControl control, string? path)
+    {
+        try
+        {
+            await SaveFileAsync(control, path);
+        }
+        catch (Exception ex)
+        {
+            control.ShowStatusMessage($"保存に失敗しました: {ex.Message}");
+        }
     }
 
     /// <summary>Untitled タブの保存時に表示するファイル保存ダイアログ。キャンセルなら null。</summary>

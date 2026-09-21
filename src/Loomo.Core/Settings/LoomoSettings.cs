@@ -178,6 +178,9 @@ public sealed class EditorSettings
     /// 既定 OFF。クラスやメソッドなど、ほかの折りたたみ範囲には干渉しない。</summary>
     public bool CollapseUsingsOnOpen { get; set; }
 
+    /// <summary>C# ファイルの保存時に、.editorconfigに沿った整形とusing整理を行う。既定 OFF。</summary>
+    public bool CleanCSharpOnSave { get; set; }
+
     /// <summary>括弧・引用符を入力したとき対応する閉じ記号を自動挿入する（Vim <c>pairs</c>）。既定 OFF。</summary>
     public bool AutoClosePairs { get; set; }
 

@@ -653,6 +653,11 @@
                                           ToolTip="C# ファイルを開いたとき、先頭の using 節だけを閉じます。クラスやメソッドは閉じません。">
                                     <TextBlock Text="C# ファイルを開いたとき using 節を閉じる" TextWrapping="Wrap" />
                                 </CheckBox>
+                                <CheckBox Margin="0,8,0,0"
+                                          IsChecked="{Binding Settings.CleanCSharpOnSave}"
+                                          ToolTip="C#ファイルを保存するとき、.editorconfigに沿って整形します。Roslynの意味解析が使える場合は未使用usingも整理します。Undoで元に戻せます。">
+                                    <TextBlock Text="C#ファイルを保存時に整形し、usingを整理する" TextWrapping="Wrap" />
+                                </CheckBox>
 
                                 <Separator Margin="0,16,0,10" />
                                 <TextBlock Style="{StaticResource FieldLabel}" Text="タブ幅（インデント幅）" Margin="0,0,0,3" />

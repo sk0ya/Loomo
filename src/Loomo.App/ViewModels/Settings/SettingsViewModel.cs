@@ -53,6 +53,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _showMinimap;
     [ObservableProperty] private bool _showIndentGuides;
     [ObservableProperty] private bool _collapseUsingsOnOpen;
+    [ObservableProperty] private bool _cleanCSharpOnSave;
     [ObservableProperty] private bool _autoClosePairs;
     [ObservableProperty] private bool _showInlayHints;
     [ObservableProperty] private int _tabWidth;
@@ -135,6 +136,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         RelativeLineNumbers = form.RelativeLineNumbers; HighlightCurrentLine = form.HighlightCurrentLine;
         WordWrap = form.WordWrap; ShowMinimap = form.ShowMinimap; ShowIndentGuides = form.ShowIndentGuides;
         CollapseUsingsOnOpen = form.CollapseUsingsOnOpen;
+        CleanCSharpOnSave = form.CleanCSharpOnSave;
         AutoClosePairs = form.AutoClosePairs; ShowInlayHints = form.ShowInlayHints;
         TabWidth = form.TabWidth; UseSpacesForTab = form.UseSpacesForTab;
         ImagePasteDirectory = form.ImagePasteDirectory; ImagePasteFileName = form.ImagePasteFileName;
@@ -190,6 +192,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     partial void OnShowMinimapChanged(bool value) => Persist();
     partial void OnShowIndentGuidesChanged(bool value) => Persist();
     partial void OnCollapseUsingsOnOpenChanged(bool value) => Persist();
+    partial void OnCleanCSharpOnSaveChanged(bool value) => Persist();
     partial void OnAutoClosePairsChanged(bool value) => Persist();
     partial void OnShowInlayHintsChanged(bool value) => Persist();
     partial void OnTabWidthChanged(int value) => Persist();
@@ -221,6 +224,7 @@ public sealed partial class SettingsViewModel : ObservableObject
             RelativeLineNumbers = RelativeLineNumbers, HighlightCurrentLine = HighlightCurrentLine,
             WordWrap = WordWrap, ShowMinimap = ShowMinimap, ShowIndentGuides = ShowIndentGuides,
             CollapseUsingsOnOpen = CollapseUsingsOnOpen,
+            CleanCSharpOnSave = CleanCSharpOnSave,
             AutoClosePairs = AutoClosePairs, ShowInlayHints = ShowInlayHints,
             TabWidth = TabWidth, UseSpacesForTab = UseSpacesForTab,
             ImagePasteDirectory = ImagePasteDirectory, ImagePasteFileName = ImagePasteFileName,

@@ -15,7 +15,7 @@ internal sealed class CSharpEditorRefactoringCoordinator
     private readonly Func<string, string, string, bool, string?> _prompt;
     private readonly Action<string> _showStatus;
     private readonly Func<IReadOnlyDictionary<string, string>> _findOpenEditorTexts;
-    private readonly Func<LspWorkspaceEdit, IReadOnlyDictionary<string, string>?, WorkspaceEditOutcome> _applyWorkspaceEdit;
+    private readonly Func<LspWorkspaceEdit, IReadOnlyDictionary<string, string>?, bool, WorkspaceEditOutcome> _applyWorkspaceEdit;
 
     public CSharpEditorRefactoringCoordinator(
         Func<SolutionModel?> currentSolution,
@@ -23,7 +23,7 @@ internal sealed class CSharpEditorRefactoringCoordinator
         Func<string, string, string, bool, string?> prompt,
         Action<string> showStatus,
         Func<IReadOnlyDictionary<string, string>> findOpenEditorTexts,
-        Func<LspWorkspaceEdit, IReadOnlyDictionary<string, string>?, WorkspaceEditOutcome> applyWorkspaceEdit)
+        Func<LspWorkspaceEdit, IReadOnlyDictionary<string, string>?, bool, WorkspaceEditOutcome> applyWorkspaceEdit)
     {
         _currentSolution = currentSolution;
         _editorConfig = editorConfig;
@@ -55,11 +55,14 @@ internal sealed class CSharpEditorRefactoringCoordinator
             return;
         }
 
-        var outcome = _applyWorkspaceEdit(edit, result.ExpectedTexts);
+        var outcome = _applyWorkspaceEdit(edit, result.ExpectedTexts, true);
         _showStatus(outcome.Describe(result.Summary) ?? $"「{result.Summary}」を適用しました。");
     }
 
-    public async Task RunCSharpCleanupAsync(VimEditorControl control)
+    public async Task RunCSharpCleanupAsync(
+        VimEditorControl control,
+        bool showPreview = true,
+        bool suppressRoutineMessages = false)
     {
         if (control.FilePath is not { Length: > 0 } path) return;
         var text = control.Text;
@@ -70,11 +73,15 @@ internal sealed class CSharpEditorRefactoringCoordinator
             _editorConfig, _findOpenEditorTexts());
         if (result.IsGeneratedCode)
         {
-            _showStatus(result.Summary);
+            if (!suppressRoutineMessages)
+                _showStatus(result.Summary);
             return;
         }
         if (result.Error is { Length: > 0 } error)
         {
+            if (suppressRoutineMessages &&
+                string.Equals(error, "cleanup対象の変更はありません。", StringComparison.Ordinal))
+                return;
             _showStatus($"C# cleanup: {error}");
             return;
         }
@@ -84,7 +91,22 @@ internal sealed class CSharpEditorRefactoringCoordinator
             return;
         }
 
-        var outcome = _applyWorkspaceEdit(edit, result.ExpectedTexts);
+        // 保存時は確認なしで適用するため、cleanupが生成した単一文書編集だけを許可する。
+        // 将来cleanupへ複数ファイル変更やファイル操作が加わっても、黙って適用範囲を広げない。
+        if (!showPreview &&
+            (edit.FileOperations is { Count: > 0 } ||
+             edit.Changes.Keys.Any(uri => !string.Equals(
+                 uri,
+                 LspUri.FromPath(Path.GetFullPath(path)),
+                 StringComparison.OrdinalIgnoreCase))))
+        {
+            _showStatus("C# cleanup: 保存時cleanupは現在のファイルだけに適用できます。");
+            return;
+        }
+
+        var outcome = _applyWorkspaceEdit(edit, result.ExpectedTexts, showPreview);
+        if (suppressRoutineMessages && outcome.Error is null && !outcome.Cancelled)
+            return;
         _showStatus(outcome.Describe(result.Summary) ?? $"「{result.Summary}」を適用しました。");
     }
 
@@ -645,6 +667,6 @@ internal sealed class CSharpEditorRefactoringCoordinator
     {
         edit = CSharpEditorResultMapper.PrepareGeneratedEdit(
             edit, _findOpenEditorTexts(), control.FilePath, control.Text, _editorConfig);
-        return _applyWorkspaceEdit(edit, expectedTexts);
+        return _applyWorkspaceEdit(edit, expectedTexts, true);
     }
 }

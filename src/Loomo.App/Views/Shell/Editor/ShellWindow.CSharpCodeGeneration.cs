@@ -37,14 +37,30 @@ public partial class ShellWindow
             this, title, prompt, initial, allowEmpty: allowEmpty),
         ShowRefactorStatus,
         FindOpenCSharpEditorTexts,
-        (edit, expectedTexts) => ApplyLspWorkspaceEdit(
-            edit.Changes, edit.DocumentVersions, edit.FileOperations, expectedTexts: expectedTexts));
+        (edit, expectedTexts, showPreview) => ApplyLspWorkspaceEdit(
+            edit.Changes, edit.DocumentVersions, edit.FileOperations,
+            expectedTexts: expectedTexts, showPreview: showPreview));
 
     private Task RunCSharpOrganizeUsingsAsync(VimEditorControl control)
         => CSharpRefactoring.RunCSharpOrganizeUsingsAsync(control);
 
     private Task RunCSharpCleanupAsync(VimEditorControl control)
         => CSharpRefactoring.RunCSharpCleanupAsync(control);
+
+    /// <summary>保存時cleanup。単一の開いている文書だけを整え、プレビューなしのWorkspaceEditとして記録する。</summary>
+    private async Task PrepareEditorSaveAsync(VimEditorControl control, string? targetPath)
+    {
+        if (!_settings.Editor.CleanCSharpOnSave ||
+            control.FilePath is not { Length: > 0 } currentPath ||
+            !string.Equals(Path.GetExtension(currentPath), ".cs", StringComparison.OrdinalIgnoreCase) ||
+            string.IsNullOrWhiteSpace(targetPath) ||
+            !string.Equals(Path.GetFullPath(currentPath), Path.GetFullPath(targetPath),
+                StringComparison.OrdinalIgnoreCase))
+            return;
+
+        await CSharpRefactoring.RunCSharpCleanupAsync(
+            control, showPreview: false, suppressRoutineMessages: true);
+    }
 
     private Task RunCSharpExtractMethodAsync(VimEditorControl control)
         => CSharpRefactoring.RunCSharpExtractMethodAsync(control);
