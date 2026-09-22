@@ -267,7 +267,7 @@ public partial class ShellWindow {
         if (sender is FrameworkElement { Tag: string kind } button)
             PaneTabOverflow.Show(
                 button, kind, (Style)FindResource("BranchMenuItem"),
-                (Brush)FindResource("FgDim"), UiFontManager.Scaled(12));
+                (Brush)FindResource("FgDim"), (Brush)FindResource("Accent"), UiFontManager.Scaled(12));
     }
     private void ActivatePaneTab(TabEntryViewModel tab) {
         switch (tab.Kind) {

@@ -948,7 +948,7 @@
                                                         Padding="8,0,4,0" HorizontalContentAlignment="Left"
                                                         Foreground="{DynamicResource Fg}" Tag="{Binding Id}"
                                                         Click="OnTerminalTabSelected">
-                                                    <TextBlock Text="{Binding Title}" FontSize="{DynamicResource Fs12}"
+                                                    <TextBlock x:Name="TabTitle" Text="{Binding Title}" FontSize="{DynamicResource Fs12}"
                                                                TextTrimming="CharacterEllipsis" />
                                                 </Button>
                                                 <Button Grid.Column="1" Style="{StaticResource TabStripButton}"
@@ -960,6 +960,9 @@
                                         <DataTemplate.Triggers>
                                             <DataTrigger Binding="{Binding IsActive}" Value="True">
                                                 <Setter TargetName="TabBorder" Property="BorderBrush" Value="{DynamicResource Accent}" />
+                                                <!-- 名前もアクセント色にする（サイドバーの TABS と同じ言い切り方）。下辺の
+                                                     2px だけだと帯が横に長いほど「どれを見ているか」が読みにくい。 -->
+                                                <Setter TargetName="TabTitle" Property="Foreground" Value="{DynamicResource Accent}" />
                                             </DataTrigger>
                                         </DataTemplate.Triggers>
                                     </DataTemplate>
@@ -1068,6 +1071,9 @@
                                         <DataTemplate.Triggers>
                                             <DataTrigger Binding="{Binding IsActive}" Value="True">
                                                 <Setter TargetName="TabBorder" Property="BorderBrush" Value="{DynamicResource Accent}" />
+                                                <!-- 名前もアクセント色にする（サイドバーの TABS と同じ言い切り方）。下辺の
+                                                     2px だけだと帯が横に長いほど「どれを見ているか」が読みにくい。 -->
+                                                <Setter TargetName="TabTitle" Property="Foreground" Value="{DynamicResource Accent}" />
                                             </DataTrigger>
                                             <!-- プレビュータブ（編集するまで確定しない）は VS Code 同様に斜体で示す -->
                                             <DataTrigger Binding="{Binding IsPreview}" Value="True">
@@ -1261,7 +1267,7 @@
                                                         <Image Width="14" Height="14" Margin="0,0,5,0"
                                                                VerticalAlignment="Center" Source="{Binding Icon}"
                                                                RenderOptions.BitmapScalingMode="HighQuality" />
-                                                        <TextBlock Text="{Binding Title}" FontSize="{DynamicResource Fs12}"
+                                                        <TextBlock x:Name="TabTitle" Text="{Binding Title}" FontSize="{DynamicResource Fs12}"
                                                                    VerticalAlignment="Center"
                                                                    TextTrimming="CharacterEllipsis" />
                                                     </StackPanel>
@@ -1275,6 +1281,9 @@
                                         <DataTemplate.Triggers>
                                             <DataTrigger Binding="{Binding IsActive}" Value="True">
                                                 <Setter TargetName="TabBorder" Property="BorderBrush" Value="{DynamicResource Accent}" />
+                                                <!-- 名前もアクセント色にする（サイドバーの TABS と同じ言い切り方）。下辺の
+                                                     2px だけだと帯が横に長いほど「どれを見ているか」が読みにくい。 -->
+                                                <Setter TargetName="TabTitle" Property="Foreground" Value="{DynamicResource Accent}" />
                                             </DataTrigger>
                                         </DataTemplate.Triggers>
                                     </DataTemplate>

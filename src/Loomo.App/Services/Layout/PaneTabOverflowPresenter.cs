@@ -1,4 +1,4 @@
-using System.Windows;
+﻿using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Media;
@@ -27,7 +27,8 @@ internal sealed class PaneTabOverflowPresenter
     }
 
     public void Show(
-        FrameworkElement button, string kind, Style rowStyle, Brush dimForeground, double fontSize)
+        FrameworkElement button, string kind, Style rowStyle, Brush dimForeground, Brush activeForeground,
+        double fontSize)
     {
         var tabs = kind switch
         {
@@ -60,6 +61,10 @@ internal sealed class PaneTabOverflowPresenter
                     TextTrimming = TextTrimming.CharacterEllipsis,
                     FontWeight = tab.IsActive ? FontWeights.SemiBold : FontWeights.Normal,
                 };
+                // いま見ているタブは名前をアクセント色にする（タブ帯・サイドバーの TABS と同じ言い切り方）。
+                // 太字だけだと一覧の中では差が出ない。非アクティブ側は既定の色を継がせたいので触らない。
+                if (tab.IsActive)
+                    content.Foreground = activeForeground;
                 var row = new Button
                 {
                     Style = rowStyle,

@@ -85,7 +85,7 @@
                                         <Image Grid.Column="0" Source="{Binding Icon}"
                                                Width="14" Height="14" Margin="8,0,6,0"
                                                VerticalAlignment="Center" />
-                                        <TextBlock Grid.Column="1" Text="{Binding Title}"
+                                        <TextBlock x:Name="TabTitle" Grid.Column="1" Text="{Binding Title}"
                                                    VerticalAlignment="Center"
                                                    MaxWidth="220" TextTrimming="CharacterEllipsis"
                                                    FontSize="{DynamicResource Fs12_5}" />
@@ -108,6 +108,8 @@
                                     </Trigger>
                                     <DataTrigger Binding="{Binding IsActive}" Value="True">
                                         <Setter TargetName="TabBorder" Property="Background" Value="{DynamicResource Panel}" />
+                                        <!-- 名前もアクセント色に（本体のタブ帯・TABS と同じ言い切り方）。 -->
+                                        <Setter TargetName="TabTitle" Property="Foreground" Value="{DynamicResource Accent}" />
                                     </DataTrigger>
                                 </DataTemplate.Triggers>
                             </DataTemplate>
@@ -145,6 +147,7 @@
                                     <DataTemplate.Triggers>
                                         <DataTrigger Binding="{Binding IsActive}" Value="True">
                                             <Setter TargetName="OverflowTitle" Property="FontWeight" Value="SemiBold" />
+                                            <Setter TargetName="OverflowTitle" Property="Foreground" Value="{DynamicResource Accent}" />
                                         </DataTrigger>
                                     </DataTemplate.Triggers>
                                 </DataTemplate>
