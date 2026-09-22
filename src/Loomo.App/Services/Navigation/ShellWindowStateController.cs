@@ -22,7 +22,7 @@ internal sealed class ShellWindowStateController
     private readonly Action<ActivityBarSlot> _focusSidebar;
     private readonly Action _captureFocusReturnOrigin;
     private readonly Action _restoreFocusReturnOrigin;
-    private GridLength _savedSidebarWidth = new(220);
+    private GridLength _savedSidebarWidth = new(SidebarWidthPolicy.DefaultWidth);
     /// <summary>直前に列が出ていたか。幅の記録・復元をしてよいのは「出ている⇄畳んでいる」が
     /// 実際に切り替わった瞬間だけ——上段と中段のどちらが変わってもこの経路は通るので、
     /// 出たままの再入で書き戻すと、人がスプリッターで広げた今の幅を古い記録で潰してしまう。</summary>
@@ -113,7 +113,7 @@ internal sealed class ShellWindowStateController
             // 畳んでいたものを開き直すときだけ幅を書き戻す。出たまま区画が入れ替わっただけなら
             // 今の幅がそのまま正しい。
             if (!wasShown)
-                _sidebarColumn.Width = _savedSidebarWidth.Value > 0 ? _savedSidebarWidth : new GridLength(220);
+                _sidebarColumn.Width = SidebarWidthPolicy.Restore(_savedSidebarWidth);
             _sidebarSplitterColumn.Width = new GridLength(SplitterThickness);
             _sidebarContainer.Visibility = Visibility.Visible;
             _sidebarSplitter.Visibility = Visibility.Visible;
@@ -130,10 +130,9 @@ internal sealed class ShellWindowStateController
         _sidebarSplitter.Visibility = Visibility.Collapsed;
     }
 
-    /// <summary>いまの列幅。スプリッターのドラッグ後は Width が実測とずれることがあるので、
-    /// 出ている間は実測（ActualWidth）を正とする。</summary>
+    /// <summary>いまの列幅（決め方は <see cref="SidebarWidthPolicy.Remember"/>）。</summary>
     private GridLength CurrentSidebarWidth()
-        => _sidebarColumn.ActualWidth > 0 ? new GridLength(_sidebarColumn.ActualWidth) : _sidebarColumn.Width;
+        => SidebarWidthPolicy.Remember(_sidebarColumn.Width, _sidebarColumn.ActualWidth);
 
     private void OnOwnerClosed(object? sender, EventArgs e)
     {
