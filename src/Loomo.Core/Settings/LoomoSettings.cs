@@ -144,11 +144,21 @@ public sealed class LspSettings
 
 /// <summary>ActivityBar（左端の縦帯）の項目配置。Loomo の ActivityBar は上段（画面の上から）と
 /// 中段（画面の中ほどから）の2本に分かれ、それぞれが自分のサイドバー区画を持つ。ここには
-/// どちらのバーに何をどの順で置くかだけを、項目 Id（"explorer" 等）の並びとして保存する。
+/// 項目 Id（"explorer" 等）の並びに加え、選択・開閉状態と区画の寸法を保存する。
 /// 空なら既定配置（上段＝エクスプローラ他／中段＝タブ一覧）を使う。未知の Id は読み捨て、
 /// どちらにも現れなかった項目は既定の配置先の末尾へ落とす（アプリ更新で項目が増えても消えない）。</summary>
 public sealed class ActivityBarSettings
 {
+    /// <summary>各区画で最後に選んだ項目 Id と開閉状態。</summary>
+    public string PrimarySelection { get; set; } = "explorer";
+    public string SecondarySelection { get; set; } = "tabs";
+    public bool PrimaryVisible { get; set; } = true;
+    public bool SecondaryVisible { get; set; } = true;
+
+    /// <summary>サイドバーの横幅と、上下表示時の下側区画の高さ（px）。</summary>
+    public double SidebarWidth { get; set; } = 220;
+    public double SecondaryHeight { get; set; } = 200;
+
     /// <summary>上段バーの項目 Id（上から順）。</summary>
     public List<string> Primary { get; set; } = new();
 

@@ -18,6 +18,64 @@ namespace sk0ya.Loomo.Tests;
 /// </summary>
 public class ShellViewModelTests
 {
+    [Fact]
+    public void 再起動で選択項目と閉じた区画を復元する()
+    {
+        var settings = new LoomoSettings();
+        var first = CreateSut(activityBar: new ActivityBarViewModel(settings));
+        first.ActivePanel = SidebarPanel.Pegboard;
+        first.IsSecondarySidebarVisible = false;
+
+        var restored = CreateSut(activityBar: new ActivityBarViewModel(settings));
+
+        Assert.Equal(SidebarPanel.Pegboard, restored.ActivePanel);
+        Assert.True(restored.IsSidebarVisible);
+        Assert.False(restored.IsSecondarySidebarVisible);
+        Assert.True(restored.ActivityBar.ItemFor(SidebarPanel.Pegboard)!.IsSelected);
+    }
+
+    [Fact]
+    public void 保存した選択が配置と合わなければ同じ段の項目へ戻す()
+    {
+        var settings = new LoomoSettings();
+        settings.ActivityBar.PrimarySelection = "tabs";
+        settings.ActivityBar.SecondarySelection = "unknown";
+        settings.ActivityBar.PrimaryVisible = false;
+
+        var restored = CreateSut(activityBar: new ActivityBarViewModel(settings));
+
+        Assert.Equal(SidebarPanel.Explorer, restored.ActivePanel);
+        Assert.Equal(SidebarPanel.Tabs, restored.SecondaryPanel);
+        Assert.False(restored.IsSidebarVisible);
+    }
+
+    [Theory]
+    [InlineData(true, true)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(false, false)]
+    public void ソリューションだけの区画は遅延検出後に保存した開閉状態へ戻る(bool primary, bool visible)
+    {
+        var settings = new LoomoSettings();
+        settings.ActivityBar.Primary = primary ? ["solution"] : ["explorer", "git", "pegboard", "tabs"];
+        settings.ActivityBar.Secondary = primary ? ["explorer", "git", "pegboard", "tabs"] : ["solution"];
+        settings.ActivityBar.PrimarySelection = primary ? "solution" : "explorer";
+        settings.ActivityBar.SecondarySelection = primary ? "tabs" : "solution";
+        settings.ActivityBar.PrimaryVisible = primary ? visible : true;
+        settings.ActivityBar.SecondaryVisible = primary ? true : visible;
+        var service = new StubSolutionModelService(EmptySolution());
+        using var solution = new CSharpSolutionExplorerViewModel(service);
+        var sut = CreateSut(solution, new ActivityBarViewModel(settings));
+
+        Assert.False(primary ? sut.IsSidebarVisible : sut.IsSecondarySidebarVisible);
+        service.Publish(CSharpSolution());
+
+        Assert.Equal(SidebarPanel.Solution, primary ? sut.ActivePanel : sut.SecondaryPanel);
+        Assert.Equal(visible, primary ? sut.IsSidebarVisible : sut.IsSecondarySidebarVisible);
+        Assert.Equal(visible, sut.ActivityBar.ItemFor(SidebarPanel.Solution)!.IsSelected);
+        Assert.Equal(visible, primary ? settings.ActivityBar.PrimaryVisible : settings.ActivityBar.SecondaryVisible);
+    }
+
     private static ShellViewModel CreateSut(CSharpSolutionExplorerViewModel? solutionExplorer = null,
         ActivityBarViewModel? activityBar = null)
     {

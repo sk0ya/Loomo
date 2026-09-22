@@ -192,15 +192,43 @@ public sealed partial class ShellViewModel : ObservableObject
         // 保存された配置は既定（上段＝エクスプローラ／中段＝タブ一覧）と食い違いうる。
         // 突き合わせずに立ち上げると、前回エクスプローラを中段へ動かしていた部屋では
         // 上段が空のまま開き、全部を上段へ集めていた部屋では「中身が無いのに畳めない列」が残る。
+        var saved = ActivityBar.SavedState;
+        _activePanel = ActivityBar.Items.FirstOrDefault(i => i.Id == saved.PrimarySelection)?.Panel ?? SidebarPanel.Explorer;
+        _secondaryPanel = ActivityBar.Items.FirstOrDefault(i => i.Id == saved.SecondarySelection)?.Panel ?? SidebarPanel.Tabs;
+        _isSidebarVisible = saved.PrimaryVisible;
+        _isSecondarySidebarVisible = saved.SecondaryVisible;
         NormalizeSections();
         RefreshActivitySelection();
+        UpdateGitPanelLive();
+        _sectionPersistenceReady = true;
         if (CSharpSolutionExplorer is { } solutionExplorer)
             solutionExplorer.PropertyChanged += (_, e) => {
                 if (e.PropertyName != nameof(CSharpSolutionExplorerViewModel.IsVisible)) return;
                 OnPropertyChanged(nameof(IsCSharpSolutionAvailable));
                 ActivityBar.SetAvailable(SidebarPanel.Solution, IsCSharpSolutionAvailable);
                 // ワークスペース切替で C# が消えたら、空のパネルを見せたままにしない。
-                if (IsCSharpSolutionAvailable) return;
+                if (IsCSharpSolutionAvailable)
+                {
+                    // 起動時のソリューション検出は遅れて完了するため、選択と開閉の復元をここで補う。
+                    var restorePrimary = saved.PrimarySelection == "solution"
+                        && ActivityBar.Holds(ActivityBarSlot.Primary, SidebarPanel.Solution);
+                    var restoreSecondary = saved.SecondarySelection == "solution"
+                        && ActivityBar.Holds(ActivityBarSlot.Secondary, SidebarPanel.Solution);
+                    // パネル変更で設定も保存されるため、表示状態は変更前に退避する。
+                    var primaryVisible = saved.PrimaryVisible;
+                    var secondaryVisible = saved.SecondaryVisible;
+                    if (restorePrimary)
+                    {
+                        ActivePanel = SidebarPanel.Solution;
+                        IsSidebarVisible = primaryVisible;
+                    }
+                    if (restoreSecondary)
+                    {
+                        SecondaryPanel = SidebarPanel.Solution;
+                        IsSecondarySidebarVisible = secondaryVisible;
+                    }
+                    return;
+                }
                 NormalizeSections();
             };
 
@@ -328,10 +356,21 @@ public sealed partial class ShellViewModel : ObservableObject
     partial void OnSecondaryPanelChanged(SidebarPanel value) => OnSectionStateChanged();
     partial void OnIsSecondarySidebarVisibleChanged(bool value) => OnSectionStateChanged();
 
+    private bool _sectionPersistenceReady;
+
     private void OnSectionStateChanged()
     {
         UpdateGitPanelLive();
         RefreshActivitySelection();
+        if (_sectionPersistenceReady)
+        {
+            var saved = ActivityBar.SavedState;
+            saved.PrimarySelection = ActivityBar.ItemFor(ActivePanel)?.Id ?? "explorer";
+            saved.SecondarySelection = ActivityBar.ItemFor(SecondaryPanel)?.Id ?? "tabs";
+            saved.PrimaryVisible = IsSidebarVisible;
+            saved.SecondaryVisible = IsSecondarySidebarVisible;
+            ActivityBar.Persist();
+        }
     }
 
     /// <summary>Git パネルが「見えている」ときだけライブ監視する。開いた瞬間に最新化される。

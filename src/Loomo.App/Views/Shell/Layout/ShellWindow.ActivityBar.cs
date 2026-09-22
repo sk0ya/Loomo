@@ -1,4 +1,4 @@
-namespace sk0ya.Loomo.App.Views;
+﻿namespace sk0ya.Loomo.App.Views;
 /// <summary>ShellWindow: ActivityBar 2本（上段／中段）と、それぞれが持つサイドバー区画。
 /// パネルのビューは XAML で1つずつ宣言しておき、ここが「どちらのホストの子にするか」と
 /// 「どれを見せるか」を決める——段を移しても状態（スクロール位置・展開）を持ったまま動く。
@@ -29,6 +29,16 @@ public partial class ShellWindow {
     private IReadOnlyDictionary<SidebarPanel, FrameworkElement>? _sidebarPanelViews;
 
     private void InitializeActivityBar() {
+        var height = _settings.ActivityBar.SecondaryHeight;
+        _savedSecondarySectionHeight = double.IsFinite(height) && height >= 26
+            ? height : DefaultSecondarySectionHeight;
+        _sidebarSectionsBothShown = false;
+        Closing += (_, _) => {
+            if (_sidebarSectionsBothShown && SecondarySidebarRow.ActualHeight >= 26)
+                _savedSecondarySectionHeight = SecondarySidebarRow.ActualHeight;
+            _settings.ActivityBar.SecondaryHeight = _savedSecondarySectionHeight;
+            _vm.ActivityBar.Persist();
+        };
         SidebarSectionSplitter.Cursor = Cursors.SizeNS;
         SidebarSectionSplitter.MouseEnter += (_, _) => SidebarSectionSplitter.Background = (Brush)FindResource("Accent");
         SidebarSectionSplitter.MouseLeave += (_, _) => SidebarSectionSplitter.Background = (Brush)FindResource("Border");
@@ -67,7 +77,7 @@ public partial class ShellWindow {
         // 配置を変える前に、いまの中段の高さを覚える——スプリッターのドラッグ後の行は px とは限らない
         // （* へ変わることがある）ので Height ではなく ActualHeight を見る。覚えてよいのは
         // 「上下どちらも出ていた」間の値だけ。片方だけのときの中段は行いっぱいなので数えない。
-        if (_sidebarSectionsBothShown && SecondarySidebarRow.ActualHeight > 40)
+        if (_sidebarSectionsBothShown && SecondarySidebarRow.ActualHeight >= 26)
             _savedSecondarySectionHeight = SecondarySidebarRow.ActualHeight;
 
         var primaryShown = _vm.IsSidebarVisible

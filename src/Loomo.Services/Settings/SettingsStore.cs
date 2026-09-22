@@ -186,7 +186,7 @@ public sealed class SettingsStore
         }
     }
 
-    // ===== ActivityBar（左端の縦帯）の項目配置。項目 Id の並びだけ。平文で保持。 =====
+    // ===== ActivityBar の配置・選択・開閉状態と区画の寸法。平文で保持。 =====
 
     // ===== TABS（タブ一覧）に出す種別。平文で保持。 =====
 
@@ -217,6 +217,13 @@ public sealed class SettingsStore
 
     private sealed class PersistedActivityBar
     {
+        public string PrimarySelection { get; set; } = "explorer";
+        public string SecondarySelection { get; set; } = "tabs";
+        public bool PrimaryVisible { get; set; } = true;
+        public bool SecondaryVisible { get; set; } = true;
+        public double SidebarWidth { get; set; } = 220;
+        public double SecondaryHeight { get; set; } = 200;
+
         /// <summary>上段バーの項目 Id（上から順）。</summary>
         public List<string> Primary { get; set; } = new();
 
@@ -225,6 +232,12 @@ public sealed class SettingsStore
 
         public static PersistedActivityBar From(ActivityBarSettings a) => new()
         {
+            PrimarySelection = a.PrimarySelection,
+            SecondarySelection = a.SecondarySelection,
+            PrimaryVisible = a.PrimaryVisible,
+            SecondaryVisible = a.SecondaryVisible,
+            SidebarWidth = a.SidebarWidth,
+            SecondaryHeight = a.SecondaryHeight,
             Primary = a.Primary.ToList(),
             Secondary = a.Secondary.ToList(),
         };
@@ -232,6 +245,12 @@ public sealed class SettingsStore
         // 既存インスタンスを書き換える（DI シングルトンの参照を保つため置き換えない）。
         public void ApplyTo(ActivityBarSettings a)
         {
+            a.PrimarySelection = PrimarySelection;
+            a.SecondarySelection = SecondarySelection;
+            a.PrimaryVisible = PrimaryVisible;
+            a.SecondaryVisible = SecondaryVisible;
+            a.SidebarWidth = SidebarWidth;
+            a.SecondaryHeight = SecondaryHeight;
             Fill(a.Primary, Primary);
             Fill(a.Secondary, Secondary);
         }

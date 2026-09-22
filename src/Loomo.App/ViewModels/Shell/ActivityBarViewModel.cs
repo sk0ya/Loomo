@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -167,7 +167,9 @@ public sealed partial class ActivityBarViewModel : ObservableObject
 
     private ActivityBarItemViewModel ItemById(string id) => _items.First(i => i.Id == id);
 
-    private void Persist()
+    internal ActivityBarSettings SavedState => _settings?.ActivityBar ?? new();
+
+    internal void Persist()
     {
         if (_settings is null) return;
         _settings.ActivityBar.Primary = PrimaryItems.Select(i => i.Id).ToList();

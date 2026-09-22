@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Text.Json.Nodes;
 using sk0ya.Loomo.Ai;
@@ -8,6 +8,59 @@ namespace sk0ya.Loomo.Tests;
 
 public class SettingsStoreTests
 {
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public void SaveLoad_ActivityBarの選択と開閉と寸法をファイルから復元する(bool primary, bool secondary)
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"loomo-settings-{Guid.NewGuid():N}.json");
+        try
+        {
+            var saved = new LoomoSettings();
+            saved.ActivityBar.PrimarySelection = "pegboard";
+            saved.ActivityBar.SecondarySelection = "git";
+            saved.ActivityBar.PrimaryVisible = primary;
+            saved.ActivityBar.SecondaryVisible = secondary;
+            saved.ActivityBar.SidebarWidth = 345;
+            saved.ActivityBar.SecondaryHeight = 321;
+            saved.ActivityBar.Primary = ["explorer", "pegboard"];
+            saved.ActivityBar.Secondary = ["tabs", "git", "solution"];
+            new SettingsStore(path).Save(saved);
+
+            var loaded = new LoomoSettings();
+            new SettingsStore(path).Load(loaded);
+
+            Assert.Equal("pegboard", loaded.ActivityBar.PrimarySelection);
+            Assert.Equal("git", loaded.ActivityBar.SecondarySelection);
+            Assert.Equal(primary, loaded.ActivityBar.PrimaryVisible);
+            Assert.Equal(secondary, loaded.ActivityBar.SecondaryVisible);
+            Assert.Equal(345, loaded.ActivityBar.SidebarWidth);
+            Assert.Equal(321, loaded.ActivityBar.SecondaryHeight);
+            Assert.Equal(saved.ActivityBar.Primary, loaded.ActivityBar.Primary);
+            Assert.Equal(saved.ActivityBar.Secondary, loaded.ActivityBar.Secondary);
+        }
+        finally { File.Delete(path); }
+    }
+
+    [Fact]
+    public void Load_旧ActivityBar設定は従来の選択と寸法を使う()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"loomo-settings-{Guid.NewGuid():N}.json");
+        try
+        {
+            File.WriteAllText(path, """{"activityBar":{"primary":["explorer"],"secondary":["tabs"]}}""");
+            var loaded = new LoomoSettings();
+            new SettingsStore(path).Load(loaded);
+            Assert.Equal("explorer", loaded.ActivityBar.PrimarySelection);
+            Assert.Equal("tabs", loaded.ActivityBar.SecondarySelection);
+            Assert.True(loaded.ActivityBar.PrimaryVisible);
+            Assert.True(loaded.ActivityBar.SecondaryVisible);
+            Assert.Equal(220, loaded.ActivityBar.SidebarWidth);
+            Assert.Equal(200, loaded.ActivityBar.SecondaryHeight);
+        }
+        finally { File.Delete(path); }
+    }
+
     [Fact]
     public void Load_ignores_legacy_persisted_system_prompt()
     {

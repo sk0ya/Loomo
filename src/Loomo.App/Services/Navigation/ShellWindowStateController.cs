@@ -52,7 +52,12 @@ internal sealed class ShellWindowStateController
         _captureFocusReturnOrigin = captureFocusReturnOrigin;
         _restoreFocusReturnOrigin = restoreFocusReturnOrigin;
 
+        var width = viewModel.ActivityBar.SavedState.SidebarWidth;
+        _savedSidebarWidth = new GridLength(double.IsFinite(width) && width >= 120
+            ? width : SidebarWidthPolicy.DefaultWidth);
+        _sidebarColumn.Width = _savedSidebarWidth;
         _sidebarColumnShown = _viewModel.IsSidebarColumnVisible;
+        ApplySidebarVisibility(_sidebarColumnShown);
 
         _viewModel.PropertyChanged += OnViewModelPropertyChanged;
         _owner.Closed += OnOwnerClosed;
@@ -136,6 +141,10 @@ internal sealed class ShellWindowStateController
 
     private void OnOwnerClosed(object? sender, EventArgs e)
     {
+        var width = _sidebarColumnShown ? CurrentSidebarWidth() : _savedSidebarWidth;
+        if (width.Value >= 120 && (!_sidebarColumnShown || _sidebarColumn.Width.Value > 0))
+            _viewModel.ActivityBar.SavedState.SidebarWidth = width.Value;
+        _viewModel.ActivityBar.Persist();
         _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
         _owner.Closed -= OnOwnerClosed;
         _settingsWindow = null;
