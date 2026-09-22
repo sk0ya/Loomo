@@ -1,4 +1,4 @@
-using Editor.Core.Lsp;
+﻿using Editor.Core.Lsp;
 using Microsoft.CodeAnalysis;
 using sk0ya.Loomo.CSharp.Projects;
 using LspDiagnosticSeverity = Editor.Core.Lsp.DiagnosticSeverity;
@@ -38,7 +38,7 @@ public sealed class CSharpCompilerDiagnosticService
             // Compilation の生成も診断の取得も Task.Run の<b>中</b>で完結させる。
             // GetDiagnostics() が意味解析の本体で、ここが一番重い——await の後ろに置くと、
             // UI スレッドから呼ばれたときに続きがディスパッチャへ戻って数秒固まる（実測3.9秒）。
-            var (diagnostics, warning, unusedUsingRanges) = await Task.Run(() =>
+            var (diagnostics, warning) = await Task.Run(() =>
             {
                 var compilation = CSharpWorkspaceOperationContext.Create(
                     solution, fullPath, source,
@@ -55,16 +55,12 @@ public sealed class CSharpCompilerDiagnosticService
                 // 条件で降りている＝CSharpCompilerCodeFixService）。これはフォールバックなので、
                 // 言語サーバーが入っていればそちらの診断が出る。
                 if (compilation.SemanticTrustWarning is { } incomplete)
-                    return (Array.Empty<LspDiagnostic>(), incomplete, Array.Empty<LspRange>());
+                    return (Array.Empty<LspDiagnostic>(), incomplete);
                 var allDiagnostics = compilation.SemanticCompilation!.GetDiagnostics(cancellationToken)
                     .Where(diagnostic => !diagnostic.IsSuppressed && diagnostic.Location.IsInSource)
                     .Where(diagnostic => string.Equals(
                         Path.GetFullPath(diagnostic.Location.SourceTree?.FilePath ?? ""),
                         fullPath, StringComparison.OrdinalIgnoreCase))
-                    .ToArray();
-                var unusedUsingRanges = allDiagnostics
-                    .Where(diagnostic => string.Equals(diagnostic.Id, "CS8019", StringComparison.Ordinal))
-                    .Select(ToLspRange)
                     .ToArray();
                 var diagnostics = allDiagnostics
                     .Where(diagnostic => diagnostic.Severity is RoslynDiagnosticSeverity.Error
@@ -74,9 +70,9 @@ public sealed class CSharpCompilerDiagnosticService
                     .ThenBy(diagnostic => diagnostic.Range.Start.Character)
                     .ThenBy(diagnostic => diagnostic.Code, StringComparer.OrdinalIgnoreCase)
                     .ToArray();
-                return (diagnostics, (string?)null, unusedUsingRanges);
+                return (diagnostics, (string?)null);
             }, cancellationToken).ConfigureAwait(false);
-            return new(diagnostics, warning, unusedUsingRanges);
+            return new(diagnostics, warning);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -121,5 +117,4 @@ public sealed class CSharpCompilerDiagnosticService
 
 public sealed record CSharpCompilerAnalysisResult(
     IReadOnlyList<LspDiagnostic> Diagnostics,
-    string? Error,
-    IReadOnlyList<LspRange>? UnnecessaryUsingRanges = null);
+    string? Error);

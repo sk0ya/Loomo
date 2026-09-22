@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
@@ -220,6 +220,8 @@ public sealed class SolutionModelService : ISolutionModelService, IDisposable
                 .Select(i => i.Include).Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
             Configuration = configuration,
             AssemblyName = first.AssemblyName,
+            // TFM ごとに評価する構成では、1つでも落ちていれば生成ソースはその TFM から欠ける。
+            IsDesignTimeBuildComplete = evaluations.All(e => e.IsDesignTimeBuildComplete),
         };
     }
 

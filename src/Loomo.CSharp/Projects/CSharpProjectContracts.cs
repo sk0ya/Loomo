@@ -1,4 +1,4 @@
-namespace sk0ya.Loomo.CSharp.Projects;
+﻿namespace sk0ya.Loomo.CSharp.Projects;
 
 /// <summary>ワークスペースとMSBuild評価済みC#意味モデルの共有入口。</summary>
 public interface ISolutionModelService
@@ -49,7 +49,22 @@ public sealed record ProjectEvaluation(
     string? ProjectAssetsFile = null,
     string? Nullable = null,
     // MSBuildが評価した実アセンブリ名。プロジェクトファイル名とは一致しないことがある。
-    string? AssemblyName = null);
+    string? AssemblyName = null)
+{
+    /// <summary>
+    /// design-time build（<c>/t:Compile</c>）まで走り切った評価か。<b>走れなかったときの
+    /// <c>@(Compile)</c> には生成ソースが1つも入らない</b>——<c>*.g.cs</c>・<c>AssemblyInfo.cs</c>・
+    /// global usings はターゲットが足すものなので、評価だけでは「元から無い」のと区別が付かない。
+    ///
+    /// <para>区別を評価結果そのものへ持たせるのは、欠落を<b>ファイルの読み取り失敗として数えられない</b>
+    /// から。一覧に載らなかったファイルは読みに行かれず、
+    /// <see cref="CSharpWorkspaceSourceSnapshot.MissingFileCount"/> は 0 のまま＝
+    /// 「全部読めた」に見えてしまい、意味解析の結果を信用してよいかの判定
+    /// （<see cref="CSharpWorkspaceOperationContext.CanTrustSemanticResults"/>）が
+    /// <b>いちばん当てにならない経路でだけ</b>素通りする。</para>
+    /// </summary>
+    public bool IsDesignTimeBuildComplete { get; init; } = true;
+}
 
 public sealed record ProjectItemEvaluation(
     string Include,

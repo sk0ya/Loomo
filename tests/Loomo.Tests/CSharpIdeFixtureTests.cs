@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using System.Diagnostics;
 using Editor.Controls;
 using Editor.Core.Lsp;
@@ -129,7 +129,14 @@ public sealed class CSharpIdeFixtureTests
             // 生成ソースは design-time 専用の置き場から来る（＝実ビルドの中間出力には書いていない）。
             var generated = Assert.Single(evaluation.Compile, item =>
                 (item.FullPath ?? item.Include).EndsWith("MainWindow.g.cs", StringComparison.OrdinalIgnoreCase));
-            Assert.Contains("loomo-designtime", generated.FullPath ?? generated.Include,
+            var designTimeRoot = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "Loomo", "designtime");
+            Assert.StartsWith(designTimeRoot, generated.FullPath ?? generated.Include,
+                StringComparison.OrdinalIgnoreCase);
+            // %TEMP% には置かない。ここの生成ソースは @(Compile) が指し続ける評価結果の一部で、
+            // OS に回収されると *.g.cs が一斉に読めなくなり、再評価するまで診断もクイックフィックスも黙る。
+            Assert.DoesNotContain(Path.GetTempPath(), generated.FullPath ?? generated.Include,
                 StringComparison.OrdinalIgnoreCase);
             // リポジトリの中にも置かない（中間出力の置き場を移しているリポジトリでは、
             // .gitignore に載っていない obj\ を勝手に生やすことになる）。

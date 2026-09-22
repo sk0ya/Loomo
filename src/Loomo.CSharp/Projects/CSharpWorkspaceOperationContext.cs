@@ -1,4 +1,4 @@
-using Microsoft.CodeAnalysis;
+﻿using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Text;
 using sk0ya.Loomo.CSharp.Configuration;
@@ -28,14 +28,26 @@ public sealed record CSharpWorkspaceOperationContext(
     /// <b>読めなかったソース</b>（未生成の <c>*.g.cs</c> ／ <c>AssemblyInfo.cs</c>）も見る
     /// ——欠けると <c>InitializeComponent</c> や <c>x:Name</c> の partial half ごと落ちて、
     /// 診断が CS0103／CS0246 だらけになる。
+    ///
+    /// <para>生成ソースの欠け方は2通りあり、<b>両方見なければ意味が無い</b>。一覧には在るのに
+    /// 読めない（＝<see cref="CSharpWorkspaceSourceSnapshot.HasUnreadableSources"/>）と、
+    /// design-time build 自体が落ちて<b>一覧にすら載らない</b>
+    /// （＝<see cref="CSharpWorkspaceSourceSnapshot.HasIncompleteEvaluation"/>）。後者は
+    /// 読み取り失敗が1件も立たないので、前者だけを見ていると
+    /// 「生成ソースが在るはずがない」と分かっている経路でだけガードが素通りする。</para>
     /// </summary>
-    public bool CanTrustSemanticResults => Snapshot.IsComplete && !Snapshot.HasUnreadableSources;
+    public bool CanTrustSemanticResults => Snapshot.IsComplete
+        && !Snapshot.HasUnreadableSources
+        && !Snapshot.HasIncompleteEvaluation;
 
     /// <summary>信用できないときの理由（UIへそのまま出せる日本語）。信用できるなら null。</summary>
     public string? SemanticTrustWarning => SourceSnapshotWarning ?? (Snapshot.HasUnreadableSources
         ? $"C#ソースを読み込めません（{Snapshot.MissingFileCount}ファイル）。"
             + "ビルドで生成されるファイルが未生成の可能性があります。"
-        : null);
+        : Snapshot.HasIncompleteEvaluation
+            ? $"C#プロジェクトの評価が完了していません（{Snapshot.IncompleteEvaluationProjectCount}プロジェクト）。"
+                + "ビルドで生成されるファイルが評価結果に含まれていません。"
+            : null);
 
     public static CSharpWorkspaceOperationContext Create(
         SolutionModel? solution,

@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Text.Json;
 using sk0ya.Loomo.Core.Abstractions;
 
@@ -22,13 +22,19 @@ public sealed class MsBuildProjectEvaluator : IProjectEvaluator
         // Compile 項目は返す（生成ソースと参照は欠ける）。
         var (exitCode, stdout, stderr) = await RunAsync(
             projectPath, targetFramework, configuration, designTimeBuild: true, cancellationToken);
+        var designTimeBuildComplete = exitCode == 0;
         if (exitCode != 0)
             (exitCode, stdout, stderr) = await RunAsync(
                 projectPath, targetFramework, configuration, designTimeBuild: false, cancellationToken);
         if (exitCode != 0)
             throw new InvalidOperationException($"MSBuild評価に失敗しました ({exitCode}): {stderr.Trim()}");
 
-        return await CompleteAsync(stdout, projectPath, targetFramework, configuration, cancellationToken);
+        var evaluation = await CompleteAsync(
+            stdout, projectPath, targetFramework, configuration, cancellationToken);
+        // 落ちた側の結果には生成ソースが1つも無い。欠落は「一覧に載っていない」形で現れるので
+        // 読み取り失敗としては数えられず、印を付けなければ「全部読めた」と見分けが付かない
+        // （ProjectEvaluation.IsDesignTimeBuildComplete）。
+        return designTimeBuildComplete ? evaluation : evaluation with { IsDesignTimeBuildComplete = false };
     }
 
     /// <summary>MSBuild の出力を評価結果へ組み、アナライザーを足す（両方の経路の合流点）。</summary>
@@ -151,7 +157,7 @@ public sealed class MsBuildProjectEvaluator : IProjectEvaluator
     /// そのまま——<c>project.assets.json</c> と NuGet の生成 props/targets はそこに居るので、動かすと
     /// 「復元されていません」で design-time build ごと失敗する。</para>
     ///
-    /// <para>置き場は<b>リポジトリの外（一時フォルダー）</b>。プロジェクト直下の <c>obj\</c> の中に作ると、
+    /// <para>置き場は<b>リポジトリの外</b>。プロジェクト直下の <c>obj\</c> の中に作ると、
     /// 中間出力の置き場を移しているリポジトリ（<c>BaseIntermediateOutputPath</c> の変更・
     /// <c>UseArtifactsOutput</c>）では <c>.gitignore</c> に載っていない <c>obj\</c> を勝手に生やすうえ、
     /// <c>dotnet clean</c> でも消えない。プロジェクトのフルパスで鍵を作るので、別リポジトリの同名
@@ -175,7 +181,19 @@ public sealed class MsBuildProjectEvaluator : IProjectEvaluator
         return Path.Combine(keyRoot, config, tfm) + Path.DirectorySeparatorChar;
     }
 
-    private static string DesignTimeRoot => Path.Combine(Path.GetTempPath(), "loomo-designtime");
+    /// <summary>
+    /// design-time 中間出力の根。<b><c>%TEMP%</c> には置かない</b>——ここに在る生成ソースは
+    /// <c>@(Compile)</c> が指し続ける<b>評価結果の一部</b>で、OS に回収されると
+    /// <c>*.g.cs</c> が一斉に読めなくなり、再評価するまでワークスペース全体で
+    /// コンパイラ診断もクイックフィックスも黙る（<c>CanTrustSemanticResults</c> が false になる）。
+    /// ストレージセンサーやディスク クリーンアップは <c>%TEMP%</c> を「消してよい場所」として扱うので、
+    /// 寿命をこちらで決められる <c>%LOCALAPPDATA%</c> へ置き、古いものは
+    /// <see cref="PruneOldDesignTimeOutput"/> が自分で捨てる。ローミングしない
+    /// （<c>%APPDATA%</c> ではない）のは、中身が機械ごとのビルド生成物だから。
+    /// </summary>
+    private static string DesignTimeRoot => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "Loomo", "designtime");
 
     /// <summary>掃除は寿命に1回でいい（同じ日に何度も消して回るものではない）。</summary>
     private static int _pruned;

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using Editor.Core.Lsp;
@@ -103,6 +103,36 @@ public sealed class CSharpWorkspaceSourceLoaderTests : IDisposable
         Assert.Equal(1, snapshot.MissingFileCount);
         Assert.True(snapshot.HasUnreadableSources);
         Assert.True(snapshot.IsComplete);   // 「上限で切り詰めた」わけではない
+    }
+
+    /// <summary>
+    /// design-time build が落ちて評価だけに落ちたプロジェクトは、生成ソースが <c>@(Compile)</c> に
+    /// <b>一つも載らない</b>。載らなければ読みに行かれないので <see cref="CSharpWorkspaceSourceSnapshot.MissingFileCount"/>
+    /// は 0 のまま＝「全部読めた」に見え、意味解析を信用してよいかの判定が
+    /// <b>いちばん当てにならない経路でだけ</b>素通りしていた（CS0103／CS0246 が溢れるのに無警告）。
+    /// </summary>
+    [Fact]
+    public void Distrusts_projects_whose_design_time_build_did_not_run()
+    {
+        var activePath = Write("Active.cs", "public class Active { }");
+        var activeProjectPath = Path.Combine(_root, "Active.csproj");
+        // 生成ソースは一覧に載っていない＝読み取り失敗は1件も立たない。
+        var active = Project("Active", activeProjectPath, [], activePath) with
+        {
+            IsDesignTimeBuildComplete = false,
+        };
+        var solution = new SolutionModel(Path.Combine(_root, "Sample.sln"), "Sample", _root,
+            [active], ProjectLoadState.Ready);
+
+        var snapshot = CSharpWorkspaceSourceLoader.LoadSnapshot(
+            solution, activePath, File.ReadAllText(activePath));
+
+        Assert.Equal(0, snapshot.MissingFileCount);
+        Assert.False(snapshot.HasUnreadableSources);
+        Assert.True(snapshot.HasIncompleteEvaluation);
+        var context = new CSharpWorkspaceOperationContext(snapshot, null);
+        Assert.False(context.CanTrustSemanticResults);
+        Assert.NotNull(context.SemanticTrustWarning);
     }
 
     /// <summary>

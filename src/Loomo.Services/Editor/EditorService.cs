@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Threading;
@@ -132,17 +132,71 @@ public sealed class EditorService : IEditorService
         _ = SaveRequestedFileAsync(ctrl, e.FilePath);
     }
 
+    /// <summary>
+    /// 走っている保存（control と保存先が同じもの）。2度目の :w／Ctrl+S はここへ相乗りさせる。
+    ///
+    /// <para>保存前フック（<see cref="BeforeSaveAsync"/>＝C# の保存時クリーンアップ）は大規模な
+    /// ソリューションで<b>数秒</b>かかる。その間の2打鍵目を2本目の保存として走らせると、
+    /// 2本が同じバッファへ同時に手を入れ、後から入った方の WorkspaceEdit が
+    /// 「プレビュー中に本文が変わった」と見て中止する——本文は rollback で守られるが、
+    /// 人には<b>ただ Ctrl+S を2回押しただけ</b>で保存が失敗したようにしか見えない。</para>
+    /// </summary>
+    private readonly Dictionary<VimEditorControl, (string Path, Task<bool> Save)> _savesInFlight = new();
+
     /// <summary>Ctrl+SとVimの:wが共有する通常ファイル保存経路。</summary>
-    public async Task<bool> SaveFileAsync(VimEditorControl control, string? path = null)
+    public Task<bool> SaveFileAsync(VimEditorControl control, string? path = null)
     {
         ArgumentNullException.ThrowIfNull(control);
-        if (control.IsVirtualDocument) return false;
+        if (control.IsVirtualDocument) return Task.FromResult(false);
 
         var targetPath = path ?? control.FilePath;
         if (string.IsNullOrWhiteSpace(targetPath))
             targetPath = PromptSaveAsPath();
-        if (string.IsNullOrWhiteSpace(targetPath)) return false;
+        if (string.IsNullOrWhiteSpace(targetPath)) return Task.FromResult(false);
 
+        TaskCompletionSource<bool> completion;
+        lock (_savesInFlight)
+        {
+            // 保存先まで見るのは、走っているのが「名前を付けて保存」のときに別の宛先の保存を
+            // 巻き込まないため。同じ宛先なら、走っている保存が今の本文を書く＝やることは同じ。
+            if (_savesInFlight.TryGetValue(control, out var running) &&
+                string.Equals(running.Path, targetPath, StringComparison.OrdinalIgnoreCase))
+                return running.Save;
+            completion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            _savesInFlight[control] = (targetPath!, completion.Task);
+        }
+        return TrackSaveAsync(control, targetPath!, completion);
+    }
+
+    /// <summary>実際の保存を走らせ、相乗りしている呼び出しへ同じ結果を配って記録を落とす。</summary>
+    private async Task<bool> TrackSaveAsync(
+        VimEditorControl control, string targetPath, TaskCompletionSource<bool> completion)
+    {
+        try
+        {
+            var saved = await SaveFileCoreAsync(control, targetPath);
+            completion.TrySetResult(saved);
+            return saved;
+        }
+        catch (Exception ex)
+        {
+            completion.TrySetException(ex);
+            throw;
+        }
+        finally
+        {
+            lock (_savesInFlight)
+                if (_savesInFlight.TryGetValue(control, out var entry) &&
+                    ReferenceEquals(entry.Save, completion.Task))
+                    _savesInFlight.Remove(control);
+            // 相乗りが居なければ誰も await しないので、例外を観測済みにしておく
+            // （投げた先はこのメソッドの呼び出し元が受け取る）。
+            _ = completion.Task.Exception;
+        }
+    }
+
+    private async Task<bool> SaveFileCoreAsync(VimEditorControl control, string targetPath)
+    {
         if (BeforeSaveAsync is { } prepare)
         {
             try

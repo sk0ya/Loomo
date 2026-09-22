@@ -1,4 +1,4 @@
-using Microsoft.CodeAnalysis.CSharp;
+﻿using Microsoft.CodeAnalysis.CSharp;
 using sk0ya.Loomo.CSharp.Configuration;
 
 namespace sk0ya.Loomo.CSharp.Projects;
@@ -28,6 +28,19 @@ public sealed record CSharpWorkspaceSourceSnapshot(
 
     /// <summary>読めなかったソースがあるか（＝意味解析の結果をそのまま人へ見せてはいけない）。</summary>
     public bool HasUnreadableSources => MissingFileCount > 0;
+
+    /// <summary>
+    /// 取り込んだプロジェクトのうち、design-time build まで走り切らなかった評価の数
+    /// （<see cref="ProjectEvaluation.IsDesignTimeBuildComplete"/>）。
+    ///
+    /// <para><see cref="MissingFileCount"/> では捕まらない欠け方なので別に数える——そちらは
+    /// 「<c>@(Compile)</c> に在るのに読めない」を数えるが、評価だけに落ちた結果では生成ソースが
+    /// <b>一覧に載らない</b>ので読みに行かれず 0 のまま＝「全部読めた」に見える。</para>
+    /// </summary>
+    public int IncompleteEvaluationProjectCount { get; init; }
+
+    /// <summary>生成ソースが最初から一覧に無いプロジェクトを含むか。</summary>
+    public bool HasIncompleteEvaluation => IncompleteEvaluationProjectCount > 0;
 
     /// <summary>
     /// このスナップショットが<b>ソースを取り込んだ</b>プロジェクトの実アセンブリ名。
@@ -84,6 +97,7 @@ public static class CSharpWorkspaceSourceLoader
         var budget = new SourceLoadBudget(MaxSourceFileCount, MaxSnapshotBytes);
         var skippedFileCount = 0;
         var missingFileCount = 0;
+        var incompleteEvaluationProjectCount = 0;
         var projects = (solution?.Projects ?? [])
             .Where(project => project.State == ProjectLoadState.Ready)
             .ToDictionary(project => Path.GetFullPath(project.FullPath),
@@ -116,6 +130,9 @@ public static class CSharpWorkspaceSourceLoader
             if (!visited.Add(projectPath)) continue;
             var parseOptions = CSharpProjectCompilationOptions.Parse(
                 project.SelectedTargetFrameworkModel);
+            // 評価だけに落ちたプロジェクトは、生成ソースが一覧に載っていない＝読み取り失敗として
+            // 数えられない。ここで数えておかないと「全部読めた」と見分けが付かない。
+            if (!project.IsDesignTimeBuildComplete) incompleteEvaluationProjectCount++;
 
             var loadedAny = false;
             var truncated = false;
@@ -166,6 +183,7 @@ public static class CSharpWorkspaceSourceLoader
         {
             SourceAssemblyNames = sourceAssemblyNames.ToArray(),
             MissingFileCount = missingFileCount,
+            IncompleteEvaluationProjectCount = incompleteEvaluationProjectCount,
         };
     }
 

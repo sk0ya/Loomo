@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 
 namespace sk0ya.Loomo.CSharp.Projects;
 
@@ -76,6 +76,11 @@ public sealed record ProjectModel(
 
     /// <summary>MSBuildが評価した実アセンブリ名（<c>$(AssemblyName)</c>）。未評価なら null。</summary>
     public string? AssemblyName { get; init; }
+
+    /// <summary>このプロジェクトの評価が design-time build まで走り切ったか。false なら
+    /// <see cref="TargetFrameworkModel.CompileFiles"/> に生成ソースが<b>1つも無い</b>
+    /// （詳細は <see cref="ProjectEvaluation.IsDesignTimeBuildComplete"/>）。</summary>
+    public bool IsDesignTimeBuildComplete { get; init; } = true;
 
     /// <summary>
     /// このプロジェクトを表す Compilation に与える名前。<b><see cref="Name"/>（＝csprojのファイル名）
