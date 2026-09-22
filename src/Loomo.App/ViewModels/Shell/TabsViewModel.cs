@@ -1,10 +1,12 @@
 ﻿using System.Collections.ObjectModel;
 using System.Collections.Specialized;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using System.Windows;
+using System.Windows.Data;
 using System.Windows.Media;
 using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.Core.Settings;
@@ -75,18 +77,40 @@ public sealed partial class TabEntryViewModel : ObservableObject
     /// <summary>実ファイルの絶対パス（Editor タブのみ。Untitled／仮想ドキュメントは null）。
     /// 「パスをコピー」「エクスプローラーで表示」の表示可否・対象に使う。</summary>
     [ObservableProperty] private string? _filePath;
+
+    /// <summary>TABS の種別表示設定を GroupStyle の中身へ反映する。</summary>
+    [ObservableProperty] private bool _isGroupShown = true;
+
+    public string GroupLabel => Kind switch
+    {
+        TabEntryKind.Editor => "エディタ",
+        TabEntryKind.Browser => "ブラウザ",
+        _ => "ターミナル",
+    };
+
+    public int GroupOrder => Kind switch
+    {
+        TabEntryKind.Editor => 0,
+        TabEntryKind.Browser => 1,
+        _ => 2,
+    };
 }
 
-/// <summary>見出しの設定ビューに出す「種別」1行（エディタ／ブラウザ／ターミナル）。一覧の行と同じ
-/// 「アイコン＋名前＋件数」を持ち、押すとその種別の出し入れが切り替わる。出す／隠すの正本はここ
-/// ——<see cref="TabsViewModel.ShowEditorTabs"/> 等はこの行への窓口で、二重の真実を作らない。</summary>
+/// <summary>見出しの設定ビューと一覧のグループ見出しに出す「種別」1行（エディタ／ブラウザ／ターミナル）。
+/// 一覧の行と同じ「アイコン＋名前＋件数」を持ち、押すとその種別の出し入れが切り替わる。出す／隠すの
+/// 正本はここ——<see cref="TabsViewModel.ShowEditorTabs"/> 等はこの行への窓口で、二重の真実を作らない。</summary>
 public sealed partial class TabKindRowViewModel : ObservableObject
 {
-    public TabKindRowViewModel(TabEntryKind kind, string label, string automationId)
+    public TabKindRowViewModel(
+        TabEntryKind kind,
+        string label,
+        string automationId,
+        ObservableCollection<TabEntryViewModel> tabs)
     {
         Kind = kind;
         Label = label;
         AutomationId = automationId;
+        Tabs = tabs;
     }
 
     public TabEntryKind Kind { get; }
@@ -103,6 +127,10 @@ public sealed partial class TabKindRowViewModel : ObservableObject
     /// <summary>その種別がいま持っているタブ数。隠していても数は出す（「無くなった」に見せない）。</summary>
     [ObservableProperty] private int _count;
 
+    /// <summary>一覧でこの種別のグループが持つタブ。設定が OFF のときもグループ見出しは残し、
+    /// このコレクションの中身だけを折りたたむ。</summary>
+    public ObservableCollection<TabEntryViewModel> Tabs { get; }
+
     /// <summary>この種別を一覧に並べるか。</summary>
     [ObservableProperty] private bool _isShown = true;
 }
@@ -116,13 +144,17 @@ public sealed partial class TabsViewModel : ObservableObject
     private readonly TabIconService _icons;
     private readonly LoomoSettings? _settings;
     private readonly SettingsStore? _settingsStore;
-    private readonly TabKindRowViewModel _editorKind = new(TabEntryKind.Editor, "エディタ", "TabsShowEditorToggle");
-    private readonly TabKindRowViewModel _browserKind = new(TabEntryKind.Browser, "ブラウザ", "TabsShowBrowserToggle");
-    private readonly TabKindRowViewModel _terminalKind = new(TabEntryKind.Terminal, "ターミナル", "TabsShowTerminalToggle");
+    private readonly TabKindRowViewModel _editorKind;
+    private readonly TabKindRowViewModel _browserKind;
+    private readonly TabKindRowViewModel _terminalKind;
 
     public ObservableCollection<TabEntryViewModel> TerminalTabs { get; } = new();
     public ObservableCollection<TabEntryViewModel> EditorTabs { get; } = new();
     public ObservableCollection<TabEntryViewModel> BrowserTabs { get; } = new();
+    public ObservableCollection<TabEntryViewModel> AllTabs { get; } = new();
+
+    /// <summary>3種のタブを1つの一覧としてグループ化する表示用ビュー。</summary>
+    public ICollectionView TabsView { get; }
 
     public event EventHandler<TabEntryViewModel>? TabActivated;
     public event EventHandler<TabEntryViewModel>? TabCloseRequested;
@@ -191,7 +223,14 @@ public sealed partial class TabsViewModel : ObservableObject
         _icons = icons;
         _settings = settings;
         _settingsStore = settingsStore;
+        _editorKind = new(TabEntryKind.Editor, "エディタ", "TabsShowEditorToggle", EditorTabs);
+        _browserKind = new(TabEntryKind.Browser, "ブラウザ", "TabsShowBrowserToggle", BrowserTabs);
+        _terminalKind = new(TabEntryKind.Terminal, "ターミナル", "TabsShowTerminalToggle", TerminalTabs);
         Kinds = [_editorKind, _browserKind, _terminalKind];
+        TabsView = CollectionViewSource.GetDefaultView(AllTabs);
+        TabsView.GroupDescriptions.Add(new PropertyGroupDescription(nameof(TabEntryViewModel.GroupLabel)));
+        TabsView.SortDescriptions.Add(new SortDescription(
+            nameof(TabEntryViewModel.GroupOrder), ListSortDirection.Ascending));
         // 保存済みの選択は購読前に入れる（起動しただけで書き戻さない）。
         _editorKind.IsShown = settings?.TabsPanel.ShowEditor ?? true;
         _browserKind.IsShown = settings?.TabsPanel.ShowBrowser ?? true;
@@ -207,12 +246,21 @@ public sealed partial class TabsViewModel : ObservableObject
     }
 
     private void OnTabCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
-        => NotifyCounts();
+    {
+        AllTabs.Clear();
+        foreach (var tab in EditorTabs) AllTabs.Add(tab);
+        foreach (var tab in BrowserTabs) AllTabs.Add(tab);
+        foreach (var tab in TerminalTabs) AllTabs.Add(tab);
+        NotifyCounts();
+    }
 
     private void OnKindRowChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
         if (e.PropertyName != nameof(TabKindRowViewModel.IsShown) || sender is not TabKindRowViewModel row)
             return;
+
+        foreach (var tab in row.Tabs)
+            tab.IsGroupShown = row.IsShown;
 
         OnPropertyChanged(row.Kind switch
         {
@@ -222,6 +270,28 @@ public sealed partial class TabsViewModel : ObservableObject
         });
         NotifyCounts();
         Persist();
+    }
+
+    private void WatchGroupState(TabEntryViewModel tab)
+        => tab.PropertyChanged += OnTabPropertyChanged;
+
+    private void UnwatchGroupState(TabEntryViewModel tab)
+        => tab.PropertyChanged -= OnTabPropertyChanged;
+
+    private void OnTabPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(TabEntryViewModel.IsGroupShown)
+            || sender is not TabEntryViewModel tab)
+            return;
+
+        var row = tab.Kind switch
+        {
+            TabEntryKind.Editor => _editorKind,
+            TabEntryKind.Browser => _browserKind,
+            _ => _terminalKind,
+        };
+        if (row.IsShown != tab.IsGroupShown)
+            row.IsShown = tab.IsGroupShown;
     }
 
     private void NotifyCounts()
@@ -269,6 +339,8 @@ public sealed partial class TabsViewModel : ObservableObject
     public void AddTerminalTab(Guid id, string? title, bool isActive)
     {
         var tab = new TabEntryViewModel(id, TabEntryKind.Terminal, TerminalTitle(title), isActive);
+        tab.IsGroupShown = ShowTerminalTabs;
+        WatchGroupState(tab);
         tab.SetFileIcon(TerminalIconIndex);
         TerminalTabs.Add(tab);
     }
@@ -292,7 +364,10 @@ public sealed partial class TabsViewModel : ObservableObject
     {
         var tab = TerminalTabs.FirstOrDefault(t => t.Id == id);
         if (tab is not null)
+        {
+            UnwatchGroupState(tab);
             TerminalTabs.Remove(tab);
+        }
     }
 
     public void AddEditorTab(Guid id, string? path, bool isModified, bool isActive)
@@ -306,7 +381,9 @@ public sealed partial class TabsViewModel : ObservableObject
         var tab = new TabEntryViewModel(id, TabEntryKind.Editor, title, isActive)
         {
             FilePath = RealFilePath(path),
+            IsGroupShown = ShowEditorTabs,
         };
+        WatchGroupState(tab);
         tab.SetFileIcon(FileIconIndexFor(path));
 
         var previewIndex = IndexOfPreviewEditorTab();
@@ -385,17 +462,25 @@ public sealed partial class TabsViewModel : ObservableObject
     {
         var tab = EditorTabs.FirstOrDefault(t => t.Id == id);
         if (tab is not null)
+        {
+            UnwatchGroupState(tab);
             EditorTabs.Remove(tab);
+        }
     }
 
     public void AddBrowserTab(Guid id, string? title, bool isActive)
     {
-        BrowserTabs.Add(new TabEntryViewModel(
+        var tab = new TabEntryViewModel(
             id,
             TabEntryKind.Browser,
             BrowserTitle(title),
             isActive,
-            _icons.GetBrowserDefaultIcon()));
+            _icons.GetBrowserDefaultIcon())
+        {
+            IsGroupShown = ShowBrowserTabs,
+        };
+        WatchGroupState(tab);
+        BrowserTabs.Add(tab);
     }
 
     public void UpdateBrowserTab(Guid id, string? title)
@@ -416,7 +501,10 @@ public sealed partial class TabsViewModel : ObservableObject
     {
         var tab = BrowserTabs.FirstOrDefault(t => t.Id == id);
         if (tab is not null)
+        {
+            UnwatchGroupState(tab);
             BrowserTabs.Remove(tab);
+        }
     }
 
     public void UpdateTabIcon(Guid id, ImageSource? icon)

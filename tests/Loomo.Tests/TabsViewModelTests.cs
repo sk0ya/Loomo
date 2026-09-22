@@ -136,6 +136,16 @@ public sealed class TabsViewModelTests
     }
 
     [Fact]
+    public void 種別行は対応するタブ群をそのまま持つ()
+    {
+        var sut = WithOneOfEach();
+
+        Assert.Same(sut.EditorTabs, sut.Kinds[0].Tabs);
+        Assert.Same(sut.BrowserTabs, sut.Kinds[1].Tabs);
+        Assert.Same(sut.TerminalTabs, sut.Kinds[2].Tabs);
+    }
+
+    [Fact]
     public void 種別行を押すと出し入れが切り替わり設定へ書き戻す()
     {
         var settings = new LoomoSettings();
