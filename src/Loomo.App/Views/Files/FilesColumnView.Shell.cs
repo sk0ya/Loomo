@@ -11,11 +11,23 @@ public partial class FilesColumnView
     private void OnOpenWithAppClick(object sender, RoutedEventArgs e)
         => _shellInteraction.ExecuteShellAction(ShellFileAction.OpenWith);
 
-    private void OnShareClick(object sender, RoutedEventArgs e)
-        => _shellInteraction.ExecuteShellAction(ShellFileAction.Share);
-
-    private void OnSendToClick(object sender, RoutedEventArgs e)
-        => _shellInteraction.ExecuteShellAction(ShellFileAction.SendTo);
+    /// <summary>Explorer のメニュー。「名前の変更」「削除」は Explorer のビュー前提なので、
+    /// この一覧の同じ操作（履歴に積まれる）へ振り替える。</summary>
+    private void OnExplorerMenuClick(object sender, RoutedEventArgs e)
+        => _shellInteraction.ShowExplorerMenu((verb, targets) =>
+        {
+            switch (verb)
+            {
+                case "rename":
+                    RenameEntry(targets.FirstOrDefault());
+                    return true;
+                case "delete":
+                    DeleteEntries(targets);
+                    return true;
+                default:
+                    return false;
+            }
+        });
 
     private async void OnCompressToZipClick(object sender, RoutedEventArgs e)
         => await _shellInteraction.CompressSelectionAsync();
@@ -26,9 +38,6 @@ public partial class FilesColumnView
     private async void OnQuickAccessUnpinClick(object sender, RoutedEventArgs e)
         => await _shellInteraction.UnpinFromQuickAccessAsync();
 
-    private void OnPropertiesClick(object sender, RoutedEventArgs e) => ShowProperties();
-
-    /// <summary>Alt+Enter と右クリックから同じ非同期プロパティ表示へ入る。</summary>
-    private async void ShowProperties()
-        => await _shellInteraction.ShowPropertiesAsync();
+    /// <summary>Alt+Enter：Windows のプロパティ（Explorer と同じもの）。</summary>
+    private void ShowProperties() => _shellInteraction.ShowProperties();
 }

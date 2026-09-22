@@ -33,9 +33,9 @@ public partial class FilesColumnView : UserControl
         _breadcrumbPicker = new FilesColumnBreadcrumbPickerPresenter(
             BreadcrumbPickerPopup, BreadcrumbPickerTree, BreadcrumbScroll, () => Vm);
         _shellInteraction = new FilesColumnShellInteractionController(
-            () => Vm, Selection, () => OwnerWindow, () => IsLoaded, SelectPath, ShowError, Dispatcher);
+            () => Vm, Selection, () => OwnerWindow, SelectPath, ShowError, Dispatcher);
         DataContextChanged += OnDataContextChanged;
-        // 閉じたカラムの裏で ZIP 生成やプロパティ読み取りを走らせ続けない
+        // 閉じたカラムの裏で ZIP 生成を走らせ続けない
         // （ZIP は途中の一時ファイルもコマンド側が片付ける）。
         Unloaded += (_, _) =>
         {
@@ -276,6 +276,18 @@ public partial class FilesColumnView : UserControl
         if (SingleSelection() is not { } entry)
             return;
         FileExplorerLauncher.RevealInExplorer(entry.FullPath);
+    }
+
+    private void OnOpenInExplorerClick(object sender, RoutedEventArgs e)
+    {
+        if (SingleSelection() is { } entry)
+            FileExplorerLauncher.OpenInExplorer(entry.FullPath);
+    }
+
+    private void OnOpenCurrentFolderInExplorerClick(object sender, RoutedEventArgs e)
+    {
+        if (Vm is { CurrentFolder: { Length: > 0 } folder })
+            FileExplorerLauncher.OpenInExplorer(folder);
     }
 
     private void OnSetInTerminalClick(object sender, RoutedEventArgs e)

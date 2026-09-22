@@ -13,38 +13,6 @@ namespace sk0ya.Loomo.App.Services;
 /// <summary>ファイルメニューの表示状態と FolderTree のメニュー操作 UI を管理する。</summary>
 internal static class FileContextMenuPresenter
 {
-    /// <summary>FolderTree の複数選択プロパティを読み込み、ダイアログ表示までの UI 状態を管理する。</summary>
-    public static async Task ShowFolderTreePropertiesAsync(
-        FrameworkElement host,
-        Window? owner,
-        FolderTreeViewModel vm,
-        IReadOnlyList<FileNodeViewModel> selection,
-        FolderTreeFileOperationSession operations)
-    {
-        if (selection.Count == 0 || operations.IsLoadingProperties)
-            return;
-
-        Mouse.OverrideCursor = Cursors.Wait;
-        try
-        {
-            // フォルダーのサイズ計算や長い ACL 読み取りで UI を固めない。
-            var result = await operations.ReadPropertiesAsync(vm, selection);
-            if (result is null || !host.IsLoaded)
-                return;
-
-            new FilePropertiesWindow(result) { Owner = owner }.ShowDialog();
-        }
-        catch (Exception ex)
-        {
-            ToastService.Error($"プロパティを表示できませんでした: {ex.Message}");
-        }
-        finally
-        {
-            operations.CompleteProperties();
-            Mouse.OverrideCursor = null;
-        }
-    }
-
     /// <summary>FolderTree の Quick Access 操作中はカーソルを切り替え、バッチ失敗を通知する。</summary>
     public static async Task SetFolderTreeQuickAccessPinnedAsync(
         FolderTreeViewModel vm,
@@ -88,7 +56,7 @@ internal static class FileContextMenuPresenter
     public static void UpdateHistoryActions(
         ItemsControl menu, string? undoDescription, string? redoDescription)
     {
-        foreach (var item in menu.Items.OfType<MenuItem>())
+        foreach (var item in Descendants(menu))
             switch (item.Tag as string)
             {
                 case "UndoItem": ApplyHistoryHeader(item, "元に戻す", undoDescription); break;
@@ -98,7 +66,7 @@ internal static class FileContextMenuPresenter
 
     public static void SetTaggedVisibility(ItemsControl menu, string tag, bool visible)
     {
-        foreach (var item in menu.Items.OfType<FrameworkElement>())
+        foreach (var item in Descendants(menu))
             if (item.Tag as string == tag)
                 item.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
     }
@@ -235,7 +203,7 @@ internal static class FileContextMenuPresenter
 
         SetVisibility(pin, refreshed.CanPin);
         SetVisibility(unpin, refreshed.CanUnpin);
-        NormalizeSeparators(menu);
+        NormalizeMenuAndSubmenus(menu);
     }
 
     private static void PopulateRootSwitchMenu(
@@ -283,9 +251,15 @@ internal static class FileContextMenuPresenter
 
     public static void NormalizeMenuAndSubmenus(ItemsControl menu)
     {
-        NormalizeSeparators(menu);
         foreach (var submenu in menu.Items.OfType<MenuItem>())
-            NormalizeSeparators(submenu);
+        {
+            NormalizeMenuAndSubmenus(submenu);
+            // 用途別グループは中身がないとき隠す。再表示時と非同期のピン照会でも再評価する。
+            if (submenu.Tag as string == "AutoGroup")
+                submenu.Visibility = submenu.Items.OfType<MenuItem>().Any(item => item.Visibility == Visibility.Visible)
+                    ? Visibility.Visible : Visibility.Collapsed;
+        }
+        NormalizeSeparators(menu);
     }
 
     /// <summary>表示中の項目の間にある区切り線だけを残す。</summary>
@@ -323,7 +297,7 @@ internal static class FileContextMenuPresenter
     }
 
     private static MenuItem? FindMenuItem(ItemsControl menu, string tag)
-        => menu.Items.OfType<MenuItem>().FirstOrDefault(item => item.Tag as string == tag);
+        => Descendants(menu).FirstOrDefault(item => item.Tag as string == tag);
 
     private static void SetVisibility(UIElement? element, bool visible)
     {

@@ -71,21 +71,17 @@ public sealed class FilesPaneShellTests : IDisposable
         // 別インスタンスを new すると、クイックアクセスの状態がツリーと一覧で割れる。
         Assert.Same(_tree.ShellOperations, column.ShellOperations);
         Assert.Same(_tree.QuickAccess, column.QuickAccess);
-        Assert.Same(_tree.FileProperties, column.FileProperties);
     }
 
     [Fact]
-    public void アプリで開く_共有_送るを選択パスへ渡す()
+    public void アプリで開くを選択パスへ渡す()
     {
         var column = CreateColumn();
         var paths = new[] { Path.Combine(_root, "a.txt"), Path.Combine(_root, "b.txt") };
 
-        foreach (var action in new[] { ShellFileAction.OpenWith, ShellFileAction.Share, ShellFileAction.SendTo })
-            column.ShellOperations.Execute(action, paths);
+        column.ShellOperations.Execute(ShellFileAction.OpenWith, paths);
 
-        Assert.Equal(
-            new[] { ShellFileAction.OpenWith, ShellFileAction.Share, ShellFileAction.SendTo },
-            _shell.Calls.Select(call => call.Action));
+        Assert.Equal(new[] { ShellFileAction.OpenWith }, _shell.Calls.Select(call => call.Action));
         Assert.All(_shell.Calls, call => Assert.Equal(paths, call.Paths));
     }
 
@@ -133,14 +129,14 @@ public sealed class FilesPaneShellTests : IDisposable
     public void 右クリックとキー操作の入口がファイル一覧側にもある()
     {
         var xaml = Read("src", "Loomo.App", "Views", "Files", "FilesColumnView.xaml");
-        foreach (var header in new[] { "アプリで開く…", "共有", "送る", "ZIPに圧縮", "プロパティ",
+        foreach (var header in new[] { "アプリを選ぶ…", "ZIPに圧縮", "Explorer のメニュー…",
                                        "クイックアクセスにピン留め", "クイックアクセスから解除" })
             Assert.Contains($"Header=\"{header}\"", xaml);
 
         Assert.Contains("PreviewTextInput=\"OnListPreviewTextInput\"", xaml);
 
         var code = Read("src", "Loomo.App", "Services", "FileSystem", "FilesColumnKeyboardInteractionController.cs");
-        // Alt+Enter＝プロパティ、j/k＝上下移動、文字入力＝type-ahead 選択。
+        // Alt+Enter＝Windows のプロパティ、j/k＝上下移動、文字入力＝type-ahead 選択。
         Assert.Contains("_showProperties", code);
         Assert.Contains("FolderTreeKeyboardNavigation.FindAdjacentIndex", code);
         Assert.Contains("ResolveTypeAheadSearch", code);

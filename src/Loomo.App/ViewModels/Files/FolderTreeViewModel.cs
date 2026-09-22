@@ -25,7 +25,6 @@ public sealed partial class FolderTreeViewModel : ObservableObject
     private readonly WorkflowStore _workflows;
     private readonly FolderTreeCommandHandler _fileCommands;
     private readonly FolderTreeQuery _query;
-    private readonly FilePropertiesService _fileProperties;
     private readonly IShellFileOperations _shellOperations;
     private readonly IQuickAccessService _quickAccess;
     private readonly GitService? _gitService;
@@ -166,9 +165,8 @@ public sealed partial class FolderTreeViewModel : ObservableObject
     public event EventHandler? RevealCurrentFileRequested;
 
     /// <summary>FolderTree のプロパティ表示で使う、DI 管理の読み取りサービス。</summary>
-    public FilePropertiesService FileProperties => _fileProperties;
 
-    /// <summary>FolderTree の「アプリで開く／共有／送る」で使う Shell アダプター。</summary>
+    /// <summary>FolderTree の「既定のアプリ／アプリを選ぶ」で使う Shell アダプター。</summary>
     public IShellFileOperations ShellOperations => _shellOperations;
 
     /// <summary>Windows Explorer のクイックアクセス／ホームの実状態を操作するアダプター。
@@ -177,7 +175,6 @@ public sealed partial class FolderTreeViewModel : ObservableObject
 
     public FolderTreeViewModel(IWorkspaceService workspace, IAiWarmup warmup, WorkflowStore workflows,
         FolderTreeCommandHandler fileCommands, FolderTreeQuery query,
-        FilePropertiesService? fileProperties = null,
         IShellFileOperations? shellOperations = null,
         IQuickAccessService? quickAccess = null,
         GitService? gitService = null)
@@ -187,7 +184,6 @@ public sealed partial class FolderTreeViewModel : ObservableObject
         _workflows = workflows;
         _fileCommands = fileCommands;
         _query = query;
-        _fileProperties = fileProperties ?? new FilePropertiesService();
         _shellOperations = shellOperations ?? new ShellFileOperations();
         _quickAccess = quickAccess ?? new WindowsQuickAccessService();
         _gitService = gitService;

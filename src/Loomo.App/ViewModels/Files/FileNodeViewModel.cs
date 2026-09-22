@@ -81,6 +81,10 @@ public sealed partial class FileNodeViewModel : ObservableObject
     /// 除く——自分自身への相対パスは "." になり、無意味な行が書かれるだけのため。</summary>
     public bool CanAddToGitignore => !IsShellItem && IsGitRepository && !IsWorkspaceFolderRoot;
 
+    /// <summary>「ZIPに圧縮」を出すか。ファイル1つを ZIP にしたい場面はまれで、要るときは
+    /// Explorer のメニューから行けるので、フォルダーだけに出す。</summary>
+    public bool CanCompress => !IsShellItem && IsDirectory;
+
     /// <summary>「複製」を出すか。見出しノード（ワークスペースフォルダー自身）は除く——複製先が
     /// 親フォルダー＝ワークスペース外になり得るため。</summary>
     public bool CanDuplicate => !IsShellItem && !IsWorkspaceFolderRoot;

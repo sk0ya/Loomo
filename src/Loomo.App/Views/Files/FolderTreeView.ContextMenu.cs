@@ -127,13 +127,42 @@ public partial class FolderTreeView
         => ExecuteShellAction(ShellFileAction.Open, ContextNode(sender), filesOnly: true);
 
     private void OnOpenWithAppClick(object sender, RoutedEventArgs e)
-        => ExecuteShellAction(ShellFileAction.OpenWith, ContextNode(sender));
+        => ExecuteShellAction(ShellFileAction.OpenWith, ContextNode(sender), filesOnly: true);
 
-    private void OnShareClick(object sender, RoutedEventArgs e)
-        => ExecuteShellAction(ShellFileAction.Share, ContextNode(sender));
-
-    private void OnSendToClick(object sender, RoutedEventArgs e)
-        => ExecuteShellAction(ShellFileAction.SendTo, ContextNode(sender));
+    /// <summary>Explorer の右クリックメニュー。WPF のメニューが閉じてから出す（開いたままだと
+    /// フォーカスが戻らず Shell のメニューがすぐ閉じる）。「名前の変更」「削除」は Explorer の
+    /// ビュー前提なので、ツリーの同じ操作（履歴に積まれる）へ振り替える。</summary>
+    private void OnExplorerMenuClick(object sender, RoutedEventArgs e)
+    {
+        var contextNode = ContextNode(sender);
+        var nodes = CurrentSelection(contextNode);
+        if (nodes.Count == 0 || OwnerWindow is not { } owner)
+            return;
+        // 右クリックした項目を先頭に（親が揃わず絞られたとき、残るのはこれ）。
+        var ordered = contextNode is null ? nodes : nodes.OrderBy(node => node == contextNode ? 0 : 1).ToList();
+        var paths = ordered.Select(node => node.FullPath).ToArray();
+        Dispatcher.BeginInvoke(DispatcherPriority.Input, new Action(() =>
+        {
+            var shown = ShellContextMenu.Show(owner, paths, (verb, targets) =>
+            {
+                // 振り替え先は Shell が実際に扱った項目だけ（見せたメニューと違う項目を触らない）。
+                var used = ordered.Where(node => targets.Contains(node.FullPath, StringComparer.OrdinalIgnoreCase)).ToList();
+                switch (verb)
+                {
+                    case "rename":
+                        RenameNode(used.FirstOrDefault());
+                        return true;
+                    case "delete":
+                        DeleteNodes(used);
+                        return true;
+                    default:
+                        return false;
+                }
+            });
+            if (!shown)
+                ToastService.Error("Explorer のメニューを表示できませんでした。");
+        }));
+    }
 
     private void ExecuteShellAction(
         ShellFileAction action,
@@ -151,16 +180,16 @@ public partial class FolderTreeView
         FileExplorerLauncher.RevealInExplorer(node.FullPath);
     }
 
-    /// <summary>選択中の項目をまとめてプロパティウィンドウへ渡す。右クリックした項目が複数選択の
-    /// 集合内なら集合を維持し、集合外なら既存の Explorer 同様にその項目だけを対象にする。</summary>
-    private async void OnPropertiesClick(object sender, RoutedEventArgs e)
+    private void OnOpenInExplorerClick(object sender, RoutedEventArgs e)
     {
-        var selected = CurrentSelection(ContextNode(sender));
-        if (DataContext is not FolderTreeViewModel vm)
-            return;
+        if (ContextNode(sender) is { } node)
+            FileExplorerLauncher.OpenInExplorer(node.FullPath);
+    }
 
-        await FileContextMenuPresenter.ShowFolderTreePropertiesAsync(
-            this, OwnerWindow, vm, selected, _fileOperations);
+    private void OnOpenRootInExplorerClick(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is FolderTreeViewModel { CurrentRoot: { Length: > 0 } root })
+            FileExplorerLauncher.OpenInExplorer(root);
     }
 
     private async void OnCompressToZipClick(object sender, RoutedEventArgs e)

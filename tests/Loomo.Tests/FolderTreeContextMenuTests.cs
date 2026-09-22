@@ -179,6 +179,76 @@ public sealed class FolderTreeContextMenuTests : IDisposable
         });
     }
 
+    [Fact]
+    public void 入れ子の空グループは隠れ項目が復活すると再表示される()
+    {
+        RunSta(() =>
+        {
+            var menu = new ContextMenu();
+            var outer = new MenuItem { Tag = "AutoGroup" };
+            var inner = new MenuItem { Tag = "AutoGroup" };
+            var pin = new MenuItem { Tag = "QuickAccessPinnable", Visibility = Visibility.Collapsed };
+            inner.Items.Add(pin);
+            outer.Items.Add(inner);
+            menu.Items.Add(outer);
+            var separator = new Separator();
+            menu.Items.Add(separator);
+            menu.Items.Add(new MenuItem { Header = "プロパティ" });
+
+            FileContextMenuPresenter.NormalizeMenuAndSubmenus(menu);
+            Assert.Equal(Visibility.Collapsed, outer.Visibility);
+            Assert.Equal(Visibility.Collapsed, separator.Visibility);
+
+            FileContextMenuPresenter.SetTaggedVisibility(menu, "QuickAccessPinnable", true);
+            FileContextMenuPresenter.NormalizeMenuAndSubmenus(menu);
+            Assert.Equal(Visibility.Visible, inner.Visibility);
+            Assert.Equal(Visibility.Visible, outer.Visibility);
+            Assert.Equal(Visibility.Visible, separator.Visibility);
+        });
+    }
+
+    [Fact]
+    public void 新規作成の子項目にもシェルの制約が反映される()
+    {
+        RunSta(() =>
+        {
+            var menu = new ContextMenu();
+            var create = new MenuItem { Tag = "AutoGroup" };
+            var file = new MenuItem { Tag = "FileSystemOnly" };
+            create.Items.Add(file);
+            menu.Items.Add(create);
+            FileContextMenuPresenter.PrepareFolderTreeMenu(menu, false, false, false, null, null);
+            Assert.Equal(Visibility.Collapsed, file.Visibility);
+            Assert.Equal(Visibility.Collapsed, create.Visibility);
+            FileContextMenuPresenter.PrepareFolderTreeMenu(menu, true, false, false, null, null);
+            Assert.Equal(Visibility.Visible, file.Visibility);
+            Assert.Equal(Visibility.Visible, create.Visibility);
+        });
+    }
+
+    [Fact]
+    public void 二つのファイルを選ぶと比較の親メニューも表示される()
+    {
+        RunSta(() =>
+        {
+            var menu = new ContextMenu();
+            var diff = new MenuItem { Tag = "DiffMenu" };
+            var clipboard = new MenuItem { Tag = "FileOnly" };
+            var pair = new MenuItem { Tag = "CompareTwo" };
+            diff.Items.Add(clipboard);
+            diff.Items.Add(pair);
+            menu.Items.Add(diff);
+            var state = new FileContextMenuState { SelectionCount = 2, FileCount = 2 };
+            FileContextMenuPresenter.PrepareFilesColumnMenu(menu, state, null, null);
+            Assert.Equal(Visibility.Visible, diff.Visibility);
+            Assert.Equal(Visibility.Visible, pair.Visibility);
+            Assert.Equal(Visibility.Collapsed, clipboard.Visibility);
+
+            FileContextMenuPresenter.PrepareFilesColumnMenu(menu, default, null, null);
+            Assert.Equal(Visibility.Collapsed, diff.Visibility);
+        });
+    }
+
     /// <summary>"sep"＝区切り線、"visible"/"hidden"＝その表示状態の項目。</summary>
     private static ItemsControl BuildMenu(params string[] spec)
     {

@@ -28,10 +28,15 @@ internal static class FileContextMenuPolicy
         {
             "Selection" => state.SelectionCount > 0,
             "Single" => state.HasSingleSelection,
+            // 余白の右クリック（何も選んでいない）＝表示中のフォルダーそのものが対象。
+            "Background" => state.SelectionCount == 0,
             "FileOnly" => state.HasSingleSelection && !state.SingleIsDirectory,
             "DirOnly" => state.HasSingleSelection && state.SingleIsDirectory,
+            // ZIP はフォルダーだけに出す（ファイル1つの ZIP は Explorer のメニューから）。
+            "DirSelection" => state.SelectionCount > 0 && state.FileCount == 0,
             "Html" => state.HasSingleSelection && state.SingleIsHtml,
             "CompareTwo" => state.FileCount == 2,
+            "DiffMenu" => (state.HasSingleSelection && !state.SingleIsDirectory) || state.FileCount == 2,
             "SearchableDir" => state.HasSingleSelection && state.SingleIsDirectory
                 && state.CanSearchInSingleDirectory,
             "Pinnable" => state.CanPin,

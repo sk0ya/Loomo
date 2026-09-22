@@ -162,15 +162,6 @@ internal static class FolderTreeFileCommandController
     internal static void CopyNames(IEnumerable<FileNodeViewModel> nodes)
         => FileClipboard.CopyLines(nodes.Select(node => node.Name));
 
-    private static FilePropertiesTarget[] CreatePropertiesTargets(IEnumerable<FileNodeViewModel> nodes)
-        => nodes.Select(node => new FilePropertiesTarget(node.FullPath, node.IsDirectory)).ToArray();
-
-    internal static Task<FilePropertiesResult> ReadPropertiesAsync(
-        FolderTreeViewModel vm, IEnumerable<FileNodeViewModel> nodes, CancellationToken cancellationToken)
-    {
-        var targets = CreatePropertiesTargets(nodes);
-        return Task.Run(() => vm.FileProperties.ReadMany(targets, cancellationToken), cancellationToken);
-    }
 
     internal static async Task<string?> CompressEntriesAsync(
         FolderTreeViewModel vm, IReadOnlyList<FileNodeViewModel> nodes, CancellationToken cancellationToken)
@@ -242,38 +233,9 @@ internal static class FolderTreeFileCommandController
 /// <summary>フォルダーツリーの長時間コマンドを単一実行に保ち、ビュー終了時に中止する。</summary>
 internal sealed class FolderTreeFileOperationSession
 {
-    private CancellationTokenSource? _propertiesLoad;
     private CancellationTokenSource? _compression;
-    private bool _propertiesBusy;
 
-    public bool IsLoadingProperties => _propertiesBusy;
     public bool IsCompressing => _compression is not null;
-
-    public async Task<FilePropertiesResult?> ReadPropertiesAsync(
-        FolderTreeViewModel vm, IReadOnlyList<FileNodeViewModel> nodes)
-    {
-        if (_propertiesBusy)
-            return null;
-        _propertiesBusy = true;
-        var operation = new CancellationTokenSource();
-        _propertiesLoad = operation;
-        try
-        {
-            return await FolderTreeFileCommandController.ReadPropertiesAsync(vm, nodes, operation.Token);
-        }
-        catch (OperationCanceledException) when (operation.IsCancellationRequested)
-        {
-            return null;
-        }
-        finally
-        {
-            if (ReferenceEquals(_propertiesLoad, operation))
-                _propertiesLoad = null;
-            operation.Dispose();
-        }
-    }
-
-    public void CompleteProperties() => _propertiesBusy = false;
 
     public async Task<string?> CompressEntriesAsync(
         FolderTreeViewModel vm, IReadOnlyList<FileNodeViewModel> nodes)
@@ -300,7 +262,6 @@ internal sealed class FolderTreeFileOperationSession
 
     public void CancelPending()
     {
-        _propertiesLoad?.Cancel();
         _compression?.Cancel();
     }
 }

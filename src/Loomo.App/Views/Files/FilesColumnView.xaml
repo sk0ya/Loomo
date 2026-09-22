@@ -883,68 +883,66 @@
                         </GroupStyle>
                     </ListBox.GroupStyle>
                     <ListBox.ContextMenu>
-                        <!-- 並びはツリーの右クリックと同じ語彙・同じ順（開く/送る → 作る → 移す → 直す →
-                             フォルダー → 写す）。同じ操作が2箇所で違う名前・違う順に並ぶ方が事故になる。
-                             書き込み系は で、ワークスペース外では丸ごと消える。 -->
-                        <ContextMenu Opened="OnContextMenuOpened">
+                        <!-- よく使う編集操作を直接表示し、開く先・ピン留め・共有は用途別にまとめる。 -->
+                        <ContextMenu Style="{StaticResource FileContextMenu}" Opened="OnContextMenuOpened">
                             <MenuItem Header="開く" Tag="Single" Click="OnOpenClick" />
-                            <MenuItem Header="ブラウザで開く" Tag="Html" Click="OnOpenInBrowserClick" />
-                            <MenuItem Header="既定のアプリで開く" Tag="FileOnly" Click="OnOpenWithDefaultAppClick" />
-                            <MenuItem Header="アプリで開く…" Tag="Selection" Click="OnOpenWithAppClick"
-                                      ToolTip="Windows の「プログラムから開く」を出します" />
-                            <MenuItem Header="共有" Tag="Selection" Click="OnShareClick"
-                                      ToolTip="Windows の共有ダイアログへ渡します" />
-                            <MenuItem Header="送る" Tag="Selection" Click="OnSendToClick"
-                                      ToolTip="Windows の「送る」メニューへ渡します" />
+                            <MenuItem Header="エクスプローラーで開く" Tag="Background"
+                                      Click="OnOpenCurrentFolderInExplorerClick"
+                                      ToolTip="表示中のフォルダーを Explorer で開きます" />
+                            <MenuItem Header="次で開く" Tag="AutoGroup">
+                                <MenuItem Header="エクスプローラー" Tag="Single" Click="OnOpenInExplorerClick"
+                                          ToolTip="フォルダーは中を、ファイルは親フォルダーを開いて選択します" />
+                                <!-- ファイルは上の「エクスプローラー」が同じ動きになるのでフォルダーだけに出す。 -->
+                                <MenuItem Header="エクスプローラー（親で選択）" Tag="DirOnly" Click="OnRevealInExplorerClick"
+                                          ToolTip="親フォルダーを開いてこのフォルダーを選択します" />
+                                <MenuItem Header="ブラウザ" Tag="Html" Click="OnOpenInBrowserClick" />
+                                <MenuItem Header="既定のアプリ" Tag="FileOnly" Click="OnOpenWithDefaultAppClick" />
+                                <MenuItem Header="アプリを選ぶ…" Tag="FileOnly" Click="OnOpenWithAppClick"
+                                          ToolTip="Windows の「プログラムから開く」を出します" />
+                            </MenuItem>
+                            <MenuItem Header="新規作成" Tag="AutoGroup">
+                                <MenuItem Header="新規ファイル" Click="OnNewFileClick"
+                                          ToolTip="名前と拡張子を選んで作成します" />
+                                <MenuItem Header="新規フォルダー" Click="OnNewFolderClick" />
+                            </MenuItem>
                             <Separator />
-                            <MenuItem Header="新規ファイル" Click="OnNewFileClick"
-                                      ToolTip="名前と拡張子を選んで作成します" />
-                            <MenuItem Header="新規フォルダー" Click="OnNewFolderClick" />
-                            <Separator />
-                            <MenuItem Header="コピー" InputGestureText="Ctrl+C" Tag="Selection" Click="OnCopyClick" />
                             <MenuItem Header="切り取り" InputGestureText="Ctrl+X" Tag="Selection" Click="OnCutClick" />
+                            <MenuItem Header="コピー" InputGestureText="Ctrl+C" Tag="Selection" Click="OnCopyClick" />
                             <MenuItem Header="貼り付け" InputGestureText="Ctrl+V" Click="OnPasteClick" />
                             <MenuItem Header="複製" InputGestureText="Ctrl+D" Tag="Selection" Click="OnDuplicateClick"
                                       ToolTip="同じフォルダーに「 - コピー」を付けて複製します" />
-                            <MenuItem Header="ZIPに圧縮" Tag="Selection" Click="OnCompressToZipClick"
-                                      ToolTip="選択項目を同じフォルダーの ZIP にまとめます（Ctrl+Z で取り消せます）" />
-                            <Separator />
                             <MenuItem Header="名前の変更" InputGestureText="F2" Tag="Single" Click="OnRenameClick" />
                             <MenuItem Header="削除" InputGestureText="Delete" Tag="Selection" Click="OnDeleteClick" />
-                            <!-- ファイル操作の Undo/Redo（履歴はエクスプローラーのツリーと共有）。
-                                 見出しと表示可否は Opened から共有 Presenter が次の一手に合わせる。 -->
-                            <Separator />
-                            <MenuItem Header="元に戻す" Tag="UndoItem" InputGestureText="Ctrl+Z"
-                                      Click="OnUndoFileOperationClick" />
-                            <MenuItem Header="やり直す" Tag="RedoItem" InputGestureText="Ctrl+Y"
-                                      Click="OnRedoFileOperationClick" />
-                            <Separator />
-                            <MenuItem Header="エクスプローラーで表示" Tag="Single" Click="OnRevealInExplorerClick" />
-                            <MenuItem Header="ターミナルへ送る" Tag="Single" Click="OnSetInTerminalClick"
-                                      ToolTip="フォルダーは作業場所に設定し、ファイルはパスを入力します" />
-                            <MenuItem Header="Diffへ送る" Tag="FileOnly"
-                                      ToolTip="クリップボードや選択したファイルと Diff ペインで見比べます">
-                                <MenuItem Header="クリップボードと比較" Click="OnCompareWithClipboardClick" />
-                                <MenuItem Header="選択した2つを比較" Tag="CompareTwo" Click="OnCompareSelectedClick"
-                                          ToolTip="先に選んだ方を左（旧）、後を右（新）として比較します" />
-                            </MenuItem>
-                            <MenuItem Header="このフォルダーで検索" Tag="SearchableDir" Click="OnSearchInFolderClick" />
-                            <Separator />
                             <MenuItem Header="パスをコピー" Tag="Selection">
                                 <MenuItem Header="フルパス" Click="OnCopyPathClick" />
                                 <MenuItem Header="相対パス" Click="OnCopyRelativePathClick"
                                           ToolTip="所属するワークスペースフォルダーからの相対パス" />
                                 <MenuItem Header="名前" Click="OnCopyNameClick" />
                             </MenuItem>
-                            <!-- FolderTree と同じ Git 操作。実際の要求は FolderTreeViewModel の
-                                 既存イベントへ流し、Git ペイン／エディタの受け口を共有する。 -->
                             <Separator />
+                            <MenuItem Header="元に戻す" Tag="UndoItem" InputGestureText="Ctrl+Z"
+                                      Click="OnUndoFileOperationClick" />
+                            <MenuItem Header="やり直す" Tag="RedoItem" InputGestureText="Ctrl+Y"
+                                      Click="OnRedoFileOperationClick" />
+                            <Separator />
+                            <!-- 「次で開く」＝部屋の外（Windows のアプリ）、「ペインへ送る」＝部屋の中の別ペイン（§24.3）。 -->
+                            <MenuItem Header="ペインへ送る" Tag="AutoGroup">
+                                <MenuItem Header="ターミナル" Tag="Single" Click="OnSetInTerminalClick"
+                                          ToolTip="フォルダーは作業場所に設定し、ファイルはパスを入力します" />
+                                <MenuItem Header="検索" Tag="SearchableDir" Click="OnSearchInFolderClick"
+                                          ToolTip="このフォルダーを範囲にして検索パネルを開きます" />
+                            </MenuItem>
+                            <MenuItem Header="Diffへ送る" Tag="DiffMenu"
+                                      ToolTip="クリップボードや選択したファイルと Diff ペインで見比べます">
+                                <MenuItem Header="クリップボードと比較" Tag="FileOnly" Click="OnCompareWithClipboardClick" />
+                                <MenuItem Header="選択した2つを比較" Tag="CompareTwo" Click="OnCompareSelectedClick"
+                                          ToolTip="先に選んだ方を左（旧）、後を右（新）として比較します" />
+                            </MenuItem>
                             <MenuItem Header="Git" Tag="GitMenu">
                                 <MenuItem Header="履歴を表示" Click="OnGitHistoryClick" />
                                 <MenuItem Header="Git Blame" Tag="GitBlame" Click="OnGitBlameClick" />
                                 <MenuItem Header=".gitignore に追加" Tag="GitIgnore" Click="OnAddToGitignoreClick" />
                             </MenuItem>
-                            <Separator />
                             <MenuItem Header="AI" Tag="AiMenu">
                                 <MenuItem Header="要約" Tag="FileAiSummarize" Click="OnFileAiClick" />
                                 <MenuItem Header="レビュー" Tag="FileAiReview" Click="OnFileAiClick" />
@@ -952,19 +950,19 @@
                                 <MenuItem Header="関連ファイルを検索" Tag="FileAiFindRelated" Click="OnFileAiClick" />
                             </MenuItem>
                             <Separator />
-                            <!-- ピンの実体はツリーと同じ（IFolderPinStore）。 -->
-                            <MenuItem Header="ルートにピン留め" Tag="Pinnable" Click="OnPinClick" />
-                            <MenuItem Header="ピン留めを解除" Tag="Unpinnable" Click="OnUnpinClick" />
-                            <!-- Windows Explorer 側のクイックアクセス。Loomo のルートピンとは別物なので
-                                 名前で区別する（実体は Explorer が正本）。 -->
-                            <MenuItem Header="クイックアクセスにピン留め" Tag="QuickAccessPinnable"
-                                      Click="OnQuickAccessPinClick" />
-                            <MenuItem Header="クイックアクセスから解除" Tag="QuickAccessUnpinnable"
-                                      Click="OnQuickAccessUnpinClick" />
+                            <MenuItem Header="ピン留めとワークスペース" Tag="AutoGroup">
+                                <MenuItem Header="ルートにピン留め" Tag="Pinnable" Click="OnPinClick" />
+                                <MenuItem Header="ピン留めを解除" Tag="Unpinnable" Click="OnUnpinClick" />
+                                <MenuItem Header="クイックアクセスにピン留め" Tag="QuickAccessPinnable"
+                                          Click="OnQuickAccessPinClick" />
+                                <MenuItem Header="クイックアクセスから解除" Tag="QuickAccessUnpinnable"
+                                          Click="OnQuickAccessUnpinClick" />
+                            </MenuItem>
+                            <MenuItem Header="ZIPに圧縮" Tag="DirSelection" Click="OnCompressToZipClick"
+                                      ToolTip="フォルダーを同じ場所の ZIP にまとめます（Ctrl+Z で取り消せます）" />
                             <Separator />
-                            <MenuItem Header="プロパティ" InputGestureText="Alt+Enter" Tag="Selection"
-                                      Click="OnPropertiesClick"
-                                      ToolTip="サイズ、日時、属性、場所、権限を表示します" />
+                            <!-- 共有・送る・プロパティ・Shell 拡張は Explorer のメニューに任せる（Shell がその場で組み立てる）。 -->
+                            <MenuItem Header="Explorer のメニュー…" Tag="Selection" Click="OnExplorerMenuClick" />
                         </ContextMenu>
                     </ListBox.ContextMenu>
                     <ListBox.ItemTemplate>

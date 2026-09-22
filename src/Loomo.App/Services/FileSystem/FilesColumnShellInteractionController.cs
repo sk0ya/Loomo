@@ -1,4 +1,4 @@
-using System.Windows;
+﻿using System.Windows;
 using System.Windows.Input;
 using System.Windows.Threading;
 using sk0ya.Loomo.App.ViewModels;
@@ -6,24 +6,21 @@ using sk0ya.Loomo.App.Views;
 
 namespace sk0ya.Loomo.App.Services;
 
-/// <summary>ファイル一覧のWindows Shell操作と、ZIP／プロパティ／クイックアクセスの非同期ライフサイクル。</summary>
+/// <summary>ファイル一覧のWindows Shell操作と、ZIP／クイックアクセスの非同期ライフサイクル、Explorer のメニュー。</summary>
 internal sealed class FilesColumnShellInteractionController
 {
     private readonly Func<FilesColumnViewModel?> _getViewModel;
     private readonly Func<IReadOnlyList<FileEntryViewModel>> _getSelection;
     private readonly Func<Window?> _getOwnerWindow;
-    private readonly Func<bool> _isLoaded;
     private readonly Action<string> _selectPath;
     private readonly Action<string> _showError;
     private readonly Dispatcher _dispatcher;
-    private CancellationTokenSource? _propertiesLoad;
     private CancellationTokenSource? _zipOperation;
 
     internal FilesColumnShellInteractionController(
         Func<FilesColumnViewModel?> getViewModel,
         Func<IReadOnlyList<FileEntryViewModel>> getSelection,
         Func<Window?> getOwnerWindow,
-        Func<bool> isLoaded,
         Action<string> selectPath,
         Action<string> showError,
         Dispatcher dispatcher)
@@ -31,7 +28,6 @@ internal sealed class FilesColumnShellInteractionController
         _getViewModel = getViewModel;
         _getSelection = getSelection;
         _getOwnerWindow = getOwnerWindow;
-        _isLoaded = isLoaded;
         _selectPath = selectPath;
         _showError = showError;
         _dispatcher = dispatcher;
@@ -39,7 +35,6 @@ internal sealed class FilesColumnShellInteractionController
 
     internal void CancelPending()
     {
-        _propertiesLoad?.Cancel();
         _zipOperation?.Cancel();
     }
 
@@ -132,45 +127,32 @@ internal sealed class FilesColumnShellInteractionController
             _showError(result.ErrorMessage ?? failureMessage);
     }
 
-    internal async Task ShowPropertiesAsync()
+    /// <summary>Explorer の右クリックメニューをカーソル位置に出す。WPF のメニューが閉じてから
+    /// 出さないとフォーカスが戻らず、Shell のメニューがすぐ閉じる。
+    /// <paramref name="handleVerb"/> には Shell が実際に扱った項目だけを渡す（親が揃わず絞られた場合も、
+    /// 見せたメニューと違う項目を触らない）。</summary>
+    internal void ShowExplorerMenu(Func<string, IReadOnlyList<FileEntryViewModel>, bool> handleVerb)
     {
-        var selected = _getSelection();
-        var vm = _getViewModel();
-        if (selected.Count == 0 || _propertiesLoad is not null || vm is null)
+        var selection = _getSelection();
+        var paths = selection.Select(entry => entry.FullPath).ToArray();
+        if (paths.Length == 0 || _getOwnerWindow() is not { } owner)
             return;
+        _ = _dispatcher.BeginInvoke(DispatcherPriority.Input, new Action(() =>
+        {
+            var shown = ShellContextMenu.Show(owner, paths, (verb, targets) => handleVerb(verb,
+                selection.Where(entry => targets.Contains(entry.FullPath, StringComparer.OrdinalIgnoreCase)).ToList()));
+            if (!shown)
+                _showError("Explorer のメニューを表示できませんでした。");
+        }));
+    }
 
-        var targets = selected
-            .Select(entry => new FilePropertiesTarget(entry.FullPath, entry.IsDirectory))
-            .ToArray();
-
-        using var operation = new CancellationTokenSource();
-        _propertiesLoad = operation;
-        Mouse.OverrideCursor = Cursors.Wait;
-        try
-        {
-            // フォルダーサイズや ACL 読み取りで UI を固めない。
-            var result = await Task.Run(
-                () => vm.FileProperties.ReadMany(targets, operation.Token), operation.Token);
-            if (operation.IsCancellationRequested || !_isLoaded())
-                return;
-            var dialog = new FilePropertiesWindow(result) { Owner = _getOwnerWindow() };
-            dialog.ShowDialog();
-        }
-        catch (OperationCanceledException) when (operation.IsCancellationRequested)
-        {
-            // ビューがアンロードされた、または読み取りがキャンセルされた場合は何もしない。
-        }
-        catch (Exception ex)
-        {
-            _showError($"プロパティを表示できませんでした: {ex.Message}");
-        }
-        finally
-        {
-            if (ReferenceEquals(_propertiesLoad, operation))
-            {
-                _propertiesLoad = null;
-                Mouse.OverrideCursor = null;
-            }
-        }
+    /// <summary>Alt+Enter：Windows のプロパティを出す（Explorer と同じもの）。</summary>
+    internal void ShowProperties()
+    {
+        var paths = _getSelection().Select(entry => entry.FullPath).ToArray();
+        if (paths.Length == 0 || _getOwnerWindow() is not { } owner)
+            return;
+        if (!ShellContextMenu.InvokeVerb(owner, paths, "properties"))
+            _showError("プロパティを表示できませんでした。");
     }
 }

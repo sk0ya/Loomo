@@ -44,7 +44,7 @@ public sealed class ShellFileOperationsTests : IDisposable
         var called = false;
         var service = new ShellFileOperations(_ => { called = true; return true; });
 
-        var result = service.Execute(ShellFileAction.Share, [Path.Combine(_root, "missing.txt")]);
+        var result = service.Execute(ShellFileAction.OpenWith, [Path.Combine(_root, "missing.txt")]);
 
         Assert.False(called);
         Assert.Empty(result.SucceededPaths);
@@ -63,7 +63,7 @@ public sealed class ShellFileOperationsTests : IDisposable
         using var cts = new CancellationTokenSource();
         cts.Cancel();
 
-        var result = service.Execute(ShellFileAction.SendTo, [path], cts.Token);
+        var result = service.Execute(ShellFileAction.Open, [path], cts.Token);
 
         Assert.True(result.IsCancelled);
         Assert.False(called);

@@ -1561,20 +1561,16 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
     /// <summary>そのフォルダーを検索へ送れるか（コンテキストメニューの出し分け）。</summary>
     public bool CanSearchIn(string folder) => Directory.Exists(folder) && _workspace.Contains(folder);
 
-    // ===== Windows シェル連携（アプリで開く／共有／送る／ZIP／プロパティ／クイックアクセス） =====
+    // ===== Windows シェル連携（アプリで開く／ZIP／クイックアクセス） =====
     // ロードマップの「Windowsシェル連携」はこのペインの話だが、実装はツリー側にだけ入っていた。
     // 実体はツリーと同じ DI インスタンス（FolderTreeViewModel が持つもの）へ委譲する——
     // ここで new すると、ツリーとファイル一覧でクイックアクセスの状態が別々になる。
 
     private IShellFileOperations? _fallbackShellOperations;
-    private FilePropertiesService? _fallbackFileProperties;
     private IQuickAccessService? _fallbackQuickAccess;
 
     public IShellFileOperations ShellOperations =>
         _folderTree?.ShellOperations ?? (_fallbackShellOperations ??= new ShellFileOperations());
-
-    public FilePropertiesService FileProperties =>
-        _folderTree?.FileProperties ?? (_fallbackFileProperties ??= new FilePropertiesService());
 
     public IQuickAccessService QuickAccess =>
         _folderTree?.QuickAccess ?? (_fallbackQuickAccess ??= new WindowsQuickAccessService());

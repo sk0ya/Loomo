@@ -8,8 +8,6 @@ public enum ShellFileAction
 {
     Open,
     OpenWith,
-    Share,
-    SendTo,
 }
 
 public sealed record ShellFileOperationResult(
@@ -30,7 +28,7 @@ public interface IShellFileOperations
         CancellationToken cancellationToken = default);
 }
 
-/// <summary>Windows Shell の関連付け・共有・送るを起動する薄いアダプター。
+/// <summary>Windows Shell の関連付け（開く／アプリで開く）を起動する薄いアダプター。
 /// 動詞は対象の Shell が提供するものだけを使うため、OS／Shell 拡張の差は失敗結果として
 /// UI へ返す。ZIP のようなファイル変更はここでは扱わず、ファイル操作履歴を通る専用経路にする。</summary>
 public sealed class ShellFileOperations : IShellFileOperations
@@ -40,8 +38,6 @@ public sealed class ShellFileOperations : IShellFileOperations
         {
             [ShellFileAction.Open] = null,
             [ShellFileAction.OpenWith] = "openas",
-            [ShellFileAction.Share] = "share",
-            [ShellFileAction.SendTo] = "sendto",
         };
 
     private readonly Func<ProcessStartInfo, bool> _start;
