@@ -184,6 +184,9 @@
                 <DataTrigger Binding="{Binding IsActive}" Value="True">
                     <Setter TargetName="TabBorder" Property="Background" Value="{DynamicResource Bg}" />
                     <Setter TargetName="ActiveBar" Property="Background" Value="{DynamicResource Accent}" />
+                    <!-- 名前もアクセント色にする。行頭のバーは 3px しかなく、一覧が伸びるほど
+                         「いま見ているタブ」を探す目が端まで往復する——文字そのもので言い切る。 -->
+                    <Setter TargetName="EntryTitle" Property="Foreground" Value="{DynamicResource Accent}" />
                     <Setter TargetName="CloseButton" Property="Visibility" Value="Visible" />
                 </DataTrigger>
                 <!-- プレビュータブ（編集するまで確定しない）は VS Code 同様に斜体で示す -->
