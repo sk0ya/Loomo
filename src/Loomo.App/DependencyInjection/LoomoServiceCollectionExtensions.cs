@@ -209,7 +209,11 @@ internal static class LoomoServiceCollectionExtensions
         services.AddSingleton<WorkflowToolRunner>();
         services.AddSingleton<WorkflowViewModel>();
         services.AddSingleton<AiBarViewModel>();
-        services.AddSingleton<TabsViewModel>();
+        // タブ一覧。見出しの設定ビューで選んだ「出す種別」を settings.json へ書き戻すので設定と保存先を渡す。
+        services.AddSingleton(sp => new TabsViewModel(
+            sp.GetRequiredService<TabIconService>(),
+            sp.GetRequiredService<LoomoSettings>(),
+            sp.GetRequiredService<SettingsStore>()));
         // ActivityBar（左端の縦帯）の項目配置。並べ替えを settings.json へ書き戻すので設定と保存先を渡す。
         services.AddSingleton(sp => new ActivityBarViewModel(
             sp.GetRequiredService<LoomoSettings>(),

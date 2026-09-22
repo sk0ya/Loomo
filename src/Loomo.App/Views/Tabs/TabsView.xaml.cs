@@ -10,7 +10,13 @@ public partial class TabsView : UserControl
     public TabsView()
     {
         InitializeComponent();
+        // 設定ボタン（⚙）とポップアップを同じ旗へ TwoWay で結んでいるので、何もしないと
+        // 自分のボタンでは閉じられない（閉じた直後に開き直す）。理由は PopupReopenGuard に。
+        PopupReopenGuard.Track(TabsSettingsPopup);
     }
+
+    private void OnSettingsToggle(object sender, MouseButtonEventArgs e)
+        => PopupReopenGuard.SuppressReopen(sender, e, TabsSettingsPopup);
 
     // タブ行を中ボタンクリックで閉じる
     private void OnTabMiddleClick(object sender, MouseButtonEventArgs e)

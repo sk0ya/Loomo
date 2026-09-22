@@ -62,6 +62,9 @@ public sealed class LoomoSettings
     /// <summary>ActivityBar（左端の縦帯）の項目配置。上段バーと中段バーのどちらに何を置くかを持つ。</summary>
     public ActivityBarSettings ActivityBar { get; set; } = new();
 
+    /// <summary>サイドバーの TABS（タブ一覧）に出す種別。見出しクリックで開く設定ビューから書き戻される。</summary>
+    public TabsPanelSettings TabsPanel { get; set; } = new();
+
     /// <summary>コマンド実行・書込の安全設計（設計書 §10）。</summary>
     public SafetySettings Safety { get; set; } = new();
 
@@ -151,6 +154,21 @@ public sealed class ActivityBarSettings
 
     /// <summary>中段バーの項目 Id（上から順）。</summary>
     public List<string> Secondary { get; set; } = new();
+}
+
+/// <summary>サイドバーの TABS（タブ一覧）に出す種別。タブそのものは種別ごとに混ぜずに並べてあるので、
+/// 「いまはエディタのタブだけ見たい」を種別単位で選べる。隠しても閉じるわけではなく、一覧に出さないだけ
+/// （ペインのタブ列にはそのまま残る）。既定は3種とも表示。</summary>
+public sealed class TabsPanelSettings
+{
+    /// <summary>エディタのタブを一覧に出すか。</summary>
+    public bool ShowEditor { get; set; } = true;
+
+    /// <summary>ブラウザのタブを一覧に出すか。</summary>
+    public bool ShowBrowser { get; set; } = true;
+
+    /// <summary>ターミナルのタブを一覧に出すか。</summary>
+    public bool ShowTerminal { get; set; } = true;
 }
 
 public sealed class VimSettings

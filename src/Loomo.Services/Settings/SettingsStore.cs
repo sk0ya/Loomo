@@ -132,6 +132,7 @@ public sealed class SettingsStore
         public PersistedLsp? Lsp { get; set; }
         public PersistedInlineCompletion? InlineCompletion { get; set; }
         public PersistedActivityBar? ActivityBar { get; set; }
+        public PersistedTabsPanel? TabsPanel { get; set; }
 
         public static PersistedSettings From(LoomoSettings s) => new()
         {
@@ -155,6 +156,7 @@ public sealed class SettingsStore
             Lsp = PersistedLsp.From(s.Lsp),
             InlineCompletion = PersistedInlineCompletion.From(s.InlineCompletion),
             ActivityBar = PersistedActivityBar.From(s.ActivityBar),
+            TabsPanel = PersistedTabsPanel.From(s.TabsPanel),
         };
 
         public void ApplyTo(LoomoSettings s)
@@ -180,10 +182,35 @@ public sealed class SettingsStore
             Keybindings?.ApplyTo(s.Keybindings); // 旧設定（null）は既定割り当て（上書き無し）を維持
             Lsp?.ApplyTo(s.Lsp);                 // 旧設定（null）は空（=促しを抑止しない）を維持
             ActivityBar?.ApplyTo(s.ActivityBar); // 旧設定（null）は空＝既定配置を維持
+            TabsPanel?.ApplyTo(s.TabsPanel);     // 旧設定（null）は3種とも表示を維持
         }
     }
 
     // ===== ActivityBar（左端の縦帯）の項目配置。項目 Id の並びだけ。平文で保持。 =====
+
+    // ===== TABS（タブ一覧）に出す種別。平文で保持。 =====
+
+    private sealed class PersistedTabsPanel
+    {
+        public bool ShowEditor { get; set; } = true;
+        public bool ShowBrowser { get; set; } = true;
+        public bool ShowTerminal { get; set; } = true;
+
+        public static PersistedTabsPanel From(TabsPanelSettings t) => new()
+        {
+            ShowEditor = t.ShowEditor,
+            ShowBrowser = t.ShowBrowser,
+            ShowTerminal = t.ShowTerminal,
+        };
+
+        // 既存インスタンスを書き換える（DI シングルトンの参照を保つため置き換えない）。
+        public void ApplyTo(TabsPanelSettings t)
+        {
+            t.ShowEditor = ShowEditor;
+            t.ShowBrowser = ShowBrowser;
+            t.ShowTerminal = ShowTerminal;
+        }
+    }
 
     private sealed class PersistedActivityBar
     {

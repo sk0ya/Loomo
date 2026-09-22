@@ -21,6 +21,81 @@
             </Setter>
         </Style>
 
+        <!-- 見出しの設定ボタン（⚙）。これを押したときだけ設定ビューを出す。見出し帯そのものを
+             クリック対象にしていたが、押せる範囲が見た目に出ないので「何が起きるか」が読めなかった
+             ——押せるのは一点、この歯車だけにする。 -->
+        <Style x:Key="TabsSettingsButton" TargetType="ToggleButton">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Width" Value="18" />
+            <Setter Property="Height" Value="18" />
+            <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border x:Name="Chrome" CornerRadius="3" Background="Transparent">
+                            <TextBlock x:Name="Glyph" Text="⚙" FontSize="{DynamicResource Fs11}"
+                                       Foreground="{TemplateBinding Foreground}"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <!-- 種別を隠している間は、開かなくても分かるように印を残す。ホバー／開いている
+                                 印より**先に**置く——同じ引き金の並びでは後ろが勝つので、逆にすると
+                                 絞っている間だけホバーも開閉も色で分からなくなる（Style.Triggers に
+                                 置くのも同じ理由で駄目。テンプレートの引き金より強い）。 -->
+                            <DataTrigger Binding="{Binding IsFiltered}" Value="True">
+                                <Setter Property="Foreground" Value="{DynamicResource Accent}" />
+                            </DataTrigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Chrome" Property="Background" Value="{DynamicResource Bg}" />
+                                <Setter Property="Foreground" Value="{DynamicResource Fg}" />
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Chrome" Property="Background" Value="{DynamicResource Bg}" />
+                                <Setter Property="Foreground" Value="{DynamicResource Accent}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- 設定ビューの「種別」行。チェックボックスの角丸箱は置かず、一覧の行と同じ
+             「アイコン＋名前＋件数」を押して出し入れする。ただし**状態を明暗で語らない**
+             ——薄い／濃いはホバーの反応と見分けが付かず、出ているのか隠しているのか読めない。
+             出し入れは右端の目（開いた目＝出す／斜線の目＝隠す）と名前の色で言い切り、
+             行頭のアクセントバー（一覧のアクティブ行と同じ印）を添える。 -->
+        <Style x:Key="TabKindRow" TargetType="ToggleButton">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Height" Value="26" />
+            <Setter Property="Foreground" Value="{DynamicResource Fg}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border x:Name="Row" CornerRadius="4" Background="Transparent">
+                            <Grid>
+                                <Border x:Name="OnBar" Width="3" CornerRadius="2" Margin="1,4"
+                                        HorizontalAlignment="Left" Background="Transparent" />
+                                <ContentPresenter Margin="9,0,7,0" VerticalAlignment="Center" />
+                            </Grid>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="OnBar" Property="Background" Value="{DynamicResource Accent}" />
+                            </Trigger>
+                            <!-- ホバーは「押せる」の合図だけ。状態には触らない。 -->
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Row" Property="Background" Value="{DynamicResource BgAlt}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <DataTemplate x:Key="TabEntryTemplate">
             <Border x:Name="TabBorder" Height="28" Margin="0,1" CornerRadius="4"
                     Background="Transparent" MouseDown="OnTabMiddleClick">
@@ -122,28 +197,113 @@
     <!-- タブ一覧は独立したサイドバーパネル（SidebarPanel.Tabs）。既定では中段 ActivityBar に住み、
          上段のパネルと同時に見ていられる。区画の高さは行（SecondarySidebarRow）が決める。 -->
     <DockPanel>
-        <!-- 見出し：TABS ＋ 件数。開閉はしない（面そのものの出し入れは ActivityBar のアイコンが担う）。 -->
-        <DockPanel DockPanel.Dock="Top" LastChildFill="True" Margin="8,5,8,3">
+        <!-- 見出し：TABS ＋ 設定ボタン ＋ 件数。帯そのものは押さない（面の出し入れは ActivityBar、
+             種別の出し入れはこの ⚙ だけ）。 -->
+        <DockPanel DockPanel.Dock="Top" LastChildFill="True" Margin="8,5,6,3">
             <TextBlock DockPanel.Dock="Right" Text="{Binding TotalCount}"
                        Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs11}"
-                       Opacity="0.7" VerticalAlignment="Center" Margin="6,0,0,0" />
+                       Opacity="0.7" VerticalAlignment="Center" Margin="5,0,2,0" />
+            <ToggleButton x:Name="TabsSettingsToggle" DockPanel.Dock="Right"
+                          Style="{StaticResource TabsSettingsButton}"
+                          IsChecked="{Binding IsSettingsOpen, Mode=TwoWay}"
+                          VerticalAlignment="Center" Margin="4,0,0,0"
+                          ToolTip="一覧に出す種別を選ぶ"
+                          PreviewMouseLeftButtonUp="OnSettingsToggle"
+                          AutomationProperties.AutomationId="TabsSettingsButton"
+                          AutomationProperties.Name="TABS の設定" />
             <TextBlock Style="{StaticResource PanelHeader}" Padding="0" Text="TABS"
                        VerticalAlignment="Center" />
         </DockPanel>
+
+        <!-- 設定ビュー：一覧に出す種別。設定ボタン（⚙）にぶら下がる**ポップアップ**で出す——面の中へ挟むと、
+             ただでさえ短い区画の高さをタブ列から奪い、選び終わった後も居座る。タイトルバーの
+             ワークスペース／ブランチ切替と同じ作り（外を押せば閉じる）。 -->
+        <Popup x:Name="TabsSettingsPopup"
+               PlacementTarget="{Binding ElementName=TabsSettingsToggle}" Placement="Bottom"
+               HorizontalOffset="-140"
+               StaysOpen="False" AllowsTransparency="True"
+               IsOpen="{Binding IsSettingsOpen, Mode=TwoWay}">
+            <Border Background="{DynamicResource Panel}" BorderBrush="{DynamicResource Border}"
+                    BorderThickness="1" CornerRadius="3" Padding="3" MinWidth="168">
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="8" ShadowDepth="2" Opacity="0.3" />
+                </Border.Effect>
+                <ItemsControl ItemsSource="{Binding Kinds}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <ToggleButton Style="{StaticResource TabKindRow}"
+                                          IsChecked="{Binding IsShown, Mode=TwoWay}"
+                                          AutomationProperties.AutomationId="{Binding AutomationId}"
+                                          AutomationProperties.Name="{Binding Label}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <!-- 一覧の行と同じ FileIcons の線画を同じ 16x16 で描く。 -->
+                                    <Image x:Name="KindIcon" Grid.Column="0" Source="{Binding Icon}"
+                                           Width="16" Height="16" Margin="0,0,6,0" VerticalAlignment="Center" />
+                                    <TextBlock x:Name="KindLabel" Grid.Column="1" Text="{Binding Label}"
+                                               FontSize="{DynamicResource Fs12_5}" VerticalAlignment="Center"
+                                               Foreground="{DynamicResource Fg}" />
+                                    <TextBlock x:Name="KindCount" Grid.Column="2" Text="{Binding Count}"
+                                               FontSize="{DynamicResource Fs11}" Opacity="0.7"
+                                               Foreground="{DynamicResource FgDim}"
+                                               VerticalAlignment="Center" Margin="10,0,0,0" />
+                                    <!-- 出している＝開いた目（アクセント）／隠している＝斜線の目。 -->
+                                    <Grid Grid.Column="3" Width="14" Height="14" Margin="8,0,0,0"
+                                          VerticalAlignment="Center">
+                                        <Path x:Name="EyeOpen" Stretch="Uniform"
+                                              Stroke="{DynamicResource Accent}" StrokeThickness="1.2"
+                                              StrokeLineJoin="Round"
+                                              Data="M1,7 C4,2.5 12,2.5 15,7 C12,11.5 4,11.5 1,7 Z
+                                                    M9.8,7 A1.8,1.8 0 1 1 9.79,7 Z" />
+                                        <Path x:Name="EyeHidden" Stretch="Uniform" Visibility="Collapsed"
+                                              Stroke="{DynamicResource FgDim}" StrokeThickness="1.2"
+                                              StrokeLineJoin="Round" StrokeStartLineCap="Round"
+                                              StrokeEndLineCap="Round"
+                                              Data="M1,7 C4,2.5 12,2.5 15,7 C12,11.5 4,11.5 1,7 Z
+                                                    M2.5,12 L13.5,2" />
+                                    </Grid>
+                                </Grid>
+                            </ToggleButton>
+                            <DataTemplate.Triggers>
+                                <DataTrigger Binding="{Binding IsShown}" Value="False">
+                                    <Setter TargetName="EyeOpen" Property="Visibility" Value="Collapsed" />
+                                    <Setter TargetName="EyeHidden" Property="Visibility" Value="Visible" />
+                                    <Setter TargetName="KindLabel" Property="Foreground"
+                                            Value="{DynamicResource FgDim}" />
+                                    <!-- 絵だけは薄くして「並んでいない種別」と分かるようにする。 -->
+                                    <Setter TargetName="KindIcon" Property="Opacity" Value="0.45" />
+                                </DataTrigger>
+                            </DataTemplate.Triggers>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </Border>
+        </Popup>
 
         <!-- 溢れた分はここでスクロールする。 -->
         <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="2,0,3,6">
             <!-- 種別の見出し（TERMINAL/EDITOR/BROWSER）は縦幅を食うだけなので置かない。
                  種別は行頭のアイコンで分かる。並びは エディタ → ブラウザ → ターミナル。 -->
             <StackPanel>
+                <!-- 3種とも隠していると「タブが無い」のか「自分で隠した」のか見分けられないので、
+                     そのときだけ案内を出す。 -->
+                <TextBlock Text="種別をすべて隠しています（見出しの ⚙ で戻せます）" TextWrapping="Wrap"
+                           Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs11}"
+                           Margin="9,6,9,0"
+                           Visibility="{Binding IsAllKindsHidden, Converter={StaticResource BoolToVis}}" />
                 <ItemsControl ItemsSource="{Binding EditorTabs}" ItemTemplate="{StaticResource TabEntryTemplate}"
-                              Visibility="{Binding EditorTabs.Count, Converter={StaticResource CountToVis}}" />
+                              Visibility="{Binding IsEditorSectionVisible, Converter={StaticResource BoolToVis}}" />
                 <ItemsControl ItemsSource="{Binding BrowserTabs}" ItemTemplate="{StaticResource TabEntryTemplate}"
                               Margin="0,3,0,0"
-                              Visibility="{Binding BrowserTabs.Count, Converter={StaticResource CountToVis}}" />
+                              Visibility="{Binding IsBrowserSectionVisible, Converter={StaticResource BoolToVis}}" />
                 <ItemsControl ItemsSource="{Binding TerminalTabs}" ItemTemplate="{StaticResource TabEntryTemplate}"
                               Margin="0,3,0,0"
-                              Visibility="{Binding TerminalTabs.Count, Converter={StaticResource CountToVis}}" />
+                              Visibility="{Binding IsTerminalSectionVisible, Converter={StaticResource BoolToVis}}" />
             </StackPanel>
         </ScrollViewer>
     </DockPanel>

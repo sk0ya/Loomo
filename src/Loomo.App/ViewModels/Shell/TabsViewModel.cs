@@ -7,6 +7,8 @@ using CommunityToolkit.Mvvm.Input;
 using System.Windows;
 using System.Windows.Media;
 using sk0ya.Loomo.App.Services;
+using sk0ya.Loomo.Core.Settings;
+using sk0ya.Loomo.Services.Settings;
 
 namespace sk0ya.Loomo.App.ViewModels;
 
@@ -75,6 +77,36 @@ public sealed partial class TabEntryViewModel : ObservableObject
     [ObservableProperty] private string? _filePath;
 }
 
+/// <summary>見出しの設定ビューに出す「種別」1行（エディタ／ブラウザ／ターミナル）。一覧の行と同じ
+/// 「アイコン＋名前＋件数」を持ち、押すとその種別の出し入れが切り替わる。出す／隠すの正本はここ
+/// ——<see cref="TabsViewModel.ShowEditorTabs"/> 等はこの行への窓口で、二重の真実を作らない。</summary>
+public sealed partial class TabKindRowViewModel : ObservableObject
+{
+    public TabKindRowViewModel(TabEntryKind kind, string label, string automationId)
+    {
+        Kind = kind;
+        Label = label;
+        AutomationId = automationId;
+    }
+
+    public TabEntryKind Kind { get; }
+
+    /// <summary>行に出す名前（「エディタ」）。</summary>
+    public string Label { get; }
+
+    /// <summary>実機検証が掴む識別子。</summary>
+    public string AutomationId { get; }
+
+    /// <summary>一覧の行と同じ 16x16 の線画（テーマの明暗が変わると引き直す）。</summary>
+    [ObservableProperty] private ImageSource? _icon;
+
+    /// <summary>その種別がいま持っているタブ数。隠していても数は出す（「無くなった」に見せない）。</summary>
+    [ObservableProperty] private int _count;
+
+    /// <summary>この種別を一覧に並べるか。</summary>
+    [ObservableProperty] private bool _isShown = true;
+}
+
 /// <summary>Terminal / Editor / Browser のタブ相当情報をサイドバーへ表示する。</summary>
 public sealed partial class TabsViewModel : ObservableObject
 {
@@ -82,6 +114,11 @@ public sealed partial class TabsViewModel : ObservableObject
     private static readonly int TerminalIconIndex = FileIcons.IndexFor("terminal.ps1", isDirectory: false);
 
     private readonly TabIconService _icons;
+    private readonly LoomoSettings? _settings;
+    private readonly SettingsStore? _settingsStore;
+    private readonly TabKindRowViewModel _editorKind = new(TabEntryKind.Editor, "エディタ", "TabsShowEditorToggle");
+    private readonly TabKindRowViewModel _browserKind = new(TabEntryKind.Browser, "ブラウザ", "TabsShowBrowserToggle");
+    private readonly TabKindRowViewModel _terminalKind = new(TabEntryKind.Terminal, "ターミナル", "TabsShowTerminalToggle");
 
     public ObservableCollection<TabEntryViewModel> TerminalTabs { get; } = new();
     public ObservableCollection<TabEntryViewModel> EditorTabs { get; } = new();
@@ -96,17 +133,72 @@ public sealed partial class TabsViewModel : ObservableObject
     /// <summary>「別ウィンドウで開く」：このタブをフローティングウィンドウへ切り離す（複製／スピンオフ）。</summary>
     public event EventHandler<TabEntryViewModel>? TabDetachRequested;
 
-    /// <summary>全タブ数。セクション見出しの件数表示に使う（折りたたみ時の手掛かり）。</summary>
-    public int TotalCount => TerminalTabs.Count + EditorTabs.Count + BrowserTabs.Count;
+    /// <summary>見出しの件数表示。<b>いま一覧に出ている</b>タブだけを数える——種別を隠しているのに
+    /// 隠した分まで数えると、並んでいる行数と食い違って見出しが嘘をつく。</summary>
+    public int TotalCount
+        => (ShowEditorTabs ? EditorTabs.Count : 0)
+         + (ShowBrowserTabs ? BrowserTabs.Count : 0)
+         + (ShowTerminalTabs ? TerminalTabs.Count : 0);
+
+    /// <summary>見出しクリックで開く設定ビュー（表示する種別を選ぶ）が開いているか。
+    /// 面そのものの出し入れは ActivityBar が担うので、見出しクリックはこちらに使える。</summary>
+    [ObservableProperty] private bool _isSettingsOpen;
+
+    /// <summary>設定ビューに出す種別の行（並びは一覧と同じ エディタ → ブラウザ → ターミナル）。</summary>
+    public IReadOnlyList<TabKindRowViewModel> Kinds { get; }
+
+    /// <summary>エディタのタブを一覧に出すか。隠しても閉じるわけではなく、この一覧に出さないだけ。</summary>
+    public bool ShowEditorTabs
+    {
+        get => _editorKind.IsShown;
+        set => _editorKind.IsShown = value;
+    }
+
+    /// <summary>ブラウザのタブを一覧に出すか。</summary>
+    public bool ShowBrowserTabs
+    {
+        get => _browserKind.IsShown;
+        set => _browserKind.IsShown = value;
+    }
+
+    /// <summary>ターミナルのタブを一覧に出すか。</summary>
+    public bool ShowTerminalTabs
+    {
+        get => _terminalKind.IsShown;
+        set => _terminalKind.IsShown = value;
+    }
+
+    /// <summary>いずれかの種別を隠している＝一覧に絞りが効いている。見出しの ⚙ に印を残すのに使う
+    /// ——開かなくても「全部は出ていない」と分かる必要がある。</summary>
+    public bool IsFiltered => !(ShowEditorTabs && ShowBrowserTabs && ShowTerminalTabs);
+
+    /// <summary>その種別の行をいま並べるか（出す設定＋実際に1つ以上ある）。</summary>
+    public bool IsEditorSectionVisible => ShowEditorTabs && EditorTabs.Count > 0;
+    public bool IsBrowserSectionVisible => ShowBrowserTabs && BrowserTabs.Count > 0;
+    public bool IsTerminalSectionVisible => ShowTerminalTabs && TerminalTabs.Count > 0;
+
+    /// <summary>3種とも隠していて、一覧が空になっている。タブが無いのか自分で隠したのかを
+    /// 見分けられないと「壊れた」に見えるので、そのときだけ案内を出す。</summary>
+    public bool IsAllKindsHidden => !ShowEditorTabs && !ShowBrowserTabs && !ShowTerminalTabs;
 
     public TabsViewModel()
         : this(new TabIconService())
     {
     }
 
-    public TabsViewModel(TabIconService icons)
+    public TabsViewModel(TabIconService icons, LoomoSettings? settings = null, SettingsStore? settingsStore = null)
     {
         _icons = icons;
+        _settings = settings;
+        _settingsStore = settingsStore;
+        Kinds = [_editorKind, _browserKind, _terminalKind];
+        // 保存済みの選択は購読前に入れる（起動しただけで書き戻さない）。
+        _editorKind.IsShown = settings?.TabsPanel.ShowEditor ?? true;
+        _browserKind.IsShown = settings?.TabsPanel.ShowBrowser ?? true;
+        _terminalKind.IsShown = settings?.TabsPanel.ShowTerminal ?? true;
+        foreach (var kind in Kinds)
+            kind.PropertyChanged += OnKindRowChanged;
+        RefreshKindIcons();
         TerminalTabs.CollectionChanged += OnTabCollectionChanged;
         EditorTabs.CollectionChanged += OnTabCollectionChanged;
         BrowserTabs.CollectionChanged += OnTabCollectionChanged;
@@ -115,7 +207,45 @@ public sealed partial class TabsViewModel : ObservableObject
     }
 
     private void OnTabCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
-        => OnPropertyChanged(nameof(TotalCount));
+        => NotifyCounts();
+
+    private void OnKindRowChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(TabKindRowViewModel.IsShown) || sender is not TabKindRowViewModel row)
+            return;
+
+        OnPropertyChanged(row.Kind switch
+        {
+            TabEntryKind.Editor => nameof(ShowEditorTabs),
+            TabEntryKind.Browser => nameof(ShowBrowserTabs),
+            _ => nameof(ShowTerminalTabs),
+        });
+        NotifyCounts();
+        Persist();
+    }
+
+    private void NotifyCounts()
+    {
+        _editorKind.Count = EditorTabs.Count;
+        _browserKind.Count = BrowserTabs.Count;
+        _terminalKind.Count = TerminalTabs.Count;
+        OnPropertyChanged(nameof(TotalCount));
+        OnPropertyChanged(nameof(IsEditorSectionVisible));
+        OnPropertyChanged(nameof(IsBrowserSectionVisible));
+        OnPropertyChanged(nameof(IsTerminalSectionVisible));
+        OnPropertyChanged(nameof(IsAllKindsHidden));
+        OnPropertyChanged(nameof(IsFiltered));
+    }
+
+    private void Persist()
+    {
+        if (_settings is null) return;
+        _settings.TabsPanel.ShowEditor = ShowEditorTabs;
+        _settings.TabsPanel.ShowBrowser = ShowBrowserTabs;
+        _settings.TabsPanel.ShowTerminal = ShowTerminalTabs;
+        try { _settingsStore?.Save(_settings); }
+        catch { /* 永続化に失敗しても選択自体は効かせる */ }
+    }
 
     /// <summary>テーマの明暗が入れ替わったので、種別アイコンを新しい配色で引き直す
     /// （favicon を出しているブラウザタブは対象外）。</summary>
@@ -124,6 +254,16 @@ public sealed partial class TabsViewModel : ObservableObject
         foreach (var tab in EditorTabs) tab.RefreshIcon();
         foreach (var tab in BrowserTabs) tab.RefreshIcon();
         foreach (var tab in TerminalTabs) tab.RefreshIcon();
+        RefreshKindIcons();
+    }
+
+    /// <summary>設定ビューの種別行に出す絵。一覧の行とまったく同じ引き方をするので、同じ種別は
+    /// どこに出ても同じ絵になる（エディタは既定のファイル、ターミナルは .ps1、ブラウザは既定の favicon）。</summary>
+    private void RefreshKindIcons()
+    {
+        _editorKind.Icon = FileIcons.ImageFor(FileIconData.DefaultFileIndex);
+        _terminalKind.Icon = FileIcons.ImageFor(TerminalIconIndex);
+        _browserKind.Icon = _icons.GetBrowserDefaultIcon();
     }
 
     public void AddTerminalTab(Guid id, string? title, bool isActive)
