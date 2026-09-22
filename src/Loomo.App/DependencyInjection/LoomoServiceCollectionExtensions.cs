@@ -225,6 +225,9 @@ internal static class LoomoServiceCollectionExtensions
         services.AddSingleton<FormatterSettingsViewModel>();
         services.AddSingleton<StyleCopSettingsViewModel>();
         services.AddSingleton<KeybindingsViewModel>();
+        // キーバインド一覧（全コマンドの行＋グルーピング付き CollectionView の構築で実測 ~51ms）は
+        // 設定画面を開くまで誰も見ない。ShellViewModel には Lazy で渡し、起動経路から外す。
+        services.AddSingleton(sp => new Lazy<KeybindingsViewModel>(sp.GetRequiredService<KeybindingsViewModel>));
         services.AddSingleton<TraceSessionViewModel>();
         services.AddSingleton<PegboardViewModel>();
         // ブックマーク・履歴はワークスペースをまたぐ資産なので、アプリ単位の1ファイルに持つ。

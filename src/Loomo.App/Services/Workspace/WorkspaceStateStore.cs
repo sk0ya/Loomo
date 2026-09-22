@@ -45,6 +45,24 @@ public sealed class WorkspaceStateStore : IDisposable
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "Loomo", "workspaces.json");
 
+    // 起動時の先読み。索引＋アクティブぶんの読込と System.Text.Json の初回コスト（実機 ~137ms）は
+    // WPF の初期化と重ならない位置（ShellViewModel 解決中）で払っていた。App.OnStartup の頭で
+    // これを始めておくと、その時間が WPF 初期化と並走して消える。
+    private static Task<WorkspaceState>? _startupLoad;
+
+    /// <summary>既定パスの起動時読込をバックグラウンドで先に始める（結果は最初の
+    /// <see cref="LoadForStartup"/> が受け取る）。まだ書き出しが一つも無い起動直後にだけ呼ぶこと。</summary>
+    public static void BeginStartupLoad()
+    {
+        if (_startupLoad is not null) return;
+        var path = DefaultPath();
+        _startupLoad = Task.Run(() =>
+        {
+            using var store = new WorkspaceStateStore(path);
+            return store.ReadForStartup();
+        });
+    }
+
     public WorkspaceState Load()
     {
         _writes.Flush();   // 積んである書き出しより前の内容を読まない
@@ -79,8 +97,23 @@ public sealed class WorkspaceStateStore : IDisposable
         }
     }
 
-    /// <summary>起動用。一覧とアクティブなワークスペースだけを読み、他の詳細は切替時まで遅延する。</summary>
+    /// <summary>起動用。一覧とアクティブなワークスペースだけを読み、他の詳細は切替時まで遅延する。
+    /// <see cref="BeginStartupLoad"/> で先読みが始まっていればその結果を受け取る（待ちになるのは
+    /// まだ終わっていないときだけ）。</summary>
     public WorkspaceState LoadForStartup()
+    {
+        if (string.Equals(_filePath, DefaultPath(), StringComparison.OrdinalIgnoreCase)
+            && Interlocked.Exchange(ref _startupLoad, null) is { } prefetched)
+        {
+            // 先読みが落ちていたら黙って通常経路で読み直す（起動を止めない）。
+            try { return prefetched.GetAwaiter().GetResult(); }
+            catch { }
+        }
+
+        return ReadForStartup();
+    }
+
+    private WorkspaceState ReadForStartup()
     {
         _writes.Flush();
         if (!File.Exists(_filePath)) return new WorkspaceState();

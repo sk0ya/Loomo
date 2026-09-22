@@ -73,7 +73,7 @@ public partial class ShellWindow {
         FocusPane(PaneKind.Search);
         // FocusPane は直前に結果ツリーへフォーカスを戻す場合があるため、検索ショートカットでは
         // 常に入力欄へ戻す。BeginInvoke されるので、舞台／ドックの再配置後にも適用される。
-        SearchPaneHost.FocusQuery();
+        PaneContent<SearchPanelView>(SearchPaneHost).FocusQuery();
     }
 
     /// <summary>検索ペイン内で既定の検索キーをもう一度押したときの動作。外からなら開くだけ、
@@ -100,7 +100,7 @@ public partial class ShellWindow {
         }
 
         _vm.SearchPanel.CycleScope(direction);
-        SearchPaneHost.FocusQuery();
+        PaneContent<SearchPanelView>(SearchPaneHost).FocusQuery();
     }
 
     private bool IsSearchFocused()

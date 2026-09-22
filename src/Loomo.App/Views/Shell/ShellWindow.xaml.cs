@@ -165,11 +165,25 @@ public partial class ShellWindow : Window {
             _ = CaptureWebThumbnailAsync(PaneKind.EditorSupport);
         };
         editorSupportWebView.ReloadRequested += OnEditorSupportReloadRequested;
-        // Markdown 差分のレンダリング表示（§24.10）。Diff ペインは XAML から生えて DI が届かないので、
-        // 部屋の他のプレビューと同じ道具（WebView2 のファクトリと一時ページの置き場）をここで渡す。
-        DiffSessionHost.ConfigureMarkdownRender(editorSupportViewFactory, EditorSupportPreviewFolder);
-        // 本文のリンクは EditorSupport のプレビューと同じ振り分け（URL＝ブラウザ／ファイル＝エディタ）へ流す。
-        DiffSessionHost.MarkdownLinkClicked += (_, e) => _ = HandleEditorSupportLinkClickedAsync(e.Href, e.SourcePath);
+        // ペイン本体は初めて見えたときに作る（ShellWindow.PaneContent.cs）。起動直後に配置へ載らない
+        // ペインの View まで、ここで組み立てない。
+        DeferPaneContent(GitSessionHost, () => new GitSessionView());
+        DeferPaneContent(SearchPaneHost, () => new SearchPanelView());
+        DeferPaneContent(FilesPaneHost, () => new FilesPaneView());
+        DeferPaneContent(TraceSessionHost, () => new TraceSessionView());
+        DeferPaneContent(DebugPaneHost, () => new DebugView());
+        DeferPaneContent(TsIdePaneHost, () => new TsDebugView());
+        DeferPaneContent(AiSessionsHost, () => new SessionsView());
+        DeferPaneContent(AiBarHost, () => new AiBarView());
+        DeferPaneContent(DiffSessionHost, () => {
+            var diff = new DiffSessionView();
+            // Markdown 差分のレンダリング表示（§24.10）。Diff ペインは XAML から生えて DI が届かないので、
+            // 部屋の他のプレビューと同じ道具（WebView2 のファクトリと一時ページの置き場）をここで渡す。
+            diff.ConfigureMarkdownRender(editorSupportViewFactory, EditorSupportPreviewFolder);
+            // 本文のリンクは EditorSupport のプレビューと同じ振り分け（URL＝ブラウザ／ファイル＝エディタ）へ流す。
+            diff.MarkdownLinkClicked += (_, e) => _ = HandleEditorSupportLinkClickedAsync(e.Href, e.SourcePath);
+            return diff;
+        });
         _editorSupports = editorSupports;
         _editorSupportResolver = editorSupportResolver;
         _codeSupport = codeSupport;

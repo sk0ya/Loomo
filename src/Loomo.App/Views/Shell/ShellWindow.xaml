@@ -2019,7 +2019,7 @@
                     </DockPanel>
                     <Border Style="{StaticResource PaneHeaderRule}" />
 
-                    <views:GitSessionView x:Name="GitSessionHost" DataContext="{Binding GitSession}" />
+                    <ContentControl x:Name="GitSessionHost" DataContext="{Binding GitSession}" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" />
                 </DockPanel>
 
                 <!-- 検索 : ペイン化（全文検索/ファイル名/ターミナル内検索。エディタ等と同格の舞台ペイン）。
@@ -2035,7 +2035,7 @@
                                 Tag="Search" Click="OnHidePane" />
                     </DockPanel>
                     <Border Style="{StaticResource PaneHeaderRule}" />
-                    <views:SearchPanelView x:Name="SearchPaneHost" DataContext="{Binding SearchPanel}" />
+                    <ContentControl x:Name="SearchPaneHost" DataContext="{Binding SearchPanel}" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" />
                 </DockPanel>
 
                 <!-- ファイル一覧 : ペイン化したエクスプローラ（1フォルダーを平らに並べ、並べ替え・絞り込み・
@@ -2095,7 +2095,7 @@
                          </Border>
                     </DockPanel>
                     <Border Style="{StaticResource PaneHeaderRule}" />
-                    <views:FilesPaneView x:Name="FilesPaneHost" DataContext="{Binding Files}" />
+                    <ContentControl x:Name="FilesPaneHost" DataContext="{Binding Files}" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" />
                 </DockPanel>
 
                 <!-- Diff : セッションペイン（Git作業ツリー差分＋アドホック比較） -->
@@ -2214,7 +2214,7 @@
                         </StackPanel>
                     </DockPanel>
                     <Border Style="{StaticResource PaneHeaderRule}" />
-                    <views:DiffSessionView x:Name="DiffSessionHost" DataContext="{Binding DiffSession}" />
+                    <ContentControl x:Name="DiffSessionHost" DataContext="{Binding DiffSession}" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" />
                 </DockPanel>
 
                 <!-- Trace : セッションペイン（AI操作トレースのタイムライン表示・読み取り専用） -->
@@ -2236,7 +2236,7 @@
                         </StackPanel>
                     </DockPanel>
                     <Border Style="{StaticResource PaneHeaderRule}" />
-                    <views:TraceSessionView x:Name="TraceSessionHost" DataContext="{Binding TraceSession}" />
+                    <ContentControl x:Name="TraceSessionHost" DataContext="{Binding TraceSession}" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" />
                 </DockPanel>
 
                 <!-- デバッグ : ペイン化（DAP / netcoredbg。出力・ブレークポイント・変数・コールスタック） -->
@@ -2323,7 +2323,7 @@
                                    AutomationProperties.Name="{Binding Debug.StatusMessage}" />
                     </DockPanel>
                     <Border Style="{StaticResource PaneHeaderRule}" />
-                    <views:DebugView DataContext="{Binding Debug}" />
+                    <ContentControl x:Name="DebugPaneHost" DataContext="{Binding Debug}" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" />
                 </DockPanel>
 
                 <!-- TS IDE : ペイン化（DAP / vscode-js-debug。TypeScript / Node.js のデバッグ・型チェック） -->
@@ -2400,7 +2400,7 @@
                                    TextTrimming="CharacterEllipsis" />
                     </DockPanel>
                     <Border Style="{StaticResource PaneHeaderRule}" />
-                    <views:TsDebugView DataContext="{Binding TsIde}" />
+                    <ContentControl x:Name="TsIdePaneHost" DataContext="{Binding TsIde}" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" />
                 </DockPanel>
 
                 <!-- AI : ペイン化（トランスクリプト＋入力を1列にまとめる） -->
@@ -2458,9 +2458,9 @@
                             BorderBrush="{DynamicResource Border}" BorderThickness="0,0,1,0"
                             DataContext="{Binding Sessions}"
                             Visibility="{Binding IsOpen, Converter={StaticResource BoolToVis}}">
-                        <views:SessionsView DataContext="{Binding}" />
+                        <ContentControl x:Name="AiSessionsHost" DataContext="{Binding}" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" />
                     </Border>
-                    <views:AiBarView x:Name="AiBarHost" DataContext="{Binding AiBar}" />
+                    <ContentControl x:Name="AiBarHost" DataContext="{Binding AiBar}" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" />
                 </DockPanel>
 
                 </Grid>   <!-- /PaneHost -->

@@ -51,7 +51,10 @@ public sealed partial class ShellViewModel : ObservableObject
     public LspPromptViewModel LspPrompt { get; }
     public FormatterSettingsViewModel Formatter { get; }
     public StyleCopSettingsViewModel StyleCop { get; }
-    public KeybindingsViewModel Keyboard { get; }
+    private readonly Lazy<KeybindingsViewModel> _keyboard;
+    /// <summary>キーバインド一覧。設定画面でしか使わないので、起動時には作らず初回参照で作る
+    /// （一覧の構築だけで実測 ~51ms）。</summary>
+    public KeybindingsViewModel Keyboard => _keyboard.Value;
     public GitPanelViewModel GitPanel { get; }
     public GitSessionViewModel GitSession { get; }
     public DiffSessionViewModel DiffSession { get; }
@@ -138,7 +141,7 @@ public sealed partial class ShellViewModel : ObservableObject
         LspSettingsViewModel lsp,
         LspPromptViewModel lspPrompt,
         FormatterSettingsViewModel formatter,
-        KeybindingsViewModel keyboard,
+        Lazy<KeybindingsViewModel> keyboard,
         GitPanelViewModel gitPanel,
         GitSessionViewModel gitSession,
         DiffSessionViewModel diffSession,
@@ -169,7 +172,7 @@ public sealed partial class ShellViewModel : ObservableObject
         LspPrompt.OpenSettingsRequested += () => OpenSettingsOverlay(SettingsCategory.Lsp);
         Formatter = formatter;
         StyleCop = styleCop ?? new StyleCopSettingsViewModel();
-        Keyboard = keyboard;
+        _keyboard = keyboard;
         GitPanel = gitPanel;
         GitSession = gitSession;
         DiffSession = diffSession;

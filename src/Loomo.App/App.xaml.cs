@@ -26,6 +26,11 @@ public partial class App : Application
         // 当たるようにする。fire-and-forget が想定された使い方（プロセス毎に一度だけ実行・スレッド安全）。
         _ = Editor.Controls.VimEditorControl.WarmUpAsync();
 
+        // ワークスペース一覧＋アクティブぶんの読込（実測 ~137ms。大半は System.Text.Json の初回コスト）は
+        // ShellViewModel の解決中＝WPF 初期化と直列に払っていた。ここで先に走らせておくと、その時間が
+        // WPF 初期化と並走して消える。結果を受け取るのは WorkspaceListViewModel の ctor。
+        WorkspaceStateStore.BeginStartupLoad();
+
         base.OnStartup(e);
 
         // 汎用ホスト（Host.CreateDefaultBuilder）は appsettings.json 探索・環境変数/コマンドライン構成・

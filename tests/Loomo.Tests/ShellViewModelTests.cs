@@ -167,7 +167,7 @@ public class ShellViewModelTests
             workspace, new FolderTreeCommandHandler(workspace, new FileOperationHistory()), folderTree, new FakeFilePlacesProvider());
 
         return new ShellViewModel(folderTree, filesVm, workspacesVm, aiBar, new TabsViewModel(), sessionsVm, settingsVm,
-            appearanceVm, lspVm, lspPromptVm, formatterVm, keyboardVm, gitPanelVm, gitSessionVm, diffSessionVm, traceSessionVm,
+            appearanceVm, lspVm, lspPromptVm, formatterVm, new Lazy<KeybindingsViewModel>(() => keyboardVm), gitPanelVm, gitSessionVm, diffSessionVm, traceSessionVm,
             new PegboardViewModel(),
             new BrowserViewModel(new BrowserLibraryStore(
                 Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-loomo-browser.json"))),

@@ -1,4 +1,4 @@
-namespace sk0ya.Loomo.App.Views;
+﻿namespace sk0ya.Loomo.App.Views;
 /// <summary>
 /// ShellWindow: EditorSupport ペイン（Markdown プレビュー等の表示・スクロール同期）。
 /// 自動表示はしない（明示操作で開いたときだけアクティブエディタに追従して描く）。
@@ -53,7 +53,7 @@ public partial class ShellWindow : IEditorSupportRenderHost {
     private MouseNavigationController EditorSupportMouseNavigation
         => _editorSupportMouseNavigation ??= new MouseNavigationController(
             _paneElements, BrowserNavigateHistory,
-            (source, back) => FilesPaneHost.NavigateHistory(source, back),
+            (source, back) => PaneContent<FilesPaneView>(FilesPaneHost).NavigateHistory(source, back),
             back => { _ = EditorSupportNavigateHistoryAsync(back); });
     /// <summary>次の描画でページ全体を組み直す（本文差し替えを使わない）。ナビゲーション失敗・
     /// 応答なし・差し替え先ページ喪失からの復帰で立てる一度きりのフラグ。</summary>

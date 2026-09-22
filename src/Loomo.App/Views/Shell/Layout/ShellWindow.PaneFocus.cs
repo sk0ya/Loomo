@@ -220,17 +220,17 @@ public partial class ShellWindow {
                 _activeBrowserTab?.View.Focus();
                 break;
             case PaneKind.Ai:
-                AiBarHost.FocusInput();
+                PaneContent<AiBarView>(AiBarHost).FocusInput();
                 break;
             case PaneKind.Git:
                 // ペインの器ではなくコミット一覧へ落とす（そのまま j/k・Enter が効く）。
-                GitSessionHost.FocusCommitList();
+                PaneContent<GitSessionView>(GitSessionHost).FocusCommitList();
                 break;
             case PaneKind.Diff:
-                DiffSessionHost.Focus();
+                PaneContent<DiffSessionView>(DiffSessionHost).Focus();
                 break;
             case PaneKind.Trace:
-                TraceSessionHost.Focus();
+                PaneContent<TraceSessionView>(TraceSessionHost).Focus();
                 break;
             case PaneKind.Debug:
                 PaneFocusElementResolver.FocusFirstFocusable(DebugPane);
@@ -239,10 +239,10 @@ public partial class ShellWindow {
                 PaneFocusElementResolver.FocusFirstFocusable(TsIdePane);
                 break;
             case PaneKind.Search:
-                SearchPaneHost.FocusQuery();
+                PaneContent<SearchPanelView>(SearchPaneHost).FocusQuery();
                 break;
             case PaneKind.Files:
-                FilesPaneHost.FocusList();
+                PaneContent<FilesPaneView>(FilesPaneHost).FocusList();
                 break;
         }
         RecordTrailPane(kind);
