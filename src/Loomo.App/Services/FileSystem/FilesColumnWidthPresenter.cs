@@ -17,6 +17,7 @@ internal sealed class FilesColumnWidthPresenter
     private readonly Control _resourceScope;
     private FilesColumnViewModel? _viewModel;
     private bool _autoWidthsQueued;
+    private int _autoWidthGeneration;
     private Dictionary<FilesColumnKey, double>? _contentWidths;
 
     internal FilesColumnWidthPresenter(ListBox entryList, Control resourceScope)
@@ -71,6 +72,14 @@ internal sealed class FilesColumnWidthPresenter
         // 列の出入り後は、隠れていた列の設定幅を実測値として再利用しない。
         _contentWidths = null;
         QueueAutoColumnWidths();
+    }
+
+    internal void OnFolderChanged()
+    {
+        // 移動前に予約した Loaded 処理が、移動先の空一覧／古い一覧へ幅を当てないようにする。
+        _autoWidthGeneration++;
+        _autoWidthsQueued = false;
+        _contentWidths = null;
     }
 
     private static FilesColumnKey? GripColumn(object sender)
@@ -141,8 +150,11 @@ internal sealed class FilesColumnWidthPresenter
         if (_autoWidthsQueued)
             return;
         _autoWidthsQueued = true;
+        var generation = _autoWidthGeneration;
         _entryList.Dispatcher.BeginInvoke(new Action(() =>
         {
+            if (generation != _autoWidthGeneration)
+                return;
             _autoWidthsQueued = false;
             ApplyAutoColumnWidths();
         }), DispatcherPriority.Loaded);

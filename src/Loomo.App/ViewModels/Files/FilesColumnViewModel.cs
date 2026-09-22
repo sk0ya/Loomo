@@ -624,7 +624,7 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
         };
     }
 
-    private void PrepareFolder(string folder)
+    private void PrepareFolder(string folder, bool preserveWidthsDuringLoad = false, bool clearEntries = false)
     {
         CancelThumbnailLoads();
         CancelGitStatusLoad();
@@ -633,10 +633,18 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
             SaveFolderLayout(CurrentFolder);
         CurrentFolder = folder;
         if (!_restoringLayout)
-            ApplyFolderLayout(folder);
+            ApplyFolderLayout(folder, resetIfMissing: !preserveWidthsDuringLoad);
         // 表示するのは直下だけなので再帰監視はしない（リポジトリ全体を見張る必要はない）。
         _watcher.Watch(folder, includeSubdirectories: false);
         UpdateBreadcrumbs();
+        if (clearEntries)
+        {
+            _all = new List<FileEntryViewModel>();
+            Entries.Clear();
+            EntriesView.Refresh();
+            StatusText = "読み込み中…";
+            IsEmpty = false;
+        }
     }
 
     private void SetFolder(string folder, bool raiseStateChanged = true)
@@ -655,7 +663,8 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
 
     private async Task SetFolderAsync(string folder, bool raiseStateChanged = true)
     {
-        PrepareFolder(folder);
+        // 新しい内容が届くまで、既定幅へ戻さず現在の幅を保持する。
+        PrepareFolder(folder, preserveWidthsDuringLoad: true, clearEntries: true);
         NotifyHistoryChanged();
         // 現在地と履歴は先に反映する。ファイル列挙の完了を待たずにパンくずを更新できる。
         if (raiseStateChanged)
@@ -847,15 +856,19 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
         TouchFolderLayout(folder);
     }
 
-    private void ApplyFolderLayout(string folder)
+    private void ApplyFolderLayout(string folder, bool resetIfMissing = true)
     {
         if (_folderLayouts.TryGetValue(folder, out var saved))
         {
             TouchFolderLayout(folder);
             ApplyLayout(saved.Columns);
         }
-        else
+        else if (resetIfMissing)
             ResetLayout();
+        else
+            // 保存のないフォルダーへ移動するときは、既定レイアウトを一度書き込まない。
+            // 一覧の到着後に自動幅だけを更新し、移動中も現在の列構成を保つ。
+            ColumnWidthsAreAuto = true;
     }
 
     /// <summary>直近に使ったフォルダーとして並べ直し、上限を超えたぶんを古い順に捨てる。</summary>

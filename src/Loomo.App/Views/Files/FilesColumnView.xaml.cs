@@ -104,6 +104,12 @@ public partial class FilesColumnView : UserControl
             return;
         }
 
+        if (e.PropertyName == nameof(FilesColumnViewModel.CurrentFolder))
+        {
+            _columnWidths.OnFolderChanged();
+            return;
+        }
+
         if (e.PropertyName != nameof(FilesColumnViewModel.PendingSelection) || Vm?.PendingSelection is not { } path)
             return;
         Vm.PendingSelection = null;
