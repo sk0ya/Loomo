@@ -513,4 +513,35 @@ public class CodeEditorSupportTests
         Assert.NotNull(LspNoticeModel.FindFailure(
             statuses, ".ts", "TypeScript-Language-Server", "TypeScript / JavaScript"));
     }
+
+    [Theory]
+    // csharp-ls はプロパティ／フィールドの型を名前へ埋めてくる。
+    [InlineData("Preview : string", "Preview", " : string")]
+    // メソッドは引数リストを名前側に残し、戻り型だけ型として切る（"()" は宣言の骨格）。
+    [InlineData("LoadItems(IEnumerable<T>) : void", "LoadItems(IEnumerable<T>)", " : void")]
+    [InlineData("PegboardViewModel()", "PegboardViewModel()", "")]
+    // 引数の中に空白付きの " : " があっても、そこでは切らない（探し始めは最後の ")" の直後）。
+    [InlineData("foo(a : int) : void", "foo(a : int)", " : void")]
+    // 型を持たない名前（クラス等）はそのまま。
+    [InlineData("PegboardItemVm", "PegboardItemVm", "")]
+    // 空白の無い ":" では切らない（C++ の入れ子名など）。
+    [InlineData("Foo::Bar", "Foo::Bar", "")]
+    // 先頭で切れる＝名前が空になる場合は分けない。
+    [InlineData(" : int", " : int", "")]
+    public void SymbolNameParts_名前と型情報を分ける(string input, string name, string typeInfo)
+    {
+        var (actualName, actualType) = SymbolNameParts.Split(input);
+
+        Assert.Equal(name, actualName);
+        Assert.Equal(typeInfo, actualType);
+        // 連結すれば元に戻る（表示の見た目を変えずに色だけ分けるための不変条件）。
+        Assert.Equal(input, actualName + actualType);
+    }
+
+    [Fact]
+    public void SymbolNameParts_空の名前でも落ちない()
+    {
+        Assert.Equal(("", ""), SymbolNameParts.Split(null));
+        Assert.Equal(("", ""), SymbolNameParts.Split(""));
+    }
 }

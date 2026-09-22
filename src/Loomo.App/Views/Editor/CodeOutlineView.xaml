@@ -189,7 +189,7 @@
                                     <Style TargetType="Border">
                                         <Setter Property="BorderThickness" Value="0" />
                                         <Style.Triggers>
-                                            <!-- 現在メンバー：左に色バー＋淡い背景。 -->
+                                            <!-- 現在メンバー：左に色バー＋淡い背景（名前の文字色は下の TextBlock 側）。 -->
                                             <DataTrigger Binding="{Binding IsCurrent}" Value="True">
                                                 <Setter Property="Background" Value="{DynamicResource BgAlt}" />
                                                 <Setter Property="BorderThickness" Value="2,0,0,0" />
@@ -202,8 +202,21 @@
                                                FontWeight="Bold" FontSize="{DynamicResource Fs10}" MinWidth="14"
                                                TextAlignment="Center" Margin="0,0,4,0"
                                                VerticalAlignment="Center" />
-                                    <TextBlock Text="{Binding Name}" VerticalAlignment="Center" />
-                                    <TextBlock Text="{Binding Signature}" Foreground="{DynamicResource FgDim}"
+                                    <!-- 現在メンバーの色付けは下の DataTemplate.Triggers（TargetName 指定）で行う。
+                                         ここに Style を直接置くと暗黙の TextBlock スタイル（Controls.xaml の
+                                         Segoe UI／Fs13）が外れ、この行だけ UserControl 直指定の等幅 Fs12 に落ちて
+                                         隣の型情報と書体・ベースラインがずれる。 -->
+                                    <TextBlock x:Name="NameText" Text="{Binding Name}" VerticalAlignment="Center" />
+                                    <!-- 名前に埋め込まれていた型情報（" : string" / "(int line) : void"）。
+                                         名前と地続きの白文字だと「どこまでが名前か」が読めないので、型の色
+                                         （Sym* 体系の SymType）で描く。現在行でもここはアクセントにしない
+                                         ＝アクセントは「いま居る場所の名前」だけの印として残す。 -->
+                                    <TextBlock Text="{Binding TypeInfo}" Foreground="{DynamicResource SymType}"
+                                               VerticalAlignment="Center"
+                                               Visibility="{Binding HasTypeInfo, Converter={StaticResource BoolVis}}" />
+                                    <!-- 宣言行から切り出したシグネチャ（クラスの基底型 " : Base" 等）。同じ型情報
+                                         なので上と同色にそろえる。 -->
+                                    <TextBlock Text="{Binding Signature}" Foreground="{DynamicResource SymType}"
                                                FontSize="{DynamicResource Fs11}" Margin="6,0,0,0" VerticalAlignment="Center"
                                                TextTrimming="CharacterEllipsis"
                                                Visibility="{Binding HasSignature, Converter={StaticResource BoolVis}}" />
@@ -211,6 +224,16 @@
                                                VerticalAlignment="Center" ToolTip="エディタで開く" />
                                 </StackPanel>
                             </Border>
+                            <HierarchicalDataTemplate.Triggers>
+                                <!-- 現在メンバーは名前だけアクセント色＋太字にする。淡い背景＋左バーだけでは
+                                     どの行に居るのか視線で拾いにくかったため（文字そのものを色で立てる）。
+                                     型情報は対象外＝アクセントは「いま居る場所の名前」の印に限定する。 -->
+                                <DataTrigger Binding="{Binding IsCurrent}" Value="True">
+                                    <Setter TargetName="NameText" Property="Foreground"
+                                            Value="{DynamicResource Accent}" />
+                                    <Setter TargetName="NameText" Property="FontWeight" Value="SemiBold" />
+                                </DataTrigger>
+                            </HierarchicalDataTemplate.Triggers>
                         </HierarchicalDataTemplate>
                     </TreeView.ItemTemplate>
                 </TreeView>

@@ -248,6 +248,37 @@ internal static class SignatureExtractor
 }
 
 /// <summary>
+/// 言語サーバーが <see cref="DocumentSymbol.Name"/> に埋め込んでくる型注釈（csharp-ls の
+/// <c>Preview : string</c>／<c>LoadItems(IEnumerable&lt;T&gt;) : void</c> 等）を、<b>宣言</b>と
+/// <b>型</b>へ分ける純ロジック。アウトラインで名前と型を別の色で描くために使う
+/// （全部が同じ白だと「どこまでが名前か」が読めない）。
+/// <para>
+/// 切れ目は前後に空白のある <c>" : "</c> だけ。<b>引数リスト <c>(…)</c> は名前側に残す</b>
+/// ＝ <c>()</c> や <c>,</c> は宣言の骨格であって型ではないため（色を変えると括弧が名前から浮く）。
+/// 引数に空白付きの <c>" : "</c> を書く言語（TS 等）で誤って引数内を切らないよう、探し始めは
+/// <b>最後の <c>)</c> の直後</b>から。<c>Foo::Bar</c>（C++）のような空白なしの <c>:</c> では切らない。
+/// 切れ目が先頭なら（名前が空になるので）分けない。型側は元の文字列のまま返すので、
+/// 連結すれば元に戻る。
+/// </para>
+/// </summary>
+internal static class SymbolNameParts
+{
+    /// <summary>宣言部分（識別子＋引数リスト）と型部分（無ければ空文字）に分ける。</summary>
+    public static (string Name, string TypeInfo) Split(string? symbolName)
+    {
+        var name = symbolName ?? "";
+        if (name.Length == 0)
+            return (name, "");
+
+        var from = name.LastIndexOf(')') + 1; // 引数リストの中は見ない（0 = ")" が無い）
+        var cut = name.IndexOf(" : ", from, StringComparison.Ordinal);
+
+        // 先頭で切れる＝識別子が空になる場合は分けない（名前の列が消えてしまうため）。
+        return cut <= 0 ? (name, "") : (name[..cut], name[cut..]);
+    }
+}
+
+/// <summary>
 /// アウトライン（<see cref="OutlineNode"/> ツリー）の純ロジック：キャレット包含判定と種別バッジ。
 /// 表示は <see cref="Views.CodeOutlineView"/> が担うので、ここは HTML/WPF いずれにも依存しない
 /// （バッジは 1 文字グリフ＋色コード＋ツールチップ文字列だけを返し、色→ブラシ化はビュー側）。

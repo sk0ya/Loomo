@@ -134,12 +134,15 @@ public sealed partial class CodeOutlineViewModel : ObservableObject
     private CodeOutlineItem BuildItem(OutlineNode node)
     {
         var (glyph, brushKey, title) = CodeOutline.KindBadge(node.Kind);
+        // サーバーが名前へ埋め込む型情報（"Preview : string" 等）は切り離し、ビューで別の色に描く。
+        var (name, typeInfo) = SymbolNameParts.Split(node.Name);
         var item = new CodeOutlineItem
         {
             Glyph = glyph,
             GlyphBrushKey = brushKey, // パレットの Sym* キー。ビューが SetResourceReference で張る（テーマ追従）。
             KindTitle = title,
-            Name = node.Name,
+            Name = name,
+            TypeInfo = typeInfo,
             Signature = node.Detail,
             DataLine1 = node.Line0 + 1,      // Range.Start（0 始まり）→ 1 始まり。current ハイライトの一致キー。
             JumpLine1 = node.NameLine0 + 1,  // SelectionRange.Start（名前の行）→ ジャンプ先（宣言行に着地）。
@@ -160,6 +163,14 @@ public sealed partial class CodeOutlineItem : ObservableObject
     public string GlyphBrushKey { get; init; } = "SymNamespace";
     public string KindTitle { get; init; } = "";
     public string Name { get; init; } = "";
+
+    /// <summary>
+    /// 名前に埋め込まれていた型情報（<c>" : string"</c>／<c>"(int line) : void"</c> 等）。
+    /// 名前＝通常色／現在行はアクセント色、型情報＝型の色、と役割ごとに描き分けるために分けて持つ。
+    /// </summary>
+    public string TypeInfo { get; init; } = "";
+    public bool HasTypeInfo => TypeInfo.Length > 0;
+
     public string Signature { get; init; } = "";
     public bool HasSignature => Signature.Length > 0;
 
