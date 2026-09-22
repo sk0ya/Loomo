@@ -167,6 +167,9 @@ public sealed class TabsPanelSettings
     /// <summary>ブラウザのタブを一覧に出すか。</summary>
     public bool ShowBrowser { get; set; } = true;
 
+    /// <summary>ブラウザのタブをURLのホスト名ごとにまとめるか。既定は従来どおりまとめない。</summary>
+    public bool GroupBrowserByDomain { get; set; }
+
     /// <summary>ターミナルのタブを一覧に出すか。</summary>
     public bool ShowTerminal { get; set; } = true;
 }

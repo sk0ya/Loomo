@@ -81,6 +81,9 @@ public sealed partial class TabEntryViewModel : ObservableObject
     /// <summary>TABS の種別表示設定を GroupStyle の中身へ反映する。</summary>
     [ObservableProperty] private bool _isGroupShown = true;
 
+    /// <summary>ブラウザタブの現在URLから求めたホスト名。ブラウザ以外は null。</summary>
+    public string? BrowserDomain { get; private set; }
+
     public string GroupLabel => Kind switch
     {
         TabEntryKind.Editor => "エディタ",
@@ -94,6 +97,47 @@ public sealed partial class TabEntryViewModel : ObservableObject
         TabEntryKind.Browser => 1,
         _ => 2,
     };
+
+    /// <summary>ブラウザのURLを表示グループへ反映する。</summary>
+    public void SetBrowserUrl(string? url)
+    {
+        if (Kind != TabEntryKind.Browser)
+            return;
+
+        var domain = TryGetBrowserDomain(url);
+        if (string.Equals(BrowserDomain, domain, StringComparison.Ordinal))
+            return;
+
+        BrowserDomain = domain;
+        OnPropertyChanged(nameof(BrowserDomain));
+    }
+
+    private static string? TryGetBrowserDomain(string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url)
+            || !Uri.TryCreate(url, UriKind.Absolute, out var uri)
+            || string.IsNullOrWhiteSpace(uri.Host))
+            return null;
+
+        return uri.Host.TrimEnd('.').ToLowerInvariant();
+    }
+}
+
+/// <summary>Browser配下に表示する、複数タブのドメインサブグループ。</summary>
+public sealed partial class TabDomainGroupViewModel : ObservableObject
+{
+    public TabDomainGroupViewModel(string domain, IEnumerable<TabEntryViewModel> tabs, bool isExpanded = true)
+    {
+        Domain = string.IsNullOrEmpty(domain) ? "その他" : domain;
+        foreach (var tab in tabs)
+            Tabs.Add(tab);
+        _isExpanded = isExpanded;
+    }
+
+    public string Domain { get; }
+    public ObservableCollection<TabEntryViewModel> Tabs { get; } = new();
+
+    [ObservableProperty] private bool _isExpanded;
 }
 
 /// <summary>見出しの設定ビューと一覧のグループ見出しに出す「種別」1行（エディタ／ブラウザ／ターミナル）。
@@ -131,8 +175,20 @@ public sealed partial class TabKindRowViewModel : ObservableObject
     /// このコレクションの中身だけを折りたたむ。</summary>
     public ObservableCollection<TabEntryViewModel> Tabs { get; }
 
+    /// <summary>この種別のうち、サブグループ見出しを付けず直接表示するタブ。</summary>
+    public ObservableCollection<TabEntryViewModel> DirectTabs { get; } = new();
+
+    /// <summary>Browserだけが持つドメインサブグループ。Editor／Terminalは常に空。</summary>
+    public ObservableCollection<TabDomainGroupViewModel> DomainGroups { get; } = new();
+
+    /// <summary>タブが存在する種別だけ、一覧のグループ見出しを出す。</summary>
+    public bool HasTabs => Count > 0;
+
     /// <summary>この種別を一覧に並べるか。</summary>
     [ObservableProperty] private bool _isShown = true;
+
+    partial void OnCountChanged(int value)
+        => OnPropertyChanged(nameof(HasTabs));
 }
 
 /// <summary>Terminal / Editor / Browser のタブ相当情報をサイドバーへ表示する。</summary>
@@ -147,6 +203,7 @@ public sealed partial class TabsViewModel : ObservableObject
     private readonly TabKindRowViewModel _editorKind;
     private readonly TabKindRowViewModel _browserKind;
     private readonly TabKindRowViewModel _terminalKind;
+    private bool _groupBrowserTabsByDomain;
 
     public ObservableCollection<TabEntryViewModel> TerminalTabs { get; } = new();
     public ObservableCollection<TabEntryViewModel> EditorTabs { get; } = new();
@@ -193,6 +250,22 @@ public sealed partial class TabsViewModel : ObservableObject
         set => _browserKind.IsShown = value;
     }
 
+    /// <summary>TABS内のブラウザタブをURLのホスト名ごとにまとめるか。</summary>
+    public bool GroupBrowserTabsByDomain
+    {
+        get => _groupBrowserTabsByDomain;
+        set
+        {
+            if (_groupBrowserTabsByDomain == value)
+                return;
+
+            _groupBrowserTabsByDomain = value;
+            RefreshTabGroupProviders();
+            TabsView.Refresh();
+            Persist();
+        }
+    }
+
     /// <summary>ターミナルのタブを一覧に出すか。</summary>
     public bool ShowTerminalTabs
     {
@@ -227,6 +300,7 @@ public sealed partial class TabsViewModel : ObservableObject
         _browserKind = new(TabEntryKind.Browser, "ブラウザ", "TabsShowBrowserToggle", BrowserTabs);
         _terminalKind = new(TabEntryKind.Terminal, "ターミナル", "TabsShowTerminalToggle", TerminalTabs);
         Kinds = [_editorKind, _browserKind, _terminalKind];
+        _groupBrowserTabsByDomain = settings?.TabsPanel.GroupBrowserByDomain ?? false;
         TabsView = CollectionViewSource.GetDefaultView(AllTabs);
         TabsView.GroupDescriptions.Add(new PropertyGroupDescription(nameof(TabEntryViewModel.GroupLabel)));
         TabsView.SortDescriptions.Add(new SortDescription(
@@ -251,7 +325,54 @@ public sealed partial class TabsViewModel : ObservableObject
         foreach (var tab in EditorTabs) AllTabs.Add(tab);
         foreach (var tab in BrowserTabs) AllTabs.Add(tab);
         foreach (var tab in TerminalTabs) AllTabs.Add(tab);
+        RefreshTabGroupProviders();
+        TabsView.Refresh();
         NotifyCounts();
+    }
+
+    /// <summary>種別ごとの表示Providerを更新する。ドメインProviderはBrowserにだけ作る。</summary>
+    private void RefreshTabGroupProviders()
+    {
+        RefreshTabGroupProvider(_editorKind);
+        RefreshTabGroupProvider(_browserKind);
+        RefreshTabGroupProvider(_terminalKind);
+    }
+
+    private void RefreshTabGroupProvider(TabKindRowViewModel provider)
+    {
+        var expandedByDomain = provider.DomainGroups
+            .ToDictionary(group => group.Domain, group => group.IsExpanded, StringComparer.OrdinalIgnoreCase);
+
+        provider.DirectTabs.Clear();
+        provider.DomainGroups.Clear();
+
+        if (provider.Kind != TabEntryKind.Browser || !GroupBrowserTabsByDomain)
+        {
+            foreach (var tab in provider.Tabs)
+                provider.DirectTabs.Add(tab);
+            return;
+        }
+
+        foreach (var domainGroup in provider.Tabs
+                     .GroupBy(tab => tab.BrowserDomain ?? string.Empty, StringComparer.Ordinal)
+                     .Where(group => group.Count() > 1))
+        {
+            var domain = string.IsNullOrEmpty(domainGroup.Key) ? "その他" : domainGroup.Key;
+            provider.DomainGroups.Add(new TabDomainGroupViewModel(
+                domain,
+                domainGroup,
+                expandedByDomain.TryGetValue(domain, out var isExpanded) && isExpanded
+                    || !expandedByDomain.ContainsKey(domain)));
+        }
+
+        var groupedTabs = provider.DomainGroups
+            .SelectMany(group => group.Tabs)
+            .ToHashSet();
+        foreach (var tab in provider.Tabs)
+        {
+            if (!groupedTabs.Contains(tab))
+                provider.DirectTabs.Add(tab);
+        }
     }
 
     private void OnKindRowChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
@@ -312,6 +433,7 @@ public sealed partial class TabsViewModel : ObservableObject
         if (_settings is null) return;
         _settings.TabsPanel.ShowEditor = ShowEditorTabs;
         _settings.TabsPanel.ShowBrowser = ShowBrowserTabs;
+        _settings.TabsPanel.GroupBrowserByDomain = GroupBrowserTabsByDomain;
         _settings.TabsPanel.ShowTerminal = ShowTerminalTabs;
         try { _settingsStore?.Save(_settings); }
         catch { /* 永続化に失敗しても選択自体は効かせる */ }
@@ -468,7 +590,7 @@ public sealed partial class TabsViewModel : ObservableObject
         }
     }
 
-    public void AddBrowserTab(Guid id, string? title, bool isActive)
+    public void AddBrowserTab(Guid id, string? title, bool isActive, string? url = null)
     {
         var tab = new TabEntryViewModel(
             id,
@@ -479,16 +601,38 @@ public sealed partial class TabsViewModel : ObservableObject
         {
             IsGroupShown = ShowBrowserTabs,
         };
+        tab.SetBrowserUrl(url);
         WatchGroupState(tab);
         BrowserTabs.Add(tab);
     }
 
-    public void UpdateBrowserTab(Guid id, string? title)
+    public void UpdateBrowserTab(
+        Guid id,
+        string? title,
+        string? url = null,
+        bool commitNavigationUrl = false)
     {
         var tab = BrowserTabs.FirstOrDefault(t => t.Id == id);
         if (tab is null) return;
 
         tab.Title = BrowserTitle(title);
+        if (commitNavigationUrl)
+            tab.SetBrowserUrl(url);
+        RefreshTabGroupProviders();
+        TabsView.Refresh();
+    }
+
+    /// <summary>ナビゲーション開始前に、開こうとしているURLを仮所属へ反映する。
+    /// ナビゲーション中はこの値を再計算せず、完了時に正式なURLで更新する。</summary>
+    public void PrepareBrowserNavigation(Guid id, string? url)
+    {
+        var tab = BrowserTabs.FirstOrDefault(t => t.Id == id);
+        if (tab is null)
+            return;
+
+        tab.SetBrowserUrl(url);
+        RefreshTabGroupProviders();
+        TabsView.Refresh();
     }
 
     public void ActivateBrowserTab(Guid id)
@@ -518,7 +662,7 @@ public sealed partial class TabsViewModel : ObservableObject
     }
 
     private static string BrowserTitle(string? title)
-        => string.IsNullOrWhiteSpace(title) ? "Browser" : title.Trim();
+        => title?.Trim() ?? string.Empty;
 
     private static string TerminalTitle(string? title)
         => string.IsNullOrWhiteSpace(title) ? "Terminal" : title.Trim();

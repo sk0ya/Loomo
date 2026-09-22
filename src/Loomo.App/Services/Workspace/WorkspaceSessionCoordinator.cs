@@ -99,7 +99,7 @@ public static class WorkspaceSessionCoordinator
         => ResolveTabRestorePlan(workspace.BrowserTabs, new BrowserTabSnapshot
         {
             Url = defaultUrl,
-            Title = "Browser",
+            Title = null,
             IsActive = true,
         }, snapshot => snapshot.IsActive);
 
@@ -153,7 +153,7 @@ public static class WorkspaceSessionCoordinator
         => tabs.Select(tab => CaptureBrowserTab(
                 tab.Id,
                 BrowserDisplayMapper.CurrentUrl(tab.View.TryUrl(), tab.PendingUrl),
-                tab.View.TryCore()?.DocumentTitle,
+                tab.View.TryCore()?.DocumentTitle ?? tab.Title,
                 tab.Id == activeTabId))
             .OfType<BrowserTabSnapshot>()
             .ToList();

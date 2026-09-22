@@ -56,7 +56,7 @@ public partial class ShellWindow {
             url,
             title,
             _vm.Browser,
-            UpdateBrowserTab,
+            completedTab => UpdateBrowserTab(completedTab, commitNavigationUrl: true),
             UpdateBrowserToolbar,
             completedTab => _ = RefreshBrowserTabIconAsync(completedTab),
             BrowserAddressSuggestions.SetText,
@@ -81,6 +81,7 @@ public partial class ShellWindow {
         BrowserAddressSuggestions.SetText(address);   // 候補も閉じる
         var tab = _activeBrowserTab ?? await CreateBrowserTabAsync(address);
         tab.PendingUrl = address;
+        _vm.Tabs.PrepareBrowserNavigation(tab.Id, address);
         await EnsureBrowserRealizedAsync(tab);
         if (tab.View.TryCore() is { } core && tab.PendingUrl is not null) {
             tab.PendingUrl = null;
@@ -111,7 +112,6 @@ public partial class ShellWindow {
     /// 行うタブで二重ナビゲートを避けるため。</param>
     private BrowserTab CreateBrowserTab( string url, Guid? requestedId = null, string? requestedTitle = null, bool navigateSelf = true) {
         var id = requestedId ?? Guid.NewGuid();
-        var browserWorkspace = CurrentBrowserWorkspace;
         var view = CreateBrowserView();
         var tab = new BrowserTab(id, view) {
             PendingUrl = navigateSelf ? WorkspaceSessionCoordinator.NormalizeBrowserAddress(url, DefaultBrowserUrl) : null
@@ -119,7 +119,12 @@ public partial class ShellWindow {
         AttachBrowserView(tab, view);
         _browserTabs.Add(tab);
         BrowserContentHost.Children.Add(view);
-        _vm.Tabs.AddBrowserTab(id, requestedTitle ?? $"Tab {browserWorkspace.NextTabNumber++}", false);
+        tab.Title = requestedTitle;
+        _vm.Tabs.AddBrowserTab(
+            id,
+            requestedTitle,
+            false,
+            tab.PendingUrl ?? url);
         ActivateBrowserTab(id);
         return tab;
     }
@@ -220,6 +225,10 @@ public partial class ShellWindow {
                 EvaluateBrowserExtensionPrompt(tab);
             }
             UpdateBrowserToolbar(tab);
+            // History APIによる同一ドキュメント内の遷移は NavigationCompleted が来ないことがある。
+            // 読み込み中は前の所属を保持し、完了後だけBrowser配下のドメインを更新する。
+            if (!tab.IsLoading)
+                UpdateBrowserTab(tab, commitNavigationUrl: true);
         };
         core.DocumentTitleChanged += (_, _) => {
             UpdateBrowserTab(tab);
@@ -290,10 +299,16 @@ public partial class ShellWindow {
         ScheduleBrowserRealize(tab);
         SaveActiveWorkspaceSnapshot();
     }
-    private void UpdateBrowserTab(BrowserTab? tab) {
+    private void UpdateBrowserTab(BrowserTab? tab, bool commitNavigationUrl = false) {
         if (tab is null)
             return;
-        _vm.Tabs.UpdateBrowserTab(tab.Id, tab.View.TryCore()?.DocumentTitle);
+        var title = tab.View.TryCore()?.DocumentTitle;
+        tab.Title = title;
+        _vm.Tabs.UpdateBrowserTab(
+            tab.Id,
+            title,
+            BrowserUrlOf(tab),
+            commitNavigationUrl);
         SaveActiveWorkspaceSnapshot();
     }
     private async void OnBrowserFaviconChanged(object? sender, object? e) {

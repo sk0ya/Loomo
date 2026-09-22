@@ -174,4 +174,62 @@ public sealed class TabsViewModelTests
         sut.ShowBrowserTabs = true;
         Assert.False(sut.IsFiltered);
     }
+
+    [Fact]
+    public void ブラウザをドメインごとにまとめる設定が同じホスト名を同じグループにする()
+    {
+        var settings = new LoomoSettings();
+        settings.TabsPanel.GroupBrowserByDomain = true;
+        var sut = Sut(settings);
+
+        sut.AddBrowserTab(Guid.NewGuid(), "A", false, "https://example.com/one");
+        sut.AddBrowserTab(Guid.NewGuid(), "B", false, "https://example.com/two");
+        sut.AddBrowserTab(Guid.NewGuid(), "C", false, "https://other.example/two");
+
+        Assert.Equal("ブラウザ", sut.BrowserTabs[0].GroupLabel);
+        var provider = sut.Kinds.Single(kind => kind.Kind == TabEntryKind.Browser);
+        var domainGroup = Assert.Single(provider.DomainGroups);
+        Assert.Equal("example.com", domainGroup.Domain);
+        Assert.Equal(2, domainGroup.Tabs.Count);
+        Assert.Single(provider.DirectTabs);
+        Assert.Equal("other.example", provider.DirectTabs[0].BrowserDomain);
+        Assert.Empty(sut.Kinds.Single(kind => kind.Kind == TabEntryKind.Editor).DomainGroups);
+        Assert.Empty(sut.Kinds.Single(kind => kind.Kind == TabEntryKind.Terminal).DomainGroups);
+    }
+
+    [Fact]
+    public void ブラウザのドメイングループ設定を切り替えると保存される()
+    {
+        var settings = new LoomoSettings();
+        var sut = Sut(settings);
+        sut.AddBrowserTab(Guid.NewGuid(), "A", false, "https://example.com");
+
+        sut.GroupBrowserTabsByDomain = true;
+        Assert.True(settings.TabsPanel.GroupBrowserByDomain);
+        Assert.Equal("ブラウザ", sut.BrowserTabs[0].GroupLabel);
+        var provider = sut.Kinds.Single(kind => kind.Kind == TabEntryKind.Browser);
+        Assert.Empty(provider.DomainGroups);
+        Assert.Single(provider.DirectTabs);
+
+        sut.GroupBrowserTabsByDomain = false;
+        Assert.False(settings.TabsPanel.GroupBrowserByDomain);
+        Assert.Equal("ブラウザ", sut.BrowserTabs[0].GroupLabel);
+        Assert.Empty(provider.DomainGroups);
+        Assert.Single(provider.DirectTabs);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void ブラウザのタイトルが空の更新で以前のタイトルを消す(string? title)
+    {
+        var sut = Sut();
+        var id = Guid.NewGuid();
+        sut.AddBrowserTab(id, "保存済みタイトル", false, "https://example.com");
+
+        sut.UpdateBrowserTab(id, title);
+
+        Assert.Equal(string.Empty, sut.BrowserTabs.Single().Title);
+    }
 }

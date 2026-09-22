@@ -194,12 +194,14 @@ public sealed class SettingsStore
     {
         public bool ShowEditor { get; set; } = true;
         public bool ShowBrowser { get; set; } = true;
+        public bool GroupBrowserByDomain { get; set; }
         public bool ShowTerminal { get; set; } = true;
 
         public static PersistedTabsPanel From(TabsPanelSettings t) => new()
         {
             ShowEditor = t.ShowEditor,
             ShowBrowser = t.ShowBrowser,
+            GroupBrowserByDomain = t.GroupBrowserByDomain,
             ShowTerminal = t.ShowTerminal,
         };
 
@@ -208,6 +210,7 @@ public sealed class SettingsStore
         {
             t.ShowEditor = ShowEditor;
             t.ShowBrowser = ShowBrowser;
+            t.GroupBrowserByDomain = GroupBrowserByDomain;
             t.ShowTerminal = ShowTerminal;
         }
     }

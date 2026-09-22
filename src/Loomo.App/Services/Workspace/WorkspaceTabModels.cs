@@ -80,6 +80,9 @@ internal sealed record BrowserTab(Guid Id, WebView2CompositionControl InitialVie
         /// 作り直して差し替える（§21.5.3）＝タブの寿命の間で固定ではない。</summary>
         public WebView2CompositionControl View { get; set; } = InitialView;
 
+        /// <summary>最後に得たページタイトル。WebView2未実体化時の保存・復元にも使用する。</summary>
+        public string? Title { get; set; }
+
         /// <summary>まだ CoreWebView2 を生成していない間の遷移先 URL（実体化時にここへナビゲートする）。
         /// 起動を速くするため Browser ペインが見えるまで WebView2 生成を遅らせる。</summary>
         public string? PendingUrl { get; set; }
@@ -115,7 +118,6 @@ internal sealed class BrowserWorkspaceTabs
     {
         public List<BrowserTab> Tabs { get; } = new();
         public Guid? ActiveTabId { get; set; }
-        public int NextTabNumber { get; set; } = 1;
         public bool IsInitialized { get; set; }
 }
 

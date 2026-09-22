@@ -107,7 +107,11 @@ public partial class ShellWindow {
         foreach (var tab in _browserTabs) {
             if (!BrowserContentHost.Children.Contains(tab.View))
                 BrowserContentHost.Children.Add(tab.View);
-            _vm.Tabs.AddBrowserTab(tab.Id, tab.View.TryCore()?.DocumentTitle, false);
+            _vm.Tabs.AddBrowserTab(
+                tab.Id,
+                tab.Title ?? tab.View.TryCore()?.DocumentTitle,
+                false,
+                BrowserUrlOf(tab));
             await RefreshBrowserTabIconAsync(tab);
         }
     }
