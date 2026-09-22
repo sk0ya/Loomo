@@ -891,7 +891,7 @@
                 <Grid x:Name="PaneHost" Grid.Column="2">
 
                 <!-- Terminal -->
-                <DockPanel x:Name="TerminalPane" Background="{DynamicResource Panel}" AllowDrop="True"
+                <DockPanel x:Name="TerminalPane" Visibility="Collapsed" Background="{DynamicResource Panel}" AllowDrop="True"
                             DragOver="OnFileDropDragOver" Drop="OnTerminalFileDrop">
                     <DockPanel Style="{StaticResource PaneHeaderBar}" LastChildFill="True"
                                Tag="Terminal" Cursor="SizeAll"
@@ -1006,7 +1006,7 @@
                 </DockPanel>
 
                 <!-- Editor -->
-                <DockPanel x:Name="EditorPane" Background="{DynamicResource Panel}" AllowDrop="True"
+                <DockPanel x:Name="EditorPane" Visibility="Collapsed" Background="{DynamicResource Panel}" AllowDrop="True"
                             DragOver="OnFileDropDragOver" Drop="OnEditorFileDrop">
                     <DockPanel Style="{StaticResource PaneHeaderBar}" LastChildFill="True"
                                Tag="Editor" Cursor="SizeAll"
@@ -1122,7 +1122,7 @@
                 </DockPanel>
 
                 <!-- EditorSupport : アクティブなエディタのファイルに対応するサポート（Markdown プレビュー等）を自動表示 -->
-                <DockPanel x:Name="EditorSupportPane" Background="{DynamicResource Panel}">
+                <DockPanel x:Name="EditorSupportPane" Visibility="Collapsed" Background="{DynamicResource Panel}">
                     <DockPanel Style="{StaticResource PaneHeaderBar}" LastChildFill="True"
                                Tag="EditorSupport" Cursor="SizeAll"
                                PreviewMouseLeftButtonDown="OnPaneTitleMouseDown" PreviewMouseMove="OnPaneTitleMouseMove">
@@ -1213,7 +1213,7 @@
                 </DockPanel>
 
                 <!-- Browser -->
-                <DockPanel x:Name="BrowserPane" Background="{DynamicResource Panel}">
+                <DockPanel x:Name="BrowserPane" Visibility="Collapsed" Background="{DynamicResource Panel}">
                     <DockPanel Style="{StaticResource PaneHeaderBar}" LastChildFill="True"
                                Tag="Browser" Cursor="SizeAll"
                                AllowDrop="True" DragOver="OnPaneHeaderTabDragOver" Drop="OnPaneHeaderTabDrop"
@@ -1985,7 +1985,7 @@
                 </DockPanel>
 
                 <!-- Git : セッションペイン（コミットグラフ・ブランチ・rebase 等の複雑操作） -->
-                <DockPanel x:Name="GitPane" Background="{DynamicResource Panel}" AllowDrop="True"
+                <DockPanel x:Name="GitPane" Visibility="Collapsed" Background="{DynamicResource Panel}" AllowDrop="True"
                             DragOver="OnFileDropDragOver" Drop="OnGitFileDrop">
                     <DockPanel Style="{StaticResource PaneHeaderBar}" LastChildFill="False"
                                Tag="Git" Cursor="SizeAll"
@@ -2024,7 +2024,7 @@
 
                 <!-- 検索 : ペイン化（全文検索/ファイル名/ターミナル内検索。エディタ等と同格の舞台ペイン）。
                      ヘッダーツールバーは持たず、モード切替・オプションは SearchPanelView 内蔵。 -->
-                <DockPanel x:Name="SearchPane" Background="{DynamicResource Panel}" AllowDrop="True"
+                <DockPanel x:Name="SearchPane" Visibility="Collapsed" Background="{DynamicResource Panel}" AllowDrop="True"
                             DragOver="OnFileDropDragOver" Drop="OnSearchFileDrop">
                     <DockPanel Style="{StaticResource PaneHeaderBar}" LastChildFill="False"
                                Tag="Search" Cursor="SizeAll"
@@ -2041,7 +2041,7 @@
                 <!-- ファイル一覧 : ペイン化したエクスプローラ（1フォルダーを平らに並べ、並べ替え・絞り込み・
                      一括操作をする面）。サイドバーのツリーとは役割が違う——ツリーは階層の把握、こちらは
                      集合の処理（§26.10）。カラム内の操作バーは FilesPaneView、ペイン共通の操作はここに置く。 -->
-                <DockPanel x:Name="FilesPane" Background="{DynamicResource Panel}">
+                <DockPanel x:Name="FilesPane" Visibility="Collapsed" Background="{DynamicResource Panel}">
                     <DockPanel Style="{StaticResource PaneHeaderBar}" LastChildFill="False"
                                Tag="Files" Cursor="SizeAll"
                                PreviewMouseLeftButtonDown="OnPaneTitleMouseDown" PreviewMouseMove="OnPaneTitleMouseMove">
@@ -2099,7 +2099,7 @@
                 </DockPanel>
 
                 <!-- Diff : セッションペイン（Git作業ツリー差分＋アドホック比較） -->
-                <DockPanel x:Name="DiffPane" Background="{DynamicResource Panel}" AllowDrop="True"
+                <DockPanel x:Name="DiffPane" Visibility="Collapsed" Background="{DynamicResource Panel}" AllowDrop="True"
                             DragOver="OnFileDropDragOver" Drop="OnDiffFileDrop">
                     <DockPanel Style="{StaticResource PaneHeaderBar}" LastChildFill="False"
                                Tag="Diff" Cursor="SizeAll"
@@ -2218,7 +2218,7 @@
                 </DockPanel>
 
                 <!-- Trace : セッションペイン（AI操作トレースのタイムライン表示・読み取り専用） -->
-                <DockPanel x:Name="TracePane" Background="{DynamicResource Panel}">
+                <DockPanel x:Name="TracePane" Visibility="Collapsed" Background="{DynamicResource Panel}">
                     <DockPanel Style="{StaticResource PaneHeaderBar}" LastChildFill="False"
                                Tag="Trace" Cursor="SizeAll"
                                PreviewMouseLeftButtonDown="OnPaneTitleMouseDown" PreviewMouseMove="OnPaneTitleMouseMove">
@@ -2240,7 +2240,7 @@
                 </DockPanel>
 
                 <!-- デバッグ : ペイン化（DAP / netcoredbg。出力・ブレークポイント・変数・コールスタック） -->
-                <DockPanel x:Name="DebugPane" Background="{DynamicResource Panel}">
+                <DockPanel x:Name="DebugPane" Visibility="Collapsed" Background="{DynamicResource Panel}">
                     <DockPanel Style="{StaticResource PaneHeaderBar}" LastChildFill="False"
                                Tag="Debug" Cursor="SizeAll"
                                PreviewMouseLeftButtonDown="OnPaneTitleMouseDown" PreviewMouseMove="OnPaneTitleMouseMove">
@@ -2327,7 +2327,7 @@
                 </DockPanel>
 
                 <!-- TS IDE : ペイン化（DAP / vscode-js-debug。TypeScript / Node.js のデバッグ・型チェック） -->
-                <DockPanel x:Name="TsIdePane" Background="{DynamicResource Panel}">
+                <DockPanel x:Name="TsIdePane" Visibility="Collapsed" Background="{DynamicResource Panel}">
                     <DockPanel Style="{StaticResource PaneHeaderBar}" LastChildFill="False"
                                Tag="TsIde" Cursor="SizeAll"
                                PreviewMouseLeftButtonDown="OnPaneTitleMouseDown" PreviewMouseMove="OnPaneTitleMouseMove">
@@ -2404,7 +2404,7 @@
                 </DockPanel>
 
                 <!-- AI : ペイン化（トランスクリプト＋入力を1列にまとめる） -->
-                <DockPanel x:Name="AiPane" Background="{DynamicResource Panel}">
+                <DockPanel x:Name="AiPane" Visibility="Collapsed" Background="{DynamicResource Panel}">
                     <DockPanel Style="{StaticResource PaneHeaderBar}" LastChildFill="False"
                                Tag="Ai" Cursor="SizeAll"
                                PreviewMouseLeftButtonDown="OnPaneTitleMouseDown" PreviewMouseMove="OnPaneTitleMouseMove">
