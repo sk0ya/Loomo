@@ -28,6 +28,7 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
     private CancellationTokenSource? _thumbnailCts;
     private int _thumbnailGeneration;
     private CancellationTokenSource? _gitStatusCts;
+    private CancellationTokenSource? _entriesCts;
 
     // 「戻る／進む」の履歴（フルパス）。ブラウザと同じ規則で、新しい移動は進む側を捨てる。
     private readonly List<string> _back = new();
@@ -275,8 +276,21 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
         SetFolder(target);
     }
 
+    /// <summary>フォルダーを切り替え、一覧の列挙はバックグラウンドで行う。
+    /// 現在地・パンくず・履歴は先に切り替え、一覧ができた時点で同じフォルダーを表示中なら反映する。
+    /// </summary>
+    public Task NavigateAsync(string? path)
+    {
+        if (!TryNormalizeFolder(path, out var target) || PathsEqual(target, CurrentFolder))
+            return Task.CompletedTask;
+        if (CurrentFolder.Length > 0)
+            _back.Add(CurrentFolder);
+        _forward.Clear();
+        return SetFolderAsync(target);
+    }
+
     [RelayCommand]
-    private void OpenFolder(string? path) => Navigate(path);
+    private void OpenFolder(string? path) => _ = NavigateAsync(path);
 
     // ===== 編集可能なアドレス欄（Ctrl+L） =====
     // エクスプローラーと同じく、ふだんはパンくずで、必要なときだけ同じ場所が入力欄になる。
@@ -340,7 +354,7 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
             if (parent is { Length: > 0 })
             {
                 _addressHistory.Add(parent);
-                Navigate(parent);
+                _ = NavigateAsync(parent);
                 PendingSelection = fullPath;
                 CancelAddressEdit();
                 return true;
@@ -354,7 +368,7 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
         }
 
         _addressHistory.Add(fullPath);
-        Navigate(fullPath);
+        _ = NavigateAsync(fullPath);
         CancelAddressEdit();
         return true;
     }
@@ -376,7 +390,7 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
         var target = _back[^1];
         _back.RemoveAt(_back.Count - 1);
         _forward.Add(CurrentFolder);
-        SetFolder(target);
+        _ = SetFolderAsync(target);
     }
 
     [RelayCommand(CanExecute = nameof(CanGoForward))]
@@ -387,11 +401,11 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
         var target = _forward[^1];
         _forward.RemoveAt(_forward.Count - 1);
         _back.Add(CurrentFolder);
-        SetFolder(target);
+        _ = SetFolderAsync(target);
     }
 
     [RelayCommand(CanExecute = nameof(CanGoUp))]
-    private void GoUp() => Navigate(ParentOf(CurrentFolder));
+    private void GoUp() => _ = NavigateAsync(ParentOf(CurrentFolder));
 
     /// <summary>項目を開く。フォルダーなら移動、ファイルならエディタへ。</summary>
     public void OpenEntry(FileEntryViewModel? entry)
@@ -399,7 +413,7 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
         if (entry is null)
             return;
         if (entry.IsDirectory)
-            Navigate(entry.FullPath);
+            _ = NavigateAsync(entry.FullPath);
         else if (File.Exists(entry.FullPath))
             FileActivated?.Invoke(this, entry.FullPath);
     }
@@ -413,7 +427,7 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
         var folder = Directory.Exists(full) ? full : Path.GetDirectoryName(full);
         if (folder is null)
             return;
-        Navigate(folder);
+        _ = NavigateAsync(folder);
         PendingSelection = full;
     }
 
@@ -513,7 +527,7 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
                 FileActivated?.Invoke(this, place.FullPath);
             return;
         }
-        Navigate(place.FullPath);
+        _ = NavigateAsync(place.FullPath);
     }
 
     /// <summary>ピンの表示名。所属ワークスペースフォルダーからの相対パスで、同名フォルダーを区別する。</summary>
@@ -610,10 +624,11 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
         };
     }
 
-    private void SetFolder(string folder, bool raiseStateChanged = true)
+    private void PrepareFolder(string folder)
     {
         CancelThumbnailLoads();
         CancelGitStatusLoad();
+        CancelEntriesLoad();
         if (!_restoringLayout)
             SaveFolderLayout(CurrentFolder);
         CurrentFolder = folder;
@@ -622,6 +637,11 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
         // 表示するのは直下だけなので再帰監視はしない（リポジトリ全体を見張る必要はない）。
         _watcher.Watch(folder, includeSubdirectories: false);
         UpdateBreadcrumbs();
+    }
+
+    private void SetFolder(string folder, bool raiseStateChanged = true)
+    {
+        PrepareFolder(folder);
         LoadEntries(preserveSelection: false);
         NotifyHistoryChanged();
         // 幅を測れるのは中身が入ってから（レイアウトの適用は LoadEntries より前に走る）。
@@ -631,6 +651,21 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
             FolderNavigated?.Invoke(this, folder);
             StateChanged?.Invoke(this, EventArgs.Empty);
         }
+    }
+
+    private async Task SetFolderAsync(string folder, bool raiseStateChanged = true)
+    {
+        PrepareFolder(folder);
+        NotifyHistoryChanged();
+        // 現在地と履歴は先に反映する。ファイル列挙の完了を待たずにパンくずを更新できる。
+        if (raiseStateChanged)
+        {
+            FolderNavigated?.Invoke(this, folder);
+            StateChanged?.Invoke(this, EventArgs.Empty);
+        }
+
+        if (await LoadEntriesAsync(folder).ConfigureAwait(true))
+            RequestAutoColumnWidths();
     }
 
     private void OnGitStatusChanged(object? sender, EventArgs e)
@@ -1011,20 +1046,53 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
 
     // ===== 一覧の読み込み・並べ替え・絞り込み =====
 
+    private readonly record struct EntryLoadResult(
+        List<FileEntryViewModel> Items, bool ReadFailed);
+
     private void LoadEntries(bool preserveSelection)
     {
-        if (CurrentFolder.Length == 0 || !Directory.Exists(CurrentFolder))
+        var result = EnumerateEntries(CurrentFolder, CancellationToken.None);
+        ApplyLoadedEntries(result, preserveSelection, CurrentFolder);
+    }
+
+    private async Task<bool> LoadEntriesAsync(string folder)
+    {
+        var cts = new CancellationTokenSource();
+        _entriesCts = cts;
+        try
         {
-            _all = new List<FileEntryViewModel>();
-            ApplyView(preserveSelection);
-            return;
+            var result = await Task.Run(
+                () => EnumerateEntries(folder, cts.Token), cts.Token);
+            cts.Token.ThrowIfCancellationRequested();
+            if (!ReferenceEquals(_entriesCts, cts) || !PathsEqual(CurrentFolder, folder))
+                return false;
+
+            ApplyLoadedEntries(result, preserveSelection: false, folder);
+            return true;
         }
+        catch (OperationCanceledException) when (cts.Token.IsCancellationRequested)
+        {
+            return false;
+        }
+        finally
+        {
+            if (ReferenceEquals(_entriesCts, cts))
+                _entriesCts = null;
+            cts.Dispose();
+        }
+    }
+
+    private static EntryLoadResult EnumerateEntries(string folder, CancellationToken cancellationToken)
+    {
+        if (folder.Length == 0 || !Directory.Exists(folder))
+            return new EntryLoadResult(new List<FileEntryViewModel>(), ReadFailed: false);
 
         var items = new List<FileEntryViewModel>();
         try
         {
-            foreach (var path in Directory.EnumerateFileSystemEntries(CurrentFolder))
+            foreach (var path in Directory.EnumerateFileSystemEntries(folder))
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 try
                 {
                     var info = Directory.Exists(path) ? new DirectoryInfo(path) : (FileSystemInfo)new FileInfo(path);
@@ -1045,6 +1113,17 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
+            return new EntryLoadResult(new List<FileEntryViewModel>(), ReadFailed: true);
+        }
+
+        return new EntryLoadResult(items, ReadFailed: false);
+    }
+
+    private void ApplyLoadedEntries(
+        EntryLoadResult result, bool preserveSelection, string folder)
+    {
+        if (result.ReadFailed)
+        {
             _all = new List<FileEntryViewModel>();
             ApplyView(preserveSelection);
             EmptyMessage = "このフォルダーは読み取れません。";
@@ -1054,13 +1133,13 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
 
         // 変更状態は既に読み込まれているキャッシュだけをここで使う。ignore 判定を含む
         // git プロセスの起動は StartGitStatusLoad でバックグラウンドに分離する。
-        foreach (var entry in items)
+        foreach (var entry in result.Items)
             entry.GitStatus = _folderTree?.GitStatusForPath(entry.FullPath, entry.IsDirectory)
                 ?? GitChangeKind.None;
 
-        _all = items;
+        _all = result.Items;
         ApplyView(preserveSelection);
-        StartGitStatusLoad(items, CurrentFolder);
+        StartGitStatusLoad(result.Items, folder);
     }
 
     private void StartGitStatusLoad(IReadOnlyList<FileEntryViewModel> entries, string folder)
@@ -1104,6 +1183,13 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
     {
         _gitStatusCts?.Cancel();
         _gitStatusCts = null;
+    }
+
+    private void CancelEntriesLoad()
+    {
+        _entriesCts?.Cancel();
+        _entriesCts?.Dispose();
+        _entriesCts = null;
     }
 
     private void ApplyView(bool preserveSelection)
@@ -1590,6 +1676,7 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
     {
         CancelThumbnailLoads();
         CancelGitStatusLoad();
+        CancelEntriesLoad();
         _watcher.Dispose();
         _pins.PinsChanged -= OnPinsChanged;
         if (Recent is not null)

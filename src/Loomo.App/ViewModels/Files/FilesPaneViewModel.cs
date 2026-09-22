@@ -175,7 +175,7 @@ public sealed partial class FilesPaneViewModel : ObservableObject, IDisposable
             ?? baseColumn?.CurrentFolder;
 
         if (candidate is not null)
-            column.Navigate(candidate);
+            _ = column.NavigateAsync(candidate);
     }
 
     private static string? FirstUnshown(IEnumerable<string> candidates, HashSet<string> shown)

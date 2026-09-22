@@ -127,7 +127,13 @@ internal sealed class FilesColumnWidthPresenter
     private void OnAutoColumnWidthsRequested(object? sender, EventArgs e)
     {
         _contentWidths = null;
-        QueueAutoColumnWidths();
+        // 一覧の反映直後に幅を決める。Loaded まで遅らせると、非同期のフォルダー移動では
+        // 「既定幅で一覧を描く → 後から自動幅へ変える」の二段階になり、列が大きく跳ねる。
+        // まだビューの幅が決まっていない初回だけ、サイズ確定後へ回す。
+        if (_entryList.ActualWidth > 0)
+            ApplyAutoColumnWidths();
+        else
+            QueueAutoColumnWidths();
     }
 
     private void QueueAutoColumnWidths()

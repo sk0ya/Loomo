@@ -9,7 +9,7 @@ using sk0ya.Loomo.App.ViewModels;
 
 namespace sk0ya.Loomo.App.Services;
 
-/// <summary>パンくずの階層選択ツリーとPopupの操作をまとめる。</summary>
+/// <summary>パンくずのクリックと、階層選択ツリーの操作をまとめる。</summary>
 internal sealed class FilesColumnBreadcrumbPickerPresenter
 {
     private readonly Popup _popup;
@@ -48,34 +48,18 @@ internal sealed class FilesColumnBreadcrumbPickerPresenter
 
     internal void OnPickerClick(object sender, RoutedEventArgs e)
     {
-        if (sender is not FrameworkElement { Tag: FilesBreadcrumb breadcrumb } target
+        if (sender is not FrameworkElement { Tag: FilesBreadcrumb breadcrumb }
             || _getViewModel() is not { } vm)
             return;
-
-        // キーボード操作など、Popupのマウスキャプチャを経由しない場合も同じトグルにする。
-        if (_popup.IsOpen && ReferenceEquals(_popup.PlacementTarget, target))
-        {
-            _popup.IsOpen = false;
-            e.Handled = true;
-            return;
-        }
 
         if (!Directory.Exists(breadcrumb.FullPath))
             return;
 
-        var crumbIndex = vm.Breadcrumbs.IndexOf(breadcrumb);
-        _selectionPath = crumbIndex >= 0 && crumbIndex + 1 < vm.Breadcrumbs.Count
-            ? vm.Breadcrumbs[crumbIndex + 1].FullPath
-            : "";
-        _tree.Items.Clear();
-        foreach (var path in FileSystemDirectoryQuery.EnumerateDirectories(breadcrumb.FullPath))
-            _tree.Items.Add(CreateItem(path));
-
-        if (_tree.Items.Count == 0)
-            return;
-
-        _popup.PlacementTarget = target;
-        _popup.IsOpen = true;
+        // パンくずのフォルダー名は、そのフォルダーへ移動する操作にする。
+        // 以前はここで子フォルダーのポップアップを開いていたため、クリックした場所ではなく
+        // その下のフォルダー一覧が表示されていた。
+        _ = vm.NavigateAsync(breadcrumb.FullPath);
+        _popup.IsOpen = false;
         e.Handled = true;
     }
 
@@ -98,7 +82,8 @@ internal sealed class FilesColumnBreadcrumbPickerPresenter
             || WpfTreeTraversal.FindVisualAncestor<TreeViewItem>(source) is not { Tag: string path })
             return;
 
-        _getViewModel()?.Navigate(path);
+        if (_getViewModel() is { } vm)
+            _ = vm.NavigateAsync(path);
         _popup.IsOpen = false;
         e.Handled = true;
     }
