@@ -20,6 +20,9 @@ public partial class ShellWindow
 {
     private readonly Dictionary<ContentControl, Func<FrameworkElement>> _deferredPaneContent = new();
 
+    /// <summary>いま <see cref="RealizePaneContent"/> の最中のホスト（再入を見分けるためだけの印）。</summary>
+    private readonly HashSet<ContentControl> _realizingPaneContent = new();
+
     /// <summary>ペインの中身の作り方を登録する（この時点では作らない）。</summary>
     private void DeferPaneContent(ContentControl host, Func<FrameworkElement> factory)
     {
@@ -37,17 +40,41 @@ public partial class ShellWindow
     private T PaneContent<T>(ContentControl host) where T : FrameworkElement
         => (T)RealizePaneContent(host);
 
+    /// <summary>登録済みの中身を作って据える（作ってあればそれを返す）。
+    /// <para><b>作り損ねたホストを壊さない</b>——登録を外すのも購読を切るのも
+    /// <c>host.Content</c> に据わってからで、View の ctor が投げたら登録は残したまま抜ける。
+    /// 先に外していたときは、一度投げたホストが以後ずっと「登録していないペインホストです」を
+    /// 投げ続ける置物になり、しかもそれが <see cref="UIElement.IsVisibleChanged"/> の中＝配置の
+    /// 組み立て中に飛ぶので、ペイン1枚が空になる代わりにウィンドウごと落ちていた。
+    /// ここを通さずに投げれば、落ちる場所も理由も本物の例外のまま残る（遅延にする前＝
+    /// <c>InitializeComponent</c> で組んでいた頃と同じ）。</para></summary>
     private FrameworkElement RealizePaneContent(ContentControl host)
     {
         if (host.Content is FrameworkElement realized)
             return realized;
 
-        // 登録を先に外す。View の ctor が（テーマ適用などで）巡り巡ってここへ戻ってきても二重に作らない。
-        if (!_deferredPaneContent.Remove(host, out var factory))
+        if (!_deferredPaneContent.TryGetValue(host, out var factory))
             throw new InvalidOperationException("遅延実体化を登録していないペインホストです。");
 
-        var view = factory();
-        host.Content = view;
+        // View の ctor が（テーマ適用などで）巡り巡ってここへ戻ってきても二重には作らない。
+        // まだ何も無い以上その場で返せる中身は無いので、黙って別物を作らず、素直に投げる。
+        if (!_realizingPaneContent.Add(host))
+            throw new InvalidOperationException("ペイン本体の実体化が自分自身を呼び戻しています。");
+
+        FrameworkElement view;
+        try
+        {
+            view = factory();
+            host.Content = view;
+        }
+        finally
+        {
+            _realizingPaneContent.Remove(host);
+        }
+
+        // 一度据われば合図は要らない（以降の表示切替で毎回ここへ戻ってこない）。
+        _deferredPaneContent.Remove(host);
+        host.IsVisibleChanged -= OnDeferredPaneContentVisibleChanged;
         return view;
     }
 }
