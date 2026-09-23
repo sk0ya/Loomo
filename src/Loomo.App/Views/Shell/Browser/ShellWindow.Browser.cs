@@ -288,10 +288,12 @@ public partial class ShellWindow {
         _vm.Tabs.ActivateBrowserTab(id);
         var url = BrowserDisplayMapper.CurrentUrl(tab.View.TryUrl(), tab.PendingUrl);
         BrowserAddressSuggestions.SetText(url ?? string.Empty);
-        RecordTrailBrowser(url, tab.View.TryCore()?.DocumentTitle);
+        // 題は CurrentTitle から読む——まだ実体化していない復元タブの DocumentTitle は空で、
+        // 生で読むと軌跡にはホスト名だけの地点が**残り**、ツールバーの題は消える。
+        RecordTrailBrowser(url, tab.CurrentTitle);
         // ★の状態・戻る/進むの活性・読み込み中は「今見ているタブ」のもの。切替のたびに揃える
         // （切り替えただけで訪問回数は増やさない）。
-        _vm.Browser.SetCurrentPage(url, tab.View.TryCore()?.DocumentTitle);
+        _vm.Browser.SetCurrentPage(url, tab.CurrentTitle);
         // 促しバーは「いま見ているタブ」のもの（裏のタブがストアでも出さない）。
         EvaluateBrowserExtensionPrompt(tab);
         UpdateBrowserToolbar(tab);

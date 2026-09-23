@@ -137,7 +137,7 @@ public partial class ShellWindow {
         var target = TrailLogic.CreatePaneRecordTarget(
             kind, editor?.PeekFilePath, editor?.PeekIsVirtual ?? true, line, column,
             terminal?.Id, terminalLabel, preview?.PeekFilePath, preview?.PeekIsVirtual ?? true,
-            BrowserUrlOf(_activeBrowserTab), _activeBrowserTab?.View.TryCore()?.DocumentTitle,
+            BrowserUrlOf(_activeBrowserTab), _activeBrowserTab?.CurrentTitle,
             DefaultBrowserUrl);
         RecordTrail((recordMode, recordStagePane, recordLayout) =>
             _vm.Trail.Record(target.Kind, target.Target, target.Label, target.Line, target.Column,
