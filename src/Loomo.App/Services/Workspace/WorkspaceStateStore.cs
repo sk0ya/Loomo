@@ -734,10 +734,12 @@ public sealed class DockSnapshot
     /// <c>DockLayoutCoordinator.InitialBottomPane</c>／<c>InitialRightPane</c> を開いた姿で迎える
     /// （＝ドックを初めて押した人に中央だけの空っぽを見せない）。立って以降の null は
     /// その人が畳んだという意思表示なので、そのまま戻す。
-    /// <para>この項目より前に書かれた保存には入っていないので、そこは
-    /// <c>DockLayoutCoordinator.WasArranged</c> が<b>中身</b>で見分ける——立てた面や動かした割り当てが
-    /// 残っていれば、印が無くても組んだ部屋として扱う。</para></summary>
-    public bool Configured { get; set; }
+    /// <para><b>null＝この項目より前に書かれた保存</b>で、そこだけを
+    /// <c>DockLayoutCoordinator.WasArranged</c> が<b>中身</b>で見分ける（立てた面や動かした割り当てが
+    /// 残っていれば、印が無くても組んだ部屋）。<c>false</c> と <c>null</c> を同じ扱いにできないのは、
+    /// 初回の既定そのものが次の保存に乗るから——中身で見分ければ、<b>自分が書いた既定</b>を人の
+    /// 意思と読み違えて、その部屋は二度と初回の見え方を受け取れなくなる。</para></summary>
+    public bool? Configured { get; set; }
 }
 
 /// <summary>ペイン1枚ぶんのドック割り当て。</summary>

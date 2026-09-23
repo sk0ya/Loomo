@@ -47,16 +47,21 @@ public sealed class DockLayoutCoordinator
     /// だから保存・復元はここを通す。</para></summary>
     public static bool IsDockable(PaneKind kind) => Array.IndexOf(DockOrder, kind) >= 0;
 
-    /// <summary>既定の割り当て。書く／読む／見るための面は中央に残し、
-    /// 道具（履歴・シェル・ビルド・検索・一覧）は下、本文の脇に添える面は右へ置く。</summary>
+    /// <summary>既定の割り当て。<b>自分で打つ面</b>——書く（エディタ）・打つ（ターミナル）・読む（ブラウザ）・
+    /// 尋ねる（AI）——は中央に置き、手を動かさずに<b>眺める道具</b>（履歴・ビルド・検索・一覧）は下、
+    /// 本文の脇に添える面は右へ置く。
+    /// <para><b>ターミナルは下の道具ではなく中央の面。</b>下の領域は主役を押しのけない高さ
+    /// （<see cref="DefaultBottomHeight"/>）で、覗きに行く場所としては足りても<b>居座って打つ場所</b>
+    /// には足りない。打っている間はそれが主役なので、中央で本文と同じ大きさを取る——並びは
+    /// <see cref="DockOrder"/> のとおりエディタの次、AI より前。</para></summary>
     public static IReadOnlyDictionary<PaneKind, DockRegion> DefaultRegions { get; } =
         new Dictionary<PaneKind, DockRegion>
         {
             [PaneKind.Editor] = DockRegion.Center,
+            [PaneKind.Terminal] = DockRegion.Center,
             [PaneKind.Browser] = DockRegion.Center,
             [PaneKind.Ai] = DockRegion.Center,
             [PaneKind.EditorSupport] = DockRegion.Right,
-            [PaneKind.Terminal] = DockRegion.Bottom,
             [PaneKind.Git] = DockRegion.Bottom,
             [PaneKind.Debug] = DockRegion.Bottom,
             [PaneKind.TsIde] = DockRegion.Bottom,
@@ -69,8 +74,11 @@ public sealed class DockLayoutCoordinator
     /// 初回の見え方＝部屋の第一印象になる。中央だけ立って下も右も畳んであると、帯のアイコンを
     /// 総当たりするまで「ここに何が住めるのか」が判らない——道具が一つずつ出ている姿を先に見せる。
     /// <b>一度でもドックを組んだ部屋（<see cref="Configured"/>）には効かない</b>——そこでの null は
-    /// 「畳んである」という意思表示で、既定で埋め直すと畳む操作が無かったことになる。</para></summary>
-    public const PaneKind InitialBottomPane = PaneKind.Terminal;
+    /// 「畳んである」という意思表示で、既定で埋め直すと畳む操作が無かったことになる。</para>
+    /// <para>下はGit——ターミナルが中央へ移った（<see cref="DefaultRegions"/>）ので、下に出せる面のうち
+    /// <b>どの部屋にも必ずある</b>のはここだけ（デバッグ・IDE は部屋を選び、検索・一覧は開いた人が
+    /// 探しに行く面）。初めて入る部屋で「いま何が変わっているか」が最初に読めるのも道理に合う。</para></summary>
+    public const PaneKind InitialBottomPane = PaneKind.Git;
     public const PaneKind InitialRightPane = PaneKind.EditorSupport;
 
     private readonly Dictionary<PaneKind, DockRegion> _regions = new(DefaultRegions);
@@ -155,20 +163,26 @@ public sealed class DockLayoutCoordinator
     }
 
     /// <summary>この保存はドックを組んだ部屋のものか（＝初回の既定を当ててはいけないか）。
-    /// <para><see cref="DockSnapshot.Configured"/> はこの印を足した後の保存にしか無いので、
-    /// それ以前の保存は<b>中身で見分ける</b>——立てた面・畳んだ先・動かした割り当てが1つでも
-    /// 残っていれば、その人はドックを組んでいる。印だけで判ると、ターミナルを<em>わざわざ</em>
-    /// 畳んでドックで暮らしていた部屋が、更新したとたん既定で埋め直される。
-    /// 逆に全部が空（＝モードを問わず毎回書かれる保存にドックの痕跡が無い）なら、そこは
-    /// まだ誰も組んでいない部屋なので、初回の見え方で迎える。</para></summary>
+    /// <para><b>印がある保存は印を信じる</b>（<see cref="DockSnapshot.Configured"/> が
+    /// <c>true</c>／<c>false</c> のどちらでも）。信じないと<b>初回の見え方が一度きりになる</b>
+    /// ——初回の既定はモードを問わず毎回書かれる保存に乗るので（<c>CaptureInto</c> は
+    /// ドック中でなくても <see cref="CaptureSnapshot"/> を書く）、次の起動では「下に面がある」
+    /// 保存として返ってくる。中身だけで見分けると、<b>自分が書いた既定を人の意思と読み違えて</b>
+    /// 組んだ部屋に化けてしまい、以後この既定はその部屋へ二度と届かない。実際それで、
+    /// ターミナルが中央へ移った後に初めてドックを押した部屋は、下に出しようのない面
+    /// （＝落とされて空）で迎えることになっていた。</para>
+    /// <para>印の無い保存＝この項目より前に書かれたものだけを<b>中身で見分ける</b>——立てた面・
+    /// 畳んだ先・動かした割り当てが1つでも残っていれば、その人はドックを組んでいる。
+    /// 中身も見ないと、ターミナルを<em>わざわざ</em>畳んでドックで暮らしていた部屋が、
+    /// 更新したとたん既定で埋め直される。</para></summary>
     private static bool WasArranged(DockSnapshot? snapshot)
         => snapshot is not null
            && (snapshot.Configured
-               || snapshot.CenterClosed
-               || snapshot.CenterPane is not null
-               || snapshot.BottomPane is not null
-               || snapshot.RightPane is not null
-               || snapshot.Placements is { Count: > 0 });
+               ?? (snapshot.CenterClosed
+                   || snapshot.CenterPane is not null
+                   || snapshot.BottomPane is not null
+                   || snapshot.RightPane is not null
+                   || snapshot.Placements is { Count: > 0 }));
 
     public DockRegion RegionOf(PaneKind kind)
         => _regions.TryGetValue(kind, out var region) ? region : DockRegion.Center;

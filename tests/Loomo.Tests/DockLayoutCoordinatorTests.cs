@@ -16,10 +16,11 @@ public class DockLayoutCoordinatorTests
 
     [Theory]
     [InlineData(PaneKind.Editor, DockRegion.Center)]
+    // ターミナルは中央＝自分で打つ面（下の高さでは打つ場所として足りない）。
+    [InlineData(PaneKind.Terminal, DockRegion.Center)]
     [InlineData(PaneKind.Browser, DockRegion.Center)]
     [InlineData(PaneKind.Ai, DockRegion.Center)]
     [InlineData(PaneKind.EditorSupport, DockRegion.Right)]
-    [InlineData(PaneKind.Terminal, DockRegion.Bottom)]
     [InlineData(PaneKind.Git, DockRegion.Bottom)]
     [InlineData(PaneKind.Debug, DockRegion.Bottom)]
     [InlineData(PaneKind.TsIde, DockRegion.Bottom)]
@@ -27,6 +28,22 @@ public class DockLayoutCoordinatorTests
     [InlineData(PaneKind.Files, DockRegion.Bottom)]
     public void Default_regions(PaneKind kind, DockRegion expected)
         => Assert.Equal(expected, Active().RegionOf(kind));
+
+    /// <summary>ターミナルは中央の面で、並びは<b>エディタの次・AI より前</b>。
+    /// <para>下の領域は主役を押しのけない高さしか取らないので、覗きに行く場所にはなっても
+    /// 居座って打つ場所にはならない。打っている間はそれが主役——中央で本文と同じ大きさを取る。</para></summary>
+    [Fact]
+    public void Terminal_is_a_center_pane_ahead_of_the_ai()
+    {
+        var dock = Active();
+        var center = dock.PanesIn(DockRegion.Center).ToList();
+
+        Assert.Equal(DockRegion.Center, dock.RegionOf(PaneKind.Terminal));
+        Assert.True(center.IndexOf(PaneKind.Terminal) < center.IndexOf(PaneKind.Ai));
+        Assert.Equal(PaneKind.Editor, center[0]);          // 中央の先頭＝立ち上がりに立つ面
+        Assert.Equal(PaneKind.Terminal, center[1]);
+        Assert.DoesNotContain(PaneKind.Terminal, dock.PanesIn(DockRegion.Bottom));
+    }
 
     /// <summary>帯に並ぶ面は全部どこかの領域に居て、既定の割り当ても漏れが無い。</summary>
     [Fact]
@@ -120,13 +137,13 @@ public class DockLayoutCoordinatorTests
     public void Closing_the_center_leaves_it_empty()
     {
         var dock = Active();
-        dock.Toggle(PaneKind.Terminal);                  // 下に道具を1つ出しておく
+        dock.Toggle(PaneKind.Git);                       // 下に道具を1つ出しておく
         Assert.Equal(PaneKind.Editor, dock.CenterPane);
 
         Assert.True(dock.Close(DockRegion.Center));
         Assert.Null(dock.CenterPane);
         Assert.True(dock.CenterClosed);
-        Assert.Equal(PaneKind.Terminal, dock.BottomPane);   // 下はそのまま
+        Assert.Equal(PaneKind.Git, dock.BottomPane);   // 下はそのまま
 
         // 組み立てのたびに呼ばれる場所。閉じた中央を埋め直さない。
         dock.EnsureCenterPane(_ => true);
@@ -139,16 +156,16 @@ public class DockLayoutCoordinatorTests
     public void Open_panes_are_listed_center_first()
     {
         var dock = Active();
-        dock.Toggle(PaneKind.Terminal);
+        dock.Toggle(PaneKind.Git);
         dock.Toggle(PaneKind.EditorSupport);
 
         Assert.Equal(
-            new[] { PaneKind.Editor, PaneKind.Terminal, PaneKind.EditorSupport },
+            new[] { PaneKind.Editor, PaneKind.Git, PaneKind.EditorSupport },
             dock.OpenPanes());
 
         // 中央を畳んでも、残って見えている面は順に並ぶ（＝渡す先がある）。
         dock.Close(DockRegion.Center);
-        Assert.Equal(new[] { PaneKind.Terminal, PaneKind.EditorSupport }, dock.OpenPanes());
+        Assert.Equal(new[] { PaneKind.Git, PaneKind.EditorSupport }, dock.OpenPanes());
 
         dock.Close(DockRegion.Bottom);
         dock.Close(DockRegion.Right);
@@ -160,7 +177,7 @@ public class DockLayoutCoordinatorTests
     public void Inactive_reports_no_open_panes()
     {
         var dock = Active();
-        dock.Toggle(PaneKind.Terminal);
+        dock.Toggle(PaneKind.Git);
         dock.Exit();
 
         Assert.Empty(dock.OpenPanes());
@@ -191,7 +208,7 @@ public class DockLayoutCoordinatorTests
             regions: null,
             centerPane: null,
             centerClosed: true,
-            bottomPane: PaneKind.Terminal,
+            bottomPane: PaneKind.Git,
             rightPane: null,
             bottomHeight: null,
             rightWidth: null);
@@ -200,7 +217,7 @@ public class DockLayoutCoordinatorTests
 
         Assert.Null(dock.CenterPane);
         Assert.True(dock.CenterClosed);
-        Assert.Equal(PaneKind.Terminal, dock.BottomPane);
+        Assert.Equal(PaneKind.Git, dock.BottomPane);
     }
 
     /// <summary>ドックを一度も組んでいない部屋は、既定の見え方で開く
@@ -208,7 +225,7 @@ public class DockLayoutCoordinatorTests
     /// ここが空だと「帯のアイコンを総当たりするまで何も出ていない部屋」が第一印象になる。</summary>
     [Theory]
     [InlineData(false)]   // 保存そのものが無い部屋（作られたばかり）
-    [InlineData(true)]    // 保存はあるが痕跡が無い部屋（分割・集中のまま毎回の保存で書かれただけ）
+    [InlineData(true)]    // 印より前の保存で、痕跡が無い部屋（分割・集中のまま毎回の保存で書かれただけ）
     public void A_room_that_never_used_the_dock_opens_with_the_default_tools(bool hasSnapshot)
     {
         var dock = new DockLayoutCoordinator();
@@ -219,6 +236,54 @@ public class DockLayoutCoordinatorTests
         dock.EnsureCenterPane(_ => true);
 
         Assert.Equal(PaneKind.Editor, dock.CenterPane);
+        Assert.Equal(DockLayoutCoordinator.InitialBottomPane, dock.BottomPane);
+        Assert.Equal(DockLayoutCoordinator.InitialRightPane, dock.RightPane);
+    }
+
+    /// <summary>初回の既定は<b>一度きりにならない</b>——自分が書いた既定を、次の起動で人の意思と
+    /// 読み違えない。
+    /// <para>初回の見え方（下＝道具・右＝脇の面）はドック中でなくても次の保存に乗るので
+    /// （<c>CaptureInto</c> はモードを問わず <c>CaptureSnapshot</c> を書く）、中身だけで組んだ部屋を
+    /// 見分けると、<b>ドックを一度も押していない部屋が保存1回で「組んだ部屋」に化ける</b>。
+    /// そうなると既定を変えてもその部屋には二度と届かず、下に出しようのない面（＝落とされて空）で
+    /// 迎えることになる——ターミナルが中央へ移ったときに実際これを踏んだ。</para></summary>
+    [Fact]
+    public void The_initial_view_survives_a_save_made_outside_the_dock()
+    {
+        var dock = new DockLayoutCoordinator();
+        dock.Restore(active: false, snapshot: null);   // 分割・集中のまま開いた部屋
+        Assert.False(dock.Configured);
+
+        // モードを問わず書かれる保存。初回の既定がそのまま乗る。
+        var saved = dock.CaptureSnapshot();
+        Assert.False(saved.Configured);
+        Assert.Equal(DockLayoutCoordinator.InitialBottomPane, saved.BottomPane);
+
+        // 次の起動でその保存を読んでも、まだ組んでいない部屋として迎える。
+        var next = new DockLayoutCoordinator();
+        next.Restore(active: true, snapshot: saved);
+        next.EnsureCenterPane(_ => true);
+
+        Assert.Equal(PaneKind.Editor, next.CenterPane);
+        Assert.Equal(DockLayoutCoordinator.InitialBottomPane, next.BottomPane);
+        Assert.Equal(DockLayoutCoordinator.InitialRightPane, next.RightPane);
+    }
+
+    /// <summary>旧版が書いた既定（下＝ターミナル）も同じ——印が <c>false</c> なら中身は見ない。
+    /// 見てしまうと、ターミナルが中央へ移った今、下に出しようのない面が落とされて空になる。</summary>
+    [Fact]
+    public void A_stale_default_from_an_older_version_is_not_mistaken_for_an_arrangement()
+    {
+        var dock = new DockLayoutCoordinator();
+        dock.Restore(
+            active: true,
+            snapshot: new DockSnapshot {
+                Configured = false,                 // ドックへは一度も入っていない
+                BottomPane = PaneKind.Terminal,     // 旧版の初回既定がそのまま乗っただけ
+                RightPane = PaneKind.EditorSupport,
+            });
+        dock.EnsureCenterPane(_ => true);
+
         Assert.Equal(DockLayoutCoordinator.InitialBottomPane, dock.BottomPane);
         Assert.Equal(DockLayoutCoordinator.InitialRightPane, dock.RightPane);
     }
@@ -299,7 +364,7 @@ public class DockLayoutCoordinatorTests
         dock.Place(PaneKind.Editor, DockRegion.Bottom);
         Assert.Null(dock.CenterPane);            // 移した直後は空
         dock.EnsureCenterPane(_ => true);
-        Assert.Equal(PaneKind.Browser, dock.CenterPane);
+        Assert.Equal(PaneKind.Terminal, dock.CenterPane);   // 中央の並びはエディタの次がターミナル
         Assert.Equal(PaneKind.Editor, dock.BottomPane);
     }
 
@@ -345,9 +410,9 @@ public class DockLayoutCoordinatorTests
     {
         var dock = Active();
         dock.Toggle(PaneKind.Git);
-        dock.Toggle(PaneKind.Terminal);
+        dock.Toggle(PaneKind.Search);
 
-        Assert.Equal(PaneKind.Terminal, dock.BottomPane);
+        Assert.Equal(PaneKind.Search, dock.BottomPane);
         Assert.False(dock.IsOpen(PaneKind.Git));
     }
 
@@ -422,7 +487,7 @@ public class DockLayoutCoordinatorTests
             regions: new[] { new KeyValuePair<PaneKind, DockRegion>(PaneKind.Ai, DockRegion.Right) },
             centerPane: PaneKind.Browser,
             centerClosed: false,
-            bottomPane: PaneKind.Terminal,
+            bottomPane: PaneKind.Git,
             rightPane: PaneKind.Ai,
             bottomHeight: 300,
             rightWidth: 400);
@@ -431,7 +496,7 @@ public class DockLayoutCoordinatorTests
         Assert.Equal(DockRegion.Right, dock.RegionOf(PaneKind.Ai));
         Assert.Equal(DockRegion.Bottom, dock.RegionOf(PaneKind.Git));   // 保存に無い面は既定のまま
         Assert.Equal(PaneKind.Browser, dock.CenterPane);
-        Assert.Equal(PaneKind.Terminal, dock.BottomPane);
+        Assert.Equal(PaneKind.Git, dock.BottomPane);
         Assert.Equal(PaneKind.Ai, dock.RightPane);
         Assert.Equal(300, dock.BottomHeight);
         Assert.Equal(400, dock.RightWidth);
@@ -445,10 +510,10 @@ public class DockLayoutCoordinatorTests
         dock.Restore(
             active: true,
             regions: new[] { new KeyValuePair<PaneKind, DockRegion>(PaneKind.Git, DockRegion.Right) },
-            centerPane: PaneKind.Terminal,   // 中央の面ではない
+            centerPane: PaneKind.Search,   // 中央の面ではない
             centerClosed: false,
-            bottomPane: PaneKind.Git,     // もう下には居ない
-            rightPane: PaneKind.Terminal, // もともと右ではない
+            bottomPane: PaneKind.Git,      // もう下には居ない
+            rightPane: PaneKind.Search,    // もともと右ではない
             bottomHeight: null,
             rightWidth: null);
 
