@@ -12,20 +12,18 @@ public partial class ShellWindow {
             profile?.Lap("terminal.attach");
             ActivateTerminalTab(
                 terminalWorkspace.ActiveTabId ?? _terminalTabs[0].Id, profile, focusView: false);
-            _terminalViews?.Restore(workspace.TerminalViewLayout, _terminalTabs.Select(t => t.Id));
+            _terminalViews?.Restore(terminalWorkspace.ViewLayout, _terminalTabs.Select(t => t.Id));
             return;
         }
+        // 端末は永続化しない。復元できるのは殻（cwd だけの新しいシェル）で、前回の画面も実行中の
+        // コマンドも戻らないから——初回はワークスペースのルートに素のタブを1枚だけ立てる。
         terminalWorkspace.IsInitialized = true;
-        var restore = WorkspaceSessionCoordinator.ResolveTerminalTabRestorePlan(workspace);
-        foreach (var snapshot in restore.Snapshots) {
-            var cwd = WorkspaceSessionCoordinator.ResolveWorkingDirectory(
-                snapshot.WorkingDirectory, workspace.RootPath)!;
-            var tab = CreateTerminalTab(cwd, snapshot.Id == Guid.Empty ? null : snapshot.Id);
-            _terminalTabs.Add(tab);
-            _vm.Tabs.AddTerminalTab(tab.Id, snapshot.Title ?? tab.View.HeaderTitle, false);
-        }
-        ActivateTerminalTab(_terminalTabs[restore.ActiveIndex].Id, focusView: false);
-        _terminalViews?.Restore(workspace.TerminalViewLayout, _terminalTabs.Select(t => t.Id));
+        var cwd = WorkspaceSessionCoordinator.ResolveWorkingDirectory(
+            workspace.RootPath, _terminal.CurrentDirectory) ?? _terminal.CurrentDirectory;
+        var tab = CreateTerminalTab(cwd);
+        _terminalTabs.Add(tab);
+        _vm.Tabs.AddTerminalTab(tab.Id, tab.View.HeaderTitle, false);
+        ActivateTerminalTab(tab.Id, focusView: false);
     }
     private void RestoreEditorTabs(
         WorkspaceSnapshot workspace, WorkspaceSwitchProfiler? profile = null) {
@@ -53,6 +51,8 @@ public partial class ShellWindow {
     }
     private void DetachTerminalTabs() {
         CurrentTerminalWorkspace.ActiveTabId = _activeTerminalTab?.Id;
+        // 分割木はワークスペースと一緒に（メモリ上で）持ち越す。捨てる Reset の直前が唯一の採り時。
+        CurrentTerminalWorkspace.ViewLayout = _terminalViews?.Capture();
         _terminalViews?.Reset();
         _vm.Tabs.TerminalTabs.Clear();
         _activeTerminalTab = null;

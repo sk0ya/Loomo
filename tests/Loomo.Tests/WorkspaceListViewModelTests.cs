@@ -453,19 +453,17 @@ public class WorkspaceListViewModelTests
     {
         var path = Path.Combine(Path.GetTempPath(), $"loomo-workspaces-{Guid.NewGuid():N}.json");
         var editorTab = Guid.NewGuid();
-        var terminalTab = Guid.NewGuid();
         var workspace = new WorkspaceSnapshot
         {
             RootPath = @"C:\work",
             Mode = DisplayMode.Layout,
             ActivePane = PaneKind.Terminal,
-            EditorViewLayout = new ViewportNodeSnapshot { TabId = editorTab, IsFocused = true },
-            TerminalViewLayout = new ViewportNodeSnapshot
+            EditorViewLayout = new ViewportNodeSnapshot
             {
                 Orientation = "Columns",
                 Children =
                 [
-                    new ViewportNodeSnapshot { TabId = terminalTab, Weight = 2, IsFocused = true },
+                    new ViewportNodeSnapshot { TabId = editorTab, Weight = 2, IsFocused = true },
                     new ViewportNodeSnapshot { TabId = Guid.NewGuid(), Weight = 1 }
                 ]
             }
@@ -475,11 +473,11 @@ public class WorkspaceListViewModelTests
 
         var loaded = store.LoadWorkspace(workspace.Id)!;
         Assert.Equal(PaneKind.Terminal, loaded.ActivePane);
-        Assert.Equal(editorTab, loaded.EditorViewLayout?.TabId);
-        Assert.Equal("Columns", loaded.TerminalViewLayout?.Orientation);
-        Assert.Equal(2, loaded.TerminalViewLayout?.Children.Count);
-        Assert.Equal(2, loaded.TerminalViewLayout?.Children[0].Weight);
-        Assert.True(loaded.TerminalViewLayout?.Children[0].IsFocused);
+        Assert.Equal("Columns", loaded.EditorViewLayout?.Orientation);
+        Assert.Equal(2, loaded.EditorViewLayout?.Children.Count);
+        Assert.Equal(editorTab, loaded.EditorViewLayout?.Children[0].TabId);
+        Assert.Equal(2, loaded.EditorViewLayout?.Children[0].Weight);
+        Assert.True(loaded.EditorViewLayout?.Children[0].IsFocused);
     }
 
     [Fact]

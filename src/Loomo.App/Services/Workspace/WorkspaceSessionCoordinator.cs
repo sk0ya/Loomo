@@ -75,15 +75,6 @@ public static class WorkspaceSessionCoordinator
         return new(snapshots, activeIndex);
     }
 
-    public static WorkspaceTabRestorePlan<TerminalTabSnapshot> ResolveTerminalTabRestorePlan(
-        WorkspaceSnapshot workspace)
-        => ResolveTabRestorePlan(workspace.TerminalTabs, new TerminalTabSnapshot
-        {
-            WorkingDirectory = workspace.Terminal.WorkingDirectory,
-            Title = workspace.Terminal.Title ?? "Terminal",
-            IsActive = true,
-        }, snapshot => snapshot.IsActive);
-
     public static WorkspaceTabRestorePlan<EditorTabSnapshot> ResolveEditorTabRestorePlan(
         WorkspaceSnapshot workspace)
         => ResolveTabRestorePlan(workspace.EditorTabs, new EditorTabSnapshot
@@ -102,26 +93,6 @@ public static class WorkspaceSessionCoordinator
             Title = null,
             IsActive = true,
         }, snapshot => snapshot.IsActive);
-
-    /// <summary>端末タブと旧 single-terminal 鏡を永続化形式へ写す。</summary>
-    internal static void CaptureTerminalTabs(WorkspaceSnapshot snapshot,
-        IEnumerable<TerminalTab> tabs, Guid? activeTabId, string? fallbackDirectory)
-    {
-        var tabList = tabs.ToList();
-        snapshot.TerminalTabs = tabList.Select(tab => new TerminalTabSnapshot
-        {
-            Id = tab.Id,
-            WorkingDirectory = ResolveWorkingDirectory(tab.View.WorkingDirectory, fallbackDirectory),
-            Title = tab.View.HeaderTitle,
-            IsActive = tab.Id == activeTabId,
-        }).ToList();
-
-        var active = tabList.FirstOrDefault(tab => tab.Id == activeTabId) ?? tabList.FirstOrDefault();
-        if (active is null)
-            return;
-        snapshot.Terminal.WorkingDirectory = ResolveWorkingDirectory(active.View.WorkingDirectory, fallbackDirectory);
-        snapshot.Terminal.Title = active.View.HeaderTitle;
-    }
 
     /// <summary>仮想ドキュメントを除いたエディタタブと旧 single-editor 鏡を永続化形式へ写す。</summary>
     internal static void CaptureEditorTabs(WorkspaceSnapshot snapshot,
@@ -181,15 +152,13 @@ public static class WorkspaceSessionCoordinator
         PaneNodeSnapshot? scratchLayout,
         int activeLayoutIndex,
         bool layoutDirty,
-        ViewportNodeSnapshot? editorViewLayout,
-        ViewportNodeSnapshot? terminalViewLayout)
+        ViewportNodeSnapshot? editorViewLayout)
     {
         snapshot.Layouts = layouts.Select(layout => new SavedLayout { Name = layout.Name, Tree = layout.Tree }).ToList();
         snapshot.ScratchLayout = scratchLayout;
         snapshot.ActiveLayoutIndex = activeLayoutIndex;
         snapshot.LayoutDirty = layoutDirty;
         snapshot.EditorViewLayout = editorViewLayout;
-        snapshot.TerminalViewLayout = terminalViewLayout;
     }
 
     /// <summary>表示モード、ステージ、ドック、選択位置をスナップショットへまとめる。</summary>

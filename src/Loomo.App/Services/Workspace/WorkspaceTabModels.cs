@@ -111,12 +111,16 @@ internal sealed record BrowserTab(Guid Id, WebView2CompositionControl InitialVie
         public bool IsLoading { get; set; }
     }
 
+/// <summary>ワークスペースごとの端末タブ。端末は<b>保存しても戻らない</b>（新しいシェルが立つだけ）ので
+/// 永続化せず、生きた <see cref="TerminalTabView"/> をここで抱えたままワークスペース切替をまたぐ。
+/// ペイン内分割もここに置く——スナップショットへ書くと、復元時に実在しないタブ ID を指す木になる。</summary>
 internal sealed class TerminalWorkspaceTabs
     {
         public List<TerminalTab> Tabs { get; } = new();
         public Guid? ActiveTabId { get; set; }
         public int NextTabNumber { get; set; } = 1;
         public bool IsInitialized { get; set; }
+        public ViewportNodeSnapshot? ViewLayout { get; set; }
     }
 
 internal sealed class EditorWorkspaceTabs

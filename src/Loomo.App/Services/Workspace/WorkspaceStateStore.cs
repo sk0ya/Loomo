@@ -361,9 +361,7 @@ public sealed class WorkspaceSnapshot
         ? AdditionalFolders.Select(f => f.FolderPath).Where(p => !string.IsNullOrWhiteSpace(p)).ToList()
         : CachedAdditionalFolders ?? [];
 
-    public TerminalSnapshot Terminal { get; set; } = new();
     public EditorSnapshot Editor { get; set; } = new();
-    public List<TerminalTabSnapshot> TerminalTabs { get; set; } = new();
     public List<EditorTabSnapshot> EditorTabs { get; set; } = new();
     public List<BrowserTabSnapshot> BrowserTabs { get; set; } = new();
     /// <summary>このワークスペースで開いている切り離しウィンドウ。</summary>
@@ -401,9 +399,11 @@ public sealed class WorkspaceSnapshot
     /// </summary>
     public PaneNodeSnapshot? PaneLayout { get; set; }
 
-    /// <summary>Editor / Terminal ペイン内部の分割木。各リーフは表示中タブとフォーカス位置を持つ。</summary>
+    /// <summary>Editor ペイン内部の分割木。各リーフは表示中タブとフォーカス位置を持つ。
+    /// <para>ターミナルの分割木はここに無い——端末タブは<b>セッション限りの実体</b>で、
+    /// 保存しても復元できるのは「この cwd のシェルが N 本」だけ（履歴も画面も戻らない）。
+    /// ワークスペース切替をまたぐ保持は生きたタブ集合（<c>TerminalWorkspaceTabs</c>）が受け持つ。</para></summary>
     public ViewportNodeSnapshot? EditorViewLayout { get; set; }
-    public ViewportNodeSnapshot? TerminalViewLayout { get; set; }
 
     /// <summary>レイアウトモードで最後に操作していたメインペイン。ソロでは <see cref="Stage"/> が正本。</summary>
     public PaneKind? ActivePane { get; set; }
@@ -749,25 +749,11 @@ public sealed class DockPlacementSnapshot
     public DockRegion Region { get; set; }
 }
 
-public sealed class TerminalSnapshot
-{
-    public string? WorkingDirectory { get; set; }
-    public string? Title { get; set; }
-}
-
 public sealed class EditorSnapshot
 {
     public string? FilePath { get; set; }
     public string? Text { get; set; }
     public bool IsModified { get; set; }
-}
-
-public sealed class TerminalTabSnapshot
-{
-    public Guid Id { get; set; } = Guid.NewGuid();
-    public string? WorkingDirectory { get; set; }
-    public string? Title { get; set; }
-    public bool IsActive { get; set; }
 }
 
 public sealed class EditorTabSnapshot

@@ -37,10 +37,9 @@ public partial class ShellWindow {
         await WorkspaceTabCloseCoordinator.ExecuteAsync(
             plan, CloseTerminalTabAsync, CloseEditorTab, CloseBrowserTabAsync);
     }
-    private void UpdateTerminalTab(TerminalTab tab, string? title) {
-        _vm.Tabs.UpdateTerminalTab(tab.Id, title);
-        SaveActiveWorkspaceSnapshot();
-    }
+    // 見出しはコマンドのたびに変わるが、端末は保存しないのでスナップショットは書かない（表示だけ更新）。
+    private void UpdateTerminalTab(TerminalTab tab, string? title)
+        => _vm.Tabs.UpdateTerminalTab(tab.Id, title);
     private void UpdateEditorTab(EditorTab tab) {
         if (ReferenceEquals(_previewEditorTab, tab) && tab.Control.IsModified)
             SetPreviewTab(null);
@@ -192,8 +191,6 @@ public partial class ShellWindow {
     private void CaptureInto(WorkspaceSnapshot snapshot) {
         snapshot.LastUsedUtc = DateTime.UtcNow;
         snapshot.Name = WorkspaceListViewModel.DisplayName(snapshot.RootPath);
-        WorkspaceSessionCoordinator.CaptureTerminalTabs(
-            snapshot, _terminalTabs, _activeTerminalTab?.Id, _terminal.CurrentDirectory);
         WorkspaceSessionCoordinator.CaptureEditorTabs(snapshot, _editorTabs, _activeEditorTab?.Id);
         snapshot.BrowserTabs = WorkspaceSessionCoordinator.CaptureBrowserTabs(
             _browserTabs, _activeBrowserTab?.Id);
@@ -216,7 +213,7 @@ public partial class ShellWindow {
             CaptureDockSnapshot(), _stageActive, _stagePane, _focusedRegion?.Pane);
         WorkspaceSessionCoordinator.CaptureLayouts(
             snapshot, _layouts, _scratchLayout, _activeLayoutIndex, _layoutDirty,
-            _editorViews?.Capture(), _terminalViews?.Capture());
+            _editorViews?.Capture());
         WorkspaceSessionCoordinator.CapturePaneLayout(
             snapshot, _isSpanMaximized, _spanSavedRoot, _root,
             CaptureLayoutSizes, ToSnapshot);
