@@ -155,11 +155,39 @@ public sealed class DockLayoutCoordinator
                 new KeyValuePair<PaneKind, DockRegion>(placement.Kind, placement.Region)),
             snapshot?.CenterPane,
             snapshot?.CenterClosed ?? false,
-            configured ? snapshot!.BottomPane : InitialBottomPane,
-            configured ? snapshot!.RightPane : InitialRightPane,
+            configured
+                ? Rehome(snapshot!.BottomPane, DockRegion.Bottom, snapshot.Placements, InitialBottomPane)
+                : InitialBottomPane,
+            configured
+                ? Rehome(snapshot!.RightPane, DockRegion.Right, snapshot.Placements, InitialRightPane)
+                : InitialRightPane,
             snapshot?.BottomHeight,
             snapshot?.RightWidth);
         _configured |= configured;
+    }
+
+    /// <summary><b>既定の引っ越しで、その領域に出せなくなった保存値</b>を読み替える。
+    /// <para>保存に明示の割り当てが無い面は、保存された時点の<see cref="DefaultRegions"/>で
+    /// そこに居ただけ（<see cref="ChangedRegions"/> は既定と同じ割り当てを書かない）。だから既定が
+    /// 引っ越すと、その保存値は<b>今はもうその領域から出せない面</b>になる——ターミナルが下から
+    /// 中央へ移ったときがこれで、下に端末を出して暮らしていた部屋は、更新した初回に
+    /// <b>下が空のまま畳まれ、端末はどこにも立たない</b>姿で開いていた。落として畳むのではなく、
+    /// 組んでいない部屋と同じ既定（<paramref name="initial"/>）でその領域を埋める。</para>
+    /// <para>明示の割り当てがある面は<b>その人が動かした</b>もの。保存どうしの食い違い
+    /// （右へ動かした面が下に立っている等）は読み替えずに落とす。畳んであった（null）のも意思なので
+    /// 埋めない。</para></summary>
+    private static PaneKind? Rehome(
+        PaneKind? saved, DockRegion region,
+        List<DockPlacementSnapshot>? placements, PaneKind? initial)
+    {
+        if (saved is not { } pane)
+            return null;
+        var placed = placements?.FirstOrDefault(placement => placement.Kind == pane);
+        var effective = placed?.Region
+            ?? (DefaultRegions.TryGetValue(pane, out var fallback) ? fallback : DockRegion.Center);
+        if (effective == region)
+            return pane;
+        return placed is null ? initial : null;
     }
 
     /// <summary>この保存はドックを組んだ部屋のものか（＝初回の既定を当ててはいけないか）。

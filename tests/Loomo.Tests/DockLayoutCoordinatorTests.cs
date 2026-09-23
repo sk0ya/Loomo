@@ -320,6 +320,46 @@ public class DockLayoutCoordinatorTests
         },
     };
 
+    /// <summary>旧版で<b>下に端末を出して暮らしていた</b>部屋（印が無く、端末は当時の既定どおり下なので
+    /// 明示の割り当ても無い）は「組んだ部屋」と読む——そこまでは正しい。ただし保存された下の面は
+    /// 既定が中央へ引っ越した今、下から出せない。落として畳むと更新の初回が<b>下は空・端末はどこにも
+    /// 立たない</b>姿になるので、組んでいない部屋と同じ既定でその領域を埋める。</summary>
+    [Fact]
+    public void An_old_bottom_terminal_is_rehomed_to_the_default_instead_of_collapsing()
+    {
+        var dock = new DockLayoutCoordinator();
+        dock.Restore(
+            active: true,
+            snapshot: new DockSnapshot {
+                // Configured は無い（この項目より前の保存）＝中身で見分ける経路
+                CenterPane = PaneKind.Editor,
+                BottomPane = PaneKind.Terminal,   // 旧版の既定のまま下に出していた
+            });
+        dock.EnsureCenterPane(_ => true);
+
+        Assert.Equal(PaneKind.Editor, dock.CenterPane);
+        Assert.Equal(DockLayoutCoordinator.InitialBottomPane, dock.BottomPane);
+    }
+
+    /// <summary>読み替えるのは<b>既定の引っ越しで出せなくなった面</b>だけ。自分で動かした面
+    /// （明示の割り当てがある）の食い違いは、これまでどおり落とす——勝手に別の道具で埋めない。</summary>
+    [Fact]
+    public void A_pane_the_user_moved_elsewhere_is_not_rehomed()
+    {
+        var dock = new DockLayoutCoordinator();
+        dock.Restore(
+            active: true,
+            snapshot: new DockSnapshot {
+                Configured = true,
+                CenterPane = PaneKind.Editor,
+                BottomPane = PaneKind.Git,
+                Placements = [new DockPlacementSnapshot { Kind = PaneKind.Git, Region = DockRegion.Right }],
+            });
+        dock.EnsureCenterPane(_ => true);
+
+        Assert.Null(dock.BottomPane);
+    }
+
     /// <summary>中央を閉じたまま何も出していない部屋も「組んだ部屋」——畳んだ中央を既定で
     /// 埋め直さないのと同じ理由で、下／右も埋めない。</summary>
     [Fact]
