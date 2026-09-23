@@ -230,6 +230,7 @@ public sealed class TabsViewModelTests
 
         sut.UpdateBrowserTab(id, title);
 
+        // 題の記憶はホスト側（BrowserTab.CurrentTitle）が持つ。ここは言われたとおりに映すだけ。
         Assert.Equal(string.Empty, sut.BrowserTabs.Single().Title);
     }
 }

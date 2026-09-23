@@ -153,7 +153,7 @@ public static class WorkspaceSessionCoordinator
         => tabs.Select(tab => CaptureBrowserTab(
                 tab.Id,
                 BrowserDisplayMapper.CurrentUrl(tab.View.TryUrl(), tab.PendingUrl),
-                tab.View.TryCore()?.DocumentTitle ?? tab.Title,
+                tab.CurrentTitle,
                 tab.Id == activeTabId))
             .OfType<BrowserTabSnapshot>()
             .ToList();

@@ -109,7 +109,7 @@ public partial class ShellWindow {
                 BrowserContentHost.Children.Add(tab.View);
             _vm.Tabs.AddBrowserTab(
                 tab.Id,
-                tab.Title ?? tab.View.TryCore()?.DocumentTitle,
+                tab.CurrentTitle,
                 false,
                 BrowserUrlOf(tab));
             await RefreshBrowserTabIconAsync(tab);

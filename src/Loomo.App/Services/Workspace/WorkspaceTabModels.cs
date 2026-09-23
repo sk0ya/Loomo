@@ -83,6 +83,18 @@ internal sealed record BrowserTab(Guid Id, WebView2CompositionControl InitialVie
         /// <summary>最後に得たページタイトル。WebView2未実体化時の保存・復元にも使用する。</summary>
         public string? Title { get; set; }
 
+        /// <summary>いま出すべき題。<b>読み込み前・読み込み中の空の DocumentTitle で上書きしない</b>
+        /// ——復元したタブは実体化した瞬間に <c>DocumentTitle</c> が空なので、素直に読むと
+        /// 覚えていた題が消えて「開くまで名前が出ない」タブになる（保存も同じ値を書くので次の起動へ伝染する）。</summary>
+        public string? CurrentTitle
+        {
+            get
+            {
+                var live = View.TryCore()?.DocumentTitle;
+                return string.IsNullOrWhiteSpace(live) ? Title : live;
+            }
+        }
+
         /// <summary>まだ CoreWebView2 を生成していない間の遷移先 URL（実体化時にここへナビゲートする）。
         /// 起動を速くするため Browser ペインが見えるまで WebView2 生成を遅らせる。</summary>
         public string? PendingUrl { get; set; }

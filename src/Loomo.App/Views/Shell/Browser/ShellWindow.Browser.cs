@@ -302,7 +302,8 @@ public partial class ShellWindow {
     private void UpdateBrowserTab(BrowserTab? tab, bool commitNavigationUrl = false) {
         if (tab is null)
             return;
-        var title = tab.View.TryCore()?.DocumentTitle;
+        // 覚えている題は空で潰さない（<see cref="BrowserTab.CurrentTitle"/>）。
+        var title = tab.CurrentTitle;
         tab.Title = title;
         _vm.Tabs.UpdateBrowserTab(
             tab.Id,
