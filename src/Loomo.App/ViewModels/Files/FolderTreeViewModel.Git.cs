@@ -1,4 +1,5 @@
 using System.Threading;
+using sk0ya.Loomo.Core.Processes;
 
 namespace sk0ya.Loomo.App.ViewModels;
 
@@ -38,7 +39,10 @@ public sealed partial class FolderTreeViewModel
         var token = cts.Token;
         try
         {
-            var state = await Task.Run(() => _query.LoadGitState(root, token), token);
+            // git を何本も起こして待つ仕事。プールのワーカーを git の寿命ぶん占有しないよう、
+            // 専用スレッドで待つ（子プロセスの読み取りと同じ考え方＝ChildProcessIo）。
+            var state = await ChildProcessIo.RunOffPoolAsync(
+                "gitツリー読込", () => _query.LoadGitState(root, token));
             token.ThrowIfCancellationRequested();
             if (!ReferenceEquals(_gitLoadCts, cts) || _currentRoot is null || !PathsEqual(_currentRoot, root))
                 return;
@@ -85,7 +89,8 @@ public sealed partial class FolderTreeViewModel
         var token = cts.Token;
         try
         {
-            var loaded = await Task.Run(() => _query.LoadGitState(state.DisplayedPath, token), token);
+            var loaded = await ChildProcessIo.RunOffPoolAsync(
+                "gitツリー読込", () => _query.LoadGitState(state.DisplayedPath, token));
             token.ThrowIfCancellationRequested();
             if (!ReferenceEquals(state.GitLoadCts, cts))
                 return;

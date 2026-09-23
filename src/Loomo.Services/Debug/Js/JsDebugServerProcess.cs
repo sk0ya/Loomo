@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using sk0ya.Loomo.Core.Processes;
 
 namespace sk0ya.Loomo.Services.Debug.Js;
 
@@ -55,13 +56,8 @@ internal sealed partial class JsDebugServerProcess : IDisposable
             var portTcs = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
             var stderr = new StringBuilder();
 
-            process.OutputDataReceived += (_, e) =>
-            {
-                if (e.Data is null) return;
-                var m = ListeningLine().Match(e.Data);
-                if (m.Success && int.TryParse(m.Groups[1].Value, out var p)) portTcs.TrySetResult(p);
-            };
-            process.ErrorDataReceived += (_, e) => { if (e.Data is not null) lock (stderr) stderr.AppendLine(e.Data); };
+            // 出力はプールではなく専用スレッドで読む（理由は ChildProcessIo）。デバッグサーバは
+            // セッションの間ずっと生きているので、BeginOutputReadLine のままだとその間ワーカーを抱える。
             process.Exited += (_, _) =>
             {
                 string err;
@@ -70,8 +66,14 @@ internal sealed partial class JsDebugServerProcess : IDisposable
                     $"js-debug サーバが起動直後に終了しました。{(err.Length > 0 ? $" stderr: {err}" : "")}"));
             };
             process.EnableRaisingEvents = true;
-            process.BeginOutputReadLine();
-            process.BeginErrorReadLine();
+            _ = ChildProcessIo.PumpLinesAsync(process.StandardOutput, line =>
+            {
+                var m = ListeningLine().Match(line);
+                if (m.Success && int.TryParse(m.Groups[1].Value, out var port)) portTcs.TrySetResult(port);
+            }, "jsデバッグサーバ:stdout");
+            _ = ChildProcessIo.PumpLinesAsync(
+                process.StandardError, line => { lock (stderr) stderr.AppendLine(line); },
+                "jsデバッグサーバ:stderr");
 
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
             timeout.CancelAfter(TimeSpan.FromSeconds(10));

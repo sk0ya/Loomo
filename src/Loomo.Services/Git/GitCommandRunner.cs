@@ -6,6 +6,7 @@ using System.IO;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using sk0ya.Loomo.Core.Processes;
 
 namespace sk0ya.Loomo.Services;
 
@@ -85,8 +86,10 @@ public sealed class GitCommandRunner
             if (process is null)
                 return new GitCommandResult(-1, "", "git を起動できませんでした。");
 
-            var stdout = process.StandardOutput.ReadToEndAsync(cancellationToken);
-            var stderr = process.StandardError.ReadToEndAsync(cancellationToken);
+            // 出力はプールではなく専用スレッドで読む（理由は ChildProcessIo）。打ち切りは下の
+            // TryKill が担う——パイプが閉じれば読みは EOF で終わる。
+            var stdout = ChildProcessIo.ReadToEndAsync(process.StandardOutput, "git:stdout");
+            var stderr = ChildProcessIo.ReadToEndAsync(process.StandardError, "git:stderr");
             using var timeoutSource = new CancellationTokenSource(limit);
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(
                 cancellationToken, timeoutSource.Token);

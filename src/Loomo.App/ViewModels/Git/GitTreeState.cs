@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading;
+using sk0ya.Loomo.Core.Processes;
 
 namespace sk0ya.Loomo.App.Services;
 
@@ -299,6 +300,9 @@ internal sealed class GitTreeState
     {
         try
         {
+            // 打ち切りは「読み取りに渡したトークン」任せにしない——読み取りが専用スレッドの
+            // ブロッキング読みになった以上、打ち切りはここで明示的に見る（起こす前と、待ったあと）。
+            token.ThrowIfCancellationRequested();
             using var process = new Process();
             process.StartInfo = new ProcessStartInfo
             {
@@ -330,13 +334,20 @@ internal sealed class GitTreeState
                 catch { /* 終了との競合 */ }
             });
 
+            // 出力はプールではなく専用スレッドで読む（理由は ChildProcessIo）。打ち切りは上の
+            // Register が kill するので、パイプが閉じて読みは EOF で終わる。
+            // stderr も読み捨てる——誰も読まないとパイプが詰まって git 側が止まる。
+            // **読み手を立ててから stdin を書く**——check-ignore は stdin を食いながら一致した
+            // パスを吐くので、先に何千行も流し込むと git の stdout が詰まり、こちらは Write で
+            // 止まる（無視対象が空になり、無視ファイルが普通のファイルとして並ぶ）。
+            var outputTask = ChildProcessIo.ReadToEndAsync(process.StandardOutput, "gitツリー:stdout");
+            _ = ChildProcessIo.ReadToEndAsync(process.StandardError, "gitツリー:stderr");
+
             if (standardInput is not null)
             {
                 process.StandardInput.Write(standardInput);
                 process.StandardInput.Close();
             }
-
-            var outputTask = process.StandardOutput.ReadToEndAsync(waitToken);
 
             try
             {
@@ -348,6 +359,7 @@ internal sealed class GitTreeState
             }
             catch (OperationCanceledException) { throw; }
 
+            token.ThrowIfCancellationRequested();
             return new GitCommandResult(process.ExitCode, outputTask.GetAwaiter().GetResult());
         }
         catch (OperationCanceledException) { throw; }

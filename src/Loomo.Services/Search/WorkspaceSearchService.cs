@@ -10,6 +10,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using sk0ya.Loomo.Core.Abstractions;
 using sk0ya.Loomo.Core.Files;
+using sk0ya.Loomo.Core.Processes;
 
 namespace sk0ya.Loomo.Services.Search;
 
@@ -491,17 +492,29 @@ public sealed class WorkspaceSearchService : IWorkspaceSearchService
 
         try { process.StandardInput.Close(); } catch { /* 無視 */ }
 
+        // stderr も読み捨てる——誰も読まないとパイプが詰まって rg 側が止まる（読めない
+        // パスや壊れたリンクが多い木では警告が1行ずつ出る）。止まれば stdout も来なくなり、
+        // 検索結果が黙って途中までになる。
+        _ = ChildProcessIo.ReadToEndAsync(process.StandardError, "検索:rg:stderr");
+
         try
         {
-            while (await process.StandardOutput.ReadLineAsync(ct).ConfigureAwait(false) is { } line)
+            // 読み取りはプールではなく専用スレッド（理由は ChildProcessIo）。打ち切りは上の
+            // ct.Register が kill し、パイプが閉じて読みが EOF で終わることで効く。
+            await ChildProcessIo.RunOffPoolAsync<object?>("検索:rg", () =>
             {
-                lines.Add(line);
-                if (lines.Count >= maxLines)
+                while (process.StandardOutput.ReadLine() is { } line)
                 {
-                    try { if (!process.HasExited) process.Kill(entireProcessTree: true); } catch { /* 既に終了 */ }
-                    break;
+                    lines.Add(line);
+                    if (lines.Count >= maxLines)
+                    {
+                        try { if (!process.HasExited) process.Kill(entireProcessTree: true); } catch { /* 既に終了 */ }
+                        break;
+                    }
                 }
-            }
+                return null;
+            }).ConfigureAwait(false);
+            ct.ThrowIfCancellationRequested();
         }
         catch (OperationCanceledException) { throw; }
         catch (IOException) { /* kill 後のパイプ切断は無視 */ }

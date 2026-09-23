@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using sk0ya.Loomo.Core.Processes;
 
 namespace sk0ya.Loomo.CSharp.Testing;
 
@@ -44,9 +45,12 @@ public static class CSharpTestDebugTargetResolver
         try { process.Start(); }
         catch { return null; }
 
-        var stdout = await process.StandardOutput.ReadToEndAsync(cancellationToken);
-        await process.StandardError.ReadToEndAsync(cancellationToken);
+        // 出力はプールではなく専用スレッドで読む（理由は ChildProcessIo）。
+        var stdoutTask = ChildProcessIo.ReadToEndAsync(process.StandardOutput, "テスト対象解決:stdout");
+        var stderrTask = ChildProcessIo.ReadToEndAsync(process.StandardError, "テスト対象解決:stderr");
         await process.WaitForExitAsync(cancellationToken);
+        var stdout = await stdoutTask;
+        await stderrTask;
         if (process.ExitCode != 0) return null;
 
         try
@@ -74,13 +78,12 @@ public sealed class CSharpTestDebugProcess : IAsyncDisposable
     private readonly TaskCompletionSource<int> _ready =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly CancellationTokenRegistration _cancellation;
+    private Task _pumps = Task.CompletedTask;
     private int _stopped;
 
     private CSharpTestDebugProcess(Process process, CancellationToken cancellationToken)
     {
         _process = process;
-        _process.OutputDataReceived += OnOutput;
-        _process.ErrorDataReceived += OnOutput;
         _process.EnableRaisingEvents = true;
         _process.Exited += OnExited;
         _cancellation = cancellationToken.Register(static state => ((CSharpTestDebugProcess)state!).Stop(), this);
@@ -144,8 +147,13 @@ public sealed class CSharpTestDebugProcess : IAsyncDisposable
         }
 
         var runner = new CSharpTestDebugProcess(process, cancellationToken);
-        process.BeginOutputReadLine();
-        process.BeginErrorReadLine();
+        // 出力はプールではなく専用スレッドで読む（理由は ChildProcessIo）。VSTest は走り続けるので、
+        // BeginOutputReadLine のままだとテスト実行中ずっとプールのワーカーを2本抱え込む。
+        // 読み手は Dispose で待つ——待たずにプロセスを捨てると、実行の締めくくり（失敗の要約など
+        // 一番読みたい行）が読み手の中に残ったまま消える。
+        runner._pumps = Task.WhenAll(
+            ChildProcessIo.PumpLinesAsync(process.StandardOutput, runner.OnOutput, "テストデバッグ:stdout"),
+            ChildProcessIo.PumpLinesAsync(process.StandardError, runner.OnOutput, "テストデバッグ:stderr"));
         try
         {
             // adapter不在PATH、テストDLL不正、testhost起動失敗などでPIDが出ない場合も、
@@ -181,9 +189,10 @@ public sealed class CSharpTestDebugProcess : IAsyncDisposable
         // アプリ終了時にそのまま固まる。
         try { await _process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(3)).ConfigureAwait(false); }
         catch { }
+        // プロセスの終了と出力の読み切りは別物。捨てる前に読み切りを待つ（待ちきれなければ諦める）。
+        try { await _pumps.WaitAsync(TimeSpan.FromSeconds(1)).ConfigureAwait(false); }
+        catch { }
         _cancellation.Dispose();
-        _process.OutputDataReceived -= OnOutput;
-        _process.ErrorDataReceived -= OnOutput;
         _process.Exited -= OnExited;
         _process.Dispose();
     }
@@ -195,9 +204,10 @@ public sealed class CSharpTestDebugProcess : IAsyncDisposable
             ? pid : null;
     }
 
-    private void OnOutput(object sender, DataReceivedEventArgs args)
+    /// <summary>出力1行。読み取りスレッドから呼ばれる（プールで発火していた頃と同じ約束）。</summary>
+    private void OnOutput(string line)
     {
-        if (args.Data is not { Length: > 0 } line) return;
+        if (line.Length == 0) return;
         Output?.Invoke(line);
         if (TestHostProcessId is null && ParseProcessId(line) is { } pid)
         {

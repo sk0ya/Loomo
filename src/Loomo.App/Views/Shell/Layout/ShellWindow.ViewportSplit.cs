@@ -105,6 +105,16 @@ public partial class ShellWindow {
     private TerminalTab CreateTerminalTab(string startDirectory, Guid? requestedId = null) {
         var view = new TerminalTabView("pwsh.exe", startDirectory) {
             AutoFocusOnStart = false, };
+        // 端末のシェルは Loaded を合図に ConPTY を Task.Run で起こす。そこがプールの行列に嵌まると
+        // 窓は出ているのにプロンプトだけ数秒遅れるので、待ち行列の深さごと起動プロファイルに残す
+        // （§31.16／ChildProcessIo）。Loaded はペインの再ペアレントのたびに飛ぶので、記録するのは
+        // シェルが実際に起こされる最初の一度だけ——そうしないとペイン切替のたびに起動のログが汚れる。
+        void MarkFirstLoad(object? _, RoutedEventArgs __) {
+            view.Loaded -= MarkFirstLoad;
+            StartupProfiler.Mark(
+                $"  端末:Loaded（シェル起動の合図）待ち={System.Threading.ThreadPool.PendingWorkItemCount}");
+        }
+        view.Loaded += MarkFirstLoad;
         _appearance.ApplyTerminalAppearance(view);
         return HookTerminalTab(new TerminalTab(requestedId ?? Guid.NewGuid(), view));
     }

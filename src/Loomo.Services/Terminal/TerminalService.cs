@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using sk0ya.Loomo.Core.Abstractions;
 using sk0ya.Loomo.Core.Models;
+using sk0ya.Loomo.Core.Processes;
 using Terminal.Tabs;
 
 namespace sk0ya.Loomo.Services;
@@ -139,9 +140,7 @@ public sealed class TerminalService : ITerminalService
 
         using var proc = new Process { StartInfo = psi };
         var sb = new StringBuilder();
-        var sync = new object(); // OutputDataReceived/ErrorDataReceived はスレッドプールで発火するため保護。
-        proc.OutputDataReceived += (_, e) => { if (e.Data is not null) lock (sync) sb.AppendLine(e.Data); };
-        proc.ErrorDataReceived += (_, e) => { if (e.Data is not null) lock (sync) sb.AppendLine(e.Data); };
+        var sync = new object(); // 読み取りは stdout/stderr それぞれの専用スレッドで走るため保護。
 
         try
         {
@@ -153,8 +152,12 @@ public sealed class TerminalService : ITerminalService
         }
 
         proc.StandardInput.Close(); // 標準入力を即 EOF にしてプロンプト/標準入力待ちを防ぐ。
-        proc.BeginOutputReadLine();
-        proc.BeginErrorReadLine();
+        // BeginOutputReadLine はプールのワーカーをコマンドの寿命ぶん占有する（理由は ChildProcessIo）。
+        // AI のコマンドは長く走りうるので、ここを塞ぐと人間の側の仕事が待たされる。
+        void Append(string line) { lock (sync) sb.AppendLine(line); }
+        var pumps = Task.WhenAll(
+            ChildProcessIo.PumpLinesAsync(proc.StandardOutput, Append, "AIコマンド:stdout"),
+            ChildProcessIo.PumpLinesAsync(proc.StandardError, Append, "AIコマンド:stderr"));
 
         // 万一プロセスがパイプを握ったまま終了しない事態に備えた安全網（実体 exe 起動なら通常到達しない）。
         using var timeout = new CancellationTokenSource(FallbackTimeout);
@@ -165,15 +168,33 @@ public sealed class TerminalService : ITerminalService
         }
         catch (OperationCanceledException)
         {
-            TryKill(proc);
-            lock (sync) return new CommandResult(
-                command, TerminalTextSanitizer.RemoveAnsiEscapes(sb.ToString()), -1, _cwd, false);
+            return await AbandonAsync();
         }
+
+        // プロセスの終了と出力の読み切りは別物——ここを待たないと最後の数行を落とす
+        // （BeginOutputReadLine のときは WaitForExit が中で待っていた）。
+        // ただし**無期限には待たない**。切り離された孫（npm run dev、残った node など）が
+        // 継承した stdout ハンドルを握っていると、pwsh が終わってもパイプは閉じず EOF が来ない。
+        // 読み切りも安全網（FallbackTimeout/ct）の内側に置き、駄目なら木ごと殺して諦める
+        // ——読めた範囲を返す方が、AI の手番が永遠に返らないより良い。
+        if (await Task.WhenAny(pumps, Task.Delay(Timeout.Infinite, linked.Token)) != pumps)
+            return await AbandonAsync();
 
         TrackChdir(command);
         var exit = proc.ExitCode;
         lock (sync) return new CommandResult(
             command, TerminalTextSanitizer.RemoveAnsiEscapes(sb.ToString()), exit, _cwd, exit == 0);
+
+        // 打ち切り（人の取り消し／安全網）で降りるときの共通の後始末。木ごと殺すとパイプが閉じて
+        // 読み手はすぐ EOF になるが、握っているのが切り離された孫だと閉じないので待ちきらない。
+        // 結果は必ず「完了していない」——途中で降りた実行を、親の終了コードだけ見て成功と呼ばない。
+        async Task<CommandResult> AbandonAsync()
+        {
+            TryKill(proc);
+            await Task.WhenAny(pumps, Task.Delay(TimeSpan.FromSeconds(1)));
+            lock (sync) return new CommandResult(
+                command, TerminalTextSanitizer.RemoveAnsiEscapes(sb.ToString()), -1, _cwd, false);
+        }
     }
 
     /// <summary>子 PowerShell の入出力を UTF-8 に固定するプリアンブル（コマンドの前置句）。

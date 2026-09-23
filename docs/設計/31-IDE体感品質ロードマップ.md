@@ -508,6 +508,98 @@ UI スレッドは読み終えたものを載せるところだけを払う。
 - Loomo: 3423 件成功（`DeferredWriteQueueTests` 8 件、`WorkspaceStateStoreDeferredSaveTests` 5 件＝
   遅延保存と同期保存が**同じファイルを残す**こと、`EolInsensitiveTextTests`、`EditorTabCaptureTests` 3 件）。
 
+## §31.16 子プロセスの読み取りは、スレッドプールに積まない（2026-09-24）
+
+起動直後、窓もペインも 2 秒前後で出ているのに**ターミナルのプロンプトだけが 5〜9 秒出ない**。
+端末（`sk0ya.Terminal.Controls`）は悪くなく、真因は部屋の側の構造だった。
+
+### §31.16.1 何が起きていたか
+
+実測（Ryzen 5 3500・6 コア・`LOOMO_STARTUP_PROFILE=1`）:
+
+| 時点 | 直前 | 直後 |
+|---|---|---|
+| 初フレーム | 1.9 秒 | 1.9 秒 |
+| 端末 View の `Loaded`（シェル起動の合図） | 2.4 秒 | 2.4 秒 |
+| **pwsh が実際に生成される** | **5.6〜9.0 秒** | **2.4〜2.9 秒** |
+
+端末は `Loaded` を合図に ConPTY を `Task.Run` で起こす。その `Task.Run` が**行列に 5.2 秒**並んでいた
+（`Loaded` の時点でプールの待ち行列は 42 件）。`dotnet-stack` で覗くと、プールのワーカー 6 本が
+**全部 `Kernel32.ReadFile` で待機**していた。
+
+理由は `Process.StandardOutput` のパイプが**同期ハンドル**で開かれること。`ReadToEndAsync` も
+`ReadLineAsync` も `BeginOutputReadLine` も async-over-sync に落ち、**子プロセスが終わるまで
+プールのワーカーを 1 本占有する**。起動直後は C# プロジェクト評価の `dotnet msbuild` が 4 並列
+（stdout+stderr で 8 本）、加えて git が何本も走る。コア数ぶんしかないプールは丸ごと埋まり、
+自動増員は飢餓検知で毎秒 1〜2 本しか進まない。
+
+つまり**人間のシェルが、背景のインデックス作業に負けていた**。速度の問題ではなく順序の問題で、
+`ThreadPool.SetMinThreads` で行列を消すのは対症療法にすぎない（実測では効くが、
+「プールに積んではいけないものを積んでいる」ことは変わらない）。
+
+### §31.16.2 あるべき形
+
+先例は既にあった——補完ワーカー（§31.13.2.2）は**別プロセス＋専用スレッド＋`BelowNormal`**で、
+人間の入力より構造的に下に置いてある。これを子プロセス全体の作法にする。
+
+- `Loomo.Core/Processes/ChildProcessIo.cs` が唯一の入口。`ReadToEndAsync` / `PumpLinesAsync` /
+  `RunOffPoolAsync` はいずれも**名前つきの専用スレッド**（`IsBackground`）で走り、
+  `RunContinuationsAsynchronously` で待っていた側の続きをそのスレッドへ引き込まない。
+  境目は「**待つだけの仕事はプールの椅子を占めない**」——CPU を回す計算は今までどおり `Task.Run`。
+- パイプが消えても失敗にしない。kill や破棄で途中終了したときは**そこまで読めたぶんを返す**
+  （打ち切りの作法が「殺して閉じる」である以上それは異常ではなく、見捨てられた読み取りが
+  未観測の例外として残るのも避けたい）。
+- 打ち切りは**殺してパイプを閉じる**。ブロッキング読みは途中で降りられないので、読み取り側に
+  `CancellationToken` を渡す口はわざと無い。各呼び出し側が持っている kill 経路がそのまま効く。
+- 背景と分かっている子プロセス（MSBuild 評価）は `TrySetBackgroundPriority` で `BelowNormal`。
+  CPU でも人間の道具の下に置く。
+
+移した先：`MsBuildProjectEvaluator`（2 か所）・`GitCommandRunner`・`GitTreeState`・
+`WorkspaceSearchService`（rg）・`TerminalService`（AI のコマンド）・`CSharpTestDebugRunner`（2 か所）・
+`JsDebugServerProcess`、および `FolderTreeViewModel.Git`（git を何本も起こして待つ `Task.Run` ごと）。
+`DapConnection` と `FimCompletionClient` は元から専用スレッドで、変更なし。
+
+ひとつ副作用がある。打ち切りを「読み取りに渡したトークン」の副作用として表現していた箇所
+（`GitTreeState.RunGit`）は、読みがトークンを持たなくなった以上**明示的に見る**必要がある
+（起こす前と、待ったあとの `ThrowIfCancellationRequested`）。副作用に頼った打ち切りは、
+そもそも読めば分かる形ではなかった。
+
+スレッドは数本増えるが、どれも I/O 待ちで CPU を食わない。プールの椅子を占めるのとは意味が違う。
+
+### §31.16.3 気をつける点（レビューで出た三つ）
+
+`BeginOutputReadLine` をやめると `WaitForExitAsync` は**プロセスの終了しか待たない**
+（従来は出力の読み切りまで中で待ち、しかもそれは打ち切りトークンで縛られていた）。ここから三つ。
+
+1. **読み切りを無期限に待たない。** 切り離された孫（`npm run dev`、残った node）が継承した stdout
+   ハンドルを握っていると、親が終わってもパイプは閉じず EOF が来ない。`TerminalService` は読み切りも
+   安全網（`FallbackTimeout`／`ct`）の内側に置き、駄目なら木ごと殺して<b>「完了していない」</b>として返す
+   ——途中で降りた実行を、親の終了コードだけ見て成功と呼ばない。回帰ガードは
+   `TerminalServiceDetachedPipeTests`（孫にハンドルを継承させて実際に再現する。直す前の
+   `await pumps` では 21 秒かかって落ちることを確認済み）。
+2. **捨てる前に読み切る。** 読み手が `ReadLine()` の中に居るままプロセスを `Dispose` すると、
+   まだ出していない行（テスト実行の締めくくりなど、一番読みたい行）が消える。`CSharpTestDebugRunner`
+   は `DisposeAsync` で読み切りを待つ（待ちきれなければ諦める）。
+3. **stderr も必ず誰かが読む。** 読まないとパイプが詰まって相手が止まり、stdout も来なくなる
+   （rg の警告、git のエラー）。`WorkspaceSearchService`・`GitTreeState` は読み捨てを立てる。
+   `check-ignore --stdin` のように<b>入力を食いながら出力する</b>相手では、読み手を立ててから
+   stdin を書く（逆にすると自分が `Write` で止まる）。
+
+`ReadToEndAsync` は kill による EOF は普通に返すが、**途中で壊れた読みは失敗のまま返す**。
+短い結果を成功として返すと、呼び出し側は終了コードだけを見て出力が揃ったと誤解する
+（`git status` の取りこぼしが、そのままツリーの差分表示の欠落になる）。行を流す `PumpLinesAsync`
+は「届いた行がすべて」なので、従来どおり静かに終わる。
+
+### §31.16.4 検証
+
+- `ChildProcessIoTests` 5 件：読み切り／行の順序と終端／**プールのスレッドで走らないこと**／
+  名前つき専用スレッドで待っている側の続きを横取りしないこと／殺したら読み取りが終端で返ること。
+- `TerminalServiceDetachedPipeTests` 1 件：孫がパイプを握ったままでも手番が返ること（§31.16.3-1）。
+- 実機：起動 3 回とも待ち行列 0、`Loaded` から pwsh 生成まで 38〜49ms（従来は 3〜6 秒）、
+  MSBuild 評価の子プロセスが `BelowNormal` で走っていること、タイトルバーのブランチ表示
+  （git 経路が生きている証拠）。
+- Loomo: 3496 件成功。
+
 ## §31.10 非目標
 
 - VS Code/Riderの全機能との同数競争。

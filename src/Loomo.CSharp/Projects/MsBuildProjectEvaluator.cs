@@ -1,6 +1,7 @@
 ﻿using System.Diagnostics;
 using System.Text.Json;
 using sk0ya.Loomo.Core.Abstractions;
+using sk0ya.Loomo.Core.Processes;
 
 namespace sk0ya.Loomo.CSharp.Projects;
 
@@ -120,8 +121,11 @@ public sealed class MsBuildProjectEvaluator : IProjectEvaluator
         try
         {
             process.Start();
-            stdoutTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
-            stderrTask = process.StandardError.ReadToEndAsync(cancellationToken);
+            // 出力はプールではなく専用スレッドで読む（理由は ChildProcessIo）。この評価は部屋の背景仕事
+            // なので、CPU でも人間の道具の下に置く。
+            ChildProcessIo.TrySetBackgroundPriority(process);
+            stdoutTask = ChildProcessIo.ReadToEndAsync(process.StandardOutput, "MSBuild評価:stdout");
+            stderrTask = ChildProcessIo.ReadToEndAsync(process.StandardError, "MSBuild評価:stderr");
             await process.WaitForExitAsync(cancellationToken);
             return (process.ExitCode, await stdoutTask, await stderrTask);
         }
@@ -502,8 +506,9 @@ public sealed class MsBuildProjectEvaluator : IProjectEvaluator
         try
         {
             process.Start();
-            stdoutTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
-            _ = process.StandardError.ReadToEndAsync(cancellationToken);
+            ChildProcessIo.TrySetBackgroundPriority(process);
+            stdoutTask = ChildProcessIo.ReadToEndAsync(process.StandardOutput, "MSBuild評価:stdout");
+            _ = ChildProcessIo.ReadToEndAsync(process.StandardError, "MSBuild評価:stderr");
             await process.WaitForExitAsync(cancellationToken);
             if (process.ExitCode != 0) return null;
             using var document = JsonDocument.Parse(await stdoutTask);
