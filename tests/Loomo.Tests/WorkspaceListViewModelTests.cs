@@ -7,8 +7,11 @@ namespace sk0ya.Loomo.Tests;
 
 public class WorkspaceListViewModelTests
 {
+    /// <summary>新しい部屋はドックで開く（＝部屋の見取り図が一目で読める姿が第一印象）。
+    /// <para>Stage は「集中へ切り替えたら舞台に立つ面」を控えるだけで、<c>IsActive</c> は立てない
+    /// ——旧データ移行（<c>Mode</c> の無い保存を <c>Stage.IsActive</c> から読む）と読み違えないため。</para></summary>
     [Fact]
-    public void New_workspace_starts_in_concentrated_mode()
+    public void New_workspace_starts_in_dock_mode()
     {
         var dir = Directory.CreateDirectory(Path.Combine(
             Path.GetTempPath(), $"loomo-workspace-{Guid.NewGuid():N}"));
@@ -21,8 +24,9 @@ public class WorkspaceListViewModelTests
         sut.ActivateFolder(dir.FullName);
 
         Assert.NotNull(activated);
-        Assert.Equal(DisplayMode.Solo, activated.Mode);
-        Assert.True(activated.Stage?.IsActive);
+        Assert.Equal(DisplayMode.Dock, activated.Mode);
+        Assert.Equal(DisplayMode.Dock, WorkspaceSessionCoordinator.ResolveDisplayMode(activated));
+        Assert.False(activated.Stage?.IsActive);
         Assert.Equal(PaneKind.Editor, activated.Stage?.Pane);
     }
 

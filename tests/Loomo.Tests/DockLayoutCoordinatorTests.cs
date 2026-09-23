@@ -203,6 +203,92 @@ public class DockLayoutCoordinatorTests
         Assert.Equal(PaneKind.Terminal, dock.BottomPane);
     }
 
+    /// <summary>ドックを一度も組んでいない部屋は、既定の見え方で開く
+    /// （中央＝本文・下＝シェル・右＝脇の面）。ドックは新しい部屋の既定モードなので、
+    /// ここが空だと「帯のアイコンを総当たりするまで何も出ていない部屋」が第一印象になる。</summary>
+    [Theory]
+    [InlineData(false)]   // 保存そのものが無い部屋（作られたばかり）
+    [InlineData(true)]    // 保存はあるが痕跡が無い部屋（分割・集中のまま毎回の保存で書かれただけ）
+    public void A_room_that_never_used_the_dock_opens_with_the_default_tools(bool hasSnapshot)
+    {
+        var dock = new DockLayoutCoordinator();
+        // 表示状態はモードを問わず毎回書き出すので、ドックへ一度も入っていない部屋にも
+        // 「下も右も null」のドック状態が保存されている——ここを「保存が無いこと」で判定すると、
+        // 既存の部屋が初めてドックを押したときこそ中央だけの空っぽで迎えることになる。
+        dock.Restore(active: true, snapshot: hasSnapshot ? new DockSnapshot() : null);
+        dock.EnsureCenterPane(_ => true);
+
+        Assert.Equal(PaneKind.Editor, dock.CenterPane);
+        Assert.Equal(DockLayoutCoordinator.InitialBottomPane, dock.BottomPane);
+        Assert.Equal(DockLayoutCoordinator.InitialRightPane, dock.RightPane);
+    }
+
+    /// <summary>畳んであったことは次の起動へ持ち越す——組んだことのある部屋の null は「畳んである」で、
+    /// 既定で埋め直すと畳む操作が無かったことになる。
+    /// <para><c>Configured</c> の印はこれを足した後の保存にしか無いので、それ以前の保存は<b>中身</b>で
+    /// 見分ける（立てた面・閉じた中央・動かした割り当てのどれか）。印だけで判ると、ターミナルを
+    /// わざわざ畳んでドックで暮らしていた部屋が、更新したとたん既定で埋め直される
+    /// ——実機の保存（`centerPane: 1, bottomPane: null, rightPane: 4`）で踏んだ。</para></summary>
+    [Theory]
+    [MemberData(nameof(ArrangedDocks))]
+    public void An_arranged_dock_keeps_its_collapsed_regions(DockSnapshot snapshot)
+    {
+        var dock = new DockLayoutCoordinator();
+        dock.Restore(active: true, snapshot: snapshot);
+        dock.EnsureCenterPane(_ => true);
+
+        Assert.Equal(PaneKind.Editor, dock.CenterPane);
+        Assert.Null(dock.BottomPane);
+        Assert.Null(dock.RightPane);
+    }
+
+    public static TheoryData<DockSnapshot> ArrangedDocks() => new()
+    {
+        // 印のある保存（これ以降に書かれたもの）
+        new DockSnapshot { Configured = true, CenterPane = PaneKind.Editor },
+        // 印より前の保存：中央に面が立っている
+        new DockSnapshot { CenterPane = PaneKind.Editor },
+        // 印より前の保存：割り当てを動かしてある（中央を空にしたまま畳んだ部屋）
+        new DockSnapshot {
+            CenterPane = PaneKind.Editor,
+            Placements = [new DockPlacementSnapshot { Kind = PaneKind.Git, Region = DockRegion.Right }],
+        },
+    };
+
+    /// <summary>中央を閉じたまま何も出していない部屋も「組んだ部屋」——畳んだ中央を既定で
+    /// 埋め直さないのと同じ理由で、下／右も埋めない。</summary>
+    [Fact]
+    public void A_dock_closed_down_to_nothing_is_still_an_arranged_dock()
+    {
+        var dock = new DockLayoutCoordinator();
+        dock.Restore(active: true, snapshot: new DockSnapshot { CenterClosed = true });
+        dock.EnsureCenterPane(_ => true);
+
+        Assert.Null(dock.CenterPane);
+        Assert.True(dock.CenterClosed);
+        Assert.Null(dock.BottomPane);
+        Assert.Null(dock.RightPane);
+    }
+
+    /// <summary>ドックへ入れば印が立ち、保存にも乗る（次の起動から畳んだ状態がその人の選択になる）。
+    /// 分割・集中のまま保存された部屋には立たない——毎回書かれる保存を「組んだ証拠」にしないため。</summary>
+    [Fact]
+    public void Entering_the_dock_marks_the_room_as_configured()
+    {
+        var dock = new DockLayoutCoordinator();
+        dock.Restore(active: false, snapshot: null);
+        Assert.False(dock.Configured);
+        Assert.False(dock.CaptureSnapshot().Configured);
+
+        dock.Enter();
+        Assert.True(dock.Configured);
+        Assert.True(dock.CaptureSnapshot().Configured);
+
+        // モードを出ても印は下りない（畳んである状態は以前の選択のまま残る）。
+        dock.Exit();
+        Assert.True(dock.CaptureSnapshot().Configured);
+    }
+
     /// <summary>中央の面を下／右へ移したら、中央には次の面が立つ（空にはしない）。</summary>
     [Fact]
     public void Moving_the_center_pane_away_promotes_another()

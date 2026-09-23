@@ -392,9 +392,12 @@ public sealed partial class WorkspaceListViewModel : ObservableObject
                 Name = DisplayName(fullPath),
                 LastUsedUtc = DateTime.UtcNow,
                 Terminal = new TerminalSnapshot { WorkingDirectory = fullPath },
-                Mode = DisplayMode.Solo,
+                // 新しい部屋の既定はドック（WorkspaceSessionCoordinator.DefaultDisplayMode）。
+                // Stage は「集中へ切り替えたら舞台に立つ面」として持たせておくだけなので、
+                // IsActive は立てない——旧データ移行の印（Mode の無い保存）と読み違えないため。
+                Mode = WorkspaceSessionCoordinator.DefaultDisplayMode,
                 Stage = new StageSnapshot {
-                    IsActive = true,
+                    IsActive = false,
                     Pane = PaneKind.Editor
                 }
             };

@@ -727,6 +727,17 @@ public sealed class DockSnapshot
     public PaneKind? RightPane { get; set; }
     public double? BottomHeight { get; set; }
     public double? RightWidth { get; set; }
+
+    /// <summary>この部屋でドックを組んだことがあるか。<b>「保存が無いこと」では代用できない</b>
+    /// ——表示状態はモードを問わず毎回書き出すので、ドックへ一度も入っていない部屋の保存にも
+    /// 「下も右も null」のドック状態が入っている。この印が立つまでは
+    /// <c>DockLayoutCoordinator.InitialBottomPane</c>／<c>InitialRightPane</c> を開いた姿で迎える
+    /// （＝ドックを初めて押した人に中央だけの空っぽを見せない）。立って以降の null は
+    /// その人が畳んだという意思表示なので、そのまま戻す。
+    /// <para>この項目より前に書かれた保存には入っていないので、そこは
+    /// <c>DockLayoutCoordinator.WasArranged</c> が<b>中身</b>で見分ける——立てた面や動かした割り当てが
+    /// 残っていれば、印が無くても組んだ部屋として扱う。</para></summary>
+    public bool Configured { get; set; }
 }
 
 /// <summary>ペイン1枚ぶんのドック割り当て。</summary>

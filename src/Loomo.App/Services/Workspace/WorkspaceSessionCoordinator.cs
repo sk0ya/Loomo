@@ -233,8 +233,18 @@ public static class WorkspaceSessionCoordinator
     public static bool ResolveSoloMode(WorkspaceSnapshot workspace)
         => ResolveDisplayMode(workspace) == DisplayMode.Solo;
 
+    /// <summary>新しく開いた部屋の表示モード。<b>ドック</b>——初めて入る部屋で、面が1枚だけ
+    /// 大きく出ている（集中）でも、名前の付いたタイルが組んである（分割）でもなく、
+    /// <em>何が住んでいる部屋なのか</em>が一目で読めるのはドックだけ。中央に本文、下にシェル、
+    /// 右に脇の面、そして帯に残り全部の取っ手が並ぶ姿が、そのまま部屋の見取り図になる。
+    /// <para>これは<b>作られた瞬間の1回だけ</b>効く（<c>WorkspaceListViewModel.ActivateFolder</c>）。
+    /// 以降はその部屋が最後に居たモードが正本で、保存済みの部屋には一切触らない。</para></summary>
+    public const DisplayMode DefaultDisplayMode = DisplayMode.Dock;
+
     /// <summary>復元する表示モード。<c>Mode</c> の無い旧データは <c>Stage.IsActive</c> から移行する
-    /// （ドックは後から足したモードなので、旧データがドックになることはない）。</summary>
+    /// （ドックは後から足したモードなので、旧データがドックになることはない——
+    /// <see cref="DefaultDisplayMode"/> をここへ持ち込まない理由でもある。既に保存のある部屋を
+    /// 新しい既定で塗り替えると、前に閉じたときの姿で開き直せなくなる）。</summary>
     public static DisplayMode ResolveDisplayMode(WorkspaceSnapshot workspace) => workspace.Mode switch
     {
         DisplayMode.Solo => DisplayMode.Solo,

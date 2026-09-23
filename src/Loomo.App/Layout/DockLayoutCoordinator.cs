@@ -64,7 +64,17 @@ public sealed class DockLayoutCoordinator
             [PaneKind.Files] = DockRegion.Bottom,
         };
 
+    /// <summary>ドックをまだ一度も組んでいない部屋を復元するときに、下／右へ出しておく面。
+    /// <para>ドックは新しい部屋の既定モード（<c>WorkspaceSessionCoordinator.DefaultDisplayMode</c>）なので、
+    /// 初回の見え方＝部屋の第一印象になる。中央だけ立って下も右も畳んであると、帯のアイコンを
+    /// 総当たりするまで「ここに何が住めるのか」が判らない——道具が一つずつ出ている姿を先に見せる。
+    /// <b>一度でもドックを組んだ部屋（<see cref="Configured"/>）には効かない</b>——そこでの null は
+    /// 「畳んである」という意思表示で、既定で埋め直すと畳む操作が無かったことになる。</para></summary>
+    public const PaneKind InitialBottomPane = PaneKind.Terminal;
+    public const PaneKind InitialRightPane = PaneKind.EditorSupport;
+
     private readonly Dictionary<PaneKind, DockRegion> _regions = new(DefaultRegions);
+    private bool _configured;
 
     public bool Active { get; private set; }
 
@@ -86,11 +96,16 @@ public sealed class DockLayoutCoordinator
     public double BottomHeight { get; private set; } = DefaultBottomHeight;
     public double RightWidth { get; private set; } = DefaultRightWidth;
 
+    /// <summary>この部屋でドックを組んだことがあるか（＝下／右の畳んである状態が、既定ではなく
+    /// その人の意思として読める印）。<see cref="InitialBottomPane"/> の既定を当てるかどうかの判定に使う。</summary>
+    public bool Configured => _configured;
+
     public bool Enter()
     {
         if (Active)
             return false;
         Active = true;
+        _configured = true;   // 一度でも入れば、以降の畳んである状態は既定ではなくその人の選択
         return true;
     }
 
@@ -114,19 +129,46 @@ public sealed class DockLayoutCoordinator
         RightPane = RightPane,
         BottomHeight = BottomHeight,
         RightWidth = RightWidth,
+        Configured = _configured,
     };
 
-    /// <summary>保存形式からドック状態を復元する。</summary>
+    /// <summary>保存形式からドック状態を復元する。<b>まだドックを組んでいない部屋は既定の見え方で開く</b>
+    /// （<see cref="InitialBottomPane"/>／<see cref="InitialRightPane"/>）。
+    /// <para>その判定は <see cref="WasArranged"/>（組んだ痕跡があるか）であって「保存が無いこと」ではない
+    /// ——<c>ShellWindow.CaptureInto</c> はモードを問わず毎回 <see cref="CaptureSnapshot"/> を書くので、
+    /// ドックへ一度も入っていない部屋の保存にも「下も右も null（＝畳んである）」の
+    /// <see cref="DockSnapshot"/> が入っている。保存の有無で判ると、既存の部屋が初めてドックを
+    /// 押したときこそ<b>中央だけの空っぽ</b>で迎えることになる。</para></summary>
     public void Restore(bool active, DockSnapshot? snapshot)
-        => Restore(active,
+    {
+        var configured = WasArranged(snapshot);
+        Restore(active,
             snapshot?.Placements?.Select(placement =>
                 new KeyValuePair<PaneKind, DockRegion>(placement.Kind, placement.Region)),
             snapshot?.CenterPane,
             snapshot?.CenterClosed ?? false,
-            snapshot?.BottomPane,
-            snapshot?.RightPane,
+            configured ? snapshot!.BottomPane : InitialBottomPane,
+            configured ? snapshot!.RightPane : InitialRightPane,
             snapshot?.BottomHeight,
             snapshot?.RightWidth);
+        _configured |= configured;
+    }
+
+    /// <summary>この保存はドックを組んだ部屋のものか（＝初回の既定を当ててはいけないか）。
+    /// <para><see cref="DockSnapshot.Configured"/> はこの印を足した後の保存にしか無いので、
+    /// それ以前の保存は<b>中身で見分ける</b>——立てた面・畳んだ先・動かした割り当てが1つでも
+    /// 残っていれば、その人はドックを組んでいる。印だけで判ると、ターミナルを<em>わざわざ</em>
+    /// 畳んでドックで暮らしていた部屋が、更新したとたん既定で埋め直される。
+    /// 逆に全部が空（＝モードを問わず毎回書かれる保存にドックの痕跡が無い）なら、そこは
+    /// まだ誰も組んでいない部屋なので、初回の見え方で迎える。</para></summary>
+    private static bool WasArranged(DockSnapshot? snapshot)
+        => snapshot is not null
+           && (snapshot.Configured
+               || snapshot.CenterClosed
+               || snapshot.CenterPane is not null
+               || snapshot.BottomPane is not null
+               || snapshot.RightPane is not null
+               || snapshot.Placements is { Count: > 0 });
 
     public DockRegion RegionOf(PaneKind kind)
         => _regions.TryGetValue(kind, out var region) ? region : DockRegion.Center;
@@ -290,6 +332,8 @@ public sealed class DockLayoutCoordinator
         double? rightWidth)
     {
         Active = active;
+        // ドックで開く部屋は、その時点で組んである部屋（次の保存から畳んだ状態が意思として残る）。
+        _configured = active;
         _regions.Clear();
         foreach (var (kind, region) in DefaultRegions)
             _regions[kind] = region;
