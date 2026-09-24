@@ -1,13 +1,12 @@
 # Build results
 [Bb]in/
 [Oo]bj/
-[Dd]ebug/
-[Rr]elease/
-
-# デバッグ実行機能のソースフォルダは上の [Dd]ebug/（ビルド出力向け）に巻き込まれるため明示的に追跡する
-!src/Loomo.Core/Debug/
-!src/Loomo.Services/Debug/
-!src/Loomo.CSharp/Debug/
+# Debug/ Release/ はリポジトリ直下だけを無視する。ビルド出力は bin/ obj/ の下にしか出ないのに、
+# 素の [Dd]ebug/ は src 配下の「Debug」という名前の**ソース**フォルダ（デバッグ実行機能など）まで
+# 巻き込み、コミットし忘れたまま他のPCでビルドが落ちる。以前は !src/... の例外を足して凌いでいたが、
+# フォルダを増やすたびに同じ穴が開くので、根元で直下限定にする。
+/[Dd]ebug/
+/[Rr]elease/
 x64/
 x86/
 [Ww][Ii][Nn]32/
