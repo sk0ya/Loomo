@@ -10,7 +10,8 @@ public partial class ShellWindow {
                 ActivateTerminalTab(tab.Id);
                 break;
             case TabEntryKind.Editor:
-                EnsurePaneVisibleOrSwapTopLeft(PaneKind.Editor);
+                // ファイルを開いたときと同じ判定（EditorSupport が前に出ていれば Editor を割り込ませない）。
+                EnsureEditorPaneForOpenedFile(_editorTabs.FirstOrDefault(t => t.Id == tab.Id)?.PeekFilePath);
                 ActivateEditorTab(tab.Id);
                 break;
             case TabEntryKind.Browser:

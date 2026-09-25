@@ -247,12 +247,16 @@ public partial class ShellWindow {
         if (wasFocused && TopLeftPane() is { } next)
             FocusPane(next);
     }
-    private void EnsureEditorPaneForOpenedFile(string path) {
+    /// <summary>ファイルを開いた・エディタのタブを選んだときの見せ方。Editor か EditorSupport の
+    /// どちらかが見えていればそのまま（EditorSupport を前に出しているところへ Editor を割り込ませない）。
+    /// <paramref name="path"/> は無題タブなら null。</summary>
+    private void EnsureEditorPaneForOpenedFile(string? path) {
         var plan = PaneRevealPolicy.ForOpenedFile(
-            BinaryFileDetector.IsBinary(path),
+            path is not null && BinaryFileDetector.IsBinary(path),
             _dockActive, _stageActive,
             IsPaneVisible(PaneKind.Editor), IsPaneVisible(PaneKind.EditorSupport),
-            OnStage(PaneKind.Editor), OnStage(PaneKind.EditorSupport));
+            OnStage(PaneKind.Editor), OnStage(PaneKind.EditorSupport),
+            IsDockPaneShown(PaneKind.Editor), IsDockPaneShown(PaneKind.EditorSupport));
         switch (plan.Action)
         {
             case PaneRevealAction.OpenDock: EnsureDockPaneShown(plan.Target); break;
