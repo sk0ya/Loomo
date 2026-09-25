@@ -11,18 +11,23 @@ namespace sk0ya.Loomo.Tests;
 /// </summary>
 public class PaneRevealPolicyTests
 {
-    private static PaneRevealPlan Dock(bool binary, bool editorShown, bool supportShown, bool sameRegion = true)
+    private static PaneRevealPlan Dock(bool binary, bool editorShown, bool supportShown, bool sameRegion = true, bool targetRegionEmpty = false)
         => PaneRevealPolicy.ForOpenedFile(
             binary, dockActive: true, stageActive: false,
             editorVisible: false, supportVisible: false, editorOnStage: false, supportOnStage: false,
-            editorDockShown: editorShown, supportDockShown: supportShown, sameDockRegion: sameRegion);
+            editorDockShown: editorShown, supportDockShown: supportShown, sameDockRegion: sameRegion, targetDockRegionEmpty: targetRegionEmpty);
 
     [Fact]
     public void ドックで同じ領域にEditorSupportが出ているときはEditorを前に出さない()
         => Assert.Equal(PaneRevealAction.None, Dock(binary: false, editorShown: false, supportShown: true).Action);
 
     [Fact]
-    public void ドックで別の領域にEditorSupportが出ていても中央にEditorが無ければEditorを開く()
+    public void ドックで中央が空いていて右にEditorSupportが出ているときはEditorを出さない()
+        => Assert.Equal(PaneRevealAction.None,
+            Dock(binary: false, editorShown: false, supportShown: true, sameRegion: false, targetRegionEmpty: true).Action);
+
+    [Fact]
+    public void ドックで右にEditorSupportが出ていても中央に別の面が出ていればEditorを開く()
     {
         var plan = Dock(binary: false, editorShown: false, supportShown: true, sameRegion: false);
         Assert.Equal(PaneRevealAction.OpenDock, plan.Action);
@@ -62,5 +67,5 @@ public class PaneRevealPolicyTests
         => Assert.Equal(PaneRevealAction.None, PaneRevealPolicy.ForOpenedFile(
             false, dockActive: false, stageActive: false,
             editorVisible: false, supportVisible: true, editorOnStage: false, supportOnStage: false,
-            editorDockShown: false, supportDockShown: false, sameDockRegion: false).Action);
+            editorDockShown: false, supportDockShown: false, sameDockRegion: false, targetDockRegionEmpty: false).Action);
 }
