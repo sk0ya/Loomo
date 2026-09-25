@@ -18,6 +18,8 @@ internal sealed class FolderTreeSelectionInteractionController
     private readonly DispatcherTimer _typeAheadResetTimer = new() { Interval = TimeSpan.FromMilliseconds(800) };
     private bool _suppressSelectionPreview;
     private FileNodeViewModel? _restoredSelection;
+    /// <summary>据え置きを予約した行。明けたときに<b>この行がまだ選ばれていれば</b>開く。</summary>
+    private FileNodeViewModel? _previewCandidate;
     private string _typeAheadText = string.Empty;
 
     internal FolderTreeSelectionInteractionController(
@@ -58,6 +60,7 @@ internal sealed class FolderTreeSelectionInteractionController
         if (_restoredSelection is not null && ReferenceEquals(newValue, _restoredSelection))
         {
             _restoredSelection = null;
+            StopPendingSelectionPreview();   // 復元の前に予約された据え置きにも、復元した行を開かせない
             return;
         }
 
@@ -66,9 +69,12 @@ internal sealed class FolderTreeSelectionInteractionController
             || Mouse.RightButton == MouseButtonState.Pressed)
             return;
 
-        // 移動中は据え置き、止まったところの行を開く。
+        // 移動中は据え置き、止まったところの行を開く。開くのは<b>予約した行</b>だけ
+        // （FolderTreeSelectionPreviewPolicy）。
         _selectionPreviewTimer.Stop();
-        _selectionPreviewTimer.Start();
+        _previewCandidate = FolderTreeSelectionPreviewPolicy.CandidateFor(newValue);
+        if (_previewCandidate is not null)
+            _selectionPreviewTimer.Start();
     }
 
     /// <summary>復元選択はプレビューやフォーカスを動かさず、表示位置だけ合わせる。</summary>
@@ -113,7 +119,11 @@ internal sealed class FolderTreeSelectionInteractionController
         e.Handled = true;
     }
 
-    internal void StopPendingSelectionPreview() => _selectionPreviewTimer.Stop();
+    internal void StopPendingSelectionPreview()
+    {
+        _selectionPreviewTimer.Stop();
+        _previewCandidate = null;
+    }
 
     internal void StopTypeAheadTimer() => _typeAheadResetTimer.Stop();
 
@@ -169,7 +179,10 @@ internal sealed class FolderTreeSelectionInteractionController
 
     private void PreviewSelectedNode()
     {
-        if (_tree.SelectedItem is not FileNodeViewModel { IsDirectory: false } node
+        var candidate = _previewCandidate;
+        _previewCandidate = null;
+        if (!FolderTreeSelectionPreviewPolicy.ShouldPreview(_tree.SelectedItem, candidate)
+            || candidate is not { } node
             || _getViewModel() is not { } vm)
             return;
 

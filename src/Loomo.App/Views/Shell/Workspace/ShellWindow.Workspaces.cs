@@ -2,6 +2,7 @@
 /// <summary>ShellWindow: ワークスペース切替とスナップショット保存・復元（タブ実体の付け替え）</summary>
 public partial class ShellWindow {
     private readonly WorkspaceSwitchRequestCoordinator _workspaceSwitchRequests = new();
+    private readonly WorkspaceTransitionGate _workspaceTransition = new();
 
     private void OnSidebarTabActivated(object? sender, TabEntryViewModel tab) {
         switch (tab.Kind) {
@@ -76,6 +77,8 @@ public partial class ShellWindow {
             workspaceId, _terminalWorkspaces, _editorWorkspaces, _browserWorkspaces);
     }
     private async Task SwitchWorkspaceAsync(WorkspaceSnapshot workspace, bool captureCurrent, bool deferHydration = false) {
+        // 切替は await をまたぐ。その間に届いたファイルを開く要求を、前のワークスペースのタブ集合へ入れさせない。
+        using var transition = _workspaceTransition.Begin();
         using var profile = WorkspaceSwitchProfiler.Begin(workspace.Name);
         if (captureCurrent)
             SaveActiveWorkspaceSnapshot(immediate: true);

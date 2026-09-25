@@ -23,6 +23,9 @@ public partial class ShellWindow {
         SaveActiveWorkspaceSnapshot();
     }
     private async Task OpenFileInNewEditorTabAsync(string path) {
+        // ワークスペース切替の途中は、タブ集合がまだ前のワークスペースを指している（WorkspaceTransitionGate）。
+        // 明示的に開いた要求は捨てず、切替が落ち着いてから新しいワークスペースで開く。
+        await _workspaceTransition.WhenSettledAsync();
         if (EditorTabNavigationPolicy.NormalizeExistingFilePath(path) is not { } normalizedPath)
             return;
         path = normalizedPath;
@@ -40,7 +43,12 @@ public partial class ShellWindow {
         _editorTabs.Add(tab);
         _vm.Tabs.AddEditorTab(tab.Id, path, false, false);
         ActivateEditorTab(tab.Id);
+        var epoch = _workspaceTransition.Epoch;
         await LoadEditorFileAsync(tab, path);
+        // 読み込みを待つ間に切替が挟まった：タブは開いたワークスペースに残るので、後始末
+        // （アクティブ評価・軌跡・EditorSupport・保存）を別のワークスペースへ効かせない。
+        if (_workspaceTransition.HasSwitchedSince(epoch))
+            return;
         OnActiveEditorFileChanged(tab);   // Activate 時点ではまだパス未設定なので、読み込み後に評価する
         UpdateEditorTab(tab);
         RecordTrailEditorTab(tab);
@@ -48,6 +56,10 @@ public partial class ShellWindow {
         SaveActiveWorkspaceSnapshot();
     }
     private async Task OpenFileInPreviewTabAsync(string path) {
+        // プレビューは「いま選んでいるものを覗く」だけなので、切替の途中に届いたものは捨てる
+        // （待って開くと、切替が復元したアクティブタブを前のワークスペースの選択で上書きしてしまう）。
+        if (_workspaceTransition.IsSwitching)
+            return;
         if (EditorTabNavigationPolicy.NormalizeExistingFilePath(path) is not { } normalizedPath)
             return;
         path = normalizedPath;
@@ -70,7 +82,12 @@ public partial class ShellWindow {
         _trailSuppressed = true;
         try { ActivateEditorTab(target.Id); }
         finally { _trailSuppressed = trailSaved; }
+        var epoch = _workspaceTransition.Epoch;
         await LoadEditorFileAsync(target, path);
+        // 読み込みを待つ間に切替が挟まった：前のワークスペースのタブをプレビュー枠として覚えさせない
+        // （新規タブで開くときと同じ理由）。
+        if (_workspaceTransition.HasSwitchedSince(epoch))
+            return;
         OnActiveEditorFileChanged(target);   // Activate 時点ではまだパス未設定なので、読み込み後に評価する
         SetPreviewTab(target);
         UpdateEditorTab(target);
