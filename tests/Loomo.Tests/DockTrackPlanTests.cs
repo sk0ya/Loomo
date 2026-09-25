@@ -20,48 +20,64 @@ public class DockTrackPlanTests
         Assert.True(plan.RightSplitter);
     }
 
-    /// <summary>中央を畳んだら、その場所は下の領域が取る（空の枠は残さない）。</summary>
+    /// <summary>中央を畳んだら、上の行は右の領域が取る（空の枠は残さない）。
+    /// 下の領域は中央と右の両方の下に敷いてあるので、決めた高さのまま残る。</summary>
     [Fact]
-    public void Closing_the_center_gives_its_place_to_the_bottom()
+    public void Closing_the_center_gives_its_place_to_the_right()
     {
         var plan = DockTrackPlan.For(center: false, bottom: true, right: true);
 
-        Assert.Equal(DockTrackSize.Collapsed, plan.CenterRow);
-        Assert.Equal(DockTrackSize.Fill, plan.CenterColumn);   // 下は中央と同じ列に住む
-        Assert.Equal(DockTrackSize.Fill, plan.BottomRow);
-        Assert.Equal(DockTrackSize.Fixed, plan.RightColumn);
-        Assert.False(plan.BottomSplitter);   // 上に何も無い＝掴んでも動かす先が無い
-        Assert.True(plan.RightSplitter);
+        Assert.Equal(DockTrackSize.Fill, plan.CenterRow);          // 右は中央と同じ行に住む
+        Assert.Equal(DockTrackSize.Collapsed, plan.CenterColumn);
+        Assert.Equal(DockTrackSize.Fixed, plan.BottomRow);
+        Assert.Equal(DockTrackSize.Fill, plan.RightColumn);
+        Assert.True(plan.BottomSplitter);    // 上に右の領域がある
+        Assert.False(plan.RightSplitter);    // 左に何も無い＝掴んでも動かす先が無い
     }
 
-    /// <summary>中央も下も無ければ<b>列ごと</b>畳んで、右の領域が全部を取る。
-    /// 畳むのは列だけで、行は残す（行は右の領域・サイドバー・帯がまたいでいる）。</summary>
+    /// <summary>中央も右も無ければ<b>行ごと</b>畳んで、下の領域が全部を取る。
+    /// 畳むのは行だけで、列は残す（列は下の領域・帯がまたいでいる）。</summary>
+    [Fact]
+    public void Only_the_bottom_region_fills_everything()
+    {
+        var plan = DockTrackPlan.For(center: false, bottom: true, right: false);
+
+        Assert.Equal(DockTrackSize.Collapsed, plan.CenterRow);
+        Assert.Equal(DockTrackSize.Fill, plan.CenterColumn);       // 列を 0 にすると帯が迷い出る
+        Assert.Equal(DockTrackSize.Fill, plan.BottomRow);
+        Assert.Equal(DockTrackSize.Collapsed, plan.RightColumn);
+        Assert.False(plan.BottomSplitter);
+        Assert.False(plan.RightSplitter);
+    }
+
+    /// <summary>右だけ＝上の行を右が全部取る（下は無いので行は中央のまま）。</summary>
     [Fact]
     public void Only_the_right_region_fills_everything()
     {
         var plan = DockTrackPlan.For(center: false, bottom: false, right: true);
 
-        Assert.Equal(DockTrackSize.Fill, plan.CenterRow);       // 行を 0 にすると右も帯も高さを失う
-        Assert.Equal(DockTrackSize.Collapsed, plan.CenterColumn);   // 列は右が引き取るので畳める
+        Assert.Equal(DockTrackSize.Fill, plan.CenterRow);
+        Assert.Equal(DockTrackSize.Collapsed, plan.CenterColumn);
         Assert.Equal(DockTrackSize.Collapsed, plan.BottomRow);
         Assert.Equal(DockTrackSize.Fill, plan.RightColumn);
         Assert.False(plan.BottomSplitter);
         Assert.False(plan.RightSplitter);
     }
 
-    /// <summary>中央の行を畳むのは「下がその場所を取るとき」だけ。中央の行は右帯・サイドバー・
-    /// 右の領域がまたいでいる行でもあるので、下が引き取らないのに 0 にすると<b>帯まで消える</b>。</summary>
+    /// <summary>中央の行を畳むのは「下が全部を取るとき」だけ。中央の行は右の領域・右帯・サイドバーが
+    /// またいでいる行でもあるので、下が引き取らないのに 0 にすると<b>右も帯も消える</b>。</summary>
     [Theory]
-    [InlineData(true, true, true)]      // 中央あり＝行は中央のもの
+    [InlineData(true, true, true)]
     [InlineData(true, false, false)]
-    [InlineData(false, false, true)]    // 右だけ＝行は空だが残す
+    [InlineData(false, true, true)]     // 右があれば、下があっても行は右のもの
+    [InlineData(false, false, true)]
     [InlineData(false, false, false)]   // 何も出ていなくても残す
     public void The_center_row_only_collapses_when_the_bottom_takes_over(bool center, bool bottom, bool right)
     {
         var plan = DockTrackPlan.For(center, bottom, right);
 
         Assert.Equal(DockTrackSize.Fill, plan.CenterRow);
-        Assert.Equal(DockTrackSize.Collapsed, DockTrackPlan.For(false, true, right).CenterRow);
+        Assert.Equal(DockTrackSize.Collapsed, DockTrackPlan.For(false, true, false).CenterRow);
     }
 
     /// <summary>中央だけ＝ほかの枠は 0（1枚を邪魔するものを残さない）。</summary>
@@ -117,13 +133,14 @@ public class DockTrackPlanTests
     [Theory]
     [InlineData(true, true, true, true)]
     [InlineData(true, true, false, true)]
-    [InlineData(false, true, true, false)]
+    [InlineData(false, true, true, true)]
+    [InlineData(false, true, false, false)]
     [InlineData(true, false, true, false)]
     public void Splitters_need_both_sides(bool center, bool bottom, bool right, bool bottomSplitter)
     {
         var plan = DockTrackPlan.For(center, bottom, right);
 
         Assert.Equal(bottomSplitter, plan.BottomSplitter);
-        Assert.Equal(right && (center || bottom), plan.RightSplitter);
+        Assert.Equal(right && center, plan.RightSplitter);
     }
 }

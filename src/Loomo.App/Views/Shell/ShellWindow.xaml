@@ -2556,18 +2556,20 @@
                      中央はタイル配置（PaneHost）のまま。下／右へ割り当てたペインだけがタイルから抜けて、
                      この領域に1枚ずつ出る。開閉は右帯のアイコン（アイコンがタブを兼ねる）。
                      畳むときは高さ／幅を0にするのではなく Visibility.Collapsed にする——0 サイズで
-                     配置された WebView2 はフレームプールごと壊れる（§26.3）。 -->
-                <Thumb x:Name="DockBottomSplitter" Grid.Row="1" Grid.Column="2"
+                     配置された WebView2 はフレームプールごと壊れる（§26.3）。
+                     下の領域は中央と右の領域の両方の下へ敷く（列 2〜6 をまたぐ）。右の領域は上の行だけに住み、
+                     下の領域の上で止まる——足元の道具は横幅いっぱいに使えるほうが読める（ログ・差分・一覧）。 -->
+                <Thumb x:Name="DockBottomSplitter" Grid.Row="1" Grid.Column="2" Grid.ColumnSpan="5"
                        VerticalAlignment="Stretch" Panel.ZIndex="2"
                        Style="{StaticResource PaneResizeThumbHorizontal}" Visibility="Collapsed"
                        ToolTip="ドラッグで下の領域の高さを変更／ダブルクリックで既定の高さへ戻す" />
-                <Grid x:Name="DockBottomHost" Grid.Row="2" Grid.Column="2" Visibility="Collapsed" />
+                <Grid x:Name="DockBottomHost" Grid.Row="2" Grid.Column="2" Grid.ColumnSpan="5" Visibility="Collapsed" />
 
-                <Thumb x:Name="DockRightSplitter" Grid.Column="5" Grid.RowSpan="3"
+                <Thumb x:Name="DockRightSplitter" Grid.Row="0" Grid.Column="5"
                        HorizontalAlignment="Stretch" Panel.ZIndex="2"
                        Style="{StaticResource PaneResizeThumb}" Visibility="Collapsed"
                        ToolTip="ドラッグで右の領域の幅を変更／ダブルクリックで既定の幅へ戻す" />
-                <Grid x:Name="DockRightHost" Grid.Column="6" Grid.RowSpan="3" Visibility="Collapsed" />
+                <Grid x:Name="DockRightHost" Grid.Row="0" Grid.Column="6" Visibility="Collapsed" />
 
                 <!-- 右帯：上＝右ドック、区切りを挟んで下＝下ドックのトグル（ActivityBar の対）。
                      中身は ShellWindow.Dock.cs が組む（顔ぶれがワークスペースで変わるため）。 -->
