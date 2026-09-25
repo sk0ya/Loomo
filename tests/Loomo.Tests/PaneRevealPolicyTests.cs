@@ -11,15 +11,31 @@ namespace sk0ya.Loomo.Tests;
 /// </summary>
 public class PaneRevealPolicyTests
 {
-    private static PaneRevealPlan Dock(bool binary, bool editorShown, bool supportShown)
+    private static PaneRevealPlan Dock(bool binary, bool editorShown, bool supportShown, bool sameRegion = true)
         => PaneRevealPolicy.ForOpenedFile(
             binary, dockActive: true, stageActive: false,
             editorVisible: false, supportVisible: false, editorOnStage: false, supportOnStage: false,
-            editorDockShown: editorShown, supportDockShown: supportShown);
+            editorDockShown: editorShown, supportDockShown: supportShown, sameDockRegion: sameRegion);
 
     [Fact]
-    public void ドックでEditorSupportが出ているときはEditorを前に出さない()
+    public void ドックで同じ領域にEditorSupportが出ているときはEditorを前に出さない()
         => Assert.Equal(PaneRevealAction.None, Dock(binary: false, editorShown: false, supportShown: true).Action);
+
+    [Fact]
+    public void ドックで別の領域にEditorSupportが出ていても中央にEditorが無ければEditorを開く()
+    {
+        var plan = Dock(binary: false, editorShown: false, supportShown: true, sameRegion: false);
+        Assert.Equal(PaneRevealAction.OpenDock, plan.Action);
+        Assert.Equal(PaneKind.Editor, plan.Target);
+    }
+
+    [Fact]
+    public void ドックで別の領域にEditorが出ていてもEditorSupportが出ていなければバイナリはEditorSupportを開く()
+    {
+        var plan = Dock(binary: true, editorShown: true, supportShown: false, sameRegion: false);
+        Assert.Equal(PaneRevealAction.OpenDock, plan.Action);
+        Assert.Equal(PaneKind.EditorSupport, plan.Target);
+    }
 
     [Fact]
     public void ドックでEditorが出ているときは何もしない()
@@ -46,5 +62,5 @@ public class PaneRevealPolicyTests
         => Assert.Equal(PaneRevealAction.None, PaneRevealPolicy.ForOpenedFile(
             false, dockActive: false, stageActive: false,
             editorVisible: false, supportVisible: true, editorOnStage: false, supportOnStage: false,
-            editorDockShown: false, supportDockShown: false).Action);
+            editorDockShown: false, supportDockShown: false, sameDockRegion: false).Action);
 }

@@ -249,6 +249,7 @@ public partial class ShellWindow {
     }
     /// <summary>ファイルを開いた・エディタのタブを選んだときの見せ方。Editor か EditorSupport の
     /// どちらかが見えていればそのまま（EditorSupport を前に出しているところへ Editor を割り込ませない）。
+    /// ドックは Editor の領域を EditorSupport が占めているときだけ控える（別の領域なら Editor を出す）。
     /// <paramref name="path"/> は無題タブなら null。</summary>
     private void EnsureEditorPaneForOpenedFile(string? path) {
         var plan = PaneRevealPolicy.ForOpenedFile(
@@ -256,7 +257,8 @@ public partial class ShellWindow {
             _dockActive, _stageActive,
             IsPaneVisible(PaneKind.Editor), IsPaneVisible(PaneKind.EditorSupport),
             OnStage(PaneKind.Editor), OnStage(PaneKind.EditorSupport),
-            IsDockPaneShown(PaneKind.Editor), IsDockPaneShown(PaneKind.EditorSupport));
+            IsDockPaneShown(PaneKind.Editor), IsDockPaneShown(PaneKind.EditorSupport),
+            _dockMode.RegionOf(PaneKind.Editor) == _dockMode.RegionOf(PaneKind.EditorSupport));
         switch (plan.Action)
         {
             case PaneRevealAction.OpenDock: EnsureDockPaneShown(plan.Target); break;
