@@ -95,7 +95,7 @@
          タブの別ウィンドウ切り離し、貼り付け改行のCR正規化、ConPTY破棄時のデッドロック修正、FlowDocument描画経路の削除 -->
     <!-- 1.0.33: 行数を縮めたとき画面の中身（カーソル行）を履歴へ押し出さないよう修正、
          入力を送ったら表示を生きている画面へ戻すよう修正（履歴を読んでいる最中のCtrl+L・打鍵） -->
-    <PackageReference Include="sk0ya.Terminal.Controls" Version="1.0.33" />
+    <PackageReference Include="sk0ya.Terminal.Controls" Version="1.0.34" />
   </ItemGroup>
 
 </Project>
