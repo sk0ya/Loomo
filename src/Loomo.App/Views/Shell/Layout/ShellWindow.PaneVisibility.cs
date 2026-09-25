@@ -252,16 +252,14 @@ public partial class ShellWindow {
     /// ドックは Editor の領域に別の面（Terminal 等）が出ているときだけ、EditorSupport が出ていても Editor を出す。
     /// <paramref name="path"/> は無題タブなら null。</summary>
     private void EnsureEditorPaneForOpenedFile(string? path) {
-        var isBinary = path is not null && BinaryFileDetector.IsBinary(path);
-        var target = isBinary ? PaneKind.EditorSupport : PaneKind.Editor;
         var plan = PaneRevealPolicy.ForOpenedFile(
-            isBinary,
+            path is not null && BinaryFileDetector.IsBinary(path),
             _dockActive, _stageActive,
             IsPaneVisible(PaneKind.Editor), IsPaneVisible(PaneKind.EditorSupport),
             OnStage(PaneKind.Editor), OnStage(PaneKind.EditorSupport),
             IsDockPaneShown(PaneKind.Editor), IsDockPaneShown(PaneKind.EditorSupport),
-            _dockMode.RegionOf(PaneKind.Editor) == _dockMode.RegionOf(PaneKind.EditorSupport),
-            _dockMode.OpenPaneIn(_dockMode.RegionOf(target)) is null);
+            _dockMode.OpenPaneIn(_dockMode.RegionOf(PaneKind.Editor))
+                is { } inEditorRegion && inEditorRegion != PaneKind.Editor && inEditorRegion != PaneKind.EditorSupport);
         switch (plan.Action)
         {
             case PaneRevealAction.OpenDock: EnsureDockPaneShown(plan.Target); break;
