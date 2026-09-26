@@ -37,9 +37,9 @@ public partial class ShellWindow
             this, title, prompt, initial, allowEmpty: allowEmpty),
         ShowRefactorStatus,
         FindOpenCSharpEditorTexts,
-        (edit, expectedTexts, showPreview) => ApplyLspWorkspaceEdit(
+        (edit, expectedTexts) => ApplyLspWorkspaceEdit(
             edit.Changes, edit.DocumentVersions, edit.FileOperations,
-            expectedTexts: expectedTexts, showPreview: showPreview));
+            expectedTexts: expectedTexts));
 
     private Task RunCSharpOrganizeUsingsAsync(VimEditorControl control)
         => CSharpRefactoring.RunCSharpOrganizeUsingsAsync(control);
@@ -47,7 +47,7 @@ public partial class ShellWindow
     private Task RunCSharpCleanupAsync(VimEditorControl control)
         => CSharpRefactoring.RunCSharpCleanupAsync(control);
 
-    /// <summary>保存時cleanup。単一の開いている文書だけを整え、プレビューなしのWorkspaceEditとして記録する。</summary>
+    /// <summary>保存時cleanup。単一の開いている文書だけを整え、WorkspaceEditとして記録する。</summary>
     private async Task PrepareEditorSaveAsync(VimEditorControl control, string? targetPath)
     {
         if (!_settings.Editor.CleanCSharpOnSave ||
@@ -59,7 +59,7 @@ public partial class ShellWindow
             return;
 
         await CSharpRefactoring.RunCSharpCleanupAsync(
-            control, showPreview: false, suppressRoutineMessages: true);
+            control, onSave: true);
     }
 
     private Task RunCSharpExtractMethodAsync(VimEditorControl control)

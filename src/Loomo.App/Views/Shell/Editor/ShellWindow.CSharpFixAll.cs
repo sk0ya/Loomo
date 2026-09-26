@@ -95,10 +95,8 @@ public partial class ShellWindow
         }
     }
 
-    /// <summary>Fix all の結果文。編集プレビューでの取り消しは失敗ではないので、
-    /// 上の <c>OperationCanceledException</c>（探索中の中断）と同じ言い方に揃える。</summary>
+    /// <summary>Fix all の結果文。</summary>
     private static string DescribeFixAll(sk0ya.Loomo.App.Services.WorkspaceEditOutcome outcome, string applied) =>
-        outcome.Cancelled ? "Fix allをキャンセルしました。"
-        : outcome.Error is { } error ? $"Fix allを適用できませんでした: {error}"
+        outcome.Error is { } error ? $"Fix allを適用できませんでした: {error}"
         : applied;
 }

@@ -25,12 +25,10 @@ internal sealed class LspApplyEditPresenter
     {
         // LSPの読取スレッドは応答を待っているため、UI dispatch を同期完了してから結果を返す。
         var outcome = _dispatcher.Invoke(() => _apply(request.Edit));
-        request.Applied = !outcome.Cancelled && outcome.Error is null;
+        request.Applied = outcome.Error is null;
         request.FailureReason = outcome.Error;
 
-        if (outcome.Cancelled)
-            _dispatcher.BeginInvoke(new Action(() => _showStatus("編集は取り消しました。")));
-        else if (outcome.Error is { } error)
+        if (outcome.Error is { } error)
             _dispatcher.BeginInvoke(new Action(() => _showStatus($"編集を適用できませんでした: {error}")));
     }
 }

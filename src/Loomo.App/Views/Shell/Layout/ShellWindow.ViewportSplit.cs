@@ -292,16 +292,14 @@ public partial class ShellWindow {
         return control;
     }
     private void OnEditorWorkspaceEditRequested(object? sender, WorkspaceEditRequestedEventArgs e) {
-        var currentPreview = e.CurrentFilePath is { Length: > 0 } path &&
+        var currentDocument = e.CurrentFilePath is { Length: > 0 } path &&
             e.CurrentOriginalText is { } original && e.CurrentUpdatedText is { } updated
-            ? new WorkspaceEditPreviewFile(path, original, updated)
+            ? new WorkspaceEditCurrentDocument(path, original, updated)
             : null;
         var outcome = ApplyLspWorkspaceEdit(e.Changes, e.DocumentVersions, e.FileOperations,
-            currentPreview, e.ExpectedTexts);
-        // 取り消しは失敗ではない。エディタ側もこれを見て「失敗しました」と言わなくなる。
-        e.Cancelled = outcome.Cancelled;
+            currentDocument, e.ExpectedTexts);
         e.Error = outcome.Error;
-        e.Handled = !outcome.Cancelled && outcome.Error is null;
+        e.Handled = outcome.Error is null;
     }
 
     /// <summary>WorkspaceEdit の適用本体はトランザクション coordinator へ委譲する。</summary>
@@ -309,20 +307,11 @@ public partial class ShellWindow {
         IReadOnlyDictionary<string, IReadOnlyList<Editor.Core.Lsp.LspTextEdit>> changes,
         IReadOnlyDictionary<string, int?>? documentVersions,
         IReadOnlyList<Editor.Core.Lsp.LspFileOperation>? fileOperations,
-        WorkspaceEditPreviewFile? currentPreview = null,
-        IReadOnlyDictionary<string, string>? expectedTexts = null,
-        bool showPreview = true)
+        WorkspaceEditCurrentDocument? currentDocument = null,
+        IReadOnlyDictionary<string, string>? expectedTexts = null)
         => _workspaceEditTransactions.Apply(changes, documentVersions, fileOperations,
-            currentPreview, expectedTexts, _workspace.Folders, _editorTabs,
-            EditorPathMatches, ShowWorkspaceEditPreview, showPreview);
-
-    private bool ShowWorkspaceEditPreview(
-        IReadOnlyList<WorkspaceEditPreviewFile> files,
-        IReadOnlyList<WorkspaceEditPreviewOperation> operations)
-    {
-        var preview = new WorkspaceEditPreviewDialog("WorkspaceEdit", files, operations) { Owner = this };
-        return preview.ShowDialog() == true;
-    }
+            currentDocument, expectedTexts, _workspace.Folders, _editorTabs,
+            EditorPathMatches);
 
     private bool TryHandleWorkspaceEditUndo(KeyEventArgs e)
     {

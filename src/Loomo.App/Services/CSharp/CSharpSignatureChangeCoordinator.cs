@@ -34,11 +34,6 @@ internal static class CSharpSignatureChangeCoordinator
         }
 
         var outcome = apply(plan.Changes, plan.ExpectedTexts);
-        if (outcome.Cancelled)
-        {
-            showStatus("シグネチャの変更は取り消しました。");
-            return;
-        }
         if (outcome.Error is { } error)
         {
             showStatus($"シグネチャを変更できませんでした: {error}");

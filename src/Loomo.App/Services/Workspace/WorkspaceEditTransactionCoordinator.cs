@@ -6,22 +6,25 @@ using sk0ya.Loomo.CSharp.Refactoring;
 
 namespace sk0ya.Loomo.App.Services;
 
-/// <summary>WorkspaceEdit の成功・失敗・利用者キャンセルを区別する。</summary>
-internal readonly record struct WorkspaceEditOutcome(string? Error, bool Cancelled)
+/// <summary>WorkspaceEdit の成功・失敗を区別する。</summary>
+internal readonly record struct WorkspaceEditOutcome(string? Error)
 {
-    internal static WorkspaceEditOutcome Ok() => new(null, false);
-    internal static WorkspaceEditOutcome Fail(string error) => new(error, false);
-    internal static WorkspaceEditOutcome Cancel() => new(null, true);
+    internal static WorkspaceEditOutcome Ok() => new((string?)null);
+    internal static WorkspaceEditOutcome Fail(string error) => new(error);
 
     internal string? Describe(string what) =>
-        Cancelled ? $"「{what}」は取り消しました。"
-        : Error is { } error ? $"「{what}」を適用できませんでした: {error}"
-        : null;
+        Error is { } error ? $"「{what}」を適用できませんでした: {error}" : null;
 }
 
 /// <summary>
-/// 複数文書とファイル操作を一つのトランザクションとして適用する。プレビュー、エディタタブ検索、
-/// ステータス表示だけを呼び出し側へ委ね、検証・snapshot・適用・rollback・undo/redoをまとめて扱う。
+/// エディタ側で既に書き換え済みの現在文書（編集前後の全文）。適用後の undo/redo の snapshot に使う。
+/// </summary>
+public sealed record WorkspaceEditCurrentDocument(string Path, string OriginalText, string UpdatedText);
+
+/// <summary>
+/// 複数文書とファイル操作を一つのトランザクションとして適用する。エディタタブ検索だけを呼び出し側へ委ね、
+/// 検証・snapshot・適用・rollback・undo/redoをまとめて扱う。
+/// 候補を選んだ後に差分確認のダイアログは挟まない（選んだ時点で利用者は実行を決めている。undoで戻せる）。
 /// </summary>
 internal sealed class WorkspaceEditTransactionCoordinator
 {
@@ -41,13 +44,11 @@ internal sealed class WorkspaceEditTransactionCoordinator
         IReadOnlyDictionary<string, IReadOnlyList<LspTextEdit>> changes,
         IReadOnlyDictionary<string, int?>? documentVersions,
         IReadOnlyList<LspFileOperation>? fileOperations,
-        WorkspaceEditPreviewFile? currentPreview,
+        WorkspaceEditCurrentDocument? currentDocument,
         IReadOnlyDictionary<string, string>? expectedTexts,
         IReadOnlyList<string> folders,
         IReadOnlyList<EditorTab> editorTabs,
-        Func<VimEditorControl, string?, bool> editorPathMatches,
-        Func<IReadOnlyList<WorkspaceEditPreviewFile>, IReadOnlyList<WorkspaceEditPreviewOperation>, bool> showPreview,
-        bool requirePreview = true)
+        Func<VimEditorControl, string?, bool> editorPathMatches)
     {
         if (folders.Count == 0)
             return WorkspaceEditOutcome.Fail("ワークスペースが開かれていません。");
@@ -96,22 +97,8 @@ internal sealed class WorkspaceEditTransactionCoordinator
                 plans.Add(new(path, edits, null, [], originalText, updatedText, updatedText, encoding));
             }
 
-            var previewFiles = plans
-                .Where(plan => !string.Equals(plan.OriginalText, plan.UpdatedText, StringComparison.Ordinal))
-                .Select(plan => new WorkspaceEditPreviewFile(plan.Path, plan.OriginalText, plan.UpdatedText))
-                .ToList();
-            if (currentPreview is not null &&
-                !string.Equals(currentPreview.OriginalText, currentPreview.UpdatedText, StringComparison.Ordinal))
-                previewFiles.Insert(0, currentPreview);
-            var previewOperations = operations.Select(ToPreviewOperation).ToList();
-            fileSnapshots = CaptureFileSnapshots(operations, plans, currentPreview);
-            editorSnapshots = CaptureEditorSnapshots(plans, currentPreview, editorTabs, editorPathMatches);
-            if (requirePreview && (previewFiles.Count > 0 || previewOperations.Count > 0) &&
-                !showPreview(previewFiles, previewOperations))
-                return WorkspaceEditOutcome.Cancel();
-
-            // プレビュー中にユーザーや別プロセスが触った場合は、確認済みの差分を上書きしない。
-            VerifyTransactionSnapshots(fileSnapshots, editorSnapshots);
+            fileSnapshots = CaptureFileSnapshots(operations, plans, currentDocument);
+            editorSnapshots = CaptureEditorSnapshots(plans, currentDocument, editorTabs, editorPathMatches);
             if (operations.Count > 0)
             {
                 mutationStarted = true;
@@ -136,7 +123,7 @@ internal sealed class WorkspaceEditTransactionCoordinator
             RecordHistory("LSP／Roslyn WorkspaceEdit", fileSnapshots,
                 CaptureFileSnapshots(fileSnapshots.Keys),
                 CaptureEditorTextSnapshots(editorSnapshots!),
-                CaptureEditorTextSnapshots(editorSnapshots!, currentPreview, useCurrentText: true));
+                CaptureEditorTextSnapshots(editorSnapshots!, currentDocument, useCurrentText: true));
             return WorkspaceEditOutcome.Ok();
         }
         catch (Exception ex)
@@ -257,7 +244,7 @@ internal sealed class WorkspaceEditTransactionCoordinator
 
     private static Dictionary<string, LspFileSnapshot> CaptureFileSnapshots(
         IReadOnlyList<LspFileOperation> operations, IReadOnlyList<EditPlan> plans,
-        WorkspaceEditPreviewFile? currentPreview = null)
+        WorkspaceEditCurrentDocument? currentDocument = null)
     {
         var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var operation in operations)
@@ -270,8 +257,8 @@ internal sealed class WorkspaceEditTransactionCoordinator
         // 開いている文書もディスク内容を記録し、preview中の外部書き込みを上書きしない。
         foreach (var plan in plans)
             paths.Add(Path.GetFullPath(plan.Path));
-        if (currentPreview is { Path.Length: > 0 })
-            paths.Add(Path.GetFullPath(currentPreview.Path));
+        if (currentDocument is { Path.Length: > 0 })
+            paths.Add(Path.GetFullPath(currentDocument.Path));
 
         var result = new Dictionary<string, LspFileSnapshot>(StringComparer.OrdinalIgnoreCase);
         foreach (var path in paths)
@@ -295,44 +282,29 @@ internal sealed class WorkspaceEditTransactionCoordinator
     }
 
     private static Dictionary<VimEditorControl, string> CaptureEditorSnapshots(
-        IReadOnlyList<EditPlan> plans, WorkspaceEditPreviewFile? currentPreview,
+        IReadOnlyList<EditPlan> plans, WorkspaceEditCurrentDocument? currentDocument,
         IReadOnlyList<EditorTab> editorTabs,
         Func<VimEditorControl, string?, bool> editorPathMatches)
     {
         var editors = plans.SelectMany(plan => plan.Open).ToHashSet();
-        if (currentPreview is not null)
+        if (currentDocument is not null)
             foreach (var tab in editorTabs.Where(tab => tab.IsRealized &&
-                editorPathMatches(tab.Control, currentPreview.Path)))
+                editorPathMatches(tab.Control, currentDocument.Path)))
                 editors.Add(tab.Control);
         return editors.ToDictionary(editor => editor, editor => editor.Text);
     }
 
     private static Dictionary<string, string> CaptureEditorTextSnapshots(
         IReadOnlyDictionary<VimEditorControl, string> editors,
-        WorkspaceEditPreviewFile? currentPreview = null, bool useCurrentText = false)
+        WorkspaceEditCurrentDocument? currentDocument = null, bool useCurrentText = false)
     {
         var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var (editor, text) in editors)
             if (editor.FilePath is { Length: > 0 } path)
                 result[Path.GetFullPath(path)] = useCurrentText ? editor.Text : text;
-        if (currentPreview is { Path.Length: > 0 })
-            result[Path.GetFullPath(currentPreview.Path)] = currentPreview.UpdatedText;
+        if (currentDocument is { Path.Length: > 0 })
+            result[Path.GetFullPath(currentDocument.Path)] = currentDocument.UpdatedText;
         return result;
-    }
-
-    private static void VerifyTransactionSnapshots(
-        IReadOnlyDictionary<string, LspFileSnapshot> files,
-        IReadOnlyDictionary<VimEditorControl, string> editors)
-    {
-        foreach (var (path, expected) in files)
-        {
-            var actual = CaptureFileSnapshot(path);
-            if (!SameFileSnapshot(expected, actual))
-                throw new InvalidOperationException($"{path}: preview後に外部変更が検出されました。再度実行してください。");
-        }
-        foreach (var (editor, expected) in editors)
-            if (!string.Equals(editor.Text, expected, StringComparison.Ordinal))
-                throw new InvalidOperationException($"{editor.FilePath}: preview後に編集中の内容が変更されました。再度実行してください。");
     }
 
     private static void RestoreTransactionSnapshots(
@@ -469,16 +441,6 @@ internal sealed class WorkspaceEditTransactionCoordinator
             string.Equals(LspUri.TryToLocalPath(candidate.NewUri ?? ""), path, StringComparison.OrdinalIgnoreCase));
         return operation is null ? null : LspUri.TryToLocalPath(operation.Uri);
     }
-
-    private static WorkspaceEditPreviewOperation ToPreviewOperation(LspFileOperation operation)
-        => new(operation.Kind switch
-        {
-            LspFileOperationKind.Create => "create",
-            LspFileOperationKind.Rename => "rename",
-            LspFileOperationKind.Delete => "delete",
-            _ => "file operation",
-        }, LspUri.TryToLocalPath(operation.Uri) ?? operation.Uri,
-            operation.NewUri is null ? null : LspUri.TryToLocalPath(operation.NewUri) ?? operation.NewUri);
 
     private static void ApplyFileOperations(
         IReadOnlyList<LspFileOperation> operations, IReadOnlyList<string> folders)
