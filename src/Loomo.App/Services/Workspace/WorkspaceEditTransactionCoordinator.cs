@@ -254,7 +254,7 @@ internal sealed class WorkspaceEditTransactionCoordinator
             if (operation.NewUri is not null && LspUri.TryToLocalPath(operation.NewUri) is { } newPath)
                 paths.Add(Path.GetFullPath(newPath));
         }
-        // 開いている文書もディスク内容を記録し、preview中の外部書き込みを上書きしない。
+        // 開いている文書もディスク内容を記録し、失敗時の rollback と undo で元へ戻せるようにする。
         foreach (var plan in plans)
             paths.Add(Path.GetFullPath(plan.Path));
         if (currentDocument is { Path.Length: > 0 })
