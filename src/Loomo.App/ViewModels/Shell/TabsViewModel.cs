@@ -9,6 +9,7 @@ using System.Windows;
 using System.Windows.Data;
 using System.Windows.Media;
 using sk0ya.Loomo.App.Services;
+using sk0ya.Loomo.Core.Abstractions;
 using sk0ya.Loomo.Core.Settings;
 using sk0ya.Loomo.Services.Settings;
 
@@ -73,6 +74,10 @@ public sealed partial class TabEntryViewModel : ObservableObject
 
     /// <summary>プレビュータブ（FolderTree の単クリックで開き、編集するまで確定しない）。タイトルを斜体で表示する。</summary>
     [ObservableProperty] private bool _isPreview;
+
+    /// <summary>未保存の変更がある（Editor タブのみ）。見出しの「 *」と同じ状態で、ペインのヘッダーは
+    /// パスから名前を組み立てるので見出しとは別にここで持つ。</summary>
+    [ObservableProperty] private bool _isModified;
 
     /// <summary>実ファイルの絶対パス（Editor タブのみ。Untitled／仮想ドキュメントは null）。
     /// 「パスをコピー」「エクスプローラーで表示」の表示可否・対象に使う。</summary>
@@ -200,6 +205,7 @@ public sealed partial class TabsViewModel : ObservableObject
     private readonly TabIconService _icons;
     private readonly LoomoSettings? _settings;
     private readonly SettingsStore? _settingsStore;
+    private readonly IWorkspaceService? _workspace;
     private readonly TabKindRowViewModel _editorKind;
     private readonly TabKindRowViewModel _browserKind;
     private readonly TabKindRowViewModel _terminalKind;
@@ -286,16 +292,40 @@ public sealed partial class TabsViewModel : ObservableObject
     /// 見分けられないと「壊れた」に見えるので、そのときだけ案内を出す。</summary>
     public bool IsAllKindsHidden => !ShowEditorTabs && !ShowBrowserTabs && !ShowTerminalTabs;
 
+    // ===== ペインのヘッダーに出す「いま見ているもの」 =====
+    // ヘッダーからタブ帯を外したので、ペインを見ただけでは何を映しているかが分からなくなった。
+    // その穴を埋める1行——Editor はファイルのパス、Browser はページのタイトル、Terminal はタブの見出し。
+
+    /// <summary>各ペインのアクティブなタブ（無ければ null）。</summary>
+    [ObservableProperty] private TabEntryViewModel? _activeTerminalTab;
+    [ObservableProperty] private TabEntryViewModel? _activeEditorTab;
+    [ObservableProperty] private TabEntryViewModel? _activeBrowserTab;
+
+    /// <summary>Editor ヘッダーのパスのうちフォルダー部分（末尾の区切りまで。ワークスペースからの表示用
+    /// 相対パス）。幅が足りないときはここだけを省略し、ファイル名（<see cref="ActiveEditorFileName"/>）は残す。</summary>
+    [ObservableProperty] private string _activeEditorDirectory = "";
+
+    /// <summary>Editor ヘッダーのファイル名。実ファイルでないタブ（Untitled／仮想ドキュメント）はタブの見出し。</summary>
+    [ObservableProperty] private string _activeEditorFileName = "";
+
+    /// <summary>Editor ヘッダーのツールチップ（実ファイルなら絶対パス）。</summary>
+    [ObservableProperty] private string? _activeEditorToolTip;
+
     public TabsViewModel()
         : this(new TabIconService())
     {
     }
 
-    public TabsViewModel(TabIconService icons, LoomoSettings? settings = null, SettingsStore? settingsStore = null)
+    public TabsViewModel(
+        TabIconService icons,
+        LoomoSettings? settings = null,
+        SettingsStore? settingsStore = null,
+        IWorkspaceService? workspace = null)
     {
         _icons = icons;
         _settings = settings;
         _settingsStore = settingsStore;
+        _workspace = workspace;
         _editorKind = new(TabEntryKind.Editor, "エディタ", "TabsShowEditorToggle", EditorTabs);
         _browserKind = new(TabEntryKind.Browser, "ブラウザ", "TabsShowBrowserToggle", BrowserTabs);
         _terminalKind = new(TabEntryKind.Terminal, "ターミナル", "TabsShowTerminalToggle", TerminalTabs);
@@ -317,6 +347,9 @@ public sealed partial class TabsViewModel : ObservableObject
         BrowserTabs.CollectionChanged += OnTabCollectionChanged;
         // アプリと同じ寿命なので解除は要らない（フォルダーツリーと同じ扱い）。
         FileIcons.PaletteChanged += (_, _) => RefreshIcons();
+        // フォルダーの追加・切替で相対パスの基準（と複数ルート時の前置）が変わる。
+        if (workspace is not null)
+            workspace.FoldersChanged += (_, _) => RefreshEditorHeader();
     }
 
     private void OnTabCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
@@ -328,6 +361,33 @@ public sealed partial class TabsViewModel : ObservableObject
         RefreshTabGroupProviders();
         TabsView.Refresh();
         NotifyCounts();
+        RefreshActiveTabs();
+    }
+
+    private void RefreshActiveTabs()
+    {
+        ActiveTerminalTab = TerminalTabs.FirstOrDefault(t => t.IsActive);
+        ActiveEditorTab = EditorTabs.FirstOrDefault(t => t.IsActive);
+        ActiveBrowserTab = BrowserTabs.FirstOrDefault(t => t.IsActive);
+        RefreshEditorHeader();
+    }
+
+    private void RefreshEditorHeader()
+    {
+        var tab = ActiveEditorTab;
+        if (tab?.FilePath is { Length: > 0 } path)
+        {
+            var display = _workspace?.ToDisplayPath(path) ?? path;
+            var cut = display.LastIndexOfAny(['/', '\\']) + 1;
+            ActiveEditorDirectory = display[..cut];
+            ActiveEditorFileName = tab.IsModified ? display[cut..] + " *" : display[cut..];
+            ActiveEditorToolTip = path;
+            return;
+        }
+
+        ActiveEditorDirectory = "";
+        ActiveEditorFileName = tab?.Title ?? "";
+        ActiveEditorToolTip = null;
     }
 
     /// <summary>種別ごとの表示Providerを更新する。ドメインProviderはBrowserにだけ作る。</summary>
@@ -401,6 +461,19 @@ public sealed partial class TabsViewModel : ObservableObject
 
     private void OnTabPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
+        if (e.PropertyName is nameof(TabEntryViewModel.IsActive))
+        {
+            RefreshActiveTabs();
+            return;
+        }
+        if (e.PropertyName is nameof(TabEntryViewModel.Title) or nameof(TabEntryViewModel.FilePath)
+                or nameof(TabEntryViewModel.IsModified)
+            && ReferenceEquals(sender, ActiveEditorTab))
+        {
+            RefreshEditorHeader();
+            return;
+        }
+
         if (e.PropertyName != nameof(TabEntryViewModel.IsGroupShown)
             || sender is not TabEntryViewModel tab)
             return;
@@ -503,6 +576,7 @@ public sealed partial class TabsViewModel : ObservableObject
         var tab = new TabEntryViewModel(id, TabEntryKind.Editor, title, isActive)
         {
             FilePath = RealFilePath(path),
+            IsModified = isModified,
             IsGroupShown = ShowEditorTabs,
         };
         WatchGroupState(tab);
@@ -526,6 +600,7 @@ public sealed partial class TabsViewModel : ObservableObject
         if (isModified)
             title += " *";
 
+        tab.IsModified = isModified;
         tab.Title = title;
         tab.SetFileIcon(FileIconIndexFor(path));
         tab.FilePath = RealFilePath(path);

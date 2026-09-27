@@ -233,4 +233,76 @@ public sealed class TabsViewModelTests
         // 題の記憶はホスト側（BrowserTab.CurrentTitle）が持つ。ここは言われたとおりに映すだけ。
         Assert.Equal(string.Empty, sut.BrowserTabs.Single().Title);
     }
+
+    // ===== ペインのヘッダーに出す「いま見ているもの」 =====
+
+    [Fact]
+    public void エディタのヘッダーはワークスペースからの相対パスをフォルダーとファイル名に分けて出す()
+    {
+        var sut = new TabsViewModel(new TabIconService(), workspace: new FakeWorkspaceService(@"C:\work"));
+        var id = Guid.NewGuid();
+        sut.AddEditorTab(id, @"C:\work\src\a.cs", isModified: false, isActive: false);
+        sut.ActivateEditorTab(id);
+
+        Assert.Equal("src/", sut.ActiveEditorDirectory);
+        Assert.Equal("a.cs", sut.ActiveEditorFileName);
+        Assert.Equal(@"C:\work\src\a.cs", sut.ActiveEditorToolTip);
+    }
+
+    [Fact]
+    public void 実ファイルでないエディタタブはタブの見出しを出す()
+    {
+        var sut = Sut();
+        var id = Guid.NewGuid();
+        sut.AddEditorTab(id, null, isModified: false, isActive: false);
+        sut.ActivateEditorTab(id);
+
+        Assert.Equal("", sut.ActiveEditorDirectory);
+        Assert.Equal("Untitled", sut.ActiveEditorFileName);
+        Assert.Null(sut.ActiveEditorToolTip);
+    }
+
+    [Fact]
+    public void 切り替えとパスの変化にエディタのヘッダーが追従する()
+    {
+        var sut = Sut();
+        var a = Guid.NewGuid();
+        var b = Guid.NewGuid();
+        sut.AddEditorTab(a, @"C:\w\a.cs", isModified: false, isActive: false);
+        sut.AddEditorTab(b, @"C:\w\b.cs", isModified: false, isActive: false);
+
+        sut.ActivateEditorTab(b);
+        Assert.Equal("b.cs", sut.ActiveEditorFileName);
+
+        sut.UpdateEditorTab(b, @"C:\w\c.cs", isModified: false);
+        Assert.Equal("c.cs", sut.ActiveEditorFileName);
+
+        // 未保存の印はヘッダーにも出す（タブ帯を外したので、ペインの上でそれを言えるのはここだけ）。
+        sut.UpdateEditorTab(b, @"C:\w\c.cs", isModified: true);
+        Assert.Equal("c.cs *", sut.ActiveEditorFileName);
+        sut.UpdateEditorTab(b, @"C:\w\c.cs", isModified: false);
+        Assert.Equal("c.cs", sut.ActiveEditorFileName);
+
+        sut.RemoveEditorTab(b);
+        Assert.Null(sut.ActiveEditorTab);
+        Assert.Equal("", sut.ActiveEditorFileName);
+    }
+
+    [Fact]
+    public void ブラウザとターミナルのヘッダーはアクティブなタブの見出しを追う()
+    {
+        var sut = Sut();
+        var page = Guid.NewGuid();
+        var shell = Guid.NewGuid();
+        sut.AddBrowserTab(page, "Bing", isActive: false);
+        sut.AddTerminalTab(shell, "pwsh", isActive: false);
+        sut.ActivateBrowserTab(page);
+        sut.ActivateTerminalTab(shell);
+
+        sut.UpdateBrowserTab(page, "Example Domain");
+        sut.UpdateTerminalTab(shell, @"C:\work");
+
+        Assert.Equal("Example Domain", sut.ActiveBrowserTab?.Title);
+        Assert.Equal(@"C:\work", sut.ActiveTerminalTab?.Title);
+    }
 }

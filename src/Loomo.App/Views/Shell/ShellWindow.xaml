@@ -877,7 +877,7 @@
                 <!-- Terminal -->
                 <DockPanel x:Name="TerminalPane" Visibility="Collapsed" Background="{DynamicResource Panel}" AllowDrop="True"
                             DragOver="OnFileDropDragOver" Drop="OnTerminalFileDrop">
-                    <DockPanel Style="{StaticResource PaneHeaderBar}" LastChildFill="False"
+                    <DockPanel Style="{StaticResource PaneHeaderBar}" LastChildFill="True"
                                Tag="Terminal" Cursor="SizeAll"
                                AllowDrop="True" DragOver="OnPaneHeaderTabDragOver" Drop="OnPaneHeaderTabDrop"
                                PreviewMouseLeftButtonDown="OnPaneTitleMouseDown" PreviewMouseMove="OnPaneTitleMouseMove">
@@ -906,6 +906,12 @@
                         <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="24" Height="24"
                                 Content="▾" FontSize="{DynamicResource Fs11}" ToolTip="タブ一覧"
                                 Tag="Terminal" Click="OnTabOverflowClick" />
+                        <!-- 見ているタブの見出し（シェルが付けるタイトル）。帯を外した代わりに、何を映しているかをここで言う -->
+                        <TextBlock Text="{Binding Tabs.ActiveTerminalTab.Title}"
+                                   ToolTip="{Binding Tabs.ActiveTerminalTab.Title}"
+                                   Margin="2,0,8,0" VerticalAlignment="Center"
+                                   FontSize="{DynamicResource Fs12}" Foreground="{DynamicResource Fg}"
+                                   TextTrimming="CharacterEllipsis" />
                     </DockPanel>
                     <Border Style="{StaticResource PaneHeaderRule}" />
                     <Grid>
@@ -945,7 +951,7 @@
                 <!-- Editor -->
                 <DockPanel x:Name="EditorPane" Visibility="Collapsed" Background="{DynamicResource Panel}" AllowDrop="True"
                             DragOver="OnFileDropDragOver" Drop="OnEditorFileDrop">
-                    <DockPanel Style="{StaticResource PaneHeaderBar}" LastChildFill="False"
+                    <DockPanel Style="{StaticResource PaneHeaderBar}" LastChildFill="True"
                                Tag="Editor" Cursor="SizeAll"
                                AllowDrop="True" DragOver="OnPaneHeaderTabDragOver" Drop="OnPaneHeaderTabDrop"
                                PreviewMouseLeftButtonDown="OnPaneTitleMouseDown" PreviewMouseMove="OnPaneTitleMouseMove">
@@ -966,6 +972,17 @@
                         <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="24" Height="24"
                                 Content="▾" FontSize="{DynamicResource Fs11}" ToolTip="タブ一覧"
                                 Tag="Editor" Click="OnTabOverflowClick" />
+                        <!-- 見ているファイルのパス（ワークスペースからの相対）。帯を外した代わりに、何を映しているかを
+                             ここで言う。幅が足りないときはフォルダー部分だけを省略し、ファイル名は必ず残す -->
+                        <views:PathTrimPanel Margin="2,0,8,0" VerticalAlignment="Center" HorizontalAlignment="Left"
+                                             ToolTip="{Binding Tabs.ActiveEditorToolTip}">
+                            <TextBlock Text="{Binding Tabs.ActiveEditorDirectory}"
+                                       FontSize="{DynamicResource Fs12}" Foreground="{DynamicResource FgDim}"
+                                       TextTrimming="CharacterEllipsis" />
+                            <TextBlock Text="{Binding Tabs.ActiveEditorFileName}"
+                                       FontSize="{DynamicResource Fs12}" Foreground="{DynamicResource Fg}"
+                                       TextTrimming="CharacterEllipsis" />
+                        </views:PathTrimPanel>
                     </DockPanel>
                     <Border Style="{StaticResource PaneHeaderRule}" />
                     <!-- 言語サーバー(LSP)の促しバー：対応サーバーが未導入/未設定のファイルを開いたとき、
@@ -1096,7 +1113,7 @@
 
                 <!-- Browser -->
                 <DockPanel x:Name="BrowserPane" Visibility="Collapsed" Background="{DynamicResource Panel}">
-                    <DockPanel Style="{StaticResource PaneHeaderBar}" LastChildFill="False"
+                    <DockPanel Style="{StaticResource PaneHeaderBar}" LastChildFill="True"
                                Tag="Browser" Cursor="SizeAll"
                                AllowDrop="True" DragOver="OnPaneHeaderTabDragOver" Drop="OnPaneHeaderTabDrop"
                                PreviewMouseLeftButtonDown="OnPaneTitleMouseDown" PreviewMouseMove="OnPaneTitleMouseMove">
@@ -1117,6 +1134,12 @@
                         <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="24" Height="24"
                                 Content="▾" FontSize="{DynamicResource Fs11}" ToolTip="タブ一覧"
                                 Tag="Browser" Click="OnTabOverflowClick" />
+                        <!-- 見ているページのタイトル。帯を外した代わりに、何を映しているかをここで言う -->
+                        <TextBlock Text="{Binding Tabs.ActiveBrowserTab.Title}"
+                                   ToolTip="{Binding Tabs.ActiveBrowserTab.Title}"
+                                   Margin="2,0,8,0" VerticalAlignment="Center"
+                                   FontSize="{DynamicResource Fs12}" Foreground="{DynamicResource Fg}"
+                                   TextTrimming="CharacterEllipsis" />
                     </DockPanel>
                     <Border Style="{StaticResource PaneHeaderRule}" />
                     <Grid DockPanel.Dock="Top" Margin="8,0,8,4">
