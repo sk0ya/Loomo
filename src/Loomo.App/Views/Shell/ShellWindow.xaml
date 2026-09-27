@@ -259,22 +259,6 @@
             <Setter Property="Stroke" Value="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
         </Style>
 
-        <Style x:Key="TabStripButton" TargetType="Button">
-            <Setter Property="Background" Value="Transparent" />
-            <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="Cursor" Value="Hand" />
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border Background="{TemplateBinding Background}"
-                                Padding="{TemplateBinding Padding}">
-                            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
-                                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
-                        </Border>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
 
         <!-- ブラウザのブックマーク／履歴／候補の1行（行全体が押せるフラットボタン）。 -->
         <Style x:Key="BrowserRowButton" TargetType="Button">
@@ -893,7 +877,7 @@
                 <!-- Terminal -->
                 <DockPanel x:Name="TerminalPane" Visibility="Collapsed" Background="{DynamicResource Panel}" AllowDrop="True"
                             DragOver="OnFileDropDragOver" Drop="OnTerminalFileDrop">
-                    <DockPanel Style="{StaticResource PaneHeaderBar}" LastChildFill="True"
+                    <DockPanel Style="{StaticResource PaneHeaderBar}" LastChildFill="False"
                                Tag="Terminal" Cursor="SizeAll"
                                AllowDrop="True" DragOver="OnPaneHeaderTabDragOver" Drop="OnPaneHeaderTabDrop"
                                PreviewMouseLeftButtonDown="OnPaneTitleMouseDown" PreviewMouseMove="OnPaneTitleMouseMove">
@@ -917,58 +901,11 @@
                                   Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
                                   Data="M2.5,3.5 H13.5 M2.5,6.5 H9.5 M2.5,9.5 H8 M9.5,9 L13.5,11.5 L9.5,14 Z" />
                         </Button>
-                        <!-- タブ一覧（あふれた時の導線も兼ねる）。ドロップダウンから直接アクティブ化できる -->
+                        <!-- タブ一覧。ヘッダーにタブ帯は置かない（タブはサイドバーの TABS で見る）が、TABS を畳んでいる／
+                             ステージ・切り離し中でも、このペインのタブへ直接飛べる口として残す -->
                         <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="24" Height="24"
                                 Content="▾" FontSize="{DynamicResource Fs11}" ToolTip="タブ一覧"
                                 Tag="Terminal" Click="OnTabOverflowClick" />
-                        <ScrollViewer HorizontalScrollBarVisibility="Hidden"
-                                      VerticalScrollBarVisibility="Disabled"
-                                      PanningMode="HorizontalOnly"
-                                      PreviewMouseWheel="OnTabStripMouseWheel">
-                            <ItemsControl ItemsSource="{Binding Tabs.TerminalTabs}"
-                                          PreviewMouseLeftButtonDown="OnPaneTabPreviewMouseDown"
-                                          PreviewMouseMove="OnPaneTabPreviewMouseMove">
-                                <ItemsControl.ItemsPanel>
-                                    <ItemsPanelTemplate>
-                                        <StackPanel Orientation="Horizontal" />
-                                    </ItemsPanelTemplate>
-                                </ItemsControl.ItemsPanel>
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate>
-                                        <Border x:Name="TabBorder" MinWidth="72" MaxWidth="150" Height="24"
-                                                Margin="0" Background="Transparent"
-                                                BorderBrush="Transparent" BorderThickness="0,0,0,2"
-                                                Tag="{Binding Id}" MouseDown="OnTabMiddleClick">
-                                            <Grid>
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="*" />
-                                                    <ColumnDefinition Width="Auto" />
-                                                </Grid.ColumnDefinitions>
-                                                <Button Grid.Column="0" Style="{StaticResource TabStripButton}"
-                                                        Padding="8,0,4,0" HorizontalContentAlignment="Left"
-                                                        Foreground="{DynamicResource Fg}" Tag="{Binding Id}"
-                                                        Click="OnTerminalTabSelected">
-                                                    <TextBlock x:Name="TabTitle" Text="{Binding Title}" FontSize="{DynamicResource Fs12}"
-                                                               TextTrimming="CharacterEllipsis" />
-                                                </Button>
-                                                <Button Grid.Column="1" Style="{StaticResource TabStripButton}"
-                                                        Width="24" Padding="0" Foreground="{DynamicResource FgDim}"
-                                                        Content="×" ToolTip="タブを閉じる" Tag="{Binding Id}"
-                                                        Click="OnTerminalTabClosed" />
-                                            </Grid>
-                                        </Border>
-                                        <DataTemplate.Triggers>
-                                            <DataTrigger Binding="{Binding IsActive}" Value="True">
-                                                <Setter TargetName="TabBorder" Property="BorderBrush" Value="{DynamicResource Accent}" />
-                                                <!-- 名前もアクセント色にする（サイドバーの TABS と同じ言い切り方）。下辺の
-                                                     2px だけだと帯が横に長いほど「どれを見ているか」が読みにくい。 -->
-                                                <Setter TargetName="TabTitle" Property="Foreground" Value="{DynamicResource Accent}" />
-                                            </DataTrigger>
-                                        </DataTemplate.Triggers>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                        </ScrollViewer>
                     </DockPanel>
                     <Border Style="{StaticResource PaneHeaderRule}" />
                     <Grid>
@@ -1008,7 +945,7 @@
                 <!-- Editor -->
                 <DockPanel x:Name="EditorPane" Visibility="Collapsed" Background="{DynamicResource Panel}" AllowDrop="True"
                             DragOver="OnFileDropDragOver" Drop="OnEditorFileDrop">
-                    <DockPanel Style="{StaticResource PaneHeaderBar}" LastChildFill="True"
+                    <DockPanel Style="{StaticResource PaneHeaderBar}" LastChildFill="False"
                                Tag="Editor" Cursor="SizeAll"
                                AllowDrop="True" DragOver="OnPaneHeaderTabDragOver" Drop="OnPaneHeaderTabDrop"
                                PreviewMouseLeftButtonDown="OnPaneTitleMouseDown" PreviewMouseMove="OnPaneTitleMouseMove">
@@ -1024,66 +961,11 @@
                         </Button>
                         <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="30" Height="24"
                                 Content="+" FontSize="{DynamicResource Fs15}" ToolTip="新しいタブ" Click="OnEditorNewTab" />
-                        <!-- タブ一覧（あふれた時の導線も兼ねる）。ドロップダウンから直接アクティブ化できる -->
+                        <!-- タブ一覧。ヘッダーにタブ帯は置かない（タブはサイドバーの TABS で見る）が、TABS を畳んでいる／
+                             ステージ・切り離し中でも、このペインのタブへ直接飛べる口として残す -->
                         <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="24" Height="24"
                                 Content="▾" FontSize="{DynamicResource Fs11}" ToolTip="タブ一覧"
                                 Tag="Editor" Click="OnTabOverflowClick" />
-                        <ScrollViewer x:Name="EditorTabStripScrollViewer"
-                                      HorizontalScrollBarVisibility="Hidden"
-                                      VerticalScrollBarVisibility="Disabled"
-                                      PanningMode="HorizontalOnly"
-                                      PreviewMouseWheel="OnTabStripMouseWheel">
-                            <ItemsControl x:Name="EditorTabStripItems" ItemsSource="{Binding Tabs.EditorTabs}"
-                                          PreviewMouseLeftButtonDown="OnPaneTabPreviewMouseDown"
-                                          PreviewMouseMove="OnPaneTabPreviewMouseMove">
-                                <ItemsControl.ItemsPanel>
-                                    <ItemsPanelTemplate>
-                                        <StackPanel Orientation="Horizontal" />
-                                    </ItemsPanelTemplate>
-                                </ItemsControl.ItemsPanel>
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate>
-                                        <!-- ×ボタンは置かない：閉じるのは中クリック／サイドバーの TABS から。 -->
-                                        <Border x:Name="TabBorder" MinWidth="72" MaxWidth="150" Height="24"
-                                                Margin="0" Background="Transparent"
-                                                BorderBrush="Transparent" BorderThickness="0,0,0,2"
-                                                Tag="{Binding Id}" MouseDown="OnTabMiddleClick">
-                                            <Button Style="{StaticResource TabStripButton}"
-                                                    Padding="8,0,8,0" HorizontalContentAlignment="Left"
-                                                    Foreground="{DynamicResource Fg}" Tag="{Binding Id}"
-                                                    Click="OnEditorTabSelected">
-                                                <!-- 幅が詰まったときにタイトルだけを省略記号にするため Grid（横 StackPanel
-                                                     だと子に無限幅が渡り、省略されずに切れる） -->
-                                                <Grid>
-                                                    <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="Auto" />
-                                                        <ColumnDefinition Width="*" />
-                                                    </Grid.ColumnDefinitions>
-                                                    <!-- フォルダーツリー・TABS と同じ FileIcons の線画 -->
-                                                    <Image Grid.Column="0" Source="{Binding Icon}" Width="16" Height="16"
-                                                           Margin="0,0,6,0" VerticalAlignment="Center" />
-                                                    <TextBlock x:Name="TabTitle" Grid.Column="1" Text="{Binding Title}"
-                                                               FontSize="{DynamicResource Fs12}" VerticalAlignment="Center"
-                                                               TextTrimming="CharacterEllipsis" />
-                                                </Grid>
-                                            </Button>
-                                        </Border>
-                                        <DataTemplate.Triggers>
-                                            <DataTrigger Binding="{Binding IsActive}" Value="True">
-                                                <Setter TargetName="TabBorder" Property="BorderBrush" Value="{DynamicResource Accent}" />
-                                                <!-- 名前もアクセント色にする（サイドバーの TABS と同じ言い切り方）。下辺の
-                                                     2px だけだと帯が横に長いほど「どれを見ているか」が読みにくい。 -->
-                                                <Setter TargetName="TabTitle" Property="Foreground" Value="{DynamicResource Accent}" />
-                                            </DataTrigger>
-                                            <!-- プレビュータブ（編集するまで確定しない）は VS Code 同様に斜体で示す -->
-                                            <DataTrigger Binding="{Binding IsPreview}" Value="True">
-                                                <Setter TargetName="TabTitle" Property="FontStyle" Value="Italic" />
-                                            </DataTrigger>
-                                        </DataTemplate.Triggers>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                        </ScrollViewer>
                     </DockPanel>
                     <Border Style="{StaticResource PaneHeaderRule}" />
                     <!-- 言語サーバー(LSP)の促しバー：対応サーバーが未導入/未設定のファイルを開いたとき、
@@ -1214,7 +1096,7 @@
 
                 <!-- Browser -->
                 <DockPanel x:Name="BrowserPane" Visibility="Collapsed" Background="{DynamicResource Panel}">
-                    <DockPanel Style="{StaticResource PaneHeaderBar}" LastChildFill="True"
+                    <DockPanel Style="{StaticResource PaneHeaderBar}" LastChildFill="False"
                                Tag="Browser" Cursor="SizeAll"
                                AllowDrop="True" DragOver="OnPaneHeaderTabDragOver" Drop="OnPaneHeaderTabDrop"
                                PreviewMouseLeftButtonDown="OnPaneTitleMouseDown" PreviewMouseMove="OnPaneTitleMouseMove">
@@ -1230,66 +1112,11 @@
                         </Button>
                         <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="30" Height="24"
                                 Content="+" FontSize="{DynamicResource Fs15}" ToolTip="新しいタブ" Click="OnBrowserNewTab" />
-                        <!-- タブ一覧（あふれた時の導線も兼ねる）。ドロップダウンから直接アクティブ化できる -->
+                        <!-- タブ一覧。ヘッダーにタブ帯は置かない（タブはサイドバーの TABS で見る）が、TABS を畳んでいる／
+                             ステージ・切り離し中でも、このペインのタブへ直接飛べる口として残す -->
                         <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="24" Height="24"
                                 Content="▾" FontSize="{DynamicResource Fs11}" ToolTip="タブ一覧"
                                 Tag="Browser" Click="OnTabOverflowClick" />
-                        <ScrollViewer HorizontalScrollBarVisibility="Hidden"
-                                      VerticalScrollBarVisibility="Disabled"
-                                      PanningMode="HorizontalOnly"
-                                      PreviewMouseWheel="OnTabStripMouseWheel">
-                            <ItemsControl ItemsSource="{Binding Tabs.BrowserTabs}"
-                                          PreviewMouseLeftButtonDown="OnPaneTabPreviewMouseDown"
-                                          PreviewMouseMove="OnPaneTabPreviewMouseMove">
-                                <ItemsControl.ItemsPanel>
-                                    <ItemsPanelTemplate>
-                                        <StackPanel Orientation="Horizontal" />
-                                    </ItemsPanelTemplate>
-                                </ItemsControl.ItemsPanel>
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate>
-                                        <Border x:Name="TabBorder" MinWidth="72" MaxWidth="150" Height="24"
-                                                Margin="0" Background="Transparent"
-                                                BorderBrush="Transparent" BorderThickness="0,0,0,2"
-                                                Tag="{Binding Id}" MouseDown="OnTabMiddleClick">
-                                            <Grid>
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="*" />
-                                                    <ColumnDefinition Width="Auto" />
-                                                </Grid.ColumnDefinitions>
-                                                <Button Grid.Column="0" Style="{StaticResource TabStripButton}"
-                                                        Padding="8,0,4,0" HorizontalContentAlignment="Left"
-                                                        Foreground="{DynamicResource Fg}" Tag="{Binding Id}"
-                                                        Click="OnBrowserTabSelected" ToolTip="{Binding Title}">
-                                                    <!-- favicon は取得済み（TabIconService）。サイドバーのタブ一覧だけでなく
-                                                         ここにも出す——タブの見分けは文字より絵の方が速い。 -->
-                                                    <StackPanel Orientation="Horizontal">
-                                                        <Image Width="14" Height="14" Margin="0,0,5,0"
-                                                               VerticalAlignment="Center" Source="{Binding Icon}"
-                                                               RenderOptions.BitmapScalingMode="HighQuality" />
-                                                        <TextBlock x:Name="TabTitle" Text="{Binding Title}" FontSize="{DynamicResource Fs12}"
-                                                                   VerticalAlignment="Center"
-                                                                   TextTrimming="CharacterEllipsis" />
-                                                    </StackPanel>
-                                                </Button>
-                                                <Button Grid.Column="1" Style="{StaticResource TabStripButton}"
-                                                        Width="24" Padding="0" Foreground="{DynamicResource FgDim}"
-                                                        Content="×" ToolTip="タブを閉じる" Tag="{Binding Id}"
-                                                        Click="OnBrowserTabClosed" />
-                                            </Grid>
-                                        </Border>
-                                        <DataTemplate.Triggers>
-                                            <DataTrigger Binding="{Binding IsActive}" Value="True">
-                                                <Setter TargetName="TabBorder" Property="BorderBrush" Value="{DynamicResource Accent}" />
-                                                <!-- 名前もアクセント色にする（サイドバーの TABS と同じ言い切り方）。下辺の
-                                                     2px だけだと帯が横に長いほど「どれを見ているか」が読みにくい。 -->
-                                                <Setter TargetName="TabTitle" Property="Foreground" Value="{DynamicResource Accent}" />
-                                            </DataTrigger>
-                                        </DataTemplate.Triggers>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                        </ScrollViewer>
                     </DockPanel>
                     <Border Style="{StaticResource PaneHeaderRule}" />
                     <Grid DockPanel.Dock="Top" Margin="8,0,8,4">

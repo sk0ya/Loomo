@@ -14,7 +14,7 @@ public partial class ShellWindow {
         // ドックでは中央も1枚なので、どの面もタイルの並べ替え対象ではない。
         // 代わりに「割り当てを変えるドラッグ」を仕込む（行き先は右帯の3区画）。
         if (_dockActive) {
-            if (!IsWithinButton(e.OriginalSource) && ResolvePaneTabId(e.OriginalSource) is null)
+            if (!IsWithinButton(e.OriginalSource))
                 DockPaneDrag.Arm((UIElement)sender, kind, e.GetPosition(null));
             return;
         }
@@ -23,10 +23,6 @@ public partial class ShellWindow {
                 return;
             ToggleZoomFor(kind);
             e.Handled = true;
-            return;
-        }
-        if (ResolvePaneTabId(e.OriginalSource) is not null) {
-            _paneDragArmed = false;
             return;
         }
         _paneDragStart = e.GetPosition(null);

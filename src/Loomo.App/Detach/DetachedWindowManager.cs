@@ -26,7 +26,6 @@ internal sealed class DetachedWindowManager
     // ===== ドラッグの一時状態（同時ドラッグは1つ） =====
     private DetachedItem? _dragItem;            // 既存項目（detached 窓由来）
     private DetachedPaneWindow? _dragSource;    // 既存項目の元窓
-    private Func<DetachedItem>? _dragFactory;   // 外部（メインペインのタブ）由来の遅延生成器
     private bool _dropConsumed;
     private bool _dragCancelled;
 
@@ -53,7 +52,7 @@ internal sealed class DetachedWindowManager
         _changed = changed ?? (() => { });
     }
 
-    internal bool IsDragging => _dragItem is not null || _dragFactory is not null;
+    internal bool IsDragging => _dragItem is not null;
 
     /// <summary>全ウィンドウの切り離し項目（ホスト側から種類で絞って一括操作するため）。</summary>
     internal IEnumerable<DetachedItem> AllItems => _windows.SelectMany(w => w.Items);
@@ -296,25 +295,12 @@ internal sealed class DetachedWindowManager
     {
         _dragItem = item;
         _dragSource = source;
-        _dragFactory = null;
         _dropConsumed = false;
         _dragCancelled = false;
         StartHoverTracking(ghost);
     }
 
-    /// <summary>メインペインのタブを引き出す外部ドラッグの開始（実体化はドロップ時まで遅延）。</summary>
-    internal void BeginExternalDrag(Func<DetachedItem> factory, TabDragGhost? ghost = null)
-    {
-        _dragItem = null;
-        _dragSource = null;
-        _dragFactory = factory;
-        _dropConsumed = false;
-        _dragCancelled = false;
-        StartHoverTracking(ghost);
-    }
-
-    /// <summary>いま運んでいるのが「メインへ戻せるタブ」ならその戻し方（メイン窓の帯が受けるかの判定に使う）。
-    /// メインから引き出している最中（外部ドラッグ）は null——引き出した先はメインの帯ではない。</summary>
+    /// <summary>いま運んでいるのが「メインへ戻せるタブ」ならその戻し方（メイン窓のペインヘッダーが受けるかの判定に使う）。</summary>
     internal DetachReturn? DraggingReturn => _dragItem?.Return;
 
     /// <summary>運んでいるタブをメイン窓のペインへ戻す（受け口の判定はメイン窓側）。
@@ -407,15 +393,6 @@ internal sealed class DetachedWindowManager
         if (_dragCancelled)
             return;
 
-        // 外部ドラッグ：ここで初めて実体化（メインから移動）して target へ載せる。
-        if (_dragFactory is { } factory)
-        {
-            _dropConsumed = true;
-            target.AddItem(factory());
-            target.Activate();
-            return;
-        }
-
         if (_dragItem is not { } item || _dragSource is null)
             return;
         _dropConsumed = true;
@@ -428,7 +405,7 @@ internal sealed class DetachedWindowManager
         target.Activate();
     }
 
-    /// <summary>DoDragDrop 完了後の後処理：ドロップ先が無ければ新窓へ分離する（外部はメイン窓内で離すと復帰）。</summary>
+    /// <summary>DoDragDrop 完了後の後処理：ドロップ先が無ければ新窓へ分離する。</summary>
     internal void EndDrag(DragDropEffects result)
     {
         if (_dropConsumed || _dragCancelled)
@@ -441,21 +418,6 @@ internal sealed class DetachedWindowManager
         // 「どこも受けなかった」ときのためのもので、受け手が居るなら二重に処理することになる。
         UpdateDragHover();
         var hover = result == DragDropEffects.None ? _dragHover : null;
-
-        // 外部ドラッグ（メインペインのタブ引き出し）：detached 窓ストリップへ落とせば結合済み（consumed）。
-        // それ以外の場所で離したら新窓へ引き出す（Esc は _dragCancelled で除外済み）。メイン窓が最大化
-        // していると「外側」が無くなり切り離せないため、位置によるスナップバックはしない。
-        if (_dragFactory is { } factory)
-        {
-            if (hover is not null)
-            {
-                hover.AddItem(factory());
-                hover.Activate();
-                return;
-            }
-            SpawnAtCursor(factory());
-            return;
-        }
 
         if (_dragItem is not { } item || _dragSource is not { } src)
             return;
@@ -482,7 +444,6 @@ internal sealed class DetachedWindowManager
         StopHoverTracking();
         _dragItem = null;
         _dragSource = null;
-        _dragFactory = null;
         _dropConsumed = false;
         _dragCancelled = false;
     }

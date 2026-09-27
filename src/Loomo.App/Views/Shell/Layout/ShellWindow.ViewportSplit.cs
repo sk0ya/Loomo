@@ -395,12 +395,4 @@ public partial class ShellWindow {
     private void QueueEditorTabUpdate(EditorTab tab) {
         _ = tab.Control.Dispatcher.BeginInvoke(new Action(() => UpdateEditorTab(tab)));
     }
-    private void OnTabStripMouseWheel(object sender, MouseWheelEventArgs e)
-    {
-        if (sender is not ScrollViewer scrollViewer || scrollViewer.ScrollableWidth <= 0)
-            return;
-        var nextOffset = Math.Clamp( scrollViewer.HorizontalOffset - e.Delta, 0, scrollViewer.ScrollableWidth);
-        scrollViewer.ScrollToHorizontalOffset(nextOffset);
-        e.Handled = true;
-    }
 }

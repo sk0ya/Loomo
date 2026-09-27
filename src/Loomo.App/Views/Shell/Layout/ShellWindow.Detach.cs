@@ -6,10 +6,6 @@ namespace sk0ya.Loomo.App.Views;
 public partial class ShellWindow {
     private DetachedWindowManager? _detached;
     private DetachedWindowManager Detached => _detached ??= new DetachedWindowManager(this, () => SaveActiveWorkspaceSnapshot());
-    private PaneTabDragInteractionController? _paneTabDragInteraction;
-    private PaneTabDragInteractionController PaneTabDragInteraction
-        => _paneTabDragInteraction ??= new PaneTabDragInteractionController(
-            this, MovePaneTab, StartPaneTabTearOff, () => SaveActiveWorkspaceSnapshot());
     private PaneTabOverflowPresenter? _paneTabOverflowPresenter;
     private PaneTabOverflowPresenter PaneTabOverflow
         => _paneTabOverflowPresenter ??= new PaneTabOverflowPresenter(
@@ -248,21 +244,7 @@ public partial class ShellWindow {
         _ = ShowDiffInWindowAsync(vm, target);
         return item;
     }
-    private void OnPaneTabPreviewMouseDown(object sender, MouseButtonEventArgs e)
-        => PaneTabDragInteraction.OnPreviewMouseDown(e);
-    private void OnPaneTabPreviewMouseMove(object sender, MouseEventArgs e)
-        => PaneTabDragInteraction.OnPreviewMouseMove(sender, e);
-    /// <summary>タブ帯上のドラッグ並べ替え。コードビハインドの実体リスト（<see cref="_editorTabs"/> 等、
-    /// タブ切替・ワークスペース復元が位置参照する）と ViewModel 側の <see cref="TabsViewModel"/> 表示用
-    /// コレクションの両方を同じ並びに保つ。</summary>
-    private void MovePaneTab(Guid draggedId, Guid targetId) {
-        if (PaneTabDragPolicy.TryMoveTabAndEntry(_editorTabs, _vm.Tabs.EditorTabs, t => t.Id, draggedId, targetId))
-            return;
-        if (PaneTabDragPolicy.TryMoveTabAndEntry(_terminalTabs, _vm.Tabs.TerminalTabs, t => t.Id, draggedId, targetId))
-            return;
-        PaneTabDragPolicy.TryMoveTabAndEntry(_browserTabs, _vm.Tabs.BrowserTabs, t => t.Id, draggedId, targetId);
-    }
-    /// <summary>タブ帯の「▾」：あふれて見えなくなったタブも含む全件を一覧表示し、クリックで直接アクティブ化する。</summary>
+    /// <summary>ヘッダーの「▾」：このペインのタブを全件一覧表示し、クリックで直接アクティブ化する。</summary>
     private void OnTabOverflowClick(object sender, RoutedEventArgs e) {
         if (sender is FrameworkElement { Tag: string kind } button)
             PaneTabOverflow.Show(
@@ -276,53 +258,13 @@ public partial class ShellWindow {
             case TabEntryKind.Browser: ActivateBrowserTab(tab.Id); break;
         }
     }
-    /// <summary>ペインのタブを帯の外へ引き出すドラッグ。切り離しウィンドウ側と同じ演出——運んでいるタブを
-    /// カーソルに付け（<see cref="TabDragGhost"/>）、元のタブは薄く残す（設計書 §21.4 の「タブが動く」の続き）。</summary>
-    private void StartPaneTabTearOff(Guid id, UIElement? source) {
-        if (source is null || BuildTearOffFactory(id) is not { } factory)
-            return;
-        PaneTabTearOffPresenter.Start(this, source, FindPaneTabEntry(id), factory, Detached);
-    }
-    /// <summary>タブ帯の表示用エントリ（ゴーストに出す名前とアイコンの出どころ）。</summary>
-    private TabEntryViewModel? FindPaneTabEntry(Guid id)
-        => _vm.Tabs.EditorTabs.FirstOrDefault(t => t.Id == id)
-           ?? _vm.Tabs.TerminalTabs.FirstOrDefault(t => t.Id == id)
-           ?? _vm.Tabs.BrowserTabs.FirstOrDefault(t => t.Id == id);
-    private Func<DetachedItem>? BuildTearOffFactory(Guid id) {
-        if (_editorTabs.Any(t => t.Id == id))
-            return () => {
-                // タブの実体（EditorTab）ごと運ぶ。戻すときも同じ実体を帯へ戻すので、タブ ID も
-                // コントロールに張った配線（見出し更新・軌跡・EditorSupport 追従）も切り離す前のまま続く。
-                var tab = RemoveEditorTabForMove(id)!;
-                var control = tab.Control;
-                var title = string.IsNullOrWhiteSpace(control.FilePath) ? "Untitled" : Path.GetFileName(control.FilePath!);
-                return new DetachedItem( DetachKind.EditorMove, title, control, _tabIcons.GetFileIcon(control.FilePath), dispose: control.Dispose) {
-                    Return = new DetachReturn(TabEntryKind.Editor, () => AdoptEditorTab(tab))
-                };
-            };
-        if (_terminalTabs.Any(t => t.Id == id))
-            return () => {
-                var tab = RemoveTerminalTabForMove(id)!;
-                return DetachedTerminalLifecycleController.CreateItem(
-                    DetachKind.TerminalMove, tab.View, _tabIcons.GetTerminalIcon(), () => tab, AdoptTerminalTab);
-            };
-        if (_browserTabs.Any(t => t.Id == id))
-            return () => {
-                var srcTab = _browserTabs.FirstOrDefault(t => t.Id == id);
-                var item = CreateBrowserSpinoffItem(srcTab);   // 同 URL で新規 WebView2（再ペアレント空表示回避）
-                if (srcTab is not null)
-                    _ = CloseBrowserTabAsync(id);              // メインから元タブを除去＝移動
-                return item;
-            };
-        return null;
-    }
     // ===== 切り離しウィンドウ → メインの帯（戻す） =====
 
     /// <summary>
-    /// ペインのヘッダー（帯の行そのもの）は、切り離したタブの<b>戻し先</b>でもある。切り離しウィンドウの
-    /// タブを掴んでここへ落とすと、メインのタブとして戻る（Editor のタブは Editor の帯だけが受ける）。
+    /// ペインのヘッダーは、切り離したタブの<b>戻し先</b>でもある。切り離しウィンドウの
+    /// タブを掴んでここへ落とすと、メインのタブとして戻る（Editor のタブは Editor のヘッダーだけが受ける）。
     ///
-    /// <para>受けるのは<b>そのペインの種類に合うタブだけ</b>——Diff やプレビューの複製にはメインの帯に
+    /// <para>受けるのは<b>そのペインの種類に合うタブだけ</b>——Diff やプレビューの複製にはメインのペインに
     /// 対応する居場所が無いので受けない（<see cref="DetachedItem.Return"/> が null）。運んでいるのが
     /// タブ（<see cref="DetachedPaneWindow.DetachDragFormat"/>）でなければ素通しするので、ペイン本体の
     /// ファイルドロップ（<c>OnEditorFileDrop</c> 等）は塞がない。</para>
@@ -346,7 +288,7 @@ public partial class ShellWindow {
            && Detached.DraggingReturn is { } ret
            && PaneTabDragPolicy.CanReturnToPane(tag, ret.Kind);
     /// <summary>切り離しウィンドウから戻ってきたエディタタブを帯へ迎える。<b>実体はそのまま</b>——
-    /// 引き出すときに <see cref="RemoveEditorTabForMove"/> が返した同じ <see cref="EditorTab"/> なので、
+    /// 切り離したときの同じ <see cref="EditorTab"/> なので、
     /// タブ ID・コントロールに張った配線・未保存の本文・カーソル位置が切り離す前のまま続く。</summary>
     private void AdoptEditorTab(EditorTab tab) {
         _editorTabs.Add(tab);
@@ -363,65 +305,5 @@ public partial class ShellWindow {
         ActivateTerminalTab(tab.Id);
         FocusPane(PaneKind.Terminal);
         SaveActiveWorkspaceSnapshot();
-    }
-    private static Guid? ResolvePaneTabId(object originalSource)
-        => PaneTabDragInteractionController.ResolveTabId(originalSource);
-    /// <summary>エディタタブをメインから外して<b>実体（<see cref="EditorTab"/>）ごと</b>返す（Dispose はしない
-    /// ＝別ウィンドウへ移すため）。戻すときは同じ実体を <see cref="AdoptEditorTab"/> で帯へ戻す。</summary>
-    private EditorTab? RemoveEditorTabForMove(Guid id) {
-        var index = _editorTabs.FindIndex(t => t.Id == id);
-        if (index < 0)
-            return null;
-        var tab = _editorTabs[index];
-        var control = tab.Control;   // 未実体化なら実体化（生きたコントロールを移すため）
-        var wasActive = _activeEditorTab?.Id == id;
-        if (ReferenceEquals(_editorSupport.Source, tab)) {
-            _editorSupportDebounceTimer?.Stop();
-            DetachEditorSupportSource();
-            _editorSupport.IsPinned = false;
-            UpdateEditorSupportPinToggle();
-        }
-        ViewportTree.Detach(control);   // 視覚ツリーから外す（Dispose はしない＝別窓へ移す）
-        if (ReferenceEquals(_previewEditorTab, tab))
-            _previewEditorTab = null;
-        _editorTabs.RemoveAt(index);
-        _vm.Tabs.RemoveEditorTab(id);
-        _editorViews?.RemoveTab(id);
-        PaneTabTransferCoordinator.CompleteRemoval(
-            _editorTabs, tab => tab.Id, _editorViews, index, wasActive, id => ActivateEditorTab(id),
-            id => { if (_editorTabs.FirstOrDefault(t => t.Id == id) is { } focused) SetActiveEditorTab(focused); },
-            () => {
-                var newTab = CreateEditorTab();
-                _editorTabs.Add(newTab);
-                _vm.Tabs.AddEditorTab(newTab.Id, null, false, false);
-                ActivateEditorTab(newTab.Id);
-            });
-        SaveActiveWorkspaceSnapshot();
-        return tab;
-    }
-    /// <summary>ターミナルタブをメインから外して実体ごと返す（<c>CloseAsync</c> はしない＝別ウィンドウへ移す）。</summary>
-    private TerminalTab? RemoveTerminalTabForMove(Guid id) {
-        var index = _terminalTabs.FindIndex(t => t.Id == id);
-        if (index < 0)
-            return null;
-        var tab = _terminalTabs[index];
-        var wasActive = _activeTerminalTab?.Id == id;
-        ViewportTree.Detach(tab.View);   // 視覚ツリーから外す（CloseAsync はしない＝別窓へ移す）
-        _terminalTabs.RemoveAt(index);
-        _vm.Tabs.RemoveTerminalTab(id);
-        _terminalViews?.RemoveTab(id);
-        ForgetTerminalActivity(id);
-        PaneTabTransferCoordinator.CompleteRemoval(
-            _terminalTabs, tab => tab.Id, _terminalViews, index, wasActive, id => ActivateTerminalTab(id),
-            id => { if (_terminalTabs.FirstOrDefault(t => t.Id == id) is { } focused) SetActiveTerminalTab(focused); },
-            () => {
-                var startDir = _activeWorkspace?.RootPath ?? _terminal.CurrentDirectory;
-                var newTab = CreateTerminalTab(startDir);
-                _terminalTabs.Add(newTab);
-                _vm.Tabs.AddTerminalTab(newTab.Id, "Terminal", false);
-                ActivateTerminalTab(newTab.Id);
-            });
-        SaveActiveWorkspaceSnapshot();
-        return tab;
     }
 }

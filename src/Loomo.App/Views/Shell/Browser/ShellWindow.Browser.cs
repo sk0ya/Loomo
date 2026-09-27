@@ -30,16 +30,6 @@ public partial class ShellWindow {
         FocusBrowserAddress();
         SaveActiveWorkspaceSnapshot();
     }
-    private void OnBrowserTabSelected(object sender, RoutedEventArgs e) {
-        if (sender is FrameworkElement { Tag: Guid id })
-            ActivateBrowserTab(id);
-    }
-    private async void OnBrowserTabClosed(object sender, RoutedEventArgs e) {
-        if (sender is FrameworkElement { Tag: Guid id }) {
-            await CloseBrowserTabAsync(id);
-            SaveActiveWorkspaceSnapshot();
-        }
-    }
     private void OnBrowserNavigationCompleted(object? sender, Microsoft.Web.WebView2.Core.CoreWebView2NavigationCompletedEventArgs e) {
         if (sender is not WebView2CompositionControl view)
             return;

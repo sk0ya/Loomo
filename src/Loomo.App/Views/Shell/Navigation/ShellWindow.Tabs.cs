@@ -5,8 +5,7 @@ namespace sk0ya.Loomo.App.Views;
 public partial class ShellWindow {
     private EditorTabActivationPresenter? _editorTabActivationPresenter;
     private EditorTabActivationPresenter EditorTabActivationUi
-        => _editorTabActivationPresenter ??= new(
-            Dispatcher, EditorTabStripScrollViewer, EditorTabStripItems, () => _activeEditorTab);
+        => _editorTabActivationPresenter ??= new(Dispatcher, () => _activeEditorTab);
 
     private void OnTerminalNewTab(object sender, RoutedEventArgs e) {
         var startDir = WorkspaceSessionCoordinator.ResolveWorkingDirectory(
@@ -17,32 +16,6 @@ public partial class ShellWindow {
         _vm.Tabs.AddTerminalTab(tab.Id, $"Terminal {CurrentTerminalWorkspace.NextTabNumber++}", false);
         ActivateTerminalTab(tab.Id);
         SaveActiveWorkspaceSnapshot();
-    }
-    private void OnTerminalTabSelected(object sender, RoutedEventArgs e) {
-        if (sender is FrameworkElement { Tag: Guid id })
-            ActivateTerminalTab(id);
-    }
-    private async void OnTabMiddleClick(object sender, MouseButtonEventArgs e) {
-        if (e.ChangedButton != MouseButton.Middle || sender is not FrameworkElement { Tag: Guid id })
-            return;
-        e.Handled = true;
-        var kind = WorkspaceTabClosePolicy.ResolveKind(
-            id, _terminalTabs.Select(tab => tab.Id),
-            _editorTabs.Select(tab => tab.Id), _browserTabs.Select(tab => tab.Id));
-        if (!await WorkspaceTabCloseCoordinator.ExecuteOneAsync(
-                kind, id, CloseTerminalTabAsync, CloseEditorTab, CloseBrowserTabAsync))
-            return;
-        SaveActiveWorkspaceSnapshot();
-    }
-    private async void OnTerminalTabClosed(object sender, RoutedEventArgs e) {
-        if (sender is FrameworkElement { Tag: Guid id }) {
-            await CloseTerminalTabAsync(id);
-            SaveActiveWorkspaceSnapshot();
-        }
-    }
-    private void OnEditorTabSelected(object sender, RoutedEventArgs e) {
-        if (sender is FrameworkElement { Tag: Guid id })
-            ActivateEditorTab(id);
     }
     private TerminalWorkspaceTabs CurrentTerminalWorkspace
         => _activeTerminalWorkspace ?? _scratchTerminalWorkspace;
