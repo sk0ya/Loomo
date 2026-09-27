@@ -14,6 +14,9 @@ namespace sk0ya.Loomo.Services.Debug;
 /// <see cref="IDebugService"/> の netcoredbg（DAP）実装。Phase 1 は「起動して実行し、標準出力/標準エラー/
 /// 終了を観測する」までを担う。アダプタ駆動は <see cref="DapProtocolClient"/>（stdio 上の DAP）に委譲する。
 ///
+/// 対象が .NET Framework のときは、同じ DAP のやり取りのまま相手を Loomo 同梱の NetFx アダプタへ差し替える
+/// （<see cref="DebugAdapterResolver"/>。netcoredbg は CoreCLR 専用で .NET Framework を扱えない）。
+///
 /// 起動シーケンス（DAP 標準）：initialize →（response）→ launch を送信 →（adapter が initialized を送る）→
 /// configurationDone → launch の response 完了で実行開始。launch の response は configurationDone の後に
 /// 返るため、launch を await する前に initialized 受信で configurationDone を送る必要がある。
@@ -72,6 +75,7 @@ public sealed class NetcoredbgDebugService : IDebugService
 
     public Task StartAsync(DebugLaunchConfig config, CancellationToken ct)
     {
+        var adapter = DebugAdapterResolver.ForProgram(config.Program);
         var workDir = config.WorkingDirectory
             ?? Path.GetDirectoryName(config.Program)
             ?? Environment.CurrentDirectory;
@@ -81,7 +85,7 @@ public sealed class NetcoredbgDebugService : IDebugService
             buildArguments: () => new
             {
                 name = "Loomo Debug",
-                type = "coreclr",
+                type = adapter.LaunchType,
                 request = "launch",
                 program = config.Program,
                 args = config.Args ?? Array.Empty<string>(),
@@ -91,6 +95,7 @@ public sealed class NetcoredbgDebugService : IDebugService
                 justMyCode = config.JustMyCode,
                 console = "internalConsole",   // 出力を output イベントで受け取る
             },
+            adapter: adapter,
             workDir: workDir,
             attaching: false,
             label: $"デバッグ起動: {config.Program}",
@@ -101,19 +106,22 @@ public sealed class NetcoredbgDebugService : IDebugService
             ct: ct);
     }
 
-    public Task AttachAsync(DebugAttachConfig config, CancellationToken ct)
+    public async Task AttachAsync(DebugAttachConfig config, CancellationToken ct)
     {
         var name = string.IsNullOrWhiteSpace(config.Name) ? $"PID {config.ProcessId}" : $"{config.Name} (PID {config.ProcessId})";
-        return BeginSessionAsync(
+        // 起動直後のプロセス（IIS Express 等）はまだランタイムを読み込んでいないことがある。少し待って見極める。
+        var adapter = await DebugAdapterResolver.ForProcessAsync(config.ProcessId, TimeSpan.FromSeconds(5), ct);
+        await BeginSessionAsync(
             requestCommand: "attach",
             buildArguments: () => new
             {
                 name = "Loomo Attach",
-                type = "coreclr",
+                type = adapter.LaunchType,
                 request = "attach",
                 processId = config.ProcessId,
                 justMyCode = false,
             },
+            adapter: adapter,
             workDir: Environment.CurrentDirectory,
             attaching: true,
             label: $"アタッチ: {name}",
@@ -128,6 +136,7 @@ public sealed class NetcoredbgDebugService : IDebugService
     private async Task BeginSessionAsync(
         string requestCommand,
         Func<object> buildArguments,
+        DebugAdapterLaunch adapter,
         string workDir,
         bool attaching,
         string label,
@@ -140,11 +149,9 @@ public sealed class NetcoredbgDebugService : IDebugService
         {
             await StopCoreAsync();
 
-            if (!IsAdapterAvailable)
+            if (!adapter.IsAvailable)
             {
-                Emit(DebugOutputCategory.Important,
-                    $"デバッグアダプタ {DebugAdapterCatalog.Netcoredbg.Executable} が見つかりません。" +
-                    $"インストールしてください（例: {DebugAdapterCatalog.Netcoredbg.InstallCommand}）。");
+                Emit(DebugOutputCategory.Important, adapter.MissingMessage);
                 SetState(DebugSessionState.Failed);
                 return;
             }
@@ -163,10 +170,7 @@ public sealed class NetcoredbgDebugService : IDebugService
             DapProtocolClient client;
             try
             {
-                client = new DapProtocolClient(
-                    DebugAdapterCatalog.Netcoredbg.Executable,
-                    DebugAdapterCatalog.Netcoredbg.Args,
-                    workDir);
+                client = new DapProtocolClient(adapter.Executable, adapter.Args, workDir);
             }
             catch (Exception ex)
             {
@@ -186,7 +190,7 @@ public sealed class NetcoredbgDebugService : IDebugService
                 {
                     clientID = "loomo",
                     clientName = "Loomo",
-                    adapterID = "netcoredbg",
+                    adapterID = adapter.AdapterId,
                     locale = "ja",
                     linesStartAt1 = true,
                     columnsStartAt1 = true,

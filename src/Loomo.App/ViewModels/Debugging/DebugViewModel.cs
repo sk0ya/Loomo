@@ -1,4 +1,6 @@
 using System;
+using sk0ya.Loomo.CSharp.Build;
+using sk0ya.Loomo.CSharp.Debug;
 using sk0ya.Loomo.CSharp.Projects;
 using sk0ya.Loomo.CSharp.Testing;
 using sk0ya.Loomo.Core.Abstractions;
@@ -35,6 +37,9 @@ public sealed class DebugViewModel : DebugManagerViewModelBase
         Launch = new DebugLaunchViewModel(this, workspace, terminal, Attach, Profiles, solutionModel, browser);
         Profiles.AttachLaunch(Launch);
         _findBuildTarget = () => DebugTargetResolver.FindBuildTarget(workspace, this);
+        // .NET Framework だけなら同梱の NetFx アダプタでデバッグするので、netcoredbg は要らない。
+        SetAdapterNeeded(() => CSharpDebugTargetResolver.FindBuildTarget(workspace.Folders) is not { } target ||
+                               !MsBuildToolchain.ContainsOnlyNetFrameworkProjects(target));
     }
 
     /// <summary>ビルド/テスト対象（.sln 優先、無ければ最初の .csproj）を解決する。無ければ null（理由はコンソールへ）。</summary>

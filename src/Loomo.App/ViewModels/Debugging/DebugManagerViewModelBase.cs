@@ -147,7 +147,17 @@ public abstract partial class DebugManagerViewModelBase : ObservableObject, IDeb
     }
 
     /// <summary>パネルが開かれたときにアダプタ導入状況を取り直す（導入直後でも反映されるように）。</summary>
-    public void Refresh() => IsAdapterMissing = !_adapterProbe.IsAdapterAvailable;
+    public void Refresh() => IsAdapterMissing = !_adapterProbe.IsAdapterAvailable && (_adapterNeeded?.Invoke() ?? true);
+
+    private Func<bool>? _adapterNeeded;
+
+    /// <summary>導入を促すアダプタがそもそも要るワークスペースか（toolchain 固有）。dotnet は .NET Framework だけの
+    /// ワークスペースなら同梱アダプタで足りるので、netcoredbg の導入バーを出さない。</summary>
+    protected void SetAdapterNeeded(Func<bool> adapterNeeded)
+    {
+        _adapterNeeded = adapterNeeded;
+        Refresh();
+    }
 
     /// <summary>ビルド/テスト対象を解決する。無ければ null（理由はコンソールへ）。toolchain 固有
     /// （dotnet: .sln/.csproj / TypeScript: tsconfig のあるディレクトリ）。</summary>

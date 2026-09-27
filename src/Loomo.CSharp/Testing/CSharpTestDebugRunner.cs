@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using sk0ya.Loomo.Core.Processes;
+using sk0ya.Loomo.CSharp.Build;
 
 namespace sk0ya.Loomo.CSharp.Testing;
 
@@ -20,7 +21,6 @@ public static class CSharpTestDebugTargetResolver
         {
             StartInfo = new ProcessStartInfo
             {
-                FileName = "dotnet",
                 WorkingDirectory = Path.GetDirectoryName(Path.GetFullPath(projectPath))!,
                 UseShellExecute = false,
                 RedirectStandardOutput = true,
@@ -30,8 +30,10 @@ public static class CSharpTestDebugTargetResolver
                 StandardErrorEncoding = Encoding.UTF8,
             }
         };
-        process.StartInfo.ArgumentList.Add("msbuild");
+        MsBuildToolchain.For(projectPath).ApplyTo(process.StartInfo);
         process.StartInfo.ArgumentList.Add(Path.GetFullPath(projectPath));
+        if (MsBuildToolchain.SolutionDirPropertyFor(projectPath) is { } solutionDir)
+            process.StartInfo.ArgumentList.Add("/p:SolutionDir=" + solutionDir);
         // MSBuildはpropertyを1件だけ要求するとプレーンテキストを返すため、JSONとして扱えるよう
         // TargetFrameworkも同時に要求する（TargetPathの値自体はAssemblyNameを含む実評価結果）。
         process.StartInfo.ArgumentList.Add("/getProperty:TargetPath,TargetFramework");

@@ -259,6 +259,21 @@ Models live under `models/completion/` (`DownloadableModel.LocalSubdirectory`), 
 `models/` directly — `ModelCatalogService` enumerates that root's immediate children for the *chat* model
 dropdown, and a completion model listed there is one a user can pick to converse with.
 
+### .NET Framework / legacy (non-SDK) projects — `docs/設計/28-デバッグ実行.md` §28.12 is the authority
+
+Two things `dotnet` can't do, and both are handled by choosing the tool per target, not by special-casing call sites:
+- **Build/run/evaluate** of a legacy csproj (no `Sdk`, its own `<Import>`s — `packages.config`, `COMReference`,
+  VS-only targets) goes through Visual Studio's `MSBuild.exe`. `MsBuildToolchain.For(target)` is the **only** place
+  that decides (it also serves the project evaluator); falls back to `dotnet` when no VS/Build Tools is installed.
+  Single-project builds pass `SolutionDir` (packages.config restore needs it) ending in `/`, never `\` (WinPS 5.1 quoting).
+- **Debugging**: netcoredbg is CoreCLR-only, so .NET Framework programs are debugged by the bundled
+  **`src/Loomo.NetFxDebug`** — a net48 ICorDebug (ClrDebug) DAP adapter that speaks the same DAP as netcoredbg, so
+  `NetcoredbgDebugService` is unchanged except for *which exe it starts* (`DebugAdapterResolver`, by PE/corflags via
+  `ManagedProgramInspector`). ICorDebug needs matching bitness, so it is built twice (x64 + `Build32/` — not `x86/`, which `.gitignore` swallows; legacy exes default to
+  Prefer32Bit) and copied to the App's `netfxdbg\`. Reads both portable and Windows PDBs. Its rules: touch ICorDebug only
+  under the engine lock; never func-eval on the callback thread; any continue (incl. func-eval) invalidates frames/values,
+  so values are held as re-resolvable `ValueSource`s keyed by a generation counter.
+
 ### Multi-root workspaces — ask the workspace, don't compare against one folder
 
 A Loomo workspace is a **set of folders** (`IWorkspaceService.Folders`; primary + any added later), not one root.

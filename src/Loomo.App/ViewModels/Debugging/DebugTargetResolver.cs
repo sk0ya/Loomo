@@ -8,6 +8,7 @@ using sk0ya.Loomo.CSharp.Build;
 using sk0ya.Loomo.Core.Abstractions;
 using sk0ya.Loomo.Core.Debug;
 using sk0ya.Loomo.CSharp.Debug;
+using sk0ya.Loomo.CSharp.Projects;
 
 namespace sk0ya.Loomo.App.ViewModels;
 
@@ -95,14 +96,36 @@ internal static class DebugTargetResolver
                 targetFramework: targetFramework))
             return null;
 
-        var dll = CSharpDebugTargetResolver.FindOutputDll(csproj, configuration, targetFramework);
+        var dll = await FindOutputProgramAsync(csproj, configuration, targetFramework);
         if (dll is null)
         {
             session.Append(DebugOutputCategory.Important,
-                "ビルド出力 (.dll) が見つかりません。先にビルドするか、対象を直接指定してください。");
+                "ビルド出力 (.dll/.exe) が見つかりません。先にビルドするか、対象を直接指定してください。");
             return null;
         }
         return dll;
+    }
+
+    /// <summary>起動するビルド出力を探す。旧形式（非SDK）のプロジェクトは出力が <c>bin\Debug\&lt;AssemblyName&gt;.exe</c>
+    /// のように TFM フォルダーも .dll も無いので、MSBuild 自身に <c>TargetPath</c> を聞く。SDK 形式でも
+    /// .NET Framework 向け（net48 等）は出力が .exe だけで .dll 探索に掛からないので、同じく TargetPath へ落とす。</summary>
+    private static async Task<string?> FindOutputProgramAsync(
+        string csproj, string configuration, string? targetFramework)
+    {
+        var legacy = MsBuildToolchain.IsLegacyProject(csproj);
+        if (!legacy && CSharpDebugTargetResolver.FindOutputDll(csproj, configuration, targetFramework) is { } dll)
+            return dll;
+        try
+        {
+            // 旧形式に TFM の切り替えは無い（モデル上の名前は "(既定)" 等で、TargetFramework として渡すと壊れる）。
+            var target = await MsBuildProjectEvaluator.ResolveTargetPathAsync(
+                csproj, legacy ? null : targetFramework, configuration, CancellationToken.None);
+            return target is not null && File.Exists(target) ? target : null;
+        }
+        catch (Exception ex) when (ex is IOException or InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            return null;
+        }
     }
 
     /// <summary><c>dotnet build</c> を実行し、出力をコンソールへ。成功（exit 0）なら true。</summary>

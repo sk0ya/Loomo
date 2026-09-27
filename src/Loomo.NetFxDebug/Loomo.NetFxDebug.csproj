@@ -1,0 +1,44 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    .NET Framework（デスクトップ CLR）用のデバッグアダプタ。netcoredbg／vsdbg はどちらも CoreCLR 専用で、
+    旧形式の .NET Framework アプリをデバッグできない。そこで ICorDebug（ClrDebug ラッパー、MIT）を直接使い、
+    netcoredbg と同じ DAP（stdio）を話す別プロセスとして Loomo に同梱する。Loomo 側から見れば
+    「アダプタの実行ファイルが違うだけ」で、NetcoredbgDebugService の DAP のやり取りはそのまま使える。
+
+    net48 なのは、ICorDebug（mscordbi）が「デバッガ自身が載っている CLR」から取るのが素直で、
+    .NET Framework 4.x は Windows に必ず入っているから。ICorDebug はデバッガと対象のビット数が一致して
+    いないと繋がらないので、同じソースを 32bit でもビルドする（Build32\Loomo.NetFxDebug.Build32.csproj。フォルダー名を x86 にしないこと——.gitignore の x86/ に吸われて他の PC で 32bit 版が消える）。
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <RootNamespace>sk0ya.Loomo.NetFxDebug</RootNamespace>
+    <AssemblyName Condition="'$(NetFxDebugAssemblyName)' == ''">sk0ya.Loomo.NetFxDebug</AssemblyName>
+    <AssemblyName Condition="'$(NetFxDebugAssemblyName)' != ''">$(NetFxDebugAssemblyName)</AssemblyName>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <!-- ルートの Directory.Build.props が win-x64 を固定している。明示しておく（32bit 版はここを上書きする）。 -->
+    <RuntimeIdentifier Condition="'$(NetFxDebugRuntimeIdentifier)' == ''">win-x64</RuntimeIdentifier>
+    <RuntimeIdentifier Condition="'$(NetFxDebugRuntimeIdentifier)' != ''">$(NetFxDebugRuntimeIdentifier)</RuntimeIdentifier>
+    <PlatformTarget Condition="'$(RuntimeIdentifier)' == 'win-x86'">x86</PlatformTarget>
+    <PlatformTarget Condition="'$(RuntimeIdentifier)' != 'win-x86'">x64</PlatformTarget>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Remove="Build32\**" />
+    <None Remove="Build32\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="ClrDebug" Version="0.4.2" />
+    <PackageReference Include="System.Reflection.Metadata" Version="9.0.20" />
+    <PackageReference Include="System.Text.Json" Version="9.0.20" />
+    <!-- 参照アセンブリ（Developer Pack）が無い環境でもビルドできるように。 -->
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+  </ItemGroup>
+
+</Project>

@@ -180,14 +180,6 @@ public sealed partial class DebugLaunchViewModel : ObservableObject, ILaunchConf
             await StartIisExpressDebugAsync(projectOverride, iisProfile);
             return;
         }
-        if (_manager.IsAdapterMissing)
-        {
-            _manager.StatusMessage = "アダプタ未導入";
-            _manager.Append(DebugOutputCategory.Important,
-                $"デバッグアダプタ {DebugAdapterCatalog.Netcoredbg.Executable} が見つかりません。下のバーから導入できます。");
-            return;
-        }
-
         // 直前セッションが対象プログラムの自然終了で終わっていた場合、アダプタの後始末（dll/pdb のハンドル解放）
         // が非同期に進んでいる可能性がある。先にビルドすると「ファイル使用中」で失敗し得るため、ここで待つ。
         await _manager.WaitForAllIdleAsync();
@@ -198,10 +190,22 @@ public sealed partial class DebugLaunchViewModel : ObservableObject, ILaunchConf
             ConfigurationFor(projectOverride ?? _profiles.SelectedProjectPath),
             SelectedTargetFrameworkFor(projectOverride ?? _profiles.SelectedProjectPath));
         if (program is null) return;
+        // アダプタは対象で決まる（.NET Framework は同梱アダプタで netcoredbg 不要）ので、確認は対象が決まってから。
+        if (!EnsureAdapterFor(program)) return;
 
         var session = _manager.CreateSession(BuildDisplayName(program), DebugSessionKind.Launch);
         await session.DebugService.SetExceptionBreakpointsAsync(CurrentExceptionFilterIds(), CancellationToken.None);
         await LaunchIntoAsync(session, program);
+    }
+
+    /// <summary>対象に合うデバッグアダプタがあるか確かめる。無ければ理由をコンソールへ出して false。</summary>
+    private bool EnsureAdapterFor(string program)
+    {
+        var adapter = DebugAdapterResolver.ForProgram(program);
+        if (adapter.IsAvailable) return true;
+        _manager.StatusMessage = "アダプタ未導入";
+        _manager.Append(DebugOutputCategory.Important, adapter.MissingMessage);
+        return false;
     }
 
     /// <summary>同じ対象で、既存セッション（同じタブ）へ再度 launch する（Restart 用）。</summary>
@@ -213,6 +217,7 @@ public sealed partial class DebugLaunchViewModel : ObservableObject, ILaunchConf
             _workspace, _terminal, _manager, TargetProgram, BuildFirst, _profiles.SelectedProjectPath,
             ConfigurationFor(_profiles.SelectedProjectPath), SelectedTargetFrameworkFor(_profiles.SelectedProjectPath));
         if (program is null) return;
+        if (!EnsureAdapterFor(program)) return;
         await LaunchIntoAsync(session, program);
     }
 
@@ -221,14 +226,9 @@ public sealed partial class DebugLaunchViewModel : ObservableObject, ILaunchConf
     /// 既存のAttach実装を使ってデバッグセッションを作る。</summary>
     private async Task StartIisExpressDebugAsync(string? projectOverride, LaunchSettingsProfile profile)
     {
-        if (_manager.IsAdapterMissing)
-        {
-            _manager.StatusMessage = "アダプタ未導入";
-            _manager.Append(DebugOutputCategory.Important,
-                $"デバッグアダプタ {DebugAdapterCatalog.Netcoredbg.Executable} が見つかりません。下のバーから導入できます。");
-            return;
-        }
-
+        // アダプタの有無はここでは見ない：旧 ASP.NET（.NET Framework）なら同梱アダプタ、ASP.NET Core なら
+        // netcoredbg と、起動した iisexpress に載ったランタイムで決まる。無ければアタッチが理由を出して失敗し、
+        // 下の Failed 分岐が iisexpress を片付ける。
         var projectPath = projectOverride ?? _profiles.SelectedProjectPath;
         if (string.IsNullOrWhiteSpace(projectPath) || !File.Exists(projectPath))
         {

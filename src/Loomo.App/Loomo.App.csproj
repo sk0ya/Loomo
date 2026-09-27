@@ -31,6 +31,28 @@
           Condition="Exists('%(CompletionHostApphost.FullPath)')" />
   </Target>
 
+  <!-- .NET Framework 用デバッグアダプタ（net48、64bit と 32bit の2本）。参照は「一緒にビルドさせる」ためで、
+       本体はそのアセンブリを使わない（やり取りは DAP の標準入出力だけ）。TFM が違うので参照の互換判定は飛ばし、
+       出力フォルダーごと $(OutDir)netfxdbg\ へ置く（DebugAdapterCatalog.NetFxExecutable が探す場所）。
+       32bit 版は 64bit 版と同じ依存 DLL を使うので、exe と config だけ同じフォルダーへ足す。 -->
+  <ItemGroup>
+    <ProjectReference Include="../Loomo.NetFxDebug/Loomo.NetFxDebug.csproj"
+                      ReferenceOutputAssembly="false" SkipGetTargetFrameworkProperties="true"
+                      GlobalPropertiesToRemove="TargetFramework;RuntimeIdentifier" Private="false" />
+    <ProjectReference Include="../Loomo.NetFxDebug/Build32/Loomo.NetFxDebug.Build32.csproj"
+                      ReferenceOutputAssembly="false" SkipGetTargetFrameworkProperties="true"
+                      GlobalPropertiesToRemove="TargetFramework;RuntimeIdentifier" Private="false" />
+  </ItemGroup>
+
+  <Target Name="CopyNetFxDebugAdapter" AfterTargets="Build">
+    <ItemGroup>
+      <NetFxDebugFiles Include="$(MSBuildThisFileDirectory)../Loomo.NetFxDebug/bin/$(Configuration)/*.dll;$(MSBuildThisFileDirectory)../Loomo.NetFxDebug/bin/$(Configuration)/*.exe;$(MSBuildThisFileDirectory)../Loomo.NetFxDebug/bin/$(Configuration)/*.config" />
+      <NetFxDebugFiles Include="$(MSBuildThisFileDirectory)../Loomo.NetFxDebug/Build32/bin/$(Configuration)/sk0ya.Loomo.NetFxDebug.x86.exe;$(MSBuildThisFileDirectory)../Loomo.NetFxDebug/Build32/bin/$(Configuration)/sk0ya.Loomo.NetFxDebug.x86.exe.config" />
+    </ItemGroup>
+    <Copy SourceFiles="@(NetFxDebugFiles)" DestinationFolder="$(OutDir)netfxdbg" SkipUnchangedFiles="true"
+          Condition="Exists('%(NetFxDebugFiles.FullPath)')" />
+  </Target>
+
   <ItemGroup>
     <InternalsVisibleTo Include="sk0ya.Loomo.Tests" />
   </ItemGroup>

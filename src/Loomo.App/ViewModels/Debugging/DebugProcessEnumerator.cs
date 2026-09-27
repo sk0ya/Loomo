@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using sk0ya.Loomo.Services.Debug;
 
 namespace sk0ya.Loomo.App.ViewModels;
 
@@ -60,6 +61,9 @@ internal static class DebugProcessEnumerator
     /// おおむね検査できるプロセスに限られるため、この best-effort で十分。</summary>
     private static bool IsManaged(Process p)
     {
+        // 32bit プロセス（旧形式の .NET Framework アプリは既定で 32bit）は Process.Modules では WOW64 側の
+        // モジュールが見えず clr.dll を見落とす。まず全ビットのモジュールを見る判定で調べる。
+        if (ManagedProgramInspector.InspectProcess(p.Id) is not null) return true;
         try
         {
             foreach (ProcessModule m in p.Modules)

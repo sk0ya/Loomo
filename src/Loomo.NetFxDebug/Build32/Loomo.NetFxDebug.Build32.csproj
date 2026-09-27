@@ -1,0 +1,18 @@
+<Project>
+
+  <!-- 32bit 版の NetFx デバッグアダプタ。ソースは親フォルダーと共有し、ビット数と名前だけ変える。
+       ICorDebug は対象と同じビット数のデバッガからしか繋がらず、旧形式の exe は既定で Prefer32Bit（32bit 実行）
+       なので、こちらが要る場面の方がむしろ多い。 -->
+  <PropertyGroup>
+    <NetFxDebugRuntimeIdentifier>win-x86</NetFxDebugRuntimeIdentifier>
+    <NetFxDebugAssemblyName>sk0ya.Loomo.NetFxDebug.x86</NetFxDebugAssemblyName>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+
+  <Import Project="..\Loomo.NetFxDebug.csproj" />
+
+  <ItemGroup>
+    <Compile Include="..\**\*.cs" Exclude="..\obj\**;..\bin\**;..\Build32\**" />
+  </ItemGroup>
+
+</Project>

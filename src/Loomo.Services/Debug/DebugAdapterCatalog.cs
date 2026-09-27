@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 
 namespace sk0ya.Loomo.Services.Debug;
@@ -44,6 +45,22 @@ public static class DebugAdapterCatalog
         [],
         Js.JsDebugAdapterLocator.InstallCommand,
         "https://github.com/microsoft/vscode-js-debug/releases");
+
+    /// <summary>NetFx アダプタの置き場所を上書きする環境変数（テスト・開発用）。</summary>
+    public const string NetFxDirectoryVariable = "LOOMO_NETFXDBG_DIR";
+
+    /// <summary>.NET Framework（デスクトップ CLR）用アダプタの実行ファイル。netcoredbg／vsdbg はどちらも CoreCLR 専用で
+    /// .NET Framework を扱えないため、ICorDebug を直接使う自前のアダプタ（<c>src/Loomo.NetFxDebug</c>）を
+    /// Loomo に同梱している（導入は不要）。ICorDebug はデバッガと対象のビット数が一致していないと繋がらないので、
+    /// 64bit 版と 32bit 版（<c>*.x86.exe</c>）の2本を置き、対象のビット数で選ぶ。</summary>
+    public static string NetFxExecutable(bool is32Bit)
+    {
+        var configured = Environment.GetEnvironmentVariable(NetFxDirectoryVariable);
+        var directory = !string.IsNullOrWhiteSpace(configured)
+            ? configured
+            : Path.Combine(AppContext.BaseDirectory, "netfxdbg");
+        return Path.Combine(directory, is32Bit ? "sk0ya.Loomo.NetFxDebug.x86.exe" : "sk0ya.Loomo.NetFxDebug.exe");
+    }
 
     public static readonly IReadOnlyList<DebugAdapterInfo> Adapters = new[] { Netcoredbg, JsDebug };
 

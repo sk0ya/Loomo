@@ -2,6 +2,7 @@
 using System.Text.Json;
 using sk0ya.Loomo.Core.Abstractions;
 using sk0ya.Loomo.Core.Processes;
+using sk0ya.Loomo.CSharp.Build;
 
 namespace sk0ya.Loomo.CSharp.Projects;
 
@@ -89,16 +90,17 @@ public sealed class MsBuildProjectEvaluator : IProjectEvaluator
         {
             StartInfo = new ProcessStartInfo
             {
-                FileName = "dotnet",
                 UseShellExecute = false,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 CreateNoWindow = true,
             }
         };
-        process.StartInfo.ArgumentList.Add("msbuild");
+        // 旧形式（非SDK）は Visual Studio の MSBuild.exe で評価する（dotnet msbuild では通らないものがある）。
+        MsBuildToolchain.For(projectPath).ApplyTo(process.StartInfo);
         process.StartInfo.ArgumentList.Add(projectPath);
         AddSingleProcessSwitches(process.StartInfo);
+        AddSolutionDir(process.StartInfo, projectPath);
         if (designTimeBuild)
         {
             process.StartInfo.ArgumentList.Add("/t:Compile");
@@ -273,6 +275,13 @@ public sealed class MsBuildProjectEvaluator : IProjectEvaluator
     /// 広げた時点で実際に13分ハングした）。プロジェクト1つの評価に並列ノードは要らないので、
     /// 単一プロセスで走らせて常駐ノードを作らせない。並列化はプロジェクト単位で
     /// <see cref="SolutionModelService"/> が既に持っている。</para></summary>
+    /// <summary>旧形式はビルドと同じ SolutionDir で評価する（<see cref="MsBuildToolchain.SolutionDirPropertyFor"/>）。</summary>
+    private static void AddSolutionDir(ProcessStartInfo startInfo, string projectPath)
+    {
+        if (MsBuildToolchain.SolutionDirPropertyFor(projectPath) is { } solutionDir)
+            startInfo.ArgumentList.Add("/p:SolutionDir=" + solutionDir);
+    }
+
     private static void AddSingleProcessSwitches(ProcessStartInfo startInfo)
     {
         startInfo.ArgumentList.Add("/m:1");
@@ -472,7 +481,9 @@ public sealed class MsBuildProjectEvaluator : IProjectEvaluator
         };
     }
 
-    private static async Task<string?> ResolveTargetPathAsync(
+    /// <summary>MSBuild 自身に <c>TargetPath</c>（ビルド出力の実体）を聞く。AssemblyName・OutputPath・
+    /// 旧形式のプラットフォーム別出力先を推測しないための正本。解決できなければ null。</summary>
+    public static async Task<string?> ResolveTargetPathAsync(
         string projectPath,
         string? targetFramework,
         string? configuration,
@@ -482,16 +493,17 @@ public sealed class MsBuildProjectEvaluator : IProjectEvaluator
         {
             StartInfo = new ProcessStartInfo
             {
-                FileName = "dotnet",
                 UseShellExecute = false,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 CreateNoWindow = true,
             },
         };
-        process.StartInfo.ArgumentList.Add("msbuild");
+        // 旧形式（非SDK）は Visual Studio の MSBuild.exe で評価する（dotnet msbuild では通らないものがある）。
+        MsBuildToolchain.For(projectPath).ApplyTo(process.StartInfo);
         process.StartInfo.ArgumentList.Add(projectPath);
         AddSingleProcessSwitches(process.StartInfo);
+        AddSolutionDir(process.StartInfo, projectPath);
         // MSBuild emits a bare scalar for a single requested property. Request a harmless
         // second property so the result is always the JSON envelope parsed below.
         process.StartInfo.ArgumentList.Add("/getProperty:TargetPath,AssemblyName");

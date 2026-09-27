@@ -66,11 +66,12 @@ public sealed partial class DebugAttachViewModel : ObservableObject
     public async Task AttachToNewSessionAsync(DebugProcessViewModel proc)
     {
         _manager.Refresh();
-        if (_manager.IsAdapterMissing)
+        // アダプタはプロセスのランタイムで決まる（.NET Framework は同梱アダプタで netcoredbg 不要）。
+        var adapter = DebugAdapterResolver.ForProcess(proc.Pid);
+        if (!adapter.IsAvailable)
         {
             _manager.StatusMessage = "アダプタ未導入";
-            _manager.Append(DebugOutputCategory.Important,
-                $"デバッグアダプタ {DebugAdapterCatalog.Netcoredbg.Executable} が見つかりません。下のバーから導入できます。");
+            _manager.Append(DebugOutputCategory.Important, adapter.MissingMessage);
             return;
         }
 

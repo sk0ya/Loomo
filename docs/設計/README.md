@@ -21,7 +21,7 @@ Loomo はローカル開発ワークスペースを **「部屋（Room）」** �
 | [05-決定とロードマップ.md](05-決定とロードマップ.md) | §11 ロードマップ / §12 決定・未決 / §19 構想（ブレスト） | 方針・未確定アイデア |
 | [06-変更履歴.md](06-変更履歴.md) | §13 初期実装メモ / §17 Copilot(廃止) / §18 安全実装 / §22 Ollama(撤去) | 日付つき実装記録（一部は撤去/置換済み） |
 | [27-軌跡.md](27-軌跡.md) | §27 軌跡（Thread Rail） | 軌跡バーの正本（記録・復元・永続化・既知の不具合） |
-| [28-デバッグ実行.md](28-デバッグ実行.md) | §28 デバッグ実行（IDEペイン） | DAP（netcoredbg）連携・起動構成・ビルド/テスト統合の正本 |
+| [28-デバッグ実行.md](28-デバッグ実行.md) | §28 デバッグ実行（IDEペイン） | DAP（netcoredbg／同梱 NetFx アダプタ）連携・起動構成・ビルド/テスト統合・旧形式（.NET Framework）対応の正本 |
 | [29-TypeScript-IDE.md](29-TypeScript-IDE.md) | §29 TypeScript IDE（TS IDEペイン） | DAP（vscode-js-debug）連携・親子セッション・npm/tsc 統合の正本 |
 | [30-LSP.md](30-LSP.md) | §30 LSP／Formatter 所有境界 | LSP セッションのワークスペース所有（`ILspWorkspace`/`ILspDocument`・プール・参照カウント）と、共有 `FormatterRegistry` のホスト所有（§30.13）の正本。**実装済み** |
 | [31-IDE体感品質ロードマップ.md](31-IDE体感品質ロードマップ.md) | §31 IDE体感品質ロードマップ | 補完・Problems・デバッグ・LSP状態・キーボード／フォーカスをIDE品質へ詰める実装順序と完了条件 |
