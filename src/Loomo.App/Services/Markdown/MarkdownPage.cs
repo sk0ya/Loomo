@@ -279,32 +279,57 @@ internal static class MarkdownPage
                         outlineEntries[i].a.classList.toggle('active', i === active);
                 }
 
+                // 本文ブロックの「元の HTML」。mermaid 描画や contentEditable の付与で DOM は書き換わるので、
+                // 差分比較は今の outerHTML ではなく、挿入した時点の HTML（ここに控えた値）で行う。
+                const bodySrc = new WeakMap();
+                function isPageChrome(n) {
+                    return n.nodeType === 1 && (n.classList.contains('loomo-outline-panel')
+                        || n.classList.contains('loomo-lightbox') || n.classList.contains('loomo-slide-indicator'));
+                }
+                function nodeSrc(n) {
+                    return n.nodeType === 1 ? n.outerHTML : n.nodeType + ':' + n.nodeValue;
+                }
+                function stampBody() {
+                    for (const n of document.body.childNodes)
+                        if (!isPageChrome(n) && !bodySrc.has(n)) bodySrc.set(n, nodeSrc(n));
+                }
+
                 // フル再ナビゲートせず本文だけ差し替える（編集ごとのページ再読込＝チカチカを防ぐ）。
-                // 高さが変わるのでスクロールを最後の比率へ貼り直し、mermaid を描き直す。
-                function applyBody(html) {
+                // body 直下のブロックを前後から突き合わせ、変わった区間だけを入れ替える差分描画。
+                // 変わっていないブロック（描画済みの mermaid 図・読込済みの画像を含む）はそのまま残るので、
+                // 文書高が崩れず、スクロール位置にも触らない（画面より上の変化はブラウザのスクロール
+                // アンカリングが吸収する）。以前は body.innerHTML ごと差し替えて比率で貼り直していたため、
+                // 打鍵のたびに表示位置が飛んでいた。
+                // full=true は contentEditable 編集の後など、DOM が控えた HTML とずれている場合の全差し替え。
+                function applyBody(html, full) {
                     latestBodyHtml = html;
                     if (markdownEditMode) return;
                     suppressScrollMessage = true;
-                    // 差し替え前の絶対スクロール位置と文書高を控える。高さが変わらない差し替え
-                    // （タスクチェックボックスの反転など）では比率変換を挟まず絶対位置をそのまま保つ
-                    // ＝比率→ピクセルの丸めで数 px 飛ぶのを防ぐ。高さが変わった場合のみ比率で貼り直す。
-                    const prevScrollY = window.scrollY;
-                    const prevScrollHeight = document.documentElement.scrollHeight;
-                    // アウトライン一覧は body 直下なので、この差し替えで消える。位置は先に控えておく
-                    // ——差し替えた後では buildOutline から前のパネルを見つけられず、毎回先頭へ戻る。
-                    const outlinePanel = document.querySelector('.loomo-outline-panel');
-                    const outlineScroll = outlinePanel ? outlinePanel.scrollTop : 0;
-                    document.body.innerHTML = html;
-                    // 差し替え前の要素は detach 済み。開いたままだと overflow ロックが残るので解除して作り直す。
-                    lightboxEl = null;
-                    lightboxImg = null;
-                    document.documentElement.style.overflow = '';
-                    renderMermaid();
-                    buildOutline(outlineScroll);   // 一覧も新しい本文の見出しで組み直す（高さ比較より前＝比較が最終レイアウトを見る）
-                    if (document.documentElement.scrollHeight === prevScrollHeight)
-                        window.scrollTo(0, prevScrollY);
-                    else
-                        window.scrollTo(0, scrollMax() * lastRatio);
+                    // 末尾で書き進めている間は末尾に付いていく（アンカリングは画面より上の変化しか吸収しない）。
+                    const wasAtBottom = scrollMax() > 0 && window.scrollY >= scrollMax() - 2;
+                    const tpl = document.createElement('template');
+                    tpl.innerHTML = html;
+                    const next = Array.from(tpl.content.childNodes);
+                    const nextSrc = next.map(nodeSrc);
+                    const cur = Array.from(document.body.childNodes).filter(n => !isPageChrome(n));
+                    const curSrc = cur.map(n => full ? null : (bodySrc.has(n) ? bodySrc.get(n) : nodeSrc(n)));
+                    let head = 0;
+                    while (head < cur.length && head < next.length && curSrc[head] === nextSrc[head]) head++;
+                    let tail = 0;
+                    while (tail < cur.length - head && tail < next.length - head
+                        && curSrc[cur.length - 1 - tail] === nextSrc[next.length - 1 - tail]) tail++;
+                    const changed = head < cur.length - tail || head < next.length - tail;
+                    if (changed) {
+                        const ref = tail > 0 ? cur[cur.length - tail] : null;
+                        for (let i = head; i < cur.length - tail; i++) cur[i].remove();
+                        for (let i = head; i < next.length - tail; i++) {
+                            bodySrc.set(next[i], nextSrc[i]);
+                            document.body.insertBefore(next[i], ref);
+                        }
+                        renderMermaid();   // data-processed の付かない新しい図だけが描かれる
+                        buildOutline();    // 見出しが変わりうるので一覧を組み直す（一覧のスクロール位置は引き継ぐ）
+                        if (wasAtBottom) window.scrollTo(0, scrollMax());
+                    }
                     requestAnimationFrame(() => requestAnimationFrame(() => { suppressScrollMessage = false; }));
                 }
 
@@ -374,7 +399,7 @@ internal static class MarkdownPage
                     document.body.removeEventListener('change', onRichEditInput);
                     document.body.contentEditable = 'false';
                     if (previewMode === 'marp') renderMarp(markdownSource);
-                    else if (latestBodyHtml !== null) applyBody(latestBodyHtml);
+                    else if (latestBodyHtml !== null) applyBody(latestBodyHtml, true);   // 編集で DOM が控えとずれている
                 }
 
                 function onRichEditInput() {
@@ -450,7 +475,7 @@ internal static class MarkdownPage
                 function serializeMarkdown(root) {
                     const frontmatter = /^---\r?\n[\s\S]*?\r?\n---\r?\n?/.exec(markdownSource)?.[0] || '';
                     const content = Array.from(root.children)
-                        .filter(el => !el.classList.contains('loomo-outline-panel') && !el.classList.contains('loomo-slide-indicator'))
+                        .filter(el => !isPageChrome(el))   // 一覧・ライトボックス等は本文ではない（書き戻さない）
                         .map(el => blockMarkdown(el, 0)).join('').replace(/\n{3,}/g, '\n\n').trim();
                     return frontmatter + (content ? content + '\n' : '');
                 }
@@ -462,6 +487,7 @@ internal static class MarkdownPage
                         if (typeof window.__marpSrc === 'string') renderMarp(window.__marpSrc);
                         else updateIndicator();
                     } else {
+                        stampBody();   // mermaid が DOM を書き換える前に元の HTML を控える
                         renderMermaid();
                         buildOutline();
                     }
