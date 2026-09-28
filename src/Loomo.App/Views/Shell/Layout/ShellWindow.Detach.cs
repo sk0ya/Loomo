@@ -141,7 +141,7 @@ public partial class ShellWindow {
         => DetachedEditorMirrorCoordinator.TryCreate(
             _editorTabs, sourceTabId, () => CreateEditorTab(),
             (editor, path) => LoadEditorFile(editor, path),
-            path => _tabIcons.GetFileIcon(path), AdoptEditorTab);
+            path => _tabIcons.GetFileIcon(path), AdoptEditorTab, _editorDocumentEvents);
     private DetachedItem CreateTerminalSpinoffItem(TerminalTab? sourceTab)
         => CreateTerminalSpinoffItem(sourceTab?.View.WorkingDirectory);
     private DetachedItem CreateTerminalSpinoffItem(string? sourceDirectory) {
@@ -211,7 +211,7 @@ public partial class ShellWindow {
         // 左右/統合・Markdown 描画・Git 一覧で表示・比較の入替/再比較/閉じる）が丸ごと欠ける。
         // ビュー自前のバーで同じ物を出す。
         view.ShowStandaloneToolbar();
-        view.ConfigureEditors(CreateDiffEditorControl, ApplyDiffEditorAppearance);
+        view.ConfigureEditors(CreateDiffEditorControl, ApplyDiffEditorAppearance, DiffWorkingDocuments);
         view.ConfigureMarkdownRender(
             _editorSupport.WebView.ViewFactory, EditorSupportPreviewFolder, Guid.NewGuid().ToString("N"));
         view.MarkdownLinkClicked += (_, e) => _ = HandleEditorSupportLinkClickedAsync(e.Href, e.SourcePath);

@@ -128,6 +128,7 @@ public partial class ShellWindow : Window {
         // フロントデバッグ（TS IDE）が dev URL をペインへ出すためのフック：可視化＋フォーカス＋実体化して遷移。
         _browser.ShowAndNavigateRequested = url => ShowBrowserPaneAndNavigateAsync(url);
         _editor.NewVirtualDocumentTabRequested += OpenVirtualDocumentTab;
+        _editor.FileSaved += _editorDocumentEvents.RaiseSaved;
         _editor.FileOpenRequested += async path => await OpenFileInNewEditorTabAsync(path);
         _workspace = workspace;
         _solutionModel = solutionModel;
@@ -181,7 +182,7 @@ public partial class ShellWindow : Window {
             // 部屋の他のプレビューと同じ道具（WebView2 のファクトリと一時ページの置き場）をここで渡す。
             diff.ConfigureMarkdownRender(editorSupportViewFactory, EditorSupportPreviewFolder);
             // 左右並びの本文はエディタ2つ。エディタペインと同じ構文の登録・見た目で作る。
-            diff.ConfigureEditors(CreateDiffEditorControl, ApplyDiffEditorAppearance);
+            diff.ConfigureEditors(CreateDiffEditorControl, ApplyDiffEditorAppearance, DiffWorkingDocuments);
             // 本文のリンクは EditorSupport のプレビューと同じ振り分け（URL＝ブラウザ／ファイル＝エディタ）へ流す。
             diff.MarkdownLinkClicked += (_, e) => _ = HandleEditorSupportLinkClickedAsync(e.Href, e.SourcePath);
             return diff;

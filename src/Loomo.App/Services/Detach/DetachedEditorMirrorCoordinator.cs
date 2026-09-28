@@ -15,7 +15,8 @@ internal static class DetachedEditorMirrorCoordinator
         Func<EditorTab> createEditorTab,
         Action<VimEditorControl, string> loadFile,
         Func<string?, ImageSource?> getFileIcon,
-        Action<EditorTab> adoptEditorTab)
+        Action<EditorTab> adoptEditorTab,
+        EditorDocumentEvents events)
     {
         var sourceTab = editorTabs.FirstOrDefault(tab => tab.Id == sourceTabId);
         if (sourceTab is null)
@@ -29,58 +30,34 @@ internal static class DetachedEditorMirrorCoordinator
         else
             mirror.SetText(source.Text);
 
-        var synchronization = new EditorMirrorSynchronization(source, mirror);
+        var synchronization = new EditorTextMirror(source, mirror, events);
+        // 片方がディスクから読み直された（ブランチ切替・一括置換）：LoadFile は BufferChanged を出さないので、
+        // もう片方へ読み込みとして写す。写さずに古い側で打つと、読み直した本文を古い本文で上書きする。
+        void OnLoaded(VimEditorControl loaded)
+        {
+            var other = ReferenceEquals(loaded, source) ? mirror : ReferenceEquals(loaded, mirror) ? source : null;
+            if (other is not null && !string.Equals(other.Text, loaded.Text, StringComparison.Ordinal))
+                other.SetText(loaded.Text);
+        }
+        events.Loaded += OnLoaded;
+        void Unsync()
+        {
+            events.Loaded -= OnLoaded;
+            synchronization.Dispose();
+        }
         var title = string.IsNullOrWhiteSpace(source.FilePath) ? "Untitled" : Path.GetFileName(source.FilePath!);
         return new DetachedItem(DetachKind.EditorMirror, title, mirror, getFileIcon(source.FilePath), dispose: () =>
         {
-            synchronization.Dispose();
+            Unsync();
             mirror.Dispose();
         })
         {
             // 帯へ戻すときは追従を解除して、独立したタブとして迎える。
             Return = new DetachReturn(TabEntryKind.Editor, () =>
             {
-                synchronization.Dispose();
+                Unsync();
                 adoptEditorTab(mirrorTab);
             })
         };
-    }
-
-    private sealed class EditorMirrorSynchronization : IDisposable
-    {
-        private readonly VimEditorControl _source;
-        private readonly VimEditorControl _mirror;
-        private bool _syncing;
-
-        public EditorMirrorSynchronization(VimEditorControl source, VimEditorControl mirror)
-        {
-            _source = source;
-            _mirror = mirror;
-            _source.BufferChanged += OnSourceBufferChanged;
-            _mirror.BufferChanged += OnMirrorBufferChanged;
-        }
-
-        public void Dispose()
-        {
-            _source.BufferChanged -= OnSourceBufferChanged;
-            _mirror.BufferChanged -= OnMirrorBufferChanged;
-        }
-
-        private void OnSourceBufferChanged(object? sender, EventArgs e) => Sync(_source, _mirror);
-        private void OnMirrorBufferChanged(object? sender, EventArgs e) => Sync(_mirror, _source);
-
-        private void Sync(VimEditorControl from, VimEditorControl to)
-        {
-            if (_syncing || string.Equals(to.Text, from.Text, StringComparison.Ordinal))
-                return;
-            _syncing = true;
-            try
-            {
-                var caret = to.Caret;
-                to.SetText(from.Text);
-                try { to.NavigateTo(caret.Line, caret.Column); } catch { /* 本文が縮んだ場合は内部で範囲調整 */ }
-            }
-            finally { _syncing = false; }
-        }
     }
 }

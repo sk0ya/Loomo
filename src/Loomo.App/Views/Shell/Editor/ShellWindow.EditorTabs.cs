@@ -107,18 +107,23 @@ public partial class ShellWindow {
     /// 含まれていれば検索ハイライトも新しい内容で引き直す（置換済みの箇所は一致しなくなるので下線が
     /// 消える＝古い表示のまま「まだ一致している」ように見えるのを防ぐ）。</summary>
     private async Task ReloadEditorTabsAfterReplaceAsync(IReadOnlyList<string> paths, string highlightTerm) {
+        if (await ReloadEditorTabsFromDiskAsync(paths))
+            _activeEditorTab?.Control.HighlightSearch(highlightTerm);
+    }
+    /// <summary>ペインの外（検索の一括置換・Diff の右での保存）で書き換わったファイルを開いているタブを
+    /// 読み直す。未保存の編集があるタブは読み直さない。アクティブタブが含まれていたかを返す。</summary>
+    private async Task<bool> ReloadEditorTabsFromDiskAsync(IReadOnlyList<string> paths) {
+        // 呼び手のパスは表記が揃っていない（Diff は git の相対パスを Path.Combine するので
+        // `C:\repo\src/a.cs` のように区切りが混ざる）ので、文字列でなくパスとして比べる。
         var activeAffected = false;
-        foreach (var path in paths) {
-            var tab = _editorTabs.FirstOrDefault(t =>
-                string.Equals(t.PeekFilePath, path, StringComparison.OrdinalIgnoreCase));
-            if (tab is null || !tab.IsRealized)
+        foreach (var tab in _editorTabs.ToArray()) {
+            if (!tab.IsRealized || !paths.Any(path => FilePathRelations.AreEqual(tab.PeekFilePath, path)))
                 continue;
             await ReloadExistingTabIfChangedAsync(tab);
             if (ReferenceEquals(tab, _activeEditorTab))
                 activeAffected = true;
         }
-        if (activeAffected)
-            _activeEditorTab?.Control.HighlightSearch(highlightTerm);
+        return activeAffected;
     }
     private async Task RefreshOpenEditorTabsFromDiskAsync() {
         foreach (var tab in _editorTabs.ToArray()) {

@@ -155,10 +155,12 @@ public partial class DiffSessionView : UserControl, IDisposable
     /// <summary>
     /// 左右並びのエディタの作り方と見た目の当て方を部屋から受け取る（エディタペインと同じ構文の登録・
     /// テーマ・フォント・Vim の有無）。Diff ペインは XAML から生えて DI が届かないので、ホストが渡す。
-    /// 渡されなければ既定のエディタで動く。
+    /// 渡されなければ既定のエディタで動く。<paramref name="documents"/> は右で編集するファイルの持ち主
+    /// （Editor ペイン）——右はそのタブの本文を映して一緒に編集する。
     /// </summary>
-    public void ConfigureEditors(Func<VimEditorControl> factory, Action<VimEditorControl> applyAppearance)
-        => _sideEditors.Configure(factory, applyAppearance);
+    internal void ConfigureEditors(
+        Func<VimEditorControl> factory, Action<VimEditorControl> applyAppearance, IDiffWorkingDocuments documents)
+        => _sideEditors.Configure(factory, applyAppearance, documents);
 
     // ===== 左右並び（エディタ2つ） =====
 

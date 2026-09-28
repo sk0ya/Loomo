@@ -13,6 +13,12 @@ namespace sk0ya.Loomo.App.Services;
 /// 右（新側）は作業ツリーのファイルそのものなら<b>その場で編集して保存できる</b>——ヤンク・検索・
 /// テキストオブジェクトといったエディタの操作が差分の上でそのまま使える。
 ///
+/// <para>右は<b>自分でファイルを持たない</b>。Editor ペインのタブの本文を映す仮想文書で、打てば
+/// タブにも入り、タブで打てば右にも入る（<see cref="EditorTextMirror"/>）。まだ Editor で開いていない
+/// ファイルは、右で打ち始めた時点で Editor にタブを足す。だから未保存の編集は Editor のタブが持ち、
+/// Diff を閉じても・別のファイルへ移っても「保存しますか」とは聞かない。右がファイルを持つと、
+/// 同じファイルを2つのエディタが別々のバッファで持つことになり、片方の保存がもう片方に届かない。</para>
+///
 /// <para>行の対応は <see cref="DiffEditorAlignment"/> が決める：片側にしか無い行のぶん反対側へ空き行を
 /// 挿すので、行 i はどちらのエディタでも表示行 i に来る。だからスクロールは画素位置をそのまま写せばよく、
 /// 中央の帯・次/前の変更も「行の添字 × 行の高さ」で済む。</para>
@@ -35,6 +41,16 @@ internal sealed class DiffSideEditorPresenter : IDisposable
     private Action<VimEditorControl> _applyAppearance = _ => { };
     private VimEditorControl? _left;
     private VimEditorControl? _right;
+    private IDiffWorkingDocuments? _documents;
+    /// <summary>右と、右が映している Editor のタブとの本文の同期（まだ映していなければ null）。</summary>
+    private EditorTextMirror? _link;
+    /// <summary>右へ本文を入れている最中（その BufferChanged を「ユーザーが打った」と取り違えない）。</summary>
+    private bool _loadingRight;
+    /// <summary>右へ出したときの本文。タブを映していないうちに Editor 側でそのファイルが編集されていたら、
+    /// 右で打った1文字でタブを丸ごと置き換えないよう、これと比べて気づく。</summary>
+    private string _rightBaseText = "";
+    /// <summary>右で打ったのでタブを開いている最中（その読み込みの知らせで右を出し直さない）。</summary>
+    private bool _adopting;
     private IReadOnlyList<DiffSideRowVm> _rows = [];
     private IReadOnlyList<string> _leftLines = [];
     private string? _leftLanguageKey;
@@ -72,18 +88,33 @@ internal sealed class DiffSideEditorPresenter : IDisposable
     internal VimEditorControl? Left => _left;
     internal VimEditorControl? Right => _right;
 
-    /// <summary>右のエディタに、まだ保存していない編集があるか。あるうちは作業ツリーを書き換える操作
-    /// （範囲の破棄）を止める——ディスクの行番号で作ったパッチが、見えている本文とずれるため。</summary>
-    internal bool HasUnsavedEdits => _editablePath is not null && _right?.IsModified == true;
+    /// <summary>右が映している文書に、まだ保存していない編集があるか。あるうちは作業ツリーを書き換える操作
+    /// （範囲の破棄）を止める——ディスクの行番号で作ったパッチが、見えている本文とずれるため。
+    /// まだ映していないタブ（Diff を開いた後に Editor で開いて編集した）も数える。</summary>
+    internal bool HasUnsavedEdits
+        => _editablePath is { } path && (LiveLink()?.Source ?? _documents?.Find(path))?.IsModified == true;
 
     /// <summary>
     /// エディタの作り方と見た目の当て方を部屋から受け取る（テーマ・フォント・構文の登録・Vim の有無）。
     /// エディタを作る前に呼ぶ。後から呼ばれたら、今あるエディタに見た目だけ当て直す。
+    /// <paramref name="documents"/> が無ければ右も読み取り専用で出す（編集の持ち主が居ない）。
     /// </summary>
-    internal void Configure(Func<VimEditorControl> factory, Action<VimEditorControl> applyAppearance)
+    internal void Configure(
+        Func<VimEditorControl> factory, Action<VimEditorControl> applyAppearance, IDiffWorkingDocuments? documents)
     {
         _factory = factory;
         _applyAppearance = applyAppearance;
+        if (_documents is not null)
+        {
+            _documents.Events.Loaded -= OnDocumentLoaded;
+            _documents.Events.Closed -= OnDocumentClosed;
+        }
+        _documents = documents;
+        if (_documents is not null)
+        {
+            _documents.Events.Loaded += OnDocumentLoaded;
+            _documents.Events.Closed += OnDocumentClosed;
+        }
         ReapplyAppearance();
     }
 
@@ -122,24 +153,28 @@ internal sealed class DiffSideEditorPresenter : IDisposable
         // 行が1つも無い差分（「差分はありません」の知らせ・バイナリ）は編集させない。開いてしまうと、
         // 空の旧側と比べ直して「全行追加」に化ける。
         var hasLines = rows.Any(row => row.LeftLine.Length > 0 || row.RightLine.Length > 0);
-        if (hasLines && vm.EditableSidePath is { } editablePath)
+        if (hasLines && _documents is not null && vm.EditableSidePath is { } editablePath)
         {
-            if (!PathEquals(_editablePath, editablePath) || !PathEquals(right.FilePath, editablePath))
+            // 映していたタブが閉じられた：未保存の編集は Editor 側で保存か破棄が済んでいる。ディスクから出し直す。
+            var linkClosed = _link is not null && LiveLink() is null;
+            if (!PathEquals(_editablePath, editablePath) || linkClosed)
             {
-                ConfirmLeavingEditedFile();
-                right.IsReadOnly = false;
-                right.LoadFile(editablePath);
-                // 前に開いたことのあるファイルは、エディタが持っていたバッファ（そのときの本文）が出る。
-                // 編集が残っていなければディスクから読み直す。以後の外部変更はエディタの監視が読み直す。
-                if (!right.IsModified)
-                    right.ExecuteCommand("e!");
-                _editablePath = editablePath;
+                _editablePath = Path.GetFullPath(editablePath);
+                OpenEditable(right, _editablePath, keepView: linkClosed);
                 _rightLanguageKey = null;
+            }
+            else if (_link is null && _editablePath is { } openedPath
+                     && (_documents.Find(openedPath) is not null
+                         || !DiffEditorAlignment.SameText(rightLines, right.Text)))
+            {
+                // まだタブを映していない：その間に Editor でタブが開かれた（その本文を映す）か、
+                // 外でディスクが書き換えられた（出し直す）。
+                OpenEditable(right, openedPath, keepView: true);
             }
         }
         else
         {
-            ConfirmLeavingEditedFile();
+            Unlink();
             _editablePath = null;
             var rightText = string.Join("\n", rightLines);
             if (!right.IsVirtualDocument || right.Text != rightText || _rightLanguageKey != path)
@@ -182,36 +217,38 @@ internal sealed class DiffSideEditorPresenter : IDisposable
     internal int RowAtCaret(VimEditorControl editor)
         => DiffEditorAlignment.RowOfLine(_rows, editor.Caret.Line, left: ReferenceEquals(editor, _left));
 
-    /// <summary>右のエディタを保存する（Ctrl+S）。編集用に開いていなければ何もしない。</summary>
+    /// <summary>右が映している文書を保存する（Ctrl+S）。編集用に開いていなければ何もしない。</summary>
     internal bool SaveRight()
     {
         if (_editablePath is null || _right is null) return false;
-        TrySaveRight();
+        _ = SaveAsync();
         return true;
     }
 
-    /// <summary>保存する。読み取り専用・ロック中などで書けなければ、例外を UI スレッドへ投げずにペインへ出す。</summary>
-    private bool TrySaveRight()
+    /// <summary>Editor のタブを、Editor ペインと同じ経路で保存する。まだ打っていなければ（タブを映して
+    /// いなければ）保存するものが無い。書けなければ例外を UI スレッドへ投げずにペインへ出す。</summary>
+    private async Task SaveAsync()
     {
+        if (LiveLink() is not { } link || _documents is null) return;
         try
         {
-            _right!.Save();
-            return true;
+            // 右の「保存済み」は同期が揃える（EditorTextMirror.OnSaved）。
+            await _documents.SaveAsync(link.Source);
         }
         catch (Exception ex)
         {
             _viewModel()?.SetStatusMessage($"保存できませんでした: {ex.Message}", isError: true);
-            return false;
         }
     }
 
     public void Dispose()
     {
-        // ペイン・切り離しウィンドウを閉じるときも、右で編集した内容を黙って捨てない。
-        if (!_disposed)
+        // 未保存の編集は Editor のタブが持っている。ここで聞くことは何も無い。
+        Unlink();
+        if (_documents is not null)
         {
-            try { ConfirmLeavingEditedFile(); }
-            catch { /* 終了処理の途中でダイアログが出せないこともある。落とさない。 */ }
+            _documents.Events.Loaded -= OnDocumentLoaded;
+            _documents.Events.Closed -= OnDocumentClosed;
         }
         _disposed = true;
         _rediffTimer.Stop();
@@ -228,9 +265,15 @@ internal sealed class DiffSideEditorPresenter : IDisposable
         _right.IsReadOnly = true;
         _right.BufferChanged += (_, _) =>
         {
-            if (_editablePath is null) return;
+            if (_editablePath is null || _loadingRight) return;
+            EnsureLinkForEdit();
             _rediffTimer.Stop();
             _rediffTimer.Start();
+        };
+        // 右は仮想文書なので :w は書かずに知らせてくるだけ。映している Editor のタブを保存する。
+        _right.SaveRequested += (_, _) =>
+        {
+            if (_editablePath is not null) _ = SaveAsync();
         };
         _leftHost.Child = _left;
         _rightHost.Child = _right;
@@ -280,19 +323,100 @@ internal sealed class DiffSideEditorPresenter : IDisposable
     }
 
     /// <summary>
-    /// 右で編集していたファイルから離れる前に、未保存の編集をどうするか聞く。取り消しは用意しない
-    /// ——離れる原因（一覧の選択・リポジトリの変化）はもう起きていて、戻す先が無い。
+    /// 右へ編集用のファイルを出す。Editor で開いていればそのタブの本文（未保存の編集ごと）を映し、
+    /// 開いていなければディスクの本文を出す（タブは打ち始めたときに足す）。どちらも仮想文書として持つ
+    /// ——右がファイルを持つと、その監視が Editor 側の保存を「外部の変更」と見て読み直しを聞いてくる。
     /// </summary>
-    private void ConfirmLeavingEditedFile()
+    private void OpenEditable(VimEditorControl right, string path, bool keepView)
     {
-        if (!HasUnsavedEdits) return;
-        var name = Path.GetFileName(_editablePath);
-        var answer = MessageBox.Show(
-            Application.Current?.MainWindow!,
-            $"{name} の差分で編集した内容が保存されていません。保存しますか？\n「いいえ」を選ぶと編集は破棄されます。",
-            "未保存の編集", MessageBoxButton.YesNo, MessageBoxImage.Question);
-        if (answer == MessageBoxResult.Yes)
-            TrySaveRight();
+        Unlink();
+        var caret = right.Caret;
+        var (vertical, horizontal) = (right.VerticalOffset, right.HorizontalOffset);
+        _loadingRight = true;
+        try
+        {
+            var source = _documents!.Find(path);
+            string text;
+            if (source is not null)
+            {
+                text = source.Text;
+            }
+            else
+            {
+                // 文字コードの判定はエディタの読み込みに任せる（BOM 無しの Shift_JIS なども同じに読める）。
+                right.LoadFile(path);
+                if (right.IsModified) right.ExecuteCommand("e!");
+                text = right.Text;
+            }
+            right.OpenVirtualDocument(Path.GetFileName(path), text, DiffEditorLanguage.For(path));
+            right.IsReadOnly = false;
+            _rightBaseText = right.Text;
+            if (source is not null)
+                _link = new EditorTextMirror(source, right, _documents.Events);
+            if (keepView)
+                RestoreView(right, caret, vertical, horizontal);
+        }
+        finally { _loadingRight = false; }
+    }
+
+    /// <summary>右で打った：まだ Editor のタブを映していなければ、ここで開いて（あれば見つけて）本文を渡す。</summary>
+    private void EnsureLinkForEdit()
+    {
+        if (_documents is null || _right is null || _editablePath is null || LiveLink() is not null) return;
+        Unlink();
+        if (!_right.IsModified) return;   // 打ったのではなく、全部取り消して元に戻った
+        var existing = _documents.Find(_editablePath);
+        if (existing is not null && !string.Equals(existing.Text, _rightBaseText, StringComparison.Ordinal))
+        {
+            // 右が知らない本文をタブが持っている（右に出した後で Editor で編集された）。右の本文で置き換えると
+            // その編集が消えるので、打った分を諦めてタブの本文を映す。
+            OpenEditable(_right, _editablePath, keepView: true);
+            _viewModel()?.SetStatusMessage(
+                "Editor で編集中の本文に合わせました。もう一度入力してください。", isError: false);
+            return;
+        }
+        VimEditorControl? source;
+        _adopting = true;
+        try { source = existing ?? _documents.Open(_editablePath); }
+        finally { _adopting = false; }
+        if (source is null) return;
+        _link = new EditorTextMirror(source, _right, _documents.Events);
+        EditorTextMirror.ApplyAsEdit(source, _right.Text);
+    }
+
+    /// <summary>
+    /// タブにディスクから本文が入った（Editor で開いた・ブランチ切替や一括置換で読み直した）。<c>LoadFile</c> は
+    /// <c>BufferChanged</c> を出さないので同期では届かない。右をタブの本文で出し直す——出し直さずに右で打つと、
+    /// 読み直した本文を右の古い本文で上書きする。
+    /// </summary>
+    private void OnDocumentLoaded(VimEditorControl control)
+    {
+        if (_adopting || _disposed || _right is null || _editablePath is not { } path) return;
+        if (!PathEquals(control.FilePath, path)) return;
+        if (_link is not null && !ReferenceEquals(_link.Source, control)) return;   // 別のビュー（分割）の読み込み
+        OpenEditable(_right, path, keepView: true);
+        _ = RediffAsync();
+    }
+
+    /// <summary>映していたタブが閉じられた。未保存の編集は Editor 側で保存か破棄が済んでいるので、
+    /// 右はディスクの本文へ戻す（破棄した編集を右に残さない）。</summary>
+    private void OnDocumentClosed(VimEditorControl control)
+    {
+        if (_disposed || _right is null || _link is null || !ReferenceEquals(_link.Source, control)) return;
+        Unlink();
+        if (_editablePath is not { } path) return;
+        OpenEditable(_right, path, keepView: true);
+        _ = RediffAsync();
+    }
+
+    /// <summary>映しているタブがまだ開いていればその同期、閉じられていれば null。</summary>
+    private EditorTextMirror? LiveLink()
+        => _link is { } link && _documents?.IsOpen(link.Source) == true ? link : null;
+
+    private void Unlink()
+    {
+        _link?.Dispose();
+        _link = null;
     }
 
     private void ApplyLayout(IReadOnlyList<DiffSideRowVm> rows)

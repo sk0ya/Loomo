@@ -153,6 +153,8 @@ public partial class ShellWindow {
         _editorTabs.RemoveAt(index);
         _vm.Tabs.RemoveEditorTab(id);
         _editorViews?.RemoveTab(id);
+        if (tab.IsRealized)
+            _editorDocumentEvents.RaiseClosed(tab.Control);
         PaneTabTransferCoordinator.CompleteRemoval(
             _editorTabs, t => t.Id, _editorViews, index, wasActive,
             id => ActivateEditorTab(id),

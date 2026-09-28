@@ -368,6 +368,8 @@ public partial class ShellWindow {
         SyncEditorTestGlyphs(control);   // LoadFile はグリフを捨てるが BufferChanged を出さない
         SyncEditorCodeActionBulb(control);
         ScheduleStyleCopAnalysis(control);
+        // 同じく BufferChanged が出ないので、この文書を別のエディタに映している側へ知らせる。
+        _editorDocumentEvents.RaiseLoaded(control);
     }
     private void ApplyVimEnabledToOpenEditorTabs() {
         foreach (var tab in _editorTabs)

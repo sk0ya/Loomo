@@ -52,6 +52,12 @@ public sealed class EditorService : IEditorService
     /// <summary>通常ファイルの保存直前にApp層が編集を整えるためのフック。仮想文書では呼ばない。</summary>
     public Func<VimEditorControl, string?, Task>? BeforeSaveAsync { get; set; }
 
+    /// <summary>
+    /// 通常ファイルを書き終えた（Ctrl+S・:w のどちらも）。同じ文書を別のエディタに映している側
+    /// （切り離し窓の複製・Diff の右側）が「保存済み」に揃えるための知らせ。UI スレッドで発火する。
+    /// </summary>
+    public event Action<VimEditorControl>? FileSaved;
+
     public void Attach(VimEditorControl ctrl)
     {
         if (_ctrl is not null)
@@ -212,6 +218,7 @@ public sealed class EditorService : IEditorService
         }
 
         control.Save(targetPath);
+        FileSaved?.Invoke(control);
         return true;
     }
 
