@@ -23,5 +23,9 @@ public partial class DiffSessionView
         _bindingController.Dispose();
         _markdownRenderController.Dispose();
         _documentBuildController.Dispose();
+        if (_sideItemSource is not null)
+            _sideItemSource.PropertyChanged -= OnViewModelPropertyChanged;
+        _sideItemSource = null;
+        _sideEditors.Dispose();
     }
 }

@@ -1,4 +1,5 @@
-﻿using Editor.Core.Syntax;
+﻿using Editor.Controls;
+using Editor.Core.Syntax;
 using sk0ya.Loomo.App.Services;
 using System;
 using System.Collections.Generic;
@@ -15,9 +16,9 @@ namespace sk0ya.Loomo.App.Views;
 
 /// <summary>
 /// Diff セッションペイン。Git 作業ツリー差分とアドホック比較を切り替えて表示する。
-/// 差分本体は読み取り専用 RichTextBox（FlowDocument）で描き、普通のテキストとして文字単位で選択・コピーできる。
-/// データ（<see cref="DiffSessionViewModel.DiffRows"/> / <see cref="DiffSessionViewModel.SideRows"/>）が
-/// 変わるたびに FlowDocument を組み直す。左右並びは本文2つ＋行番号ガター2つの縦スクロールを連動させる。
+/// 統合表示は読み取り専用 RichTextBox（FlowDocument）で描き、<see cref="DiffSessionViewModel.DiffRows"/> が
+/// 変わるたびに組み直す。左右並びは左右2つのエディタ（<see cref="DiffSideEditorPresenter"/>）で出し、
+/// ヤンク・検索などのエディタ操作がそのまま効く。右が作業ツリーのファイルなら、その場で編集して保存できる。
 /// </summary>
 public partial class DiffSessionView : UserControl, IDisposable
 {
@@ -27,74 +28,68 @@ public partial class DiffSessionView : UserControl, IDisposable
     private readonly DiffSideBlockPresenter _sideBlockPresenter;
     private readonly DiffRowNavigationPresenter _rowNavigationPresenter;
     private readonly DiffAutoJumpController _autoJumpController;
-    private readonly DiffScrollSyncController _scrollSyncController;
     private readonly DiffSessionBindingController _bindingController;
+    private readonly DiffSideEditorPresenter _sideEditors;
 
     private ScrollViewer? _unifiedSv;
-    private ScrollViewer? _leftGutterSv;
-    private ScrollViewer? _leftTextSv;
-    private ScrollViewer? _rightGutterSv;
-    private ScrollViewer? _rightTextSv;
+    /// <summary>左右並びの組み直しが予約済みか（行の差し替えは Clear＋Add の連発で届くので、1回にまとめる）。</summary>
+    private bool _sideDirty;
+    /// <summary><see cref="DiffSessionViewModel.SideRowsItem"/> の変化を見ている VM。</summary>
+    private DiffSessionViewModel? _sideItemSource;
     private bool _viewHooked;   // 子コントロールへの購読済みフラグ（Loaded は再ペアレントで再入する）
 
     public DiffSessionView()
     {
         InitializeComponent();
         _documentRenderer = new DiffFlowDocumentRenderer(this);
+        _sideEditors = new DiffSideEditorPresenter(() => Vm, LeftEditorHost, RightEditorHost, SideStatusBar);
         _sideBlockPresenter = new DiffSideBlockPresenter(
             CenterGutter,
             () => Vm,
-            () => _leftTextSv?.VerticalOffset ?? 0,
-            () => CenterGutter.ActualHeight > 0
-                ? CenterGutter.ActualHeight
-                : _leftTextSv?.ViewportHeight ?? 0,
-            () => CenterGutter.ActualWidth > 0 ? CenterGutter.ActualWidth : 20);
+            () => _sideEditors.Geometry,
+            () => CenterGutter.ActualHeight,
+            () => CenterGutter.ActualWidth > 0 ? CenterGutter.ActualWidth : 20,
+            () => _sideEditors.HasUnsavedEdits);
+        _sideEditors.LayoutChanged += _sideBlockPresenter.Render;
+        _sideEditors.UserInteracted += CancelAutoJump;
+        _sideEditors.ContextMenuBuilding += OnSideEditorContextMenuBuilding;
         _markdownRenderController = new DiffMarkdownRenderController(MarkdownRenderHost, Dispatcher);
         _markdownRenderController.LinkClicked += OnMarkdownRenderLinkClicked;
         _rowNavigationPresenter = new DiffRowNavigationPresenter(
-            UnifiedBox, LeftTextBox, RightTextBox, LeftGutter, RightGutter,
+            UnifiedBox,
+            index =>
+            {
+                FlushSide();
+                _sideEditors.ScrollToRow(index);
+            },
             () => Vm?.IsSideBySide == true,
             () => _markdownRenderController.IsActive,
             _markdownRenderController.ScrollToChange,
             () => _documentBuildController?.Flush(),
             UpdateLayout,
-            () => _unifiedSv,
-            () => _leftTextSv);
+            () => _unifiedSv);
         _documentBuildController = new DiffDocumentBuildController(
             Dispatcher,
             () => Vm,
             _documentRenderer,
             UnifiedBox,
-            LeftTextBox,
-            RightTextBox,
-            LeftGutter,
-            RightGutter,
             () =>
             {
                 _rowNavigationPresenter.ClearMarks();
                 _contextRowIndex = -1;
-            },
-            rows =>
-            {
-                _sideBlockPresenter.SetRows(rows);
-                _sideBlockPresenter.Render();
             });
         _autoJumpController = new DiffAutoJumpController(
             Dispatcher,
             () => Vm is not null,
-            () => _documentBuildController.HasPendingBuild(Vm!.IsSideBySide),
+            () => Vm!.IsSideBySide ? _sideDirty : _documentBuildController.HasPendingBuild,
             () => Vm?.JumpToAutoTarget());
-        _scrollSyncController = new DiffScrollSyncController(
-            () => LeftTextBox, () => RightTextBox,
-            () => _leftGutterSv, () => _leftTextSv, () => _rightGutterSv,
-            () => _rightTextSv, () => _unifiedSv, _sideBlockPresenter.Render);
         _bindingController = new DiffSessionBindingController(
             _rowNavigationPresenter.ScrollToRow, OnAutoJumpRequested, OnScrollToConflictRequested,
             (_, _) => _documentBuildController.ScheduleUnified(),
-            (_, _) => _documentBuildController.ScheduleSide(),
-            _markdownRenderController.SetViewModel,
+            (_, _) => ScheduleSide(),
+            OnViewModelChanged,
             _documentBuildController.ScheduleUnified,
-            _documentBuildController.ScheduleSide);
+            ScheduleSide);
         DataContextChanged += OnDataContextChanged;
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
@@ -153,7 +148,99 @@ public partial class DiffSessionView : UserControl, IDisposable
     {
         _colorsGeneration = EditorSyntaxColors.Generation;
         _documentBuildController.ScheduleUnified();
-        _documentBuildController.ScheduleSide();
+        // 左右のエディタはエディタペインと同じ当て方（テーマ・フォント）で塗り直す。
+        _sideEditors.ReapplyAppearance();
+    }
+
+    /// <summary>
+    /// 左右並びのエディタの作り方と見た目の当て方を部屋から受け取る（エディタペインと同じ構文の登録・
+    /// テーマ・フォント・Vim の有無）。Diff ペインは XAML から生えて DI が届かないので、ホストが渡す。
+    /// 渡されなければ既定のエディタで動く。
+    /// </summary>
+    public void ConfigureEditors(Func<VimEditorControl> factory, Action<VimEditorControl> applyAppearance)
+        => _sideEditors.Configure(factory, applyAppearance);
+
+    // ===== 左右並び（エディタ2つ） =====
+
+    private void OnViewModelChanged(DiffSessionViewModel? viewModel)
+    {
+        _markdownRenderController.SetViewModel(viewModel);
+        if (_sideItemSource is not null)
+            _sideItemSource.PropertyChanged -= OnViewModelPropertyChanged;
+        _sideItemSource = viewModel;
+        if (viewModel is not null)
+            viewModel.PropertyChanged += OnViewModelPropertyChanged;
+    }
+
+    private void OnViewModelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        // 行が同じでも出どころのファイルが変われば、右で編集させるファイル・見出しが変わる。
+        // 左右並びへ切り替えた瞬間も、隠れていた間に届いた行へ合わせ直す。
+        if (e.PropertyName is nameof(DiffSessionViewModel.SideRowsItem) or nameof(DiffSessionViewModel.ShowSideText))
+            ScheduleSide();
+    }
+
+    private void ScheduleSide()
+    {
+        if (_sideDirty) return;
+        _sideDirty = true;
+        Dispatcher.BeginInvoke(new Action(FlushSide), DispatcherPriority.Background);
+    }
+
+    /// <summary>予約済みの左右の組み直しを今やる（行の添字で動く操作の前）。</summary>
+    private void FlushSide()
+    {
+        if (!_sideDirty) return;
+        _sideDirty = false;
+        if (Vm is not { } vm || !vm.ShowSideText)
+            return;   // 隠れている間は組まない。見えるようになったら ShowSideText の通知で組む。
+        var rows = vm.SideRows.ToList();
+        ShowSideMessage(rows);
+        _sideEditors.Sync();
+        _sideBlockPresenter.SetRows(rows);
+        _sideBlockPresenter.Render();
+    }
+
+    /// <summary>行が「差分はありません」のような知らせだけなら、エディタの上に文面を出す。</summary>
+    private void ShowSideMessage(IReadOnlyList<DiffSideRowVm> rows)
+    {
+        var messageOnly = rows.Count > 0 && rows.All(row => row.LeftLine.Length == 0 && row.RightLine.Length == 0);
+        SideMessageText.Text = messageOnly ? string.Join(Environment.NewLine, rows.Select(row => row.LeftText)) : "";
+        SideMessagePanel.Visibility = messageOnly ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    /// <summary>右が編集できるときの Ctrl+S（エディタペインの保存は部屋のキー割り当てが持っていて、ここまで届かない）。</summary>
+    private void OnSidePreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.S || Keyboard.Modifiers != ModifierKeys.Control) return;
+        if (_sideEditors.Right is not { IsKeyboardFocusWithin: true }) return;
+        if (_sideEditors.SaveRight())
+            e.Handled = true;
+    }
+
+    /// <summary>左右のエディタの右クリックメニューへ、差分ならではの項目を足す（エディタ自身の項目の後ろ）。</summary>
+    private void OnSideEditorContextMenuBuilding(bool left, VimEditorControl editor, EditorContextMenuBuildingEventArgs e)
+    {
+        if (Vm is not { } vm) return;
+        var row = _sideEditors.RowAtCaret(editor);
+        var selected = e.SelectedText;
+        e.Menu.Items.Add(new Separator());
+        e.Menu.Items.Add(NewMenuItem("この行をエディタで開く", "右クリックした行に対応するファイルの行をエディタで開く",
+            () => vm.RequestOpenRowInEditor(row)));
+        e.Menu.Items.Add(NewMenuItem("選択範囲をクリップボードと比較", "選択したテキストとクリップボードの内容を比較する",
+            () => CompareWithClipboard(vm, selected)));
+        if (!vm.HasComparison) return;
+        e.Menu.Items.Add(new Separator());
+        e.Menu.Items.Add(NewMenuItem("⇄ 左右を入れ替える", null, () => vm.SwapComparisonCommand.Execute(null)));
+        e.Menu.Items.Add(NewMenuItem("クリップボードで再比較", "右側を今のクリップボードの内容に差し替えて比較し直す",
+            () => vm.RecompareWithClipboardCommand.Execute(null)));
+
+        static MenuItem NewMenuItem(string header, string? toolTip, Action action)
+        {
+            var item = new MenuItem { Header = header, ToolTip = toolTip };
+            item.Click += (_, _) => action();
+            return item;
+        }
     }
 
     private DiffSessionViewModel? Vm => DataContext as DiffSessionViewModel;
@@ -194,8 +281,6 @@ public partial class DiffSessionView : UserControl, IDisposable
         string text, SyntaxToken[] tokens, Func<TokenKind, Brush?>? foreground = null)
         => DiffFlowDocumentRenderer.SyntaxRuns(text, tokens, foreground);
 
-    // ===== スクロール連動（左右本文＋行番号ガター） =====
-
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
         HookSyntaxColors();
@@ -208,57 +293,38 @@ public partial class DiffSessionView : UserControl, IDisposable
         _viewHooked = true;
 
         _unifiedSv = InnerScrollViewer(UnifiedBox);
-        _leftGutterSv = InnerScrollViewer(LeftGutter);
-        _leftTextSv = InnerScrollViewer(LeftTextBox);
-        _rightGutterSv = InnerScrollViewer(RightGutter);
-        _rightTextSv = InnerScrollViewer(RightTextBox);
-        if (_leftTextSv is not null) _leftTextSv.ScrollChanged += OnSideScrollChanged;
-        if (_rightTextSv is not null) _rightTextSv.ScrollChanged += OnSideScrollChanged;
         CenterGutter.SizeChanged += (_, _) => _sideBlockPresenter.Render();
+        SidePanel.PreviewKeyDown += OnSidePreviewKeyDown;
 
         // 分割構築の途中でも本文は操作できるので、自分で読み始めた合図があれば自動ジャンプは取り下げる。
-        foreach (var box in new[] { UnifiedBox, LeftTextBox, RightTextBox })
-        {
-            box.PreviewMouseWheel += (_, _) => CancelAutoJump();
-            box.PreviewMouseDown += (_, _) => CancelAutoJump();
-            box.PreviewKeyDown += (_, _) => CancelAutoJump();
-        }
+        // （左右のエディタは DiffSideEditorPresenter.UserInteracted で同じことをする）
+        UnifiedBox.PreviewMouseWheel += (_, _) => CancelAutoJump();
+        UnifiedBox.PreviewMouseDown += (_, _) => CancelAutoJump();
+        UnifiedBox.PreviewKeyDown += (_, _) => CancelAutoJump();
 
         // Shift+ホイールで横スクロール（FlowDocumentScrollViewer は既定で横ホイールを扱わない）
         UnifiedBox.PreviewMouseWheel += OnTextPreviewMouseWheel;
-        LeftTextBox.PreviewMouseWheel += OnTextPreviewMouseWheel;
-        RightTextBox.PreviewMouseWheel += OnTextPreviewMouseWheel;
 
         // 右クリックした「行」を覚える（メニューを開くとキャレット位置には頼れないため、
         // 押した座標から段落を引く）。「この行をエディタで開く」の対象になる。
         UnifiedBox.PreviewMouseRightButtonDown += OnBodyRightButtonDown;
-        LeftTextBox.PreviewMouseRightButtonDown += OnBodyRightButtonDown;
-        RightTextBox.PreviewMouseRightButtonDown += OnBodyRightButtonDown;
         // キーボード（メニューキー／Shift+F10）で開いたときはマウス座標が無いのでキャレット行を対象にする。
         UnifiedBox.ContextMenuOpening += OnBodyContextMenuOpening;
-        LeftTextBox.ContextMenuOpening += OnBodyContextMenuOpening;
-        RightTextBox.ContextMenuOpening += OnBodyContextMenuOpening;
     }
 
-    /// <summary>Shift 押下中のホイールを横スクロールに割り当てる。左右本文はスクロール連動で他方も追従する。</summary>
+    /// <summary>Shift 押下中のホイールを統合表示の横スクロールに割り当てる。</summary>
     private void OnTextPreviewMouseWheel(object sender, MouseWheelEventArgs e)
-        => _scrollSyncController.ScrollHorizontally(sender, e);
+    {
+        if ((Keyboard.Modifiers & ModifierKeys.Shift) == 0 || _unifiedSv is null) return;
+        _unifiedSv.ScrollToHorizontalOffset(_unifiedSv.HorizontalOffset - e.Delta);
+        e.Handled = true;
+    }
 
     private static ScrollViewer? InnerScrollViewer(RichTextBox box)
     {
         box.ApplyTemplate();
         return box.Template?.FindName("PART_ContentHost", box) as ScrollViewer;
     }
-
-    private void OnSideScrollChanged(object sender, ScrollChangedEventArgs e)
-        => _scrollSyncController.OnSideScrollChanged(sender, e);
-
-    internal static double ClampToSharedHorizontalRange(
-        double requestedOffset,
-        double leftScrollableWidth,
-        double rightScrollableWidth)
-        => DiffRowLineMapper.ClampToSharedHorizontalRange(
-            requestedOffset, leftScrollableWidth, rightScrollableWidth);
 
     // ===== 次/前の変更へジャンプ =====
 
@@ -352,7 +418,11 @@ public partial class DiffSessionView : UserControl, IDisposable
     {
         if (Vm is not { } vm) return;
         var box = (sender as MenuItem)?.Parent is ContextMenu { PlacementTarget: RichTextBox target } ? target : null;
-        var selected = box?.Selection.Text ?? "";
+        CompareWithClipboard(vm, box?.Selection.Text ?? "");
+    }
+
+    private static void CompareWithClipboard(DiffSessionViewModel vm, string selected)
+    {
         var result = DiffSelectionComparisonMapper.FromClipboard(selected, ClipboardText.TryGet());
         if (result.ErrorMessage is { } error)
         {

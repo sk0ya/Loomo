@@ -126,6 +126,7 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
         Hunks.Clear();
         OnPropertyChanged(nameof(CanStageHunks));
         DiffRows.Clear();
+        SetSideRowsItem(null);
         SideRows.Clear();
     }
 
@@ -579,6 +580,7 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
         if (SelectedFile is null)
         {
             DiffRows.Clear();
+            SetSideRowsItem(null);
             SideRows.Clear();
         }
     }

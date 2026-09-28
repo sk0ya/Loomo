@@ -211,6 +211,7 @@ public partial class ShellWindow {
         // 左右/統合・Markdown 描画・Git 一覧で表示・比較の入替/再比較/閉じる）が丸ごと欠ける。
         // ビュー自前のバーで同じ物を出す。
         view.ShowStandaloneToolbar();
+        view.ConfigureEditors(CreateDiffEditorControl, ApplyDiffEditorAppearance);
         view.ConfigureMarkdownRender(
             _editorSupport.WebView.ViewFactory, EditorSupportPreviewFolder, Guid.NewGuid().ToString("N"));
         view.MarkdownLinkClicked += (_, e) => _ = HandleEditorSupportLinkClickedAsync(e.Href, e.SourcePath);

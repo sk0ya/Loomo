@@ -88,22 +88,4 @@ public class DiffSyntaxHighlighterTests
 
         Assert.Empty(DiffSyntaxHighlighter.ForUnified(@"C:\work\a.cs", true, rows));
     }
-
-    [Fact]
-    public void 左右並びは各側の本文だけを解析し詰め物には色を付けない()
-    {
-        var rows = new[]
-        {
-            new DiffSideRowVm("Removed", "const int a = 1;", "Added", "var b = \"x\";", "1", "1"),
-            new DiffSideRowVm("Empty", "", "Added", "var c = 2;", "", "2"),
-        };
-
-        var left = DiffSyntaxHighlighter.ForSide(@"C:\work\a.cs", rows, left: true);
-        var right = DiffSyntaxHighlighter.ForSide(@"C:\work\a.cs", rows, left: false);
-
-        Assert.Contains(Assert.IsType<SyntaxToken[]>(left[0]), t => t.Kind == TokenKind.Keyword);
-        Assert.Null(left[1]);   // 片側だけ行がある箇所の詰め物
-        Assert.Contains(Assert.IsType<SyntaxToken[]>(right[0]), t => t.Kind == TokenKind.String);
-        Assert.NotNull(right[1]);
-    }
 }

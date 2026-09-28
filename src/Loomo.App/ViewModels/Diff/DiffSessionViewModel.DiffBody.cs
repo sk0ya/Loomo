@@ -31,20 +31,62 @@ public sealed partial class DiffSessionViewModel
     /// 色を付けてしまう（行が入れ替われば直るが、一瞬化ける）。</summary>
     public IReadOnlyList<SyntaxToken[]?> UnifiedSyntax { get; private set; } = DiffSyntaxHighlighter.None;
 
-    /// <summary>左右並び表示の左側（旧）の構文トークン列。<see cref="UnifiedSyntax"/> と同じ約束。</summary>
-    public IReadOnlyList<SyntaxToken[]?> SideSyntaxLeft { get; private set; } = DiffSyntaxHighlighter.None;
+    /// <summary>
+    /// <see cref="SideRows"/> がどの項目の差分か。左右並びの本文はエディタ2つで出すので、どのファイルを
+    /// 右で編集させるか・見出しを何にするかは<b>行と同じ項目</b>から決める——<see cref="SelectedFile"/> で
+    /// 決めると、選択が移ってから新しい行が届くまでの間に「前のファイルの行を、次のファイルとして編集させる」
+    /// 取り違えが起きる。行と必ず同時に差し替える。
+    /// </summary>
+    public DiffFileItem? SideRowsItem { get; private set; }
 
-    /// <summary>左右並び表示の右側（新）の構文トークン列。<see cref="UnifiedSyntax"/> と同じ約束。</summary>
-    public IReadOnlyList<SyntaxToken[]?> SideSyntaxRight { get; private set; } = DiffSyntaxHighlighter.None;
+    /// <summary>
+    /// 左右並びの右側を、そのファイルとして編集・保存できるならそのパス（できなければ null）。
+    /// 右側が作業ツリーのファイルそのものである差分だけ——未ステージの変更と、比較基準（ブランチ／
+    /// 分岐点）に対する作業ツリー。ステージ済み（右はインデックス）・コミット範囲・アドホック比較・
+    /// コンフリクト・消えたファイルは読み取り専用で出す。
+    /// </summary>
+    public string? EditableSidePath => SideRowsItem is { } item && IsWorkingTreeRight(item) ? item.FullPath : null;
+
+    /// <summary>左右並びの左側の見出し（エディタの文書名。ステータスバーに出る）。</summary>
+    public string SideLeftTitle => SideRowsItem switch
+    {
+        { Comparison: { } comparison } => comparison.LeftTitle,
+        { } item => $"{item.FileName}（旧）",
+        null => "",
+    };
+
+    /// <summary>左右並びの右側の見出し（読み取り専用で出すとき）。</summary>
+    public string SideRightTitle => SideRowsItem switch
+    {
+        { Comparison: { } comparison } => comparison.RightTitle,
+        { IsStaged: true } item => $"{item.FileName}（インデックス）",
+        { } item => $"{item.FileName}（新）",
+        null => "",
+    };
+
+    private bool IsWorkingTreeRight(DiffFileItem item)
+        => _commitRange is null
+           && item is { Comparison: null, CommitFile: null, FullPath.Length: > 0 }
+           && (item.Entry is { IsConflicted: false } || item.CompareBaseFile is not null)
+           && !item.IsStaged
+           && File.Exists(item.FullPath);
+
+    /// <summary>
+    /// 右のエディタで保存前の編集が入ったので、その本文で取り直した行へ差し替える（ビューが呼ぶ）。
+    /// 次/前の変更・中央の帯は、いま見えている行を数えるようになる。保存すると git の読み直しが同じ本文の
+    /// 行を返すので、表示は動かない。
+    /// </summary>
+    public void ApplyLiveSideRows(IReadOnlyList<DiffSideRowVm> rows)
+    {
+        if (!IsSideBySide || SideRowsItem is null) return;
+        ReplaceIfChanged(SideRows, rows.ToList());
+    }
 
     /// <summary>統合表示の組み立て結果（行＋その行の構文トークン）。行と色付けを一組で運ぶための器。</summary>
     private sealed record UnifiedContent(List<DiffRowVm> Rows, IReadOnlyList<SyntaxToken[]?> Syntax);
 
-    /// <summary>左右並び表示の組み立て結果（行＋左右それぞれの構文トークン）。</summary>
-    private sealed record SideContent(
-        List<DiffSideRowVm> Rows,
-        IReadOnlyList<SyntaxToken[]?> LeftSyntax,
-        IReadOnlyList<SyntaxToken[]?> RightSyntax);
+    /// <summary>左右並び表示の組み立て結果。構文の色はエディタ自身が付ける。</summary>
+    private sealed record SideContent(List<DiffSideRowVm> Rows);
 
     /// <summary>
     /// 差分本体を読み込む。全行を組み立ててから、現在の表示と異なるときだけ差し替える
@@ -76,8 +118,7 @@ public sealed partial class DiffSessionViewModel
             var content = await BuildSideContentAsync(item);
             if (version != _diffLoadVersion)
                 return; // より新しい読込が始まっている
-            SideSyntaxLeft = content.LeftSyntax;
-            SideSyntaxRight = content.RightSyntax;
+            SetSideRowsItem(item);
             ReplaceIfChanged(SideRows, content.Rows);
         }
         else
@@ -180,35 +221,36 @@ public sealed partial class DiffSessionViewModel
     private async Task<SideContent> BuildSideContentAsync(DiffFileItem? item)
     {
         if (item is null)
-            return new SideContent(
-                new List<DiffSideRowVm>(), DiffSyntaxHighlighter.None, DiffSyntaxHighlighter.None);
-        var path = item.FullPath;
+            return new SideContent(new List<DiffSideRowVm>());
 
         if (item.Comparison is { } comparison)
         {
             var (oldText, newText) = (comparison.LeftText, comparison.RightText);
             // 左右は実際のファイルのように全文を行番号付きで対比する（ハンク折りたたみなし）
             return await Task.Run(() =>
-                WithSideSyntax(path, ToSideRows(SideBySideDiff.Build(DiffUtil.ComputeFull(oldText, newText)))));
+                new SideContent(ToSideRows(SideBySideDiff.Build(DiffUtil.ComputeFull(oldText, newText)))));
         }
 
         // 全文コンテキストの diff を取り、git ヘッダ・ハンク見出しを隠してファイルそのものに見せる
         var text = await GetPatchTextAsync(item, FullFileContext);
         if (text.Length == 0) return SideMessage(NoDiffMessage);
         return await Task.Run(() =>
-            WithSideSyntax(path, ToSideRows(SideBySideDiff.FromUnifiedPatch(text, hideChrome: true))));
+            new SideContent(ToSideRows(SideBySideDiff.FromUnifiedPatch(text, hideChrome: true))));
     }
 
     private static UnifiedContent UnifiedMessage(string message)
         => new([new DiffRowVm("Header", message)], DiffSyntaxHighlighter.None);
 
     private static SideContent SideMessage(string message)
-        => new([SharedRow("Header", message)], DiffSyntaxHighlighter.None, DiffSyntaxHighlighter.None);
+        => new([SharedRow("Header", message)]);
 
-    private static SideContent WithSideSyntax(string path, List<DiffSideRowVm> rows)
-        => new(rows,
-            DiffSyntaxHighlighter.ForSide(path, rows, left: true),
-            DiffSyntaxHighlighter.ForSide(path, rows, left: false));
+    /// <summary>行の出どころを差し替える。見出し・編集できるかが変わるので、行が同じでもビューに知らせる。</summary>
+    private void SetSideRowsItem(DiffFileItem? item)
+    {
+        if (ReferenceEquals(SideRowsItem, item)) return;
+        SideRowsItem = item;
+        OnPropertyChanged(nameof(SideRowsItem));
+    }
 
     // ===== ハンク単位ステージ =====
 

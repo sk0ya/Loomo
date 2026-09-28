@@ -60,21 +60,6 @@ public static class DiffRowLineMapper
             ? document.Blocks.ElementAt(index) as Paragraph
             : null;
 
-    /// <summary>左右本文の両方で到達できる横スクロール範囲へ位置を収める。</summary>
-    internal static double ClampToSharedHorizontalRange(
-        double requestedOffset,
-        double leftScrollableWidth,
-        double rightScrollableWidth)
-        => Math.Clamp(requestedOffset, 0, Math.Min(leftScrollableWidth, rightScrollableWidth));
-
-    /// <summary>左右本文が揃っているときは共有範囲へ、片方が未生成なら操作元の範囲へ位置を収める。</summary>
-    internal static double HorizontalOffsetForSync(
-        double requestedOffset, double sourceScrollableWidth,
-        double? leftScrollableWidth, double? rightScrollableWidth)
-        => leftScrollableWidth is { } left && rightScrollableWidth is { } right
-            ? ClampToSharedHorizontalRange(requestedOffset, left, right)
-            : Math.Clamp(requestedOffset, 0, sourceScrollableWidth);
-
     /// <summary>左右並びの行 → その側の行番号。その側に無い行（反対側だけの変更）は直前の行を指す。</summary>
     public static int LineForSideRow(IReadOnlyList<DiffSideRowVm> rows, int index, bool leftSide)
     {

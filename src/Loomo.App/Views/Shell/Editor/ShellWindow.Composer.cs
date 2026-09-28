@@ -40,6 +40,21 @@ public partial class ShellWindow {
         _composerEditor = editor;
         ComposerEditorHost.Child = editor;
     }
+    /// <summary>
+    /// Diff の左右並びで本文を出すエディタ。構文の登録（C# の色分け）・右クリックの見出し・Vim の有無は
+    /// エディタペインと揃えるが、<b>LSP は渡さない</b>——CodeLens やインレイヒントは表示行を足し引きするので、
+    /// 左右の行の揃いが崩れる（コンポーザーと同じ LSP 無しのエディタ）。
+    /// </summary>
+    private VimEditorControl CreateDiffEditorControl() =>
+        new(new VimEditorControlOptions {
+            EngineServices = _editorEngineServices,
+            ContextMenuLabels = Services.EditorMenuLabels.Japanese,
+        }) { VimEnabled = _settings.Vim.Enabled };
+
+    private void ApplyDiffEditorAppearance(VimEditorControl control) {
+        _appearance.ApplyEditorOptions(control);
+        _appearance.ApplyEditorAppearance(control);
+    }
     private void OnComposerPreviewKeyDown(object sender, KeyEventArgs e) {
         if (_keybindings.For("composer.run") is { Count: 1 } seq
             && Input.KeyChord.FromEvent(e) is { } chord && chord.Equals(seq.First)) {

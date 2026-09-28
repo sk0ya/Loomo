@@ -61,32 +61,6 @@ internal static class DiffSyntaxHighlighter
             columnOffset: hasPatchPrefix ? 1 : 0);
     }
 
-    /// <summary>左右並びの片側（<paramref name="left"/>＝旧側）のトークン列を作る。
-    /// 左右のテキストはプレフィックスを剥がした本文そのものなので桁のずれは無い。</summary>
-    internal static IReadOnlyList<SyntaxToken[]?> ForSide(
-        string filePath, IReadOnlyList<DiffSideRowVm> rows, bool left)
-    {
-        if (rows.Count == 0 || rows.Count > MaxLines) return None;
-        if (EditorSyntaxColors.CreateEngine(filePath) is not { } engine) return None;
-
-        var lines = new List<string>();
-        var map = new int[rows.Count];
-        for (var i = 0; i < rows.Count; i++)
-        {
-            var (kind, text) = left ? (rows[i].LeftKind, rows[i].LeftText) : (rows[i].RightKind, rows[i].RightText);
-            // その側に行がある行だけ（Empty＝詰め物、Gap／Header＝左右共通の注記は対象外）
-            if (kind is not ("Context" or "Added" or "Removed")) { map[i] = -1; continue; }
-            lines.Add(text);
-            map[i] = lines.Count - 1;
-        }
-        var tokens = Tokenize(engine, lines);
-        var result = new SyntaxToken[]?[rows.Count];
-        for (var i = 0; i < rows.Count; i++)
-            if (map[i] >= 0 && map[i] < tokens.Length)
-                result[i] = tokens[map[i]];
-        return result;
-    }
-
     private static string Body(string text, bool hasPatchPrefix)
         => hasPatchPrefix && text.Length > 0 ? text[1..] : text;
 

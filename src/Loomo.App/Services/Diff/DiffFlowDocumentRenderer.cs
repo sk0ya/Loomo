@@ -10,10 +10,6 @@ namespace sk0ya.Loomo.App.Services;
 
 internal readonly record struct DiffUnifiedDocumentBuild(FlowDocument Document, ChunkedAppendState Build);
 
-internal readonly record struct DiffSideDocumentBuild(
-    FlowDocument Left, FlowDocument Right, FlowDocument LeftNumbers, FlowDocument RightNumbers,
-    ChunkedAppendState Build);
-
 /// <summary>差分行を FlowDocument へ描画し、幅を測る。</summary>
 internal sealed class DiffFlowDocumentRenderer
 {
@@ -22,7 +18,6 @@ internal sealed class DiffFlowDocumentRenderer
     private static readonly Brush AddedForeground = FrozenBrush("#FF81C784");
     private static readonly Brush RemovedBackground = FrozenBrush("#1FE57373");
     private static readonly Brush RemovedForeground = FrozenBrush("#FFE57373");
-    private static readonly Brush EmptyBackground = FrozenBrush("#14808080");
     private static readonly Func<TokenKind, Brush?> ThemeForeground = EditorSyntaxColors.Foreground;
 
     private readonly FrameworkElement _owner;
@@ -40,30 +35,6 @@ internal sealed class DiffFlowDocumentRenderer
                 document.Blocks.Add(TextParagraph(rows[index].Text, rows[index].Kind, TokensAt(syntax, index)));
         });
         return new DiffUnifiedDocumentBuild(document, build);
-    }
-
-    internal DiffSideDocumentBuild BuildSide(
-        IReadOnlyList<DiffSideRowVm> rows,
-        IReadOnlyList<SyntaxToken[]?> leftSyntax,
-        IReadOnlyList<SyntaxToken[]?> rightSyntax)
-    {
-        var width = MeasureMaxWidth(rows.SelectMany(row => new[] { row.LeftText, row.RightText }));
-        var left = NewDocument(width);
-        var right = NewDocument(width);
-        var leftNumbers = NewDocument(null);
-        var rightNumbers = NewDocument(null);
-        var build = new ChunkedAppendState(rows.Count, (start, end) =>
-        {
-            for (var index = start; index < end; index++)
-            {
-                var row = rows[index];
-                left.Blocks.Add(TextParagraph(row.LeftText, row.LeftKind, TokensAt(leftSyntax, index)));
-                right.Blocks.Add(TextParagraph(row.RightText, row.RightKind, TokensAt(rightSyntax, index)));
-                leftNumbers.Blocks.Add(GutterParagraph(row.LeftLine));
-                rightNumbers.Blocks.Add(GutterParagraph(row.RightLine));
-            }
-        });
-        return new DiffSideDocumentBuild(left, right, leftNumbers, rightNumbers, build);
     }
 
     internal static List<Run> SyntaxRuns(
@@ -110,7 +81,6 @@ internal sealed class DiffFlowDocumentRenderer
         {
             "Added" => AddedBackground,
             "Removed" => RemovedBackground,
-            "Empty" => EmptyBackground,
             _ => null,
         };
         if (tokens is { Length: > 0 })
@@ -128,17 +98,6 @@ internal sealed class DiffFlowDocumentRenderer
             case "Header": run.SetResourceReference(TextElement.ForegroundProperty, "FgDim"); break;
             default: run.SetResourceReference(TextElement.ForegroundProperty, "Fg"); break;
         }
-        paragraph.Inlines.Add(run);
-        return paragraph;
-    }
-
-    private static Paragraph GutterParagraph(string number)
-    {
-        var paragraph = NewParagraph();
-        paragraph.TextAlignment = TextAlignment.Right;
-        paragraph.Padding = new Thickness(0, 0, 6, 0);
-        var run = new Run(number);
-        run.SetResourceReference(TextElement.ForegroundProperty, "FgDim");
         paragraph.Inlines.Add(run);
         return paragraph;
     }
