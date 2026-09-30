@@ -15,6 +15,15 @@
 public partial class ShellWindow {
     /// <summary>差分を見せる。ペインが出ていなければ別ウィンドウで開く（このクラスの主役）。</summary>
     private void ShowDiff(DiffOpenTarget target) {
+        // 比較基準の差分だけは<b>別ウィンドウに逃がさない</b>。基準は Git パネル・Diff ペインと共有する
+        // 1つの状態（GitCompareBaseViewModel）なので、窓のタブとして何枚も開くと、新しく開いた比較が
+        // 前のタブの中身まで書き換え、タブ名だけが古い相手のまま残る。出し先を1つにすれば食い違わない。
+        if (target is DiffOpenTarget.CompareBase) {
+            _ = _vm.DiffSession.ShowAsync(target);
+            EnsurePaneVisibleOrSwapTopLeft(PaneKind.Diff);
+            FocusPane(PaneKind.Diff);
+            return;
+        }
         // 集中では袖に居るだけなので、そのまま舞台へ出す
         // （EnsurePaneVisibleOrSwapTopLeft がモードごとの出し方を持っている）。
         // 窓へ逃がすのは、ドック中か、分割でペインが配置から消えているとき。
@@ -36,7 +45,7 @@ public partial class ShellWindow {
     /// <summary>切り離した窓の VM へ差分を出す。作業ツリーの差分だけは<b>追従させる</b>
     /// （ペインと同じで、ステージや編集のたびに窓の中身が古くなるため）。コミットの差分は動かない。</summary>
     private static Task ShowDiffInWindowAsync(DiffSessionViewModel vm, DiffOpenTarget target) {
-        if (target is DiffOpenTarget.WorkingTreeFile or DiffOpenTarget.CompareBase)
+        if (target is DiffOpenTarget.WorkingTreeFile)
             vm.StartLiveTracking();
         return vm.ShowAsync(target);
     }
