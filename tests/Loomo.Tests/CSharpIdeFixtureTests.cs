@@ -9,9 +9,20 @@ using sk0ya.Loomo.CSharp.Refactoring;
 namespace sk0ya.Loomo.Tests;
 
 [Collection(CSharpExternalProcessCollection.Name)]
-public sealed class CSharpIdeFixtureTests
+public sealed class CSharpIdeFixtureTests : IClassFixture<SharedCSharpFixtureCopy>
 {
-    private static string FixtureRoot
+    /// <summary>
+    /// リファクタリング・コード生成・一括修正のテストが共有する、フィクスチャの一時コピーと
+    /// その MSBuild 評価結果。これらのテストが確かめたいのは操作の結果であって評価そのものではないので、
+    /// 評価（1回数秒）はクラスで1回にする。各テストは冒頭で <see cref="SharedCSharpFixtureCopy.Reset"/>
+    /// してコピーを原本と同じ状態へ戻す（同じクラスのテストは順番に走るので、共有しても干渉しない）。
+    /// 評価そのものが対象のテスト（<c>Real_*</c>・Design time build・Multi target 等）は従来どおり自分で評価する。
+    /// </summary>
+    private readonly SharedCSharpFixtureCopy _shared;
+
+    public CSharpIdeFixtureTests(SharedCSharpFixtureCopy shared) => _shared = shared;
+
+    internal static string FixtureRoot
     {
         get
         {
@@ -336,14 +347,12 @@ public sealed class CSharpIdeFixtureTests
     [Fact]
     public async Task Semantic_rename_updates_fixture_callers()
     {
-        var sourceRoot = FixtureRoot;
-        var root = CopyFixtureToTemp(sourceRoot);
+        var root = _shared.Reset();
         try
         {
             var workspace = new FakeWorkspaceService();
             workspace.OpenFolder(root);
-            using var solutionService = new SolutionModelService(workspace, new MsBuildProjectEvaluator());
-            var solution = await solutionService.ReloadAsync();
+            var solution = await _shared.SolutionAsync();
             var sourcePath = Path.Combine(root, "src", "Feature", "FeatureService.cs");
             var original = await File.ReadAllTextAsync(sourcePath);
             var methodOffset = original.IndexOf("GetValue", StringComparison.Ordinal);
@@ -372,21 +381,19 @@ public sealed class CSharpIdeFixtureTests
         }
         finally
         {
-            try { Directory.Delete(root, recursive: true); } catch { }
+            _shared.Reset();
         }
     }
 
     [Fact]
     public async Task Code_generation_edit_on_fixture()
     {
-        var sourceRoot = FixtureRoot;
-        var root = CopyFixtureToTemp(sourceRoot);
+        var root = _shared.Reset();
         try
         {
             var workspace = new FakeWorkspaceService();
             workspace.OpenFolder(root);
-            using var solutionService = new SolutionModelService(workspace, new MsBuildProjectEvaluator());
-            var solution = await solutionService.ReloadAsync();
+            var solution = await _shared.SolutionAsync();
             var sourcePath = Path.Combine(root, "src", "Feature", "FeatureService.cs");
             var source = await File.ReadAllTextAsync(sourcePath);
             var caret = Position(source, source.IndexOf("_value", StringComparison.Ordinal));
@@ -404,21 +411,19 @@ public sealed class CSharpIdeFixtureTests
         }
         finally
         {
-            try { Directory.Delete(root, recursive: true); } catch { }
+            _shared.Reset();
         }
     }
 
     [Fact]
     public async Task Equality_code_generation_edit_on_fixture()
     {
-        var sourceRoot = FixtureRoot;
-        var root = CopyFixtureToTemp(sourceRoot);
+        var root = _shared.Reset();
         try
         {
             var workspace = new FakeWorkspaceService();
             workspace.OpenFolder(root);
-            using var solutionService = new SolutionModelService(workspace, new MsBuildProjectEvaluator());
-            var solution = await solutionService.ReloadAsync();
+            var solution = await _shared.SolutionAsync();
             var sourcePath = Path.Combine(root, "src", "Feature", "FeatureService.cs");
             var source = await File.ReadAllTextAsync(sourcePath);
             var caret = Position(source, source.IndexOf("_value", StringComparison.Ordinal));
@@ -437,21 +442,19 @@ public sealed class CSharpIdeFixtureTests
         }
         finally
         {
-            try { Directory.Delete(root, recursive: true); } catch { }
+            _shared.Reset();
         }
     }
 
     [Fact]
     public async Task Async_dispose_code_generation_on_fixture()
     {
-        var sourceRoot = FixtureRoot;
-        var root = CopyFixtureToTemp(sourceRoot);
+        var root = _shared.Reset();
         try
         {
             var workspace = new FakeWorkspaceService();
             workspace.OpenFolder(root);
-            using var solutionService = new SolutionModelService(workspace, new MsBuildProjectEvaluator());
-            var solution = await solutionService.ReloadAsync();
+            var solution = await _shared.SolutionAsync();
             var sourcePath = Path.Combine(root, "src", "Feature", "FeatureService.cs");
             var source = await File.ReadAllTextAsync(sourcePath);
             source = source.Replace(
@@ -480,15 +483,14 @@ public sealed class CSharpIdeFixtureTests
         }
         finally
         {
-            try { Directory.Delete(root, recursive: true); } catch { }
+            _shared.Reset();
         }
     }
 
     [Fact]
     public async Task Semantic_move_type_creates_file()
     {
-        var sourceRoot = FixtureRoot;
-        var root = CopyFixtureToTemp(sourceRoot);
+        var root = _shared.Reset();
         try
         {
             var workspace = new FakeWorkspaceService();
@@ -499,8 +501,7 @@ public sealed class CSharpIdeFixtureTests
             source += "\n\npublic sealed class MovedFixtureType\n{\n    public string Value => \"moved\";\n}\n";
             await File.WriteAllTextAsync(sourcePath, source);
 
-            using var solutionService = new SolutionModelService(workspace, new MsBuildProjectEvaluator());
-            var solution = await solutionService.ReloadAsync();
+            var solution = await _shared.SolutionAsync();
             var typeOffset = source.IndexOf("MovedFixtureType", StringComparison.Ordinal);
             var result = await CSharpSemanticOperations.MoveTypeToFileAsync(
                 solution, sourcePath, source,
@@ -524,15 +525,14 @@ public sealed class CSharpIdeFixtureTests
         }
         finally
         {
-            try { Directory.Delete(root, recursive: true); } catch { }
+            _shared.Reset();
         }
     }
 
     [Fact]
     public async Task Semantic_safe_delete_removes_unused_member_and_rejects_referenced_member()
     {
-        var sourceRoot = FixtureRoot;
-        var root = CopyFixtureToTemp(sourceRoot);
+        var root = _shared.Reset();
         try
         {
             var workspace = new FakeWorkspaceService();
@@ -546,8 +546,7 @@ public sealed class CSharpIdeFixtureTests
                 StringComparison.Ordinal);
             await File.WriteAllTextAsync(sourcePath, source);
 
-            using var solutionService = new SolutionModelService(workspace, new MsBuildProjectEvaluator());
-            var solution = await solutionService.ReloadAsync();
+            var solution = await _shared.SolutionAsync();
 
             var fieldOffset = source.IndexOf("_value", StringComparison.Ordinal);
             var referenced = await CSharpSemanticOperations.SafeDeleteAsync(
@@ -572,15 +571,14 @@ public sealed class CSharpIdeFixtureTests
         }
         finally
         {
-            try { Directory.Delete(root, recursive: true); } catch { }
+            _shared.Reset();
         }
     }
 
     [Fact]
     public async Task Semantic_inline_method_and_variable_update_fixture()
     {
-        var sourceRoot = FixtureRoot;
-        var root = CopyFixtureToTemp(sourceRoot);
+        var root = _shared.Reset();
         try
         {
             var workspace = new FakeWorkspaceService();
@@ -597,8 +595,7 @@ public sealed class CSharpIdeFixtureTests
                 StringComparison.Ordinal);
             await File.WriteAllTextAsync(sourcePath, source);
 
-            using var solutionService = new SolutionModelService(workspace, new MsBuildProjectEvaluator());
-            var solution = await solutionService.ReloadAsync();
+            var solution = await _shared.SolutionAsync();
 
             var methodOffset = source.IndexOf("AddPrefix", StringComparison.Ordinal);
             var inlineMethod = await CSharpSemanticOperations.InlineMethodAsync(
@@ -615,10 +612,9 @@ public sealed class CSharpIdeFixtureTests
             Assert.Contains("value: ", afterMethod, StringComparison.Ordinal);
             Assert.Contains("_value", afterMethod, StringComparison.Ordinal);
 
-            await solutionService.ReloadAsync();
             var variableOffset = afterMethod.IndexOf("current", StringComparison.Ordinal);
             var inlineVariable = await CSharpSemanticOperations.InlineVariableAsync(
-                solutionService.Current, sourcePath, afterMethod,
+                solution, sourcePath, afterMethod,
                 new LspRange(Position(afterMethod, variableOffset),
                     Position(afterMethod, variableOffset + "current".Length)));
             Assert.Null(inlineVariable.Error);
@@ -632,15 +628,14 @@ public sealed class CSharpIdeFixtureTests
         }
         finally
         {
-            try { Directory.Delete(root, recursive: true); } catch { }
+            _shared.Reset();
         }
     }
 
     [Fact]
     public async Task Semantic_encapsulate_field_adds_property_to_fixture()
     {
-        var sourceRoot = FixtureRoot;
-        var root = CopyFixtureToTemp(sourceRoot);
+        var root = _shared.Reset();
         try
         {
             var workspace = new FakeWorkspaceService();
@@ -649,8 +644,7 @@ public sealed class CSharpIdeFixtureTests
             var source = await File.ReadAllTextAsync(sourcePath);
             var fieldOffset = source.IndexOf("_value", StringComparison.Ordinal);
 
-            using var solutionService = new SolutionModelService(workspace, new MsBuildProjectEvaluator());
-            var solution = await solutionService.ReloadAsync();
+            var solution = await _shared.SolutionAsync();
             var result = await CSharpSemanticOperations.EncapsulateFieldAsync(
                 solution, sourcePath, source,
                 new LspRange(Position(source, fieldOffset),
@@ -667,15 +661,14 @@ public sealed class CSharpIdeFixtureTests
         }
         finally
         {
-            try { Directory.Delete(root, recursive: true); } catch { }
+            _shared.Reset();
         }
     }
 
     [Fact]
     public async Task Semantic_pull_up_and_push_down_update_fixture_files()
     {
-        var sourceRoot = FixtureRoot;
-        var root = CopyFixtureToTemp(sourceRoot);
+        var root = _shared.Reset();
         try
         {
             var featureDirectory = Path.Combine(root, "src", "Feature");
@@ -698,10 +691,8 @@ public sealed class CSharpIdeFixtureTests
                 "namespace Loomo.CSharpFixture.Feature;\n\n"
                 + "public sealed class PushDerived : PushBase\n{\n}\n");
 
-            var workspace = new FakeWorkspaceService();
-            workspace.OpenFolder(root);
-            using var solutionService = new SolutionModelService(workspace, new MsBuildProjectEvaluator());
-            var solution = await solutionService.ReloadAsync();
+            // ファイルを足したので、共有の評価結果（足す前のファイル構成）は使えない。この1件だけ評価し直す。
+            var solution = await _shared.EvaluateFreshAsync();
 
             var pullDerived = await File.ReadAllTextAsync(pullDerivedPath);
             var pullOffset = pullDerived.IndexOf("Describe", StringComparison.Ordinal);
@@ -738,21 +729,19 @@ public sealed class CSharpIdeFixtureTests
         }
         finally
         {
-            try { Directory.Delete(root, recursive: true); } catch { }
+            _shared.Reset();
         }
     }
 
     [Fact]
     public async Task Generic_partial_extract_class_on_fixture()
     {
-        var sourceRoot = FixtureRoot;
-        var root = CopyFixtureToTemp(sourceRoot);
+        var root = _shared.Reset();
         try
         {
             var workspace = new FakeWorkspaceService();
             workspace.OpenFolder(root);
-            using var solutionService = new SolutionModelService(workspace, new MsBuildProjectEvaluator());
-            var solution = await solutionService.ReloadAsync();
+            var solution = await _shared.SolutionAsync();
             var sourcePath = Path.Combine(root, "src", "Feature", "FeatureService.cs");
             var partPath = Path.Combine(root, "src", "Feature", "ConditionalFeature.cs");
             var source = await File.ReadAllTextAsync(sourcePath);
@@ -792,21 +781,19 @@ public sealed class CSharpIdeFixtureTests
         }
         finally
         {
-            try { Directory.Delete(root, recursive: true); } catch { }
+            _shared.Reset();
         }
     }
 
     [Fact]
     public async Task Semantic_extract_method_edit_on_fixture()
     {
-        var sourceRoot = FixtureRoot;
-        var root = CopyFixtureToTemp(sourceRoot);
+        var root = _shared.Reset();
         try
         {
             var workspace = new FakeWorkspaceService();
             workspace.OpenFolder(root);
-            using var solutionService = new SolutionModelService(workspace, new MsBuildProjectEvaluator());
-            var solution = await solutionService.ReloadAsync();
+            var solution = await _shared.SolutionAsync();
             var sourcePath = Path.Combine(root, "src", "Feature", "FeatureService.cs");
             var source = await File.ReadAllTextAsync(sourcePath);
             source = source.Replace(
@@ -830,21 +817,19 @@ public sealed class CSharpIdeFixtureTests
         }
         finally
         {
-            try { Directory.Delete(root, recursive: true); } catch { }
+            _shared.Reset();
         }
     }
 
     [Fact]
     public async Task Semantic_introduce_parameter_updates_fixture_callers()
     {
-        var sourceRoot = FixtureRoot;
-        var root = CopyFixtureToTemp(sourceRoot);
+        var root = _shared.Reset();
         try
         {
             var workspace = new FakeWorkspaceService();
             workspace.OpenFolder(root);
-            using var solutionService = new SolutionModelService(workspace, new MsBuildProjectEvaluator());
-            var solution = await solutionService.ReloadAsync();
+            var solution = await _shared.SolutionAsync();
             var sourcePath = Path.Combine(root, "src", "Feature", "FeatureService.cs");
             var callerPath = Path.Combine(root, "tests", "Feature.Tests", "FeatureTests.cs");
             var source = await File.ReadAllTextAsync(sourcePath);
@@ -881,21 +866,19 @@ public sealed class CSharpIdeFixtureTests
         }
         finally
         {
-            try { Directory.Delete(root, recursive: true); } catch { }
+            _shared.Reset();
         }
     }
 
     [Fact]
     public async Task Semantic_change_signature_updates_fixture_callers_without_an_lsp_server()
     {
-        var sourceRoot = FixtureRoot;
-        var root = CopyFixtureToTemp(sourceRoot);
+        var root = _shared.Reset();
         try
         {
             var workspace = new FakeWorkspaceService();
             workspace.OpenFolder(root);
-            using var solutionService = new SolutionModelService(workspace, new MsBuildProjectEvaluator());
-            var solution = await solutionService.ReloadAsync();
+            var solution = await _shared.SolutionAsync();
             var sourcePath = Path.Combine(root, "src", "Feature", "FeatureService.cs");
             var callerPath = Path.Combine(root, "tests", "Feature.Tests", "FeatureTests.cs");
             var source = await File.ReadAllTextAsync(sourcePath);
@@ -946,21 +929,19 @@ public sealed class CSharpIdeFixtureTests
         }
         finally
         {
-            try { Directory.Delete(root, recursive: true); } catch { }
+            _shared.Reset();
         }
     }
 
     [Fact]
     public async Task Project_fix_all_applies_compiler_and_stylecop_fixes_to_the_fixture()
     {
-        var sourceRoot = FixtureRoot;
-        var root = CopyFixtureToTemp(sourceRoot);
+        var root = _shared.Reset();
         try
         {
             var workspace = new FakeWorkspaceService();
             workspace.OpenFolder(root);
-            using var solutionService = new SolutionModelService(workspace, new MsBuildProjectEvaluator());
-            var solution = await solutionService.ReloadAsync();
+            var solution = await _shared.SolutionAsync();
             var projectPath = Path.Combine(root, "src", "Feature", "Feature.csproj");
             var sourcePath = Path.Combine(root, "src", "Feature", "FeatureService.cs");
             var source = await File.ReadAllTextAsync(sourcePath);
@@ -1017,18 +998,17 @@ public sealed class CSharpIdeFixtureTests
         }
         finally
         {
-            try { Directory.Delete(root, recursive: true); } catch { }
+            _shared.Reset();
         }
     }
 
     [Fact]
     public async Task Semantic_navigation_resolves_fixture_definition_and_references_across_projects()
     {
-        var root = FixtureRoot;
+        var root = _shared.Reset();
         var workspace = new FakeWorkspaceService();
         workspace.OpenFolder(root);
-        using var solutionService = new SolutionModelService(workspace, new MsBuildProjectEvaluator());
-        var solution = await solutionService.ReloadAsync();
+        var solution = await _shared.SolutionAsync();
         var callerPath = Path.Combine(root, "tests", "Feature.Tests", "FeatureTests.cs");
         var caller = await File.ReadAllTextAsync(callerPath);
         var offset = caller.LastIndexOf("GetValue", StringComparison.Ordinal);
@@ -1054,14 +1034,12 @@ public sealed class CSharpIdeFixtureTests
     [Fact]
     public async Task Project_fix_all_builds_one_workspace_edit_for_the_selected_project()
     {
-        var sourceRoot = FixtureRoot;
-        var root = CopyFixtureToTemp(sourceRoot);
+        var root = _shared.Reset();
         try
         {
             var workspace = new FakeWorkspaceService();
             workspace.OpenFolder(root);
-            using var solutionService = new SolutionModelService(workspace, new MsBuildProjectEvaluator());
-            var solution = await solutionService.ReloadAsync();
+            var solution = await _shared.SolutionAsync();
             var projectPath = Path.Combine(root, "src", "Feature", "Feature.csproj");
             var sourcePath = Path.Combine(root, "src", "Feature", "FeatureService.cs");
             var source = await File.ReadAllTextAsync(sourcePath);
@@ -1084,7 +1062,7 @@ public sealed class CSharpIdeFixtureTests
         }
         finally
         {
-            try { Directory.Delete(root, recursive: true); } catch { }
+            _shared.Reset();
         }
     }
 
