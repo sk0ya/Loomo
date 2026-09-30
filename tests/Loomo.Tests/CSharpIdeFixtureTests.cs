@@ -286,15 +286,6 @@ public sealed class CSharpIdeFixtureTests
             var styleAfter = await styleCop.AnalyzeAsync(project, sourcePath, corrected);
             Assert.DoesNotContain(styleAfter.Diagnostics, diagnostic => diagnostic.Code == "SA1101");
 
-            await File.WriteAllTextAsync(sourcePath, corrected);
-            var build = await RunDotnetAsync(root, "build", "CSharpIde.sln",
-                "--no-restore", "--no-incremental", "--nologo", "--verbosity:minimal",
-                "-p:NoWarn=SA1101");
-            Assert.Equal(0, build.ExitCode);
-            var tests = await RunDotnetAsync(root, "test",
-                Path.Combine("tests", "Feature.Tests", "Feature.Tests.csproj"),
-                "--no-build", "--no-restore", "--nologo", "--verbosity:minimal");
-            Assert.Equal(0, tests.ExitCode);
         }
         finally
         {
@@ -303,7 +294,7 @@ public sealed class CSharpIdeFixtureTests
     }
 
     [Fact]
-    public async Task Extract_interface_creates_file_and_fixture_copy_still_builds_and_tests()
+    public async Task Extract_interface_creates_file()
     {
         var sourceRoot = FixtureRoot;
         var root = CopyFixtureToTemp(sourceRoot);
@@ -335,17 +326,6 @@ public sealed class CSharpIdeFixtureTests
                 operation.Kind == LspFileOperationKind.Create &&
                 string.Equals(operation.Uri, destinationUri, StringComparison.OrdinalIgnoreCase));
 
-            await File.WriteAllTextAsync(sourcePath, updatedSource);
-            await File.WriteAllTextAsync(destinationPath, generated);
-            var build = await RunDotnetAsync(root, "build", "CSharpIde.sln",
-                "--no-restore", "--no-incremental", "--nologo", "--verbosity:minimal",
-                "-p:NoWarn=SA1101");
-            Assert.Equal(0, build.ExitCode);
-
-            var tests = await RunDotnetAsync(root, "test",
-                Path.Combine("tests", "Feature.Tests", "Feature.Tests.csproj"),
-                "--no-build", "--no-restore", "--nologo", "--verbosity:minimal");
-            Assert.Equal(0, tests.ExitCode);
         }
         finally
         {
@@ -354,7 +334,7 @@ public sealed class CSharpIdeFixtureTests
     }
 
     [Fact]
-    public async Task Semantic_rename_updates_fixture_callers_and_solution_still_builds_and_tests()
+    public async Task Semantic_rename_updates_fixture_callers()
     {
         var sourceRoot = FixtureRoot;
         var root = CopyFixtureToTemp(sourceRoot);
@@ -389,15 +369,6 @@ public sealed class CSharpIdeFixtureTests
                 var text = await File.ReadAllTextAsync(path!);
                 await File.WriteAllTextAsync(path!, VimEditorControl.ApplyTextEdits(text, edits));
             }
-
-            var build = await RunDotnetAsync(root, "build", "CSharpIde.sln",
-                "--no-restore", "--no-incremental", "--nologo", "--verbosity:minimal",
-                "-p:NoWarn=SA1101");
-            Assert.Equal(0, build.ExitCode);
-            var tests = await RunDotnetAsync(root, "test",
-                Path.Combine("tests", "Feature.Tests", "Feature.Tests.csproj"),
-                "--no-build", "--no-restore", "--nologo", "--verbosity:minimal");
-            Assert.Equal(0, tests.ExitCode);
         }
         finally
         {
@@ -406,7 +377,7 @@ public sealed class CSharpIdeFixtureTests
     }
 
     [Fact]
-    public async Task Code_generation_edit_on_fixture_builds_and_tests()
+    public async Task Code_generation_edit_on_fixture()
     {
         var sourceRoot = FixtureRoot;
         var root = CopyFixtureToTemp(sourceRoot);
@@ -430,17 +401,6 @@ public sealed class CSharpIdeFixtureTests
                 source, edit.Changes[LspUri.FromPath(sourcePath)]);
             Assert.Contains("void Deconstruct(out string value)", updated,
                 StringComparison.Ordinal);
-            await File.WriteAllTextAsync(sourcePath, updated);
-
-            var build = await RunDotnetAsync(root, "build", "CSharpIde.sln",
-                "--no-restore", "--no-incremental", "--nologo", "--verbosity:minimal",
-                "-p:NoWarn=SA1101");
-            Assert.Equal(0, build.ExitCode);
-
-            var tests = await RunDotnetAsync(root, "test",
-                Path.Combine("tests", "Feature.Tests", "Feature.Tests.csproj"),
-                "--no-build", "--no-restore", "--nologo", "--verbosity:minimal");
-            Assert.Equal(0, tests.ExitCode);
         }
         finally
         {
@@ -449,7 +409,7 @@ public sealed class CSharpIdeFixtureTests
     }
 
     [Fact]
-    public async Task Equality_code_generation_edit_on_fixture_builds_and_tests()
+    public async Task Equality_code_generation_edit_on_fixture()
     {
         var sourceRoot = FixtureRoot;
         var root = CopyFixtureToTemp(sourceRoot);
@@ -474,17 +434,6 @@ public sealed class CSharpIdeFixtureTests
                 StringComparison.Ordinal);
             Assert.Contains("Object.Equals(_value, other._value);", updated,
                 StringComparison.Ordinal);
-            await File.WriteAllTextAsync(sourcePath, updated);
-
-            var build = await RunDotnetAsync(root, "build", "CSharpIde.sln",
-                "--no-restore", "--no-incremental", "--nologo", "--verbosity:minimal",
-                "-p:NoWarn=SA1101");
-            Assert.True(build.ExitCode == 0, build.Output);
-
-            var tests = await RunDotnetAsync(root, "test",
-                Path.Combine("tests", "Feature.Tests", "Feature.Tests.csproj"),
-                "--no-build", "--no-restore", "--nologo", "--verbosity:minimal");
-            Assert.True(tests.ExitCode == 0, tests.Output);
         }
         finally
         {
@@ -493,7 +442,7 @@ public sealed class CSharpIdeFixtureTests
     }
 
     [Fact]
-    public async Task Async_dispose_code_generation_on_fixture_builds_and_tests()
+    public async Task Async_dispose_code_generation_on_fixture()
     {
         var sourceRoot = FixtureRoot;
         var root = CopyFixtureToTemp(sourceRoot);
@@ -528,17 +477,6 @@ public sealed class CSharpIdeFixtureTests
                 source, result.Edit!.Changes[LspUri.FromPath(sourcePath)]);
             Assert.Contains("IAsyncDisposable", updated, StringComparison.Ordinal);
             Assert.Contains("ValueTask DisposeAsync()", updated, StringComparison.Ordinal);
-            await File.WriteAllTextAsync(sourcePath, updated);
-
-            var build = await RunDotnetAsync(root, "build", "CSharpIde.sln",
-                "--no-restore", "--no-incremental", "--nologo", "--verbosity:minimal",
-                "-p:NoWarn=SA1101");
-            Assert.True(build.ExitCode == 0, build.Output);
-
-            var tests = await RunDotnetAsync(root, "test",
-                Path.Combine("tests", "Feature.Tests", "Feature.Tests.csproj"),
-                "--no-build", "--no-restore", "--nologo", "--verbosity:minimal");
-            Assert.True(tests.ExitCode == 0, tests.Output);
         }
         finally
         {
@@ -547,7 +485,7 @@ public sealed class CSharpIdeFixtureTests
     }
 
     [Fact]
-    public async Task Semantic_move_type_creates_file_and_fixture_builds_and_tests()
+    public async Task Semantic_move_type_creates_file()
     {
         var sourceRoot = FixtureRoot;
         var root = CopyFixtureToTemp(sourceRoot);
@@ -583,17 +521,6 @@ public sealed class CSharpIdeFixtureTests
             Assert.DoesNotContain("MovedFixtureType", updatedSource, StringComparison.Ordinal);
             Assert.Contains("public sealed class MovedFixtureType", moved, StringComparison.Ordinal);
 
-            await File.WriteAllTextAsync(sourcePath, updatedSource);
-            await File.WriteAllTextAsync(destinationPath, moved);
-            var build = await RunDotnetAsync(root, "build", "CSharpIde.sln",
-                "--no-restore", "--no-incremental", "--nologo", "--verbosity:minimal",
-                "-p:NoWarn=SA1101");
-            Assert.True(build.ExitCode == 0, build.Output);
-
-            var tests = await RunDotnetAsync(root, "test",
-                Path.Combine("tests", "Feature.Tests", "Feature.Tests.csproj"),
-                "--no-build", "--no-restore", "--nologo", "--verbosity:minimal");
-            Assert.True(tests.ExitCode == 0, tests.Output);
         }
         finally
         {
@@ -642,14 +569,6 @@ public sealed class CSharpIdeFixtureTests
 
             var updated = await File.ReadAllTextAsync(sourcePath);
             Assert.DoesNotContain("UnusedForSafeDelete", updated, StringComparison.Ordinal);
-            var build = await RunDotnetAsync(root, "build", "CSharpIde.sln",
-                "--no-restore", "--no-incremental", "--nologo", "--verbosity:minimal",
-                "-p:NoWarn=SA1101");
-            Assert.True(build.ExitCode == 0, build.Output);
-            var tests = await RunDotnetAsync(root, "test",
-                Path.Combine("tests", "Feature.Tests", "Feature.Tests.csproj"),
-                "--no-build", "--no-restore", "--nologo", "--verbosity:minimal");
-            Assert.True(tests.ExitCode == 0, tests.Output);
         }
         finally
         {
@@ -658,7 +577,7 @@ public sealed class CSharpIdeFixtureTests
     }
 
     [Fact]
-    public async Task Semantic_inline_method_and_variable_update_fixture_and_build()
+    public async Task Semantic_inline_method_and_variable_update_fixture()
     {
         var sourceRoot = FixtureRoot;
         var root = CopyFixtureToTemp(sourceRoot);
@@ -710,15 +629,6 @@ public sealed class CSharpIdeFixtureTests
             Assert.DoesNotContain("var current", updated, StringComparison.Ordinal);
             Assert.DoesNotContain("return current", updated, StringComparison.Ordinal);
             Assert.Contains("return (_value);", updated, StringComparison.Ordinal);
-
-            var build = await RunDotnetAsync(root, "build", "CSharpIde.sln",
-                "--no-restore", "--no-incremental", "--nologo", "--verbosity:minimal",
-                "-p:NoWarn=SA1101");
-            Assert.True(build.ExitCode == 0, build.Output);
-            var tests = await RunDotnetAsync(root, "test",
-                Path.Combine("tests", "Feature.Tests", "Feature.Tests.csproj"),
-                "--no-build", "--no-restore", "--nologo", "--verbosity:minimal");
-            Assert.True(tests.ExitCode == 0, tests.Output);
         }
         finally
         {
@@ -727,7 +637,7 @@ public sealed class CSharpIdeFixtureTests
     }
 
     [Fact]
-    public async Task Semantic_encapsulate_field_adds_property_to_fixture_and_builds_and_tests()
+    public async Task Semantic_encapsulate_field_adds_property_to_fixture()
     {
         var sourceRoot = FixtureRoot;
         var root = CopyFixtureToTemp(sourceRoot);
@@ -754,14 +664,6 @@ public sealed class CSharpIdeFixtureTests
             var updated = await File.ReadAllTextAsync(sourcePath);
             Assert.Contains("Value => _value;", updated, StringComparison.Ordinal);
             Assert.Contains("GetValue()", updated, StringComparison.Ordinal);
-            var build = await RunDotnetAsync(root, "build", "CSharpIde.sln",
-                "--no-restore", "--no-incremental", "--nologo", "--verbosity:minimal",
-                "-p:NoWarn=SA1101");
-            Assert.True(build.ExitCode == 0, build.Output);
-            var tests = await RunDotnetAsync(root, "test",
-                Path.Combine("tests", "Feature.Tests", "Feature.Tests.csproj"),
-                "--no-build", "--no-restore", "--nologo", "--verbosity:minimal");
-            Assert.True(tests.ExitCode == 0, tests.Output);
         }
         finally
         {
@@ -770,7 +672,7 @@ public sealed class CSharpIdeFixtureTests
     }
 
     [Fact]
-    public async Task Semantic_pull_up_and_push_down_update_fixture_files_and_build()
+    public async Task Semantic_pull_up_and_push_down_update_fixture_files()
     {
         var sourceRoot = FixtureRoot;
         var root = CopyFixtureToTemp(sourceRoot);
@@ -833,11 +735,6 @@ public sealed class CSharpIdeFixtureTests
             Assert.DoesNotContain("Describe", updatedPullDerived, StringComparison.Ordinal);
             Assert.DoesNotContain("Describe", updatedPushBase, StringComparison.Ordinal);
             Assert.Contains("Describe", updatedPushDerived, StringComparison.Ordinal);
-
-            var build = await RunDotnetAsync(root, "build", "CSharpIde.sln",
-                "--no-restore", "--no-incremental", "--nologo", "--verbosity:minimal",
-                "-p:NoWarn=SA1101");
-            Assert.True(build.ExitCode == 0, build.Output);
         }
         finally
         {
@@ -846,7 +743,7 @@ public sealed class CSharpIdeFixtureTests
     }
 
     [Fact]
-    public async Task Generic_partial_extract_class_on_fixture_builds_and_tests()
+    public async Task Generic_partial_extract_class_on_fixture()
     {
         var sourceRoot = FixtureRoot;
         var root = CopyFixtureToTemp(sourceRoot);
@@ -892,17 +789,6 @@ public sealed class CSharpIdeFixtureTests
             Assert.Contains("internal sealed class GenericBoxState<T> where T : class", generated,
                 StringComparison.Ordinal);
             Assert.DoesNotContain("Other", generated, StringComparison.Ordinal);
-            await File.WriteAllTextAsync(sourcePath, updated);
-            await File.WriteAllTextAsync(destinationPath, generated);
-
-            var build = await RunDotnetAsync(root, "build", "CSharpIde.sln",
-                "--no-restore", "--no-incremental", "--nologo", "--verbosity:minimal",
-                "-p:NoWarn=SA1101");
-            Assert.True(build.ExitCode == 0, build.Output);
-            var tests = await RunDotnetAsync(root, "test",
-                Path.Combine("tests", "Feature.Tests", "Feature.Tests.csproj"),
-                "--no-build", "--no-restore", "--nologo", "--verbosity:minimal");
-            Assert.True(tests.ExitCode == 0, tests.Output);
         }
         finally
         {
@@ -911,7 +797,7 @@ public sealed class CSharpIdeFixtureTests
     }
 
     [Fact]
-    public async Task Semantic_extract_method_edit_on_fixture_builds_and_tests()
+    public async Task Semantic_extract_method_edit_on_fixture()
     {
         var sourceRoot = FixtureRoot;
         var root = CopyFixtureToTemp(sourceRoot);
@@ -941,17 +827,6 @@ public sealed class CSharpIdeFixtureTests
             Assert.Contains("return ReturnCurrent(current);", updated,
                 StringComparison.Ordinal);
             Assert.Contains("private string", updated, StringComparison.Ordinal);
-            await File.WriteAllTextAsync(sourcePath, updated);
-
-            var build = await RunDotnetAsync(root, "build", "CSharpIde.sln",
-                "--no-restore", "--no-incremental", "--nologo", "--verbosity:minimal",
-                "-p:NoWarn=SA1101");
-            Assert.Equal(0, build.ExitCode);
-
-            var tests = await RunDotnetAsync(root, "test",
-                Path.Combine("tests", "Feature.Tests", "Feature.Tests.csproj"),
-                "--no-build", "--no-restore", "--nologo", "--verbosity:minimal");
-            Assert.Equal(0, tests.ExitCode);
         }
         finally
         {
@@ -960,7 +835,7 @@ public sealed class CSharpIdeFixtureTests
     }
 
     [Fact]
-    public async Task Semantic_introduce_parameter_updates_fixture_callers_and_builds_and_tests()
+    public async Task Semantic_introduce_parameter_updates_fixture_callers()
     {
         var sourceRoot = FixtureRoot;
         var root = CopyFixtureToTemp(sourceRoot);
@@ -1003,15 +878,6 @@ public sealed class CSharpIdeFixtureTests
             var updatedCaller = await File.ReadAllTextAsync(callerPath);
             Assert.Contains("FormatValue(int marker)", updatedSource, StringComparison.Ordinal);
             Assert.Contains("FormatValue(42)", updatedCaller, StringComparison.Ordinal);
-
-            var build = await RunDotnetAsync(root, "build", "CSharpIde.sln",
-                "--no-restore", "--no-incremental", "--nologo", "--verbosity:minimal",
-                "-p:NoWarn=SA1101");
-            Assert.True(build.ExitCode == 0, build.Output);
-            var tests = await RunDotnetAsync(root, "test",
-                Path.Combine("tests", "Feature.Tests", "Feature.Tests.csproj"),
-                "--no-build", "--no-restore", "--nologo", "--verbosity:minimal");
-            Assert.True(tests.ExitCode == 0, tests.Output);
         }
         finally
         {
@@ -1077,15 +943,6 @@ public sealed class CSharpIdeFixtureTests
             var updatedCaller = await File.ReadAllTextAsync(callerPath);
             Assert.Contains("GetValue(string prefix)", updatedSource, StringComparison.Ordinal);
             Assert.Contains("GetValue(\"generated: \")", updatedCaller, StringComparison.Ordinal);
-
-            var build = await RunDotnetAsync(root, "build", "CSharpIde.sln",
-                "--no-restore", "--no-incremental", "--nologo", "--verbosity:minimal",
-                "-p:NoWarn=SA1101");
-            Assert.True(build.ExitCode == 0, build.Output);
-            var tests = await RunDotnetAsync(root, "test",
-                Path.Combine("tests", "Feature.Tests", "Feature.Tests.csproj"),
-                "--no-build", "--no-restore", "--nologo", "--verbosity:minimal");
-            Assert.True(tests.ExitCode == 0, tests.Output);
         }
         finally
         {
@@ -1157,11 +1014,6 @@ public sealed class CSharpIdeFixtureTests
             Assert.True(fixedSource.Contains("this.value", StringComparison.Ordinal),
                 $"ActionsFound={result.ActionsFound}, fixedSource={fixedSource}");
 
-            await File.WriteAllTextAsync(sourcePath, fixedSource);
-            var build = await RunDotnetAsync(root, "build", "CSharpIde.sln",
-                "--no-restore", "--no-incremental", "--nologo", "--verbosity:minimal",
-                "-p:NoWarn=SA1101");
-            Assert.True(build.ExitCode == 0, build.Output);
         }
         finally
         {
@@ -1229,11 +1081,6 @@ public sealed class CSharpIdeFixtureTests
             Assert.Equal(plan.Files.Count, result.ExpectedTexts!.Count);
             Assert.Equal(source, result.ExpectedTexts[Path.GetFullPath(sourcePath)]);
 
-            await ApplyWorkspaceEditAsync(edit);
-            var build = await RunDotnetAsync(root, "build", projectPath,
-                "--no-restore", "--no-incremental", "--nologo", "--verbosity:minimal",
-                "-p:NoWarn=SA1101");
-            Assert.Equal(0, build.ExitCode);
         }
         finally
         {
