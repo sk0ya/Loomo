@@ -36,7 +36,7 @@ public partial class ShellWindow {
     /// <summary>切り離した窓の VM へ差分を出す。作業ツリーの差分だけは<b>追従させる</b>
     /// （ペインと同じで、ステージや編集のたびに窓の中身が古くなるため）。コミットの差分は動かない。</summary>
     private static Task ShowDiffInWindowAsync(DiffSessionViewModel vm, DiffOpenTarget target) {
-        if (target is DiffOpenTarget.WorkingTreeFile)
+        if (target is DiffOpenTarget.WorkingTreeFile or DiffOpenTarget.CompareBase)
             vm.StartLiveTracking();
         return vm.ShowAsync(target);
     }

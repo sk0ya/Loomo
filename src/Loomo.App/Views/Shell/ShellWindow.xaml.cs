@@ -390,6 +390,7 @@ public partial class ShellWindow : Window {
             FocusPane(PaneKind.Files);
         };
         vm.GitSession.DiffOpenRequested += (_, target) => ShowDiff(target);
+        WireWorktreeRequests();
         // コミット詳細のファイルをダブルクリック＝そのファイルの差分だけを別ウィンドウで開く
         // （ペインの DIFF は動かさないので、一覧と見比べたまま何枚でも開ける）。行き先は
         // ShowDiffInDetachedWindow と同じ約束＝既に切り離しウィンドウが出ていればそこのタブ。

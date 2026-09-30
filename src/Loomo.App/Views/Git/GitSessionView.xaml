@@ -536,6 +536,10 @@
                             <TreeView.ContextMenu>
                                 <ContextMenu>
                                     <MenuItem Header="このブランチのコミットを表示" Click="OnBranchShowLog" />
+                                    <MenuItem Header="作業ツリーと比較">
+                                        <MenuItem Header="このブランチと比較" Click="OnBranchCompareWorkingTree" />
+                                        <MenuItem Header="分岐点と比較（自分が入れた変更だけ）" Click="OnBranchCompareMergeBase" />
+                                    </MenuItem>
                                     <Separator />
                                     <MenuItem x:Name="BranchMenuCheckout" Header="チェックアウト" Click="OnBranchCheckout" />
                                     <MenuItem x:Name="BranchMenuMerge" Header="現在のブランチへマージ" Click="OnBranchMerge" />
@@ -547,6 +551,8 @@
                                     <MenuItem x:Name="BranchMenuRebase" Header="このブランチへリベース（現在のブランチを載せ替え）" Click="OnBranchRebase" />
                                     <Separator />
                                     <MenuItem Header="ここから新しいブランチを作成…" Click="OnBranchCreateFrom" />
+                                    <MenuItem x:Name="BranchMenuWorktree" Header="ワークツリーとして別の場所に置く…"
+                                              Click="OnBranchCreateWorktree" />
                                     <MenuItem Header="ブランチ名をコピー" Click="OnBranchCopyName" />
                                     <Separator />
                                     <MenuItem x:Name="BranchMenuDelete" Header="削除" Click="OnBranchDelete" />
@@ -600,7 +606,7 @@
                             </ToggleButton>
                             <!-- サブモジュールが無いワークスペースでは、そもそも選べるようにしない -->
                             <ToggleButton x:Name="RefTabSubmodules" Style="{StaticResource ToolbarToggleButton}" MinHeight="22"
-                                          ToolTip="サブモジュール"
+                                          Margin="0,0,3,0" ToolTip="サブモジュール"
                                           IsChecked="{Binding EffectiveReferenceTab, Mode=OneWay,
                                               Converter={StaticResource EnumToBool}, ConverterParameter=Submodules}"
                                           Tag="Submodules" Click="OnReferenceTabClick"
@@ -608,6 +614,18 @@
                                 <TextBlock FontSize="{DynamicResource Fs11}">
                                     <Run Text="サブ" /><Run Text=" " /><Run
                                         Text="{Binding Submodules.Count, Mode=OneWay}"
+                                        Foreground="{DynamicResource FgDim}" />
+                                </TextBlock>
+                            </ToggleButton>
+                            <!-- ワークツリー（git worktree）。件数はメイン以外の数。190px に4つ並べるので名前は詰める。 -->
+                            <ToggleButton x:Name="RefTabWorktrees" Style="{StaticResource ToolbarToggleButton}" MinHeight="22"
+                                          ToolTip="ワークツリー（同じリポジトリの別ブランチを別の場所に置いて並行作業）"
+                                          IsChecked="{Binding EffectiveReferenceTab, Mode=OneWay,
+                                              Converter={StaticResource EnumToBool}, ConverterParameter=Worktrees}"
+                                          Tag="Worktrees" Click="OnReferenceTabClick">
+                                <TextBlock FontSize="{DynamicResource Fs11}">
+                                    <Run Text="WT" /><Run Text=" " /><Run
+                                        Text="{Binding LinkedWorktreeCount, Mode=OneWay}"
                                         Foreground="{DynamicResource FgDim}" />
                                 </TextBlock>
                             </ToggleButton>
@@ -675,6 +693,79 @@
                                             <TextBlock Text="{Binding Url}" TextTrimming="CharacterEllipsis"
                                                        FontSize="{DynamicResource Fs11}"
                                                        Foreground="{DynamicResource FgDim}" />
+                                        </DockPanel>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </DockPanel>
+
+                        <!-- ワークツリー一覧。先頭がメイン。行の右クリックで比較・開く・削除、見出しで作成・2点比較。
+                             ダブルクリックは「作業ツリーと比較」——並行作業の中身を見に行くのがいちばん多い用途で、
+                             ワークスペースごと切り替える（部屋が入れ替わる）ほうは明示の操作にしておく。 -->
+                        <DockPanel Visibility="{Binding EffectiveReferenceTab, Converter={StaticResource EnumToVis},
+                                       ConverterParameter=Worktrees}">
+                            <!-- 190px の列に3つ並べるので、他のタブの見出しより余白を詰める（詰めないと右端の ↻ が潰れる）。 -->
+                            <DockPanel DockPanel.Dock="Top" Margin="4,2,4,2" LastChildFill="False">
+                                <Button DockPanel.Dock="Left" Style="{StaticResource ToolbarButton}"
+                                        Content="＋ 作成" ToolTip="ワークツリーを作成…" Click="OnWorktreeCreate" />
+                                <Button DockPanel.Dock="Left" Style="{StaticResource ToolbarButton}"
+                                        Content="⇄ 比較" ToolTip="2点を選んで比較…（ブランチ・タグ・ワークツリーの作業中の状態）"
+                                        Click="OnComparePoints" />
+                                <Button DockPanel.Dock="Right" Style="{StaticResource ToolbarButton}" Margin="0"
+                                        Width="22" Padding="0" Content="↻" ToolTip="読み直す（ほかのワークツリーでの編集件数を数え直す）"
+                                        Click="OnWorktreesRefresh" />
+                            </DockPanel>
+                            <ListBox x:Name="WorktreeList" Style="{StaticResource GitList}"
+                                     ItemsSource="{Binding Worktrees}"
+                                     MouseDoubleClick="OnWorktreeDoubleClick"
+                                     PreviewMouseRightButtonDown="OnListRightClickSelect"
+                                     ContextMenuOpening="OnWorktreeContextMenuOpening">
+                                <ListBox.ContextMenu>
+                                    <ContextMenu>
+                                        <MenuItem x:Name="WorktreeMenuCompare" Header="作業ツリーと比較（向こうの作業中の状態）"
+                                                  FontWeight="SemiBold" Click="OnWorktreeCompare" />
+                                        <MenuItem Header="2点比較…" Click="OnWorktreeComparePoints" />
+                                        <Separator />
+                                        <MenuItem x:Name="WorktreeMenuOpenWorkspace" Header="ワークスペースとして開く"
+                                                  Click="OnWorktreeOpenWorkspace" />
+                                        <MenuItem x:Name="WorktreeMenuAddFolder" Header="今のワークスペースにフォルダーとして追加"
+                                                  Click="OnWorktreeAddFolder" />
+                                        <MenuItem x:Name="WorktreeMenuTerminal" Header="ターミナルでこの場所へ移動"
+                                                  Click="OnWorktreeTerminal" />
+                                        <MenuItem x:Name="WorktreeMenuExplorer" Header="エクスプローラーで開く"
+                                                  Click="OnWorktreeExplorer" />
+                                        <MenuItem Header="パスをコピー" Click="OnWorktreeCopyPath" />
+                                        <Separator />
+                                        <MenuItem x:Name="WorktreeMenuLock" Header="ロック…（掃除・削除から守る）" Click="OnWorktreeLock" />
+                                        <MenuItem x:Name="WorktreeMenuUnlock" Header="ロック解除" Click="OnWorktreeUnlock" />
+                                        <MenuItem Header="掃除（フォルダーが消えたものを一覧から外す）" Click="OnWorktreesPrune" />
+                                        <MenuItem x:Name="WorktreeMenuRemove" Header="削除…" Click="OnWorktreeRemove" />
+                                    </ContextMenu>
+                                </ListBox.ContextMenu>
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <DockPanel LastChildFill="True" ToolTip="{Binding Path}">
+                                            <!-- 未コミットの件数（未追跡を含む）。0 なら出さない。 -->
+                                            <TextBlock DockPanel.Dock="Right" Text="{Binding ChangeCount, StringFormat=±{0}}"
+                                                       FontSize="{DynamicResource Fs11}" Foreground="#FFE5A23B" Margin="6,0,0,0"
+                                                       ToolTip="未コミットの変更（未追跡を含む）"
+                                                       Visibility="{Binding IsDirty, Converter={StaticResource BoolToVis}}" />
+                                            <TextBlock DockPanel.Dock="Right" Text="🔒" FontSize="{DynamicResource Fs11}" Margin="6,0,0,0"
+                                                       ToolTip="{Binding LockReason, TargetNullValue=ロック中}"
+                                                       Visibility="{Binding IsLocked, Converter={StaticResource BoolToVis}}" />
+                                            <TextBlock DockPanel.Dock="Right" Text="消失" FontSize="{DynamicResource Fs11}"
+                                                       Foreground="#FFE57373" Margin="6,0,0,0"
+                                                       ToolTip="フォルダーがありません（「掃除」で一覧から外せます）"
+                                                       Visibility="{Binding IsPrunable, Converter={StaticResource BoolToVis}}" />
+                                            <TextBlock DockPanel.Dock="Right" Text="いま" FontSize="{DynamicResource Fs11}"
+                                                       Foreground="{DynamicResource Accent}" Margin="6,0,0,0"
+                                                       ToolTip="いま Git 操作の対象になっているワークツリー"
+                                                       Visibility="{Binding IsCurrent, Converter={StaticResource BoolToVis}}" />
+                                            <TextBlock TextTrimming="CharacterEllipsis">
+                                                <Run Text="{Binding DisplayName, Mode=OneWay}" /><Run
+                                                    Text="{Binding FolderName, Mode=OneWay, StringFormat='  {0}'}"
+                                                    FontSize="{DynamicResource Fs11}" Foreground="{DynamicResource FgDim}" />
+                                            </TextBlock>
                                         </DockPanel>
                                     </DataTemplate>
                                 </ListBox.ItemTemplate>
@@ -978,6 +1069,9 @@
                             <ContextMenu>
                                 <MenuItem Header="DIFF ペインで差分を表示（複数選択で範囲比較）" Click="OnCommitShowDiff"
                                           FontWeight="SemiBold" />
+                                <!-- 右側が作業ツリーそのもの＝このコミット以降の変更を見ながらその場で直せる。 -->
+                                <MenuItem x:Name="CompareWorkingTreeMenuItem" Header="作業ツリーと比較（このコミット以降の変更すべて）"
+                                          Click="OnCommitCompareWorkingTree" />
                                 <!-- ファイル履歴（パス絞り込み）中だけ出す「その頃のこのファイル」。
                                      OnCommitContextMenuOpening が表示を切り替える。 -->
                                 <Separator x:Name="FileRevisionSeparator" />
@@ -990,6 +1084,7 @@
                                 <MenuItem Header="ここから作成">
                                     <MenuItem Header="新しいブランチ…（作成して切り替え）" Click="OnCommitCreateBranch" />
                                     <MenuItem Header="タグ…" Click="OnCommitCreateTag" />
+                                    <MenuItem Header="ワークツリー…（別の場所で作業）" Click="OnCommitCreateWorktree" />
                                 </MenuItem>
                                 <MenuItem Header="チェックアウト（detached HEAD）" Click="OnCommitCheckout" />
                                 <Separator />

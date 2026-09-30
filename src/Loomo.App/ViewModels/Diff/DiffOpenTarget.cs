@@ -17,7 +17,7 @@ namespace sk0ya.Loomo.App.ViewModels;
 /// </summary>
 public abstract record DiffOpenTarget
 {
-    private DiffOpenTarget() { }   // 派生はこの中の4つだけ（受け手の振り分けを閉じた集合にする）
+    private DiffOpenTarget() { }   // 派生はこの中の5つだけ（受け手の振り分けを閉じた集合にする）
 
     /// <summary>切り離しウィンドウのタブ名。<b>短く</b>——タブは何枚も並ぶので、長いと隣が潰れて
     /// どれがどれだか分からなくなる。ハッシュは7桁、飾りの語（「コミット」「作業ツリー」）は落とし、
@@ -56,6 +56,17 @@ public abstract record DiffOpenTarget
         public override string TitleFor(string? path) => Trim(FileName(path) is { Length: > 0 } name
             ? name : FileName(Entry.Path));
         public override string IconPath => Entry.Path;
+    }
+
+    /// <summary>
+    /// 比較基準（ブランチ・分岐点・ワークツリー・リビジョン）に対する<b>作業ツリー</b>の差分。
+    /// コミット範囲と違って右側は作業ツリーそのものなので、そのまま編集できる。基準の選択は
+    /// Git パネルと共有の <see cref="GitCompareBaseViewModel"/> に書かれる（ペインでも窓でも同じ基準になる）。
+    /// <paramref name="Label"/> はタブ名に添える短い相手の名前（<c>main</c>・<c>feature-x</c>・<c>abc1234</c>）。
+    /// </summary>
+    public sealed record CompareBase(GitCompareBaseSelection Selection, string Label) : DiffOpenTarget
+    {
+        public override string TitleFor(string? path) => Trim(WithFile(path, $" ⇄ {Label}"));
     }
 
     /// <summary>アドホック比較（クリップボード ↔ 選択範囲 など。Git には紐づかない）。</summary>

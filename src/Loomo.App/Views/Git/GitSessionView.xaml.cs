@@ -390,6 +390,8 @@ public partial class GitSessionView : UserControl
             SquashMenuItem, InteractiveRebaseMenuItem,
             FileRevisionSeparator, FileRevisionMenuItem,
             OpenOnHostingMenuItem, CopyHostingUrlMenuItem, FilterByAuthorMenuItem);
+        // 複数選択は「範囲比較」の意味になるので、作業ツリーとの比較は1件のときだけ出す。
+        CompareWorkingTreeMenuItem.Visibility = SelectedCommits.Count == 1 ? Visibility.Visible : Visibility.Collapsed;
     }
 
     // ===== 特定リビジョンのファイル（ファイル履歴中のみ） =====

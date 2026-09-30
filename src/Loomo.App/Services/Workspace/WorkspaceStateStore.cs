@@ -471,11 +471,19 @@ public sealed class RecentPathSnapshot
 /// <summary>Git の比較基準の復元状態。<c>GitCompareBaseViewModel</c> が読み書きする。</summary>
 public sealed class GitCompareSnapshot
 {
-    /// <summary>0=作業ツリー / 1=ブランチと比較 / 2=分岐点と比較（<c>GitCompareBaseKind</c> の値）。</summary>
+    /// <summary>0=作業ツリー / 1=ブランチと比較 / 2=分岐点と比較 / 3=ワークツリーと比較 / 4=リビジョンと比較
+    /// （<c>GitCompareBaseKind</c> の値）。</summary>
     public int Kind { get; set; }
 
-    /// <summary>比較先ブランチ（例 <c>main</c> / <c>origin/main</c>）。作業ツリー基準では null。</summary>
+    /// <summary>比較先ブランチ（例 <c>main</c> / <c>origin/main</c>）。ブランチ／分岐点基準で使う。</summary>
     public string? Branch { get; set; }
+
+    /// <summary>比較先ワークツリーのパス（ワークツリー基準で使う）。種別を切り替えても選択を失わないよう、
+    /// 種別ごとに別の欄で持つ。</summary>
+    public string? Worktree { get; set; }
+
+    /// <summary>比較先リビジョン（タグ・ハッシュ等。リビジョン基準で使う）。</summary>
+    public string? Revision { get; set; }
 }
 
 /// <summary>ファイル一覧ペインの復元状態（カラム構成＋カラムごとの現在地）。</summary>

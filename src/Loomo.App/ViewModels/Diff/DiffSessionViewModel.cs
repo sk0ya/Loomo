@@ -249,9 +249,33 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
                 return ShowCommitFileAsync(f.Hash, f.Label, f.Path, f.LineInCommit);
             case DiffOpenTarget.WorkingTreeFile w:
                 return ShowWorkingTreeFileAsync(w.Entry, w.IsStaged);
+            case DiffOpenTarget.CompareBase b:
+                ShowCompareBase(b.Selection);
+                return Task.CompletedTask;
             default:
                 return Task.CompletedTask;
         }
+    }
+
+    /// <summary>
+    /// 比較基準に対する作業ツリーの差分を表示する（ワークツリー一覧の「このワークツリーと比較」、
+    /// コミットの「作業ツリーと比較」など）。コミット範囲を見ていたら解除する——範囲表示中は
+    /// 基準が効かないので、基準だけ書き換えても画面は範囲のままになる。
+    /// </summary>
+    public void ShowCompareBase(GitCompareBaseSelection selection)
+    {
+        _loaded = true;
+        _commitRange = null;
+        OnPropertyChanged(nameof(CanOpenCommitInGit));
+        GitTargetLabel = "";
+        // 基準の切替は Changed 経由でこの VM も読み直す。Git モードへの切替も読み直しを出すので、
+        // 二重になった分は RefreshAsync の世代番号が古い方の適用を捨てる。
+        CompareBase.Apply(selection);
+        UpdateCanDiscard();
+        if (!IsGitMode)
+            IsGitMode = true;
+        else
+            _ = RefreshAsync();
     }
 
     /// <summary>Git コミット範囲の差分を表示する。</summary>

@@ -28,6 +28,7 @@ public sealed class GitService
     private readonly GitDiffService _diff;
     private readonly GitRebaseService _rebase;
     private readonly GitCompareService _compare;
+    private readonly GitWorktreeService _worktrees;
     private readonly GitCloneService _clone;
     private readonly GitRepositoryMonitor _monitor;
 
@@ -42,6 +43,8 @@ public sealed class GitService
     private Task<IReadOnlyList<GitSubmoduleInfo>>? _cachedSubmodules;
     private Task<IReadOnlyList<GitStashEntry>>? _cachedStashes;
     private Task<IReadOnlyList<string>>? _cachedComparableRefs;
+    private Task<IReadOnlyList<GitWorktreeInfo>>? _cachedWorktrees;
+    private Task<IReadOnlyList<GitWorktreeInfo>>? _cachedWorktreesWithCounts;
     private readonly Dictionary<string, Task<IReadOnlyList<GitLogRow>>> _cachedLogs = new();
     private readonly Dictionary<string, Task<string>> _cachedCommitMessages =
         new(StringComparer.OrdinalIgnoreCase);
@@ -66,7 +69,8 @@ public sealed class GitService
         _stashes = new GitStashService(_runner, _mutations);
         _diff = new GitDiffService(_rootState, _runner, _mutations);
         _rebase = new GitRebaseService(_runner, _mutations);
-        _compare = new GitCompareService(_runner);
+        _worktrees = new GitWorktreeService(_rootState, _runner, _mutations);
+        _compare = new GitCompareService(_runner, _worktrees);
         _clone = new GitCloneService(_runner);
         _monitor = new GitRepositoryMonitor(_rootState, _runner);
         _rootState.Changed += (_, _) => InvalidateReadCache();
@@ -193,11 +197,43 @@ public sealed class GitService
         return CachedByKey(_cachedDefaultBranches, key, () => _compare.GetDefaultBranchAsync(availableRefs));
     }
 
-    /// <summary>比較基準を実際の ref へ解決する（失敗は理由付きで返る）。</summary>
+    /// <summary>比較基準を実際の ref へ解決する（失敗は理由付きで返る）。作業ツリー比較は覚えない——
+    /// 相手の作業ツリーはこちらのリポジトリ監視に現れない所で編集されるので、毎回固め直す
+    /// （中身が同じなら同じ tree ハッシュが返るので、一覧が作り直されることはない）。</summary>
     public Task<GitCompareResolution> ResolveCompareBaseAsync(GitCompareBaseSelection selection)
     {
+        if (selection.IsVolatile)
+            return _compare.ResolveAsync(selection);
         return CachedByKey(_cachedCompareResolutions, selection, () => _compare.ResolveAsync(selection));
     }
+
+    /// <summary>2点比較を <c>git diff</c> に渡せる2つのハッシュへ解決する（失敗は理由付き）。</summary>
+    public Task<GitCompareRange> ResolveCompareRangeAsync(
+        GitCompareEndpoint from, GitCompareEndpoint to, bool fromMergeBase) =>
+        _compare.ResolveRangeAsync(from, to, fromMergeBase);
+
+    // ===== 作業ツリー（git worktree） =====
+
+    /// <summary>作業ツリーの一覧。<paramref name="includeChangeCounts"/> なら各作業ツリーの未コミット件数も
+    /// 数える（作業ツリーごとに <c>git status</c> を1回ずつ起動するので、一覧を見せるときだけ）。
+    /// リポジトリの変更通知でまとめて破棄する。</summary>
+    public Task<IReadOnlyList<GitWorktreeInfo>> GetWorktreesAsync(bool includeChangeCounts = false) =>
+        includeChangeCounts
+            ? Cached(ref _cachedWorktreesWithCounts, () => _worktrees.ListAsync(includeChangeCounts: true))
+            : Cached(ref _cachedWorktrees, () => _worktrees.ListAsync(includeChangeCounts: false));
+
+    public Task<GitCommandResult> AddWorktreeAsync(GitWorktreeAddRequest request) => _worktrees.AddAsync(request);
+
+    public Task<GitCommandResult> RemoveWorktreeAsync(string path, bool force) => _worktrees.RemoveAsync(path, force);
+
+    public Task<GitCommandResult> PruneWorktreesAsync() => _worktrees.PruneAsync();
+
+    public Task<GitCommandResult> LockWorktreeAsync(string path, string? reason) => _worktrees.LockAsync(path, reason);
+
+    public Task<GitCommandResult> UnlockWorktreeAsync(string path) => _worktrees.UnlockAsync(path);
+
+    /// <summary>作業ツリーのいまの状態（未コミット・未追跡込み）を tree に固める。</summary>
+    public Task<GitWorktreeSnapshot> SnapshotWorktreeAsync(string path) => _worktrees.SnapshotAsync(path);
 
     /// <summary>基準に対する変更ファイル一覧（未追跡は含まない・リネームは1件）。失敗は理由付きで返る。</summary>
     public Task<GitCompareChanges> GetCompareChangesAsync(string baseRef)
@@ -394,6 +430,8 @@ public sealed class GitService
             _cachedSubmodules = null;
             _cachedStashes = null;
             _cachedComparableRefs = null;
+            _cachedWorktrees = null;
+            _cachedWorktreesWithCounts = null;
             _cachedLogs.Clear();
             _cachedCommitMessages.Clear();
             _cachedDefaultBranches.Clear();

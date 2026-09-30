@@ -121,6 +121,16 @@ public sealed class GitSessionCommandHandler
         RunAsync($"サブモジュール更新 {submodule.Path}", () => _git.SubmoduleUpdateAsync(submodule.Path));
     public Task<GitCommandResult?> SyncSubmodulesAsync() => RunAsync("サブモジュール同期", _git.SubmoduleSyncAsync);
 
+    public Task<GitCommandResult?> AddWorktreeAsync(GitWorktreeAddRequest request) =>
+        RunAsync($"ワークツリー作成 {Path.GetFileName(request.Path)}", () => _git.AddWorktreeAsync(request));
+    public Task<GitCommandResult?> RemoveWorktreeAsync(GitWorktreeInfo worktree, bool force) =>
+        RunAsync($"ワークツリー削除 {worktree.DisplayName}", () => _git.RemoveWorktreeAsync(worktree.Path, force));
+    public Task<GitCommandResult?> PruneWorktreesAsync() => RunAsync("ワークツリーの掃除", _git.PruneWorktreesAsync);
+    public Task<GitCommandResult?> LockWorktreeAsync(GitWorktreeInfo worktree, string? reason) =>
+        RunAsync($"ワークツリーのロック {worktree.DisplayName}", () => _git.LockWorktreeAsync(worktree.Path, reason));
+    public Task<GitCommandResult?> UnlockWorktreeAsync(GitWorktreeInfo worktree) =>
+        RunAsync($"ワークツリーのロック解除 {worktree.DisplayName}", () => _git.UnlockWorktreeAsync(worktree.Path));
+
     public Task<GitCommandResult?> CheckoutCommitAsync(GitLogRow row) => ForCommit(row, "チェックアウト", _git.CheckoutCommitAsync);
     public Task<GitCommandResult?> CherryPickAsync(GitLogRow row) => ForCommit(row, "チェリーピック", _git.CherryPickAsync);
 

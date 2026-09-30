@@ -86,7 +86,9 @@ public sealed class GitHistoryService
         var result = fromHash is null
             ? await _runner.RunAsync("diff-tree", "--root", "-r", "-m", "--first-parent",
                 "--no-commit-id", "--name-status", toHash).ConfigureAwait(false)
-            : await _runner.RunAsync("diff", "--name-status", fromHash, toHash).ConfigureAwait(false);
+            // 末尾の "--" は必須：ブランチ名と同名のディレクトリがあると git は曖昧な引数として拒む
+            // （2点比較ダイアログからは ref 名がそのまま来る。GitCompareArgs と同じ理由）。
+            : await _runner.RunAsync("diff", "--name-status", "--find-renames", fromHash, toHash, "--").ConfigureAwait(false);
         return result.Success
             ? GitNameStatusParser.Parse(result.Output)
             : Array.Empty<GitCommitFileChange>();
@@ -101,7 +103,7 @@ public sealed class GitHistoryService
             args.AddRange(new[]
                 { "diff-tree", "--root", "-p", unified, "-m", "--first-parent", "--no-commit-id", toHash });
         else
-            args.AddRange(new[] { "diff", unified, fromHash, toHash });
+            args.AddRange(new[] { "diff", unified, "--find-renames", fromHash, toHash });
         args.Add("--");
         if (file.OrigPath is not null)
             args.Add(file.OrigPath);

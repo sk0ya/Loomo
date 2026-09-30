@@ -4,8 +4,8 @@
 
     <!-- 比較基準（何に対する差分として見るか）。サイドバー Git パネルと Diff ペインの両方が
          同じ GitCompareBaseViewModel を DataContext に取るので、どちらで切り替えても両方に効く。
-         ブランチ選択は「ブランチと比較」「分岐点と比較」のときだけ出す（作業ツリー基準では
-         選ぶ意味が無く、出しても押せるのに何も起きない項目になる）。 -->
+         対象の選択は種別ごとに1つだけ出す（ブランチ／ワークツリー／リビジョン）。作業ツリー基準では
+         何も出さない（選ぶ意味が無く、出しても押せるのに何も起きない項目になる）。 -->
     <StackPanel>
         <DockPanel>
             <ComboBox DockPanel.Dock="Left" MinHeight="24"
@@ -14,13 +14,46 @@
                       ItemsSource="{Binding ModeOptions}"
                       SelectedItem="{Binding SelectedMode, Mode=TwoWay}"
                       DisplayMemberPath="Label" />
-            <ComboBox Margin="4,0,0,0" MinWidth="120" MinHeight="24"
-                      VerticalAlignment="Center" VerticalContentAlignment="Center"
-                      ToolTip="比較先のブランチ（既定ブランチを第一候補にしています）"
-                      ItemsSource="{Binding BranchOptions}"
-                      SelectedItem="{Binding SelectedBranch, Mode=TwoWay}"
-                      Visibility="{Binding NeedsBranch, Converter={StaticResource BoolToVis}}" />
+            <Grid Margin="4,0,0,0">
+                <ComboBox MinWidth="120" MinHeight="24"
+                          VerticalAlignment="Center" VerticalContentAlignment="Center"
+                          ToolTip="比較先のブランチ（既定ブランチを第一候補にしています）"
+                          ItemsSource="{Binding BranchOptions}"
+                          SelectedItem="{Binding SelectedBranch, Mode=TwoWay}"
+                          Visibility="{Binding NeedsBranch, Converter={StaticResource BoolToVis}}" />
+                <!-- ワークツリーは名前（ブランチ）で選び、置き場所はツールチップで見せる。
+                     相手の未コミットの編集・未追跡ファイルも含めた「いまの状態」と比べる。 -->
+                <ComboBox MinWidth="120" MinHeight="24"
+                          VerticalAlignment="Center" VerticalContentAlignment="Center"
+                          ToolTip="比較先のワークツリー（向こうの未コミットの編集・新しいファイルも含めて比べます）"
+                          ItemsSource="{Binding WorktreeOptions}"
+                          SelectedValuePath="Path"
+                          SelectedValue="{Binding SelectedWorktree, Mode=TwoWay}"
+                          Visibility="{Binding NeedsWorktree, Converter={StaticResource BoolToVis}}">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock ToolTip="{Binding Path}">
+                                <Run Text="{Binding DisplayName, Mode=OneWay}" /><Run
+                                    Text="{Binding FolderName, Mode=OneWay, StringFormat='  {0}'}"
+                                    Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs11}" />
+                            </TextBlock>
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
+                <!-- リビジョンは打って Enter（またはフォーカスを外す）で確定。打鍵ごとに git を引かない。 -->
+                <TextBox x:Name="RevisionBox" MinWidth="120" MinHeight="24"
+                         VerticalAlignment="Center" VerticalContentAlignment="Center"
+                         ToolTip="タグ・コミットハッシュ・HEAD~1 など（Enter で確定）"
+                         Text="{Binding Revision, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                         KeyDown="OnRevisionKeyDown"
+                         Visibility="{Binding NeedsRevision, Converter={StaticResource BoolToVis}}" />
+            </Grid>
         </DockPanel>
+        <!-- 比べる相手のワークツリーが無いときは、どこで作れるかを案内する（空の ComboBox だけを出さない）。 -->
+        <TextBlock Text="ほかのワークツリーがありません。Git ペインの「ワークツリー」タブで作成できます。"
+                   TextWrapping="Wrap" MaxWidth="320"
+                   FontSize="{DynamicResource Fs11}" Foreground="{DynamicResource FgDim}" Margin="0,3,0,0"
+                   Visibility="{Binding HasNoWorktreeOptions, Converter={StaticResource BoolToVis}}" />
         <!-- 基準を解決できなかった理由（空リポジトリ・ブランチ不在・分岐点なし）。
              黙って作業ツリーへ落とさず、なぜ空なのかをここに出す。 -->
         <TextBlock Text="{Binding ErrorMessage}" TextWrapping="Wrap" MaxWidth="320"

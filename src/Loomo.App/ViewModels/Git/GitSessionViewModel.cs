@@ -22,6 +22,7 @@ public enum GitReferenceTab
     Tags,
     Remotes,
     Submodules,
+    Worktrees,
 }
 
 /// <summary>
@@ -99,6 +100,7 @@ public sealed partial class GitSessionViewModel : ObservableObject
 
     partial void OnReferenceTabChanged(GitReferenceTab value)
     {
+        OnReferenceTabChangedForWorktrees(value);
         if (_settings is null) return;
         _settings.GitReferenceTab = value.ToString();
         try { _settingsStore?.Save(_settings); }
@@ -309,6 +311,7 @@ public sealed partial class GitSessionViewModel : ObservableObject
             Tags = Array.Empty<GitTagInfo>();
             Remotes = Array.Empty<GitRemoteInfo>();
             Submodules = Array.Empty<GitSubmoduleInfo>();
+            Worktrees = Array.Empty<GitWorktreeInfo>();
             History.Clear();
             OperationInProgress = false;
             return;
@@ -345,6 +348,7 @@ public sealed partial class GitSessionViewModel : ObservableObject
             .FirstOrDefault(url => url is not null);
         Tags = overview.Tags;
         Submodules = overview.Submodules;
+        await ReloadWorktreesAsync();
 
         await History.ReloadAsync();
     }
