@@ -11,7 +11,7 @@ public partial class ShellWindow {
         var startDir = WorkspaceSessionCoordinator.ResolveWorkingDirectory(
             _activeTerminalTab?.View.WorkingDirectory,
             _activeWorkspace?.RootPath ?? _terminal.CurrentDirectory) ?? _terminal.CurrentDirectory;
-        var tab = CreateTerminalTab(startDir);
+        var tab = CreateTerminalTab(startDir, focusOnStart: true);
         _terminalTabs.Add(tab);
         _vm.Tabs.AddTerminalTab(tab.Id, $"Terminal {CurrentTerminalWorkspace.NextTabNumber++}", false);
         ActivateTerminalTab(tab.Id);

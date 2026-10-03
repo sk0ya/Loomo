@@ -88,7 +88,7 @@ public partial class ShellWindow {
             : _activeTerminalTab;
         var cwd = ViewportSplitPolicy.ResolveTerminalDirectory(
             src?.View.WorkingDirectory, _activeWorkspace?.RootPath ?? _terminal.CurrentDirectory);
-        var newTab = CreateTerminalTab(cwd);
+        var newTab = CreateTerminalTab(cwd, focusOnStart: true);
         _terminalTabs.Add(newTab);
         _vm.Tabs.AddTerminalTab(newTab.Id, $"Terminal {CurrentTerminalWorkspace.NextTabNumber++}", false);
         _terminalViews.SplitFocused(orientation, newTab.Id);
@@ -102,9 +102,13 @@ public partial class ShellWindow {
             SetActiveTerminalTab(tab);
         SaveActiveWorkspaceSnapshot();
     }
-    private TerminalTab CreateTerminalTab(string startDirectory, Guid? requestedId = null) {
+    // focusOnStart: 人が「新しいタブ」「分割」で自分から開いたときだけ true。この時点ではシェルがまだ
+    // 起きておらず FocusTerminal() は何もしないので、起動完了時に端末自身にフォーカスを取らせる。
+    // 復元などの既定は false——遅れて起きた ConPTY が他ペインのフォーカスを奪わないため。
+    private TerminalTab CreateTerminalTab(
+        string startDirectory, Guid? requestedId = null, bool focusOnStart = false) {
         var view = new TerminalTabView("pwsh.exe", startDirectory) {
-            AutoFocusOnStart = false, };
+            AutoFocusOnStart = focusOnStart, };
         // 端末のシェルは Loaded を合図に ConPTY を Task.Run で起こす。そこがプールの行列に嵌まると
         // 窓は出ているのにプロンプトだけ数秒遅れるので、待ち行列の深さごと起動プロファイルに残す
         // （§31.16／ChildProcessIo）。Loaded はペインの再ペアレントのたびに飛ぶので、記録するのは
