@@ -650,6 +650,26 @@
                                     <TextBlock Text="軌跡バーを表示する" TextWrapping="Wrap" />
                                 </CheckBox>
 
+                                <!-- エクスプローラーの関連ファイルのまとめ表示（VS Code の File Nesting 相当）。
+                                     正本は LoomoSettings.Explorer、窓口は FolderTreeViewModel（変更は即ツリーへ差分反映）。 -->
+                                <Separator Margin="0,16,0,8" />
+                                <CheckBox IsChecked="{Binding FolderTree.FileNestingEnabled}"
+                                          ToolTip="Foo.xaml.cs を Foo.xaml の下へ、package-lock.json を package.json の下へ、のように関連ファイルを親ファイルの下へ畳んで表示します。">
+                                    <TextBlock Text="エクスプローラーで関連ファイルをまとめて表示する" TextWrapping="Wrap" />
+                                </CheckBox>
+                                <TextBlock Style="{StaticResource FieldLabel}" Text="まとめ方（1行1ルール：親 = 子1, 子2）" Margin="0,8,0,3" />
+                                <TextBox Text="{Binding FolderTree.FileNestingPatternsText, UpdateSourceTrigger=LostFocus}"
+                                         IsEnabled="{Binding FolderTree.FileNestingEnabled}"
+                                         AcceptsReturn="True" TextWrapping="NoWrap"
+                                         MinHeight="80" MaxHeight="220"
+                                         VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
+                                         FontFamily="Cascadia Mono, Consolas"
+                                         ToolTip="親は名前そのものか * を1つ含むパターン。子はカンマ区切りで、$(capture) が親の * に当たった部分、* は任意の文字列です。上の行ほど優先されます。" />
+                                <Button Style="{StaticResource SecondaryButton}" Margin="0,6,0,0" Padding="10,2" HorizontalAlignment="Left"
+                                        Content="既定のルールに戻す"
+                                        IsEnabled="{Binding FolderTree.FileNestingEnabled}"
+                                        Command="{Binding FolderTree.ResetFileNestingPatternsCommand}" />
+
                                 <TextBlock Text="{Binding Appearance.Status}" Foreground="{DynamicResource FgDim}"
                                            Margin="0,14,0,0" TextWrapping="Wrap" FontSize="{DynamicResource Fs11}" />
                             </StackPanel>

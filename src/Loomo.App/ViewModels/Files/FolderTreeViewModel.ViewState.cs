@@ -98,7 +98,17 @@ public sealed partial class FolderTreeViewModel
                 && string.Equals(node.FullPath, _pendingSelectedPath, StringComparison.OrdinalIgnoreCase))
                 selected = node;
             if (!node.IsDirectory)
+            {
+                // まとめ表示の子が選択されていたら、親ファイルを開いて子を選び直す（開閉そのものは保存しない）。
+                if (node.HasNestedChildren && _pendingSelectedPath is not null
+                    && node.Children.FirstOrDefault(c => string.Equals(
+                        c.FullPath, _pendingSelectedPath, StringComparison.OrdinalIgnoreCase)) is { } nested)
+                {
+                    node.IsExpanded = true;
+                    selected = nested;
+                }
                 continue;
+            }
             if (_pendingExpandedPaths.Contains(node.FullPath))
                 node.IsExpanded = true;
             if (node.IsExpanded)

@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.IO;
+using System.Linq;
 using System.Windows.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
 using sk0ya.Loomo.App.Services;
@@ -131,14 +132,36 @@ public sealed partial class FileNodeViewModel : ObservableObject
         _iconIndex = FileIcons.IndexFor(fullPath, isDirectory);
 
         if (isDirectory) Children.Add(Placeholder); // 遅延読込用ダミー
+        else Children.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasNestedChildren));
     }
 
+    /// <summary>関連ファイルのまとめ表示（<see cref="sk0ya.Loomo.Core.Files.FileNesting"/>）で、このファイルが
+    /// 子のファイルを抱えているか。抱えているファイルはフォルダーと同じく矢印で開閉できる（既定は畳んだまま）。
+    /// フォルダーの <see cref="Children"/> と違って遅延読込はせず、親フォルダーの列挙時に一緒に決まる。</summary>
+    public bool HasNestedChildren => !IsDirectory && Children.Count > 0;
+
     // 監視更新で git 状態が変わったとき、既存ノード（差分更新で再利用されるインスタンス）の
-    // マークを最新へ更新する。
+    // マークを最新へ更新する。まとめ表示の親ファイルは、畳んでいても子の変更が見えるよう子の状態も集約する。
     public void RefreshGitStatus()
     {
-        GitStatus = _owner.GitStatusFor(FullPath, IsDirectory, RootKey);
+        var own = _owner.GitStatusFor(FullPath, IsDirectory, RootKey);
+        GitStatus = HasNestedChildren
+            ? AggregateNestedGitStatus(own, Children.Select(c => c.GitStatus))
+            : own;
         IsGitRepository = _owner.IsGitRepositoryFor(RootKey);
+    }
+
+    /// <summary>まとめ表示の親ファイルに出す git の印。親自身に印があればそれを優先し、親が無変更で
+    /// 子のどれかに変更があれば、フォルダーと同じ「配下に変更あり（●）」を出す
+    /// （<c>Foo.xaml</c> は無変更でも <c>Foo.xaml.cs</c> を直したことが畳んだままで分かるように）。
+    /// 無視（I）は変更として数えない。</summary>
+    internal static GitChangeKind AggregateNestedGitStatus(GitChangeKind own, IEnumerable<GitChangeKind> children)
+    {
+        if (own != GitChangeKind.None)
+            return own;
+        return children.Any(c => c is not GitChangeKind.None and not GitChangeKind.Ignored)
+            ? GitChangeKind.DirectoryChanged
+            : GitChangeKind.None;
     }
 
     /// <summary>テーマの明暗が変わってアイコンの配色が入れ替わったとき、引き直させる。</summary>

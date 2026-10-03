@@ -177,8 +177,12 @@ public sealed partial class FolderTreeViewModel : ObservableObject
         FolderTreeCommandHandler fileCommands, FolderTreeQuery query,
         IShellFileOperations? shellOperations = null,
         IQuickAccessService? quickAccess = null,
-        GitService? gitService = null)
+        GitService? gitService = null,
+        LoomoSettings? settings = null,
+        SettingsStore? settingsStore = null)
     {
+        _settings = settings;
+        _settingsStore = settingsStore;
         _workspace = workspace;
         _warmup = warmup;
         _workflows = workflows;
@@ -393,9 +397,6 @@ public sealed partial class FolderTreeViewModel : ObservableObject
             if (existingIndex != i)
                 target.Move(existingIndex, i);
 
-            // 再利用するインスタンスは git 状態が古い可能性があるのでマークを更新する。
-            keep.RefreshGitStatus();
-
             // 展開済みディレクトリは中身も差分更新する。畳まれている枝は表示されていないので
             // 走査せず、遅延読込状態へ戻して次に開いたとき最新を読み直させる。
             if (keep.IsDirectory)
@@ -405,6 +406,18 @@ public sealed partial class FolderTreeViewModel : ObservableObject
                 else
                     keep.ResetToLazy();
             }
+            else if (!ReferenceEquals(keep, want))
+            {
+                // まとめ表示の子ファイルも同じ差分更新で反映する（子の選択・親の開閉を監視更新で失わない）。
+                // 子が居なくなった親は、次に子が増えたとき勝手に開いて見えないよう畳んでおく。
+                ReconcileChildrenCore(keep.Children, want.Children.ToList());
+                if (!keep.HasNestedChildren && keep.IsExpanded)
+                    keep.IsExpanded = false;
+            }
+
+            // 再利用するインスタンスは git 状態が古い可能性があるのでマークを更新する
+            // （まとめ表示の親は子の反映後に、子の状態を集約して決める）。
+            keep.RefreshGitStatus();
         }
     }
 
@@ -452,8 +465,40 @@ public sealed partial class FolderTreeViewModel : ObservableObject
             .Where(f => isShell || ShouldShow(f, isDirectory: false, ignoredPaths, state))
             .Select(f => new FileNodeViewModel(f, false, this, rootKey, isShellItem: isShell));
 
-        foreach (var node in visibleDirectories.Concat(visibleFiles))
+        // 関連ファイルのまとめ表示は、絞り込み（ignore 非表示・変更のみ）を通った後のファイルだけで決める
+        // ——「変更のみ」で親が隠れたら、変更のある子はそのまま表に出る。Shell 名前空間は対象外。
+        var fileNodes = isShell ? visibleFiles : NestFiles(visibleFiles.ToList());
+
+        foreach (var node in visibleDirectories.Concat(fileNodes))
             yield return node;
+    }
+
+    /// <summary>同じフォルダーのファイルノードを、まとめ表示のルール（<see cref="FileNesting"/>）に従って
+    /// 親ファイルの <see cref="FileNodeViewModel.Children"/> へ入れ、表に残るノードだけを返す。</summary>
+    private IEnumerable<FileNodeViewModel> NestFiles(List<FileNodeViewModel> files)
+    {
+        var nesting = CurrentFileNesting();
+        if (nesting.IsEmpty || files.Count < 2)
+            return files;
+
+        var childToParent = nesting.Resolve(files.Select(f => f.Name));
+        if (childToParent.Count == 0)
+            return files;
+
+        var byName = files.ToDictionary(f => f.Name, StringComparer.OrdinalIgnoreCase);
+        var topLevel = new List<FileNodeViewModel>(files.Count - childToParent.Count);
+        foreach (var file in files)
+        {
+            if (childToParent.TryGetValue(file.Name, out var parentName)
+                && byName.TryGetValue(parentName, out var parent))
+                parent.Children.Add(file);   // files は名前順なので子も名前順に並ぶ
+            else
+                topLevel.Add(file);
+        }
+        foreach (var parent in topLevel)
+            if (parent.HasNestedChildren)
+                parent.RefreshGitStatus();   // 子の変更を親の印へ集約する
+        return topLevel;
     }
 
     public IEnumerable<FileNodeViewModel> Children(string dirPath, string rootKey) => EnumerateChildren(dirPath, rootKey);

@@ -1,4 +1,5 @@
 ﻿using System.Collections.Generic;
+using System.Linq;
 using sk0ya.Loomo.Core.Models;
 using sk0ya.Loomo.Core.Observability;
 using sk0ya.Loomo.Core.Safety;
@@ -69,6 +70,9 @@ public sealed class LoomoSettings
 
     /// <summary>サイドバーの TABS（タブ一覧）に出す種別。見出しクリックで開く設定ビューから書き戻される。</summary>
     public TabsPanelSettings TabsPanel { get; set; } = new();
+
+    /// <summary>エクスプローラー（フォルダーツリー）の表示設定。関連ファイルのまとめ表示など。</summary>
+    public ExplorerSettings Explorer { get; set; } = new();
 
     /// <summary>コマンド実行・書込の安全設計（設計書 §10）。</summary>
     public SafetySettings Safety { get; set; } = new();
@@ -187,6 +191,19 @@ public sealed class TabsPanelSettings
 
     /// <summary>ターミナルのタブを一覧に出すか。</summary>
     public bool ShowTerminal { get; set; } = true;
+}
+
+/// <summary>エクスプローラー（フォルダーツリー）の表示設定。</summary>
+public sealed class ExplorerSettings
+{
+    /// <summary>関連ファイルを親ファイルの子として畳んで表示するか（VS Code の Explorer File Nesting 相当）。
+    /// 既定 ON。<c>Foo.xaml.cs</c> を <c>Foo.xaml</c> の下へ、<c>package-lock.json</c> を <c>package.json</c> の下へ、など。</summary>
+    public bool FileNestingEnabled { get; set; } = true;
+
+    /// <summary>まとめ方のルール（親のパターン → 子のパターンのカンマ区切り）。並び順が優先順位。
+    /// 書き方は <see cref="Files.FileNesting"/> を参照。既定は <see cref="Files.FileNesting.DefaultPatterns"/>。</summary>
+    public List<KeyValuePair<string, string>> FileNestingPatterns { get; set; }
+        = Files.FileNesting.DefaultPatterns.ToList();
 }
 
 public sealed class VimSettings

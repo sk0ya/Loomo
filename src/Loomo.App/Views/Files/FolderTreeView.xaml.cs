@@ -273,10 +273,14 @@ public partial class FolderTreeView : UserControl
             return;
         }
 
+        // まとめ表示の子ファイルは、フォルダーではなく親ファイルの下に居る。親を開いてから選ぶ。
+        descend ??= level.FirstOrDefault(node => node.HasNestedChildren
+            && node.Children.Any(child => FilePathRelations.AreEqual(child.FullPath, fullPath)));
+
         if (descend is null)
             return;
 
-        descend.IsExpanded = true;   // VM 側の子を同期読込
+        descend.IsExpanded = true;   // VM 側の子を同期読込（まとめ表示の親は既に子を持っている）
         // 展開したコンテナの生成・レイアウト確定を待ってから次階層へ降りる。
         Dispatcher.BeginInvoke(DispatcherPriority.Background,
             new Action(() => RevealStep(descend.Children, fullPath)));

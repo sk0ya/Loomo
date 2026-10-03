@@ -39,7 +39,12 @@ public sealed partial class FolderTreeViewModel
 
     private static void CollapseRecursive(FileNodeViewModel node)
     {
-        if (!node.IsDirectory) return;
+        if (!node.IsDirectory)
+        {
+            // まとめ表示の親ファイルも「すべて折りたたむ」で畳む（子はファイルなのでその先は無い）。
+            if (node.HasNestedChildren) node.IsExpanded = false;
+            return;
+        }
         node.IsExpanded = false;
         foreach (var child in node.Children) CollapseRecursive(child);
     }
