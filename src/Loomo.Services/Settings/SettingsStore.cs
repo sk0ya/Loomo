@@ -389,6 +389,7 @@ public sealed class SettingsStore
         public bool CollapseUsingsOnOpen { get; set; }
         public bool CleanCSharpOnSave { get; set; }
         public bool AutoClosePairs { get; set; }
+        public bool LinkedEditing { get; set; } = true;
         public bool ShowInlayHints { get; set; }
         public bool InlineSuggest { get; set; } = true;
         public int TabWidth { get; set; } = 2;
@@ -406,6 +407,7 @@ public sealed class SettingsStore
             CollapseUsingsOnOpen = e.CollapseUsingsOnOpen,
             CleanCSharpOnSave = e.CleanCSharpOnSave,
             AutoClosePairs = e.AutoClosePairs,
+            LinkedEditing = e.LinkedEditing,
             ShowInlayHints = e.ShowInlayHints,
             InlineSuggest = e.InlineSuggest,
             TabWidth = e.TabWidth,
@@ -424,6 +426,7 @@ public sealed class SettingsStore
             e.CollapseUsingsOnOpen = CollapseUsingsOnOpen;
             e.CleanCSharpOnSave = CleanCSharpOnSave;
             e.AutoClosePairs = AutoClosePairs;
+            e.LinkedEditing = LinkedEditing;
             e.ShowInlayHints = ShowInlayHints;
             e.InlineSuggest = InlineSuggest;
             e.TabWidth = TabWidth > 0 ? TabWidth : 2;

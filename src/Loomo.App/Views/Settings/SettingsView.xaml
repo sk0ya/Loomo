@@ -713,6 +713,11 @@
                                     <TextBlock Text="括弧・引用符を自動で閉じる" TextWrapping="Wrap" />
                                 </CheckBox>
                                 <CheckBox Margin="0,8,0,0"
+                                          IsChecked="{Binding Settings.LinkedEditing}"
+                                          ToolTip="HTML・XML・XAML・JSX/TSX で開きタグの名前を書き換えると、対応する閉じタグの名前も同時に書き換わります（逆も同様）。">
+                                    <TextBlock Text="開き/閉じタグの名前を連動して書き換える" TextWrapping="Wrap" />
+                                </CheckBox>
+                                <CheckBox Margin="0,8,0,0"
                                           IsChecked="{Binding Settings.ShowInlayHints}"
                                           ToolTip="C#の引数名など、LSPが返す補助情報をコード上に薄く表示します。">
                                     <TextBlock Text="LSPのinlay hint（引数名など）を表示する" TextWrapping="Wrap" />

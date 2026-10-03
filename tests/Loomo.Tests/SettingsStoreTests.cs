@@ -290,6 +290,32 @@ public class SettingsStoreTests
         }
     }
 
+    /// <summary>連動編集（タグ名の開き/閉じを同時に書き換える）の切り替えは保存をまたいで残り、
+    /// 項目の無い古い settings.json では既定の有効のまま読める。</summary>
+    [Fact]
+    public void Linked_editing_setting_round_trips_and_defaults_to_on()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"loomo-settings-{Guid.NewGuid():N}.json");
+        try
+        {
+            var saved = new LoomoSettings();
+            saved.Editor.LinkedEditing = false;
+            new SettingsStore(path).Save(saved);
+            var loaded = new LoomoSettings();
+            new SettingsStore(path).Load(loaded);
+            Assert.False(loaded.Editor.LinkedEditing);
+
+            File.WriteAllText(path, "{ \"editor\": { \"inlineSuggest\": true } }");
+            var legacy = new LoomoSettings();
+            new SettingsStore(path).Load(legacy);
+            Assert.True(legacy.Editor.LinkedEditing);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
     /// <summary>先読みの設定が無い古い settings.json は、既定（無効・内蔵の先読みは有効）のまま読める。</summary>
     [Fact]
     public void A_settings_file_without_the_inline_completion_section_keeps_the_defaults()

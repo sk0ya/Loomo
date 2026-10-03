@@ -26,6 +26,8 @@ public sealed class ShellAppearanceCoordinator
         SetOption(control, "minimap", settings.ShowMinimap);
         SetOption(control, "indentguides", settings.ShowIndentGuides);
         SetOption(control, "pairs", settings.AutoClosePairs);
+        // 連動編集（タグ名の開き/閉じを同時に書き換える）。未対応の Editor では set が黙って無視される。
+        SetOption(control, "linkedediting", settings.LinkedEditing);
         SetOption(control, "inlayhints", settings.ShowInlayHints);
         SetOption(control, "inlinesuggest", settings.InlineSuggest);
         control.SetTabWidth(settings.TabWidth, settings.UseSpacesForTab);

@@ -19,6 +19,7 @@ public sealed record SettingsFormState
     public bool CollapseUsingsOnOpen { get; init; }
     public bool CleanCSharpOnSave { get; init; }
     public bool AutoClosePairs { get; init; }
+    public bool LinkedEditing { get; init; }
     public bool ShowInlayHints { get; init; }
 
     /// <summary>入力の先読みそのものを使うか（内蔵の予測とローカル LLM の両方をまとめて切る）。</summary>
@@ -67,6 +68,7 @@ public sealed class SettingsPersistenceHandler
         CollapseUsingsOnOpen = _settings.Editor.CollapseUsingsOnOpen,
         CleanCSharpOnSave = _settings.Editor.CleanCSharpOnSave,
         AutoClosePairs = _settings.Editor.AutoClosePairs,
+        LinkedEditing = _settings.Editor.LinkedEditing,
         ShowInlayHints = _settings.Editor.ShowInlayHints,
         InlineSuggest = _settings.Editor.InlineSuggest,
         TabWidth = _settings.Editor.TabWidth,
@@ -100,6 +102,7 @@ public sealed class SettingsPersistenceHandler
         _settings.Editor.CollapseUsingsOnOpen = form.CollapseUsingsOnOpen;
         _settings.Editor.CleanCSharpOnSave = form.CleanCSharpOnSave;
         _settings.Editor.AutoClosePairs = form.AutoClosePairs;
+        _settings.Editor.LinkedEditing = form.LinkedEditing;
         _settings.Editor.ShowInlayHints = form.ShowInlayHints;
         _settings.Editor.InlineSuggest = form.InlineSuggest;
         _settings.Editor.TabWidth = form.TabWidth > 0 ? form.TabWidth : 2;
