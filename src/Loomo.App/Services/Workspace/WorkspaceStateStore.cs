@@ -450,12 +450,27 @@ public sealed class WorkspaceSnapshot
     /// <summary>ペグボード（§23.3）のアイテム。ワークスペース毎に持つ。</summary>
     public List<PegboardItemSnapshot> Pegboard { get; set; } = new();
 
+    /// <summary>可視ターミナルで人間が実行したコマンド（新しい順・終了コード付き・§24.20）。
+    /// パレットから選び直してターミナルへ送る。端末タブそのものは永続化しないが、打ったコマンドは
+    /// ワークスペースの持ち物として残す。</summary>
+    public List<RecentTerminalCommandSnapshot> RecentTerminalCommands { get; set; } = new();
+
     /// <summary>ファイル一覧ペイン（§26.10）の現在地と並べ替え。null の旧データはプライマリフォルダーから始める。</summary>
     public FilesPaneSnapshot? Files { get; set; }
 
     /// <summary>Git の比較基準（作業ツリー／ブランチ／分岐点）。null の旧データは作業ツリー基準。
     /// 「このブランチで入れた変更を見ている」という現在地はワークスペースごとに違うのでここに持つ。</summary>
     public GitCompareSnapshot? GitCompare { get; set; }
+}
+
+/// <summary>最近のコマンド（§24.20）の永続化形。<see cref="ExitCode"/> は最後に実行したときの値で、
+/// シェルが報告しなかったときは null。</summary>
+public sealed class RecentTerminalCommandSnapshot
+{
+    public string Command { get; set; } = "";
+    public int? ExitCode { get; set; }
+    public DateTime LastRunUtc { get; set; }
+    public int RunCount { get; set; } = 1;
 }
 
 /// <summary>最近利用した項目の永続化形。<see cref="RootIndex"/> はプライマリを 0 とする。

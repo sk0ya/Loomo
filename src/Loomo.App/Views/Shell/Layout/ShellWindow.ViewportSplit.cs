@@ -129,6 +129,7 @@ public partial class ShellWindow {
         tab.View.HyperlinkActivated += OnTerminalLinkActivated;
         tab.View.ContextMenuBuilding += OnTerminalContextMenuBuilding;
         HookTerminalActivity(tab);
+        HookTerminalRecentCommands(tab);
         return tab;
     }
     private EditorTab CreateEditorTab(Guid? requestedId = null) =>

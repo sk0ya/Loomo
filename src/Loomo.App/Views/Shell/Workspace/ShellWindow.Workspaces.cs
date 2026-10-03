@@ -166,6 +166,7 @@ public partial class ShellWindow {
             profile?.Lap("deferredFolderTree");
         }
         RestoreTerminalTabs(workspace, profile);
+        ApplyPendingTerminalCommands(workspace);
         StartupProfiler.Mark("  復元:RestoreTerminalTabs");
         profile?.Lap("terminal");
         await Dispatcher.Yield(DispatcherPriority.Background);

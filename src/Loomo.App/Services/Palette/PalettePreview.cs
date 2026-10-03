@@ -33,6 +33,9 @@ public static class PaletteCommandPreview
 {
     public static PalettePreviewContent Create(PaletteCommand command)
     {
+        if (command.Detail is { } detail)
+            return new PalettePreviewContent(
+                command.Title, command.Category, detail, Array.Empty<PalettePreviewLine>(), null);
         var shortcut = string.IsNullOrEmpty(command.Shortcut)
             ? "ショートカット: 未割当"
             : $"ショートカット: {command.Shortcut}";

@@ -29,12 +29,22 @@ public partial class ShellWindow {
     /// 「ファイルへ移動」のショートカットから開けばそのまま打ち始められる。
     /// <b>開いている最中に同じ種類のキーを押したら、開き直さずその場で探し方だけ変える</b>
     /// （打った語を捨てないため）。</summary>
-    private void OpenCommandPalette(PaletteMode mode) {
+    /// <para><paramref name="commands"/> を渡すと一覧をそれだけに絞って開く（「最近のコマンドを選び直す」など、
+    /// 部屋の操作全体ではなく特定の候補から選ばせたいとき）。開いている最中なら一覧だけ差し替える。</para>
+    private void OpenCommandPalette(PaletteMode mode, IReadOnlyList<PaletteCommand>? commands = null) {
         if (IsPaletteOpen) {
+            if (commands is not null) {
+                _paletteCommands = commands;
+                PaletteInput.Text = PaletteQuery.PrefixOf(mode);
+                PaletteInput.CaretIndex = PaletteInput.Text.Length;
+                RefilterPalette();
+                PaletteInput.Focus();
+                return;
+            }
             SetPaletteMode(mode);
             return;
         }
-        _paletteCommands = BuildPaletteCommands();
+        _paletteCommands = commands ?? BuildPaletteCommands();
         CommandPaletteOverlay.Visibility = Visibility.Visible;
         SetPaletteHint(mode);
         UpdatePaletteBoxSize();
@@ -252,6 +262,8 @@ public partial class ShellWindow {
         AddSearchScopeCommand(list, "ターミナル", SearchScope.Terminal);
         AddSearchScopeCommand(list, "クラス", SearchScope.Class);
         AddSearchScopeCommand(list, "シンボル", SearchScope.Symbol);
+        list.Add(new("ターミナル", "最近のコマンドを選び直す", OpenRecentTerminalCommands,
+            Sc("terminal.recentCommands"), "terminal.recentCommands"));
         list.Add(new("タブ", "新しいターミナルタブ", () => OnTerminalNewTab(this, new RoutedEventArgs()), Sc("tab.newTerminal"), "tab.newTerminal"));
         list.Add(new("タブ", "新しいエディタタブ", () => OnEditorNewTab(this, new RoutedEventArgs()), Sc("tab.newEditor"), "tab.newEditor"));
         list.Add(new("タブ", "新しいブラウザタブ", () => OnBrowserNewTab(this, new RoutedEventArgs()), Sc("tab.newBrowser"), "tab.newBrowser"));
@@ -294,6 +306,9 @@ public partial class ShellWindow {
             var target = workspace;
             list.Add(new("ワークスペース", $"切替: {target.Name}", () => _ = _vm.Workspaces.ActivateWorkspaceAsync(target)));
         }
+        // 最近のコマンド（§24.20）も検索対象に並べる。末尾に置くのは、空の問い合わせで部屋の操作を
+        // 押し流さないため（打てば「最近のコマンド」のカテゴリやコマンド行そのもので引っかかる）。
+        list.AddRange(BuildRecentTerminalPaletteCommands());
         return list;
     }
 

@@ -62,6 +62,7 @@ public partial class ShellWindow {
         _vm.Tabs.RemoveTerminalTab(id);
         _terminalViews?.RemoveTab(id);
         ForgetTerminalActivity(id);
+        ForgetTerminalRecentCommands(id);
         PaneTabTransferCoordinator.CompleteRemoval(
             _terminalTabs, t => t.Id, _terminalViews, index, wasActive,
             id => ActivateTerminalTab(id),
