@@ -46,6 +46,13 @@ public partial class ShellWindow
     private void InitializeRefactoringWiring()
         => _lspWorkspace.ApplyEditRequested += OnLspServerApplyEditRequested;
 
+    /// <summary>エクスプローラでの移動・改名に合わせた参照の更新（willRenameFiles）を、リファクタリングと
+    /// 同じ適用経路（<see cref="ApplyLspWorkspaceEdit"/>）へ結ぶ。移動はツリー／ファイル一覧から
+    /// UI スレッドで同期的に来るので、ここでもそのまま同期で当てる。</summary>
+    internal void AttachFileMoveParticipant(sk0ya.Loomo.App.Services.LspFileMoveParticipant participant)
+        => participant.Attach(edit => ApplyLspWorkspaceEdit(
+            edit.Changes, edit.DocumentVersions, edit.FileOperations).Error);
+
     private void AddRefactorMenuItems(ContextMenu menu, VimEditorControl? control)
     {
         if (RefactoringActionsMenu.BuildMenuItem(control) is { } item)

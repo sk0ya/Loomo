@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Editor.Core.Lsp;
+using sk0ya.Loomo.Services.Lsp;
 
 namespace sk0ya.Loomo.Tests;
 
@@ -10,8 +12,39 @@ namespace sk0ya.Loomo.Tests;
 /// プロセスを起動しない <see cref="ILspClient"/>。LSP セッション（プール・参照カウント・書き手移譲・
 /// 診断のファンアウト）をプロトコル実装抜きで検証するために、送られた通知だけを記録する。
 /// </summary>
-internal sealed class FakeLspClient : ILspClient
+internal sealed class FakeLspClient : ILspClient, ILspFileRenameClient
 {
+    // ── ファイル操作（willRenameFiles / didRenameFiles） ─────────────────────
+    public JsonElement? ServerCapabilities { get; set; }
+    public Func<IReadOnlyList<(string OldUri, string NewUri)>, LspWorkspaceEdit?>? WillRenameProvider { get; set; }
+    public List<IReadOnlyList<(string OldUri, string NewUri)>> WillRenameRequests { get; } = [];
+    public List<IReadOnlyList<(string OldUri, string NewUri)>> DidRenameNotifications { get; } = [];
+
+    public Task<LspWorkspaceEdit?> WillRenameFilesAsync(
+        IReadOnlyList<(string OldUri, string NewUri)> files, CancellationToken ct = default)
+    {
+        lock (WillRenameRequests) WillRenameRequests.Add(files);
+        return Task.FromResult(WillRenameProvider?.Invoke(files));
+    }
+
+    public Task DidRenameFilesAsync(IReadOnlyList<(string OldUri, string NewUri)> files)
+    {
+        lock (DidRenameNotifications) DidRenameNotifications.Add(files);
+        return Task.CompletedTask;
+    }
+
+    /// <summary>typescript-language-server と同じ形の fileOperations 宣言。</summary>
+    public void DeclareTypeScriptFileOperations()
+        => ServerCapabilities = JsonDocument.Parse("""
+            {"workspace":{"fileOperations":{
+              "willRename":{"filters":[
+                {"scheme":"file","pattern":{"glob":"**/*.{ts,js,jsx,tsx,mjs,mts,cjs,cts}","matches":"file"}},
+                {"scheme":"file","pattern":{"glob":"**","matches":"folder"}}]},
+              "didRename":{"filters":[
+                {"scheme":"file","pattern":{"glob":"**/*.{ts,js,jsx,tsx,mjs,mts,cjs,cts}","matches":"file"}},
+                {"scheme":"file","pattern":{"glob":"**","matches":"folder"}}]}}}}
+            """).RootElement.Clone();
+
     public sealed record Notification(string Kind, string Uri, string Text, int Version);
 
     public string Executable { get; }
