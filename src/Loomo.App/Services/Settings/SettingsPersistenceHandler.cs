@@ -1,4 +1,5 @@
 ﻿using sk0ya.Loomo.Ai;
+using sk0ya.Loomo.Services.Formatting;
 
 namespace sk0ya.Loomo.App.Services;
 
@@ -18,6 +19,15 @@ public sealed record SettingsFormState
     public bool ShowIndentGuides { get; init; }
     public bool CollapseUsingsOnOpen { get; init; }
     public bool CleanCSharpOnSave { get; init; }
+
+    /// <summary>全言語の保存時整形（:Format と同じ経路）。</summary>
+    public bool FormatOnSave { get; init; }
+
+    /// <summary>保存時整形から外す拡張子（設定画面の入力そのまま。空白・カンマ区切り）。</summary>
+    public string FormatOnSaveExcludedExtensions { get; init; } = "";
+
+    /// <summary>保存時に .editorconfig の空白規則（行末空白・末尾改行・改行コード）を適用するか。</summary>
+    public bool ApplyEditorConfigOnSave { get; init; }
     public bool AutoClosePairs { get; init; }
     public bool ShowInlayHints { get; init; }
 
@@ -66,6 +76,10 @@ public sealed class SettingsPersistenceHandler
         ShowIndentGuides = _settings.Editor.ShowIndentGuides,
         CollapseUsingsOnOpen = _settings.Editor.CollapseUsingsOnOpen,
         CleanCSharpOnSave = _settings.Editor.CleanCSharpOnSave,
+        FormatOnSave = _settings.Editor.FormatOnSave,
+        FormatOnSaveExcludedExtensions = FormatOnSavePolicy.FormatExtensions(
+            _settings.Editor.FormatOnSaveExcludedExtensions),
+        ApplyEditorConfigOnSave = _settings.Editor.ApplyEditorConfigOnSave,
         AutoClosePairs = _settings.Editor.AutoClosePairs,
         ShowInlayHints = _settings.Editor.ShowInlayHints,
         InlineSuggest = _settings.Editor.InlineSuggest,
@@ -99,6 +113,10 @@ public sealed class SettingsPersistenceHandler
         _settings.Editor.ShowIndentGuides = form.ShowIndentGuides;
         _settings.Editor.CollapseUsingsOnOpen = form.CollapseUsingsOnOpen;
         _settings.Editor.CleanCSharpOnSave = form.CleanCSharpOnSave;
+        _settings.Editor.FormatOnSave = form.FormatOnSave;
+        _settings.Editor.FormatOnSaveExcludedExtensions =
+            FormatOnSavePolicy.ParseExtensions(form.FormatOnSaveExcludedExtensions);
+        _settings.Editor.ApplyEditorConfigOnSave = form.ApplyEditorConfigOnSave;
         _settings.Editor.AutoClosePairs = form.AutoClosePairs;
         _settings.Editor.ShowInlayHints = form.ShowInlayHints;
         _settings.Editor.InlineSuggest = form.InlineSuggest;

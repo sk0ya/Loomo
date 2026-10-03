@@ -416,6 +416,13 @@ via the editor's `:FmtSet <ext> <cmd>` / `:FmtList` / `:FmtRemove` ex commands. 
   this one shows the catalog plus any custom entries).
 - Settings overlay has an **整形 (Formatter)** category (`FormatterSettingsViewModel`, `SettingsCategory.Formatter`):
   per-formatter rows with install/apply status, Install / 適用 / 手順 / 解除 buttons, and a custom add form.
+- **Format on save** (`ShellWindow.SaveFormatting.cs` = the `EditorService.BeforeSaveAsync` hook; logic in
+  `Services/Formatting/SaveFormatting.cs`): `EditorSettings.FormatOnSave` (default OFF, per-extension exclusions)
+  re-implements `:Format`'s order from public parts (registry CLI → `ILspDocument.RequestFormattingAsync` → PATH probe,
+  registering what it finds) with a timeout; `ApplyEditorConfigOnSave` applies `.editorconfig`
+  `trim_trailing_whitespace` / `insert_final_newline` / `end_of_line` **only when explicitly set** (Markdown's
+  two-space breaks survive). Both land as **one** `TryApplyLspTextEdits` (one undo, caret kept); failures never block
+  the save. When `CleanCSharpOnSave` is ON, `.cs` runs only the C# cleanup (no double formatting).
 
 **Refactoring is host-driven too** (`docs/設計/32-リファクタリング.md` = §32, the authority). The editor's right-click
 menu gets a 「リファクタリング」 submenu built by `ShellWindow.Refactoring.cs`; candidates come from

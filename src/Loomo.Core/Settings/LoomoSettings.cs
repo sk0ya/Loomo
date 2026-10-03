@@ -231,8 +231,24 @@ public sealed class EditorSettings
     /// 既定 OFF。クラスやメソッドなど、ほかの折りたたみ範囲には干渉しない。</summary>
     public bool CollapseUsingsOnOpen { get; set; }
 
-    /// <summary>C# ファイルの保存時に、.editorconfigに沿った整形とusing整理を行う。既定 OFF。</summary>
+    /// <summary>C# ファイルの保存時に、.editorconfigに沿った整形とusing整理を行う。既定 OFF。
+    /// ON のとき <c>.cs</c> の保存時処理はこれが正本になり、<see cref="FormatOnSave"/> と
+    /// <see cref="ApplyEditorConfigOnSave"/> は <c>.cs</c> では走らない（cleanup が整形・行末空白・
+    /// 末尾改行まで .editorconfig に沿って済ませるため、二重に整えない）。</summary>
     public bool CleanCSharpOnSave { get; set; }
+
+    /// <summary>保存時に <c>:Format</c> と同じ経路（設定済み CLI 整形 → 言語サーバーの整形 →
+    /// PATH 上の既知整形ツール）で全言語を整形する（VS Code の <c>editor.formatOnSave</c> 相当）。既定 OFF。
+    /// 整形に失敗・タイムアウトしても保存そのものは必ず行う。</summary>
+    public bool FormatOnSave { get; set; }
+
+    /// <summary><see cref="FormatOnSave"/> の対象から外す拡張子（<c>.md</c> 形式。大文字小文字は区別しない）。</summary>
+    public List<string> FormatOnSaveExcludedExtensions { get; set; } = new();
+
+    /// <summary>保存時に .editorconfig の <c>trim_trailing_whitespace</c> / <c>insert_final_newline</c> /
+    /// <c>end_of_line</c> を適用する。<b>明示されている規則だけ</b>を適用し、書かれていなければ何もしない
+    /// （Markdown の行末2スペース改行を黙って壊さないため。VS Code と同じ）。既定 ON。</summary>
+    public bool ApplyEditorConfigOnSave { get; set; } = true;
 
     /// <summary>括弧・引用符を入力したとき対応する閉じ記号を自動挿入する（Vim <c>pairs</c>）。既定 OFF。</summary>
     public bool AutoClosePairs { get; set; }

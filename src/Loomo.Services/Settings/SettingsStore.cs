@@ -388,6 +388,9 @@ public sealed class SettingsStore
         public bool ShowIndentGuides { get; set; }
         public bool CollapseUsingsOnOpen { get; set; }
         public bool CleanCSharpOnSave { get; set; }
+        public bool FormatOnSave { get; set; }
+        public List<string>? FormatOnSaveExcludedExtensions { get; set; }
+        public bool ApplyEditorConfigOnSave { get; set; } = true;
         public bool AutoClosePairs { get; set; }
         public bool ShowInlayHints { get; set; }
         public bool InlineSuggest { get; set; } = true;
@@ -405,6 +408,9 @@ public sealed class SettingsStore
             ShowIndentGuides = e.ShowIndentGuides,
             CollapseUsingsOnOpen = e.CollapseUsingsOnOpen,
             CleanCSharpOnSave = e.CleanCSharpOnSave,
+            FormatOnSave = e.FormatOnSave,
+            FormatOnSaveExcludedExtensions = [.. e.FormatOnSaveExcludedExtensions],
+            ApplyEditorConfigOnSave = e.ApplyEditorConfigOnSave,
             AutoClosePairs = e.AutoClosePairs,
             ShowInlayHints = e.ShowInlayHints,
             InlineSuggest = e.InlineSuggest,
@@ -423,6 +429,9 @@ public sealed class SettingsStore
             e.ShowIndentGuides = ShowIndentGuides;
             e.CollapseUsingsOnOpen = CollapseUsingsOnOpen;
             e.CleanCSharpOnSave = CleanCSharpOnSave;
+            e.FormatOnSave = FormatOnSave;
+            e.FormatOnSaveExcludedExtensions = FormatOnSaveExcludedExtensions is { } excluded ? [.. excluded] : new();
+            e.ApplyEditorConfigOnSave = ApplyEditorConfigOnSave;
             e.AutoClosePairs = AutoClosePairs;
             e.ShowInlayHints = ShowInlayHints;
             e.InlineSuggest = InlineSuggest;

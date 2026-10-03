@@ -370,6 +370,34 @@
                                 <TextBlock Style="{StaticResource FieldHint}"
                                            Text="エディタの :Format で使う整形ツール（CLI）です。インストールして「適用」すると、その拡張子の整形に使われます。" />
 
+                                <!-- 保存時の整形（VS Code の formatOnSave / files.trimTrailingWhitespace / insertFinalNewline 相当） -->
+                                <TextBlock Style="{StaticResource FieldLabel}" Text="保存時" Margin="0,10,0,0" />
+                                <CheckBox Margin="0,4,0,0"
+                                          IsChecked="{Binding Settings.FormatOnSave}"
+                                          ToolTip="保存するとき :Format と同じ順（設定済みの整形ツール → 言語サーバー → PATH 上の既知の整形ツール）で整形します。失敗・タイムアウトしても保存は行います。Undo 1 回で戻せます。">
+                                    <TextBlock Text="保存時にファイルを整形する（全言語）" TextWrapping="Wrap" />
+                                </CheckBox>
+                                <Grid Margin="22,6,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="除外する拡張子" VerticalAlignment="Center"
+                                               Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs11}" Margin="0,0,8,0" />
+                                    <TextBox Grid.Column="1"
+                                             Text="{Binding Settings.FormatOnSaveExcludedExtensions, UpdateSourceTrigger=LostFocus}"
+                                             IsEnabled="{Binding Settings.FormatOnSave}"
+                                             FontFamily="Cascadia Mono, Consolas"
+                                             ToolTip="保存時に整形しない拡張子を空白区切りで（例: .md .yml）。:Format の手動実行には影響しません。" />
+                                </Grid>
+                                <CheckBox Margin="0,8,0,0"
+                                          IsChecked="{Binding Settings.ApplyEditorConfigOnSave}"
+                                          ToolTip=".editorconfig に trim_trailing_whitespace / insert_final_newline / end_of_line が書かれているときだけ、保存時に行末空白の削除・末尾改行の追加・改行コードの統一を行います。書かれていなければ何もしません（Markdown の行末2スペース改行は壊しません）。">
+                                    <TextBlock Text="保存時に .editorconfig の空白規則（行末空白・末尾改行・改行コード）を適用する" TextWrapping="Wrap" />
+                                </CheckBox>
+                                <TextBlock Style="{StaticResource FieldHint}" Margin="0,4,0,0"
+                                           Text="C# は「エディタ」の「C#ファイルを保存時に整形し、usingを整理する」が ON のとき、そちらだけが走ります（.editorconfig に沿った整形・行末空白・末尾改行まで含むため、二重に整形しません）。" />
+
                                 <ItemsControl ItemsSource="{Binding Formatter.Formatters}" Margin="0,8,0,0">
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate>
@@ -696,7 +724,7 @@
                                 </CheckBox>
                                 <CheckBox Margin="0,8,0,0"
                                           IsChecked="{Binding Settings.CleanCSharpOnSave}"
-                                          ToolTip="C#ファイルを保存するとき、.editorconfigに沿って整形します。Roslynの意味解析が使える場合は未使用usingも整理します。Undoで元に戻せます。">
+                                          ToolTip="C#ファイルを保存するとき、.editorconfigに沿って整形します。Roslynの意味解析が使える場合は未使用usingも整理します。ONの間は .cs の保存時処理はこれだけになり、「整形」の保存時整形・.editorconfig空白規則は .cs には重ねません。Undoで元に戻せます。">
                                     <TextBlock Text="C#ファイルを保存時に整形し、usingを整理する" TextWrapping="Wrap" />
                                 </CheckBox>
 

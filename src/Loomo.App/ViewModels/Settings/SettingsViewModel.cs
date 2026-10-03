@@ -54,6 +54,15 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _showIndentGuides;
     [ObservableProperty] private bool _collapseUsingsOnOpen;
     [ObservableProperty] private bool _cleanCSharpOnSave;
+
+    /// <summary>全言語の保存時整形（整形カテゴリ）。</summary>
+    [ObservableProperty] private bool _formatOnSave;
+
+    /// <summary>保存時整形から外す拡張子（空白区切りの入力）。</summary>
+    [ObservableProperty] private string _formatOnSaveExcludedExtensions = "";
+
+    /// <summary>保存時に .editorconfig の空白規則を適用するか（整形カテゴリ）。</summary>
+    [ObservableProperty] private bool _applyEditorConfigOnSave;
     [ObservableProperty] private bool _autoClosePairs;
     [ObservableProperty] private bool _showInlayHints;
     [ObservableProperty] private int _tabWidth;
@@ -137,6 +146,9 @@ public sealed partial class SettingsViewModel : ObservableObject
         WordWrap = form.WordWrap; ShowMinimap = form.ShowMinimap; ShowIndentGuides = form.ShowIndentGuides;
         CollapseUsingsOnOpen = form.CollapseUsingsOnOpen;
         CleanCSharpOnSave = form.CleanCSharpOnSave;
+        FormatOnSave = form.FormatOnSave;
+        FormatOnSaveExcludedExtensions = form.FormatOnSaveExcludedExtensions;
+        ApplyEditorConfigOnSave = form.ApplyEditorConfigOnSave;
         AutoClosePairs = form.AutoClosePairs; ShowInlayHints = form.ShowInlayHints;
         TabWidth = form.TabWidth; UseSpacesForTab = form.UseSpacesForTab;
         ImagePasteDirectory = form.ImagePasteDirectory; ImagePasteFileName = form.ImagePasteFileName;
@@ -193,6 +205,9 @@ public sealed partial class SettingsViewModel : ObservableObject
     partial void OnShowIndentGuidesChanged(bool value) => Persist();
     partial void OnCollapseUsingsOnOpenChanged(bool value) => Persist();
     partial void OnCleanCSharpOnSaveChanged(bool value) => Persist();
+    partial void OnFormatOnSaveChanged(bool value) => Persist();
+    partial void OnFormatOnSaveExcludedExtensionsChanged(string value) => Persist();
+    partial void OnApplyEditorConfigOnSaveChanged(bool value) => Persist();
     partial void OnAutoClosePairsChanged(bool value) => Persist();
     partial void OnShowInlayHintsChanged(bool value) => Persist();
     partial void OnTabWidthChanged(int value) => Persist();
@@ -225,6 +240,9 @@ public sealed partial class SettingsViewModel : ObservableObject
             WordWrap = WordWrap, ShowMinimap = ShowMinimap, ShowIndentGuides = ShowIndentGuides,
             CollapseUsingsOnOpen = CollapseUsingsOnOpen,
             CleanCSharpOnSave = CleanCSharpOnSave,
+            FormatOnSave = FormatOnSave,
+            FormatOnSaveExcludedExtensions = FormatOnSaveExcludedExtensions,
+            ApplyEditorConfigOnSave = ApplyEditorConfigOnSave,
             AutoClosePairs = AutoClosePairs, ShowInlayHints = ShowInlayHints,
             TabWidth = TabWidth, UseSpacesForTab = UseSpacesForTab,
             ImagePasteDirectory = ImagePasteDirectory, ImagePasteFileName = ImagePasteFileName,

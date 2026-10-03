@@ -47,21 +47,6 @@ public partial class ShellWindow
     private Task RunCSharpCleanupAsync(VimEditorControl control)
         => CSharpRefactoring.RunCSharpCleanupAsync(control);
 
-    /// <summary>保存時cleanup。単一の開いている文書だけを整え、WorkspaceEditとして記録する。</summary>
-    private async Task PrepareEditorSaveAsync(VimEditorControl control, string? targetPath)
-    {
-        if (!_settings.Editor.CleanCSharpOnSave ||
-            control.FilePath is not { Length: > 0 } currentPath ||
-            !string.Equals(Path.GetExtension(currentPath), ".cs", StringComparison.OrdinalIgnoreCase) ||
-            string.IsNullOrWhiteSpace(targetPath) ||
-            !string.Equals(Path.GetFullPath(currentPath), Path.GetFullPath(targetPath),
-                StringComparison.OrdinalIgnoreCase))
-            return;
-
-        await CSharpRefactoring.RunCSharpCleanupAsync(
-            control, onSave: true);
-    }
-
     private Task RunCSharpExtractMethodAsync(VimEditorControl control)
         => CSharpRefactoring.RunCSharpExtractMethodAsync(control);
 

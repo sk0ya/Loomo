@@ -79,7 +79,11 @@ internal sealed class FakeLspDocument : ILspDocument, ILspReferenceQuery
     public Task<LspSignatureHelp?> RequestSignatureHelpAsync(int line, int character, CancellationToken ct = default) => throw Unused();
     public Task<LspWorkspaceEdit?> RequestRenameAsync(int line, int character, string newName) => throw Unused();
     public Task<IReadOnlyList<LspCodeAction>> RequestCodeActionsAsync(int line, int character) => throw Unused();
-    public Task<IReadOnlyList<LspTextEdit>> RequestFormattingAsync(int tabSize, bool insertSpaces) => throw Unused();
+    /// <summary>保存時整形のテスト用。設定されていれば <see cref="RequestFormattingAsync"/> がこれを返す。</summary>
+    public Func<Task<IReadOnlyList<LspTextEdit>>>? Formatting { get; set; }
+
+    public Task<IReadOnlyList<LspTextEdit>> RequestFormattingAsync(int tabSize, bool insertSpaces)
+        => Formatting is { } formatting ? formatting() : throw Unused();
     public Task<IReadOnlyList<LspTextEdit>> RequestRangeFormattingAsync(LspRange range, int tabSize, bool insertSpaces) => throw Unused();
     public Task<IReadOnlyList<LspFoldingRange>> RequestFoldingRangesAsync() => throw Unused();
     public Task<IReadOnlyList<InlayHint>> RequestInlayHintsAsync(int startLine, int endLine) => throw Unused();
