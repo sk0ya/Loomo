@@ -387,16 +387,41 @@ public partial class DiffSessionView : UserControl, IDisposable
 
     // ===== ファイル一覧 =====
 
-    /// <summary>ファイル行ダブルクリック：エディタで開く。</summary>
+    /// <summary>ファイル行ダブルクリック：エディタで開く。フォルダ行のダブルクリックは開閉だけ
+    /// （選択中のファイルを開くと、押した行と違う物が開く）。</summary>
     private void OnFileDoubleClick(object sender, MouseButtonEventArgs e)
     {
-        if (Vm is { SelectedFile: { } file } vm)
+        if (Vm is { } vm
+            && FindAncestor<TreeViewItem>(e.OriginalSource as DependencyObject) is { DataContext: DiffFileTreeNode { File: { } file } })
             vm.OpenInEditorCommand.Execute(file);
+    }
+
+    /// <summary>行の選択を VM の選択（正本）へ写す。フォルダ行を選んでも差分の表示は変えない。</summary>
+    private void OnFileTreeSelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
+    {
+        if (Vm is { } vm && e.NewValue is DiffFileTreeNode { File: { } file })
+            vm.SelectedFile = file;
+    }
+
+    /// <summary>VM 側から選択が移ったとき（次／前のファイル・ほかのペインから開く）も、その行を見える位置へ。</summary>
+    private void OnFileTreeItemSelected(object sender, RoutedEventArgs e)
+    {
+        if (e.OriginalSource is TreeViewItem item)
+            item.BringIntoView();
+    }
+
+    private static T? FindAncestor<T>(DependencyObject? node) where T : DependencyObject
+    {
+        while (node is not null and not T)
+            node = node is Visual or System.Windows.Media.Media3D.Visual3D
+                ? VisualTreeHelper.GetParent(node)
+                : LogicalTreeHelper.GetParent(node);
+        return node as T;
     }
 
     /// <summary>右クリックしたメニュー項目が属する行のファイル項目（一覧の行メニュー用）。</summary>
     private static DiffFileItem? ContextItem(object sender)
-        => sender is MenuItem { Parent: ContextMenu { PlacementTarget: FrameworkElement { DataContext: DiffFileItem item } } }
+        => sender is MenuItem { Parent: ContextMenu { PlacementTarget: FrameworkElement { DataContext: DiffFileTreeNode { File: { } item } } } }
             ? item
             : null;
 

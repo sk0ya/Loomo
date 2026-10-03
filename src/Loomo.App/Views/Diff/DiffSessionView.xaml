@@ -8,30 +8,6 @@
     Background="{DynamicResource Panel}" Focusable="True">
 
     <UserControl.Resources>
-        <!-- 一覧アイテム共通（GitSessionView と同じ見た目） -->
-        <Style x:Key="DiffListItem" TargetType="ListBoxItem">
-            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-            <Setter Property="Padding" Value="6,1" />
-            <Setter Property="Foreground" Value="{DynamicResource Fg}" />
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="ListBoxItem">
-                        <Border x:Name="b" Background="Transparent" Padding="{TemplateBinding Padding}">
-                            <ContentPresenter />
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="b" Property="Background" Value="{DynamicResource BgAlt}" />
-                            </Trigger>
-                            <Trigger Property="IsSelected" Value="True">
-                                <Setter TargetName="b" Property="Background" Value="{DynamicResource Border}" />
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
         <!-- 差分本体テキスト（読み取り専用 RichTextBox）：普通のテキストとして文字単位で選択・コピーできる -->
         <Style x:Key="DiffTextBox" TargetType="RichTextBox">
             <Setter Property="IsReadOnly" Value="True" />
@@ -449,70 +425,101 @@
                     </DockPanel>
                 </Border>
                 <Grid>
-                    <ListBox ItemsSource="{Binding Files}" SelectedItem="{Binding SelectedFile}"
-                             Background="Transparent" BorderThickness="0"
-                             Foreground="{DynamicResource Fg}"
-                             ItemContainerStyle="{StaticResource DiffListItem}"
-                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                             VirtualizingPanel.IsVirtualizing="True"
-                             VirtualizingPanel.VirtualizationMode="Recycling"
-                             MouseDoubleClick="OnFileDoubleClick">
-                        <ListBox.ItemTemplate>
-                            <DataTemplate>
-                                <DockPanel LastChildFill="True" ToolTip="{Binding DisplayPath}">
-                                    <!-- 一覧の右クリック。対象はメニューの配置対象（この DockPanel）の DataContext
-                                         ＝その行のファイル項目（コード側 ContextItem が取り出す）。
+                    <!-- 変更ファイルはフォルダ階層で見せる（Git パネルの変更ツリー・コミット詳細と同じ組み方）。
+                         選択の正本は VM の SelectedFile：行の選択はコード側で SelectedFile へ写し、
+                         VM 側からの選択（次／前のファイル・ほかのペインから開く）はノードの IsSelected で戻ってくる。 -->
+                    <TreeView x:Name="FileTreeView" ItemsSource="{Binding FileTree}"
+                              Background="Transparent" BorderThickness="0" Padding="0"
+                              Foreground="{DynamicResource Fg}"
+                              ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                              VirtualizingPanel.IsVirtualizing="True"
+                              VirtualizingPanel.VirtualizationMode="Recycling"
+                              SelectedItemChanged="OnFileTreeSelectedItemChanged"
+                              TreeViewItem.Selected="OnFileTreeItemSelected"
+                              MouseDoubleClick="OnFileDoubleClick">
+                        <TreeView.ItemContainerStyle>
+                            <Style TargetType="TreeViewItem" BasedOn="{StaticResource BranchTreeItem}">
+                                <Setter Property="IsSelected" Value="{Binding IsSelected, Mode=TwoWay}" />
+                            </Style>
+                        </TreeView.ItemContainerStyle>
+                        <TreeView.ItemTemplate>
+                            <HierarchicalDataTemplate DataType="{x:Type vm:DiffFileTreeNode}" ItemsSource="{Binding Children}">
+                                <Grid ToolTip="{Binding ToolTipText}" Background="Transparent">
+                                    <!-- フォルダ行：淡色の名前＋件数ピル -->
+                                    <DockPanel Visibility="{Binding IsDirectory, Converter={StaticResource BoolToVis}}">
+                                        <Border DockPanel.Dock="Right" Background="{DynamicResource Border}" CornerRadius="7"
+                                                Padding="6,0" MinWidth="18" Height="15" Margin="6,0,2,0" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding LeafCount}" FontSize="{DynamicResource Fs10}"
+                                                       Foreground="{DynamicResource Fg}"
+                                                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                        </Border>
+                                        <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis"
+                                                   Foreground="{DynamicResource FgDim}" VerticalAlignment="Center" />
+                                    </DockPanel>
+                                    <!-- ファイル行。右クリックの対象はメニューの配置対象（この DockPanel）の DataContext
+                                         ＝その行のノード（コード側 ContextItem がファイル項目を取り出す）。
                                          「クリップボードと比較」は、変更一覧にあるファイルの現物と、
                                          どこかからコピーしてきた案をそのまま突き合わせるための入口。 -->
-                                    <DockPanel.ContextMenu>
-                                        <ContextMenu>
-                                            <MenuItem Header="エディタで開く" Click="OnOpenFileInEditor" />
-                                            <MenuItem Header="クリップボードと比較" Click="OnCompareFileWithClipboard"
-                                                      ToolTip="このファイルの現在の内容とクリップボードを比較する" />
-                                            <MenuItem Header="パスをコピー" Click="OnCopyFilePath" />
-                                            <Separator />
-                                            <!-- ストックした比較だけ「閉じる」で片づける（ほかの比較は残る）。 -->
-                                            <MenuItem Header="この比較を閉じる" Click="OnCloseComparison"
-                                                      ToolTip="この比較を一覧から閉じる（ほかの比較は残る）"
-                                                      Visibility="{Binding IsCompare, Converter={StaticResource BoolToVis}}" />
-                                            <MenuItem Header="比較をすべて閉じる" Click="OnCloseAllComparisons"
-                                                      Visibility="{Binding IsCompare, Converter={StaticResource BoolToVis}}" />
-                                            <MenuItem Header="変更を破棄" Click="OnDiscardFile"
-                                                      ToolTip="このファイルの作業ツリーの変更を破棄する（未追跡なら削除）"
-                                                      Visibility="{Binding CanDiscard, Converter={StaticResource BoolToVis}}" />
-                                        </ContextMenu>
-                                    </DockPanel.ContextMenu>
-                                    <!-- 閉じる ✕ は比較項目へマウスを置いたときだけ見せ、普段の一覧を静かに保つ。 -->
-                                    <Button DockPanel.Dock="Right" Content="✕" ToolTip="この比較を閉じる"
-                                            Margin="6,0,0,0"
-                                            Command="{Binding DataContext.CloseComparisonCommand,
-                                                RelativeSource={RelativeSource AncestorType=ListBox}}"
-                                            CommandParameter="{Binding}">
-                                        <Button.Style>
-                                            <Style TargetType="Button" BasedOn="{StaticResource DiffCloseButton}">
-                                                <Setter Property="Visibility" Value="Collapsed" />
+                                    <DockPanel LastChildFill="True">
+                                        <DockPanel.Style>
+                                            <Style TargetType="DockPanel">
                                                 <Style.Triggers>
-                                                    <MultiDataTrigger>
-                                                        <MultiDataTrigger.Conditions>
-                                                            <Condition Binding="{Binding IsCompare}" Value="True" />
-                                                            <Condition Binding="{Binding IsMouseOver,
-                                                                RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True" />
-                                                        </MultiDataTrigger.Conditions>
-                                                        <Setter Property="Visibility" Value="Visible" />
-                                                    </MultiDataTrigger>
+                                                    <DataTrigger Binding="{Binding IsDirectory}" Value="True">
+                                                        <Setter Property="Visibility" Value="Collapsed" />
+                                                    </DataTrigger>
                                                 </Style.Triggers>
                                             </Style>
-                                        </Button.Style>
-                                    </Button>
-                                    <TextBlock DockPanel.Dock="Right" Text="{Binding Stats}" FontSize="{DynamicResource Fs11}"
-                                               Foreground="{DynamicResource FgDim}" Margin="8,0,0,0" />
-                                    <TextBlock DockPanel.Dock="Right" Text="{Binding Badge}" FontSize="{DynamicResource Fs11}"
-                                               Foreground="{DynamicResource Accent}" Margin="8,0,0,0" />
-                                    <TextBlock Text="{Binding DisplayPath}" TextTrimming="CharacterEllipsis" />
-                                </DockPanel>
-                            </DataTemplate>
-                        </ListBox.ItemTemplate>
-                    </ListBox>
+                                        </DockPanel.Style>
+                                        <DockPanel.ContextMenu>
+                                            <ContextMenu>
+                                                <MenuItem Header="エディタで開く" Click="OnOpenFileInEditor" />
+                                                <MenuItem Header="クリップボードと比較" Click="OnCompareFileWithClipboard"
+                                                          ToolTip="このファイルの現在の内容とクリップボードを比較する" />
+                                                <MenuItem Header="パスをコピー" Click="OnCopyFilePath" />
+                                                <Separator />
+                                                <!-- ストックした比較だけ「閉じる」で片づける（ほかの比較は残る）。 -->
+                                                <MenuItem Header="この比較を閉じる" Click="OnCloseComparison"
+                                                          ToolTip="この比較を一覧から閉じる（ほかの比較は残る）"
+                                                          Visibility="{Binding File.IsCompare, Converter={StaticResource BoolToVis}}" />
+                                                <MenuItem Header="比較をすべて閉じる" Click="OnCloseAllComparisons"
+                                                          Visibility="{Binding File.IsCompare, Converter={StaticResource BoolToVis}}" />
+                                                <MenuItem Header="変更を破棄" Click="OnDiscardFile"
+                                                          ToolTip="このファイルの作業ツリーの変更を破棄する（未追跡なら削除）"
+                                                          Visibility="{Binding File.CanDiscard, Converter={StaticResource BoolToVis}}" />
+                                            </ContextMenu>
+                                        </DockPanel.ContextMenu>
+                                        <!-- 閉じる ✕ は比較項目へマウスを置いたときだけ見せ、普段の一覧を静かに保つ。 -->
+                                        <Button DockPanel.Dock="Right" Content="✕" ToolTip="この比較を閉じる"
+                                                Margin="6,0,0,0"
+                                                Command="{Binding DataContext.CloseComparisonCommand,
+                                                    RelativeSource={RelativeSource AncestorType=TreeView}}"
+                                                CommandParameter="{Binding File}">
+                                            <Button.Style>
+                                                <Style TargetType="Button" BasedOn="{StaticResource DiffCloseButton}">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                    <Style.Triggers>
+                                                        <MultiDataTrigger>
+                                                            <MultiDataTrigger.Conditions>
+                                                                <Condition Binding="{Binding File.IsCompare}" Value="True" />
+                                                                <Condition Binding="{Binding IsMouseOver,
+                                                                    RelativeSource={RelativeSource AncestorType=TreeViewItem}}" Value="True" />
+                                                            </MultiDataTrigger.Conditions>
+                                                            <Setter Property="Visibility" Value="Visible" />
+                                                        </MultiDataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Button.Style>
+                                        </Button>
+                                        <TextBlock DockPanel.Dock="Right" Text="{Binding File.Stats}" FontSize="{DynamicResource Fs11}"
+                                                   Foreground="{DynamicResource FgDim}" Margin="8,0,0,0" VerticalAlignment="Center" />
+                                        <TextBlock DockPanel.Dock="Right" Text="{Binding File.Badge}" FontSize="{DynamicResource Fs11}"
+                                                   Foreground="{DynamicResource Accent}" Margin="8,0,0,0" VerticalAlignment="Center" />
+                                        <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                                    </DockPanel>
+                                </Grid>
+                            </HierarchicalDataTemplate>
+                        </TreeView.ItemTemplate>
+                    </TreeView>
                     <TextBlock Margin="12,8" Text="{Binding EmptyMessage}" TextWrapping="Wrap"
                                Foreground="{DynamicResource FgDim}">
                         <TextBlock.Style>

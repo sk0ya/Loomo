@@ -95,7 +95,15 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
     [ObservableProperty] private bool _isBusy;
     [ObservableProperty] private string _busyMessage = "";
 
+    /// <summary>変更ファイルのフラットな一覧（選択・「次／前のファイル」の正本）。並びは <see cref="FileTree"/> の深さ優先順。</summary>
     public ObservableCollection<DiffFileItem> Files { get; } = new();
+
+    /// <summary>一覧の見せ方：<see cref="Files"/> をフォルダ階層に組んだもの（Git パネルの変更ツリーと同じ組み方）。</summary>
+    [ObservableProperty] private IReadOnlyList<DiffFileTreeNode> _fileTree = Array.Empty<DiffFileTreeNode>();
+
+    /// <summary><see cref="Files"/> の項目 → その行のノード（VM 側から選択を移すときに引く）。</summary>
+    private readonly Dictionary<DiffFileItem, DiffFileTreeNode> _fileNodes = new();
+    private DiffFileTreeNode? _selectedNode;
     public ObservableCollection<DiffRowVm> DiffRows { get; } = new();
     public ObservableCollection<DiffSideRowVm> SideRows { get; } = new();
 
@@ -302,10 +310,47 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
             _pendingJumpFile = null;
             _pendingJumpNewLine = -1;
         }
+        SyncTreeSelection(value);
         UpdateCanDiscard();
         InvalidateWorkingTreePatch(value); // 開き直すたびに作業ツリーの最新内容を読み直す
         // 読み直しで同じファイルを選び直しただけ（ステージで一覧の印が変わった等）なら、読んでいた位置を動かさない。
         _ = LoadAndAutoJumpAsync(value, autoJump: !_reselectingSameFile);
+    }
+
+    /// <summary>
+    /// 一覧を組み直す唯一の入口。フォルダの開閉は読み直しをまたいで引き継ぐ（ステージや自動の読み直しの
+    /// たびに畳んだフォルダが開き直ると、見ていた場所を見失う）。
+    /// </summary>
+    private void ReplaceFileTree(IReadOnlyList<DiffFileTreeNode> tree)
+    {
+        var collapsed = DiffFileTreeNode.Directories(FileTree)
+            .Where(d => !d.IsExpanded).Select(d => d.Key)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var dir in DiffFileTreeNode.Directories(tree))
+            dir.IsExpanded = !collapsed.Contains(dir.Key);
+
+        _selectedNode = null;
+        _fileNodes.Clear();
+        Files.Clear();
+        foreach (var leaf in DiffFileTreeNode.Leaves(tree))
+        {
+            _fileNodes[leaf.File!] = leaf;
+            Files.Add(leaf.File!);
+        }
+        FileTree = tree;
+    }
+
+    /// <summary>選択の正本（<see cref="SelectedFile"/>）をツリーの行へ映す。畳まれたフォルダの中なら開いて見せる。</summary>
+    private void SyncTreeSelection(DiffFileItem? value)
+    {
+        var node = value is not null && _fileNodes.TryGetValue(value, out var found) ? found : null;
+        if (ReferenceEquals(node, _selectedNode)) return;
+        if (_selectedNode is not null) _selectedNode.IsSelected = false;
+        _selectedNode = node;
+        if (node is null) return;
+        for (var parent = node.Parent; parent is not null; parent = parent.Parent)
+            parent.IsExpanded = true;
+        node.IsSelected = true;
     }
 
     /// <summary><see cref="RefreshAsync"/> が一覧を作り直して、同じパスの項目を選び直している最中。</summary>
@@ -402,7 +447,7 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
         _pendingRange = range;
         OnPropertyChanged(nameof(CanOpenCommitInGit));
         GitTargetLabel = range.Label;
-        Files.Clear();
+        ReplaceFileTree(Array.Empty<DiffFileTreeNode>());
         SelectedFile = null;
         EmptyMessage = "";
         UpdateCanDiscard();
@@ -718,7 +763,10 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
         if (refreshGeneration != Volatile.Read(ref _refreshGeneration)) return;
         if (result.IsCanceled && OnCompareCanceled(result.EmptyMessage))
             return;
-        var items = result.Items;
+        // 一覧はフォルダ階層で見せるので、フラットな Files も画面に並ぶ順（深さ優先）に揃える
+        // ——「次／前のファイル」がツリーを上から下へ辿るように。
+        var tree = DiffFileTreeNode.Build(result.Items);
+        var items = DiffFileTreeNode.Leaves(tree).Select(n => n.File!).ToList();
         var emptyMessage = result.EmptyMessage;
 
         if (!force && DiffSessionQuery.SameFiles(items, Files))
@@ -730,11 +778,10 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
         }
         _pendingCompareSelect = null;
 
-        Files.Clear();
+        ReplaceFileTree(tree);
         DiffFileItem? reselect = null;
         foreach (var item in items)
         {
-            Files.Add(item);
             var matches = item.Comparison is { } material
                 ? ReferenceEquals(material, keepComparison)
                 : selectedPath is not null
@@ -815,7 +862,7 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
 
     private void ClearFiles(string emptyMessage)
     {
-        Files.Clear();
+        ReplaceFileTree(Array.Empty<DiffFileTreeNode>());
         EmptyMessage = emptyMessage;
         OnPropertyChanged(nameof(FileListHeader));
         SelectedFile = null;
