@@ -1570,11 +1570,100 @@
         <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
 
-    <!-- Diff のソース切替（Git / 比較）のセグメントボタン -->
+    <!-- ヘッダーの控えめな操作ボタン（塗らない・線画アイコン＋短い文言）。アクセント塗りの PaneHeaderToolButton を
+         何個も並べると青い壁になり、どれが主要でどれが危険かが読めなくなる（Diff ヘッダーがそうだった）。
+         アイコンは Tag に Geometry を渡す（StaticResource の DiffIcon.* など）。Content を省けばアイコンだけの
+         正方形ボタン、Tag を省けば文言だけになる。線の色は Foreground に追従するのでホバー・無効の色も揃う。 -->
+    <Style x:Key="PaneHeaderGhostButton" TargetType="Button">
+        <Setter Property="Foreground" Value="{DynamicResource Fg}" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="Padding" Value="6,0" />
+        <Setter Property="MinWidth" Value="24" />
+        <Setter Property="Height" Value="24" />
+        <Setter Property="Margin" Value="0,0,2,0" />
+        <Setter Property="FontSize" Value="{DynamicResource Fs12}" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="b" Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1"
+                            CornerRadius="4" Padding="{TemplateBinding Padding}">
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <Path x:Name="icon" Width="12" Height="12" Stretch="Uniform" VerticalAlignment="Center"
+                                  StrokeThickness="1.4" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                  StrokeLineJoin="Round"
+                                  Data="{Binding Tag, RelativeSource={RelativeSource TemplatedParent}}"
+                                  Stroke="{TemplateBinding Foreground}" />
+                            <ContentPresenter x:Name="text" Margin="5,0,0,0" VerticalAlignment="Center">
+                                <ContentPresenter.Resources>
+                                    <Style TargetType="TextBlock" BasedOn="{StaticResource ContentText}" />
+                                </ContentPresenter.Resources>
+                            </ContentPresenter>
+                        </StackPanel>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="Tag" Value="{x:Null}">
+                            <Setter TargetName="icon" Property="Visibility" Value="Collapsed" />
+                            <Setter TargetName="text" Property="Margin" Value="0" />
+                        </Trigger>
+                        <Trigger Property="Content" Value="{x:Null}">
+                            <Setter TargetName="text" Property="Visibility" Value="Collapsed" />
+                        </Trigger>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="b" Property="Background" Value="{DynamicResource Border}" />
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="b" Property="Background" Value="{DynamicResource SelectionBg}" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter TargetName="b" Property="Opacity" Value="0.4" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- 取り返しのつかない操作（変更を破棄など）。普段はほかと同じ静けさで、触れたときだけ赤く警告する。 -->
+    <Style x:Key="PaneHeaderDangerButton" TargetType="Button" BasedOn="{StaticResource PaneHeaderGhostButton}">
+        <Style.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="Foreground" Value="{DynamicResource Error}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource Error}" />
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
+    <!-- ヘッダー内の操作のまとまりを分ける縦線。 -->
+    <Style x:Key="PaneHeaderSeparator" TargetType="Border">
+        <Setter Property="Width" Value="1" />
+        <Setter Property="Height" Value="14" />
+        <Setter Property="Margin" Value="5,0" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="Background" Value="{DynamicResource Border}" />
+    </Style>
+
+    <!-- セグメント切替（SourceToggle）を入れる枠。枠線で「この中から1つ選ぶ」まとまりだと分かるようにする。 -->
+    <Style x:Key="SegmentGroup" TargetType="Border">
+        <Setter Property="Background" Value="{DynamicResource BgAlt}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Border}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="5" />
+        <Setter Property="Padding" Value="2" />
+        <Setter Property="Margin" Value="0,0,8,0" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+
+    <!-- Diff のソース切替（Git / 比較）・表示形式などのセグメントボタン。選択中はファイル一覧のカラム切替と
+         同じくアクセント色で示す（Border 色の塗りだけでは、どちらが選ばれているか暗いテーマで読めなかった）。 -->
     <Style x:Key="SourceToggle" TargetType="RadioButton">
         <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
-        <Setter Property="Padding" Value="10,1" />
-        <Setter Property="Margin" Value="0,0,2,0" />
+        <Setter Property="FontSize" Value="{DynamicResource Fs12}" />
+        <Setter Property="Padding" Value="9,0" />
+        <Setter Property="Height" Value="20" />
         <Setter Property="Cursor" Value="Hand" />
         <Setter Property="Template">
             <Setter.Value>
@@ -1585,10 +1674,11 @@
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="b" Property="Background" Value="{DynamicResource BgAlt}" />
+                            <Setter TargetName="b" Property="Background" Value="{DynamicResource Border}" />
+                            <Setter Property="Foreground" Value="{DynamicResource Fg}" />
                         </Trigger>
                         <Trigger Property="IsChecked" Value="True">
-                            <Setter TargetName="b" Property="Background" Value="{DynamicResource Border}" />
+                            <Setter TargetName="b" Property="Background" Value="{DynamicResource SelectionBg}" />
                             <Setter Property="Foreground" Value="{DynamicResource Fg}" />
                         </Trigger>
                     </ControlTemplate.Triggers>
@@ -1596,5 +1686,15 @@
             </Setter.Value>
         </Setter>
     </Style>
+
+    <!-- Diff ヘッダーの線画アイコン（12px 想定・Stroke で描く）。PaneHeaderGhostButton の Tag に渡す。 -->
+    <StreamGeometry x:Key="DiffIcon.Prev">M3,9.5 L7,5.5 L11,9.5</StreamGeometry>
+    <StreamGeometry x:Key="DiffIcon.Next">M3,4.5 L7,8.5 L11,4.5</StreamGeometry>
+    <StreamGeometry x:Key="DiffIcon.OpenInEditor">M8,2 H12 V6 M12,2 L6.5,7.5 M10,8.5 V12 H2 V4 H5.5</StreamGeometry>
+    <StreamGeometry x:Key="DiffIcon.Discard">M4.5,2.5 L2,5 L4.5,7.5 M2,5 H8.5 A3.5,3.5 0 0 1 8.5,12 H5</StreamGeometry>
+    <StreamGeometry x:Key="DiffIcon.Swap">M2,4.5 H12 M9.5,2 L12,4.5 L9.5,7 M12,9.5 H2 M4.5,7 L2,9.5 L4.5,12</StreamGeometry>
+    <StreamGeometry x:Key="DiffIcon.Clipboard">M5,2.5 H9 V4 H5 Z M5,3 H3 V12.5 H11 V3 H9</StreamGeometry>
+    <StreamGeometry x:Key="DiffIcon.Close">M3.5,3.5 L10.5,10.5 M10.5,3.5 L3.5,10.5</StreamGeometry>
+    <StreamGeometry x:Key="DiffIcon.Commits">M7,1.5 V4.5 M7,9.5 V12.5 M7,4.5 A2.5,2.5 0 1 0 7,9.5 A2.5,2.5 0 1 0 7,4.5</StreamGeometry>
 
 </ResourceDictionary>

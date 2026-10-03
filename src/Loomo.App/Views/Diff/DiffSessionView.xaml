@@ -296,89 +296,112 @@
                 Background="{DynamicResource Panel}" Padding="8,4"
                 BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1">
             <DockPanel LastChildFill="False">
+                <!-- 並びと見た目はペインヘッダー（ShellWindow の DIFF）と同じ：操作は右寄せのゴーストボタン、表示の切り替えは左寄せ。 -->
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,4,0">
+                    <!-- Git セッションから連携されたコミット範囲の操作 -->
+                    <Button Style="{StaticResource PaneHeaderGhostButton}" Content="Git 一覧で表示"
+                            Tag="{StaticResource DiffIcon.Commits}"
+                            ToolTip="このコミットを Git のコミット一覧で選択"
+                            Command="{Binding OpenCommitInGitCommand}"
+                            Visibility="{Binding CanOpenCommitInGit, Converter={StaticResource BoolToVis}}" />
+                    <Button Style="{StaticResource PaneHeaderGhostButton}" Content="作業ツリーへ戻る"
+                            Tag="{StaticResource DiffIcon.Close}"
+                            ToolTip="コミット範囲の表示を解除して作業ツリー差分へ戻る"
+                            Command="{Binding ClearGitTargetCommand}"
+                            Visibility="{Binding GitTargetLabel, Converter={StaticResource NonEmptyToVis}}" />
+                    <!-- アドホック比較中だけの操作。どちらを「元」と見るかはその場で決まるので入替を近くに置く。 -->
+                    <Button Style="{StaticResource PaneHeaderGhostButton}" Tag="{StaticResource DiffIcon.Swap}"
+                            ToolTip="比較の左右を入れ替える"
+                            Command="{Binding SwapComparisonCommand}"
+                            Visibility="{Binding IsCompareMode, Converter={StaticResource BoolToVis}}" />
+                    <Button Style="{StaticResource PaneHeaderGhostButton}" Content="再比較"
+                            Tag="{StaticResource DiffIcon.Clipboard}"
+                            ToolTip="右側を今のクリップボードの内容に差し替えて比較し直す"
+                            Command="{Binding RecompareWithClipboardCommand}"
+                            Visibility="{Binding IsCompareMode, Converter={StaticResource BoolToVis}}" />
+                    <!-- 比較はストックされ閉じるまで残る（次の比較を作っても消えない）ので、片づける口をここに置く。 -->
+                    <Button Style="{StaticResource PaneHeaderGhostButton}" Content="比較を閉じる"
+                            Tag="{StaticResource DiffIcon.Close}"
+                            ToolTip="今見ている比較を閉じる（ほかの比較は残る）"
+                            Command="{Binding CloseComparisonCommand}"
+                            Visibility="{Binding IsCompareMode, Converter={StaticResource BoolToVis}}" />
+                    <Border Style="{StaticResource PaneHeaderSeparator}" />
+                    <!-- 変更ブロック間のジャンプ。上下の矢印だけにして、キーはツールチップで知らせる。 -->
+                    <Button Style="{StaticResource PaneHeaderGhostButton}" Tag="{StaticResource DiffIcon.Prev}"
+                            ToolTip="前の変更へ（Shift+F8／Alt+↑。先頭を越えたら前のファイルへ）"
+                            Command="{Binding JumpToPrevChangeCommand}" />
+                    <Button Style="{StaticResource PaneHeaderGhostButton}" Tag="{StaticResource DiffIcon.Next}"
+                            ToolTip="次の変更へ（F8／Alt+↓。末尾を越えたら次のファイルへ）"
+                            Command="{Binding JumpToNextChangeCommand}" />
+                    <Border Style="{StaticResource PaneHeaderSeparator}" />
+                    <Button Style="{StaticResource PaneHeaderGhostButton}" Content="エディタで開く"
+                            Tag="{StaticResource DiffIcon.OpenInEditor}"
+                            ToolTip="いま選んでいるファイルを（現在の内容で）エディタで開く"
+                            Command="{Binding OpenInEditorCommand}" />
+                    <!-- 取り返しのつかない操作は区切って最後に置き、触れたときだけ赤くする。 -->
+                    <StackPanel Orientation="Horizontal"
+                                Visibility="{Binding CanDiscardSelected, Converter={StaticResource BoolToVis}}">
+                        <Border Style="{StaticResource PaneHeaderSeparator}" />
+                        <Button Style="{StaticResource PaneHeaderDangerButton}" Content="変更を破棄"
+                                Tag="{StaticResource DiffIcon.Discard}"
+                                ToolTip="選択中ファイルの作業ツリーの変更を破棄する（未追跡なら削除）"
+                                Command="{Binding DiscardCommand}" />
+                    </StackPanel>
+                </StackPanel>
                 <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
-                    <!-- ソース（Git／比較）。ペインヘッダーと同じ状態を見ているので、窓の中でも
-                         積んである比較へ切り替えられる。 -->
-                    <Border Background="{DynamicResource BgAlt}" CornerRadius="4" Padding="1" Margin="0,0,10,0">
+                    <Border Style="{StaticResource SegmentGroup}">
                         <StackPanel Orientation="Horizontal">
-                            <RadioButton Style="{StaticResource SourceToggle}" Content="Git" FontSize="{DynamicResource Fs12}"
+                            <RadioButton Style="{StaticResource SourceToggle}" Content="Git"
+                                         ToolTip="作業ツリー・コミットの差分"
                                          IsChecked="{Binding IsGitMode}" />
-                            <RadioButton Style="{StaticResource SourceToggle}" Content="比較" FontSize="{DynamicResource Fs12}"
+                            <!-- アドホック比較（クリップボード ↔ 選択範囲 など）。素材はエディタ・ターミナル・
+                                 エクスプローラーの右クリックから送られてくる（設計書 §23.3）。 -->
+                            <RadioButton Style="{StaticResource SourceToggle}" Content="比較"
                                          ToolTip="クリップボードや選択範囲どうしの比較（右クリックの「Diff へ送る」で作れます）"
                                          IsChecked="{Binding IsCompareMode}" />
                         </StackPanel>
                     </Border>
-                    <!-- 比較基準（作業ツリー／ブランチ／分岐点）。コミット範囲の表示中は出さない（効かないため）。 -->
-                    <Border Margin="0,0,10,0" VerticalAlignment="Center"
+                    <!-- 比較基準（作業ツリー／ブランチ／分岐点）。サイドバー Git パネルと同じ状態を
+                         見ているので、どちらで切り替えても一覧と差分本体の両方がその基準になる。
+                         コミット範囲を表示している間は出さない（そちらが優先で効かないため）。 -->
+                    <Border Margin="0,0,8,0" VerticalAlignment="Center"
                             Visibility="{Binding ShowCompareBaseSelector, Converter={StaticResource BoolToVis}}">
                         <local:GitCompareBaseView DataContext="{Binding CompareBase}" />
                     </Border>
-                    <!-- 表示形式（左右／統合）。Markdown を描画表示している間は効かないので出さない（§24.7）。 -->
-                    <Border Background="{DynamicResource BgAlt}" CornerRadius="4" Padding="1" Margin="0,0,10,0"
+                    <!-- 差分の表示形式（左右並び / 統合）。既定の左右を先頭に置く。
+                         Markdown をレンダリング表示している間は出さない——押しても画面は変わらず、
+                         差分の読み直しだけが走る（押せるのに何も起きない・§24.7）。 -->
+                    <Border Style="{StaticResource SegmentGroup}"
                             Visibility="{Binding CanChooseTextLayout, Converter={StaticResource BoolToVis}}">
                         <StackPanel Orientation="Horizontal">
-                            <RadioButton Style="{StaticResource SourceToggle}" Content="左右" FontSize="{DynamicResource Fs12}"
+                            <RadioButton Style="{StaticResource SourceToggle}" Content="左右"
                                          ToolTip="削除を左・追加を右に並べて表示（side by side）"
                                          IsChecked="{Binding IsSideBySide}" />
-                            <RadioButton Style="{StaticResource SourceToggle}" Content="統合" FontSize="{DynamicResource Fs12}"
+                            <RadioButton Style="{StaticResource SourceToggle}" Content="統合"
                                          ToolTip="差分を1列で表示（unified）"
                                          IsChecked="{Binding IsSideBySide, Converter={StaticResource InverseBool}}" />
                         </StackPanel>
                     </Border>
-                    <Border Background="{DynamicResource BgAlt}" CornerRadius="4" Padding="1" Margin="0,0,10,0"
+                    <!-- Markdown 差分のレンダリング表示（§24.10）。テキスト／描画の切り替えは
+                         **対象が Markdown のときだけ**出す（押せるのに何も起きない項目を作らない・§24.7）。 -->
+                    <Border Style="{StaticResource SegmentGroup}"
                             Visibility="{Binding CanRenderMarkdown, Converter={StaticResource BoolToVis}}">
                         <StackPanel Orientation="Horizontal">
-                            <RadioButton Style="{StaticResource SourceToggle}" Content="テキスト" FontSize="{DynamicResource Fs12}"
+                            <RadioButton Style="{StaticResource SourceToggle}" Content="テキスト"
                                          ToolTip="パッチの行をそのまま読む（既定）"
                                          IsChecked="{Binding IsMarkdownRender, Converter={StaticResource InverseBool}}" />
-                            <RadioButton Style="{StaticResource SourceToggle}" Content="描画" FontSize="{DynamicResource Fs12}"
+                            <RadioButton Style="{StaticResource SourceToggle}" Content="描画"
                                          ToolTip="Markdown をレンダリングし、追加・削除をその文書の中に混ぜて読む"
                                          IsChecked="{Binding IsMarkdownRender}" />
                         </StackPanel>
                     </Border>
-                    <Border Background="{DynamicResource BgAlt}" CornerRadius="4" Padding="1" Margin="0,0,10,0">
-                        <StackPanel Orientation="Horizontal">
-                            <Button Style="{StaticResource PaneHeaderToolButton}" Content="↓ 次の差分"
-                                    ToolTip="次の変更ブロックへジャンプ（F8／Alt+↓。末尾を越えたら次のファイルへ）"
-                                    Command="{Binding JumpToNextChangeCommand}" />
-                            <Button Style="{StaticResource PaneHeaderToolButton}" Content="↑ 前の差分"
-                                    ToolTip="前の変更ブロックへジャンプ（Shift+F8／Alt+↑。先頭を越えたら前のファイルへ）"
-                                    Command="{Binding JumpToPrevChangeCommand}" />
-                        </StackPanel>
-                    </Border>
-                    <Button Style="{StaticResource PaneHeaderToolButton}" Content="エディタで開く"
-                            ToolTip="いま選んでいるファイルを（現在の内容で）エディタで開く"
-                            Command="{Binding OpenInEditorCommand}" />
-                    <Button Style="{StaticResource PaneHeaderToolButton}" Content="Git 一覧で表示"
-                            ToolTip="このコミットを Git のコミット一覧で選択する"
-                            Command="{Binding OpenCommitInGitCommand}"
-                            Visibility="{Binding CanOpenCommitInGit, Converter={StaticResource BoolToVis}}" />
-                    <Button Style="{StaticResource PaneHeaderToolButton}" Content="✕ 作業ツリーへ"
-                            ToolTip="コミット範囲の表示を解除して作業ツリー差分へ戻る"
-                            Command="{Binding ClearGitTargetCommand}"
-                            Visibility="{Binding GitTargetLabel, Converter={StaticResource NonEmptyToVis}}" />
-                    <Button Style="{StaticResource PaneHeaderToolButton}" Content="変更を破棄"
-                            ToolTip="選択中ファイルの作業ツリーの変更を破棄する（未追跡なら削除）"
-                            Command="{Binding DiscardCommand}"
-                            Visibility="{Binding CanDiscardSelected, Converter={StaticResource BoolToVis}}" />
-                    <!-- アドホック比較中だけの操作（ペインヘッダーと同じ3点）。 -->
-                    <Button Style="{StaticResource PaneHeaderToolButton}" Content="⇄ 左右入替"
-                            ToolTip="比較の左右を入れ替える"
-                            Command="{Binding SwapComparisonCommand}"
-                            Visibility="{Binding IsCompareMode, Converter={StaticResource BoolToVis}}" />
-                    <Button Style="{StaticResource PaneHeaderToolButton}" Content="クリップボードで再比較"
-                            ToolTip="右側を今のクリップボードの内容に差し替えて比較し直す"
-                            Command="{Binding RecompareWithClipboardCommand}"
-                            Visibility="{Binding IsCompareMode, Converter={StaticResource BoolToVis}}" />
-                    <Button Style="{StaticResource PaneHeaderToolButton}" Content="✕ 比較を閉じる"
-                            ToolTip="今見ている比較を閉じる（ほかの比較は残る）"
-                            Command="{Binding CloseComparisonCommand}"
-                            Visibility="{Binding IsCompareMode, Converter={StaticResource BoolToVis}}" />
+                    <!-- Git セッションから連携されたコミット範囲の表示中ラベル（解除・Git 一覧は右の操作群） -->
+                    <TextBlock Text="{Binding GitTargetLabel}" FontSize="{DynamicResource Fs12}"
+                               Foreground="{DynamicResource Accent}" VerticalAlignment="Center"
+                               Margin="0,0,8,0" TextTrimming="CharacterEllipsis" MaxWidth="240"
+                               ToolTip="{Binding GitTargetLabel}"
+                               Visibility="{Binding GitTargetLabel, Converter={StaticResource NonEmptyToVis}}" />
                 </StackPanel>
-                <!-- 何のコミットを見ているか。窓のタイトルは選択ファイル名を追うので、出どころはここに残す。 -->
-                <TextBlock DockPanel.Dock="Right" Text="{Binding GitTargetLabel}" VerticalAlignment="Center"
-                           Margin="10,0,0,0" MaxWidth="240" TextTrimming="CharacterEllipsis"
-                           FontSize="{DynamicResource Fs12}" Foreground="{DynamicResource Accent}" />
             </DockPanel>
         </Border>
 
