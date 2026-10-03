@@ -285,7 +285,7 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(HasComparison));
         OnPropertyChanged(nameof(CompareCaption));
         OnPropertyChanged(nameof(FileListHeader));
-        _changeCursor = -1;
+        ResetChangeCursor();
         if (value != DiffSource.Git)
         {
             SetCommitRange(null);
@@ -299,7 +299,7 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
 
     partial void OnSelectedFileChanged(DiffFileItem? value)
     {
-        _changeCursor = -1; // ファイルが変わったら次/前ジャンプの位置をリセット
+        ResetChangeCursor(); // ファイルが変わったら次/前ジャンプの位置をリセット
         // 「今どの比較を見ているか」は選択中の項目が正本（複数ストックできるので、素材を1つ覚えるのでは足りない）。
         OnPropertyChanged(nameof(HasComparison));
         OnPropertyChanged(nameof(CompareCaption));
@@ -371,7 +371,7 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
 
     partial void OnIsSideBySideChanged(bool value)
     {
-        _changeCursor = -1;
+        ResetChangeCursor();
         NotifyMarkdownRenderState();
         _ = LoadAndAutoJumpAsync(SelectedFile);
     }

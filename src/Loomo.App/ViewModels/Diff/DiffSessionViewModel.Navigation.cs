@@ -26,8 +26,54 @@ public sealed partial class DiffSessionViewModel
     /// 整ってから <see cref="JumpToFirstChange"/> を呼んで最初の変更へ自動ジャンプする。</summary>
     public event Action? AutoJumpRequested;
 
-    /// <summary>「次/前の変更」の現在位置（<see cref="ChangeAnchors"/> の並びでのインデックス）。</summary>
+    /// <summary>「次/前の変更」の現在位置（<see cref="ChangeAnchors"/> の並びでのインデックス）。
+    /// 書き換えは <see cref="SetChangeCursor"/> / <see cref="ResetChangeCursor"/> だけ（表示用の2つを一緒に動かす）。</summary>
     private int _changeCursor = -1;
+
+    /// <summary>いま ↑↓ で選んでいる変更ブロックの先頭（<see cref="ChangeAnchors"/> と同じ単位。無ければ -1）。
+    /// キャレットを置くだけでは、読み取り専用の左やフォーカスの無いエディタでは見えず「どれに飛んだのか」が
+    /// 分からなかったので、View はこれでブロックごと枠を引く。</summary>
+    [ObservableProperty] private int _currentChangeAnchor = -1;
+
+    /// <summary>ヘッダーの ∧∨ の横に出す現在位置（「2 / 7」）。まだ飛んでいなければ空。</summary>
+    [ObservableProperty] private string _changePositionLabel = "";
+
+    private void SetChangeCursor(int cursor, IReadOnlyList<int> anchors)
+    {
+        _changeCursor = cursor;
+        var valid = cursor >= 0 && cursor < anchors.Count;
+        CurrentChangeAnchor = valid ? anchors[cursor] : -1;
+        ChangePositionLabel = valid ? $"{cursor + 1} / {anchors.Count}" : "";
+    }
+
+    private void ResetChangeCursor()
+    {
+        _changeCursor = -1;
+        CurrentChangeAnchor = -1;
+        ChangePositionLabel = "";
+    }
+
+    /// <summary>
+    /// 変更ブロックの先頭 <paramref name="anchor"/> から、そのブロックの最後の行まで（<see cref="ChangeAnchors"/> と
+    /// 同じ「変更行」の数え方）。レンダリング表示・範囲外では <paramref name="anchor"/> そのもの。
+    /// </summary>
+    public int ChangeBlockEnd(int anchor)
+    {
+        if (IsMarkdownRenderActive || anchor < 0) return anchor;
+        var end = anchor;
+        if (IsSideBySide)
+        {
+            while (end + 1 < SideRows.Count && IsSideChangeRow(SideRows[end + 1])) end++;
+        }
+        else
+        {
+            while (end + 1 < DiffRows.Count && DiffRows[end + 1].Kind is "Added" or "Removed") end++;
+        }
+        return end;
+    }
+
+    private static bool IsSideChangeRow(DiffSideRowVm row)
+        => row.LeftKind is "Removed" or "Empty" || row.RightKind is "Added" or "Empty";
 
     /// <summary>ファイル跨ぎで前のファイルへ移ったとき、自動ジャンプ先を「最後の変更」にするフラグ。</summary>
     private bool _pendingJumpToLast;
@@ -75,8 +121,8 @@ public sealed partial class DiffSessionViewModel
     public void JumpToFirstChange()
     {
         var anchors = ChangeAnchors();
-        if (anchors.Count == 0) { _changeCursor = -1; return; }
-        _changeCursor = 0;
+        if (anchors.Count == 0) { ResetChangeCursor(); return; }
+        SetChangeCursor(0, anchors);
         ScrollToRowRequested?.Invoke(anchors[0]);
     }
 
@@ -84,8 +130,8 @@ public sealed partial class DiffSessionViewModel
     private void JumpToLastChange()
     {
         var anchors = ChangeAnchors();
-        if (anchors.Count == 0) { _changeCursor = -1; return; }
-        _changeCursor = anchors.Count - 1;
+        if (anchors.Count == 0) { ResetChangeCursor(); return; }
+        SetChangeCursor(anchors.Count - 1, anchors);
         ScrollToRowRequested?.Invoke(anchors[_changeCursor]);
     }
 
@@ -100,7 +146,7 @@ public sealed partial class DiffSessionViewModel
         {
             if (_changeCursor + 1 < anchors.Count)
             {
-                _changeCursor++;
+                SetChangeCursor(_changeCursor + 1, anchors);
                 ScrollToRowRequested?.Invoke(anchors[_changeCursor]);
             }
             else
@@ -112,7 +158,7 @@ public sealed partial class DiffSessionViewModel
         {
             if (_changeCursor > 0)
             {
-                _changeCursor--;
+                SetChangeCursor(_changeCursor - 1, anchors);
                 ScrollToRowRequested?.Invoke(anchors[_changeCursor]);
             }
             else
@@ -174,7 +220,7 @@ public sealed partial class DiffSessionViewModel
             }
         }
         if (best < 0) return false;
-        _changeCursor = -1; // 次/前の変更ジャンプは先頭からやり直す
+        ResetChangeCursor(); // 次/前の変更ジャンプは先頭からやり直す
         ScrollToRowRequested?.Invoke(best);
         return true;
     }
@@ -193,8 +239,7 @@ public sealed partial class DiffSessionViewModel
         {
             for (var i = 0; i < SideRows.Count; i++)
             {
-                var changed = SideRows[i].LeftKind is "Removed" or "Empty"
-                    || SideRows[i].RightKind is "Added" or "Empty";
+                var changed = IsSideChangeRow(SideRows[i]);
                 if (changed && !inBlock) anchors.Add(i);
                 inBlock = changed;
             }

@@ -45,6 +45,7 @@ public partial class DiffSessionView : UserControl, IDisposable
         _sideEditors = new DiffSideEditorPresenter(() => Vm, LeftEditorHost, RightEditorHost, SideStatusBar);
         _sideBlockPresenter = new DiffSideBlockPresenter(
             CenterGutter,
+            CurrentChangeOverlay,
             () => Vm,
             () => _sideEditors.Geometry,
             () => CenterGutter.ActualHeight,
@@ -67,7 +68,8 @@ public partial class DiffSessionView : UserControl, IDisposable
             _markdownRenderController.ScrollToChange,
             () => _documentBuildController?.Flush(),
             UpdateLayout,
-            () => _unifiedSv);
+            () => _unifiedSv,
+            anchor => Vm?.ChangeBlockEnd(anchor) ?? anchor);
         _documentBuildController = new DiffDocumentBuildController(
             Dispatcher,
             () => Vm,
@@ -170,6 +172,7 @@ public partial class DiffSessionView : UserControl, IDisposable
         if (_sideItemSource is not null)
             _sideItemSource.PropertyChanged -= OnViewModelPropertyChanged;
         _sideItemSource = viewModel;
+        OnCurrentChangeAnchorChanged(viewModel?.CurrentChangeAnchor ?? -1);
         if (viewModel is not null)
             viewModel.PropertyChanged += OnViewModelPropertyChanged;
     }
@@ -180,6 +183,18 @@ public partial class DiffSessionView : UserControl, IDisposable
         // 左右並びへ切り替えた瞬間も、隠れていた間に届いた行へ合わせ直す。
         if (e.PropertyName is nameof(DiffSessionViewModel.SideRowsItem) or nameof(DiffSessionViewModel.ShowSideText))
             ScheduleSide();
+        if (e.PropertyName == nameof(DiffSessionViewModel.CurrentChangeAnchor) && sender is DiffSessionViewModel vm)
+            OnCurrentChangeAnchorChanged(vm.CurrentChangeAnchor);
+    }
+
+    /// <summary>↑↓ の現在ブロックが変わった：左右並びは枠を描き直す。外れた（-1）ときは統合表示の帯も消す
+    /// （blame からの行ジャンプなど、↑↓ 以外で移ったときに古い印を残さない）。</summary>
+    private void OnCurrentChangeAnchorChanged(int anchor)
+    {
+        _sideBlockPresenter.SetCurrentAnchor(anchor);
+        _sideBlockPresenter.Render();
+        if (anchor < 0)
+            _rowNavigationPresenter.ClearMarks();
     }
 
     private void ScheduleSide()
@@ -347,6 +362,7 @@ public partial class DiffSessionView : UserControl, IDisposable
 
         _unifiedSv = InnerScrollViewer(UnifiedBox);
         CenterGutter.SizeChanged += (_, _) => _sideBlockPresenter.Render();
+        CurrentChangeOverlay.SizeChanged += (_, _) => _sideBlockPresenter.Render();
         SidePanel.PreviewKeyDown += OnSidePreviewKeyDown;
 
         // 分割構築の途中でも本文は操作できるので、自分で読み始めた合図があれば自動ジャンプは取り下げる。

@@ -7,7 +7,6 @@ namespace sk0ya.Loomo.App.Services;
 /// <summary>差分の指定行へ移動し、現在行を示す。左右並びはエディタ2つなので、移動とキャレットはそちらへ任せる。</summary>
 internal sealed class DiffRowNavigationPresenter
 {
-    private static readonly Brush CurrentMark = DiffFlowDocumentRenderer.FrozenBrush("#66FFC107");
     private readonly RichTextBox _unified;
     private readonly Action<int> _scrollSideToRow;
     private readonly Func<bool> _isSideBySide;
@@ -16,7 +15,8 @@ internal sealed class DiffRowNavigationPresenter
     private readonly Action _flushBuild;
     private readonly Action _updateLayout;
     private readonly Func<ScrollViewer?> _unifiedScrollViewer;
-    private readonly List<(Paragraph Paragraph, Brush? Original)> _marks = new();
+    private readonly Func<int, int> _blockEnd;
+    private readonly List<(Paragraph Paragraph, Brush? OriginalBar)> _marks = new();
 
     public DiffRowNavigationPresenter(
         RichTextBox unified,
@@ -26,7 +26,8 @@ internal sealed class DiffRowNavigationPresenter
         Action<int> scrollMarkdownToChange,
         Action flushBuild,
         Action updateLayout,
-        Func<ScrollViewer?> unifiedScrollViewer)
+        Func<ScrollViewer?> unifiedScrollViewer,
+        Func<int, int> blockEnd)
     {
         _unified = unified;
         _scrollSideToRow = scrollSideToRow;
@@ -36,6 +37,7 @@ internal sealed class DiffRowNavigationPresenter
         _flushBuild = flushBuild;
         _updateLayout = updateLayout;
         _unifiedScrollViewer = unifiedScrollViewer;
+        _blockEnd = blockEnd;
     }
 
     public void ScrollToRow(int index)
@@ -51,7 +53,7 @@ internal sealed class DiffRowNavigationPresenter
         _updateLayout();
         ClearMarks();
         if (_isSideBySide())
-            _scrollSideToRow(index);   // 現在行はキャレットの行として見える
+            _scrollSideToRow(index);   // 現在ブロックの枠は中央の帯と一緒に描く（DiffSideBlockPresenter）
         else
             MarkAndScroll(_unified, _unifiedScrollViewer(), index);
     }
@@ -59,7 +61,7 @@ internal sealed class DiffRowNavigationPresenter
     public void ClearMarks()
     {
         foreach (var (paragraph, original) in _marks)
-            paragraph.Background = original;
+            paragraph.BorderBrush = original;
         _marks.Clear();
     }
 
@@ -67,7 +69,12 @@ internal sealed class DiffRowNavigationPresenter
     {
         if (DiffRowLineMapper.ParagraphAt(box.Document, index) is not { } paragraph)
             return;
-        Mark(paragraph);
+        // ブロックの全行の左端の帯を琥珀色にする（左右並びの現在ブロックの枠と同じ色）。行の背景は塗り替えない——
+        // 先頭行だけを塗っていた頃は、どこまでが今のブロックか分からず、その行の追加／削除の色も消えていた。
+        var end = _blockEnd(index);
+        Block? block = paragraph;
+        for (var i = index; i <= end && block is Paragraph row; i++, block = block.NextBlock)
+            Mark(row);
         if (scrollViewer is null)
             return;
         var rect = paragraph.ContentStart.GetCharacterRect(LogicalDirection.Forward);
@@ -77,7 +84,7 @@ internal sealed class DiffRowNavigationPresenter
 
     private void Mark(Paragraph paragraph)
     {
-        _marks.Add((paragraph, paragraph.Background));
-        paragraph.Background = CurrentMark;
+        _marks.Add((paragraph, paragraph.BorderBrush));
+        paragraph.BorderBrush = DiffSideBlockPresenter.CurrentFrame;
     }
 }

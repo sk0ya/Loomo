@@ -333,6 +333,11 @@
                     <Button Style="{StaticResource PaneHeaderGhostButton}" Tag="{StaticResource DiffIcon.Next}"
                             ToolTip="次の変更へ（F8／Alt+↓。末尾を越えたら次のファイルへ）"
                             Command="{Binding JumpToNextChangeCommand}" />
+                    <!-- いま何番目の変更にいるか（↑↓ で飛んだ先は本文側で枠を引く）。まだ飛んでいなければ出さない。 -->
+                    <TextBlock Text="{Binding ChangePositionLabel}" VerticalAlignment="Center" Margin="2,0,2,0"
+                               FontSize="{DynamicResource Fs11}" Foreground="{DynamicResource FgDim}"
+                               ToolTip="いま見ている変更ブロック / このファイルの変更ブロックの数"
+                               Visibility="{Binding ChangePositionLabel, Converter={StaticResource NonEmptyToVis}}" />
                     <Border Style="{StaticResource PaneHeaderSeparator}" />
                     <Button Style="{StaticResource PaneHeaderGhostButton}" Content="エディタで開く"
                             Tag="{StaticResource DiffIcon.OpenInEditor}"
@@ -618,6 +623,10 @@
                     </Grid>
 
                     <Border x:Name="RightEditorHost" Grid.Column="2" />
+
+                    <!-- ↑↓ で選んでいる変更ブロックの枠。左右の本文と中央の帯にまたがって被せる（押せない）。 -->
+                    <Canvas x:Name="CurrentChangeOverlay" Grid.ColumnSpan="3" ClipToBounds="True"
+                            IsHitTestVisible="False" />
 
                     <!-- 行が無い差分（「差分はありません」など）の知らせ。エディタの上に被せる。 -->
                     <Border x:Name="SideMessagePanel" Grid.ColumnSpan="3" Background="{DynamicResource BgAlt}"

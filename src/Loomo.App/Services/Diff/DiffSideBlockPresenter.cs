@@ -20,8 +20,15 @@ internal sealed class DiffSideBlockPresenter
     /// 「何が変わったか」とは別の軸なので、同じ色相の濃淡にすると見分けがつかない。</summary>
     private static readonly Brush BlockStaged = DiffFlowDocumentRenderer.FrozenBrush("#8042A5F5");
     private static readonly Brush BlockPartial = DiffFlowDocumentRenderer.FrozenBrush("#4042A5F5");
+    /// <summary>↑↓ で選んでいる変更ブロックの枠。追加・削除・ステージの色（緑・赤・橙・青）のどれとも
+    /// 取り違えない琥珀色にし、塗りはごく薄くして下の差分の色を殺さない。統合表示の現在行の印と同じ色相。</summary>
+    internal static readonly Brush CurrentFrame = DiffFlowDocumentRenderer.FrozenBrush("#FFFFC107");
+    private static readonly Brush CurrentFill = DiffFlowDocumentRenderer.FrozenBrush("#14FFC107");
 
     private readonly Canvas _canvas;
+    /// <summary>左のエディタ・中央の帯・右のエディタの上にまたがって被せる、現在ブロックの枠の置き場。</summary>
+    private readonly Canvas _currentOverlay;
+    private int _currentAnchor = -1;
     private readonly Func<DiffSessionViewModel?> _viewModel;
     private readonly Func<(double TextTop, double VerticalOffset, double LineHeight)?> _geometry;
     private readonly Func<double> _viewportHeight;
@@ -32,6 +39,7 @@ internal sealed class DiffSideBlockPresenter
 
     internal DiffSideBlockPresenter(
         Canvas canvas,
+        Canvas currentOverlay,
         Func<DiffSessionViewModel?> viewModel,
         Func<(double TextTop, double VerticalOffset, double LineHeight)?> geometry,
         Func<double> viewportHeight,
@@ -39,6 +47,7 @@ internal sealed class DiffSideBlockPresenter
         Func<bool> hasUnsavedEdits)
     {
         _canvas = canvas;
+        _currentOverlay = currentOverlay;
         _viewModel = viewModel;
         _geometry = geometry;
         _viewportHeight = viewportHeight;
@@ -52,9 +61,13 @@ internal sealed class DiffSideBlockPresenter
         _blocks = DiffSideBlockMapper.Map(rows);
     }
 
+    /// <summary>↑↓ で選んでいる変更ブロックの先頭行（無ければ -1）。描き直しは呼び出し側の <see cref="Render"/>。</summary>
+    internal void SetCurrentAnchor(int anchor) => _currentAnchor = anchor;
+
     internal void Render()
     {
         _canvas.Children.Clear();
+        _currentOverlay.Children.Clear();
         if (_blocks.Count == 0 || _geometry() is not { } geometry) return;
 
         // 本文の上端（パンくず等の帯）のぶんは、スクロール位置を戻す形で足す。
@@ -89,6 +102,33 @@ internal sealed class DiffSideBlockPresenter
             Canvas.SetTop(band, placement.Top);
             _canvas.Children.Add(band);
         }
+
+        RenderCurrent(geometry.LineHeight, offset, viewport);
+    }
+
+    /// <summary>
+    /// 現在ブロックを左右の本文ごと枠で囲む。キャレットだけでは、読み取り専用の左やフォーカスの無いエディタでは
+    /// 見えず、↑↓ で「どれに飛んだのか」が分からなかった。帯はステージの状態で分けて描くが、枠は連続した変更の
+    /// かたまり全体（<see cref="DiffSideBlockMapper.RegionOf"/>）——↑↓ が飛ぶ単位と揃える。
+    /// </summary>
+    private void RenderCurrent(double lineHeight, double offset, double viewport)
+    {
+        if (DiffSideBlockMapper.RegionOf(_rows, _currentAnchor) is not { } region
+            || !DiffSideBlockMapper.TryGetVisiblePlacement(region, lineHeight, offset, viewport, out var placement))
+            return;
+        var frame = new Border
+        {
+            Width = Math.Max(0, _currentOverlay.ActualWidth),
+            Height = placement.Height + 2,
+            BorderBrush = CurrentFrame,
+            BorderThickness = new Thickness(1.5),
+            CornerRadius = new CornerRadius(2),
+            Background = CurrentFill,
+            IsHitTestVisible = false,
+        };
+        Canvas.SetLeft(frame, 0);
+        Canvas.SetTop(frame, placement.Top - 1);
+        _currentOverlay.Children.Add(frame);
     }
 
     /// <summary>帯の半分の押し場所。触れている間だけそこを明るくして、どちらを押すのかが見えるようにする。</summary>

@@ -58,7 +58,7 @@ public sealed partial class DiffSessionViewModel
 
     partial void OnIsMarkdownRenderChanged(bool value)
     {
-        _changeCursor = -1;   // 行き先の並び（テキスト行／レンダリングの変更グループ）が入れ替わる
+        ResetChangeCursor();   // 行き先の並び（テキスト行／レンダリングの変更グループ）が入れ替わる
         NotifyMarkdownRenderState();
         _ = LoadAndAutoJumpAsync(SelectedFile);
     }
