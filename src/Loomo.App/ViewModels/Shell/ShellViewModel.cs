@@ -30,6 +30,7 @@ public enum SettingsCategory
     Lsp,
     Formatter,
     StyleCop,
+    DefaultApps,
     Keyboard
 }
 
@@ -51,6 +52,8 @@ public sealed partial class ShellViewModel : ObservableObject
     public LspPromptViewModel LspPrompt { get; }
     public FormatterSettingsViewModel Formatter { get; }
     public StyleCopSettingsViewModel StyleCop { get; }
+    /// <summary>Windows の既定のアプリとしての登録（設定オーバーレイの「既定のアプリ」）。</summary>
+    public DefaultAppSettingsViewModel DefaultApps { get; } = new();
     private readonly Lazy<KeybindingsViewModel> _keyboard;
     /// <summary>キーバインド一覧。設定画面でしか使わないので、起動時には作らず初回参照で作る
     /// （一覧の構築だけで実測 ~51ms）。</summary>
@@ -302,6 +305,8 @@ public sealed partial class ShellViewModel : ObservableObject
             Formatter.Refresh();
         else if (value == SettingsCategory.StyleCop)
             StyleCop.Refresh();
+        else if (value == SettingsCategory.DefaultApps)
+            DefaultApps.Refresh();
     }
 
     /// <summary>設定オーバーレイを閉じる（Esc・背景クリック・閉じるボタン）。</summary>

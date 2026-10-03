@@ -12,10 +12,21 @@ namespace sk0ya.Loomo.App;
 public partial class App : Application
 {
     private ServiceProvider? _services;
+    private InstanceRelayServer? _relay;
 
     protected override void OnStartup(StartupEventArgs e)
     {
         StartupProfiler.Mark("OnStartup 開始");
+
+        // 既定のアプリとして起こされた（ファイル・URL・フォルダーが渡された）なら、まず起動中の部屋へ渡す。
+        // 全部渡せたらこのプロセスは何も開かずに終わる——部屋を増やさない（ExternalOpenRouting）。
+        // 何も渡されていない普通の起動は問い合わせすらしない（起動を遅くしない）。
+        var startupRequest = ExternalOpenStartup.Dispatch(StartupArguments.Parse(e.Args));
+        if (startupRequest is null)
+        {
+            Shutdown();
+            return;
+        }
 
         // 未処理例外でアプリが落ちるとき、Debug.Assert で例外の詳細（型・メッセージ・スタック）を出す。
         // Debug ビルドではアサートダイアログに全文が表示され、その場で内訳を確認できる（Release は無効）。
@@ -54,10 +65,19 @@ public partial class App : Application
         // タスクバーの Recent から起動された場合も、通常のフォルダー引数と同じ経路で
         // ワークスペースを先にアクティブ化する。ShellWindow 解決後だと空の初期ペインを
         // いったん作ってから切り替えることになるため、ウィンドウ生成前に済ませる。
-        if (StartupArguments.TryGetWorkspaceFolder(e.Args) is { } startupFolder)
+        // 中継の受け口はウィンドウより先に立てる。同時に起こされた兄弟プロセス（複数ファイルを一度に開いた等）が
+        // 待っているのはこれ——立ったら取り合いを降りて、後から来た要求を受け始める（届いたものは初フレームまで溜める）。
+        _relay = new InstanceRelayServer(InstanceRelay.PipeName(Environment.ProcessId));
+        var workspace = _services.GetRequiredService<IWorkspaceService>();
+        workspace.FoldersChanged += (_, _) => _relay.SetFolders(workspace.Folders);
+        _relay.SetFolders(workspace.Folders);
+        ExternalOpenStartup.ReleaseElection();
+
+        if (startupRequest.WorkspaceFolder is { } startupFolder)
             _services.GetRequiredService<WorkspaceListViewModel>().ActivateFolder(startupFolder);
 
         var shell = _services.GetRequiredService<ShellWindow>();
+        shell.AttachExternalOpen(_relay, startupRequest);
         StartupProfiler.Mark("ShellWindow 解決完了");
         shell.ContentRendered += (_, _) => StartupProfiler.Mark("ContentRendered（初フレーム）");
         shell.Show();
@@ -148,6 +168,7 @@ public partial class App : Application
         // 上書き貼り付けの退避先（.loomo-conflict-*）は Undo のためだけに残している隠しコピーなので、
         // 履歴と一緒にここで捨てる。落ちて通らなかったぶんは次回起動の Sweep が拾う。
         try { _services?.GetService<FileOperationHistory>()?.Clear(); } catch { }
+        _relay?.Dispose();
         _services?.Dispose();
         base.OnExit(e);
     }

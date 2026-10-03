@@ -167,6 +167,8 @@
                                      IsChecked="{Binding SettingsCategory, Converter={StaticResource EnumToBool}, ConverterParameter=Formatter}" />
                         <RadioButton Style="{StaticResource CategoryNavItem}" Content="🛡  StyleCop"
                                      IsChecked="{Binding SettingsCategory, Converter={StaticResource EnumToBool}, ConverterParameter=StyleCop}" />
+                        <RadioButton Style="{StaticResource CategoryNavItem}" Content="🗂  既定のアプリ"
+                                     IsChecked="{Binding SettingsCategory, Converter={StaticResource EnumToBool}, ConverterParameter=DefaultApps}" />
                         <RadioButton Style="{StaticResource CategoryNavItem}" Content="⌨  キーボード"
                                      IsChecked="{Binding SettingsCategory, Converter={StaticResource EnumToBool}, ConverterParameter=Keyboard}" />
                     </StackPanel>
@@ -524,6 +526,45 @@
                                             Padding="10,2" Command="{Binding StyleCop.ApplySeverityCommand}" />
                                 </Grid>
                                 <TextBlock Text="{Binding StyleCop.Status}" TextWrapping="Wrap" Margin="0,12,0,0"
+                                           Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs11}" />
+                            </StackPanel>
+
+                            <!-- ===== 既定のアプリ（Windows からファイル・フォルダー・Web を Loomo で開く） ===== -->
+                            <StackPanel Visibility="{Binding SettingsCategory, Converter={StaticResource EnumToVis}, ConverterParameter=DefaultApps}">
+                                <TextBlock Style="{StaticResource SectionTitle}" Text="既定のアプリ" Margin="0,0,0,4" />
+                                <TextBlock Style="{StaticResource FieldHint}" TextWrapping="Wrap"
+                                           Text="チェックした種類について、Windows の「プログラムから開く」と既定のアプリの選択肢に Loomo を加えます。チェックしただけでは既定は変わりません。" />
+
+                                <CheckBox IsChecked="{Binding DefaultApps.Text}" Margin="0,12,0,0"
+                                          ToolTip="{Binding DefaultApps.TextExtensions}">
+                                    <TextBlock Text="テキスト・コード（.cs .md .json など）— エディタで開く" TextWrapping="Wrap" />
+                                </CheckBox>
+                                <CheckBox IsChecked="{Binding DefaultApps.Preview}" Margin="0,8,0,0"
+                                          ToolTip="{Binding DefaultApps.PreviewExtensions}">
+                                    <TextBlock Text="PDF・画像 — プレビューで開く" TextWrapping="Wrap" />
+                                </CheckBox>
+                                <CheckBox IsChecked="{Binding DefaultApps.Web}" Margin="0,8,0,0"
+                                          ToolTip="{Binding DefaultApps.WebTargets}">
+                                    <TextBlock Text="Web ページ（リンク・.html）— ブラウザペインで開く" TextWrapping="Wrap" />
+                                </CheckBox>
+                                <CheckBox IsChecked="{Binding DefaultApps.Folder}" Margin="0,8,0,0">
+                                    <TextBlock Text="フォルダー — 右クリックに「Loomo で開く」を出す（これはチェックした時点で使えます）" TextWrapping="Wrap" />
+                                </CheckBox>
+
+                                <StackPanel Visibility="{Binding DefaultApps.HasPathMismatch, Converter={StaticResource BoolToVis}}" Margin="0,12,0,0">
+                                    <TextBlock Text="{Binding DefaultApps.PathMismatch}" TextWrapping="Wrap" />
+                                    <Button Style="{StaticResource SecondaryButton}" Margin="0,6,0,0" Padding="10,2" HorizontalAlignment="Left"
+                                            Content="この Loomo に向け直す" Command="{Binding DefaultApps.RetargetCommand}" />
+                                </StackPanel>
+
+                                <TextBlock Style="{StaticResource FieldHint}" TextWrapping="Wrap" Margin="0,16,0,0"
+                                           Text="既定にするには、Windows の設定で種類ごとに Loomo を選んでください（アプリが勝手に既定を書き換えることは Windows が許していません）。" />
+                                <Button Style="{StaticResource SecondaryButton}" Margin="0,6,0,0" Padding="10,2" HorizontalAlignment="Left"
+                                        Content="Windows の設定を開く"
+                                        Command="{Binding DefaultApps.OpenWindowsSettingsCommand}" />
+                                <TextBlock Style="{StaticResource FieldHint}" TextWrapping="Wrap" Margin="0,16,0,0"
+                                           Text="Loomo で開いたファイルは、そのファイルを含むワークスペースを開いているウィンドウへ、無ければ最後に使ったウィンドウへ送られます。" />
+                                <TextBlock Text="{Binding DefaultApps.Status}" TextWrapping="Wrap" Margin="0,12,0,0"
                                            Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs11}" />
                             </StackPanel>
 
