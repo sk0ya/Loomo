@@ -286,6 +286,10 @@ public sealed class EditorSettings
     /// <summary>括弧・引用符を入力したとき対応する閉じ記号を自動挿入する（Vim <c>pairs</c>）。既定 OFF。</summary>
     public bool AutoClosePairs { get; set; }
 
+    /// <summary>連動編集: HTML / XML / XAML / JSX・TSX で開きタグ名を書き換えると閉じタグ名も追従する
+    /// （VS Code の Linked Editing。Vim <c>set linkedediting</c>）。既定は有効。</summary>
+    public bool LinkedEditing { get; set; } = true;
+
     /// <summary>入力の先読み（キャレットの先に薄く出る提案）を使うか。既定は有効。
     /// これを切ると、同じバッファの既出行からの予測もローカル LLM の先読みもまとめて止まる。</summary>
     public bool InlineSuggest { get; set; } = true;

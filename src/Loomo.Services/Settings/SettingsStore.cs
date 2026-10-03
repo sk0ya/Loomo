@@ -434,6 +434,7 @@ public sealed class SettingsStore
         public List<string>? FormatOnSaveExcludedExtensions { get; set; }
         public bool ApplyEditorConfigOnSave { get; set; } = true;
         public bool AutoClosePairs { get; set; }
+        public bool LinkedEditing { get; set; } = true;
         public bool ShowInlayHints { get; set; }
         public bool ShowDebugInlineValues { get; set; } = true;
         public bool InlineSuggest { get; set; } = true;
@@ -455,6 +456,7 @@ public sealed class SettingsStore
             FormatOnSaveExcludedExtensions = [.. e.FormatOnSaveExcludedExtensions],
             ApplyEditorConfigOnSave = e.ApplyEditorConfigOnSave,
             AutoClosePairs = e.AutoClosePairs,
+            LinkedEditing = e.LinkedEditing,
             ShowInlayHints = e.ShowInlayHints,
             ShowDebugInlineValues = e.ShowDebugInlineValues,
             InlineSuggest = e.InlineSuggest,
@@ -477,6 +479,7 @@ public sealed class SettingsStore
             e.FormatOnSaveExcludedExtensions = FormatOnSaveExcludedExtensions is { } excluded ? [.. excluded] : new();
             e.ApplyEditorConfigOnSave = ApplyEditorConfigOnSave;
             e.AutoClosePairs = AutoClosePairs;
+            e.LinkedEditing = LinkedEditing;
             e.ShowInlayHints = ShowInlayHints;
             e.ShowDebugInlineValues = ShowDebugInlineValues;
             e.InlineSuggest = InlineSuggest;

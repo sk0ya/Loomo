@@ -64,6 +64,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     /// <summary>保存時に .editorconfig の空白規則を適用するか（整形カテゴリ）。</summary>
     [ObservableProperty] private bool _applyEditorConfigOnSave;
     [ObservableProperty] private bool _autoClosePairs;
+    [ObservableProperty] private bool _linkedEditing;
     [ObservableProperty] private bool _showInlayHints;
     [ObservableProperty] private bool _showDebugInlineValues = true;
     [ObservableProperty] private int _tabWidth;
@@ -152,6 +153,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         ApplyEditorConfigOnSave = form.ApplyEditorConfigOnSave;
         AutoClosePairs = form.AutoClosePairs; ShowInlayHints = form.ShowInlayHints;
         ShowDebugInlineValues = form.ShowDebugInlineValues;
+        LinkedEditing = form.LinkedEditing;
         TabWidth = form.TabWidth; UseSpacesForTab = form.UseSpacesForTab;
         ImagePasteDirectory = form.ImagePasteDirectory; ImagePasteFileName = form.ImagePasteFileName;
         ImagePasteAltText = form.ImagePasteAltText;
@@ -211,6 +213,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     partial void OnFormatOnSaveExcludedExtensionsChanged(string value) => Persist();
     partial void OnApplyEditorConfigOnSaveChanged(bool value) => Persist();
     partial void OnAutoClosePairsChanged(bool value) => Persist();
+    partial void OnLinkedEditingChanged(bool value) => Persist();
     partial void OnShowInlayHintsChanged(bool value) => Persist();
     partial void OnShowDebugInlineValuesChanged(bool value) => Persist();
     partial void OnTabWidthChanged(int value) => Persist();
@@ -248,6 +251,7 @@ public sealed partial class SettingsViewModel : ObservableObject
             ApplyEditorConfigOnSave = ApplyEditorConfigOnSave,
             AutoClosePairs = AutoClosePairs, ShowInlayHints = ShowInlayHints,
             ShowDebugInlineValues = ShowDebugInlineValues,
+            LinkedEditing = LinkedEditing,
             TabWidth = TabWidth, UseSpacesForTab = UseSpacesForTab,
             ImagePasteDirectory = ImagePasteDirectory, ImagePasteFileName = ImagePasteFileName,
             ImagePasteAltText = ImagePasteAltText, AutoApprove = AutoApprove,

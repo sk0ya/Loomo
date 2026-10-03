@@ -29,6 +29,7 @@ public sealed record SettingsFormState
     /// <summary>保存時に .editorconfig の空白規則（行末空白・末尾改行・改行コード）を適用するか。</summary>
     public bool ApplyEditorConfigOnSave { get; init; }
     public bool AutoClosePairs { get; init; }
+    public bool LinkedEditing { get; init; }
     public bool ShowInlayHints { get; init; }
     public bool ShowDebugInlineValues { get; init; }
 
@@ -82,6 +83,7 @@ public sealed class SettingsPersistenceHandler
             _settings.Editor.FormatOnSaveExcludedExtensions),
         ApplyEditorConfigOnSave = _settings.Editor.ApplyEditorConfigOnSave,
         AutoClosePairs = _settings.Editor.AutoClosePairs,
+        LinkedEditing = _settings.Editor.LinkedEditing,
         ShowInlayHints = _settings.Editor.ShowInlayHints,
         ShowDebugInlineValues = _settings.Editor.ShowDebugInlineValues,
         InlineSuggest = _settings.Editor.InlineSuggest,
@@ -120,6 +122,7 @@ public sealed class SettingsPersistenceHandler
             FormatOnSavePolicy.ParseExtensions(form.FormatOnSaveExcludedExtensions);
         _settings.Editor.ApplyEditorConfigOnSave = form.ApplyEditorConfigOnSave;
         _settings.Editor.AutoClosePairs = form.AutoClosePairs;
+        _settings.Editor.LinkedEditing = form.LinkedEditing;
         _settings.Editor.ShowInlayHints = form.ShowInlayHints;
         _settings.Editor.ShowDebugInlineValues = form.ShowDebugInlineValues;
         _settings.Editor.InlineSuggest = form.InlineSuggest;
