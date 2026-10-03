@@ -136,6 +136,7 @@ public sealed class SettingsStore
         public PersistedInlineCompletion? InlineCompletion { get; set; }
         public PersistedActivityBar? ActivityBar { get; set; }
         public PersistedTabsPanel? TabsPanel { get; set; }
+        public PersistedExplorer? Explorer { get; set; }
 
         public static PersistedSettings From(LoomoSettings s) => new()
         {
@@ -161,6 +162,7 @@ public sealed class SettingsStore
             InlineCompletion = PersistedInlineCompletion.From(s.InlineCompletion),
             ActivityBar = PersistedActivityBar.From(s.ActivityBar),
             TabsPanel = PersistedTabsPanel.From(s.TabsPanel),
+            Explorer = PersistedExplorer.From(s.Explorer),
         };
 
         public void ApplyTo(LoomoSettings s)
@@ -188,6 +190,7 @@ public sealed class SettingsStore
             Lsp?.ApplyTo(s.Lsp);                 // 旧設定（null）は空（=促しを抑止しない）を維持
             ActivityBar?.ApplyTo(s.ActivityBar); // 旧設定（null）は空＝既定配置を維持
             TabsPanel?.ApplyTo(s.TabsPanel);     // 旧設定（null）は3種とも表示を維持
+            Explorer?.ApplyTo(s.Explorer);       // 旧設定（null）は既定（まとめ表示 ON・既定ルール）を維持
         }
     }
 
@@ -217,6 +220,38 @@ public sealed class SettingsStore
             t.ShowBrowser = ShowBrowser;
             t.GroupBrowserByDomain = GroupBrowserByDomain;
             t.ShowTerminal = ShowTerminal;
+        }
+    }
+
+    // ===== エクスプローラー（関連ファイルのまとめ表示）。平文で保持。 =====
+
+    private sealed class PersistedExplorer
+    {
+        public bool FileNestingEnabled { get; set; } = true;
+
+        /// <summary>親のパターン → 子のパターン（カンマ区切り）。VS Code の
+        /// <c>explorer.fileNesting.patterns</c> と同じ形の JSON オブジェクトで書く（並び順が優先順位）。
+        /// null＝旧設定（未指定）→ 既定ルールを維持。空オブジェクトは「何もまとめない」として尊重する。</summary>
+        public Dictionary<string, string>? FileNestingPatterns { get; set; }
+
+        public static PersistedExplorer From(ExplorerSettings e)
+        {
+            var patterns = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var (key, value) in e.FileNestingPatterns)
+                if (!string.IsNullOrWhiteSpace(key))
+                    patterns[key] = value ?? "";
+            return new() { FileNestingEnabled = e.FileNestingEnabled, FileNestingPatterns = patterns };
+        }
+
+        // 既存インスタンスを書き換える（DI シングルトンの参照を保つため置き換えない）。
+        public void ApplyTo(ExplorerSettings e)
+        {
+            e.FileNestingEnabled = FileNestingEnabled;
+            if (FileNestingPatterns is null) return;
+            e.FileNestingPatterns.Clear();
+            foreach (var (key, value) in FileNestingPatterns)
+                if (!string.IsNullOrWhiteSpace(key) && !string.IsNullOrWhiteSpace(value))
+                    e.FileNestingPatterns.Add(new(key.Trim(), value.Trim()));
         }
     }
 

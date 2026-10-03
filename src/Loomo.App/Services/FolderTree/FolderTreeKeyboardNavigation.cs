@@ -15,7 +15,8 @@ internal static class FolderTreeKeyboardNavigation
         foreach (var node in nodes)
         {
             yield return node;
-            if (node.IsDirectory && node.IsExpanded)
+            // まとめ表示の親ファイル（子を抱えたファイル）も、開いていれば子が見えている。
+            if ((node.IsDirectory || node.HasNestedChildren) && node.IsExpanded)
                 foreach (var child in EnumerateVisibleNodes(node.Children))
                     yield return child;
         }
