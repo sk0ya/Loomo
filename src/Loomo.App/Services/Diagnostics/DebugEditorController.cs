@@ -115,12 +115,7 @@ internal sealed class DebugEditorController
     /// sk0ya.Editor.Controls 1.0.95 から。古いピンでは収集・無効化までで、描画は行わない（Loomo.App.csproj 参照）。</summary>
     private static void ApplyInlineValues(VimEditorControl control, IReadOnlyList<DebugInlineValueLine> lines)
     {
-#if LOOMO_EDITOR_INLINE_VALUES
         control.SetInlineValues(lines.Select(l => new EditorInlineValue(l.Line0, l.Text)).ToList());
-#else
-        _ = control;
-        _ = lines;
-#endif
     }
 
     private IEnumerable<VimEditorControl> EditorsFor(DebugManagerViewModelBase manager)

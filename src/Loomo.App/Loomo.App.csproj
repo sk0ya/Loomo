@@ -104,15 +104,6 @@
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
   </PropertyGroup>
 
-  <!-- デバッグの行末の値（Inline Values）を描くエディタ API（VimEditorControl.SetInlineValues）は
-       sk0ya.Editor.Controls 1.0.95 以降にある。それより古いピンでは値の収集・無効化までは動き、描画だけを
-       行わない（DebugEditorController の LOOMO_EDITOR_INLINE_VALUES）。ピンを上げれば自動で描画が入る。
-       ローカルの Editor（UseLocalEditor=true）で確かめるときは -p:EditorHasInlineValues=true を併せて渡す。 -->
-  <PropertyGroup>
-    <EditorHasInlineValues Condition="'$(EditorHasInlineValues)' == '' and '$(UseLocalEditor)' == 'false'">$([MSBuild]::VersionGreaterThanOrEquals('$(EditorPackageVersion)', '1.0.95'))</EditorHasInlineValues>
-    <DefineConstants Condition="'$(EditorHasInlineValues)' == 'true'">$(DefineConstants);LOOMO_EDITOR_INLINE_VALUES</DefineConstants>
-  </PropertyGroup>
-
   <ItemGroup>
     <None Remove="Assets\Loomo.ico" />
     <Resource Include="Assets\Loomo.ico" />

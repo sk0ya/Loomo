@@ -316,7 +316,7 @@ public sealed class LspWorkspaceService : ILspWorkspace, IDisposable
         foreach (var pooled in _pool.Running)
         {
             if (!byRoot.TryGetValue(Path.GetFullPath(pooled.Root), out var candidates)) continue;
-            if (LspFileRenameClient.For(pooled.Client) is not { } channel) continue;
+            var channel = LspFileRenameClient.For(pooled.Client);
             var filters = LspFileOperationFilters.Parse(channel.ServerCapabilities, operation);
             if (filters is null) continue;
             var targets = candidates.Where(filters.Matches).ToList();

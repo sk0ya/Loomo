@@ -775,6 +775,5 @@ VS Code の「ファイル移動時に import を更新」相当。エクスプ�
 - ファイル操作の Undo（`FileOperationHistory`）は参照の更新を戻さない。参照の更新はエディタ側の WorkspaceEdit Undo で戻す。
 
 **Editor 側の前提**: `ILspClient.ServerCapabilities`／`WillRenameFilesAsync`／`DidRenameFilesAsync` と、client capabilities の
-`workspace.fileOperations` 宣言は Editor の `feature/will-rename-files` で足した（未公開）。Loomo はピン中のパッケージに
-無いメンバーを `LspFileRenameClient` がリフレクションで引き、**無ければ何もしない**（＝公開・ピン更新までは機能は眠っている）。
-ピンを上げたら `LspFileRenameClient` は直接呼び出しに置き換えて消す。
+`workspace.fileOperations` 宣言は Editor 1.0.95 で足した。`LspFileRenameClient` はそれを `ILspFileRenameClient`
+（テストの偽クライアントが直接実装する形）へ包むだけの薄い口。

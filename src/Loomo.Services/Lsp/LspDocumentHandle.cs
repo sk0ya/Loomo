@@ -63,6 +63,7 @@ internal sealed class LspDocumentHandle : ILspDocument, ILspReferenceQuery
     public bool ServerSupportsDocumentLink => _entry.Client.Client.SupportsDocumentLink;
     public bool ServerSupportsCodeLens => _entry.Client.Client.SupportsCodeLens;
     public bool ServerSupportsCodeLensResolve => _entry.Client.Client.SupportsCodeLensResolve;
+    public bool ServerSupportsLinkedEditingRange => _entry.Client.Client.SupportsLinkedEditingRange;
     public bool ServerSupportsWorkspaceDiagnostics => _entry.Client.Client.SupportsWorkspaceDiagnostics;
     public IReadOnlyList<string> CompletionTriggerCharacters => _entry.Client.Client.CompletionTriggerCharacters;
     public IReadOnlyList<string> ServerCodeActionKinds => _entry.Client.Client.CodeActionKinds;
@@ -227,6 +228,14 @@ internal sealed class LspDocumentHandle : ILspDocument, ILspReferenceQuery
         IsReady && ServerSupportsCodeLensResolve
             ? _entry.Client.Client.ResolveCodeLensAsync(lens, ct)
             : Task.FromResult<LspCodeLens?>(null);
+
+    /// <summary>連動編集（開き/閉じタグ名）の範囲。エディタが打鍵の前に先回りで問い合わせ、答えを
+    /// バッファの版に紐づけて控える。未対応・未接続なら null（エディタはマークアップ用の自前判定へ回る）。</summary>
+    public Task<Editor.Core.Editing.LinkedEditingRanges?> RequestLinkedEditingRangesAsync(
+        int line, int character, CancellationToken ct = default) =>
+        IsReady && ServerSupportsLinkedEditingRange
+            ? _entry.Client.Client.GetLinkedEditingRangesAsync(Uri, new LspPosition(line, character), ct)
+            : Task.FromResult<Editor.Core.Editing.LinkedEditingRanges?>(null);
 
     public async Task<LspSelectionRange?> RequestSelectionRangeAsync(int line, int character)
     {
