@@ -33,6 +33,25 @@ public sealed class GitCommandRunner
     public Task<GitCommandResult> RunAsync(params string[] args) =>
         RunAsync(null, CancellationToken.None, args);
 
+    /// <summary>
+    /// 中止できる呼び出しの時間制限。<b>中止できるなら時間では刈らない</b>——止める手段を人が持っているのに
+    /// 既定の 120 秒で打ち切ると、大きなリポジトリ（20年ものの作業ツリーを丸ごと固める等）では正しく
+    /// 待っている途中で失敗になり、しかも「遅い」と「失敗」の見分けがつかない。中止できない呼び出しは従来どおり。
+    /// </summary>
+    internal static TimeSpan? TimeoutFor(CancellationToken cancellationToken)
+        => cancellationToken.CanBeCanceled ? Timeout.InfiniteTimeSpan : null;
+
+    /// <summary>中止できる照会（時間制限は <see cref="TimeoutFor"/>）。中止されたら
+    /// <see cref="OperationCanceledException"/>（git は木ごと止める）。</summary>
+    internal Task<GitCommandResult> RunAsync(CancellationToken cancellationToken, params string[] args)
+    {
+        var root = _rootState.CurrentRoot;
+        if (string.IsNullOrEmpty(root) || !Directory.Exists(root))
+            return Task.FromResult(
+                new GitCommandResult(-1, "", "ワークスペースフォルダが開かれていません。"));
+        return RunInAsync(root, null, TimeoutFor(cancellationToken), cancellationToken, args);
+    }
+
     internal async Task<string?> GetGitDirectoryAsync()
     {
         var result = await RunAsync("rev-parse", "--git-dir").ConfigureAwait(false);
@@ -90,7 +109,9 @@ public sealed class GitCommandRunner
             // TryKill が担う——パイプが閉じれば読みは EOF で終わる。
             var stdout = ChildProcessIo.ReadToEndAsync(process.StandardOutput, "git:stdout");
             var stderr = ChildProcessIo.ReadToEndAsync(process.StandardError, "git:stderr");
-            using var timeoutSource = new CancellationTokenSource(limit);
+            using var timeoutSource = limit == Timeout.InfiniteTimeSpan
+                ? new CancellationTokenSource()
+                : new CancellationTokenSource(limit);
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(
                 cancellationToken, timeoutSource.Token);
             try

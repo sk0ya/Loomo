@@ -51,6 +51,12 @@ public partial class GitSessionView
             Vm?.CompareWithWorktree(worktree);
     }
 
+    private async void OnWorktreeCompareFromOrigin(object sender, RoutedEventArgs e)
+    {
+        if (Vm is { } vm && SelectedWorktree is { } worktree)
+            await vm.CompareWorktreeFromOriginAsync(worktree);
+    }
+
     private void OnWorktreeCompare(object sender, RoutedEventArgs e)
     {
         if (SelectedWorktree is { } worktree)
@@ -76,7 +82,7 @@ public partial class GitSessionView
     {
         if (ComparePointsDialog.Prompt(Window.GetWindow(this), vm.CompareEndpoints(), from, to) is not { } result)
             return;
-        await vm.ComparePointsAsync(result.From, result.To, result.FromMergeBase);
+        await vm.ComparePointsAsync(result.From, result.To);
     }
 
     private static GitCompareEndpoint? CurrentWorktreeEndpoint(GitSessionViewModel vm)
@@ -201,6 +207,7 @@ public partial class GitSessionView
             return;
         }
         var other = !worktree.IsCurrent && worktree.Exists;
+        WorktreeMenuCompareFromOrigin.IsEnabled = worktree.Exists && !worktree.IsBare;
         WorktreeMenuCompare.IsEnabled = other;
         WorktreeMenuOpenWorkspace.IsEnabled = other;
         WorktreeMenuAddFolder.IsEnabled = other;

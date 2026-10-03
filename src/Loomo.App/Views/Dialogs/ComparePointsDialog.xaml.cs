@@ -5,7 +5,7 @@ using sk0ya.Loomo.Services;
 namespace sk0ya.Loomo.App.Views;
 
 /// <summary>2点比較ダイアログの結果。</summary>
-public sealed record ComparePointsResult(GitCompareEndpoint From, GitCompareEndpoint To, bool FromMergeBase);
+public sealed record ComparePointsResult(GitCompareEndpoint From, GitCompareEndpoint To);
 
 /// <summary>
 /// 2点比較ダイアログ。候補（ワークツリー・ブランチ・タグ）から選ぶか、ハッシュ等を直接打つ。
@@ -89,7 +89,7 @@ public partial class ComparePointsDialog : Window
             ErrorText.Visibility = Visibility.Visible;
             return;
         }
-        _result = new ComparePointsResult(from!, to!, MergeBaseBox.IsChecked == true);
+        _result = new ComparePointsResult(from!, to!);
         DialogResult = true;
     }
 }

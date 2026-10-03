@@ -10,6 +10,22 @@ namespace sk0ya.Loomo.Tests;
 /// </summary>
 public sealed class GitWorktreeLogicTests
 {
+    // ===== ブランチ元 =====
+
+    [Theory]
+    [InlineData("commit: wip\nbranch: Created from main\n", "main")]
+    [InlineData("branch: Created from refs/remotes/origin/develop", "origin/develop")]
+    [InlineData("branch: Created from refs/heads/release/1.2", "release/1.2")]
+    [InlineData("branch: Created from HEAD", null)]                // どの枝だったか分からない
+    [InlineData("commit: wip\nbranch: Created from main\ncommit (initial): x", null)]   // 最古が作成でない
+    [InlineData("", null)]
+    public void reflogの最古の行から作成元を拾う(string reflog, string? expected)
+        => Assert.Equal(expected, GitWorktreeArgs.ParseCreatedFrom(reflog));
+
+    [Fact]
+    public void ブランチ元の設定キーは名前の点や斜線をそのまま副節にする()
+        => Assert.Equal("branch.feature/v1.2.loomo-base", GitWorktreeArgs.OriginConfigKey("feature/v1.2"));
+
     // ===== porcelain の読み取り =====
 
     [Fact]

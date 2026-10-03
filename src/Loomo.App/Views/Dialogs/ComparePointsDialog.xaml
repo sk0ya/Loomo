@@ -25,7 +25,6 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
         <TextBlock Grid.Row="0" Grid.Column="0" Text="左（元）" VerticalAlignment="Center" Margin="0,0,12,8" />
@@ -45,18 +44,17 @@
                   DisplayMemberPath="Label" TextSearch.TextPath="Label"
                   ToolTip="ブランチ・タグ・ハッシュ、またはワークツリー（作業中の状態）" />
 
-        <CheckBox x:Name="MergeBaseBox" Grid.Row="2" Grid.Column="1" Foreground="{DynamicResource Fg}" Margin="0,0,0,6"
-                  Content="分岐点から比較（右が左から分かれた後に入れた変更だけ）" />
-
-        <TextBlock Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="3" TextWrapping="Wrap"
+        <!-- 「分かれてから入れた変更だけ」はここでは扱わない（ワークツリーの「ブランチ元から入れた変更」と
+             ブランチの「分岐点と比較」が受け持つ）。ここは素直な「左と右の差」だけ。 -->
+        <TextBlock Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="3" TextWrapping="Wrap"
                    FontSize="{DynamicResource Fs11}" Foreground="{DynamicResource FgDim}"
-                   Text="ワークツリーは未コミットの編集と新しいファイルも含めて比べます。右がいま開いているワークツリーなら、差分の右側をその場で編集できます。" />
+                   Text="左と右の中身の差をそのまま比べます。ワークツリーは未コミットの編集と新しいファイルも含めます。右がいま開いているワークツリーなら、差分の右側をその場で編集できます。&#x0a;自分が入れた変更だけを見たいときは、ワークツリーの右クリック「ブランチ元から入れた変更」を使ってください。" />
 
-        <TextBlock x:Name="ErrorText" Grid.Row="4" Grid.Column="0" Grid.ColumnSpan="3"
+        <TextBlock x:Name="ErrorText" Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="3"
                    Foreground="#FFE4676B" FontSize="{DynamicResource Fs11}" TextWrapping="Wrap"
                    Visibility="Collapsed" Margin="0,8,0,0" />
 
-        <StackPanel Grid.Row="5" Grid.Column="0" Grid.ColumnSpan="3" Orientation="Horizontal"
+        <StackPanel Grid.Row="4" Grid.Column="0" Grid.ColumnSpan="3" Orientation="Horizontal"
                     HorizontalAlignment="Right" Margin="0,16,0,0">
             <Button Content="比較" Style="{StaticResource FlatButton}" IsDefault="True" MinWidth="76" Click="OnOk" />
             <Button Content="キャンセル" Style="{StaticResource FlatButton}"

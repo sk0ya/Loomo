@@ -61,7 +61,12 @@ public sealed record GitCompareResolution(string? BaseRef, string? Error, string
 {
     public static readonly GitCompareResolution WorkingTree = new(null, null, "作業ツリー");
 
+    /// <summary>人が「中止」した。理由として画面に出すが、<b>答えとして覚えてはいけない</b>（次は最後まで引く）。</summary>
+    public static readonly GitCompareResolution Canceled = new(null, GitCompareCancellation.Message, "中止");
+
     public bool HasError => Error is not null;
+
+    public bool IsCanceled => ReferenceEquals(Error, GitCompareCancellation.Message);
 
     /// <summary>ブランチ／分岐点基準として解決できたか。</summary>
     public bool IsBaseComparison => BaseRef is not null;
@@ -76,7 +81,41 @@ public sealed record GitCompareChanges(IReadOnlyList<GitCommitFileChange> Files,
     public static readonly GitCompareChanges Empty =
         new(Array.Empty<GitCommitFileChange>(), null);
 
+    public static readonly GitCompareChanges Canceled =
+        new(Array.Empty<GitCommitFileChange>(), GitCompareCancellation.Message);
+
     public bool HasError => Error is not null;
+
+    public bool IsCanceled => ReferenceEquals(Error, GitCompareCancellation.Message);
+}
+
+/// <summary>
+/// 比較の「中止」。比較は大きなリポジトリでは分単位かかり得る（作業ツリーを丸ごと固める・広い差分の
+/// リネーム検出）ので、時間で刈らずに人が止められるようにしてある。中止は失敗ではないが、結果の器は
+/// 失敗と同じ <c>Error</c> 欄で運ぶ——受け手（一覧・解決）が既に失敗を画面に出す作りなので、そこへ乗せる。
+/// 見分けは文言ではなく<b>同一インスタンス</b>で行う（同じ文言の git のメッセージと取り違えない）。
+/// </summary>
+public static class GitCompareCancellation
+{
+    public static readonly string Message = new("比較を中止しました。".ToCharArray());
+}
+
+/// <summary>
+/// ワークツリー（のブランチ）の「ブランチ元」。<see cref="Reference"/> は分岐点を求める相手の ref。
+/// <see cref="Source"/> はそれをどこから知ったか（覚えていたものか、推定か）——推定なら画面でそう名乗る。
+/// </summary>
+public sealed record GitBranchOrigin(string Reference, GitBranchOriginSource Source);
+
+public enum GitBranchOriginSource
+{
+    /// <summary>Loomo で作ったときに覚えた（<c>branch.&lt;名前&gt;.loomo-base</c>）。</summary>
+    Recorded,
+
+    /// <summary>ブランチの reflog の「Created from …」（git の CLI や他のツールで作ったもの）。</summary>
+    Reflog,
+
+    /// <summary>分からないので既定ブランチ（origin/HEAD → main → master …）とみなした。</summary>
+    DefaultBranch,
 }
 
 /// <summary>
@@ -125,4 +164,6 @@ public enum GitCompareEndpointKind
 public sealed record GitCompareRange(string? FromRef, string? ToRef, string Label, string? Error)
 {
     public bool HasError => Error is not null;
+
+    public bool IsCanceled => ReferenceEquals(Error, GitCompareCancellation.Message);
 }

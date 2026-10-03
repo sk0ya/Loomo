@@ -189,26 +189,48 @@ public sealed partial class GitSessionViewModel
             branch.Name));
 
     /// <summary>
-    /// 2点比較。<b>右（to）がいま開いているワークツリーなら比較基準として開く</b>——右側が作業ツリーそのものに
-    /// なり、差分を見ながらその場で編集できる。それ以外は2つを固めたコミット範囲として（読み取り専用で）開く。
+    /// 2点比較（素直な「左と右の差」）。<b>右（to）がいま開いているワークツリーなら比較基準として開く</b>——
+    /// 右側が作業ツリーそのものになり、差分を見ながらその場で編集できる。それ以外は2つを固めたコミット範囲
+    /// として（読み取り専用で）開く。「分かれてから入れた変更だけ」は別の問いなので、ここではなく
+    /// <see cref="CompareWorktreeFromOriginAsync"/>（ワークツリー）とブランチの「分岐点と比較」が受け持つ。
     /// </summary>
-    public async Task ComparePointsAsync(GitCompareEndpoint from, GitCompareEndpoint to, bool fromMergeBase)
+    public Task ComparePointsAsync(GitCompareEndpoint from, GitCompareEndpoint to)
+        => OpenComparisonAsync(from, to, fromMergeBase: false, label: null);
+
+    /// <summary>
+    /// 「ブランチ元から入れた変更」：そのワークツリーのブランチが分かれた元（覚えていた起点 → reflog →
+    /// 既定ブランチ）との<b>分岐点</b>から、ワークツリーの作業中の状態（未コミット・未追跡込み）まで。
+    /// 元を推定で決めたときは、何と比べているかを状態欄で名乗る（黙って main と比べない）。
+    /// </summary>
+    public async Task CompareWorktreeFromOriginAsync(GitWorktreeInfo worktree)
+    {
+        if (!worktree.Exists || worktree.IsBare) return;
+        var origin = await _git.ResolveBranchOriginAsync(worktree);
+        if (origin is null)
+        {
+            SetStatus($"{worktree.DisplayName} のブランチ元が分かりません（既定ブランチも見つかりません）。"
+                + "「2点比較…」で比べる相手を選んでください。", isError: true);
+            return;
+        }
+        SetStatus(origin.Source == GitBranchOriginSource.DefaultBranch
+            ? $"{worktree.DisplayName} のブランチ元は記録が無いので、既定ブランチ {origin.Reference} から比べます。"
+            : "", isError: false);
+        await OpenComparisonAsync(GitCompareEndpoint.Ref(origin.Reference), GitCompareEndpoint.Worktree(worktree),
+            fromMergeBase: true, label: $"{origin.Reference} から入れた変更");
+    }
+
+    private async Task OpenComparisonAsync(
+        GitCompareEndpoint from, GitCompareEndpoint to, bool fromMergeBase, string? label)
     {
         if (await AsCompareBaseAsync(from, to, fromMergeBase) is { } selection)
         {
-            DiffOpenRequested?.Invoke(this, new DiffOpenTarget.CompareBase(selection, from.Label));
+            DiffOpenRequested?.Invoke(this, new DiffOpenTarget.CompareBase(selection, label ?? from.Label));
             return;
         }
-
-        SetStatus("比較の準備中…", isError: false);
-        var range = await _git.ResolveCompareRangeAsync(from, to, fromMergeBase);
-        if (range.HasError)
-        {
-            SetStatus(range.Error!, isError: true);
-            return;
-        }
-        SetStatus("", isError: false);
-        DiffOpenRequested?.Invoke(this, new DiffOpenTarget.CommitRange(range.FromRef, range.ToRef!, range.Label));
+        // 解決（作業ツリーを固める・分岐点）は Diff ペインが進捗と中止付きで行う。ここで待つと、
+        // 大きなリポジトリではペインに何も出ないまま時間だけが過ぎる。
+        label ??= $"{from.Label} → {to.Label}";
+        DiffOpenRequested?.Invoke(this, new DiffOpenTarget.PointsRange(from, to, fromMergeBase, label));
     }
 
     /// <summary>

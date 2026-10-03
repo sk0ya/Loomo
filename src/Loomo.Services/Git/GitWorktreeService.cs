@@ -59,7 +59,7 @@ public sealed class GitWorktreeService
             .FirstOrDefault();
     }
 
-    public Task<GitCommandResult> AddAsync(GitWorktreeAddRequest request)
+    public async Task<GitCommandResult> AddAsync(GitWorktreeAddRequest request)
     {
         string[] args;
         try
@@ -68,9 +68,37 @@ public sealed class GitWorktreeService
         }
         catch (ArgumentException ex)
         {
-            return Task.FromResult(new GitCommandResult(-1, "", ex.Message));
+            return new GitCommandResult(-1, "", ex.Message);
         }
-        return _mutations.ExecuteAsync(args);
+        // 起点は作る前に確かめる（作った後の HEAD は同じでも、名前で覚えたいのは「いまの枝」のほう）。
+        var origin = request.Mode == GitWorktreeAddMode.NewBranch
+            ? await OriginNameAsync(request.StartPoint).ConfigureAwait(false)
+            : null;
+        var result = await _mutations.ExecuteAsync(args).ConfigureAwait(false);
+        if (result.Success && origin is not null && request.Branch is { } branch)
+            await RecordOriginAsync(branch.Trim(), origin).ConfigureAwait(false);
+        return result;
+    }
+
+    /// <summary>
+    /// 新しいブランチの「ブランチ元」を <c>branch.&lt;名前&gt;.loomo-base</c> に覚える（「ブランチ元から入れた変更」の起点）。
+    /// git 自身は切った元を記録しない——reflog の「Created from」は期限で消え、起点を省くと「HEAD」としか
+    /// 残らない。ブランチの設定節に置くのは、ブランチを消すと git が節ごと消してくれるから（掃除が要らない）。
+    /// 覚えられなくても作成は成功しているので、失敗は黙って捨てる（比較のときに既定ブランチへ落ちるだけ）。
+    /// </summary>
+    private Task<GitCommandResult> RecordOriginAsync(string branch, string origin)
+        => _runner.RunAsync("config", GitWorktreeArgs.OriginConfigKey(branch), origin);
+
+    /// <summary>起点を名前で：明示されていればそれ、省略（＝HEAD）ならいまの枝の名前、デタッチならそのコミット。</summary>
+    private async Task<string?> OriginNameAsync(string? startPoint)
+    {
+        var value = startPoint?.Trim();
+        if (!string.IsNullOrEmpty(value) && !string.Equals(value, "HEAD", StringComparison.Ordinal))
+            return value;
+        var branch = await _runner.RunAsync("symbolic-ref", "--quiet", "--short", "HEAD").ConfigureAwait(false);
+        if (branch.Success && branch.Output.Trim() is { Length: > 0 } name)
+            return name;
+        return await ResolveCommitAsync("HEAD").ConfigureAwait(false);
     }
 
     public Task<GitCommandResult> RemoveAsync(string path, bool force)
@@ -102,7 +130,7 @@ public sealed class GitWorktreeService
             return new GitWorktreeSnapshot(null, $"ワークツリーのフォルダーがありません: {worktreePath}");
 
         var indexQuery = await _runner.RunInAsync(
-            worktreePath, null, null, cancellationToken, "rev-parse", "--git-path", "index").ConfigureAwait(false);
+            worktreePath, null, GitCommandRunner.TimeoutFor(cancellationToken), cancellationToken, "rev-parse", "--git-path", "index").ConfigureAwait(false);
         if (!indexQuery.Success)
             return new GitWorktreeSnapshot(null, $"ワークツリーを読めませんでした: {indexQuery.Message}");
         var indexPath = indexQuery.Output.Trim();
@@ -117,12 +145,12 @@ public sealed class GitWorktreeService
             var environment = new Dictionary<string, string> { ["GIT_INDEX_FILE"] = temp };
 
             var add = await _runner.RunInAsync(
-                worktreePath, environment, null, cancellationToken, "add", "--all").ConfigureAwait(false);
+                worktreePath, environment, GitCommandRunner.TimeoutFor(cancellationToken), cancellationToken, "add", "--all").ConfigureAwait(false);
             if (!add.Success)
                 return new GitWorktreeSnapshot(null, $"ワークツリーの状態を固められませんでした: {add.Message}");
 
             var tree = await _runner.RunInAsync(
-                worktreePath, environment, null, cancellationToken, "write-tree").ConfigureAwait(false);
+                worktreePath, environment, GitCommandRunner.TimeoutFor(cancellationToken), cancellationToken, "write-tree").ConfigureAwait(false);
             var hash = tree.Output.Trim();
             return tree.Success && hash.Length > 0
                 ? new GitWorktreeSnapshot(hash, null)

@@ -179,7 +179,7 @@ public sealed class GitWorktreeServiceTests : IAsyncLifetime
         var plain = await _git.ResolveCompareRangeAsync(
             GitCompareEndpoint.Ref("main"), GitCompareEndpoint.Worktree(feature), fromMergeBase: false);
         Assert.Null(plain.Error);
-        var plainFiles = await _git.GetRangeChangesAsync(plain.FromRef, plain.ToRef!);
+        var plainFiles = (await _git.GetRangeChangesAsync(plain.FromRef, plain.ToRef!)).Files;
         Assert.Contains(plainFiles, f => f.Path == "wip.txt" && f.Status == 'A');
         Assert.Contains(plainFiles, f => f.Path == "main-only.txt" && f.Status == 'D');
 
@@ -187,7 +187,7 @@ public sealed class GitWorktreeServiceTests : IAsyncLifetime
         var fromBase = await _git.ResolveCompareRangeAsync(
             GitCompareEndpoint.Ref("main"), GitCompareEndpoint.Worktree(feature), fromMergeBase: true);
         Assert.Null(fromBase.Error);
-        var baseFiles = await _git.GetRangeChangesAsync(fromBase.FromRef, fromBase.ToRef!);
+        var baseFiles = (await _git.GetRangeChangesAsync(fromBase.FromRef, fromBase.ToRef!)).Files;
         Assert.Contains(baseFiles, f => f.Path == "wip.txt");
         Assert.DoesNotContain(baseFiles, f => f.Path == "main-only.txt");
     }
@@ -200,11 +200,102 @@ public sealed class GitWorktreeServiceTests : IAsyncLifetime
 
         var range = await _git.ResolveCompareRangeAsync(
             GitCompareEndpoint.Ref("docs"), GitCompareEndpoint.Ref("main"), fromMergeBase: false);
-        var files = await _git.GetRangeChangesAsync(range.FromRef, range.ToRef!);
+        var files = (await _git.GetRangeChangesAsync(range.FromRef, range.ToRef!)).Files;
 
         Assert.Contains(files, f => f.Path == "docs/readme.md");
-        var named = await _git.GetRangeChangesAsync("docs", "main");   // 名前のまま渡しても曖昧にならない
+        var named = (await _git.GetRangeChangesAsync("docs", "main")).Files;   // 名前のまま渡しても曖昧にならない
         Assert.Contains(named, f => f.Path == "docs/readme.md");
+    }
+
+    [Fact]
+    public async Task 範囲の一覧が引けないときは変更なしと名乗らず理由を返す()
+    {
+        var changes = await _git.GetRangeChangesAsync("no-such-ref", "main");
+
+        Assert.True(changes.HasError);
+        Assert.False(changes.IsCanceled);
+        Assert.Empty(changes.Files);
+    }
+
+    [Fact]
+    public async Task 中止された範囲の一覧は中止として返り例外にならない()
+    {
+        var workspace = new FakeWorkspaceService();
+        workspace.OpenFolder(_root);
+        var history = new GitHistoryService(new GitCommandRunner(new GitRootState(workspace)));
+        using var canceled = new CancellationTokenSource();
+        canceled.Cancel();
+
+        var changes = await history.GetRangeChangesAsync("main~0", "main", canceled.Token);
+
+        Assert.True(changes.IsCanceled);
+        Assert.Same(GitCompareCancellation.Message, changes.Error);
+    }
+
+    [Fact]
+    public async Task ブランチ元は作ったときの起点を覚えている()
+    {
+        await MustRunAsync("branch", "release");
+        var path = Suggest("feature");
+        var added = await _git.AddWorktreeAsync(
+            new GitWorktreeAddRequest(GitWorktreeAddMode.NewBranch, path, "feature", "release"));
+        Assert.True(added.Success, added.Message);
+        var feature = Assert.Single(await _git.GetWorktreesAsync(), w => w.Branch == "feature");
+
+        var origin = await _git.ResolveBranchOriginAsync(feature);
+
+        Assert.Equal(new GitBranchOrigin("release", GitBranchOriginSource.Recorded), origin);
+    }
+
+    [Fact]
+    public async Task 起点を省いて作ったブランチはそのときの枝を元として覚える()
+    {
+        var path = Suggest("topic");
+        var added = await _git.AddWorktreeAsync(
+            new GitWorktreeAddRequest(GitWorktreeAddMode.NewBranch, path, "topic", null));
+        Assert.True(added.Success, added.Message);
+        var topic = Assert.Single(await _git.GetWorktreesAsync(), w => w.Branch == "topic");
+
+        var origin = await _git.ResolveBranchOriginAsync(topic);
+
+        Assert.Equal(new GitBranchOrigin("main", GitBranchOriginSource.Recorded), origin);
+    }
+
+    [Fact]
+    public async Task 外で作ったブランチはreflogから元を拾い消えた元は飛ばす()
+    {
+        await MustRunAsync("branch", "release");
+        await MustRunAsync("branch", "topic", "release");   // CLI で作った＝Loomo は何も覚えていない
+        var added = await _git.AddWorktreeAsync(
+            new GitWorktreeAddRequest(GitWorktreeAddMode.ExistingBranch, Suggest("topic"), "topic", null));
+        Assert.True(added.Success, added.Message);
+        var topic = Assert.Single(await _git.GetWorktreesAsync(), w => w.Branch == "topic");
+
+        Assert.Equal(new GitBranchOrigin("release", GitBranchOriginSource.Reflog),
+            await _git.ResolveBranchOriginAsync(topic));
+
+        // 元の枝が消されたら既定ブランチへ落ちる（実在しない元で分岐点を求めて失敗させない）。
+        await MustRunAsync("branch", "-D", "release");
+        _git.InvalidateReadCache();
+        Assert.Equal(new GitBranchOrigin("main", GitBranchOriginSource.DefaultBranch),
+            await _git.ResolveBranchOriginAsync(topic));
+    }
+
+    [Fact]
+    public async Task ブランチ元からの比較は元が進んでも自分の変更だけを出す()
+    {
+        var featurePath = await AddFeatureWorktreeAsync();
+        await File.WriteAllTextAsync(Path.Combine(featurePath, "wip.txt"), "wip\n");   // 未コミット・未追跡
+        await CommitAsync("main-only.txt", "m\n", "main moves on");
+        var feature = Assert.Single(await _git.GetWorktreesAsync(), w => w.Branch == "feature");
+        var origin = await _git.ResolveBranchOriginAsync(feature);
+
+        var range = await _git.ResolveCompareRangeAsync(
+            GitCompareEndpoint.Ref(origin!.Reference), GitCompareEndpoint.Worktree(feature), fromMergeBase: true);
+        var files = (await _git.GetRangeChangesAsync(range.FromRef, range.ToRef!)).Files;
+
+        Assert.Contains(files, f => f.Path == "wip.txt" && f.Status == 'A');
+        Assert.DoesNotContain(files, f => f.Path == "main-only.txt");
     }
 
     [Fact]

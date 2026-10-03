@@ -17,7 +17,7 @@ namespace sk0ya.Loomo.App.ViewModels;
 /// </summary>
 public abstract record DiffOpenTarget
 {
-    private DiffOpenTarget() { }   // 派生はこの中の5つだけ（受け手の振り分けを閉じた集合にする）
+    private DiffOpenTarget() { }   // 派生はこの中の6つだけ（受け手の振り分けを閉じた集合にする）
 
     /// <summary>切り離しウィンドウのタブ名。<b>短く</b>——タブは何枚も並ぶので、長いと隣が潰れて
     /// どれがどれだか分からなくなる。ハッシュは7桁、飾りの語（「コミット」「作業ツリー」）は落とし、
@@ -38,6 +38,19 @@ public abstract record DiffOpenTarget
 
         private string Range => FromHash is null
             ? $"@{Short(ToHash)}" : $"@{Short(FromHash)}→{Short(ToHash)}";
+    }
+
+    /// <summary>
+    /// 2点比較（ブランチ・タグ・ワークツリーの作業中の状態のどれでも）。<see cref="CommitRange"/> と違って
+    /// まだハッシュに解決していない——作業ツリーを固めるのは大きなリポジトリでは分単位かかり得るので、
+    /// 解決は<b>受け手（Diff ペイン）が進捗と中止付きで</b>行う。頼む側で待たせると、ペインには何も出ないまま
+    /// 時間だけが過ぎ、止める手段も無い。<paramref name="FromMergeBase"/> なら左は分岐点に置き換わる
+    /// （＝右が分かれてから入れた変更だけ）。
+    /// </summary>
+    public sealed record PointsRange(
+        GitCompareEndpoint From, GitCompareEndpoint To, bool FromMergeBase, string Label) : DiffOpenTarget
+    {
+        public override string TitleFor(string? path) => Trim(WithFile(path, $" ⇄ {Label}"));
     }
 
     /// <summary>1コミットの1ファイル。<paramref name="LineInCommit"/> はコミット時点の新側行番号

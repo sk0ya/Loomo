@@ -442,6 +442,19 @@
             <DockPanel Grid.Column="0">
                 <TextBlock DockPanel.Dock="Top" Margin="8,2" FontSize="{DynamicResource Fs11}" FontWeight="SemiBold"
                            Foreground="{DynamicResource FgDim}" Text="{Binding FileListHeader}" />
+                <!-- 比較の照会が長引いているとき（大きなリポジトリで作業ツリーを固める・広い差分の列挙）だけ出る帯。
+                     何をしているか・何秒待っているかを出し、いつでも止められるようにする（時間では刈らないため）。 -->
+                <Border DockPanel.Dock="Top" Margin="6,2,6,4" Padding="8,4" CornerRadius="3"
+                        Background="{DynamicResource Panel}" BorderBrush="{DynamicResource Border}" BorderThickness="1"
+                        Visibility="{Binding IsBusy, Converter={StaticResource BoolToVis}}">
+                    <DockPanel>
+                        <Button DockPanel.Dock="Right" Style="{StaticResource PaneHeaderToolButton}" Content="中止"
+                                ToolTip="この比較を止める（走っている git も止める）"
+                                Command="{Binding CancelBusyCommand}" VerticalAlignment="Center" />
+                        <TextBlock Text="{Binding BusyMessage}" TextWrapping="Wrap" VerticalAlignment="Center"
+                                   FontSize="{DynamicResource Fs11}" Foreground="{DynamicResource FgDim}" />
+                    </DockPanel>
+                </Border>
                 <Grid>
                     <ListBox ItemsSource="{Binding Files}" SelectedItem="{Binding SelectedFile}"
                              Background="Transparent" BorderThickness="0"

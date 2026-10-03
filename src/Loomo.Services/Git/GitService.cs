@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using sk0ya.Loomo.Core.Abstractions;
 
@@ -71,6 +72,7 @@ public sealed class GitService
         _rebase = new GitRebaseService(_runner, _mutations);
         _worktrees = new GitWorktreeService(_rootState, _runner, _mutations);
         _compare = new GitCompareService(_runner, _worktrees);
+        _compareProgress = new CompareProgressRelay(message => CompareProgress?.Invoke(this, message));
         _clone = new GitCloneService(_runner);
         _monitor = new GitRepositoryMonitor(_rootState, _runner);
         _rootState.Changed += (_, _) => InvalidateReadCache();
@@ -202,15 +204,65 @@ public sealed class GitService
     /// （中身が同じなら同じ tree ハッシュが返るので、一覧が作り直されることはない）。</summary>
     public Task<GitCompareResolution> ResolveCompareBaseAsync(GitCompareBaseSelection selection)
     {
+        var token = CompareToken;
         if (selection.IsVolatile)
-            return _compare.ResolveAsync(selection);
-        return CachedByKey(_cachedCompareResolutions, selection, () => _compare.ResolveAsync(selection));
+            return _compare.ResolveAsync(selection, _compareProgress, token);
+        // 中止は答えではない——覚えると、次に同じ基準を選んでも git を起動しないまま「中止しました」が返り続ける。
+        return CachedByKey(_cachedCompareResolutions, selection,
+            () => _compare.ResolveAsync(selection, _compareProgress, token),
+            resolution => resolution.IsCanceled, resolution => resolution);
     }
 
     /// <summary>2点比較を <c>git diff</c> に渡せる2つのハッシュへ解決する（失敗は理由付き）。</summary>
     public Task<GitCompareRange> ResolveCompareRangeAsync(
         GitCompareEndpoint from, GitCompareEndpoint to, bool fromMergeBase) =>
-        _compare.ResolveRangeAsync(from, to, fromMergeBase);
+        _compare.ResolveRangeAsync(from, to, fromMergeBase, _compareProgress, CompareToken);
+
+    /// <summary>ワークツリーの「ブランチ元」（覚えていたもの → reflog → 既定ブランチ）。</summary>
+    public Task<GitBranchOrigin?> ResolveBranchOriginAsync(GitWorktreeInfo worktree) =>
+        _compare.ResolveBranchOriginAsync(worktree);
+
+    // ===== 比較の進捗と中止 =====
+    //
+    // 比較（基準の解決・一覧）は Git パネルと Diff ペインが同じ照会を<b>共有キャッシュ</b>で分け合うので、
+    // 中止を呼び手ごとのトークンにすると、片方の中止がもう片方の待っている Task を巻き添えで落とす。
+    // そこで中止は「いま走っている比較の照会ぜんぶ」を止める1つの操作にし、進捗もイベント1本で配る。
+
+    private readonly object _compareCancelGate = new();
+    private CancellationTokenSource _compareCancel = new();
+    private readonly IProgress<string> _compareProgress;
+
+    private CancellationToken CompareToken
+    {
+        get { lock (_compareCancelGate) return _compareCancel.Token; }
+    }
+
+    /// <summary>比較の照会がいま何をしているか（「ワークツリー X の作業中の状態を固めています…」など）。
+    /// 呼ばれるスレッドは決まっていない（UI へは購読側が寄せる）。</summary>
+    public event EventHandler<string>? CompareProgress;
+
+    /// <summary>その場で（呼ばれたスレッドのまま）イベントへ流す。<see cref="Progress{T}"/> は作られた
+    /// スレッドの同期コンテキストへ寄せるので、どのスレッドで作られたかで振る舞いが変わってしまう。</summary>
+    private sealed class CompareProgressRelay(Action<string> report) : IProgress<string>
+    {
+        public void Report(string value) => report(value);
+    }
+
+    /// <summary>
+    /// 走っている比較の照会（作業ツリーを固める・分岐点・変更一覧）を全部止める。止めた照会は
+    /// 「比較を中止しました。」を理由に返す（例外にしない）。これ以降の照会は新しいトークンで普通に走る。
+    /// </summary>
+    public void CancelCompareWork()
+    {
+        CancellationTokenSource previous;
+        lock (_compareCancelGate)
+        {
+            previous = _compareCancel;
+            _compareCancel = new CancellationTokenSource();
+        }
+        previous.Cancel();
+        previous.Dispose();
+    }
 
     // ===== 作業ツリー（git worktree） =====
 
@@ -238,7 +290,14 @@ public sealed class GitService
     /// <summary>基準に対する変更ファイル一覧（未追跡は含まない・リネームは1件）。失敗は理由付きで返る。</summary>
     public Task<GitCompareChanges> GetCompareChangesAsync(string baseRef)
     {
-        return CachedByKey(_cachedCompareChanges, baseRef, () => _compare.GetChangesAsync(baseRef));
+        var token = CompareToken;
+        return CachedByKey(_cachedCompareChanges, baseRef,
+            () =>
+            {
+                _compareProgress.Report("変更ファイルを列挙しています…");
+                return _compare.GetChangesAsync(baseRef, token);
+            },
+            changes => changes.IsCanceled, changes => changes);
     }
 
     /// <summary>基準に対する1ファイルの差分テキスト。</summary>
@@ -254,8 +313,12 @@ public sealed class GitService
     public Task<IReadOnlyDictionary<string, string>> GetRenameTrailAsync(string relativePath) =>
         _history.GetRenameTrailAsync(relativePath);
 
-    public Task<IReadOnlyList<GitCommitFileChange>> GetRangeChangesAsync(string? fromHash, string toHash) =>
-        _history.GetRangeChangesAsync(fromHash, toHash);
+    /// <summary>コミット範囲の変更ファイル一覧（失敗・中止は理由付き）。</summary>
+    public Task<GitCompareChanges> GetRangeChangesAsync(string? fromHash, string toHash)
+    {
+        _compareProgress.Report("変更ファイルを列挙しています…");
+        return _history.GetRangeChangesAsync(fromHash, toHash, CompareToken);
+    }
 
     public async Task<string> GetRangeFileDiffAsync(
         string? fromHash, string toHash, GitCommitFileChange file, int contextLines = 3)

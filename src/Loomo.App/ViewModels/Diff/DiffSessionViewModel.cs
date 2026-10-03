@@ -3,8 +3,10 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using sk0ya.Loomo.Core.Abstractions;
@@ -35,6 +37,30 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
 
     private (string? From, string To)? _commitRange;
 
+    /// <summary>まだハッシュに解決していない2点比較（次の読み込みで進捗と中止付きで解決する）。</summary>
+    private DiffOpenTarget.PointsRange? _pendingRange;
+
+    /// <summary>2点比較を解決できなかった・中止された理由。ここに居る間は一覧を空にして理由を出し続ける
+    /// ——作業ツリーへ黙って落とすと、自動の読み直しのたびに「比べたつもりの物」と違う一覧が出る。
+    /// 「✕ 作業ツリーへ」で解除する。</summary>
+    private string? _rangeFailure;
+
+    /// <summary><see cref="_pendingRange"/> を解決している照会（読み込みが重なっても1回だけ走らせる）。</summary>
+    private Task<GitCompareRange>? _pendingRangeTask;
+    private DiffOpenTarget.PointsRange? _pendingRangeTaskFor;
+
+    /// <summary>作業ツリー（または比較基準）以外の何か——コミット範囲・解決待ちの2点比較・その失敗——を見ているか。</summary>
+    private bool HasGitTarget => _commitRange is not null || _pendingRange is not null || _rangeFailure is not null;
+
+    /// <summary>Git の表示対象を差し替える唯一の入口。解決待ち・失敗の状態も一緒に片づける
+    /// （片づけ忘れると、別の差分を開いた後に古い2点比較が割り込んで一覧を書き換える）。</summary>
+    private void SetCommitRange((string? From, string To)? range)
+    {
+        _commitRange = range;
+        _pendingRange = null;
+        _rangeFailure = null;
+    }
+
     /// <summary>差分の出どころ（Git／アドホック比較）。ヘッダーのラジオボタンで切り替わる。</summary>
     [ObservableProperty] private DiffSource _source = DiffSource.Git;
     // ラジオボタン用の相互排他プロキシ。true を書いたものへ切り替わり、false 書き込みは無視する
@@ -50,13 +76,18 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
     /// <summary>比較基準の選択をヘッダーに出すか。Git モードで、かつコミット範囲を表示していないときだけ
     /// ——コミット範囲は「何と比べているか」を自分で持っているので、そこに基準を並べても効かない
     /// （押せるのに何も起きない項目になる）。</summary>
-    public bool ShowCompareBaseSelector => IsGitMode && _commitRange is null;
+    public bool ShowCompareBaseSelector => IsGitMode && !HasGitTarget;
     [ObservableProperty] private DiffFileItem? _selectedFile;
     [ObservableProperty] private string _emptyMessage = "";
     [ObservableProperty] private string _statusMessage = "";
     [ObservableProperty] private bool _statusIsError;
     [ObservableProperty] private bool _canDiscardSelected;
     [ObservableProperty] private bool _canDiscardLines;
+
+    /// <summary>比較の照会が長引いている（帯と「中止」を出す）。すぐ終わる読み込みでは出さない——
+    /// 出たり消えたりするとちらつくだけなので、<see cref="BusyDelay"/> を過ぎたものだけ。</summary>
+    [ObservableProperty] private bool _isBusy;
+    [ObservableProperty] private string _busyMessage = "";
 
     public ObservableCollection<DiffFileItem> Files { get; } = new();
     public ObservableCollection<DiffRowVm> DiffRows { get; } = new();
@@ -103,10 +134,13 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
         };
         _onRepositoryChanged = (_, _) => DispatchRefresh();
         _git.RepositoryChanged += _onRepositoryChanged;
+        _onCompareProgress = (_, message) => UiDispatch.Post(() => _busyStep = message);
+        _git.CompareProgress += _onCompareProgress;
     }
 
     private readonly EventHandler _onCompareBaseChanged;
     private readonly EventHandler _onRepositoryChanged;
+    private readonly EventHandler<string> _onCompareProgress;
 
     /// <summary>
     /// 共有 Singleton（比較基準・<see cref="GitService"/>）への購読を外し、監視を止める。
@@ -119,6 +153,77 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
         StopLiveTracking();
         CompareBase.Changed -= _onCompareBaseChanged;
         _git.RepositoryChanged -= _onRepositoryChanged;
+        _git.CompareProgress -= _onCompareProgress;
+        _busyTimer?.Stop();
+    }
+
+    // ===== 長引く比較の進捗と中止 =====
+
+    /// <summary>この時間を過ぎても終わらない読み込みだけ帯を出す。</summary>
+    private static readonly TimeSpan BusyDelay = TimeSpan.FromMilliseconds(400);
+
+    /// <summary>重い読み込みの重なり数（自動の読み直しと人の操作が重なり得る）。0 になったら帯を消す。</summary>
+    private int _busyDepth;
+    private DateTime _busyStarted;
+    /// <summary>照会が最後に知らせてきた段階（「…を固めています」など）。</summary>
+    private string _busyStep = "";
+    private DispatcherTimer? _busyTimer;
+
+    /// <summary>重い読み込みの区間を始める。破棄で終わる。帯は <see cref="BusyDelay"/> 後に出し、
+    /// 以後は1秒ごとに経過秒を更新する（大きなリポジトリでは「止まっているのか待っているのか」が要る）。</summary>
+    private IDisposable BeginBusy()
+    {
+        if (_busyDepth++ == 0)
+        {
+            _busyStarted = DateTime.UtcNow;
+            _busyStep = "比較の準備中…";
+            _busyTimer ??= CreateBusyTimer();
+            _busyTimer.Start();
+        }
+        return new BusyScope(this);
+    }
+
+    private DispatcherTimer CreateBusyTimer()
+    {
+        var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
+        timer.Tick += (_, _) =>
+        {
+            var elapsed = DateTime.UtcNow - _busyStarted;
+            if (elapsed < BusyDelay) return;
+            BusyMessage = elapsed.TotalSeconds < 1 ? _busyStep : $"{_busyStep}（{elapsed.TotalSeconds:0}秒）";
+            IsBusy = true;
+        };
+        return timer;
+    }
+
+    private void EndBusy()
+    {
+        if (_busyDepth == 0 || --_busyDepth > 0) return;
+        _busyTimer?.Stop();
+        IsBusy = false;
+        BusyMessage = "";
+    }
+
+    private sealed class BusyScope(DiffSessionViewModel owner) : IDisposable
+    {
+        private DiffSessionViewModel? _owner = owner;
+
+        public void Dispose()
+        {
+            _owner?.EndBusy();
+            _owner = null;
+        }
+    }
+
+    /// <summary>
+    /// 走っている比較を止める。止められた照会は「比較を中止しました。」を返し、受け取った読み込みが
+    /// 表示を片づける（<see cref="RefreshAsync"/>）。照会は Git パネルと共有なので、止めるのは比較の照会ぜんぶ。
+    /// </summary>
+    [RelayCommand]
+    private void CancelBusy()
+    {
+        _busyStep = "中止しています…";
+        _git.CancelCompareWork();
     }
 
     private void ClearDiffForConflict()
@@ -174,7 +279,7 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
         _changeCursor = -1;
         if (value != DiffSource.Git)
         {
-            _commitRange = null;
+            SetCommitRange(null);
             OnPropertyChanged(nameof(CanOpenCommitInGit));
             GitTargetLabel = "";
         }
@@ -208,7 +313,7 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(ShowCompareBaseSelector));
         // 判定は GitCompareCapabilities 一箇所（Git パネル側のゲートと同じもの）。
         var capabilities = CompareBase.Capabilities;
-        var gitWorkingTree = IsGitMode && _commitRange is null;
+        var gitWorkingTree = IsGitMode && !HasGitTarget;
         CanDiscardSelected = gitWorkingTree && capabilities.CanDiscard && SelectedFile?.Entry is not null;
         CanDiscardLines = gitWorkingTree && capabilities.CanApplyLines
             && SelectedFile is { IsStaged: false, Entry: { IsUntracked: false } };
@@ -252,6 +357,9 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
             case DiffOpenTarget.CompareBase b:
                 ShowCompareBase(b.Selection);
                 return Task.CompletedTask;
+            case DiffOpenTarget.PointsRange p:
+                ShowPointsRange(p);
+                return Task.CompletedTask;
             default:
                 return Task.CompletedTask;
         }
@@ -265,7 +373,7 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
     public void ShowCompareBase(GitCompareBaseSelection selection)
     {
         _loaded = true;
-        _commitRange = null;
+        SetCommitRange(null);
         OnPropertyChanged(nameof(CanOpenCommitInGit));
         GitTargetLabel = "";
         // 基準の切替は Changed 経由でこの VM も読み直す。Git モードへの切替も読み直しを出すので、
@@ -278,11 +386,32 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
             _ = RefreshAsync();
     }
 
+    /// <summary>
+    /// 2点比較を表示する。ハッシュへの解決（作業ツリーを固める・分岐点）は次の読み込みで行う——
+    /// ペインはすぐ出て、長引けば進捗と「中止」が出る。
+    /// </summary>
+    public void ShowPointsRange(DiffOpenTarget.PointsRange range)
+    {
+        _loaded = true;
+        SetCommitRange(null);
+        _pendingRange = range;
+        OnPropertyChanged(nameof(CanOpenCommitInGit));
+        GitTargetLabel = range.Label;
+        Files.Clear();
+        SelectedFile = null;
+        EmptyMessage = "";
+        UpdateCanDiscard();
+        if (!IsGitMode)
+            IsGitMode = true;
+        else
+            _ = RefreshAsync();
+    }
+
     /// <summary>Git コミット範囲の差分を表示する。</summary>
     public void ShowCommitRange(string? fromHash, string toHash, string label)
     {
         _loaded = true;
-        _commitRange = (fromHash, toHash);
+        SetCommitRange((fromHash, toHash));
         OnPropertyChanged(nameof(CanOpenCommitInGit));
         GitTargetLabel = label;
         UpdateCanDiscard();
@@ -307,7 +436,7 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
         if (!string.IsNullOrEmpty(filePath))
             _git.SetActiveRootForPath(filePath);
         _loaded = true;
-        _commitRange = (null, hash);
+        SetCommitRange((null, hash));
         OnPropertyChanged(nameof(CanOpenCommitInGit));
         GitTargetLabel = label;
         UpdateCanDiscard();
@@ -348,7 +477,7 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
     public async Task ShowWorkingTreeFileAsync(GitChangeEntry entry, bool isStaged)
     {
         _loaded = true;
-        _commitRange = null;
+        SetCommitRange(null);
         GitTargetLabel = "";
         IsGitMode = true;
         UpdateCanDiscard();  // 既に Git モードだと IsGitMode の setter は何も通知しない
@@ -539,8 +668,8 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void ClearGitTarget()
     {
-        if (_commitRange is null) return;
-        _commitRange = null;
+        if (!HasGitTarget) return;
+        SetCommitRange(null);
         OnPropertyChanged(nameof(CanOpenCommitInGit));
         GitTargetLabel = "";
         UpdateCanDiscard();
@@ -565,13 +694,28 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
         // 比較はパスを持たないことがあり、同じパスで複数ストックもできるので、選び直しはパスでは引けない。
         var keepComparison = _pendingCompareSelect ?? SelectedFile?.Comparison;
 
-        var result = Source == DiffSource.Compare
-            ? LoadComparison()
-            : await _query.LoadAsync(
-                _commitRange,
-                _commitRange is null ? await CompareBase.ResolveAsync() : null);
+        DiffFileList result;
+        if (Source == DiffSource.Compare)
+        {
+            result = LoadComparison();
+        }
+        else
+        {
+            // 作業ツリー（git status）以外は大きなリポジトリで長引き得るので、帯と「中止」を出せるようにする。
+            using var busy = HasGitTarget || !CompareBase.IsWorkingTree ? BeginBusy() : null;
+            if (_pendingRange is { } pending && !await ResolvePendingRangeAsync(pending, refreshGeneration))
+                return;
+            if (_rangeFailure is { } failure)
+                result = new DiffFileList(Array.Empty<DiffFileItem>(), failure);
+            else
+                result = await _query.LoadAsync(
+                    _commitRange,
+                    _commitRange is null ? await CompareBase.ResolveAsync() : null);
+        }
         // 基準変更などで先行した読み込みが後から完了しても、最新の選択状態を上書きさせない。
         if (refreshGeneration != Volatile.Read(ref _refreshGeneration)) return;
+        if (result.IsCanceled && OnCompareCanceled(result.EmptyMessage))
+            return;
         var items = result.Items;
         var emptyMessage = result.EmptyMessage;
 
@@ -607,6 +751,73 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
             SetSideRowsItem(null);
             SideRows.Clear();
         }
+    }
+
+    /// <summary>
+    /// 解決待ちの2点比較をハッシュへ解決する。解決できれば以後はコミット範囲として読む。
+    /// 解決できない・中止されたら <see cref="_rangeFailure"/> に理由を置く（一覧は空で理由を出し続ける）。
+    /// </summary>
+    /// <returns>この読み込みを続けてよいか（より新しい読み込みや別の表示に追い越されたら false）。</returns>
+    private async Task<bool> ResolvePendingRangeAsync(DiffOpenTarget.PointsRange pending, int refreshGeneration)
+    {
+        // 同じ比較を解決中の読み込みが既にあればその答えを待つ（作業ツリーを2回固めない）。
+        if (!ReferenceEquals(_pendingRangeTaskFor, pending) || _pendingRangeTask is null)
+        {
+            _pendingRangeTaskFor = pending;
+            _pendingRangeTask = _git.ResolveCompareRangeAsync(pending.From, pending.To, pending.FromMergeBase);
+        }
+        var range = await _pendingRangeTask;
+        // 待っている間に別の差分を開いた／同じ比較を読み直しが先に解決したなら、この結果は使わない。
+        if (!ReferenceEquals(_pendingRange, pending)) return refreshGeneration == Volatile.Read(ref _refreshGeneration);
+        if (range.HasError)
+        {
+            SetCommitRange(null);
+            _rangeFailure = range.Error;
+        }
+        else
+        {
+            SetCommitRange((range.FromRef, range.ToRef!));
+        }
+        OnPropertyChanged(nameof(CanOpenCommitInGit));
+        UpdateCanDiscard();
+        return true;
+    }
+
+    /// <summary>
+    /// 比較が中止された。<b>自動の読み直しで同じ重い照会がまた走らないよう</b>表示を片づける：
+    /// コミット範囲なら範囲を外して中止の旨を出したままにし、比較基準なら作業ツリー基準へ戻す
+    /// （基準は Git パネルと共有なので、パネル側も戻る）。
+    /// </summary>
+    /// <returns>表示をここで片づけたか（true なら呼び手は一覧を組まない）。</returns>
+    private bool OnCompareCanceled(string message)
+    {
+        if (_commitRange is not null)
+        {
+            SetCommitRange(null);
+            _rangeFailure = message;
+            OnPropertyChanged(nameof(CanOpenCommitInGit));
+            UpdateCanDiscard();
+            ClearFiles(message);
+            return true;
+        }
+        if (!CompareBase.IsWorkingTree)
+        {
+            SetStatus($"{message}作業ツリーの表示に戻しました。", isError: false);
+            CompareBase.ResetToWorkingTree();   // Changed 経由で読み直す
+            return true;
+        }
+        return false;
+    }
+
+    private void ClearFiles(string emptyMessage)
+    {
+        Files.Clear();
+        EmptyMessage = emptyMessage;
+        OnPropertyChanged(nameof(FileListHeader));
+        SelectedFile = null;
+        DiffRows.Clear();
+        SetSideRowsItem(null);
+        SideRows.Clear();
     }
 
     // ===== 操作 =====

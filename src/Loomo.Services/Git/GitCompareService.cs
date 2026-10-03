@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace sk0ya.Loomo.Services;
@@ -69,13 +70,29 @@ public sealed class GitCompareService
     /// <see cref="GitCompareResolution.Error"/>（日本語の理由）として返す——
     /// 空リポジトリ・基準ブランチ不在・分岐点なし（無関係な履歴）で壊れず理由が出るのが要件。
     /// </summary>
-    public async Task<GitCompareResolution> ResolveAsync(GitCompareBaseSelection selection)
+    /// <param name="progress">いま何をしているか（大きなリポジトリで待たせるときに画面へ出す）。</param>
+    /// <param name="cancellationToken">中止。中止されたら <see cref="GitCompareResolution.Canceled"/> を返す（例外にしない）。</param>
+    public async Task<GitCompareResolution> ResolveAsync(
+        GitCompareBaseSelection selection, IProgress<string>? progress = null, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return await ResolveCoreAsync(selection, progress, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            return GitCompareResolution.Canceled;
+        }
+    }
+
+    private async Task<GitCompareResolution> ResolveCoreAsync(
+        GitCompareBaseSelection selection, IProgress<string>? progress, CancellationToken cancellationToken)
     {
         if (selection.IsWorkingTree)
             return GitCompareResolution.WorkingTree;
 
         if (selection.Kind == GitCompareBaseKind.Worktree)
-            return await ResolveWorktreeAsync(selection.Target).ConfigureAwait(false);
+            return await ResolveWorktreeAsync(selection.Target, progress, cancellationToken).ConfigureAwait(false);
         if (selection.Kind == GitCompareBaseKind.Revision)
             return await ResolveRevisionAsync(selection.Target).ConfigureAwait(false);
 
@@ -95,8 +112,9 @@ public sealed class GitCompareService
             return new GitCompareResolution(
                 null, "コミットがまだありません（空のリポジトリ）。", $"{branch} との分岐点");
 
+        progress?.Report($"{branch} との分岐点を求めています…");
         var mergeBase = await _runner
-            .RunAsync(GitCompareArgs.MergeBaseArgs(branch)).ConfigureAwait(false);
+            .RunAsync(cancellationToken, GitCompareArgs.MergeBaseArgs(branch)).ConfigureAwait(false);
         var hash = mergeBase.Output.Trim();
         // 無関係な履歴（共通の祖先が無い）では merge-base が非0で終わるか、何も出さない。
         if (!mergeBase.Success || hash.Length == 0)
@@ -111,7 +129,8 @@ public sealed class GitCompareService
     /// 別の作業ツリーのいまの状態を基準にする。相手を一覧から引き直して実在・自分自身でないことを確かめ、
     /// 未コミット・未追跡込みで tree に固める（<see cref="GitWorktreeService.SnapshotAsync"/>）。
     /// </summary>
-    private async Task<GitCompareResolution> ResolveWorktreeAsync(string? path)
+    private async Task<GitCompareResolution> ResolveWorktreeAsync(
+        string? path, IProgress<string>? progress, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(path))
             return new GitCompareResolution(null, "比較するワークツリーが選ばれていません。", "基準未選択");
@@ -128,7 +147,8 @@ public sealed class GitCompareService
             return new GitCompareResolution(
                 null, $"ワークツリー「{target.DisplayName}」のフォルダーがありません（掃除の対象です）。", target.DisplayName);
 
-        var snapshot = await _worktrees.SnapshotAsync(target.Path).ConfigureAwait(false);
+        progress?.Report($"ワークツリー {target.DisplayName} の作業中の状態を固めています…");
+        var snapshot = await _worktrees.SnapshotAsync(target.Path, cancellationToken).ConfigureAwait(false);
         return snapshot.Success
             ? new GitCompareResolution(snapshot.Tree, null, $"ワークツリー {target.DisplayName}（作業中）と比較")
             : new GitCompareResolution(null, snapshot.Error, target.DisplayName);
@@ -152,13 +172,30 @@ public sealed class GitCompareService
     /// 作業ツリーの端はいまの状態（未コミット・未追跡込み）の tree。<paramref name="fromMergeBase"/> なら
     /// 起点を「2つの分岐点」に置き換える＝<c>to</c> 側が分かれてから入れた変更だけになる。分岐点は
     /// 履歴の上の概念なので、作業ツリーの端はその作業ツリーの HEAD で計算する（未コミット分は to 側に残る）。
+    /// <b>分岐点からなら左は固めない</b>——大きなリポジトリでは作業ツリーを固めるのがいちばん重い。
+    /// 中止されたら <see cref="GitCompareRange.IsCanceled"/> の結果を返す（例外にしない）。
     /// </summary>
     public async Task<GitCompareRange> ResolveRangeAsync(
-        GitCompareEndpoint from, GitCompareEndpoint to, bool fromMergeBase)
+        GitCompareEndpoint from, GitCompareEndpoint to, bool fromMergeBase,
+        IProgress<string>? progress = null, CancellationToken cancellationToken = default)
     {
         var label = fromMergeBase ? $"{from.Label} との分岐点 → {to.Label}" : $"{from.Label} → {to.Label}";
+        try
+        {
+            return await ResolveRangeCoreAsync(from, to, fromMergeBase, label, progress, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            return new GitCompareRange(null, null, label, GitCompareCancellation.Message);
+        }
+    }
 
-        var toSide = await ResolveEndpointAsync(to).ConfigureAwait(false);
+    private async Task<GitCompareRange> ResolveRangeCoreAsync(
+        GitCompareEndpoint from, GitCompareEndpoint to, bool fromMergeBase, string label,
+        IProgress<string>? progress, CancellationToken cancellationToken)
+    {
+        var toSide = await ResolveEndpointAsync(to, progress, cancellationToken).ConfigureAwait(false);
         if (toSide.Error is not null) return new GitCompareRange(null, null, label, toSide.Error);
 
         if (fromMergeBase)
@@ -167,7 +204,9 @@ public sealed class GitCompareService
             var toCommit = await ResolveEndpointCommitAsync(to).ConfigureAwait(false);
             if (fromCommit.Error is not null) return new GitCompareRange(null, null, label, fromCommit.Error);
             if (toCommit.Error is not null) return new GitCompareRange(null, null, label, toCommit.Error);
-            var mergeBase = await _runner.RunAsync("merge-base", fromCommit.Hash!, toCommit.Hash!).ConfigureAwait(false);
+            progress?.Report("分岐点を求めています…");
+            var mergeBase = await _runner.RunAsync(cancellationToken, "merge-base", fromCommit.Hash!, toCommit.Hash!)
+                .ConfigureAwait(false);
             var hash = mergeBase.Output.Trim();
             if (!mergeBase.Success || hash.Length == 0)
                 return new GitCompareRange(null, null, label,
@@ -175,20 +214,58 @@ public sealed class GitCompareService
             return new GitCompareRange(hash, toSide.Hash, label, null);
         }
 
-        var fromSide = await ResolveEndpointAsync(from).ConfigureAwait(false);
+        var fromSide = await ResolveEndpointAsync(from, progress, cancellationToken).ConfigureAwait(false);
         return fromSide.Error is not null
             ? new GitCompareRange(null, null, label, fromSide.Error)
             : new GitCompareRange(fromSide.Hash, toSide.Hash, label, null);
     }
 
+    /// <summary>
+    /// ワークツリーの「ブランチ元」を求める。覚えていたもの（Loomo で作ったときの起点）→ reflog の
+    /// 「Created from …」→ 既定ブランチの順で、<b>実在するもの</b>を選ぶ（覚えていた枝が消されていれば次へ）。
+    /// 自分自身のブランチは元になり得ないので外す。どれも無ければ null。
+    /// </summary>
+    public async Task<GitBranchOrigin?> ResolveBranchOriginAsync(GitWorktreeInfo worktree)
+    {
+        if (worktree.Branch is { } branch)
+        {
+            var recorded = await _runner.RunAsync("config", "--get", GitWorktreeArgs.OriginConfigKey(branch))
+                .ConfigureAwait(false);
+            if (await UsableOriginAsync(recorded.Success ? recorded.Output : null, branch).ConfigureAwait(false) is { } fromConfig)
+                return new GitBranchOrigin(fromConfig, GitBranchOriginSource.Recorded);
+
+            var reflog = await _runner.RunAsync("log", "-g", "--format=%gs", $"refs/heads/{branch}", "--")
+                .ConfigureAwait(false);
+            var created = reflog.Success ? GitWorktreeArgs.ParseCreatedFrom(reflog.Output) : null;
+            if (await UsableOriginAsync(created, branch).ConfigureAwait(false) is { } fromReflog)
+                return new GitBranchOrigin(fromReflog, GitBranchOriginSource.Reflog);
+        }
+
+        var fallback = await GetDefaultBranchAsync().ConfigureAwait(false);
+        return await UsableOriginAsync(fallback, worktree.Branch).ConfigureAwait(false) is { } defaultBranch
+            ? new GitBranchOrigin(defaultBranch, GitBranchOriginSource.DefaultBranch)
+            : null;
+    }
+
+    /// <summary>ブランチ元の候補として使えるか（ref として正しく・自分自身でなく・いま実在する）。</summary>
+    private async Task<string?> UsableOriginAsync(string? candidate, string? ownBranch)
+    {
+        var value = candidate?.Trim();
+        if (string.IsNullOrEmpty(value) || !GitWorktreeArgs.IsValidReference(value)) return null;
+        if (string.Equals(value, ownBranch, StringComparison.Ordinal)) return null;
+        return await ExistsAsync(value).ConfigureAwait(false) ? value : null;
+    }
+
     /// <summary>端の中身そのもの（ref はコミット、作業ツリーはいまの状態の tree）。</summary>
-    private async Task<(string? Hash, string? Error)> ResolveEndpointAsync(GitCompareEndpoint endpoint)
+    private async Task<(string? Hash, string? Error)> ResolveEndpointAsync(
+        GitCompareEndpoint endpoint, IProgress<string>? progress, CancellationToken cancellationToken)
     {
         if (endpoint.Kind == GitCompareEndpointKind.Worktree)
         {
             if (!Directory.Exists(endpoint.Value))
                 return (null, $"ワークツリーのフォルダーがありません: {endpoint.Value}");
-            var snapshot = await _worktrees.SnapshotAsync(endpoint.Value).ConfigureAwait(false);
+            progress?.Report($"{endpoint.Label}の状態を固めています…");
+            var snapshot = await _worktrees.SnapshotAsync(endpoint.Value, cancellationToken).ConfigureAwait(false);
             return (snapshot.Tree, snapshot.Error);
         }
         return await ResolveRefAsync(endpoint.Value).ConfigureAwait(false);
@@ -221,10 +298,18 @@ public sealed class GitCompareService
     /// <summary>基準に対する変更ファイル一覧。未追跡ファイルは含まない・リネームは1件にまとめる
     /// （理由は <see cref="GitCompareArgs"/> の説明を参照）。失敗は空リストではなく理由付きで返す
     /// ——黙って「変更なし」と出すと、差分があるのに無いと嘘をつくことになる。</summary>
-    public async Task<GitCompareChanges> GetChangesAsync(string baseRef)
+    public async Task<GitCompareChanges> GetChangesAsync(string baseRef, CancellationToken cancellationToken = default)
     {
-        var result = await _runner
-            .RunAsync(GitCompareArgs.NameStatusArgs(baseRef)).ConfigureAwait(false);
+        GitCommandResult result;
+        try
+        {
+            result = await _runner
+                .RunAsync(cancellationToken, GitCompareArgs.NameStatusArgs(baseRef)).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            return GitCompareChanges.Canceled;
+        }
         return result.Success
             ? new GitCompareChanges(GitNameStatusParser.Parse(result.Output), null)
             : new GitCompareChanges(

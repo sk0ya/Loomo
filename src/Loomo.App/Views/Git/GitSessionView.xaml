@@ -722,8 +722,13 @@
                                      ContextMenuOpening="OnWorktreeContextMenuOpening">
                                 <ListBox.ContextMenu>
                                     <ContextMenu>
+                                        <!-- いちばん多い問い（このワークツリーで何を変えたか）。元＝作ったときの起点、
+                                             記録が無ければ reflog、それも無ければ既定ブランチ。 -->
+                                        <MenuItem x:Name="WorktreeMenuCompareFromOrigin" Header="ブランチ元から入れた変更"
+                                                  FontWeight="SemiBold" Click="OnWorktreeCompareFromOrigin"
+                                                  ToolTip="ブランチ元との分岐点から、このワークツリーの作業中の状態（未コミット込み）まで" />
                                         <MenuItem x:Name="WorktreeMenuCompare" Header="作業ツリーと比較（向こうの作業中の状態）"
-                                                  FontWeight="SemiBold" Click="OnWorktreeCompare" />
+                                                  Click="OnWorktreeCompare" />
                                         <MenuItem Header="2点比較…" Click="OnWorktreeComparePoints" />
                                         <Separator />
                                         <MenuItem x:Name="WorktreeMenuOpenWorkspace" Header="ワークスペースとして開く"

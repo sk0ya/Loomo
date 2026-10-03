@@ -3,7 +3,12 @@ using sk0ya.Loomo.Services;
 
 namespace sk0ya.Loomo.App.Services;
 
-public sealed record DiffFileList(IReadOnlyList<DiffFileItem> Items, string EmptyMessage);
+/// <param name="IsCanceled">人が比較を中止した（<see cref="EmptyMessage"/> はその旨）。失敗とは扱いが違う——
+/// 受け手は中止された比較を自動の読み直しで<b>また走らせない</b>よう、表示を作業ツリーへ戻す。</param>
+public sealed record DiffFileList(IReadOnlyList<DiffFileItem> Items, string EmptyMessage, bool IsCanceled = false)
+{
+    public static DiffFileList Canceled(string message) => new(Array.Empty<DiffFileItem>(), message, IsCanceled: true);
+}
 
 /// <summary>作業ツリー、コミット範囲から Diff ファイル一覧を読み込む Query。</summary>
 public sealed class DiffSessionQuery
@@ -23,6 +28,8 @@ public sealed class DiffSessionQuery
     {
         if (range is { } commitRange)
             return await LoadCommitRangeAsync(commitRange);
+        if (compareBase is { IsCanceled: true })
+            return DiffFileList.Canceled(compareBase.Error!);
         if (compareBase is { HasError: true })
             return new DiffFileList(Array.Empty<DiffFileItem>(), compareBase.Error!);
         if (compareBase is { BaseRef: not null })
@@ -88,6 +95,8 @@ public sealed class DiffSessionQuery
         var baseRef = resolution.BaseRef!;
         var changes = await _git.GetCompareChangesAsync(baseRef);
         // 取得そのものが失敗したら、空一覧を「変更なし」と名乗らせない（差分があるのに無いと嘘をつく）。
+        if (changes.IsCanceled)
+            return DiffFileList.Canceled(changes.Error!);
         if (changes.HasError)
             return new DiffFileList(Array.Empty<DiffFileItem>(), changes.Error!);
         var items = changes.Files.Select(change => new DiffFileItem
@@ -102,7 +111,13 @@ public sealed class DiffSessionQuery
     private async Task<DiffFileList> LoadCommitRangeAsync((string? From, string To) range)
     {
         var root = _git.RootPath ?? "";
-        var items = (await _git.GetRangeChangesAsync(range.From, range.To)).Select(change => new DiffFileItem
+        var changes = await _git.GetRangeChangesAsync(range.From, range.To);
+        // 失敗（時間切れ・壊れた ref）を「この範囲に変更ファイルはありません」と名乗らせない。
+        if (changes.IsCanceled)
+            return DiffFileList.Canceled(changes.Error!);
+        if (changes.HasError)
+            return new DiffFileList(Array.Empty<DiffFileItem>(), changes.Error!);
+        var items = changes.Files.Select(change => new DiffFileItem
         {
             FullPath = Path.Combine(root, change.Path), DisplayPath = change.Path,
             Badge = change.Status.ToString(), CommitFile = change,

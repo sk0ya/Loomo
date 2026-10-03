@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using sk0ya.Loomo.Core.Git;
 
@@ -80,18 +81,34 @@ public sealed class GitHistoryService
         return result.Success ? result.Output : result.Message;
     }
 
-    public async Task<IReadOnlyList<GitCommitFileChange>> GetRangeChangesAsync(
-        string? fromHash, string toHash)
+    /// <summary>
+    /// コミット範囲（1コミットなら <paramref name="fromHash"/> は null）の変更ファイル一覧。
+    /// <b>失敗は理由付きで返す</b>——空リストだけ返すと、時間切れや壊れた ref でも画面は
+    /// 「この範囲に変更ファイルはありません」と名乗り、差分があるのに無いと嘘をつく（基準比較の一覧と同じ理由）。
+    /// 中止されたら <see cref="GitCompareChanges.Canceled"/>。
+    /// </summary>
+    public async Task<GitCompareChanges> GetRangeChangesAsync(
+        string? fromHash, string toHash, CancellationToken cancellationToken = default)
     {
-        var result = fromHash is null
-            ? await _runner.RunAsync("diff-tree", "--root", "-r", "-m", "--first-parent",
-                "--no-commit-id", "--name-status", toHash).ConfigureAwait(false)
-            // 末尾の "--" は必須：ブランチ名と同名のディレクトリがあると git は曖昧な引数として拒む
-            // （2点比較ダイアログからは ref 名がそのまま来る。GitCompareArgs と同じ理由）。
-            : await _runner.RunAsync("diff", "--name-status", "--find-renames", fromHash, toHash, "--").ConfigureAwait(false);
+        GitCommandResult result;
+        try
+        {
+            result = fromHash is null
+                ? await _runner.RunAsync(cancellationToken, "diff-tree", "--root", "-r", "-m", "--first-parent",
+                    "--no-commit-id", "--name-status", toHash).ConfigureAwait(false)
+                // 末尾の "--" は必須：ブランチ名と同名のディレクトリがあると git は曖昧な引数として拒む
+                // （2点比較ダイアログからは ref 名がそのまま来る。GitCompareArgs と同じ理由）。
+                : await _runner.RunAsync(cancellationToken, "diff", "--name-status", "--find-renames", fromHash, toHash, "--")
+                    .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            return GitCompareChanges.Canceled;
+        }
         return result.Success
-            ? GitNameStatusParser.Parse(result.Output)
-            : Array.Empty<GitCommitFileChange>();
+            ? new GitCompareChanges(GitNameStatusParser.Parse(result.Output), null)
+            : new GitCompareChanges(
+                Array.Empty<GitCommitFileChange>(), $"変更一覧を取得できませんでした: {result.Message}");
     }
 
     public async Task<string> GetRangeFileDiffAsync(

@@ -106,6 +106,24 @@ public static class GitWorktreeArgs
            && !value.StartsWith('-')
            && !value.Any(char.IsWhiteSpace);
 
+    /// <summary>ブランチ元を覚えておく設定キー（<c>branch.&lt;名前&gt;.loomo-base</c>）。名前に <c>.</c> や
+    /// <c>/</c> が入っていても、git は最初と最後の <c>.</c> の間をそのまま副節として扱う。</summary>
+    public static string OriginConfigKey(string branch) => $"branch.{branch}.loomo-base";
+
+    /// <summary>ブランチの reflog（<c>git log -g --format=%gs</c>、新しい順）から作成元を拾う。
+    /// 最後の行が <c>branch: Created from main</c> ならその <c>main</c>。<c>HEAD</c> から作られたものは
+    /// 「どの枝だったか」が分からないので null（既定ブランチへ任せる）。</summary>
+    public static string? ParseCreatedFrom(string? reflog)
+    {
+        const string marker = "branch: Created from ";
+        var oldest = reflog?.Split('\n').Select(l => l.Trim()).LastOrDefault(l => l.Length > 0);
+        if (oldest is null || !oldest.StartsWith(marker, StringComparison.Ordinal)) return null;
+        var origin = oldest[marker.Length..].Trim();
+        if (origin.StartsWith("refs/heads/", StringComparison.Ordinal)) origin = origin["refs/heads/".Length..];
+        else if (origin.StartsWith("refs/remotes/", StringComparison.Ordinal)) origin = origin["refs/remotes/".Length..];
+        return IsValidReference(origin) && !string.Equals(origin, "HEAD", StringComparison.Ordinal) ? origin : null;
+    }
+
     private static string Checked(string? value, string what)
         => IsValidReference(value)
             ? value!.Trim()
