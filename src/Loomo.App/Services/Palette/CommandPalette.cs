@@ -20,6 +20,15 @@ public sealed record PaletteCommand(string Category, string Title, Action Execut
     /// <summary>ナビゲーション項目（ファイル／テキスト／シンボル／行）が指す場所。
     /// null＝ふつうのコマンド（プレビューを出さない）。</summary>
     public PaletteTarget? Target { get; init; }
+
+    /// <summary>行の右端に添える短い状態（例: 最近のコマンドの成否 ✓／✗ 1）。null ならショートカットを出す。</summary>
+    public string? Badge { get; init; }
+
+    /// <summary>右の欄に出す説明。null なら既定（ショートカットと「Enter で実行」）。</summary>
+    public string? Detail { get; init; }
+
+    /// <summary>行の右端の文字（状態があればそれ、無ければショートカット）。</summary>
+    public string? RightText => Badge ?? Shortcut;
 }
 
 /// <summary>ナビゲーション項目が指す場所。プレビュー（開かずに中身を見る）と確定ジャンプの

@@ -2605,7 +2605,7 @@
                              TextBlock スタイルに Fg が入っているため、継承だけでは選択行の色が届かない。 -->
                         <DataTemplate x:Key="PaletteCommandRow">
                             <DockPanel LastChildFill="True">
-                                <TextBlock DockPanel.Dock="Right" Text="{Binding Shortcut}" FontSize="{DynamicResource Fs11}"
+                                <TextBlock DockPanel.Dock="Right" Text="{Binding RightText}" FontSize="{DynamicResource Fs11}"
                                            Style="{StaticResource PaletteRowDim}" Margin="8,0,0,0"
                                            VerticalAlignment="Center" />
                                 <TextBlock DockPanel.Dock="Right" Text="{Binding Category}" FontSize="{DynamicResource Fs11}"
@@ -2623,7 +2623,7 @@
                         <DataTemplate x:Key="PaletteNavigationRow">
                             <StackPanel>
                                 <DockPanel LastChildFill="True">
-                                    <TextBlock DockPanel.Dock="Right" Text="{Binding Shortcut}" FontSize="{DynamicResource Fs11}"
+                                    <TextBlock DockPanel.Dock="Right" Text="{Binding RightText}" FontSize="{DynamicResource Fs11}"
                                                Style="{StaticResource PaletteRowDim}" Margin="8,0,0,0"
                                                VerticalAlignment="Center" />
                                     <TextBlock FontSize="{DynamicResource Fs12}" TextTrimming="CharacterEllipsis"
