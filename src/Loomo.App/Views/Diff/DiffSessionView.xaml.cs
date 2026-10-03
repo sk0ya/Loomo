@@ -220,9 +220,11 @@ public partial class DiffSessionView : UserControl, IDisposable
             e.Handled = true;
     }
 
-    /// <summary>左右のエディタの右クリックメニューへ、差分ならではの項目を足す（エディタ自身の項目の後ろ）。</summary>
+    /// <summary>左右のエディタの右クリックメニューから差分に要らない項目を外し、差分ならではの項目を足す
+    /// （エディタ自身の項目の後ろ）。</summary>
     private void OnSideEditorContextMenuBuilding(bool left, VimEditorControl editor, EditorContextMenuBuildingEventArgs e)
     {
+        EditorNativeMenuCoordinator.RemoveByHeader(e.Menu, EditorNativeMenuCoordinator.DiffDroppedHeaders(editor.IsReadOnly));
         if (Vm is not { } vm) return;
         var row = _sideEditors.RowAtCaret(editor);
         var selected = e.SelectedText;
@@ -230,8 +232,10 @@ public partial class DiffSessionView : UserControl, IDisposable
         AddSideLineActions(vm, editor, e.Menu);
         e.Menu.Items.Add(NewMenuItem("この行をエディタで開く", "右クリックした行に対応するファイルの行をエディタで開く",
             () => vm.RequestOpenRowInEditor(row)));
-        e.Menu.Items.Add(NewMenuItem("選択範囲をクリップボードと比較", "選択したテキストとクリップボードの内容を比較する",
-            () => CompareWithClipboard(vm, selected)));
+        // 選んでいなければ比べる本文が無い。
+        if (e.HasSelection && !string.IsNullOrEmpty(selected))
+            e.Menu.Items.Add(NewMenuItem("選択範囲をクリップボードと比較", "選択したテキストとクリップボードの内容を比較する",
+                () => CompareWithClipboard(vm, selected)));
         if (!vm.HasComparison) return;
         e.Menu.Items.Add(new Separator());
         e.Menu.Items.Add(NewMenuItem("⇄ 左右を入れ替える", null, () => vm.SwapComparisonCommand.Execute(null)));

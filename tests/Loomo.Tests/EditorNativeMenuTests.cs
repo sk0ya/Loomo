@@ -55,6 +55,27 @@ public sealed class EditorNativeMenuTests
                 Headers(menu));
         });
 
+    /// <summary>Diff の左右エディタは LSP を持たないのでコード操作を外し、読み取り専用の側では
+    /// 書き換える項目も外す。コピーだけは差分を読みながら使うので残す。</summary>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Diffのエディタは差分に要らない項目を落とす(bool readOnly)
+        => RunSta(() =>
+        {
+            var menu = NativeMenu();
+            menu.Items.Add(new MenuItem { Header = EditorMenuLabels.CutLine });
+            menu.Items.Add(new MenuItem { Header = EditorMenuLabels.FormatDocument });
+
+            EditorNativeMenuCoordinator.RemoveByHeader(menu, EditorNativeMenuCoordinator.DiffDroppedHeaders(readOnly));
+
+            Assert.Equal(
+                readOnly
+                    ? [EditorMenuLabels.CopyLine]
+                    : [EditorMenuLabels.CopyLine, EditorMenuLabels.Paste, EditorMenuLabels.CutLine],
+                Headers(menu));
+        });
+
     /// <summary>差し替えは<b>同じ位置</b>で行う。末尾へ足す実装にすると、LSP 操作の一群から
     /// 離れた場所に「Quick Fix」だけが現れる。</summary>
     [Fact]
