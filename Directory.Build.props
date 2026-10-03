@@ -26,6 +26,10 @@
          exe のパスを bin/Debug/ に固定しており（タスクバー等のショートカットが古い exe を指さないため）、
          RID を付けると bin/Debug/win-x64/ へずれて同じ事故が起きる。 -->
     <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
+    <!-- 翻訳リソース（サテライトアセンブリ）は日本語だけ出力する。Roslyn や Humanizer は 13 言語分を
+         同梱しており、指定しないと cs/de/es/…/zh-Hant の 13 フォルダ（出力ごとに約 10MB・78 ファイル）が
+         App・Tests・各ライブラリの bin に出る。英語はアセンブリ本体に入っているので指定不要。 -->
+    <SatelliteResourceLanguages>ja</SatelliteResourceLanguages>
   </PropertyGroup>
 
 </Project>
