@@ -2,16 +2,25 @@ using sk0ya.Loomo.Services;
 
 namespace sk0ya.Loomo.App.ViewModels;
 
-public sealed record DiffRowVm(string Kind, string Text);
+/// <param name="Staged">変更行（Added/Removed）がステージ済みか（作業ツリーの差分だけが持つ）。</param>
+public sealed record DiffRowVm(string Kind, string Text, bool Staged = false);
 
-public sealed record DiffHunkVm(int Index, string HeaderLine, string Summary, bool IsStaged)
-{
-    public string ActionLabel => IsStaged ? "アンステージ" : "ステージ";
-}
-
+/// <param name="LeftStaged">左の削除行がステージ済みか（作業ツリーの差分だけが持つ）。</param>
+/// <param name="RightStaged">右の追加行がステージ済みか（同上）。</param>
 public sealed record DiffSideRowVm(
     string LeftKind, string LeftText, string RightKind, string RightText,
-    string LeftLine, string RightLine);
+    string LeftLine, string RightLine, bool LeftStaged = false, bool RightStaged = false);
+
+/// <summary>作業ツリーの1ファイルの変更が、どこまでステージされているか。</summary>
+public enum DiffStageState
+{
+    /// <summary>何もステージしていない（未追跡・コンフリクトもここ）。</summary>
+    None,
+    /// <summary>一部だけステージ済み。</summary>
+    Partial,
+    /// <summary>変更をすべてステージ済み。</summary>
+    All,
+}
 
 /// <summary>Diff ペインが今どこから差分を取っているか。</summary>
 public enum DiffSource
@@ -71,7 +80,9 @@ public sealed class DiffFileItem
     public GitChangeEntry? Entry { get; init; }
     /// <summary>作業ツリーの変更として破棄できる項目か（Git の作業ツリー項目だけが持つ）。</summary>
     public bool CanDiscard => Entry is not null;
-    public bool IsStaged { get; init; }
+    /// <summary>作業ツリーの項目のステージの進み具合（一覧の印）。差分本体は常に HEAD↔作業ツリーの1枚で、
+    /// ステージしても行は消えず、行ごとの印（<see cref="DiffRowVm.Staged"/> など）が変わる。</summary>
+    public DiffStageState Stage { get; init; }
     public GitCommitFileChange? CommitFile { get; init; }
 
     /// <summary>比較基準（ブランチ／分岐点）に対する変更なら、その変更と基準 ref。

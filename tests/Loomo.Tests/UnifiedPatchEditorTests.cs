@@ -34,7 +34,7 @@ public class UnifiedPatchEditorTests
         var result = UnifiedPatchEditor.BuildReverseDiscardPatch(Patch, Sel(8));
 
         Assert.False(result.IsEmpty);
-        Assert.Equal(1, result.DiscardedLineCount);
+        Assert.Equal(1, result.LineCount);
         var lines = result.Patch.TrimEnd('\n').Split('\n');
         Assert.Equal(new[]
         {
@@ -59,7 +59,7 @@ public class UnifiedPatchEditorTests
         // index 6（-old2）だけ破棄：削除行のまま残り、他の追加は文脈行へ降格
         var result = UnifiedPatchEditor.BuildReverseDiscardPatch(Patch, Sel(6));
 
-        Assert.Equal(1, result.DiscardedLineCount);
+        Assert.Equal(1, result.LineCount);
         var lines = result.Patch.TrimEnd('\n').Split('\n');
         Assert.Contains("-old2", lines);
         Assert.Contains(" new2", lines);   // 残す追加 → 文脈
@@ -83,7 +83,7 @@ public class UnifiedPatchEditorTests
     {
         var result = UnifiedPatchEditor.BuildReverseDiscardPatch(Patch, Sel(6, 7, 8));
 
-        Assert.Equal(3, result.DiscardedLineCount);
+        Assert.Equal(3, result.LineCount);
         var lines = result.Patch.TrimEnd('\n').Split('\n');
         Assert.Contains("-old2", lines);
         Assert.Contains("+new2", lines);
@@ -109,7 +109,7 @@ public class UnifiedPatchEditorTests
         // 2つ目のハンクの変更だけ選ぶ → 1つ目のハンクは出力されない
         var result = UnifiedPatchEditor.BuildReverseDiscardPatch(twoHunks, Sel(9, 10));
 
-        Assert.Equal(2, result.DiscardedLineCount);
+        Assert.Equal(2, result.LineCount);
         var lines = result.Patch.TrimEnd('\n').Split('\n');
         Assert.Single(lines, l => l.StartsWith("@@"));
         Assert.Contains("@@ -10,2 +10,2 @@", lines);
@@ -133,7 +133,7 @@ public class UnifiedPatchEditorTests
         var result = UnifiedPatchEditor.BuildReverseDiscardPatchForLines(
             Patch, oldLinesToRestore: Sel(2), newLinesToRemove: Sel(2, 3));
 
-        Assert.Equal(3, result.DiscardedLineCount);
+        Assert.Equal(3, result.LineCount);
         var lines = result.Patch.TrimEnd('\n').Split('\n');
         Assert.Contains("-old2", lines);
         Assert.Contains("+new2", lines);
@@ -147,7 +147,7 @@ public class UnifiedPatchEditorTests
         var result = UnifiedPatchEditor.BuildReverseDiscardPatchForLines(
             Patch, oldLinesToRestore: Sel(), newLinesToRemove: Sel(3));
 
-        Assert.Equal(1, result.DiscardedLineCount);
+        Assert.Equal(1, result.LineCount);
         var lines = result.Patch.TrimEnd('\n').Split('\n');
         Assert.Contains("+added3", lines);
         Assert.Contains(" new2", lines);     // 残す追加 → 文脈
@@ -161,5 +161,77 @@ public class UnifiedPatchEditorTests
         var result = UnifiedPatchEditor.BuildReverseDiscardPatchForLines(
             Patch, oldLinesToRestore: Sel(99), newLinesToRemove: Sel(99));
         Assert.True(result.IsEmpty);
+    }
+
+    // ===== 選んだ行だけのステージ（インデックスへ順適用）=====
+
+    [Fact]
+    public void Staging_an_added_line_drops_other_additions_and_keeps_removals_as_context()
+    {
+        // index 8（+added3）だけステージ：インデックスに無い +new2 は落とし、まだある -old2 は文脈行へ
+        var result = UnifiedPatchEditor.BuildStagePatch(Patch, Sel(8));
+
+        Assert.Equal(1, result.LineCount);
+        var lines = result.Patch.TrimEnd('\n').Split('\n');
+        Assert.Equal(new[]
+        {
+            "diff --git a/f.txt b/f.txt",
+            "index 1111111..2222222 100644",
+            "--- a/f.txt",
+            "+++ b/f.txt",
+            "@@ -1,5 +1,6 @@",
+            " ctx1",
+            " old2",     // ステージしない削除 → 文脈行へ（インデックスに残る）
+            "+added3",
+            " ctx4",
+            " ctx5",
+        }, lines);
+    }
+
+    [Fact]
+    public void Staging_a_removed_line_keeps_it_and_drops_unselected_additions()
+    {
+        var result = UnifiedPatchEditor.BuildStagePatch(Patch, Sel(6));
+
+        Assert.Equal(1, result.LineCount);
+        var lines = result.Patch.TrimEnd('\n').Split('\n');
+        Assert.Contains("-old2", lines);
+        Assert.DoesNotContain("+new2", lines);
+        Assert.DoesNotContain(" new2", lines);
+        Assert.DoesNotContain("+added3", lines);
+    }
+
+    [Fact]
+    public void Staging_by_line_numbers_selects_the_block()
+    {
+        var result = UnifiedPatchEditor.BuildStagePatchForLines(Patch, oldLines: Sel(2), newLines: Sel(2));
+
+        Assert.Equal(2, result.LineCount);
+        var lines = result.Patch.TrimEnd('\n').Split('\n');
+        Assert.Contains("-old2", lines);
+        Assert.Contains("+new2", lines);
+        Assert.DoesNotContain("+added3", lines);
+        Assert.DoesNotContain(" added3", lines);
+    }
+
+    [Fact]
+    public void Staging_keeps_no_newline_marker_only_after_a_kept_line()
+    {
+        const string eofPatch =
+            "--- a/f.txt\n" +
+            "+++ b/f.txt\n" +
+            "@@ -1,2 +1,2 @@\n" +
+            " a\n" +
+            "-b\n" +
+            "\\ No newline at end of file\n" +
+            "+c\n" +
+            "\\ No newline at end of file\n";
+
+        // -b だけステージ：+c は落ちるので、その後ろのマーカーも落ちる
+        var lines = UnifiedPatchEditor.BuildStagePatch(eofPatch, Sel(4)).Patch.TrimEnd('\n').Split('\n');
+        Assert.Equal(new[]
+        {
+            "--- a/f.txt", "+++ b/f.txt", "@@ -1,2 +1,2 @@", " a", "-b", "\\ No newline at end of file",
+        }, lines);
     }
 }

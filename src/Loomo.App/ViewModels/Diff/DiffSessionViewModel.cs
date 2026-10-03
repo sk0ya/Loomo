@@ -84,6 +84,12 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
     [ObservableProperty] private bool _canDiscardSelected;
     [ObservableProperty] private bool _canDiscardLines;
 
+    /// <summary>選んだ行・範囲だけをステージ／アンステージできるか（作業ツリーの追跡済みファイルだけ）。
+    /// 向きは行ごとの印で決まる——未ステージの行はステージ、ステージ済みの行はアンステージ。</summary>
+    [ObservableProperty]
+    private bool _canStageLines;
+
+
     /// <summary>比較の照会が長引いている（帯と「中止」を出す）。すぐ終わる読み込みでは出さない——
     /// 出たり消えたりするとちらつくだけなので、<see cref="BusyDelay"/> を過ぎたものだけ。</summary>
     [ObservableProperty] private bool _isBusy;
@@ -93,11 +99,8 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
     public ObservableCollection<DiffRowVm> DiffRows { get; } = new();
     public ObservableCollection<DiffSideRowVm> SideRows { get; } = new();
 
-    public ObservableCollection<DiffHunkVm> Hunks { get; } = new();
-
     public event EventHandler<string>? CommitOpenInGitRequested;
 
-    public bool CanStageHunks => Hunks.Count > 0;
     private int _refreshGeneration;
 
     /// <param name="settings">Markdown レンダリング差分の配色（<c>Appearance.MarkdownPreviewTheme</c>）を
@@ -228,8 +231,6 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
 
     private void ClearDiffForConflict()
     {
-        Hunks.Clear();
-        OnPropertyChanged(nameof(CanStageHunks));
         DiffRows.Clear();
         SetSideRowsItem(null);
         SideRows.Clear();
@@ -303,8 +304,12 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
         }
         UpdateCanDiscard();
         InvalidateWorkingTreePatch(value); // 開き直すたびに作業ツリーの最新内容を読み直す
-        _ = LoadAndAutoJumpAsync(value);
+        // 読み直しで同じファイルを選び直しただけ（ステージで一覧の印が変わった等）なら、読んでいた位置を動かさない。
+        _ = LoadAndAutoJumpAsync(value, autoJump: !_reselectingSameFile);
     }
+
+    /// <summary><see cref="RefreshAsync"/> が一覧を作り直して、同じパスの項目を選び直している最中。</summary>
+    private bool _reselectingSameFile;
 
     private void UpdateCanDiscard()
     {
@@ -315,8 +320,8 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
         var capabilities = CompareBase.Capabilities;
         var gitWorkingTree = IsGitMode && !HasGitTarget;
         CanDiscardSelected = gitWorkingTree && capabilities.CanDiscard && SelectedFile?.Entry is not null;
-        CanDiscardLines = gitWorkingTree && capabilities.CanApplyLines
-            && SelectedFile is { IsStaged: false, Entry: { IsUntracked: false } };
+        CanStageLines = gitWorkingTree && capabilities.CanApplyLines && SupportsLineStaging(SelectedFile);
+        CanDiscardLines = CanStageLines;
     }
 
     partial void OnIsSideBySideChanged(bool value)
@@ -327,10 +332,10 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>差分を読み込み、最初の変更への自動ジャンプを要求する。</summary>
-    private async Task LoadAndAutoJumpAsync(DiffFileItem? item)
+    private async Task LoadAndAutoJumpAsync(DiffFileItem? item, bool autoJump = true)
     {
         await Conflict.LoadAsync(item, LoadDiffAsync);
-        if (item is not null)
+        if (item is not null && autoJump)
             AutoJumpRequested?.Invoke();
     }
 
@@ -353,7 +358,7 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
             case DiffOpenTarget.CommitFile f:
                 return ShowCommitFileAsync(f.Hash, f.Label, f.Path, f.LineInCommit);
             case DiffOpenTarget.WorkingTreeFile w:
-                return ShowWorkingTreeFileAsync(w.Entry, w.IsStaged);
+                return ShowWorkingTreeFileAsync(w.Entry);
             case DiffOpenTarget.CompareBase b:
                 ShowCompareBase(b.Selection);
                 return Task.CompletedTask;
@@ -474,7 +479,9 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
     /// コミット範囲を解除して作業ツリー（Git）モードへ切り替え、一覧を読み直してそのファイルを選択する。
     /// ペインの表示は呼び出し側（ShellWindow）が行う。
     /// </summary>
-    public async Task ShowWorkingTreeFileAsync(GitChangeEntry entry, bool isStaged)
+    /// <remarks>ステージ済み／未ステージのどちらの行から開かれても同じ1項目を選ぶ——差分は HEAD↔作業ツリーの
+    /// 1枚で、どこまでステージしたかは行の印で見せる。</remarks>
+    public async Task ShowWorkingTreeFileAsync(GitChangeEntry entry)
     {
         _loaded = true;
         SetCommitRange(null);
@@ -482,12 +489,7 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
         IsGitMode = true;
         UpdateCanDiscard();  // 既に Git モードだと IsGitMode の setter は何も通知しない
         await RefreshAsync();
-        // 基準がブランチ／分岐点のとき、一覧の項目はステージ済み／未ステージの区別を持たない
-        // （その概念が無い）ので、まず厳密一致で探し、無ければパスだけで拾う。
         SelectedFile = Files.FirstOrDefault(f =>
-            f.IsStaged == isStaged
-            && string.Equals(f.DisplayPath, entry.Path, StringComparison.OrdinalIgnoreCase))
-            ?? Files.FirstOrDefault(f =>
                 string.Equals(f.DisplayPath, entry.Path, StringComparison.OrdinalIgnoreCase))
             ?? SelectedFile;
     }
@@ -744,7 +746,9 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
         EmptyMessage = Files.Count > 0 ? "" : emptyMessage;
         OnPropertyChanged(nameof(FileListHeader));
 
-        SelectedFile = reselect ?? Files.FirstOrDefault();
+        _reselectingSameFile = reselect is not null;
+        try { SelectedFile = reselect ?? Files.FirstOrDefault(); }
+        finally { _reselectingSameFile = false; }
         if (SelectedFile is null)
         {
             DiffRows.Clear();
@@ -877,60 +881,6 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
 
         // 破棄が成功すると GitService が RepositoryChanged を発火し、一覧は自動で読み直される。
         var result = await _commands.DiscardAsync(item);
-        SetStatus(result.Message, !result.Success);
-    }
-
-    /// <summary>
-    /// 統合表示で選択した差分行（<paramref name="selectedRowIndices"/> は <see cref="DiffRows"/> の添字）の変更だけを
-    /// 破棄する。選んだ <c>+</c>/<c>-</c> 行を縮約パッチにして <c>git apply --reverse --recount</c> で逆適用する。
-    /// </summary>
-    public async Task DiscardSelectedLinesAsync(IReadOnlySet<int> selectedRowIndices)
-    {
-        if (!CanDiscardLines || SelectedFile is not { Entry: not null } item) return;
-        if (selectedRowIndices.Count == 0) return;
-
-        // DiffRows は GetPatchTextAsync(item, 3) を改行分割したものと1対1。同じパッチから縮約する。
-        var patch = await GetPatchTextAsync(item, 3);
-        var reduced = UnifiedPatchEditor.BuildReverseDiscardPatch(patch, selectedRowIndices);
-        if (reduced.IsEmpty)
-        {
-            SetStatus("破棄する変更行が選択されていません（追加・削除行を選んでください）。", isError: false);
-            return;
-        }
-
-        var answer = MessageBox.Show(
-            Application.Current?.MainWindow!,
-            $"{item.DisplayPath} の選択した {reduced.DiscardedLineCount} 行ぶんの変更を破棄しますか？\n作業ツリーのその変更が失われます。",
-            "選択行の破棄", MessageBoxButton.YesNo, MessageBoxImage.Warning);
-        if (answer != MessageBoxResult.Yes) return;
-
-        // 適用が成功すると GitService が RepositoryChanged を発火し、一覧・差分は自動で読み直される。
-        var result = await _commands.ApplyReverseAsync(reduced.Patch,
-            $"{item.DisplayPath} の選択した {reduced.DiscardedLineCount} 行を破棄しました。");
-        SetStatus(result.Message, !result.Success);
-    }
-
-    /// <summary>
-    /// 左右並び表示で、変更ブロック（範囲）の旧/新行番号を指定してその範囲の変更だけを破棄する。
-    /// <paramref name="oldLines"/> は復活させる削除行の旧行番号、<paramref name="newLines"/> は取り消す追加行の新行番号。
-    /// </summary>
-    public async Task DiscardSideLinesAsync(IReadOnlySet<int> oldLines, IReadOnlySet<int> newLines)
-    {
-        if (!CanDiscardLines || SelectedFile is not { Entry: not null } item) return;
-        if (oldLines.Count == 0 && newLines.Count == 0) return;
-
-        var patch = await GetPatchTextAsync(item, 3);
-        var reduced = UnifiedPatchEditor.BuildReverseDiscardPatchForLines(patch, oldLines, newLines);
-        if (reduced.IsEmpty) return;
-
-        var answer = MessageBox.Show(
-            Application.Current?.MainWindow!,
-            $"{item.DisplayPath} のこの範囲（{reduced.DiscardedLineCount} 行）の変更を破棄しますか？\n作業ツリーのその変更が失われます。",
-            "範囲の破棄", MessageBoxButton.YesNo, MessageBoxImage.Warning);
-        if (answer != MessageBoxResult.Yes) return;
-
-        var result = await _commands.ApplyReverseAsync(reduced.Patch,
-            $"{item.DisplayPath} のこの範囲（{reduced.DiscardedLineCount} 行）を破棄しました。");
         SetStatus(result.Message, !result.Success);
     }
 

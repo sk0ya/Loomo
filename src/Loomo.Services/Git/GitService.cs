@@ -186,6 +186,9 @@ public sealed class GitService
     public Task<string> GetDiffTextAsync(GitChangeEntry entry, bool staged, int contextLines = 3) =>
         _diff.GetDiffTextAsync(entry, staged, contextLines);
 
+    public Task<string> GetHeadDiffTextAsync(GitChangeEntry entry, int contextLines = 3) =>
+        _diff.GetHeadDiffTextAsync(entry, contextLines);
+
     // ===== 比較基準（作業ツリー／ブランチ／分岐点） =====
 
     /// <summary>比較基準として選べる ref（ローカル＋リモート追跡ブランチ）。</summary>

@@ -276,8 +276,9 @@
 
         <!-- 差分本体（左右並び）のメニュー。コピーのほか、読んでいる行からエディタ・AI・比較へ素材を渡す。
              コンフリクト表示の Ours/Theirs 欄は行番号の意味が違うので、こちらは使わず DiffCopyMenu のまま。 -->
-        <!-- 統合表示の本文メニュー（コピー＋選択行の破棄）。破棄は Git・作業ツリー・未ステージの追跡ファイルのみ有効 -->
-        <ContextMenu x:Key="DiffUnifiedMenu">
+        <!-- 統合表示の本文メニュー（コピー＋選択行のステージ／アンステージ／破棄）。後者は Git・作業ツリーの
+             追跡ファイルのみ -->
+        <ContextMenu x:Key="DiffUnifiedMenu" Opened="OnUnifiedMenuOpened">
             <MenuItem Header="コピー" Command="ApplicationCommands.Copy" InputGestureText="Ctrl+C"
                       CommandTarget="{Binding PlacementTarget,
                           RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
@@ -287,16 +288,8 @@
             <MenuItem Header="選択範囲をクリップボードと比較" Click="OnCompareSelectionWithClipboard"
                       ToolTip="差分本体で選択したテキストとクリップボードの内容を比較する" />
             <Separator />
-            <!-- 行単位の破棄は「作業ツリー vs インデックス／HEAD」の概念。基準がブランチ／分岐点のときや
-                 コミット範囲を見ている間は存在しないので、灰色で残さず項目ごと出さない（§24.11）。 -->
-            <MenuItem Header="選択した行を破棄" Click="OnDiscardSelectedLines"
-                      ToolTip="選択した追加・削除行の変更だけを作業ツリーから取り消す"
-                      Visibility="{Binding PlacementTarget.DataContext.CanDiscardLines,
-                          RelativeSource={RelativeSource AncestorType=ContextMenu},
-                          Converter={StaticResource BoolToVis}}" />
-            <Separator Visibility="{Binding PlacementTarget.DataContext.CanDiscardLines,
-                          RelativeSource={RelativeSource AncestorType=ContextMenu},
-                          Converter={StaticResource BoolToVis}}" />
+            <!-- 行単位のステージ・アンステージ・破棄はここに静的に置かない。出すべきものが選んだ行の印
+                 （ステージ済みか）で変わるので、開くたびに OnUnifiedMenuOpened が差し込む（§24.11）。 -->
             <MenuItem Header="⇄ 左右を入れ替える" Click="OnSwapComparison"
                       IsEnabled="{Binding PlacementTarget.DataContext.HasComparison,
                           RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
@@ -558,40 +551,6 @@
                            Foreground="{DynamicResource Accent}" TextTrimming="CharacterEllipsis" />
             </Border>
 
-            <!-- ハンク単位ステージ（作業ツリーの追跡済みファイルのみ）。各ハンクをステージ／アンステージできる。 -->
-            <Border DockPanel.Dock="Top" Margin="0,0,0,2" Padding="4,3"
-                    Background="{DynamicResource Panel}"
-                    BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1"
-                    Visibility="{Binding CanStageHunks, Converter={StaticResource BoolToVis}}">
-                <DockPanel>
-                    <TextBlock DockPanel.Dock="Left" Text="ハンク" FontSize="{DynamicResource Fs11}" FontWeight="SemiBold"
-                               Foreground="{DynamicResource FgDim}" VerticalAlignment="Center" Margin="4,0,8,0" />
-                    <ItemsControl ItemsSource="{Binding Hunks}" MaxHeight="120">
-                        <ItemsControl.Template>
-                            <ControlTemplate TargetType="ItemsControl">
-                                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                                    <ItemsPresenter />
-                                </ScrollViewer>
-                            </ControlTemplate>
-                        </ItemsControl.Template>
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate>
-                                <DockPanel Margin="0,1" ToolTip="{Binding HeaderLine}">
-                                    <Button DockPanel.Dock="Right" Content="{Binding ActionLabel}"
-                                            Style="{StaticResource DiffSecondaryButton}" Margin="6,0,0,0"
-                                            Command="{Binding DataContext.ToggleHunkCommand,
-                                                RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                            CommandParameter="{Binding}" />
-                                    <TextBlock Text="{Binding Summary}" FontFamily="Cascadia Mono, Consolas"
-                                               FontSize="{DynamicResource Fs11}" Foreground="{DynamicResource FgDim}"
-                                               TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
-                                </DockPanel>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                </DockPanel>
-            </Border>
-
             <Grid>
                 <!-- 通常の差分表示（統合／左右）。コンフリクト解消表示中はまとめて隠す。 -->
                 <Grid Visibility="{Binding Conflict.ShowDiffBody, Converter={StaticResource BoolToVis}}">
@@ -622,7 +581,8 @@
                     <GridSplitter Grid.Column="1" Width="6" HorizontalAlignment="Left"
                                   VerticalAlignment="Stretch" Background="Transparent"
                                   ResizeBehavior="PreviousAndNext" ResizeDirection="Columns" />
-                    <Grid Grid.Column="1" Width="20" Margin="6,0,0,0" Background="{DynamicResource BgAlt}">
+                    <!-- 中央の帯：左半分 ↶ 元に戻す・右半分 ステージの印。2つ並べて押し分けられる幅にしてある。 -->
+                    <Grid Grid.Column="1" Width="36" Margin="6,0,0,0" Background="{DynamicResource BgAlt}">
                         <Border Width="1" HorizontalAlignment="Center" Background="{DynamicResource Border}" />
                         <Canvas x:Name="CenterGutter" ClipToBounds="True" Background="Transparent" />
                     </Grid>

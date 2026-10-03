@@ -28,11 +28,12 @@ internal sealed class DiffFlowDocumentRenderer
     internal DiffUnifiedDocumentBuild BuildUnified(
         IReadOnlyList<DiffRowVm> rows, IReadOnlyList<SyntaxToken[]?> syntax)
     {
-        var document = NewDocument(MeasureMaxWidth(rows.Select(row => row.Text)));
+        // 左端のステージの帯（枠3＋余白3）のぶん広げる。足さないと最長の行が折り返す。
+        var document = NewDocument(MeasureMaxWidth(rows.Select(row => row.Text)) + StagedBarWidth);
         var build = new ChunkedAppendState(rows.Count, (start, end) =>
         {
             for (var index = start; index < end; index++)
-                document.Blocks.Add(TextParagraph(rows[index].Text, rows[index].Kind, TokensAt(syntax, index)));
+                document.Blocks.Add(TextParagraph(rows[index].Text, rows[index].Kind, TokensAt(syntax, index), rows[index].Staged));
         });
         return new DiffUnifiedDocumentBuild(document, build);
     }
@@ -74,9 +75,18 @@ internal sealed class DiffFlowDocumentRenderer
             lines, typeface, UiFontManager.Scaled(12), VisualTreeHelper.GetDpi(_owner).PixelsPerDip);
     }
 
-    private static Paragraph TextParagraph(string text, string kind, SyntaxToken[]? tokens = null)
+    /// <summary>ステージ済みの行の左端の帯（左右並びの中央の帯と同じ色）。追加／削除の色はそのまま残す——
+    /// 「何が変わったか」と「インデックスに入ったか」は別の軸。</summary>
+    private static readonly Brush StagedBar = FrozenBrush("#FF42A5F5");
+    private const double StagedBarWidth = 6;
+
+    private static Paragraph TextParagraph(string text, string kind, SyntaxToken[]? tokens = null, bool staged = false)
     {
         var paragraph = NewParagraph();
+        // 帯の幅ぶん、ステージしていない行も左を空けて桁を揃える。
+        paragraph.BorderThickness = new Thickness(3, 0, 0, 0);
+        paragraph.Padding = new Thickness(3, 0, 0, 0);
+        paragraph.BorderBrush = staged ? StagedBar : Brushes.Transparent;
         paragraph.Background = kind switch
         {
             "Added" => AddedBackground,

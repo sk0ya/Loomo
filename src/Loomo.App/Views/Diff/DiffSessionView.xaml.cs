@@ -48,7 +48,7 @@ public partial class DiffSessionView : UserControl, IDisposable
             () => Vm,
             () => _sideEditors.Geometry,
             () => CenterGutter.ActualHeight,
-            () => CenterGutter.ActualWidth > 0 ? CenterGutter.ActualWidth : 20,
+            () => CenterGutter.ActualWidth > 0 ? CenterGutter.ActualWidth : 36,
             () => _sideEditors.HasUnsavedEdits);
         _sideEditors.LayoutChanged += _sideBlockPresenter.Render;
         _sideEditors.UserInteracted += CancelAutoJump;
@@ -227,6 +227,7 @@ public partial class DiffSessionView : UserControl, IDisposable
         var row = _sideEditors.RowAtCaret(editor);
         var selected = e.SelectedText;
         e.Menu.Items.Add(new Separator());
+        AddSideLineActions(vm, editor, e.Menu);
         e.Menu.Items.Add(NewMenuItem("この行をエディタで開く", "右クリックした行に対応するファイルの行をエディタで開く",
             () => vm.RequestOpenRowInEditor(row)));
         e.Menu.Items.Add(NewMenuItem("選択範囲をクリップボードと比較", "選択したテキストとクリップボードの内容を比較する",
@@ -240,6 +241,52 @@ public partial class DiffSessionView : UserControl, IDisposable
         static MenuItem NewMenuItem(string header, string? toolTip, Action action)
         {
             var item = new MenuItem { Header = header, ToolTip = toolTip };
+            item.Click += (_, _) => action();
+            return item;
+        }
+    }
+
+    /// <summary>
+    /// 選んだ行（選択が無ければキャレットのある変更）のステージ／アンステージと破棄。左右どちらのエディタでも
+    /// 出す——読んでいるその場で選んで右クリックするのが一番短い。出す項目は行の印で決める：未ステージの行が
+    /// あれば「ステージ」と「破棄」、ステージ済みの行があれば「アンステージ」。変更に掛かっていなければ出さない。
+    /// </summary>
+    private void AddSideLineActions(DiffSessionViewModel vm, VimEditorControl editor, ContextMenu menu)
+    {
+        if (!vm.CanStageLines) return;
+        var (startRow, endRow, hasSelection) = _sideEditors.SelectedRows(editor);
+        var selection = DiffSideBlockMapper.CollectSelectedChanges(vm.SideRows, startRow, endRow, wholeBlock: !hasSelection);
+        if (selection.IsEmpty) return;
+
+        // 見えている行番号は保存前の本文のもの、パッチはディスクの行番号で作る——混ぜると別の行に効く。
+        var blocked = _sideEditors.HasUnsavedEdits;
+        AddLineActionItems(menu, hasSelection, selection.HasUnstaged, selection.HasStaged, vm.CanDiscardLines, blocked,
+            stage => _ = vm.StageLinesAsync(selection.OldLines, selection.NewLines, stage),
+            () => _ = vm.DiscardLinesAsync(selection.OldLines, selection.NewLines));
+        menu.Items.Add(new Separator());
+    }
+
+    /// <summary>ステージ／アンステージ／破棄の項目を足す（左右並び・統合表示で同じ見出しと並び）。</summary>
+    private static void AddLineActionItems(
+        ItemsControl menu, bool hasSelection, bool hasUnstaged, bool hasStaged, bool canDiscard, bool blocked,
+        Action<bool> stage, Action discard)
+    {
+        var target = hasSelection ? "選択した行" : "この変更";
+        if (hasUnstaged)
+            menu.Items.Add(Item($"{target}をステージ", () => stage(true)));
+        if (hasStaged)
+            menu.Items.Add(Item($"{target}をアンステージ", () => stage(false)));
+        if (hasUnstaged && canDiscard)
+            menu.Items.Add(Item($"{target}を元に戻す", discard));
+
+        MenuItem Item(string header, Action action)
+        {
+            var item = new MenuItem
+            {
+                Header = header, IsEnabled = !blocked,
+                ToolTip = blocked ? "右側に保存していない編集があります。保存してから操作してください。" : null,
+            };
+            ToolTipService.SetShowOnDisabled(item, true);
             item.Click += (_, _) => action();
             return item;
         }
@@ -439,16 +486,57 @@ public partial class DiffSessionView : UserControl, IDisposable
     private void OnRecompareWithClipboard(object sender, RoutedEventArgs e)
         => Vm?.RecompareWithClipboardCommand.Execute(null);
 
-    // ===== 選択行の破棄（統合表示） =====
+    // ===== 選択行のステージ／アンステージ／破棄（統合表示） =====
 
-    /// <summary>統合表示で選択している行の変更だけを破棄する。段落の並びは <see cref="DiffSessionViewModel.DiffRows"/> と1対1。</summary>
-    private async void OnDiscardSelectedLines(object sender, RoutedEventArgs e)
+    /// <summary>統合表示で選択している行の変更だけをステージ（ステージ済みの差分ならアンステージ）する。</summary>
+    /// <summary>
+    /// 統合表示のメニューを開くとき、選んでいる行（選択が無ければキャレットの行）の印に合わせて
+    /// ステージ／アンステージ／破棄の項目を差し込む。項目は静的に置かず毎回作る——出すべきものが選択で変わる。
+    /// </summary>
+    private void OnUnifiedMenuOpened(object sender, RoutedEventArgs e)
     {
-        if (Vm is not { } vm) return;
+        if (sender is not ContextMenu menu) return;
+        foreach (var stale in menu.Items.OfType<FrameworkElement>().Where(i => Equals(i.Tag, LineActionTag)).ToList())
+            menu.Items.Remove(stale);
+        if (Vm is not { CanStageLines: true } vm) return;
+
         var rows = DiffRowLineMapper.SelectedRowIndices(UnifiedBox.Document, UnifiedBox.Selection);
-        if (rows.Count == 0) return;
-        await vm.DiscardSelectedLinesAsync(rows);
+        var changed = rows.Where(i => i >= 0 && i < vm.DiffRows.Count && vm.DiffRows[i].Kind is "Added" or "Removed").ToList();
+        if (changed.Count == 0) return;
+        var hasStaged = changed.Any(i => vm.DiffRows[i].Staged);
+        var hasUnstaged = changed.Any(i => !vm.DiffRows[i].Staged);
+        var selected = changed.ToHashSet();
+
+        var temp = new ContextMenu();
+        AddLineActionItems(temp, hasSelection: !UnifiedBox.Selection.IsEmpty, hasUnstaged, hasStaged, vm.CanDiscardLines,
+            blocked: false,
+            stage => _ = StageUnifiedAsync(vm, selected, stage),
+            () => _ = DiscardUnifiedAsync(vm, selected));
+        temp.Items.Add(new Separator());
+        // 「コピー」などの後ろ、エディタへ素材を渡す項目の前に差し込む。
+        var insertAt = Math.Min(2, menu.Items.Count);
+        foreach (var item in temp.Items.OfType<FrameworkElement>().ToList())
+        {
+            temp.Items.Remove(item);
+            item.Tag = LineActionTag;
+            menu.Items.Insert(insertAt++, item);
+        }
     }
+
+    private const string LineActionTag = "diff-line-action";
+
+    private static async Task StageUnifiedAsync(DiffSessionViewModel vm, IReadOnlySet<int> rows, bool stage)
+    {
+        var (head, worktree) = await vm.UnifiedRowsToLinesAsync(rows);
+        await vm.StageLinesAsync(head, worktree, stage);
+    }
+
+    private static async Task DiscardUnifiedAsync(DiffSessionViewModel vm, IReadOnlySet<int> rows)
+    {
+        var (head, worktree) = await vm.UnifiedRowsToLinesAsync(rows);
+        await vm.DiscardLinesAsync(head, worktree);
+    }
+
 
     /// <summary>本文の選択範囲が覆う段落（＝差分行）の添字集合を返す。キャレットだけのときはその1行。</summary>
 }

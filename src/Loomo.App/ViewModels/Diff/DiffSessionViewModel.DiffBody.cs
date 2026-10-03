@@ -59,7 +59,6 @@ public sealed partial class DiffSessionViewModel
     public string SideRightTitle => SideRowsItem switch
     {
         { Comparison: { } comparison } => comparison.RightTitle,
-        { IsStaged: true } item => $"{item.FileName}（インデックス）",
         { } item => $"{item.FileName}（新）",
         null => "",
     };
@@ -68,7 +67,6 @@ public sealed partial class DiffSessionViewModel
         => _commitRange is null
            && item is { Comparison: null, CommitFile: null, FullPath.Length: > 0 }
            && (item.Entry is { IsConflicted: false } || item.CompareBaseFile is not null)
-           && !item.IsStaged
            && File.Exists(item.FullPath);
 
     /// <summary>
@@ -96,7 +94,6 @@ public sealed partial class DiffSessionViewModel
     private async Task LoadDiffAsync(DiffFileItem? item)
     {
         var version = ++_diffLoadVersion;
-        await LoadHunksAsync(item, version);
         if (UseMarkdownRender(item))
         {
             // レンダリング表示中はテキスト行を組み立てない（画面から退けてあるものを作っても捨てるだけ）。
@@ -113,21 +110,24 @@ public sealed partial class DiffSessionViewModel
         MarkdownRenderHtml = null;
         MarkdownRenderChangeCount = 0;
         MarkdownRenderNotice = "";
+        // 行ごとの「ステージ済み」の印。差分本体と同じ読込の中で引く（印だけ古い／新しいのずれを作らない）。
+        var stageMap = await LoadStageMapAsync(item);
         if (IsSideBySide)
         {
             var content = await BuildSideContentAsync(item);
             if (version != _diffLoadVersion)
                 return; // より新しい読込が始まっている
             SetSideRowsItem(item);
-            ReplaceIfChanged(SideRows, content.Rows);
+            ReplaceIfChanged(SideRows, stageMap is null ? content.Rows : MarkStaged(content.Rows, stageMap));
         }
         else
         {
             var content = await BuildUnifiedContentAsync(item);
+            var rows = stageMap is null ? content.Rows : MarkStaged(content.Rows, await GetPatchTextAsync(item!, 3), stageMap);
             if (version != _diffLoadVersion)
                 return;
             UnifiedSyntax = content.Syntax;
-            ReplaceIfChanged(DiffRows, content.Rows);
+            ReplaceIfChanged(DiffRows, rows);
         }
     }
 
@@ -175,7 +175,7 @@ public sealed partial class DiffSessionViewModel
             ? _git.GetRangeFileDiffAsync(range.From, range.To, commitFile, contextLines)
             : item.CompareBaseFile is { } compareFile
                 ? _git.GetCompareFileDiffAsync(compareFile.BaseRef, compareFile.Change, contextLines)
-                : _git.GetDiffTextAsync(item.Entry!, item.IsStaged, contextLines));
+                : _git.GetHeadDiffTextAsync(item.Entry!, contextLines));
         _patchCache[key] = text;
         return text;
     }
@@ -252,78 +252,136 @@ public sealed partial class DiffSessionViewModel
         OnPropertyChanged(nameof(SideRowsItem));
     }
 
-    // ===== ハンク単位ステージ =====
-
     /// <summary>
-    /// ハンク単位ステージ／アンステージの対象となるファイルか。作業ツリーの追跡済みファイル
+    /// 行・変更単位でステージ／アンステージできるファイルか。作業ツリーの追跡済みファイルだけ
     /// （コミット範囲・未追跡・コンフリクト・アドホック比較は対象外。これらは部分ステージできない／意味がない
     /// ——比較は <see cref="DiffFileItem.Entry"/> が null なのでこの条件で落ちる）。
     /// </summary>
-    private static bool SupportsHunkStaging(DiffFileItem? item)
+    private static bool SupportsLineStaging(DiffFileItem? item)
         => item is { CommitFile: null, CompareBaseFile: null,
                      Entry: { IsUntracked: false, IsConflicted: false } };
 
-    /// <summary>選択ファイルのハンク一覧を組み立てる（対象外なら空にする）。コンテキスト3のパッチを使う。
-    /// <paramref name="version"/> は <see cref="LoadDiffAsync"/> の読込世代。await の間に新しい読込が
-    /// 始まっていたら（version 不一致）Hunks には触れず、別ファイルのハンクで上書きしないようにする。</summary>
-    private async Task LoadHunksAsync(DiffFileItem? item, int version)
+    // ===== 行・変更単位のステージ／アンステージ／破棄 =====
+    //
+    // 差分本体は HEAD↔作業ツリーの1枚。行番号は「削除行＝HEAD の行」「追加行＝作業ツリーの行」で受け取り、
+    // StagedChangeMap でステージ済み／未ステージに振り分けてから、それぞれの git 差分の行番号でパッチを作る。
+
+    /// <summary>このファイルの HEAD↔インデックス（ステージ済み）とインデックス↔作業ツリー（未ステージ）の差分。
+    /// 操作のたびに取り直す（キャッシュすると、別の場所でステージした後に古い行番号でパッチを作る）。</summary>
+    private async Task<(string Staged, string Unstaged)> GetStagePatchesAsync(DiffFileItem item)
     {
-        if (item is null || _commitRange is not null || !SupportsHunkStaging(item))
-        {
-            if (version != _diffLoadVersion) return; // より新しい読込が Hunks を所有している
-            Hunks.Clear();
-            OnPropertyChanged(nameof(CanStageHunks));
-            return;
-        }
-
-        var text = await GetPatchTextAsync(item, 3);
-        if (version != _diffLoadVersion)
-            return; // より新しい読込が始まっている（Hunks は触らない）
-
-        var split = GitPatchSplitter.Split(text);
-        Hunks.Clear();
-        for (var i = 0; i < split.Hunks.Count; i++)
-            Hunks.Add(new DiffHunkVm(i, split.Hunks[i].HeaderLine,
-                SummarizeHunk(split.Hunks[i]), item.IsStaged));
-        OnPropertyChanged(nameof(CanStageHunks));
+        var staged = await _git.GetDiffTextAsync(item.Entry!, staged: true, 3);
+        var unstaged = await _git.GetDiffTextAsync(item.Entry!, staged: false, 3);
+        return (staged, unstaged);
     }
 
-    /// <summary>ハンクの簡易サマリ（@@ 行＋増減行数）。</summary>
-    private static string SummarizeHunk(GitPatchSplitter.Hunk hunk)
+    /// <summary>行の印付けに使う対応表。ステージの概念が無い項目・何もステージしていない項目は null（印は全部「未」）。</summary>
+    private async Task<StagedChangeMap?> LoadStageMapAsync(DiffFileItem? item)
     {
-        int added = 0, removed = 0;
-        foreach (var line in hunk.Text.Split('\n'))
-        {
-            if (line.StartsWith("+") && !line.StartsWith("+++")) added++;
-            else if (line.StartsWith("-") && !line.StartsWith("---")) removed++;
-        }
-        return $"{hunk.HeaderLine}   +{added} −{removed}";
+        if (item is null || _commitRange is not null || !SupportsLineStaging(item) || item.Stage == DiffStageState.None)
+            return null;
+        var (staged, unstaged) = await GetStagePatchesAsync(item);
+        return await Task.Run(() => StagedChangeMap.Build(staged, unstaged));
     }
 
-    /// <summary>ハンク単位でステージ／アンステージする。ステージ済みハンクは逆適用（アンステージ）になる。</summary>
-    [RelayCommand]
-    private async Task ToggleHunkAsync(DiffHunkVm? hunk)
-    {
-        if (hunk is null || SelectedFile is not { } item || !SupportsHunkStaging(item))
-            return;
-
-        // 最新のパッチを取り直してから対象ハンクを切り出す（表示後に作業ツリーが変わっていても整合させる）。
-        var text = await GetPatchTextAsync(item, 3);
-        var split = GitPatchSplitter.Split(text);
-        if (hunk.Index < 0 || hunk.Index >= split.Hunks.Count)
+    private static List<DiffSideRowVm> MarkStaged(List<DiffSideRowVm> rows, StagedChangeMap map)
+        => rows.Select(row => row with
         {
-            SetStatus("ハンクが変化したため適用できませんでした。差分を開き直してください。", isError: true);
+            LeftStaged = row.LeftKind == "Removed" && int.TryParse(row.LeftLine, out var head) && map.IsStagedRemoval(head),
+            RightStaged = row.RightKind == "Added" && int.TryParse(row.RightLine, out var work) && map.IsStagedAddition(work),
+        }).ToList();
+
+    /// <summary>統合表示の行（パッチを改行で分割したものと1対1）へ印を付ける。</summary>
+    private static List<DiffRowVm> MarkStaged(List<DiffRowVm> rows, string patch, StagedChangeMap map)
+    {
+        var lines = UnifiedPatchEditor.DescribeLines(patch);
+        return rows.Select((row, i) => i < lines.Count && lines[i] is { Marker: not '\0' } line
+            ? row with
+            {
+                Staged = line.Marker == '-' ? map.IsStagedRemoval(line.OldLine) : map.IsStagedAddition(line.NewLine),
+            }
+            : row).ToList();
+    }
+
+    /// <summary>統合表示で選んだ行（<see cref="DiffRows"/> の添字）を、HEAD／作業ツリーの行番号へ直す。</summary>
+    public async Task<(IReadOnlySet<int> HeadLines, IReadOnlySet<int> WorktreeLines)> UnifiedRowsToLinesAsync(
+        IReadOnlySet<int> rowIndices)
+    {
+        var head = new HashSet<int>();
+        var worktree = new HashSet<int>();
+        if (SelectedFile is not { } item) return (head, worktree);
+        var lines = UnifiedPatchEditor.DescribeLines(await GetPatchTextAsync(item, 3));
+        foreach (var index in rowIndices)
+        {
+            if (index < 0 || index >= lines.Count) continue;
+            if (lines[index].Marker == '-') head.Add(lines[index].OldLine);
+            else if (lines[index].Marker == '+') worktree.Add(lines[index].NewLine);
+        }
+        return (head, worktree);
+    }
+
+    /// <summary>
+    /// 選んだ変更（削除行＝HEAD の行番号、追加行＝作業ツリーの行番号）をステージ（<paramref name="stage"/>）／
+    /// アンステージする。選択にステージ済みと未ステージが混ざっていても、その向きに当てはまる行だけが動く。
+    /// 作業ツリーには触れない。
+    /// </summary>
+    public async Task StageLinesAsync(IReadOnlySet<int> headLines, IReadOnlySet<int> worktreeLines, bool stage)
+    {
+        if (!CanStageLines || SelectedFile is not { } item) return;
+        if (headLines.Count == 0 && worktreeLines.Count == 0) return;
+
+        var (stagedPatch, unstagedPatch) = await GetStagePatchesAsync(item);
+        var split = StagedChangeMap.Build(stagedPatch, unstagedPatch).Split(headLines, worktreeLines);
+        // ステージ＝未ステージの差分（インデックス↔作業ツリー）から選んだ行だけをインデックスへ順適用。
+        // アンステージ＝ステージ済みの差分（HEAD↔インデックス）から選んだ行だけをインデックスへ逆適用。
+        var reduced = stage
+            ? UnifiedPatchEditor.BuildStagePatchForLines(unstagedPatch, split.Unstaged.OldLines, split.Unstaged.NewLines)
+            : UnifiedPatchEditor.BuildReverseDiscardPatchForLines(stagedPatch, split.Staged.OldLines, split.Staged.NewLines);
+        var verb = stage ? "ステージ" : "アンステージ";
+        if (reduced.IsEmpty)
+        {
+            SetStatus(stage ? "選んだ変更はすべてステージ済みです。" : "選んだ変更にステージ済みのものはありません。", isError: false);
             return;
         }
 
-        var patch = GitPatchSplitter.BuildSingleHunkPatch(split.Header, split.Hunks[hunk.Index]);
-        // ステージ済みファイルのハンク＝逆適用でアンステージ、未ステージ＝順適用でステージ。
-        var result = await _git.ApplyCachedPatchAsync(patch, reverse: item.IsStaged);
+        // 成功すると RepositoryChanged が RefreshAsync を呼び、行の印・一覧の印が付け直される（行は消えない）。
+        var result = await _git.ApplyCachedPatchAsync(reduced.Patch, reverse: !stage);
         if (result.Success)
-            SetStatus(item.IsStaged ? "ハンクをアンステージしました。" : "ハンクをステージしました。", isError: false);
+            SetStatus($"{item.DisplayPath} の {reduced.LineCount} 行を{verb}しました。", isError: false);
         else
-            SetStatus($"ハンクの適用に失敗しました: {result.Message}", isError: true);
-        // RepositoryChanged が RefreshAsync を呼び、一覧・差分・ハンクが更新される。
+            SetStatus($"{verb}に失敗しました: {result.Message.Trim()}", isError: true);
+    }
+
+    /// <summary>
+    /// 選んだ変更のうち<b>未ステージのもの</b>を作業ツリーから取り消す（インデックス↔作業ツリーの差分を逆適用）。
+    /// ステージ済みの変更はインデックスに入っているので、作業ツリーを戻しても消えない——対象外として知らせる。
+    /// </summary>
+    public async Task DiscardLinesAsync(IReadOnlySet<int> headLines, IReadOnlySet<int> worktreeLines)
+    {
+        if (!CanDiscardLines || SelectedFile is not { } item) return;
+        if (headLines.Count == 0 && worktreeLines.Count == 0) return;
+
+        var (stagedPatch, unstagedPatch) = await GetStagePatchesAsync(item);
+        var split = StagedChangeMap.Build(stagedPatch, unstagedPatch).Split(headLines, worktreeLines);
+        var reduced = UnifiedPatchEditor.BuildReverseDiscardPatchForLines(
+            unstagedPatch, split.Unstaged.OldLines, split.Unstaged.NewLines);
+        if (reduced.IsEmpty)
+        {
+            SetStatus("破棄できる未ステージの変更がありません（ステージ済みの変更は、アンステージしてから破棄してください）。",
+                isError: false);
+            return;
+        }
+
+        var answer = MessageBox.Show(
+            Application.Current?.MainWindow!,
+            $"{item.DisplayPath} の選んだ {reduced.LineCount} 行ぶんの変更を破棄しますか？\n作業ツリーのその変更が失われます。",
+            "変更の破棄", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+        if (answer != MessageBoxResult.Yes) return;
+
+        // 適用が成功すると GitService が RepositoryChanged を発火し、一覧・差分は自動で読み直される。
+        var result = await _commands.ApplyReverseAsync(reduced.Patch,
+            $"{item.DisplayPath} の {reduced.LineCount} 行を破棄しました。");
+        SetStatus(result.Message, !result.Success);
     }
 
     private static DiffSideRowVm SharedRow(string kind, string text) => new(kind, text, kind, text, "", "");

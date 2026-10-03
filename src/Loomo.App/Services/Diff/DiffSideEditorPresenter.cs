@@ -217,6 +217,21 @@ internal sealed class DiffSideEditorPresenter : IDisposable
     internal int RowAtCaret(VimEditorControl editor)
         => DiffEditorAlignment.RowOfLine(_rows, editor.Caret.Line, left: ReferenceEquals(editor, _left));
 
+    /// <summary>エディタで選んでいる行の添字の範囲。選択が無ければキャレットの行（<c>HasSelection</c> が false）。
+    /// その側に無い行（編集で行がずれた直後など）は -1。</summary>
+    internal (int StartRow, int EndRow, bool HasSelection) SelectedRows(VimEditorControl editor)
+    {
+        var left = ReferenceEquals(editor, _left);
+        if (!editor.HasSelection || editor.Selection is not { } selection)
+        {
+            var row = RowAtCaret(editor);
+            return (row, row, false);
+        }
+        var start = Math.Min(selection.StartLine, selection.EndLine);
+        var end = Math.Max(selection.StartLine, selection.EndLine);
+        return (DiffEditorAlignment.RowOfLine(_rows, start, left), DiffEditorAlignment.RowOfLine(_rows, end, left), true);
+    }
+
     /// <summary>右が映している文書を保存する（Ctrl+S）。編集用に開いていなければ何もしない。</summary>
     internal bool SaveRight()
     {

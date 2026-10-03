@@ -55,7 +55,7 @@ public sealed class DiffSessionQuery
             && pair.First.DisplayPath == pair.Second.DisplayPath
             && pair.First.Badge == pair.Second.Badge && pair.First.Stats == pair.Second.Stats
             && pair.First.IsCompare == pair.Second.IsCompare
-            && pair.First.IsStaged == pair.Second.IsStaged
+            && pair.First.Stage == pair.Second.Stage
             && pair.First.OldContent == pair.Second.OldContent && pair.First.NewContent == pair.Second.NewContent
             && Equals(pair.First.Entry, pair.Second.Entry) && Equals(pair.First.CommitFile, pair.Second.CommitFile)
             // 基準 ref も含めて比べる。ここを見ないと「基準だけ変えたら一覧の見た目は同じ」ケースで
@@ -69,19 +69,41 @@ public sealed class DiffSessionQuery
         if (!status.IsRepository)
             return new DiffFileList(Array.Empty<DiffFileItem>(), "このワークスペースは git リポジトリではありません。");
         var root = _git.RootPath ?? "";
-        var items = status.Staged.Select(entry => (entry, true)).Concat(status.Unstaged.Select(entry => (entry, false)))
-            .Select(pair =>
+        // 1ファイル1項目。ステージ済み／未ステージで項目を分けると、ステージした行が見ていた差分から消え、
+        // 別の項目へ移ってしまう——差分は HEAD↔作業ツリーの1枚にして、進み具合は印で見せる。
+        var staged = status.Staged.Select(entry => entry.Path).ToHashSet(StringComparer.Ordinal);
+        var unstaged = status.Unstaged.Select(entry => entry.Path).ToHashSet(StringComparer.Ordinal);
+        var items = status.Unstaged.Concat(status.Staged.Where(entry => !unstaged.Contains(entry.Path)))
+            .Select(entry =>
             {
-                var (entry, staged) = pair;
-                var badge = entry.IsConflicted ? "U" : entry.IsUntracked ? "?"
-                    : (staged ? entry.IndexStatus : entry.WorkStatus).ToString();
+                var stage = entry.IsConflicted || entry.IsUntracked ? DiffStageState.None
+                    : !staged.Contains(entry.Path) ? DiffStageState.None
+                    : unstaged.Contains(entry.Path) ? DiffStageState.Partial
+                    : DiffStageState.All;
                 return new DiffFileItem
                 {
                     FullPath = Path.Combine(root, entry.Path), DisplayPath = entry.Path,
-                    Badge = staged ? $"{badge}（staged）" : badge, Entry = entry, IsStaged = staged,
+                    Badge = Badge(entry, stage), Entry = entry, Stage = stage,
                 };
-            }).ToList();
+            })
+            .OrderBy(item => item.DisplayPath, StringComparer.OrdinalIgnoreCase)
+            .ToList();
         return new DiffFileList(items, "Git の変更はありません。");
+    }
+
+    /// <summary>一覧の印：変更の種類（作業ツリー側を優先し、無ければインデックス側）と、ステージの進み具合。</summary>
+    private static string Badge(GitChangeEntry entry, DiffStageState stage)
+    {
+        if (entry.IsConflicted) return "U";
+        if (entry.IsUntracked) return "?";
+        var kind = entry.WorkStatus is ' ' or '.' ? entry.IndexStatus : entry.WorkStatus;
+        if (entry.IndexStatus == 'A') kind = 'A';   // 新規追加をステージ済みなら、作業ツリーで直していても「追加」
+        return stage switch
+        {
+            DiffStageState.All => $"{kind}（ステージ済み）",
+            DiffStageState.Partial => $"{kind}（一部ステージ）",
+            _ => kind.ToString(),
+        };
     }
 
     /// <summary>

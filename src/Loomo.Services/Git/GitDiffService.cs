@@ -52,6 +52,28 @@ public sealed class GitDiffService
         return result.Success ? result.Output : result.Message;
     }
 
+    /// <summary>空のツリー（まだコミットが無いリポジトリで HEAD の代わりに比べる相手）。</summary>
+    private const string EmptyTree = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
+
+    /// <summary>
+    /// HEAD↔作業ツリーの差分（<c>git diff HEAD</c>）。ステージ済みと未ステージの変更を1枚にまとめたもので、
+    /// ステージしても行が消えない差分表示の本体になる。未追跡ファイルは <see cref="GetDiffTextAsync"/> と同じ合成パッチ。
+    /// まだコミットが無ければ空のツリーと比べる。
+    /// </summary>
+    public async Task<string> GetHeadDiffTextAsync(GitChangeEntry entry, int contextLines = 3)
+    {
+        if (entry.IsUntracked)
+            return await GetDiffTextAsync(entry, staged: false, contextLines).ConfigureAwait(false);
+
+        var unified = $"--unified={contextLines}";
+        var literal = GitCompareArgs.LiteralPathspecs;
+        var hasHead = (await _runner.RunAsync("rev-parse", "--verify", "--quiet", "HEAD").ConfigureAwait(false)).Success;
+        var result = await _runner
+            .RunAsync(literal, "diff", hasHead ? "HEAD" : EmptyTree, unified, "--", entry.Path)
+            .ConfigureAwait(false);
+        return result.Success ? result.Output : result.Message;
+    }
+
     public async Task<string?> GetConflictStageContentAsync(string path, int stage)
     {
         var result = await _runner.RunAsync("show", $":{stage}:{path}").ConfigureAwait(false);
@@ -148,14 +170,16 @@ public sealed class GitDiffService
         if (gitDirectory is null)
             return new GitCommandResult(-1, "", "git ディレクトリを特定できませんでした。");
 
-        var patchPath = Path.Combine(gitDirectory, "loomo-hunk.patch");
+        var patchPath = Path.Combine(gitDirectory, "loomo-stage.patch");
         try
         {
             var normalized = patch.Replace("\r\n", "\n");
             if (!normalized.EndsWith('\n')) normalized += "\n";
             await File.WriteAllTextAsync(
                 patchPath, normalized, new UTF8Encoding(false)).ConfigureAwait(false);
-            var args = new List<string> { "apply", "--cached", "--whitespace=nowarn" };
+            // --recount：行単位のステージ／アンステージは選ばなかった行を文脈化・削除した縮約パッチなので、
+            // ハンク見出しの行数が本文と合わない。
+            var args = new List<string> { "apply", "--cached", "--recount", "--whitespace=nowarn" };
             if (reverse) args.Add("-R");
             args.Add(patchPath);
             return await _mutations.ExecuteAsync(args.ToArray()).ConfigureAwait(false);

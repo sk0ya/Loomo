@@ -248,7 +248,7 @@ public class DiffSideEditorPresenterTests : IDisposable
         presenter.Configure(() => new VimEditorControl(), _ => { }, docs);
 
         var show = vm.ShowWorkingTreeFileAsync(
-            new GitChangeEntry("a.txt", null, ' ', 'M', IsUntracked: false, IsConflicted: false), isStaged: false);
+            new GitChangeEntry("a.txt", null, ' ', 'M', IsUntracked: false, IsConflicted: false));
         PumpUntil(() => show.IsCompleted && vm.EditableSidePath is not null && vm.SideRows.Count > 0);
         presenter.Sync();
         return (presenter, vm);

@@ -109,7 +109,7 @@ public sealed class GitComparePanelTests : IAsyncLifetime
         // 破棄・行単位の適用は「作業ツリー vs インデックス／HEAD」の概念なので消える。
         Assert.False(diff.CanDiscardSelected);
         Assert.False(diff.CanDiscardLines);
-        Assert.False(diff.CanStageHunks);
+        Assert.False(diff.CanStageLines);
 
         await WaitAsync(() => diff.SideRows.Any(r => r.RightText.Contains("edited")));
     }
