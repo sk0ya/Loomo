@@ -22,20 +22,26 @@ public sealed class FolderTreeCommandHandler
     private readonly IWorkspaceService _workspace;
     private readonly FileOperationHistory _history;
     private readonly bool _confineToWorkspace;
+    private readonly IFileMoveParticipant? _moveParticipant;
 
-    public FolderTreeCommandHandler(IWorkspaceService workspace, FileOperationHistory history)
-        : this(workspace, history, confineToWorkspace: true) { }
+    public FolderTreeCommandHandler(
+        IWorkspaceService workspace, FileOperationHistory history, IFileMoveParticipant? moveParticipant = null)
+        : this(workspace, history, confineToWorkspace: true, moveParticipant) { }
 
-    private FolderTreeCommandHandler(IWorkspaceService workspace, FileOperationHistory history, bool confineToWorkspace)
+    private FolderTreeCommandHandler(
+        IWorkspaceService workspace, FileOperationHistory history, bool confineToWorkspace,
+        IFileMoveParticipant? moveParticipant)
     {
         _workspace = workspace;
         _history = history;
         _confineToWorkspace = confineToWorkspace;
+        _moveParticipant = moveParticipant;
     }
 
     /// <summary>ワークスペース外でも操作できる版（ファイル一覧ペイン用）。</summary>
-    public static FolderTreeCommandHandler Unconfined(IWorkspaceService workspace, FileOperationHistory history)
-        => new(workspace, history, false);
+    public static FolderTreeCommandHandler Unconfined(
+        IWorkspaceService workspace, FileOperationHistory history, IFileMoveParticipant? moveParticipant = null)
+        => new(workspace, history, false, moveParticipant);
 
     /// <summary>Undo／Redo の履歴（ツリーとファイル一覧ペインで共有）。</summary>
     public FileOperationHistory History => _history;
@@ -87,6 +93,7 @@ public sealed class FolderTreeCommandHandler
             && (File.Exists(newPath) || Directory.Exists(newPath)))
             throw new InvalidOperationException("同じ名前の項目が既に存在します。");
 
+        _moveParticipant?.BeforeMove(oldPath, newPath, isDirectory);
         try
         {
             if (isDirectory) Directory.Move(oldPath, newPath);
@@ -97,6 +104,7 @@ public sealed class FolderTreeCommandHandler
             throw new InvalidOperationException($"名前の変更に失敗しました: {ex.Message}", ex);
         }
         _history.Record(FileOperation.Renamed(oldPath, newPath, isDirectory));
+        _moveParticipant?.AfterMove(oldPath, newPath, isDirectory);
         return newPath;
     }
 
@@ -356,6 +364,7 @@ public sealed class FolderTreeCommandHandler
         var replaced = (File.Exists(destination) || Directory.Exists(destination))
             ? BackupExistingDestination(destination)
             : null;
+        if (move) _moveParticipant?.BeforeMove(source, destination, isDirectory);
         try { ExecutePaste(source, destination, move, isDirectory); }
         catch
         {
@@ -369,6 +378,7 @@ public sealed class FolderTreeCommandHandler
         _history.Record(move
             ? FileOperation.Moved(source, destination, isDirectory, replaced)
             : FileOperation.Copied(source, destination, isDirectory, replaced));
+        if (move) _moveParticipant?.AfterMove(source, destination, isDirectory);
         return new FilePasteResult(destination);
     }
 
@@ -393,6 +403,7 @@ public sealed class FolderTreeCommandHandler
         var replaced = (File.Exists(destination) || Directory.Exists(destination))
             ? BackupExistingDestination(destination)
             : null;
+        if (move) _moveParticipant?.BeforeMove(source, destination, isDirectory);
         try { ExecutePaste(source, destination, move, isDirectory); }
         catch
         {
@@ -406,6 +417,7 @@ public sealed class FolderTreeCommandHandler
         _history.Record(move
             ? FileOperation.Moved(source, destination, isDirectory, replaced)
             : FileOperation.Copied(source, destination, isDirectory, replaced));
+        if (move) _moveParticipant?.AfterMove(source, destination, isDirectory);
         return new FilePasteResult(destination);
     }
 

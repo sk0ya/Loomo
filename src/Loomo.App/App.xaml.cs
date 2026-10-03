@@ -78,6 +78,7 @@ public partial class App : Application
 
         var shell = _services.GetRequiredService<ShellWindow>();
         shell.AttachExternalOpen(_relay, startupRequest);
+        shell.AttachFileMoveParticipant(_services.GetRequiredService<LspFileMoveParticipant>());
         StartupProfiler.Mark("ShellWindow 解決完了");
         shell.ContentRendered += (_, _) => StartupProfiler.Mark("ContentRendered（初フレーム）");
         shell.Show();

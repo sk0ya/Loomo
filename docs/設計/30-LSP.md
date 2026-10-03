@@ -754,3 +754,27 @@ Roslyn は正しい：`src/Loomo.App/GlobalUsings.cs` に `global using System.W
 テスト列が `EditorTestGlyphColumns` で学んだのと同じ判断。したがって出どころのあるファイルだけを
 対象にする：`.cs` は言語サーバーが無くても部屋が答えるので常に対象、それ以外は対応表に
 言語サーバーがあるかで決める。`.md` や `.txt` に空の 14px を一生空けておかないため。
+
+## §30.20 ファイル移動・改名に合わせた参照の更新 —— `workspace/willRenameFiles`（2026-10-03）
+
+VS Code の「ファイル移動時に import を更新」相当。エクスプローラ（ツリー／ファイル一覧）の名前変更・
+切り取り貼り付け・D&D はすべて `FolderTreeCommandHandler` の `Rename`／`PasteWithConflict(move)` へ落ちるので、
+そこへ `IFileMoveParticipant` を挟み、**実際に動かす前後**に呼ぶ（1 か所で全経路を拾う）。
+
+- **前**: `LspWorkspaceService.WillRenameFilesAsync` が、旧パスの所属フォルダー（`FolderFor`）をルートに
+  **既に動いている**サーバーのうち、`capabilities.workspace.fileOperations.willRename.filters` に当たるものへだけ送る。
+  移動先がワークスペース外なら送らない。返った編集は fixAll と同じマージ（競合は丸ごと不採用）。
+- 編集は**旧パスのまま**、リファクタリングと同じ `ApplyLspWorkspaceEdit`（トランザクション・Undo 可）で当てる。
+  tsserver は移動するファイル自身の相対 import も旧 URI で返すため、動かした後では当て先が無い。
+  開いているタブはバッファへ当たり、そのあと既存の改名追従（`RebaseEditorTabPath`）でパスごと付いていく。
+- **後**: `workspace/didRenameFiles` を `didRename.filters` に当たるサーバーへ通知。
+- 設定 `LoomoSettings.Lsp.UpdateReferencesOnFileMove`（確認する＝既定／常に／しない）。設定画面の「言語サーバー (LSP)」にある。
+- 移動の経路は同期で組まれているので、UI スレッドから `Task.Run` に逃がして**最大 5 秒**だけ待つ。間に合わなければ
+  参照は更新せずに移動する（移動は止めない）。待っている間にサーバー起点の `workspace/applyEdit` が来ると
+  読み取りスレッドが UI 待ちで止まるが、上限で抜けるので固まりはしない。
+- ファイル操作の Undo（`FileOperationHistory`）は参照の更新を戻さない。参照の更新はエディタ側の WorkspaceEdit Undo で戻す。
+
+**Editor 側の前提**: `ILspClient.ServerCapabilities`／`WillRenameFilesAsync`／`DidRenameFilesAsync` と、client capabilities の
+`workspace.fileOperations` 宣言は Editor の `feature/will-rename-files` で足した（未公開）。Loomo はピン中のパッケージに
+無いメンバーを `LspFileRenameClient` がリフレクションで引き、**無ければ何もしない**（＝公開・ピン更新までは機能は眠っている）。
+ピンを上げたら `LspFileRenameClient` は直接呼び出しに置き換えて消す。

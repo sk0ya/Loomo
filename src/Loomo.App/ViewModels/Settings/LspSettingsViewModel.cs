@@ -6,7 +6,9 @@ using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Editor.Core.Lsp;
+using sk0ya.Loomo.Core.Settings;
 using sk0ya.Loomo.Services.Lsp;
+using sk0ya.Loomo.Services.Settings;
 
 namespace sk0ya.Loomo.App.ViewModels;
 
@@ -20,6 +22,8 @@ public sealed partial class LspSettingsViewModel : ObservableObject
 {
     private readonly LspManagementService _service;
     private readonly LspWorkspaceService? _workspace;
+    private readonly LoomoSettings? _settings;
+    private readonly SettingsStore? _store;
     private readonly Dispatcher _dispatcher;
 
     public ObservableCollection<LspServerRowViewModel> Servers { get; } = new();
@@ -31,10 +35,28 @@ public sealed partial class LspSettingsViewModel : ObservableObject
     [ObservableProperty] private string _newExecutable = "";
     [ObservableProperty] private string _newArgs = "";
 
-    public LspSettingsViewModel(LspManagementService service, LspWorkspaceService? workspace = null)
+    /// <summary>エクスプローラでの移動・改名に合わせて参照（import 等）を更新するかの選択肢。</summary>
+    public IReadOnlyList<FileMoveReferenceUpdateChoice> FileMoveReferenceUpdates { get; } =
+    [
+        new(FileMoveReferenceUpdate.Prompt, "確認する（既定）"),
+        new(FileMoveReferenceUpdate.Always, "常に更新する"),
+        new(FileMoveReferenceUpdate.Never, "更新しない"),
+    ];
+
+    [ObservableProperty] private FileMoveReferenceUpdateChoice? _selectedFileMoveReferenceUpdate;
+
+    public LspSettingsViewModel(
+        LspManagementService service,
+        LspWorkspaceService? workspace = null,
+        LoomoSettings? settings = null,
+        SettingsStore? store = null)
     {
         _service = service;
         _workspace = workspace;
+        _settings = settings;
+        _store = store;
+        _selectedFileMoveReferenceUpdate = FileMoveReferenceUpdates.FirstOrDefault(c =>
+            c.Value == (settings?.Lsp.UpdateReferencesOnFileMove ?? FileMoveReferenceUpdate.Prompt));
         _dispatcher = Dispatcher.CurrentDispatcher;
         if (_workspace is not null)
             _workspace.ServerStateChanged += OnServerStateChanged;
@@ -43,6 +65,7 @@ public sealed partial class LspSettingsViewModel : ObservableObject
     /// <summary>設定オーバーレイを開いたとき（およびインストール後）に呼ぶ。一覧と導入状況を取り直す。</summary>
     public void Refresh()
     {
+        SyncFileMoveReferenceUpdate();
         Servers.Clear();
         var runtime = _workspace?.ServerStatuses
             .GroupBy(s => s.Executable, StringComparer.OrdinalIgnoreCase)
@@ -56,6 +79,25 @@ public sealed partial class LspSettingsViewModel : ObservableObject
     }
 
     private void OnRowChanged() => Refresh();
+
+    /// <summary>移動時の参照更新の扱い：即時反映して settings.json へ書き戻す。</summary>
+    partial void OnSelectedFileMoveReferenceUpdateChanged(FileMoveReferenceUpdateChoice? value)
+    {
+        if (value is null || _settings is null || _settings.Lsp.UpdateReferencesOnFileMove == value.Value) return;
+        _settings.Lsp.UpdateReferencesOnFileMove = value.Value;
+        try { _store?.Save(_settings); }
+        catch (Exception ex) { Status = $"設定を保存できませんでした: {ex.Message}"; return; }
+        Status = $"ファイル移動時の参照の更新を「{value.Name}」にしました。";
+    }
+
+    /// <summary>設定画面を開き直したとき、確認ダイアログ側で「常に／しない」が選ばれていれば追従させる。</summary>
+    public void SyncFileMoveReferenceUpdate()
+    {
+        if (_settings is null) return;
+        var current = FileMoveReferenceUpdates.FirstOrDefault(c => c.Value == _settings.Lsp.UpdateReferencesOnFileMove);
+        if (!ReferenceEquals(current, SelectedFileMoveReferenceUpdate))
+            SetProperty(ref _selectedFileMoveReferenceUpdate, current, nameof(SelectedFileMoveReferenceUpdate));
+    }
     private void OnServerStateChanged()
     {
         if (_dispatcher.HasShutdownStarted || _dispatcher.HasShutdownFinished) return;
@@ -90,6 +132,9 @@ public sealed partial class LspSettingsViewModel : ObservableObject
         Status = $"{LspExtensions.NormalizeExt(ext)} → {exe} を追加しました。";
     }
 }
+
+/// <summary>ファイル移動時の参照更新の選択肢1件（コンボボックスの行）。</summary>
+public sealed record FileMoveReferenceUpdateChoice(FileMoveReferenceUpdate Value, string Name);
 
 /// <summary>LSP 設定一覧の1行。サーバーの表示と、インストール／削除／既定復帰／手順を開く操作を持つ。</summary>
 public sealed partial class LspServerRowViewModel : ObservableObject

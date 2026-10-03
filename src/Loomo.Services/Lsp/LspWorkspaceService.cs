@@ -16,6 +16,13 @@ public sealed record LspSourceFixAllResult(
     int ActionsFound,
     string? Error = null);
 
+/// <summary><c>workspace/willRenameFiles</c> の結果。<paramref name="ServersAsked"/> は実際に問い合わせたサーバー数
+/// （0 なら「この移動を知りたいサーバーが居なかった」）。<paramref name="Error"/> は複数サーバーの編集が競合したとき。</summary>
+public sealed record LspFileRenameEditResult(
+    LspWorkspaceEdit? Edit,
+    int ServersAsked,
+    string? Error = null);
+
 internal static class LspWorkspaceCompatibility
 {
     public const string SourceFixAllKind = "source.fixAll";
@@ -221,6 +228,101 @@ public sealed class LspWorkspaceService : ILspWorkspace, IDisposable
             new LspWorkspaceEdit(merged, versions.Count == 0 ? null : versions, operations),
             scanned,
             actionsFound);
+    }
+
+    // ── ファイルの移動・改名（workspace/willRenameFiles・didRenameFiles） ─────────
+
+    /// <summary>
+    /// 移動・改名の<b>前</b>に、担当サーバーへ <c>workspace/willRenameFiles</c> を送り、返ってきた
+    /// 編集（import の書き換え等）を 1 つにまとめて返す。編集が無ければ <see cref="LspWorkspaceEdit"/> は null。
+    ///
+    /// <para>送り先は「旧パスを含むワークスペースフォルダー」をルートに<b>既に動いている</b>サーバーのうち、
+    /// <c>workspace.fileOperations.willRename</c> の filters に当たるものだけ。移動のためにサーバーを
+    /// 起動はしない（動いていないサーバーは開いているファイルも無く、返せる編集も持っていない）。
+    /// 移動先がワークスペースの外なら送らない——外のファイルの import を書き換える理由は無く、
+    /// 書き込み範囲の判定（<c>LspWorkspaceEditPaths</c>）とも食い違う。</para>
+    /// </summary>
+    public async Task<LspFileRenameEditResult> WillRenameFilesAsync(
+        IReadOnlyList<LspFileRename> renames, CancellationToken ct = default)
+    {
+        var changes = new Dictionary<string, List<LspTextEdit>>(StringComparer.OrdinalIgnoreCase);
+        var versions = new Dictionary<string, int?>(StringComparer.OrdinalIgnoreCase);
+        var operations = new List<LspFileOperation>();
+        var operationKeys = new HashSet<string>(StringComparer.Ordinal);
+        var servers = 0;
+
+        foreach (var (pooled, channel, targets) in FileRenameTargets(renames, "willRename"))
+        {
+            ct.ThrowIfCancellationRequested();
+            if (!await pooled.Ready.WaitAsync(ct) || !pooled.IsRunning) continue;
+
+            LspWorkspaceEdit? edit;
+            try
+            {
+                edit = await channel.WillRenameFilesAsync(
+                    targets.Select(r => (r.OldUri, r.NewUri)).ToList(), ct);
+            }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception ex)
+            {
+                Log($"[LSP] willRenameFiles failed ({pooled.Executable}): {ex.Message}");
+                continue;
+            }
+            servers++;
+            if (edit is null) continue;
+            if (MergeWorkspaceEdit(edit, changes, versions, operations, operationKeys) is { } error)
+                return new LspFileRenameEditResult(null, servers, error);
+        }
+
+        if (changes.Count == 0 && operations.Count == 0)
+            return new LspFileRenameEditResult(null, servers);
+        return new LspFileRenameEditResult(
+            new LspWorkspaceEdit(
+                changes.ToDictionary(p => p.Key, p => (IReadOnlyList<LspTextEdit>)p.Value,
+                    StringComparer.OrdinalIgnoreCase),
+                versions.Count == 0 ? null : versions,
+                operations),
+            servers);
+    }
+
+    /// <summary>移動・改名の<b>後</b>の <c>workspace/didRenameFiles</c> 通知。応答は無いので待たない。</summary>
+    public void DidRenameFiles(IReadOnlyList<LspFileRename> renames)
+    {
+        foreach (var (pooled, channel, targets) in FileRenameTargets(renames, "didRename"))
+        {
+            try { _ = channel.DidRenameFilesAsync(targets.Select(r => (r.OldUri, r.NewUri)).ToList()); }
+            catch (Exception ex) { Log($"[LSP] didRenameFiles failed ({pooled.Executable}): {ex.Message}"); }
+        }
+    }
+
+    /// <summary>サーバーごとの「知らせるべき移動」。マルチルートでは旧パスの所属フォルダーがサーバーを決める。</summary>
+    private List<(PooledLspClient Pooled, ILspFileRenameClient Channel, List<LspFileRename> Targets)>
+        FileRenameTargets(IReadOnlyList<LspFileRename> renames, string operation)
+    {
+        var result = new List<(PooledLspClient, ILspFileRenameClient, List<LspFileRename>)>();
+        if (_disposed || renames.Count == 0) return result;
+
+        var byRoot = new Dictionary<string, List<LspFileRename>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var rename in renames)
+        {
+            if (_workspace.FolderFor(rename.OldPath) is not { } folder) continue;
+            if (!_workspace.Contains(rename.NewPath)) continue;
+            var root = Path.GetFullPath(folder);
+            if (!byRoot.TryGetValue(root, out var list)) byRoot[root] = list = [];
+            list.Add(rename);
+        }
+        if (byRoot.Count == 0) return result;
+
+        foreach (var pooled in _pool.Running)
+        {
+            if (!byRoot.TryGetValue(Path.GetFullPath(pooled.Root), out var candidates)) continue;
+            if (LspFileRenameClient.For(pooled.Client) is not { } channel) continue;
+            var filters = LspFileOperationFilters.Parse(channel.ServerCapabilities, operation);
+            if (filters is null) continue;
+            var targets = candidates.Where(filters.Matches).ToList();
+            if (targets.Count > 0) result.Add((pooled, channel, targets));
+        }
+        return result;
     }
 
     private static bool TryGetCurrentText(

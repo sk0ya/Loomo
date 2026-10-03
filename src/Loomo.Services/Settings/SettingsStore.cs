@@ -277,14 +277,21 @@ public sealed class SettingsStore
         /// <summary>促しバーで「今後表示しない」を選んだ拡張子（先頭ドット付き・小文字）。</summary>
         public List<string> DismissedPromptExtensions { get; set; } = new();
 
+        /// <summary>ファイル移動時の参照更新（確認する／常に／しない）。旧設定（null）は既定＝確認する。</summary>
+        public FileMoveReferenceUpdate? UpdateReferencesOnFileMove { get; set; }
+
         public static PersistedLsp From(LspSettings l) => new()
         {
             DismissedPromptExtensions = l.DismissedPromptExtensions.ToList(),
+            UpdateReferencesOnFileMove = l.UpdateReferencesOnFileMove,
         };
 
         // 既存インスタンスを書き換える（DI シングルトンの参照を保つため置き換えない）。
         public void ApplyTo(LspSettings l)
         {
+            l.UpdateReferencesOnFileMove = UpdateReferencesOnFileMove is { } mode && Enum.IsDefined(mode)
+                ? mode
+                : FileMoveReferenceUpdate.Prompt;
             l.DismissedPromptExtensions.Clear();
             if (DismissedPromptExtensions is null) return;
             foreach (var ext in DismissedPromptExtensions)

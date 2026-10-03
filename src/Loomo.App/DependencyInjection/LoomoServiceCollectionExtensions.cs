@@ -182,6 +182,13 @@ internal static class LoomoServiceCollectionExtensions
         // ファイル操作の Undo／Redo 履歴。ツリーとファイル一覧ペインで 1 本を共有する
         // （部屋の中のファイル操作は、どのペインから行っても同じ履歴に積む）。
         services.AddSingleton<FileOperationHistory>();
+        // 移動・改名に合わせて言語サーバーに import 等を直させる（willRenameFiles）。ツリーとファイル一覧の
+        // 両方のハンドラーへ同じものを渡す——移動の経路はすべてこの 2 つのハンドラーを通る。
+        services.AddSingleton(sp => new LspFileMoveParticipant(
+            sp.GetRequiredService<sk0ya.Loomo.Services.Lsp.LspWorkspaceService>(),
+            sp.GetRequiredService<LoomoSettings>(),
+            settings => sp.GetRequiredService<SettingsStore>().Save(settings)));
+        services.AddSingleton<IFileMoveParticipant>(sp => sp.GetRequiredService<LspFileMoveParticipant>());
         services.AddSingleton<FolderTreeCommandHandler>();
         services.AddSingleton<FolderTreeQuery>();
         services.AddSingleton<IShellFileOperations, ShellFileOperations>();
@@ -199,7 +206,8 @@ internal static class LoomoServiceCollectionExtensions
         services.AddSingleton(sp => new FilesPaneViewModel(
             sp.GetRequiredService<IWorkspaceService>(),
             FolderTreeCommandHandler.Unconfined(sp.GetRequiredService<IWorkspaceService>(),
-                sp.GetRequiredService<FileOperationHistory>()),
+                sp.GetRequiredService<FileOperationHistory>(),
+                sp.GetRequiredService<IFileMoveParticipant>()),
             sp.GetRequiredService<IFolderPinStore>(),
             sp.GetRequiredService<IFilePlacesProvider>(),
             sp.GetRequiredService<FolderTreeViewModel>(),

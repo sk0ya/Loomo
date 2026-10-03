@@ -145,6 +145,22 @@ public sealed class LspSettings
 {
     /// <summary>促しバーで「今後表示しない」を選んだ拡張子（先頭ドット付き・小文字）。</summary>
     public List<string> DismissedPromptExtensions { get; set; } = new();
+
+    /// <summary>エクスプローラでファイル／フォルダーを移動・改名したとき、言語サーバーが返す
+    /// 参照の更新（import の書き換え等。<c>workspace/willRenameFiles</c>）をどう扱うか。
+    /// VS Code の <c>updateImportsOnFileMove.enabled</c> 相当。既定は確認する。</summary>
+    public FileMoveReferenceUpdate UpdateReferencesOnFileMove { get; set; } = FileMoveReferenceUpdate.Prompt;
+}
+
+/// <summary>ファイル移動時の参照更新の扱い（<see cref="LspSettings.UpdateReferencesOnFileMove"/>）。</summary>
+public enum FileMoveReferenceUpdate
+{
+    /// <summary>更新が出るたびに「n ファイルの参照を更新します」と確認する。</summary>
+    Prompt,
+    /// <summary>確認せずに常に更新する。</summary>
+    Always,
+    /// <summary>更新しない（言語サーバーへ問い合わせもしない）。</summary>
+    Never,
 }
 
 /// <summary>ActivityBar（左端の縦帯）の項目配置。Loomo の ActivityBar は上段（画面の上から）と
