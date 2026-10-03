@@ -50,6 +50,8 @@ public sealed class DebugTargetResolverMultiFolderTests : IDisposable
         public void RaiseFramePreview(string path, int line0) { }
         public void RaiseFrameActivated(string path, int line0) { }
         public void RaiseBreakpointsRefreshed(string path) { }
+        public bool InlineValuesEnabled => false;
+        public void RaiseInlineValues(DebugInlineValueSet values) { }
         public event Action? SessionStateChanged { add { } remove { } }
     }
 

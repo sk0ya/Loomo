@@ -771,6 +771,11 @@
                                           ToolTip="C#の引数名など、LSPが返す補助情報をコード上に薄く表示します。">
                                     <TextBlock Text="LSPのinlay hint（引数名など）を表示する" TextWrapping="Wrap" />
                                 </CheckBox>
+                                <CheckBox Margin="0,8,0,0"
+                                          IsChecked="{Binding Settings.ShowDebugInlineValues}"
+                                          ToolTip="デバッグで一時停止している間、関数の先頭から停止行までの行末に、その行に出てくる変数の値を薄く表示します（続行・ステップで消えます）。">
+                                    <TextBlock Text="デバッグ中に変数の値を行末に表示する" TextWrapping="Wrap" />
+                                </CheckBox>
 
                                 <Separator Margin="0,16,0,10" />
                                 <TextBlock Style="{StaticResource FieldLabel}" Text="画像貼り付け先フォルダ" Margin="0,0,0,3" />

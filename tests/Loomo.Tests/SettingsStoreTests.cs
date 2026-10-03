@@ -251,6 +251,29 @@ public class SettingsStoreTests
     public void Inlay_hints_are_disabled_by_default()
         => Assert.False(new LoomoSettings().Editor.ShowInlayHints);
 
+    [Fact]
+    public void Debug_inline_values_are_enabled_by_default_and_persist_when_turned_off()
+    {
+        Assert.True(new LoomoSettings().Editor.ShowDebugInlineValues);
+
+        var path = Path.Combine(Path.GetTempPath(), $"loomo-settings-{Guid.NewGuid():N}.json");
+        try
+        {
+            var saved = new LoomoSettings();
+            saved.Editor.ShowDebugInlineValues = false;
+            var store = new SettingsStore(path);
+            store.Save(saved);
+
+            var loaded = new LoomoSettings();
+            store.Load(loaded);
+            Assert.False(loaded.Editor.ShowDebugInlineValues);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
     /// <summary>
     /// 設定は <c>PersistedSettings</c> という DTO を経由して読み書きされる。新しい設定を
     /// <see cref="LoomoSettings"/> へ足しても DTO 側へ足し忘れると、<b>JSON は読み捨てられ、

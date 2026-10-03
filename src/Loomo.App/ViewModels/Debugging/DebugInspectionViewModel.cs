@@ -79,9 +79,12 @@ public sealed partial class DebugInspectionViewModel : ObservableObject
     private async Task LoadFrameInspectionAsync(DebugFrameViewModel? frame, long generation)
     {
         Variables.Clear();
-        if (frame is null) return;
+        if (frame is null) { _session.RaiseInlineValues(DebugInlineValueSet.Empty); return; }
 
         var scopes = await _debug.GetScopesAsync(frame.Id);
+        if (generation != Volatile.Read(ref _frameInspectionGeneration)) return;
+        // 行末の値は変数ツリーと同じフレーム・同じスコープから作る（§31.6：表示と評価のフレームを揃える）。
+        await LoadInlineValuesAsync(frame, scopes, generation);
         if (generation != Volatile.Read(ref _frameInspectionGeneration)) return;
         Func<int, string, string, Task<string?>>? setVar =
             _debug.SupportsSetVariable ? (cr, n, v) => _debug.SetVariableAsync(cr, n, v) : null;
@@ -99,6 +102,56 @@ public sealed partial class DebugInspectionViewModel : ObservableObject
         await LoadAutosAsync(frame, generation);
         if (generation != Volatile.Read(ref _frameInspectionGeneration)) return;
         await RefreshWatchesAsync(frame.Id, generation);
+    }
+
+    // --- 行末の値（Inline Values） ---
+
+    /// <summary>
+    /// 停止中フレームの変数を、関数の先頭〜停止行のソースに出てくる名前と突き合わせ、行末の値として
+    /// エディタへ送る（VS Code の Debug Inline Values）。値は DAP の scopes→variables だけから取り、
+    /// 式評価はしない（副作用が無く、netcoredbg／NetFx／js-debug のどれでも同じ経路で動く）。
+    /// 世代が変わったら（続行・ステップ・フレーム切替）送らない——古い値を出し直さないため。
+    /// </summary>
+    private async Task LoadInlineValuesAsync(DebugFrameViewModel frame, IReadOnlyList<DebugScope> scopes, long generation)
+    {
+        if (!_session.InlineValuesEnabled || !_session.IsStopped
+            || frame is not { HasSource: true, SourcePath: { } path } || frame.Line < 1)
+        {
+            _session.RaiseInlineValues(DebugInlineValueSet.Empty);
+            return;
+        }
+
+        var variables = new List<DebugVariable>();
+        foreach (var scope in scopes)
+        {
+            if (!DebugInlineValues.ShouldReadScope(scope) || scope.VariablesReference <= 0) continue;
+            variables.AddRange(await _debug.GetVariablesAsync(scope.VariablesReference));
+            if (generation != Volatile.Read(ref _frameInspectionGeneration)) return;
+        }
+
+        string[] lines;
+        try { lines = await File.ReadAllLinesAsync(path); }
+        catch { _session.RaiseInlineValues(DebugInlineValueSet.Empty); return; }  // 生成コード等で読めない
+        if (generation != Volatile.Read(ref _frameInspectionGeneration)) return;
+
+        var values = await Task.Run(() => DebugInlineValues.Compute(
+            path, lines, frame.Line - 1, DebugInlineValues.ToValueMap(variables)));  // DAP 1始まり → 0始まり
+        if (generation != Volatile.Read(ref _frameInspectionGeneration)) return;
+        _session.RaiseInlineValues(values);
+    }
+
+    /// <summary>設定の切り替えなどで、いまの停止フレームの行末の値を出し直す（無効・停止していなければ消す）。</summary>
+    public async Task RefreshInlineValuesAsync()
+    {
+        if (!_session.InlineValuesEnabled || !_session.IsStopped || SelectedFrame is not { } frame)
+        {
+            _session.RaiseInlineValues(DebugInlineValueSet.Empty);
+            return;
+        }
+        var generation = Volatile.Read(ref _frameInspectionGeneration);
+        var scopes = await _debug.GetScopesAsync(frame.Id);
+        if (generation != Volatile.Read(ref _frameInspectionGeneration)) return;
+        await LoadInlineValuesAsync(frame, scopes, generation);
     }
 
     // --- 変数 ---
@@ -294,6 +347,8 @@ public sealed partial class DebugInspectionViewModel : ObservableObject
     public void Clear()
     {
         Interlocked.Increment(ref _frameInspectionGeneration);
+        // 続行・ステップ・終了：DAP ではこの時点で値が無効になるので、行末の値もすぐ消す。
+        _session.RaiseInlineValues(DebugInlineValueSet.Empty);
         CallStack.Clear();
         Variables.Clear();
         Autos.Clear();

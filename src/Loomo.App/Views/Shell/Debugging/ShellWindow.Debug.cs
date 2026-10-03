@@ -14,6 +14,15 @@ public partial class ShellWindow
             _vm.Debug, _vm.TsIde, RealizedEditorControls,
             OpenFileInNewEditorTabAsync, OnDebugFramePreviewRequested, OnDebugFrameActivated);
         _debugEditorController.Attach();
+        ApplyDebugInlineValuesSetting();
+    }
+
+    /// <summary>設定「デバッグ中に変数の値を行末に表示する」を両マネージャへ流す（起動時と設定の保存ごと）。
+    /// 停止中に切り替えたら、その場で出し直す／消す。</summary>
+    private void ApplyDebugInlineValuesSetting()
+    {
+        _vm.Debug.InlineValuesEnabled = _settings.Editor.ShowDebugInlineValues;
+        _vm.TsIde.InlineValuesEnabled = _settings.Editor.ShowDebugInlineValues;
     }
 
     private DebugManagerViewModelBase ManagerForPath(string? path)

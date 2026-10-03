@@ -54,6 +54,12 @@ public sealed partial class DebugSessionViewModel : ObservableObject, IDebugSess
     public event Action<string, int>? FramePreviewRequested;
     public event Action<string, int>? FrameActivated;
 
+    /// <summary>行末の値（停止中のフレームぶん）が変わった。続行・終了では空が届く。</summary>
+    public event Action<DebugInlineValueSet>? InlineValuesChanged;
+
+    /// <summary>いま出している行末の値。アクティブセッションを切り替えたとき、マネージャがこれを出し直す。</summary>
+    public DebugInlineValueSet InlineValues { get; private set; } = DebugInlineValueSet.Empty;
+
     internal DebugSessionViewModel(IDebugService debug, DebugManagerViewModelBase manager, string displayName)
     {
         DebugService = debug;
@@ -115,6 +121,15 @@ public sealed partial class DebugSessionViewModel : ObservableObject, IDebugSess
     void IDebugSession.RaiseFramePreview(string path, int line0) => FramePreviewRequested?.Invoke(path, line0);
     void IDebugSession.RaiseFrameActivated(string path, int line0) => FrameActivated?.Invoke(path, line0);
     string? IDebugSession.FindBuildTarget() => _manager.FindBuildTarget();
+
+    bool IDebugSession.InlineValuesEnabled => _manager.InlineValuesEnabled;
+
+    void IDebugSession.RaiseInlineValues(DebugInlineValueSet values)
+    {
+        if (ReferenceEquals(InlineValues, values) || (InlineValues.IsEmpty && values.IsEmpty)) return;
+        InlineValues = values;
+        InlineValuesChanged?.Invoke(values);
+    }
 
     /// <summary>共有の <see cref="DebugLaunchViewModel"/>（「次のステートメントに設定」等）から、
     /// このセッションの実行行ハイライトを直接動かす。</summary>

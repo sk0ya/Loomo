@@ -435,6 +435,7 @@ public sealed class SettingsStore
         public bool ApplyEditorConfigOnSave { get; set; } = true;
         public bool AutoClosePairs { get; set; }
         public bool ShowInlayHints { get; set; }
+        public bool ShowDebugInlineValues { get; set; } = true;
         public bool InlineSuggest { get; set; } = true;
         public int TabWidth { get; set; } = 2;
         public bool UseSpacesForTab { get; set; } = true;
@@ -455,6 +456,7 @@ public sealed class SettingsStore
             ApplyEditorConfigOnSave = e.ApplyEditorConfigOnSave,
             AutoClosePairs = e.AutoClosePairs,
             ShowInlayHints = e.ShowInlayHints,
+            ShowDebugInlineValues = e.ShowDebugInlineValues,
             InlineSuggest = e.InlineSuggest,
             TabWidth = e.TabWidth,
             UseSpacesForTab = e.UseSpacesForTab,
@@ -476,6 +478,7 @@ public sealed class SettingsStore
             e.ApplyEditorConfigOnSave = ApplyEditorConfigOnSave;
             e.AutoClosePairs = AutoClosePairs;
             e.ShowInlayHints = ShowInlayHints;
+            e.ShowDebugInlineValues = ShowDebugInlineValues;
             e.InlineSuggest = InlineSuggest;
             e.TabWidth = TabWidth > 0 ? TabWidth : 2;
             e.UseSpacesForTab = UseSpacesForTab;

@@ -293,6 +293,9 @@ public sealed class EditorSettings
     /// <summary>LSPが返すparameter name等のinlay hintをエディタ内へ表示する。既定 OFF。</summary>
     public bool ShowInlayHints { get; set; }
 
+    /// <summary>デバッグで止まっている間、関数内の行末に変数の値を薄く表示する（VS Code の Inline Values）。既定 ON。</summary>
+    public bool ShowDebugInlineValues { get; set; } = true;
+
     /// <summary>インデント幅（Vim <c>tabstop</c>/<c>shiftwidth</c>）。既定 2（ライブラリ既定と同じ）。</summary>
     public int TabWidth { get; set; } = 2;
 
