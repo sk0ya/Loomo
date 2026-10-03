@@ -121,8 +121,8 @@ internal sealed class DiffSideEditorPresenter : IDisposable
     /// <summary>設定（テーマ・フォント）が変わったので当て直す。</summary>
     internal void ReapplyAppearance()
     {
-        if (_left is not null) ApplyAppearance(_left);
-        if (_right is not null) ApplyAppearance(_right);
+        if (_left is not null) ApplyAppearance(_left, left: true);
+        if (_right is not null) ApplyAppearance(_right, left: false);
     }
 
     /// <summary>
@@ -297,7 +297,7 @@ internal sealed class DiffSideEditorPresenter : IDisposable
     private VimEditorControl CreateEditor(bool left)
     {
         var editor = _factory();
-        ApplyAppearance(editor);
+        ApplyAppearance(editor, left);
         editor.SetSharedStatusBar(_statusBar);
         editor.ViewportScrolled += OnViewportScrolled;
         editor.ContextMenuBuilding += (_, e) => ContextMenuBuilding?.Invoke(left, editor, e);
@@ -308,14 +308,22 @@ internal sealed class DiffSideEditorPresenter : IDisposable
     }
 
     /// <summary>
-    /// 部屋の見た目を当てたうえで、左右の行を揃えるのに要る設定だけは固定する：折り返すと1行が
-    /// 複数の表示行になって左右の高さがずれるので折り返さない。ミニマップは差分では幅を取るだけ。
+    /// 部屋の見た目を当てたうえで、差分に要る形へ固める。折り返すと1行が複数の表示行になって左右の高さが
+    /// ずれるので折り返さない。ミニマップ・パンくず・インレイヒント・ゴースト補完は差分では幅と行を取るだけ。
+    /// 縦スクロールは左右で連動するので、スクロールバーは右の1本で足りる（左は外して本文に回す）。
+    /// ステータスバーは Vim のモードとコマンド行のためのもので、Vim を使わないなら仮想文書の名前と
+    /// 文字コードしか出ない——左右で共有する1本ごと畳む。
     /// </summary>
-    private void ApplyAppearance(VimEditorControl editor)
+    private void ApplyAppearance(VimEditorControl editor, bool left)
     {
         _applyAppearance(editor);
         editor.ExecuteCommand("set nowrap");
         editor.ExecuteCommand("set nominimap");
+        editor.ExecuteCommand("set nobreadcrumb");
+        editor.ExecuteCommand("set noinlayhints");
+        editor.ExecuteCommand("set noinlinesuggest");
+        editor.ExecuteCommand(left ? "set noscrollbar" : "set scrollbar");
+        _statusBar.Visibility = editor.VimEnabled ? Visibility.Visible : Visibility.Collapsed;
     }
 
     /// <summary>読み取り専用の文書として出す。<paramref name="keepView"/> は同じファイルの差分の読み直し

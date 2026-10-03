@@ -52,6 +52,7 @@ public partial class ShellWindow {
         }) { VimEnabled = _settings.Vim.Enabled };
 
     private void ApplyDiffEditorAppearance(VimEditorControl control) {
+        control.VimEnabled = _settings.Vim.Enabled;   // 共有ステータスバーを出すかどうかもこれで決まる
         _appearance.ApplyEditorOptions(control);
         _appearance.ApplyEditorAppearance(control);
     }
