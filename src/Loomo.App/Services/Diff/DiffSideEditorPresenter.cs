@@ -309,7 +309,8 @@ internal sealed class DiffSideEditorPresenter : IDisposable
 
     /// <summary>
     /// 部屋の見た目を当てたうえで、差分に要る形へ固める。折り返すと1行が複数の表示行になって左右の高さが
-    /// ずれるので折り返さない。ミニマップ・パンくず・インレイヒント・ゴースト補完は差分では幅と行を取るだけ。
+    /// ずれるので折り返さない。畳むのも同じ理由で行の揃いを崩すので、行番号の右の折りたたみ印の列も要らない。
+    /// ミニマップ・パンくず・インレイヒント・ゴースト補完は差分では幅と行を取るだけ。
     /// 縦スクロールは左右で連動するので、スクロールバーは右の1本で足りる（左は外して本文に回す）。
     /// ステータスバーは Vim のモードとコマンド行のためのもので、Vim を使わないなら仮想文書の名前と
     /// 文字コードしか出ない——左右で共有する1本ごと畳む。
@@ -319,6 +320,7 @@ internal sealed class DiffSideEditorPresenter : IDisposable
         _applyAppearance(editor);
         editor.ExecuteCommand("set nowrap");
         editor.ExecuteCommand("set nominimap");
+        editor.ExecuteCommand("set nofoldcolumn");
         editor.ExecuteCommand("set nobreadcrumb");
         editor.ExecuteCommand("set noinlayhints");
         editor.ExecuteCommand("set noinlinesuggest");
