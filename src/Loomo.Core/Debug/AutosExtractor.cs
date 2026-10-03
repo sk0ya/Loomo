@@ -71,7 +71,7 @@ public static class AutosExtractor
 
     /// <summary>行コメント（<c>//</c>）以降と、二重引用符/文字（<c>'</c>）/テンプレート（<c>`</c>、TS）リテラルの
     /// 中身を空白化して、リテラル内の識別子っぽい文字列を候補に拾わないようにする。簡易（エスケープは深追いしない）。</summary>
-    private static string StripCommentsAndStrings(string line)
+    internal static string StripCommentsAndStrings(string line)
     {
         var chars = line.ToCharArray();
         var inStr = false;

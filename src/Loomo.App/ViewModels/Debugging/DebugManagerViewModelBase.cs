@@ -71,6 +71,7 @@ public abstract partial class DebugManagerViewModelBase : ObservableObject, IDeb
             OnPropertyChanged(nameof(IsBusy));
             OnPropertyChanged(nameof(IsStopped));
             ExecutionLineChanged?.Invoke(null, -1);
+            InlineValuesChanged?.Invoke(value?.InlineValues ?? DebugInlineValueSet.Empty);
             StoppedChanged?.Invoke(value?.IsStopped ?? false);
             SessionStateChanged?.Invoke();
         }
@@ -125,6 +126,20 @@ public abstract partial class DebugManagerViewModelBase : ObservableObject, IDeb
     /// <summary>ブレークポイント一覧が（パネル操作で）変わったので、そのパスのエディタのガターを同期し直す要求。
     /// ブレークポイントはセッション非依存（ファイル単位でグローバル共有）なので、この通知もセッション非依存。</summary>
     public event Action<string>? BreakpointsRefreshed;
+
+    /// <summary>行末の値（アクティブセッションの停止中フレームぶん）が変わった。空なら消す。
+    /// セッション切替でも、切替先の値（無ければ空）が届く。</summary>
+    public event Action<DebugInlineValueSet>? InlineValuesChanged;
+
+    /// <summary>停止中に関数内の行末へ変数の値を出すか（設定、既定 ON）。切り替えると停止中のセッションは
+    /// その場で出し直す／消す——次の停止まで待たせない。</summary>
+    [ObservableProperty] private bool _inlineValuesEnabled = true;
+
+    partial void OnInlineValuesEnabledChanged(bool value)
+    {
+        foreach (var s in Sessions)
+            _ = s.Inspection.RefreshInlineValuesAsync();
+    }
 
     /// <summary>実行系コマンド（開始/アタッチ/ビルド/テスト）を押した瞬間に「出力」タブを見せる要求。</summary>
     public event Action? OutputRequested;
@@ -248,6 +263,7 @@ public abstract partial class DebugManagerViewModelBase : ObservableObject, IDeb
         _activeSession.FramePreviewRequested -= OnActiveFramePreviewRequested;
         _activeSession.FrameActivated -= OnActiveFrameActivated;
         _activeSession.StoppedChanged -= OnActiveStoppedChanged;
+        _activeSession.InlineValuesChanged -= OnActiveInlineValuesChanged;
     }
 
     private void AttachActiveSessionHandlers()
@@ -258,6 +274,7 @@ public abstract partial class DebugManagerViewModelBase : ObservableObject, IDeb
         _activeSession.FramePreviewRequested += OnActiveFramePreviewRequested;
         _activeSession.FrameActivated += OnActiveFrameActivated;
         _activeSession.StoppedChanged += OnActiveStoppedChanged;
+        _activeSession.InlineValuesChanged += OnActiveInlineValuesChanged;
     }
 
     private void OnActiveSessionPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -272,6 +289,7 @@ public abstract partial class DebugManagerViewModelBase : ObservableObject, IDeb
     private void OnActiveExecutionLineChanged(string? path, int line0) => ExecutionLineChanged?.Invoke(path, line0);
     private void OnActiveFramePreviewRequested(string path, int line0) => FramePreviewRequested?.Invoke(path, line0);
     private void OnActiveFrameActivated(string path, int line0) => FrameActivated?.Invoke(path, line0);
+    private void OnActiveInlineValuesChanged(DebugInlineValueSet values) => InlineValuesChanged?.Invoke(values);
     private void OnActiveStoppedChanged(bool stopped)
     {
         OnPropertyChanged(nameof(IsStopped));
@@ -307,6 +325,9 @@ public abstract partial class DebugManagerViewModelBase : ObservableObject, IDeb
     void IDebugSession.RaiseFramePreview(string path, int line0) => ActiveSession?.NotifyFramePreview(path, line0);
     void IDebugSession.RaiseFrameActivated(string path, int line0) => FrameActivated?.Invoke(path, line0);
     void IDebugSession.RaiseBreakpointsRefreshed(string path) => BreakpointsRefreshed?.Invoke(path);
+    bool IDebugSession.InlineValuesEnabled => InlineValuesEnabled;
+    // 行末の値は停止中のフレームを持つセッション側だけが出す。マネージャ（共有の窓口）からは出さない。
+    void IDebugSession.RaiseInlineValues(DebugInlineValueSet values) { }
     void IDebugSession.Append(DebugOutputCategory category, string text) => Append(category, text);
     void IDebugSession.ReportBuildOutput(string output) => ReportBuildOutput(output);
     string? IDebugSession.FindBuildTarget() => FindBuildTarget();

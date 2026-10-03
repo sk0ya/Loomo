@@ -56,6 +56,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _cleanCSharpOnSave;
     [ObservableProperty] private bool _autoClosePairs;
     [ObservableProperty] private bool _showInlayHints;
+    [ObservableProperty] private bool _showDebugInlineValues = true;
     [ObservableProperty] private int _tabWidth;
     [ObservableProperty] private bool _useSpacesForTab;
     [ObservableProperty] private string _imagePasteDirectory = "";
@@ -138,6 +139,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         CollapseUsingsOnOpen = form.CollapseUsingsOnOpen;
         CleanCSharpOnSave = form.CleanCSharpOnSave;
         AutoClosePairs = form.AutoClosePairs; ShowInlayHints = form.ShowInlayHints;
+        ShowDebugInlineValues = form.ShowDebugInlineValues;
         TabWidth = form.TabWidth; UseSpacesForTab = form.UseSpacesForTab;
         ImagePasteDirectory = form.ImagePasteDirectory; ImagePasteFileName = form.ImagePasteFileName;
         ImagePasteAltText = form.ImagePasteAltText;
@@ -195,6 +197,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     partial void OnCleanCSharpOnSaveChanged(bool value) => Persist();
     partial void OnAutoClosePairsChanged(bool value) => Persist();
     partial void OnShowInlayHintsChanged(bool value) => Persist();
+    partial void OnShowDebugInlineValuesChanged(bool value) => Persist();
     partial void OnTabWidthChanged(int value) => Persist();
     partial void OnUseSpacesForTabChanged(bool value) => Persist();
     partial void OnImagePasteDirectoryChanged(string value) => Persist();
@@ -226,6 +229,7 @@ public sealed partial class SettingsViewModel : ObservableObject
             CollapseUsingsOnOpen = CollapseUsingsOnOpen,
             CleanCSharpOnSave = CleanCSharpOnSave,
             AutoClosePairs = AutoClosePairs, ShowInlayHints = ShowInlayHints,
+            ShowDebugInlineValues = ShowDebugInlineValues,
             TabWidth = TabWidth, UseSpacesForTab = UseSpacesForTab,
             ImagePasteDirectory = ImagePasteDirectory, ImagePasteFileName = ImagePasteFileName,
             ImagePasteAltText = ImagePasteAltText, AutoApprove = AutoApprove,

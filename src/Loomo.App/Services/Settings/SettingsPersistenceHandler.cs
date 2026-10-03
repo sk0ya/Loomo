@@ -20,6 +20,7 @@ public sealed record SettingsFormState
     public bool CleanCSharpOnSave { get; init; }
     public bool AutoClosePairs { get; init; }
     public bool ShowInlayHints { get; init; }
+    public bool ShowDebugInlineValues { get; init; }
 
     /// <summary>入力の先読みそのものを使うか（内蔵の予測とローカル LLM の両方をまとめて切る）。</summary>
     public bool InlineSuggest { get; init; }
@@ -68,6 +69,7 @@ public sealed class SettingsPersistenceHandler
         CleanCSharpOnSave = _settings.Editor.CleanCSharpOnSave,
         AutoClosePairs = _settings.Editor.AutoClosePairs,
         ShowInlayHints = _settings.Editor.ShowInlayHints,
+        ShowDebugInlineValues = _settings.Editor.ShowDebugInlineValues,
         InlineSuggest = _settings.Editor.InlineSuggest,
         TabWidth = _settings.Editor.TabWidth,
         UseSpacesForTab = _settings.Editor.UseSpacesForTab,
@@ -101,6 +103,7 @@ public sealed class SettingsPersistenceHandler
         _settings.Editor.CleanCSharpOnSave = form.CleanCSharpOnSave;
         _settings.Editor.AutoClosePairs = form.AutoClosePairs;
         _settings.Editor.ShowInlayHints = form.ShowInlayHints;
+        _settings.Editor.ShowDebugInlineValues = form.ShowDebugInlineValues;
         _settings.Editor.InlineSuggest = form.InlineSuggest;
         _settings.Editor.TabWidth = form.TabWidth > 0 ? form.TabWidth : 2;
         _settings.Editor.UseSpacesForTab = form.UseSpacesForTab;

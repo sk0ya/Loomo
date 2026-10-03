@@ -58,6 +58,13 @@ internal interface IDebugSession
     /// <summary>ソースへジャンプする要求（path, 0始まり行）。通常タブで開きフォーカスする。</summary>
     void RaiseFrameActivated(string path, int line0);
 
+    /// <summary>停止中、関数内の行末に変数の値を出すか（設定「デバッグ中に変数の値を行末に表示する」）。
+    /// false なら値の収集そのものをしない。</summary>
+    bool InlineValuesEnabled { get; }
+
+    /// <summary>行末の値（停止中のフレーム 1 つぶん）をエディタへ反映する。<see cref="DebugInlineValueSet.Empty"/> で消す。</summary>
+    void RaiseInlineValues(DebugInlineValueSet values);
+
     /// <summary>そのパスのエディタのガターをブレークポイント一覧に同期し直す要求。</summary>
     void RaiseBreakpointsRefreshed(string path);
 

@@ -1,5 +1,6 @@
 using System.IO;
 using Editor.Controls.Rendering;
+using sk0ya.Loomo.Core.Debug;
 
 namespace sk0ya.Loomo.App.Services;
 
@@ -13,6 +14,10 @@ internal sealed class DebugEditorController
     private readonly Action<string, int> _previewFrame;
     private readonly Action<string, int> _activateFrame;
     private bool _attached;
+
+    // 行末の値（Inline Values）。マネージャごとの最新の一揃いと、編集で値が古くなったので消したエディタ。
+    private readonly Dictionary<DebugManagerViewModelBase, DebugInlineValueSet> _inlineValues = new();
+    private readonly HashSet<VimEditorControl> _inlineValuesStale = new();
 
     internal DebugEditorController(
         DebugManagerViewModelBase dotnet,
@@ -51,7 +56,17 @@ internal sealed class DebugEditorController
             ?? Task.FromResult<string?>(null);
         control.SetDataTipsEnabled(ManagerForPath(control.FilePath).IsStopped);
         control.BufferChanged += (_, _) => SyncBreakpoints(control);
+        control.BufferChanged += (_, _) => OnEditorBufferChanged(control);
         SyncBreakpoints(control);
+        SyncInlineValues(control);
+    }
+
+    /// <summary>エディタにファイルが載った後（<c>LoadFile</c> は行末の値を捨てるが <c>BufferChanged</c> を出さない）。
+    /// 停止と同時に開いたタブにも、すでに組み上がっている値を出す。</summary>
+    internal void OnEditorFileLoaded(VimEditorControl control)
+    {
+        _inlineValuesStale.Remove(control);
+        SyncInlineValues(control);
     }
 
     private void AttachManager(DebugManagerViewModelBase manager)
@@ -61,6 +76,51 @@ internal sealed class DebugEditorController
         manager.FrameActivated += _activateFrame;
         manager.BreakpointsRefreshed += OnBreakpointsRefreshed;
         manager.StoppedChanged += stopped => OnStoppedChanged(manager, stopped);
+        manager.InlineValuesChanged += values => OnInlineValuesChanged(manager, values);
+    }
+
+    // --- 行末の値（Inline Values） ---
+
+    private void OnInlineValuesChanged(DebugManagerViewModelBase manager, DebugInlineValueSet values)
+    {
+        _inlineValues[manager] = values;
+        // 新しい停止（または続行による消去）が来たら、編集で消していた分も含めて出し直す。
+        _inlineValuesStale.Clear();
+        foreach (var control in EditorsFor(manager))
+            SyncInlineValues(control);
+    }
+
+    /// <summary>そのエディタのファイルに該当する値だけを出す（無ければ消す）。</summary>
+    private void SyncInlineValues(VimEditorControl control)
+    {
+        var manager = ManagerForPath(control.FilePath);
+        var lines = _inlineValuesStale.Contains(control) || !_inlineValues.TryGetValue(manager, out var values)
+            ? Array.Empty<DebugInlineValueLine>()
+            : values.LinesFor(control.FilePath);
+        ApplyInlineValues(control, lines);
+    }
+
+    /// <summary>停止中にソースを編集したら、そのエディタの値は消す（行がずれて別の行の値に見えるため）。
+    /// 次の停止で出し直す。</summary>
+    private void OnEditorBufferChanged(VimEditorControl control)
+    {
+        if (!_inlineValues.TryGetValue(ManagerForPath(control.FilePath), out var values)
+            || values.LinesFor(control.FilePath).Count == 0
+            || !_inlineValuesStale.Add(control))
+            return;
+        ApplyInlineValues(control, Array.Empty<DebugInlineValueLine>());
+    }
+
+    /// <summary>エディタへ描かせる。描画 API（<c>VimEditorControl.SetInlineValues</c>）は
+    /// sk0ya.Editor.Controls 1.0.95 から。古いピンでは収集・無効化までで、描画は行わない（Loomo.App.csproj 参照）。</summary>
+    private static void ApplyInlineValues(VimEditorControl control, IReadOnlyList<DebugInlineValueLine> lines)
+    {
+#if LOOMO_EDITOR_INLINE_VALUES
+        control.SetInlineValues(lines.Select(l => new EditorInlineValue(l.Line0, l.Text)).ToList());
+#else
+        _ = control;
+        _ = lines;
+#endif
     }
 
     private IEnumerable<VimEditorControl> EditorsFor(DebugManagerViewModelBase manager)

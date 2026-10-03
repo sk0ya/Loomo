@@ -370,6 +370,7 @@ public partial class ShellWindow {
     private void AfterEditorFileLoaded(VimEditorControl control) {
         _appearance.ApplyUsingFoldingOnOpen(control);
         SyncEditorTestGlyphs(control);   // LoadFile はグリフを捨てるが BufferChanged を出さない
+        _debugEditorController?.OnEditorFileLoaded(control);   // 行末の値も同じ（停止と同時に開いたタブへ出す）
         SyncEditorCodeActionBulb(control);
         ScheduleStyleCopAnalysis(control);
         // 同じく BufferChanged が出ないので、この文書を別のエディタに映している側へ知らせる。
@@ -381,6 +382,7 @@ public partial class ShellWindow {
                 tab.Control.VimEnabled = _settings.Vim.Enabled;
     }
     private void ApplyEditorSettingsToOpenEditorTabs() {
+        ApplyDebugInlineValuesSetting();
         foreach (var tab in _editorTabs) {
             if (!tab.IsRealized) continue;
             _appearance.ApplyEditorOptions(tab.Control);
