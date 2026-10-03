@@ -201,6 +201,7 @@ public sealed class SettingsStore
         public bool ShowBrowser { get; set; } = true;
         public bool GroupBrowserByDomain { get; set; }
         public bool ShowTerminal { get; set; } = true;
+        public bool ShowSearch { get; set; } = true;
 
         public static PersistedTabsPanel From(TabsPanelSettings t) => new()
         {
@@ -208,6 +209,7 @@ public sealed class SettingsStore
             ShowBrowser = t.ShowBrowser,
             GroupBrowserByDomain = t.GroupBrowserByDomain,
             ShowTerminal = t.ShowTerminal,
+            ShowSearch = t.ShowSearch,
         };
 
         // 既存インスタンスを書き換える（DI シングルトンの参照を保つため置き換えない）。
@@ -217,6 +219,7 @@ public sealed class SettingsStore
             t.ShowBrowser = ShowBrowser;
             t.GroupBrowserByDomain = GroupBrowserByDomain;
             t.ShowTerminal = ShowTerminal;
+            t.ShowSearch = ShowSearch;
         }
     }
 

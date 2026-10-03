@@ -250,13 +250,19 @@ public partial class ShellWindow {
         if (sender is FrameworkElement { Tag: string kind } button)
             PaneTabOverflow.Show(
                 button, kind, (Style)FindResource("BranchMenuItem"),
-                (Brush)FindResource("FgDim"), (Brush)FindResource("Accent"), UiFontManager.Scaled(12));
+                (Brush)FindResource("FgDim"), (Brush)FindResource("Accent"), UiFontManager.Scaled(12),
+                // 検索ペインは「いまの検索」も1枚のタブとして先頭に並べる（残したタブから戻る口）。
+                kind == "Search"
+                    ? new PaneTabOverflowLeadingRow("現在の検索", !_vm.SearchPanel.IsViewingTab,
+                        () => _vm.SearchPanel.ShowLive())
+                    : null);
     }
     private void ActivatePaneTab(TabEntryViewModel tab) {
         switch (tab.Kind) {
             case TabEntryKind.Terminal: ActivateTerminalTab(tab.Id); break;
             case TabEntryKind.Editor: ActivateEditorTab(tab.Id); break;
             case TabEntryKind.Browser: ActivateBrowserTab(tab.Id); break;
+            case TabEntryKind.Search: _vm.SearchPanel.ShowTab(tab.Id); break;
         }
     }
     // ===== 切り離しウィンドウ → メインの帯（戻す） =====

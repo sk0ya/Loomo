@@ -29,6 +29,12 @@ public partial class SearchPanelView : UserControl
     {
         Dispatcher.BeginInvoke(DispatcherPriority.Input, new System.Action(() =>
         {
+            // 残したタブを見ている間は入力欄が隠れている。結果ツリーへ置いて矢印キーで辿れるようにする。
+            if (Vm is { IsViewingTab: true })
+            {
+                ResultTree.Focus();
+                return;
+            }
             Keyboard.ClearFocus();
             FocusManager.SetFocusedElement(FocusManager.GetFocusScope(QueryBox), QueryBox);
             QueryBox.Focus();
@@ -66,7 +72,7 @@ public partial class SearchPanelView : UserControl
     {
         if (Vm is null)
             return;
-        foreach (var node in Vm.Results)
+        foreach (var node in Vm.DisplayedResults)
             SearchResultTreePolicy.SetExpanded(node, expanded);
     }
 
@@ -250,6 +256,20 @@ public partial class SearchPanelView : UserControl
     private bool ActivateSelectedResult()
         => SearchResultTreePolicy.ActivateSelection(ResultTree.SelectedItem,
             match => Vm?.Activate(match), group => Vm?.Activate(group));
+
+    /// <summary>このファイルの一致（ファイル名検索ならファイルそのもの）をペグボードへ送る（ファイル見出しの右クリック）。</summary>
+    private void OnSendGroupToPegboardClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { DataContext: SearchFileGroup group } && Vm is { } vm)
+            vm.SendGroupToPegboard(group);
+    }
+
+    /// <summary>この1行を「path:line: 行テキスト」でペグボードへ送る（一致行の右クリック）。</summary>
+    private void OnSendMatchToPegboardClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { DataContext: SearchMatchItem match } && Vm is { } vm)
+            vm.SendMatchToPegboard(match);
+    }
 
     /// <summary>このファイル内の一致をまとめて置換する（ファイル見出しの右クリックメニュー「置換」）。</summary>
     private void OnReplaceInGroupClick(object sender, RoutedEventArgs e)

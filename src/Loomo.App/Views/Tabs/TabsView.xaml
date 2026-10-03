@@ -128,7 +128,7 @@
 
         <DataTemplate x:Key="TabEntryTemplate">
             <Border x:Name="TabBorder" Height="28" Margin="0" CornerRadius="4"
-                    Background="Transparent" MouseDown="OnTabMiddleClick">
+                    Background="Transparent" MouseDown="OnTabMiddleClick" ToolTip="{Binding ToolTip}">
                 <!-- 右クリック：ContextMenu は視覚ツリーから切り離されるため、Tag へ
                      TabsViewModel（UserControl の DataContext）を積んで PlacementTarget.Tag 経由で参照する -->
                 <Border.Tag>
@@ -152,6 +152,7 @@
                                   CommandParameter="{Binding}" />
                         <Separator />
                         <MenuItem Header="別ウィンドウで開く"
+                                  Visibility="{Binding CanDetach, Converter={StaticResource BoolToVis}}"
                                   Command="{Binding PlacementTarget.Tag.DetachTabCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                   CommandParameter="{Binding}" />
                         <Separator Visibility="{Binding FilePath, Converter={StaticResource NonEmptyToVis}}" />
@@ -385,6 +386,14 @@
                                   CommandParameter="{x:Static vm:TabEntryKind.Terminal}">
                             <MenuItem.Icon>
                                 <Image Source="{Binding Kinds[2].Icon}" Width="16" Height="16" />
+                            </MenuItem.Icon>
+                        </MenuItem>
+                        <!-- 検索の「新しいタブ」＝いまの検索結果をタブとして残す（§23.3.1）。 -->
+                        <MenuItem Header="いまの検索結果をタブに残す"
+                                  Command="{Binding NewTabCommand}"
+                                  CommandParameter="{x:Static vm:TabEntryKind.Search}">
+                            <MenuItem.Icon>
+                                <Image Source="{Binding Kinds[3].Icon}" Width="16" Height="16" />
                             </MenuItem.Icon>
                         </MenuItem>
                     </ContextMenu>

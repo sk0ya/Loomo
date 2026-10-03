@@ -1898,13 +1898,29 @@
                      ヘッダーツールバーは持たず、モード切替・オプションは SearchPanelView 内蔵。 -->
                 <DockPanel x:Name="SearchPane" Visibility="Collapsed" Background="{DynamicResource Panel}" AllowDrop="True"
                             DragOver="OnFileDropDragOver" Drop="OnSearchFileDrop">
-                    <DockPanel Style="{StaticResource PaneHeaderBar}" LastChildFill="False"
+                    <DockPanel Style="{StaticResource PaneHeaderBar}" LastChildFill="True"
                                Tag="Search" Cursor="SizeAll"
                                PreviewMouseLeftButtonDown="OnPaneTitleMouseDown" PreviewMouseMove="OnPaneTitleMouseMove">
                         <TextBlock DockPanel.Dock="Left" Style="{StaticResource PanelHeader}" Text="SEARCH" />
                         <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="30" Height="24"
                                 Content="—" FontSize="{DynamicResource Fs13}" ToolTip="このペインを隠す"
                                 Tag="Search" Click="OnHidePane" />
+                        <!-- 検索結果のタブ（§23.3.1）。エディタ等と同じく、タブそのものはサイドバーの TABS（「検索」の群）と
+                             ▾ 一覧で見る・選ぶ・閉じる。＋＝いまの検索結果をタブとして残す（エディタの＋＝新しいタブに当たる） -->
+                        <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="30" Height="24"
+                                Content="+" FontSize="{DynamicResource Fs15}"
+                                ToolTip="いまの検索結果をタブとして残す（新しい検索をしても消えない・再起動後も戻る）"
+                                Command="{Binding SearchPanel.PinCurrentResultsCommand}"
+                                IsEnabled="{Binding SearchPanel.CanPinResults}" />
+                        <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="24" Height="24"
+                                Content="▾" FontSize="{DynamicResource Fs11}" ToolTip="タブ一覧（現在の検索と残した検索結果）"
+                                Tag="Search" Click="OnTabOverflowClick" />
+                        <!-- 見ている残したタブの見出し。現在の検索を見ているときは空 -->
+                        <TextBlock Text="{Binding Tabs.ActiveSearchTab.Title}"
+                                   ToolTip="{Binding Tabs.ActiveSearchTab.ToolTip}"
+                                   Margin="2,0,8,0" VerticalAlignment="Center"
+                                   FontSize="{DynamicResource Fs12}" Foreground="{DynamicResource Fg}"
+                                   TextTrimming="CharacterEllipsis" />
                     </DockPanel>
                     <Border Style="{StaticResource PaneHeaderRule}" />
                     <ContentControl x:Name="SearchPaneHost" DataContext="{Binding SearchPanel}" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" Focusable="False" />

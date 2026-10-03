@@ -19,6 +19,10 @@ public partial class ShellWindow {
                 EnsurePaneVisibleOrSwapTopLeft(PaneKind.Browser);
                 ActivateBrowserTab(tab.Id);
                 break;
+            case TabEntryKind.Search:
+                EnsurePaneVisibleOrSwapTopLeft(PaneKind.Search);
+                _vm.SearchPanel.ShowTab(tab.Id);
+                break;
         }
     }
     // TABS から開く新しいタブ。ペインを持つ側（ペイン内の＋・ショートカット）と違い、そのペインが
@@ -38,6 +42,13 @@ public partial class ShellWindow {
                 EnsurePaneVisibleOrSwapTopLeft(PaneKind.Browser);
                 OnBrowserNewTab(this, new RoutedEventArgs());
                 break;
+            case TabEntryKind.Search:
+                // 検索の「新しいタブ」＝いまの検索結果を残す。残せる結果が無ければ検索を開く（打ってから残す）。
+                if (_vm.SearchPanel.PinResults() is null)
+                    OpenSearch();
+                else
+                    EnsurePaneVisibleOrSwapTopLeft(PaneKind.Search);
+                break;
         }
     }
     private async void OnSidebarTabCloseRequested(object? sender, TabEntryViewModel tab) {
@@ -54,9 +65,10 @@ public partial class ShellWindow {
             selected.Kind, selected.Id, scope,
             _terminalTabs.Select(tab => tab.Id),
             _editorTabs.Select(tab => tab.Id),
-            _browserTabs.Select(tab => tab.Id));
+            _browserTabs.Select(tab => tab.Id),
+            _vm.SearchPanel.PinnedTabs.Select(tab => tab.Id));
         await WorkspaceTabCloseCoordinator.ExecuteAsync(
-            plan, CloseTerminalTabAsync, CloseEditorTab, CloseBrowserTabAsync);
+            plan, CloseTerminalTabAsync, CloseEditorTab, CloseBrowserTabAsync, _vm.SearchPanel.CloseTab);
     }
     // 見出しはコマンドのたびに変わるが、端末は保存しないのでスナップショットは書かない（表示だけ更新）。
     private void UpdateTerminalTab(TerminalTab tab, string? title)
@@ -138,6 +150,7 @@ public partial class ShellWindow {
         profile?.Lap("folderTree");
         RestoreComposer(workspace);
         _vm.Pegboard.LoadItems(workspace.Pegboard);
+        _vm.SearchPanel.RestoreTabs(workspace.SearchTabs);
         LoadLayouts(workspace.Layouts, workspace.ScratchLayout, workspace.ActiveLayoutIndex, workspace.LayoutDirty);
         ApplyIdePaneApplicability(WorkspaceSessionCoordinator.WorkspaceFolders(workspace));
         LoadEnabledSessions(workspace.EnabledSessions);
@@ -229,6 +242,7 @@ public partial class ShellWindow {
         snapshot.ComposerVisible = IsComposerVisible;
         snapshot.ComposerHeight = CaptureComposerHeight();
         snapshot.Pegboard = _vm.Pegboard.ToSnapshots();
+        snapshot.SearchTabs = _vm.SearchPanel.CaptureTabs();
         WorkspaceSessionCoordinator.CaptureDisplayState(
             snapshot, CurrentDisplayMode, _enabledSessions, _activeWingTab,
             WorkspaceSessionCoordinator.CaptureStage(

@@ -183,6 +183,8 @@ public sealed partial class ShellViewModel : ObservableObject
         Pegboard = pegboard;
         Browser = browser;
         SearchPanel = searchPanel;
+        // 検索結果のタブは TABS へ、「ペグボードへ」はペグボードへ（§23.3.1）。
+        Services.SearchPanelLinks.Connect(SearchPanel, Tabs, Pegboard);
         Debug = debug;
         TsIde = tsIde;
         Trail = trail;
