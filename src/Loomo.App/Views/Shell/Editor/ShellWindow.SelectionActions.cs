@@ -157,7 +157,9 @@ public partial class ShellWindow {
             menu, blame.CommitHash, () => ShowBlameCommitDiff(control, blame), () => {
             if (control.FilePath is { Length: > 0 } p)
                 _ = ShowGitHistoryAsync(p, blame.CommitHash);
-        });
+        },
+        // :Gblame はトグル。このメニューは blame カラム上でしか出ないので、実行すれば必ず閉じる側に倒れる。
+        () => control.ExecuteCommand("Gblame"));
     }
     private void ShowBlameCommitDiff(VimEditorControl control, Editor.Controls.Git.EditorBlameLine blame) {
         if (blame.CommitHash is not { Length: > 0 } hash) return;

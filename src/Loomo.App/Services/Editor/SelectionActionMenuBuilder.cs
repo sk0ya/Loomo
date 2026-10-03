@@ -54,7 +54,7 @@ internal static class SelectionActionMenuBuilder
     }
 
     public static void AddBlameCommitMenuItems(
-        ContextMenu menu, string? commitHash, Action showDiff, Action showHistory)
+        ContextMenu menu, string? commitHash, Action showDiff, Action showHistory, Action closeBlame)
     {
         var shortHash = commitHash is { Length: > 7 } hash ? hash[..7] : commitHash;
         var diff = new MenuItem { Header = $"Diff で差分を表示（{shortHash}）" };
@@ -63,6 +63,10 @@ internal static class SelectionActionMenuBuilder
         var history = new MenuItem { Header = "Git ペインでこのファイルの履歴を表示" };
         history.Click += (_, _) => showHistory();
         menu.Items.Add(history);
+        menu.Items.Add(new Separator());
+        var close = new MenuItem { Header = "Blame を閉じる", InputGestureText = ":Gblame" };
+        close.Click += (_, _) => closeBlame();
+        menu.Items.Add(close);
     }
 
     public static MenuItem BuildRunScriptMenuItem(string path, bool terminalAvailable, Action run)
