@@ -247,10 +247,23 @@ public partial class ShellWindow {
     }
     /// <summary>ヘッダーの「▾」：このペインのタブを全件一覧表示し、クリックで直接アクティブ化する。</summary>
     private void OnTabOverflowClick(object sender, RoutedEventArgs e) {
-        if (sender is FrameworkElement { Tag: string kind } button)
-            PaneTabOverflow.Show(
-                button, kind, (Style)FindResource("BranchMenuItem"),
-                (Brush)FindResource("FgDim"), (Brush)FindResource("Accent"), UiFontManager.Scaled(12));
+        if (sender is not FrameworkElement { Tag: string kind } button)
+            return;
+        var rowStyle = (Style)FindResource("BranchMenuItem");
+        var dim = (Brush)FindResource("FgDim");
+        var accent = (Brush)FindResource("Accent");
+        var fontSize = UiFontManager.Scaled(12);
+        // 検索ペインのタブ（現在の検索＋残した検索結果・§23.3.1）は TABS に載せない検索ペインだけのタブなので、
+        // 行は検索ペイン自身から組む。ペイン内のタブ帯からはみ出した分もここで選べる。
+        if (kind == "Search") {
+            var rows = _vm.SearchPanel.TabStrip
+                .Select(entry => new PaneTabOverflowRow(entry.Title, entry.IsActive, entry.ToolTip,
+                    () => _vm.SearchPanel.SelectTabStripEntry(entry)))
+                .ToList();
+            PaneTabOverflow.ShowRows(button, rows, rowStyle, accent, fontSize);
+            return;
+        }
+        PaneTabOverflow.Show(button, kind, rowStyle, dim, accent, fontSize);
     }
     private void ActivatePaneTab(TabEntryViewModel tab) {
         switch (tab.Kind) {

@@ -68,6 +68,8 @@ public partial class ShellWindow {
     {
         if (scope is { } value)
             _vm.SearchPanel.Scope = value;
+        // 検索を開く＝これから打つ。残したタブを見ていたら現在の検索（入力欄）へ戻す。
+        _vm.SearchPanel.ShowLive();
 
         EnsurePaneVisibleOrSwapTopLeft(PaneKind.Search);
         FocusPane(PaneKind.Search);

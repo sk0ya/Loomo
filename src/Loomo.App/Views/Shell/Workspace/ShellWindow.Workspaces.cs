@@ -138,6 +138,7 @@ public partial class ShellWindow {
         profile?.Lap("folderTree");
         RestoreComposer(workspace);
         _vm.Pegboard.LoadItems(workspace.Pegboard);
+        _vm.SearchPanel.RestoreTabs(workspace.SearchTabs);
         LoadLayouts(workspace.Layouts, workspace.ScratchLayout, workspace.ActiveLayoutIndex, workspace.LayoutDirty);
         ApplyIdePaneApplicability(WorkspaceSessionCoordinator.WorkspaceFolders(workspace));
         LoadEnabledSessions(workspace.EnabledSessions);
@@ -229,6 +230,7 @@ public partial class ShellWindow {
         snapshot.ComposerVisible = IsComposerVisible;
         snapshot.ComposerHeight = CaptureComposerHeight();
         snapshot.Pegboard = _vm.Pegboard.ToSnapshots();
+        snapshot.SearchTabs = _vm.SearchPanel.CaptureTabs();
         WorkspaceSessionCoordinator.CaptureDisplayState(
             snapshot, CurrentDisplayMode, _enabledSessions, _activeWingTab,
             WorkspaceSessionCoordinator.CaptureStage(

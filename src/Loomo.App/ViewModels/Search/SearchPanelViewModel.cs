@@ -107,7 +107,7 @@ public sealed partial class SearchPanelViewModel : ObservableObject
     [ObservableProperty] private bool _isReplaceVisible;
 
     /// <summary>置換機能を出せるか（テキスト grep のときだけ。ファイル名／ターミナル検索には無い）。</summary>
-    public bool CanReplace => Scope == SearchScope.Text;
+    public bool CanReplace => ActiveTab is null && Scope == SearchScope.Text;
 
     /// <summary>検索の開始フォルダー。単一ルートはワークスペースルートからの相対パス（'/' 区切り）。
     /// マルチルートは先頭にワークスペースフォルダーの表示名を付けた「フォルダー名/相対パス」
@@ -152,16 +152,16 @@ public sealed partial class SearchPanelViewModel : ObservableObject
 
     /// <summary>検索結果の一致行で強調する検索ワード。詳細検索では内容条件を使う。
     /// 空ならハイライトなし。</summary>
-    public string HighlightQuery => Scope == SearchScope.Advanced ? AdvancedContent : Query;
+    public string HighlightQuery => ActiveTab?.Query ?? (Scope == SearchScope.Advanced ? AdvancedContent : Query);
 
     /// <summary>検索結果のファイル名で強調する検索ワード。詳細検索では名前条件を使う。</summary>
-    public string FileNameHighlightQuery => Scope == SearchScope.Advanced ? AdvancedFileName : Query;
+    public string FileNameHighlightQuery => ActiveTab?.NameQuery ?? (Scope == SearchScope.Advanced ? AdvancedFileName : Query);
 
     /// <summary>結果ハイライトを正規表現として扱うか。テキスト grep と詳細検索の内容条件だけで有効。</summary>
-    public bool HighlightUseRegex => (Scope is SearchScope.Text or SearchScope.Advanced) && UseRegex;
+    public bool HighlightUseRegex => ActiveTab?.HighlightUseRegex ?? ((Scope is SearchScope.Text or SearchScope.Advanced) && UseRegex);
 
     /// <summary>結果ハイライトで大文字小文字を区別するか。テキスト grep と詳細検索の内容条件で有効。</summary>
-    public bool HighlightCaseSensitive => (Scope is SearchScope.Text or SearchScope.Advanced) && CaseSensitive;
+    public bool HighlightCaseSensitive => ActiveTab?.HighlightCaseSensitive ?? ((Scope is SearchScope.Text or SearchScope.Advanced) && CaseSensitive);
 
     /// <summary>クエリ欄のプレースホルダ（モードで文言を変える）。</summary>
     public string QueryPlaceholder => Scope switch
@@ -178,6 +178,43 @@ public sealed partial class SearchPanelViewModel : ObservableObject
     /// ルート直下のファイル（<see cref="SearchFileGroup"/>）。</summary>
     public ObservableCollection<object> Results { get; } = new();
 
+    // ===== タブに残した検索結果（VS Code の Search Editor 相当・設計書 §23.3.1） =====
+
+    /// <summary>タブに残した検索結果。並びは残した順。検索ペイン内のタブ帯（<see cref="TabStrip"/>）と
+    /// ペインヘッダーの ▾ 一覧に並ぶ。サイドバーの TABS には載せない（検索ペインの中の道具なので）。</summary>
+    public ObservableCollection<SearchResultTab> PinnedTabs { get; } = new();
+
+    /// <summary>検索ペイン上部のタブ帯（先頭が「現在の検索」、続いて残したタブ）。<see cref="PinnedTabs"/> と
+    /// <see cref="ActiveTab"/> から組み直す表示用の写し。</summary>
+    public ObservableCollection<SearchTabStripEntry> TabStrip { get; } = new();
+
+    /// <summary>タブ帯を出すか。残したタブが無いうちは「現在の検索」1枚だけになるので出さない（場所を予約しない）。</summary>
+    public bool HasTabStrip => PinnedTabs.Count > 0;
+
+    /// <summary>いま見ているタブ。null なら現在の検索（入力欄に打った検索）の結果を見ている。</summary>
+    [ObservableProperty] private SearchResultTab? _activeTab;
+
+    /// <summary>タブを見ているか（入力欄の代わりにタブの帯を出す）。</summary>
+    public bool IsViewingTab => ActiveTab is not null;
+
+    /// <summary>結果ツリーに出すもの。タブを見ていればそのタブの（残した時点の）結果、でなければ現在の検索結果。</summary>
+    public IReadOnlyList<object> DisplayedResults
+        => ActiveTab is { } tab ? tab.GetRoots(_workspace, _treeMapper) : Results;
+
+    /// <summary>現在の検索に結果があるか（「ペグボードへ」の表示可否）。</summary>
+    public bool HasLiveResults => Results.Count > 0;
+
+    /// <summary>現在の検索結果をタブに残せるか。ターミナル内の一致はその場限りの実体（再起動後の
+    /// ターミナルでは同じ行を指せない）なので残さない。</summary>
+    public bool CanPinResults => ActiveTab is null && Results.Count > 0 && Scope != SearchScope.Terminal;
+
+    /// <summary>タブの増減・見ているタブの切替（ShellWindow がワークスペース状態の保存に使う。
+    /// <see cref="RestoreTabs"/> での入れ替えでは発火しない）。</summary>
+    public event EventHandler? TabsChanged;
+
+    /// <summary>検索結果（全体・ファイル・1行）をペグボードへ送りたい（§23.3 素材の流れ）。</summary>
+    public event EventHandler<SearchPegboardPayload>? PegboardSendRequested;
+
     public SearchPanelViewModel(IWorkspaceService workspace, SearchPanelQuery searchQuery,
         SearchResultTreeMapper treeMapper)
     {
@@ -185,6 +222,17 @@ public sealed partial class SearchPanelViewModel : ObservableObject
         _searchQuery = searchQuery;
         _treeMapper = treeMapper;
         _workspace.FoldersChanged += (_, _) => OnFoldersChanged();
+        Results.CollectionChanged += (_, _) =>
+        {
+            OnPropertyChanged(nameof(HasLiveResults));
+            OnPropertyChanged(nameof(CanPinResults));
+        };
+        PinnedTabs.CollectionChanged += (_, _) =>
+        {
+            RebuildTabStrip();
+            OnPropertyChanged(nameof(HasTabStrip));
+        };
+        RebuildTabStrip();
     }
 
     // マルチルートになった瞬間（フォルダー追加）は既定の開始フォルダーをワークスペース全体へ戻す。
@@ -195,6 +243,11 @@ public sealed partial class SearchPanelViewModel : ObservableObject
     private void OnFoldersChanged()
     {
         OnPropertyChanged(nameof(WorkspaceFolders));
+        // 残したタブの表示パス（マルチルートならフォルダー名付き）はフォルダー構成で変わる。
+        foreach (var tab in PinnedTabs)
+            tab.InvalidateRoots();
+        if (ActiveTab is not null)
+            OnPropertyChanged(nameof(DisplayedResults));
         if (_workspace.Folders.Count > 1)
             SetDefaultRoot(null);
     }
@@ -282,6 +335,9 @@ public sealed partial class SearchPanelViewModel : ObservableObject
 
     partial void OnScopeChanged(SearchScope value)
     {
+        // 検索の種類を選び直した＝これから検索する。残したタブを見ていたら現在の検索へ戻る。
+        ActiveTab = null;
+        OnPropertyChanged(nameof(CanPinResults));
         OnPropertyChanged(nameof(QueryPlaceholder));
         OnPropertyChanged(nameof(ShowSearchRoot));
         OnPropertyChanged(nameof(ShowRootRow));
@@ -356,7 +412,7 @@ public sealed partial class SearchPanelViewModel : ObservableObject
     /// 実際に置換できた件数を返す（クエリが空なら何もせず0）。</summary>
     public int ReplaceInFile(SearchFileGroup group)
     {
-        if (string.IsNullOrEmpty(Query)) return 0;
+        if (string.IsNullOrEmpty(Query) || ActiveTab is not null) return 0;
         var count = _searchQuery.ReplaceInFile(group.FullPath, Query, ReplaceText, CaseSensitive, UseRegex);
         if (count > 0)
         {
@@ -372,7 +428,8 @@ public sealed partial class SearchPanelViewModel : ObservableObject
     /// 成功したら true（クエリが空・ターミナル一致・対象が見つからない＝内容がずれた場合は false）。</summary>
     public bool ReplaceOne(SearchMatchItem match)
     {
-        if (string.IsNullOrEmpty(Query) || match.IsTerminal) return false;
+        // 残したタブの一致は残した時点の写し。いまのファイルとずれうるので置換の対象にしない。
+        if (string.IsNullOrEmpty(Query) || match.IsTerminal || ActiveTab is not null) return false;
         var ok = _searchQuery.ReplaceOneInFile(match.FullPath, Query, ReplaceText, CaseSensitive, UseRegex,
             match.Line, match.Column);
         if (ok)
@@ -387,7 +444,7 @@ public sealed partial class SearchPanelViewModel : ObservableObject
     /// (置換したファイル数, 置換した件数の合計) を返す（クエリが空なら (0, 0)）。</summary>
     public (int Files, int Matches) ReplaceAll()
     {
-        if (string.IsNullOrEmpty(Query)) return (0, 0);
+        if (string.IsNullOrEmpty(Query) || ActiveTab is not null) return (0, 0);
         var files = 0;
         var matches = 0;
         var changedPaths = new List<string>();
@@ -410,7 +467,11 @@ public sealed partial class SearchPanelViewModel : ObservableObject
     /// <summary>検索の開始フォルダーを指定する（フォルダーツリーの「このフォルダーで検索」用）。
     /// フルパスが属するワークスペースフォルダーからの相対パスとして持つ（マルチルートは
     /// 「フォルダー名/相対パス」表記）。</summary>
-    public void SetSearchRoot(string fullPath) => SearchRoot = ToRelative(fullPath);
+    public void SetSearchRoot(string fullPath)
+    {
+        ActiveTab = null;
+        SearchRoot = ToRelative(fullPath);
+    }
 
     /// <summary>検索の既定の開始フォルダー（FolderTree の表示ルート）を設定する。
     /// ルートが変わったら検索フォルダーもそこへ合わせる（明示的なルート変更なので追従させる）。</summary>
@@ -758,7 +819,7 @@ public sealed partial class SearchPanelViewModel : ObservableObject
     /// エディタで全マッチをハイライトする検索ワード。Editor の <c>HighlightSearch</c> は
     /// literal substring マッチなので、リテラル grep のときだけ渡す（正規表現／ファイル名／ターミナルでは空）。
     /// </summary>
-    public string HighlightTerm => Scope switch
+    public string HighlightTerm => ActiveTab?.EditorHighlightTerm ?? Scope switch
     {
         SearchScope.Text when !UseRegex => Query,
         SearchScope.Advanced when !UseRegex => AdvancedContent,
@@ -773,7 +834,7 @@ public sealed partial class SearchPanelViewModel : ObservableObject
     /// 正規表現・大小区別の扱いは結果一覧と同じ <see cref="HighlightUseRegex"/> /
     /// <see cref="HighlightCaseSensitive"/> を使う。
     /// </summary>
-    public string SupportHighlightTerm => Scope switch
+    public string SupportHighlightTerm => ActiveTab?.SupportHighlightTerm ?? Scope switch
     {
         SearchScope.Text => Query,
         SearchScope.Advanced => AdvancedContent,
@@ -813,6 +874,211 @@ public sealed partial class SearchPanelViewModel : ObservableObject
 
     public void Activate(SearchFileGroup group)
         => ActivateRequested?.Invoke(this, new SearchHit(group.FullPath, 1, 1));
+
+    // ===== タブに残した検索結果 =====
+
+    private bool _restoringTabs;
+
+    partial void OnActiveTabChanged(SearchResultTab? value)
+    {
+        // 残した結果は写しなので置換はさせない（置換欄も畳む）。
+        if (value is not null)
+            IsReplaceVisible = false;
+        OnPropertyChanged(nameof(IsViewingTab));
+        OnPropertyChanged(nameof(DisplayedResults));
+        OnPropertyChanged(nameof(CanPinResults));
+        OnPropertyChanged(nameof(CanReplace));
+        OnPropertyChanged(nameof(HighlightQuery));
+        OnPropertyChanged(nameof(FileNameHighlightQuery));
+        OnPropertyChanged(nameof(HighlightUseRegex));
+        OnPropertyChanged(nameof(HighlightCaseSensitive));
+        OnPropertyChanged(nameof(HighlightTerm));
+        RaiseSupportHighlightChanged();
+        foreach (var entry in TabStrip)
+            entry.IsActive = entry.TabId == value?.Id;
+        if (!_restoringTabs)
+            TabsChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>現在の検索結果をタブとして残す（ペインヘッダーの「＋」・結果の「タブに残す」）。
+    /// 残したあとも現在の検索のまま——続けて検索し直し、タブへ切り替えて見比べる使い方のため。
+    /// 残したタブを返す（残せるものが無ければ null）。</summary>
+    public SearchResultTab? PinResults()
+    {
+        if (!CanPinResults)
+            return null;
+        var tab = SearchResultTab.Capture(Scope, HighlightQuery, FileNameHighlightQuery,
+            CaseSensitive, UseRegex, AllFileGroups());
+        if (tab is null)
+            return null;
+        PinnedTabs.Add(tab);
+        StatusMessage = $"タブに残しました：{tab.Title}";
+        TabsChanged?.Invoke(this, EventArgs.Empty);
+        return tab;
+    }
+
+    [RelayCommand]
+    private void PinCurrentResults() => PinResults();
+
+    /// <summary>タブ帯の1枚を選ぶ（「現在の検索」なら入力欄の検索へ戻る）。</summary>
+    [RelayCommand]
+    public void SelectTabStripEntry(SearchTabStripEntry? entry)
+    {
+        if (entry is null) return;
+        if (entry.TabId is { } id) ShowTab(id);
+        else ShowLive();
+    }
+
+    /// <summary>タブ帯の × で閉じる（「現在の検索」は閉じられない）。</summary>
+    [RelayCommand]
+    private void CloseTabStripEntry(SearchTabStripEntry? entry)
+    {
+        if (entry?.TabId is { } id)
+            CloseTab(id);
+    }
+
+    // 帯は数枚〜十数枚なので、増減のたびに作り直してよい（見出しは不変・選択は IsActive で追う）。
+    private void RebuildTabStrip()
+    {
+        TabStrip.Clear();
+        TabStrip.Add(new SearchTabStripEntry(null, "現在の検索", "入力欄の検索（いまの結果）", ActiveTab is null));
+        foreach (var tab in PinnedTabs)
+            TabStrip.Add(new SearchTabStripEntry(tab.Id, tab.Title, tab.Summary, ReferenceEquals(tab, ActiveTab)));
+    }
+
+    /// <summary>残したタブを見る。見つからなければ何もしない。</summary>
+    public void ShowTab(Guid id)
+    {
+        if (PinnedTabs.FirstOrDefault(t => t.Id == id) is { } tab)
+            ActiveTab = tab;
+    }
+
+    /// <summary>現在の検索（入力欄の検索）の結果へ戻る。</summary>
+    [RelayCommand]
+    public void ShowLive() => ActiveTab = null;
+
+    /// <summary>残したタブを閉じる。見ていたタブなら現在の検索へ戻る。</summary>
+    public void CloseTab(Guid id)
+    {
+        if (PinnedTabs.FirstOrDefault(t => t.Id == id) is not { } tab)
+            return;
+        var wasActive = ReferenceEquals(ActiveTab, tab);
+        PinnedTabs.Remove(tab);
+        if (wasActive)
+            ActiveTab = null;   // OnActiveTabChanged が TabsChanged を出す
+        else
+            TabsChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>見ているタブを閉じる（タブの帯の「閉じる」）。</summary>
+    [RelayCommand]
+    private void CloseActiveTab()
+    {
+        if (ActiveTab is { } tab)
+            CloseTab(tab.Id);
+    }
+
+    /// <summary>ワークスペースの保存用に残したタブを書き出す。</summary>
+    public List<SearchTabSnapshot> CaptureTabs()
+        => PinnedTabs.Select(t => t.ToSnapshot(ReferenceEquals(t, ActiveTab))).ToList();
+
+    /// <summary>ワークスペース切替・起動時に残したタブを入れ替える（保存は発火しない）。
+    /// 見ていたタブもそのまま戻す（開いたまま離れたら開いたまま戻る・§24.4）。</summary>
+    public void RestoreTabs(IEnumerable<SearchTabSnapshot>? snapshots)
+    {
+        _restoringTabs = true;
+        try
+        {
+            ActiveTab = null;
+            PinnedTabs.Clear();
+            SearchResultTab? active = null;
+            foreach (var snapshot in snapshots ?? Array.Empty<SearchTabSnapshot>())
+            {
+                if (SearchResultTab.FromSnapshot(snapshot) is not { } tab)
+                    continue;
+                PinnedTabs.Add(tab);
+                if (snapshot.IsActive)
+                    active = tab;
+            }
+            ActiveTab = active;
+        }
+        finally
+        {
+            _restoringTabs = false;
+        }
+    }
+
+    /// <summary>いま結果ツリーに出ているもの全体（タブを見ていればそのタブ）をペグボードへ送る。</summary>
+    [RelayCommand]
+    public void SendResultsToPegboard()
+    {
+        if (ActiveTab is { } tab)
+        {
+            PegboardSendRequested?.Invoke(this, new(tab.ToPegboardText(_workspace), tab.PegboardTitle));
+            return;
+        }
+        var hits = ToHits(AllFileGroups().SelectMany(GroupHits));
+        if (hits.Count == 0)
+            return;
+        var title = $"検索「{LiveLabel()}」";
+        var count = StatusMessage is { Length: > 0 } status && !status.StartsWith("タブに残しました", StringComparison.Ordinal)
+            ? status : $"{hits.Count} 件";
+        PegboardSendRequested?.Invoke(this, new(
+            SearchResultTab.FormatPegboardText(title, count, hits, _workspace), $"{title}（{count}）"));
+    }
+
+    /// <summary>1ファイルぶんの一致をペグボードへ送る（ファイル見出しの右クリック）。</summary>
+    public void SendGroupToPegboard(SearchFileGroup group)
+    {
+        var hits = ToHits(GroupHits(group));
+        if (hits.Count == 0)
+            return;
+        var label = ActiveTab?.Title ?? $"検索「{LiveLabel()}」";
+        var name = string.IsNullOrEmpty(group.FullPath)
+            ? group.RelativePath
+            : _workspace.ToDisplayPath(group.FullPath).Replace('\\', '/');
+        var count = group.Count > 0 ? $"{name} {group.Count} 件" : name;
+        PegboardSendRequested?.Invoke(this, new(
+            SearchResultTab.FormatPegboardText(label, count, hits, _workspace), $"{label}（{count}）"));
+    }
+
+    /// <summary>1行ぶんをペグボードへ送る（一致行の右クリック）。本文は「path:line: 行テキスト」の1行。</summary>
+    public void SendMatchToPegboard(SearchMatchItem match)
+    {
+        var line = SearchResultTab.FormatHitLine(ToHit(match), _workspace);
+        var colon = line.IndexOf(": ", StringComparison.Ordinal);
+        PegboardSendRequested?.Invoke(this, new(line, colon > 0 ? line[..colon] : line));
+    }
+
+    private string LiveLabel()
+    {
+        var label = !string.IsNullOrWhiteSpace(HighlightQuery) ? HighlightQuery
+            : !string.IsNullOrWhiteSpace(FileNameHighlightQuery) ? FileNameHighlightQuery
+            : "詳細検索";
+        return label.ReplaceLineEndings(" ").Trim();
+    }
+
+    private static IEnumerable<object> GroupHits(SearchFileGroup group)
+        => group.Matches.Count == 0 ? new object[] { group } : group.Matches;
+
+    private static List<SearchTabHitSnapshot> ToHits(IEnumerable<object> items)
+        => items.Select(item => item switch
+            {
+                SearchMatchItem match => ToHit(match),
+                SearchFileGroup group => new SearchTabHitSnapshot { Path = group.FullPath },
+                _ => null,
+            })
+            .OfType<SearchTabHitSnapshot>()
+            .ToList();
+
+    // ターミナルの一致は FullPath が空・行は 1 始まりへ直した表示上の行。
+    private static SearchTabHitSnapshot ToHit(SearchMatchItem match) => new()
+    {
+        Path = match.FullPath,
+        Line = Math.Max(1, match.Line),
+        Column = Math.Max(1, match.Column),
+        Text = match.LineText,
+    };
 
     private static string? NullIfBlank(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
 }

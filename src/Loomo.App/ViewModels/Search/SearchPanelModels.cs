@@ -55,6 +55,10 @@ public sealed partial class SearchMatchItem : ObservableObject
     /// <summary>クラス／シンボル検索（LSP のワークスペースシンボル）の1件。</summary>
     public static SearchMatchItem ForSymbol(string fullPath, string relativePath, int line, int column, string preview)
         => new(fullPath, relativePath, line, column, preview);
+
+    /// <summary>タブに残した検索結果（<see cref="SearchResultTab"/>）の1件。残した時点の行テキストをそのまま出す。</summary>
+    public static SearchMatchItem ForSnapshot(string fullPath, string relativePath, int line, int column, string lineText)
+        => new(fullPath, relativePath, line, column, lineText.TrimEnd());
     public bool IsTerminal { get; }
     public TerminalSearchHit TerminalHit { get; }
     public string FullPath { get; }

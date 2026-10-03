@@ -153,8 +153,114 @@
     </UserControl.Resources>
 
     <DockPanel>
+        <!-- 検索ペインのタブ帯（§23.3.1）：「現在の検索」＋残した検索結果のタブ。エディタのタブ帯と同じく
+             ペイン上端に1行で並べ、はみ出した分はペインヘッダーの ▾ 一覧で選ぶ（折り返して縦幅を食わない）。
+             残したタブが無いうちは出さない（「現在の検索」1枚だけの帯のために場所を予約しない）。
+             × は見ているタブとホバー中のタブにだけ出す（常設すると狭いペインで見出しが削られる）。 -->
+        <Border DockPanel.Dock="Top" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1"
+                ClipToBounds="True"
+                Visibility="{Binding HasTabStrip, Converter={StaticResource BoolToVis}}">
+            <ItemsControl ItemsSource="{Binding TabStrip}" Margin="4,0,4,0" Focusable="False">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <StackPanel Orientation="Horizontal" />
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate DataType="{x:Type vm:SearchTabStripEntry}">
+                        <Border x:Name="Tab" Height="26" Padding="8,0,2,0" Background="Transparent"
+                                BorderBrush="Transparent" BorderThickness="0,0,0,2" Cursor="Hand"
+                                ToolTip="{Binding ToolTip}" MaxWidth="220"
+                                MouseLeftButtonUp="OnTabStripEntryClick" MouseDown="OnTabStripEntryMiddleClick">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock x:Name="TabTitle" Text="{Binding Title}" FontSize="{DynamicResource Fs11}"
+                                           Foreground="{DynamicResource FgDim}" VerticalAlignment="Center"
+                                           TextTrimming="CharacterEllipsis" MaxWidth="190" />
+                                <Button x:Name="CloseButton" Width="16" Height="16" Margin="4,0,0,0" Padding="0"
+                                        Visibility="Hidden" Cursor="Hand" ToolTip="このタブを閉じる"
+                                        Command="{Binding DataContext.CloseTabStripEntryCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                        CommandParameter="{Binding}">
+                                    <Button.Template>
+                                        <ControlTemplate TargetType="Button">
+                                            <Border x:Name="b" Background="Transparent" CornerRadius="3">
+                                                <Path Width="7" Height="7" Stretch="Uniform" Stroke="{DynamicResource FgDim}"
+                                                      StrokeThickness="1.3" Data="M0,0 L8,8 M0,8 L8,0"
+                                                      HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                            </Border>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter TargetName="b" Property="Background" Value="{DynamicResource Border}" />
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Button.Template>
+                                </Button>
+                            </StackPanel>
+                        </Border>
+                        <DataTemplate.Triggers>
+                            <Trigger SourceName="Tab" Property="IsMouseOver" Value="True">
+                                <Setter TargetName="TabTitle" Property="Foreground" Value="{DynamicResource Fg}" />
+                                <Setter TargetName="CloseButton" Property="Visibility" Value="Visible" />
+                            </Trigger>
+                            <DataTrigger Binding="{Binding IsActive}" Value="True">
+                                <Setter TargetName="Tab" Property="BorderBrush" Value="{DynamicResource Accent}" />
+                                <Setter TargetName="TabTitle" Property="Foreground" Value="{DynamicResource Fg}" />
+                                <Setter TargetName="CloseButton" Property="Visibility" Value="Visible" />
+                            </DataTrigger>
+                            <!-- 「現在の検索」は閉じられない。× の場所も取らない。 -->
+                            <DataTrigger Binding="{Binding CanClose}" Value="False">
+                                <Setter TargetName="CloseButton" Property="Visibility" Value="Collapsed" />
+                                <Setter TargetName="Tab" Property="Padding" Value="8,0,8,0" />
+                            </DataTrigger>
+                        </DataTemplate.Triggers>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </Border>
+
+        <!-- 残した検索結果のタブを見ているときの帯（§23.3.1）。入力欄の代わりに「何を・いつ残したか」を出す。
+             結果は残した時点の写しなので置換は出さない。新しく検索するときは「現在の検索へ」で入力欄へ戻る
+             （検索ショートカット・検索の種類の切替でも戻る）。 -->
+        <StackPanel DockPanel.Dock="Top" Margin="8,4,8,6"
+                    Visibility="{Binding IsViewingTab, Converter={StaticResource BoolToVis}}">
+            <DockPanel LastChildFill="True">
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button Content="現在の検索へ" Height="22" Padding="8,0" Margin="4,0,0,0"
+                            Style="{StaticResource FolderBarButton}"
+                            ToolTip="入力欄の検索（いまの結果）へ戻る。このタブは残る"
+                            Command="{Binding ShowLiveCommand}" />
+                    <Button Content="ペグボードへ" Height="22" Padding="8,0" Margin="4,0,0,0"
+                            Style="{StaticResource FolderBarButton}"
+                            ToolTip="このタブの結果（検索語＋ path:line: 行）をペグボードへ1枚で送る"
+                            Command="{Binding SendResultsToPegboardCommand}" />
+                    <Button Width="24" Padding="0" Margin="4,0,0,0" Style="{StaticResource FolderBarButton}"
+                            ToolTip="すべて展開" Click="OnExpandAll">
+                        <Path Width="11" Height="11" Stretch="Uniform"
+                              Stroke="{DynamicResource FgDim}" StrokeThickness="1.2"
+                              Data="M1,2 L5,5.5 L9,2 M1,6 L5,9.5 L9,6" />
+                    </Button>
+                    <Button Width="24" Padding="0" Margin="4,0,0,0" Style="{StaticResource FolderBarButton}"
+                            ToolTip="すべて閉じる" Click="OnCollapseAll">
+                        <Path Width="11" Height="11" Stretch="Uniform"
+                              Stroke="{DynamicResource FgDim}" StrokeThickness="1.2"
+                              Data="M1,5.5 L5,2 L9,5.5 M1,9.5 L5,6 L9,9.5" />
+                    </Button>
+                    <Button Content="閉じる" Height="22" Padding="8,0" Margin="4,0,0,0"
+                            Style="{StaticResource FolderBarButton}"
+                            ToolTip="このタブを閉じて現在の検索へ戻る"
+                            Command="{Binding CloseActiveTabCommand}" />
+                </StackPanel>
+                <TextBlock Text="{Binding ActiveTab.Title}" FontSize="{DynamicResource Fs13}" FontWeight="SemiBold"
+                           Foreground="{DynamicResource Fg}" VerticalAlignment="Center"
+                           TextTrimming="CharacterEllipsis" ToolTip="{Binding ActiveTab.Title}" />
+            </DockPanel>
+            <TextBlock Text="{Binding ActiveTab.Summary}" Margin="0,3,0,0" FontSize="{DynamicResource Fs11}"
+                       Foreground="{DynamicResource FgDim}" TextTrimming="CharacterEllipsis" />
+        </StackPanel>
+
         <!-- クエリ＋オプション -->
-        <StackPanel DockPanel.Dock="Top" Margin="8,2,8,6">
+        <StackPanel DockPanel.Dock="Top" Margin="8,2,8,6"
+                    Visibility="{Binding IsViewingTab, Converter={StaticResource InverseBoolToVis}}">
             <!-- 検索モード切替（検索ワード欄の上）＋ツールバー（すべて展開／すべて閉じる）を同じ行に。
                  テキスト＝ファイル内を grep、ファイル＝名前で曖昧検索、ターミナル＝アクティブなターミナル内テキスト。
                  Scope 列挙を EnumToBool で束ね、相互排他に振る舞わせる（既に選択中のボタンを
@@ -391,15 +497,28 @@
                         Click="OnReplaceAllClick" />
             </Grid>
 
-            <Grid Margin="0,4,0,0">
+            <!-- 結果の見出し行：件数＋結果全体への操作（タブに残す／ペグボードへ）＋停止。 -->
+            <DockPanel Margin="0,4,0,0" LastChildFill="True">
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button Content="タブに残す" Height="20" Padding="6,0" Margin="4,0,0,0" FontSize="{DynamicResource Fs10}"
+                            Style="{StaticResource FolderBarButton}"
+                            ToolTip="いまの結果をタブとして残す（新しい検索をしても消えず、TABS・▾ から切り替えて見比べられる）"
+                            Visibility="{Binding CanPinResults, Converter={StaticResource BoolToVis}}"
+                            Command="{Binding PinCurrentResultsCommand}" />
+                    <Button Content="ペグボードへ" Height="20" Padding="6,0" Margin="4,0,0,0" FontSize="{DynamicResource Fs10}"
+                            Style="{StaticResource FolderBarButton}"
+                            ToolTip="いまの結果（検索語＋ path:line: 行）をペグボードへ1枚で送る"
+                            Visibility="{Binding HasLiveResults, Converter={StaticResource BoolToVis}}"
+                            Command="{Binding SendResultsToPegboardCommand}" />
+                    <Button Content="停止" Height="20" Padding="6,0" Margin="4,0,0,0" FontSize="{DynamicResource Fs10}"
+                            Style="{StaticResource FolderBarButton}" ToolTip="実行中の再帰検索をキャンセル"
+                            Visibility="{Binding IsBusy, Converter={StaticResource BoolToVis}}"
+                            Command="{Binding CancelSearchCommand}" />
+                </StackPanel>
                 <TextBlock Text="{Binding StatusMessage}" Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs11}"
-                           TextTrimming="CharacterEllipsis"
+                           TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
                            Visibility="{Binding StatusMessage, Converter={StaticResource NonEmptyToVis}}" />
-                <Button Content="停止" HorizontalAlignment="Right" Height="20" Padding="6,0" FontSize="{DynamicResource Fs10}"
-                        Style="{StaticResource FolderBarButton}" ToolTip="実行中の再帰検索をキャンセル"
-                        Visibility="{Binding IsBusy, Converter={StaticResource BoolToVis}}"
-                        Command="{Binding CancelSearchCommand}" />
-            </Grid>
+            </DockPanel>
 
             <!-- include/exclude glob も grep 専用。テキスト検索時のみ、かつ「詳細」トグルが開いている
                  （または既に入力済みで絞り込み中の）ときだけ表示（ShowGlobRow）。 -->
@@ -440,7 +559,7 @@
              見えている行しか生成させない。ScrollUnit=Pixel で行単位スクロールのガタつきも避ける。
              Recycling は既存コンテナを使い回す（IsExpanded・ハイライトは全部バインド経由なので安全）。 -->
         <TreeView x:Name="ResultTree" BorderThickness="0" Background="Transparent"
-                  ItemsSource="{Binding Results}"
+                  ItemsSource="{Binding DisplayedResults}"
                   ItemContainerStyle="{StaticResource SearchTreeItem}"
                   ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                   ScrollViewer.CanContentScroll="True"
@@ -503,6 +622,7 @@
                         </Grid.ColumnDefinitions>
                         <Grid.ContextMenu>
                             <ContextMenu Opened="OnFileContextMenuOpened">
+                                <MenuItem Header="ペグボードへ送る" Click="OnSendGroupToPegboardClick" />
                                 <MenuItem Header="置換" Tag="ReplaceFileMenu" Click="OnReplaceInGroupClick" />
                             </ContextMenu>
                         </Grid.ContextMenu>
@@ -534,6 +654,7 @@
                         </Grid.ColumnDefinitions>
                         <Grid.ContextMenu>
                             <ContextMenu Opened="OnMatchContextMenuOpened">
+                                <MenuItem Header="ペグボードへ送る" Click="OnSendMatchToPegboardClick" />
                                 <MenuItem Header="置換" Tag="ReplaceOneMenu" Click="OnReplaceOneContextClick" />
                             </ContextMenu>
                         </Grid.ContextMenu>

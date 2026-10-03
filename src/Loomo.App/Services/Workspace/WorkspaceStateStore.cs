@@ -450,6 +450,11 @@ public sealed class WorkspaceSnapshot
     /// <summary>ペグボード（§23.3）のアイテム。ワークスペース毎に持つ。</summary>
     public List<PegboardItemSnapshot> Pegboard { get; set; } = new();
 
+    /// <summary>検索ペインのタブに残した検索結果（VS Code の Search Editor 相当・§23.3.1）。
+    /// 新しい検索をしても消えず、再起動後も同じ結果を見比べられるよう、結果そのもの（パス・行・行テキスト）を持つ。
+    /// 空の旧データはタブ無しとして復元する。</summary>
+    public List<SearchTabSnapshot> SearchTabs { get; set; } = new();
+
     /// <summary>ファイル一覧ペイン（§26.10）の現在地と並べ替え。null の旧データはプライマリフォルダーから始める。</summary>
     public FilesPaneSnapshot? Files { get; set; }
 
@@ -598,6 +603,49 @@ public sealed class PegboardItemSnapshot
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
     /// <summary>上部固定。</summary>
     public bool Pinned { get; set; }
+}
+
+/// <summary>検索ペインのタブに残した検索結果1枚ぶん（<see cref="WorkspaceSnapshot.SearchTabs"/>）。</summary>
+public sealed class SearchTabSnapshot
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+
+    /// <summary>検索の種類（<c>SearchScope</c> の名前。列挙の並びが変わっても読めるよう名前で持つ）。</summary>
+    public string Scope { get; set; } = "Text";
+
+    /// <summary>一致行で強調する検索語（見出しにも使う）。</summary>
+    public string Query { get; set; } = "";
+
+    /// <summary>ファイル名で強調する検索語（詳細検索の名前条件など、内容の語と違うときがある）。</summary>
+    public string? NameQuery { get; set; }
+
+    public bool CaseSensitive { get; set; }
+    public bool UseRegex { get; set; }
+    public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
+
+    /// <summary>残したとき見ていたタブか（検索ペインを開いたらこのタブの結果が出ている）。</summary>
+    public bool IsActive { get; set; }
+
+    /// <summary>件数が上限を超えて、残したのが先頭の一部だけか。</summary>
+    public bool Truncated { get; set; }
+
+    public List<SearchTabHitSnapshot> Hits { get; set; } = new();
+}
+
+/// <summary>残した検索結果の1件。<see cref="Line"/> が 0 ならファイルそのもの（ファイル名検索のヒット）。</summary>
+public sealed class SearchTabHitSnapshot
+{
+    /// <summary>フルパス（エディタタブと同じく実パスで持つ。表示用の相対パスは復元時に組み直す）。</summary>
+    public string Path { get; set; } = "";
+
+    /// <summary>1始まりの行。0＝行を持たないファイルのヒット。</summary>
+    public int Line { get; set; }
+
+    /// <summary>1始まりの列。</summary>
+    public int Column { get; set; }
+
+    /// <summary>残した時点の行テキスト（以後ファイルが変わっても書き換えない＝スナップショット）。</summary>
+    public string? Text { get; set; }
 }
 
 /// <summary>メイン領域に並ぶペインの種別。値は JSON へ数値で永続化されるため末尾追加のみ可。</summary>
