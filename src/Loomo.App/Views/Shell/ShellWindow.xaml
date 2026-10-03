@@ -1905,8 +1905,9 @@
                         <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="30" Height="24"
                                 Content="—" FontSize="{DynamicResource Fs13}" ToolTip="このペインを隠す"
                                 Tag="Search" Click="OnHidePane" />
-                        <!-- 検索結果のタブ（§23.3.1）。エディタ等と同じく、タブそのものはサイドバーの TABS（「検索」の群）と
-                             ▾ 一覧で見る・選ぶ・閉じる。＋＝いまの検索結果をタブとして残す（エディタの＋＝新しいタブに当たる） -->
+                        <!-- 検索結果のタブ（§23.3.1）。タブはペイン内の帯（SearchPanelView）に並び、はみ出した分は ▾ 一覧で選ぶ。
+                             サイドバーの TABS には載せない（検索ペインの中の道具なので）。
+                             ＋＝いまの検索結果をタブとして残す（エディタの＋＝新しいタブに当たる） -->
                         <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="30" Height="24"
                                 Content="+" FontSize="{DynamicResource Fs15}"
                                 ToolTip="いまの検索結果をタブとして残す（新しい検索をしても消えない・再起動後も戻る）"
@@ -1916,8 +1917,8 @@
                                 Content="▾" FontSize="{DynamicResource Fs11}" ToolTip="タブ一覧（現在の検索と残した検索結果）"
                                 Tag="Search" Click="OnTabOverflowClick" />
                         <!-- 見ている残したタブの見出し。現在の検索を見ているときは空 -->
-                        <TextBlock Text="{Binding Tabs.ActiveSearchTab.Title}"
-                                   ToolTip="{Binding Tabs.ActiveSearchTab.ToolTip}"
+                        <TextBlock Text="{Binding SearchPanel.ActiveTab.Title}"
+                                   ToolTip="{Binding SearchPanel.ActiveTab.Summary}"
                                    Margin="2,0,8,0" VerticalAlignment="Center"
                                    FontSize="{DynamicResource Fs12}" Foreground="{DynamicResource Fg}"
                                    TextTrimming="CharacterEllipsis" />

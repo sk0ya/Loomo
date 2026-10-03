@@ -23,9 +23,6 @@ public sealed class TabIconService
     /// <summary>favicon が取れないときの地球儀（凍結済みなので 1 個を使い回す）。</summary>
     private static readonly ImageSource FallbackBrowserIcon = CreateFallbackBrowserIcon();
 
-    /// <summary>検索結果のタブの絵。ペインのアイコン（PaneIcon.Search）と同じ形を、地球儀と同じ明暗どちらでも読める灰で描く。</summary>
-    private static readonly ImageSource SearchIcon = CreateSearchIcon();
-
     private readonly ConcurrentDictionary<string, Lazy<Task<ImageSource>>> _browserIconCache = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>取れた favicon の写し先（ブックマークの行が同じ絵を使う・§21.5.1）。
@@ -47,9 +44,6 @@ public sealed class TabIconService
     }
 
     public ImageSource GetBrowserDefaultIcon() => FallbackBrowserIcon;
-
-    /// <summary>検索ペインに残した検索結果のタブに出す虫眼鏡（凍結済みなので 1 個を使い回す）。</summary>
-    public ImageSource GetSearchIcon() => SearchIcon;
 
     public Task<ImageSource> GetBrowserIconAsync(CoreWebView2? coreWebView2, string? pageUrl)
     {
@@ -124,19 +118,6 @@ public sealed class TabIconService
         group.Children.Add(new GeometryDrawing(null, new Pen(inner, 1.0), Geometry.Parse("M2.5,8 H13.5 M8,2.5 C6.2,4.3 5.2,6.3 5.2,8 C5.2,9.7 6.2,11.7 8,13.5 M8,2.5 C9.8,4.3 10.8,6.3 10.8,8 C10.8,9.7 9.8,11.7 8,13.5")));
 
         var image = new DrawingImage(group);
-        image.Freeze();
-        return image;
-    }
-
-    private static ImageSource CreateSearchIcon()
-    {
-        var stroke = new SolidColorBrush(Color.FromRgb(0x9D, 0x9D, 0x9D));
-        stroke.Freeze();
-        var pen = new Pen(stroke, 1.4) { StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round };
-        pen.Freeze();
-        var drawing = new GeometryDrawing(null, pen,
-            Geometry.Parse("M6.8,2.5 A4.3,4.3 0 1 0 6.8,11.1 A4.3,4.3 0 1 0 6.8,2.5 M9.9,9.9 L13.5,13.5"));
-        var image = new DrawingImage(drawing);
         image.Freeze();
         return image;
     }

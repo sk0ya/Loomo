@@ -6,8 +6,8 @@ using sk0ya.Loomo.App.ViewModels;
 
 namespace sk0ya.Loomo.App.Services;
 
-/// <summary>一覧の先頭に足す、タブではない行（検索ペインの「現在の検索」）。</summary>
-internal sealed record PaneTabOverflowLeadingRow(string Title, bool IsActive, Action Activate);
+/// <summary>TABS のタブ（<see cref="TabEntryViewModel"/>）ではない一覧の1行（検索ペインのタブ）。</summary>
+internal sealed record PaneTabOverflowRow(string Title, bool IsActive, string? ToolTip, Action Activate);
 
 /// <summary>ペインタブの全件一覧ポップアップを組み立て、選択タブをShellへ返す。</summary>
 internal sealed class PaneTabOverflowPresenter
@@ -31,24 +31,20 @@ internal sealed class PaneTabOverflowPresenter
 
     public void Show(
         FrameworkElement button, string kind, Style rowStyle, Brush dimForeground, Brush activeForeground,
-        double fontSize, PaneTabOverflowLeadingRow? leading = null)
+        double fontSize)
     {
         var tabs = kind switch
         {
             "Terminal" => _tabs.TerminalTabs,
             "Editor" => _tabs.EditorTabs,
             "Browser" => _tabs.BrowserTabs,
-            "Search" => _tabs.SearchTabs,
             _ => null,
         };
         if (tabs is null)
             return;
 
         _rows.Children.Clear();
-        if (leading is not null)
-            _rows.Children.Add(CreateRow(leading.Title, leading.IsActive, null, rowStyle, activeForeground, fontSize,
-                leading.Activate));
-        if (tabs.Count == 0 && leading is null)
+        if (tabs.Count == 0)
         {
             _rows.Children.Add(new TextBlock
             {
@@ -61,10 +57,22 @@ internal sealed class PaneTabOverflowPresenter
         else
         {
             foreach (var tab in tabs)
-                _rows.Children.Add(CreateRow(tab.Title, tab.IsActive, tab.FilePath ?? tab.ToolTip ?? tab.Title,
+                _rows.Children.Add(CreateRow(tab.Title, tab.IsActive, tab.FilePath ?? tab.Title,
                     rowStyle, activeForeground, fontSize, () => _activate(tab)));
         }
 
+        _popup.PlacementTarget = button;
+        _popup.IsOpen = true;
+    }
+
+    /// <summary>呼び出し側が組んだ行で一覧を出す（検索ペインのタブ）。</summary>
+    public void ShowRows(FrameworkElement button, IReadOnlyList<PaneTabOverflowRow> rows, Style rowStyle,
+        Brush activeForeground, double fontSize)
+    {
+        _rows.Children.Clear();
+        foreach (var row in rows)
+            _rows.Children.Add(CreateRow(row.Title, row.IsActive, row.ToolTip, rowStyle, activeForeground, fontSize,
+                row.Activate));
         _popup.PlacementTarget = button;
         _popup.IsOpen = true;
     }

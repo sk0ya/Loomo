@@ -242,5 +242,24 @@ public sealed class SearchResultTab
     }
 }
 
+/// <summary>検索ペイン内のタブ帯の1枚。<see cref="TabId"/> が null なら「現在の検索」（閉じられない）。</summary>
+public sealed partial class SearchTabStripEntry : CommunityToolkit.Mvvm.ComponentModel.ObservableObject
+{
+    public SearchTabStripEntry(Guid? tabId, string title, string? toolTip, bool isActive)
+    {
+        TabId = tabId;
+        Title = title;
+        ToolTip = toolTip;
+        _isActive = isActive;
+    }
+
+    public Guid? TabId { get; }
+    public string Title { get; }
+    public string? ToolTip { get; }
+    public bool CanClose => TabId is not null;
+
+    [CommunityToolkit.Mvvm.ComponentModel.ObservableProperty] private bool _isActive;
+}
+
 /// <summary>ペグボードへ送る1枚ぶん（本文と見出し）。</summary>
 public sealed record SearchPegboardPayload(string Content, string Title);

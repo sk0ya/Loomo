@@ -94,7 +94,7 @@ public sealed class TabsViewModelTests
     }
 
     [Fact]
-    public void 種別をすべて隠したときだけ案内を出す()
+    public void 種別を3つとも隠したときだけ案内を出す()
     {
         var sut = WithOneOfEach();
 
@@ -103,9 +103,6 @@ public sealed class TabsViewModelTests
         Assert.False(sut.IsAllKindsHidden);
 
         sut.ShowTerminalTabs = false;
-        Assert.False(sut.IsAllKindsHidden);   // 検索（残した検索結果）がまだ出ている
-
-        sut.ShowSearchTabs = false;
         Assert.True(sut.IsAllKindsHidden);
     }
 
@@ -144,14 +141,13 @@ public sealed class TabsViewModelTests
     {
         var sut = WithOneOfEach();
 
-        // 検索（残した検索結果のタブ・§23.3.1）は末尾。見出しの「＋」メニューが Kinds[0..2] を位置で引くため。
         Assert.Equal(
-            [TabEntryKind.Editor, TabEntryKind.Browser, TabEntryKind.Terminal, TabEntryKind.Search],
+            [TabEntryKind.Editor, TabEntryKind.Browser, TabEntryKind.Terminal],
             sut.Kinds.Select(k => k.Kind));
-        Assert.Equal(["エディタ", "ブラウザ", "ターミナル", "検索"], sut.Kinds.Select(k => k.Label));
+        Assert.Equal(["エディタ", "ブラウザ", "ターミナル"], sut.Kinds.Select(k => k.Label));
         // 隠していても件数は出し続ける（「無くなった」に見せない）。
         sut.ShowEditorTabs = false;
-        Assert.All(sut.Kinds.Take(3), k => Assert.Equal(1, k.Count));
+        Assert.All(sut.Kinds, k => Assert.Equal(1, k.Count));
     }
 
     [Fact]

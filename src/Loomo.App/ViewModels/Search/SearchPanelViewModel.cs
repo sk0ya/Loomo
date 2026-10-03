@@ -180,9 +180,16 @@ public sealed partial class SearchPanelViewModel : ObservableObject
 
     // ===== タブに残した検索結果（VS Code の Search Editor 相当・設計書 §23.3.1） =====
 
-    /// <summary>タブに残した検索結果。並びは残した順。TABS（サイドバー）とペインのヘッダーの ▾ 一覧に
-    /// 同じものが並ぶ（<see cref="Services.SearchPanelLinks"/> が <see cref="TabsViewModel"/> へ写す）。</summary>
+    /// <summary>タブに残した検索結果。並びは残した順。検索ペイン内のタブ帯（<see cref="TabStrip"/>）と
+    /// ペインヘッダーの ▾ 一覧に並ぶ。サイドバーの TABS には載せない（検索ペインの中の道具なので）。</summary>
     public ObservableCollection<SearchResultTab> PinnedTabs { get; } = new();
+
+    /// <summary>検索ペイン上部のタブ帯（先頭が「現在の検索」、続いて残したタブ）。<see cref="PinnedTabs"/> と
+    /// <see cref="ActiveTab"/> から組み直す表示用の写し。</summary>
+    public ObservableCollection<SearchTabStripEntry> TabStrip { get; } = new();
+
+    /// <summary>タブ帯を出すか。残したタブが無いうちは「現在の検索」1枚だけになるので出さない（場所を予約しない）。</summary>
+    public bool HasTabStrip => PinnedTabs.Count > 0;
 
     /// <summary>いま見ているタブ。null なら現在の検索（入力欄に打った検索）の結果を見ている。</summary>
     [ObservableProperty] private SearchResultTab? _activeTab;
@@ -220,6 +227,12 @@ public sealed partial class SearchPanelViewModel : ObservableObject
             OnPropertyChanged(nameof(HasLiveResults));
             OnPropertyChanged(nameof(CanPinResults));
         };
+        PinnedTabs.CollectionChanged += (_, _) =>
+        {
+            RebuildTabStrip();
+            OnPropertyChanged(nameof(HasTabStrip));
+        };
+        RebuildTabStrip();
     }
 
     // マルチルートになった瞬間（フォルダー追加）は既定の開始フォルダーをワークスペース全体へ戻す。
@@ -881,6 +894,8 @@ public sealed partial class SearchPanelViewModel : ObservableObject
         OnPropertyChanged(nameof(HighlightCaseSensitive));
         OnPropertyChanged(nameof(HighlightTerm));
         RaiseSupportHighlightChanged();
+        foreach (var entry in TabStrip)
+            entry.IsActive = entry.TabId == value?.Id;
         if (!_restoringTabs)
             TabsChanged?.Invoke(this, EventArgs.Empty);
     }
@@ -904,6 +919,32 @@ public sealed partial class SearchPanelViewModel : ObservableObject
 
     [RelayCommand]
     private void PinCurrentResults() => PinResults();
+
+    /// <summary>タブ帯の1枚を選ぶ（「現在の検索」なら入力欄の検索へ戻る）。</summary>
+    [RelayCommand]
+    public void SelectTabStripEntry(SearchTabStripEntry? entry)
+    {
+        if (entry is null) return;
+        if (entry.TabId is { } id) ShowTab(id);
+        else ShowLive();
+    }
+
+    /// <summary>タブ帯の × で閉じる（「現在の検索」は閉じられない）。</summary>
+    [RelayCommand]
+    private void CloseTabStripEntry(SearchTabStripEntry? entry)
+    {
+        if (entry?.TabId is { } id)
+            CloseTab(id);
+    }
+
+    // 帯は数枚〜十数枚なので、増減のたびに作り直してよい（見出しは不変・選択は IsActive で追う）。
+    private void RebuildTabStrip()
+    {
+        TabStrip.Clear();
+        TabStrip.Add(new SearchTabStripEntry(null, "現在の検索", "入力欄の検索（いまの結果）", ActiveTab is null));
+        foreach (var tab in PinnedTabs)
+            TabStrip.Add(new SearchTabStripEntry(tab.Id, tab.Title, tab.Summary, ReferenceEquals(tab, ActiveTab)));
+    }
 
     /// <summary>残したタブを見る。見つからなければ何もしない。</summary>
     public void ShowTab(Guid id)

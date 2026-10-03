@@ -257,6 +257,29 @@ public partial class SearchPanelView : UserControl
         => SearchResultTreePolicy.ActivateSelection(ResultTree.SelectedItem,
             match => Vm?.Activate(match), group => Vm?.Activate(group));
 
+    /// <summary>タブ帯の1枚をクリックで選ぶ（× の上で離したときは × 側のコマンドに任せる）。</summary>
+    private void OnTabStripEntryClick(object sender, MouseButtonEventArgs e)
+    {
+        if (e.OriginalSource is DependencyObject source && WpfTreeTraversal.FindAncestor<Button>(source) is not null)
+            return;
+        if (sender is FrameworkElement { DataContext: SearchTabStripEntry entry } && Vm is { } vm)
+        {
+            vm.SelectTabStripEntry(entry);
+            e.Handled = true;
+        }
+    }
+
+    /// <summary>タブ帯の中クリックで閉じる（エディタ・TABS のタブと同じ手癖）。</summary>
+    private void OnTabStripEntryMiddleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ChangedButton != MouseButton.Middle
+            || sender is not FrameworkElement { DataContext: SearchTabStripEntry { TabId: { } id } }
+            || Vm is not { } vm)
+            return;
+        e.Handled = true;
+        vm.CloseTab(id);
+    }
+
     /// <summary>このファイルの一致（ファイル名検索ならファイルそのもの）をペグボードへ送る（ファイル見出しの右クリック）。</summary>
     private void OnSendGroupToPegboardClick(object sender, RoutedEventArgs e)
     {

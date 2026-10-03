@@ -12,8 +12,7 @@ internal static class WorkspaceTabCloseCoordinator
         WorkspaceTabClosePlan plan,
         Func<Guid, Task> closeTerminal,
         Action<Guid> closeEditor,
-        Func<Guid, Task> closeBrowser,
-        Action<Guid>? closeSearch = null)
+        Func<Guid, Task> closeBrowser)
     {
         foreach (var id in plan.TabIds)
         {
@@ -27,9 +26,6 @@ internal static class WorkspaceTabCloseCoordinator
                     break;
                 case TabEntryKind.Browser:
                     await closeBrowser(id);
-                    break;
-                case TabEntryKind.Search:
-                    closeSearch?.Invoke(id);
                     break;
             }
         }
@@ -45,15 +41,13 @@ internal static class WorkspaceTabClosePolicy
         WorkspaceTabCloseScope scope,
         IEnumerable<Guid> terminalTabIds,
         IEnumerable<Guid> editorTabIds,
-        IEnumerable<Guid> browserTabIds,
-        IEnumerable<Guid>? searchTabIds = null)
+        IEnumerable<Guid> browserTabIds)
     {
         IEnumerable<Guid> tabIds = kind switch
         {
             TabEntryKind.Terminal => terminalTabIds,
             TabEntryKind.Editor => editorTabIds,
             TabEntryKind.Browser => browserTabIds,
-            TabEntryKind.Search => searchTabIds ?? Array.Empty<Guid>(),
             _ => Array.Empty<Guid>(),
         };
 

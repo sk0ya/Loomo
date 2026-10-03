@@ -9,7 +9,7 @@ namespace sk0ya.Loomo.Tests;
 /// <summary>
 /// 検索結果をタブとして残す（VS Code の Search Editor 相当・§23.3.1）と、検索結果をペグボードへ送る（§23.3）。
 /// 残したタブは「残した時点の写し」で、新しい検索をしても消えず、ワークスペース状態に載って再起動後も戻る。
-/// タブはエディタ等と同じ仕組み（TabsViewModel＝TABS と ▾ 一覧）に乗る。
+/// タブは検索ペイン内のタブ帯（と ▾ 一覧）で切り替え、サイドバーの TABS には載せない。
 /// </summary>
 public sealed class SearchResultTabTests : IDisposable
 {
@@ -285,37 +285,56 @@ public sealed class SearchResultTabTests : IDisposable
         Assert.Equal(1, tab.FileCount);
     }
 
-    // ===== タブの仕組み（TABS・▾）とペグボードへの配線 =====
+    // ===== 検索ペイン内のタブ帯とペグボードへの配線 =====
 
     [Fact]
-    public void 残したタブはTABSの検索の群に並び_見ているものが選ばれる()
+    public void タブ帯は現在の検索と残したタブを並べ_残すまでは出さない()
     {
         var sut = CreateSut();
-        var tabs = new TabsViewModel(new TabIconService());
-        var pegboard = new PegboardViewModel();
-        SearchPanelLinks.Connect(sut, tabs, pegboard);
+        Assert.False(sut.HasTabStrip);   // 「現在の検索」1枚だけの帯のために場所を取らない
+        Assert.Equal([(Guid?)null], sut.TabStrip.Select(e => e.TabId));
 
         ShowLiveResults(sut, "foo", Hit("a.cs", 1, "foo"));
         var first = sut.PinResults()!;
         ShowLiveResults(sut, "bar", Hit("b.cs", 1, "bar"));
         var second = sut.PinResults()!;
 
-        Assert.Equal([first.Id, second.Id], tabs.SearchTabs.Select(t => t.Id));
-        Assert.All(tabs.SearchTabs, t => Assert.Equal(TabEntryKind.Search, t.Kind));
-        Assert.All(tabs.SearchTabs, t => Assert.False(t.CanDetach));
-        Assert.Null(tabs.ActiveSearchTab);
-        Assert.Equal(2, tabs.Kinds.Single(k => k.Kind == TabEntryKind.Search).Count);
+        Assert.True(sut.HasTabStrip);
+        Assert.Equal(["現在の検索", "テキスト「foo」", "テキスト「bar」"], sut.TabStrip.Select(e => e.Title));
+        Assert.Equal([false, true, true], sut.TabStrip.Select(e => e.CanClose));
+        Assert.Equal([true, false, false], sut.TabStrip.Select(e => e.IsActive));
 
-        sut.ShowTab(second.Id);
-        Assert.Equal(second.Id, tabs.ActiveSearchTab?.Id);
-        Assert.Equal("テキスト「bar」", tabs.ActiveSearchTab?.Title);
+        sut.SelectTabStripEntry(sut.TabStrip[2]);
+        Assert.Equal(second.Id, sut.ActiveTab?.Id);
+        Assert.Equal([false, false, true], sut.TabStrip.Select(e => e.IsActive));
 
-        sut.CloseTab(second.Id);
-        Assert.Equal([first.Id], tabs.SearchTabs.Select(t => t.Id));
-        Assert.Null(tabs.ActiveSearchTab);
+        sut.CloseTabStripEntryCommand.Execute(sut.TabStrip[2]);
+        Assert.Null(sut.ActiveTab);
+        Assert.Equal([(Guid?)null, first.Id], sut.TabStrip.Select(e => e.TabId));
+        Assert.True(sut.TabStrip[0].IsActive);
+
+        sut.SelectTabStripEntry(sut.TabStrip[1]);
+        sut.SelectTabStripEntry(sut.TabStrip[0]);   // 「現在の検索」へ戻る
+        Assert.False(sut.IsViewingTab);
+
+        sut.CloseTabStripEntryCommand.Execute(sut.TabStrip[0]);   // 「現在の検索」は閉じない
+        Assert.Single(sut.PinnedTabs);
 
         sut.RestoreTabs([]);
-        Assert.Empty(tabs.SearchTabs);
+        Assert.False(sut.HasTabStrip);
+    }
+
+    [Fact]
+    public void 復元した見ていたタブはタブ帯でも選ばれている()
+    {
+        var sut = CreateSut();
+        ShowLiveResults(sut, "foo", Hit("a.cs", 1, "foo"));
+        sut.ShowTab(sut.PinResults()!.Id);
+
+        var restored = CreateSut();
+        restored.RestoreTabs(sut.CaptureTabs());
+
+        Assert.Equal([false, true], restored.TabStrip.Select(e => e.IsActive));
     }
 
     [Fact]
@@ -323,7 +342,7 @@ public sealed class SearchResultTabTests : IDisposable
     {
         var sut = CreateSut();
         var pegboard = new PegboardViewModel();
-        SearchPanelLinks.Connect(sut, new TabsViewModel(new TabIconService()), pegboard);
+        SearchPanelLinks.Connect(sut, pegboard);
         ShowLiveResults(sut, "foo", Hit("a.cs", 4, "foo"));
 
         sut.SendResultsToPegboard();
@@ -331,18 +350,6 @@ public sealed class SearchResultTabTests : IDisposable
         var item = Assert.Single(pegboard.Items);
         Assert.Equal("text", item.Type);
         Assert.Contains("a.cs:4: foo", item.Content);
-    }
-
-    [Fact]
-    public void TABSの他を閉じる_すべて閉じるは検索のタブにも効く()
-    {
-        var ids = new[] { Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid() };
-
-        var plan = WorkspaceTabClosePolicy.CreatePlan(TabEntryKind.Search, ids[1], WorkspaceTabCloseScope.Others,
-            [], [], [], ids);
-
-        Assert.Equal(TabEntryKind.Search, plan.Kind);
-        Assert.Equal([ids[0], ids[2]], plan.TabIds);
     }
 
     private sealed class NoSearch : IWorkspaceSearchService

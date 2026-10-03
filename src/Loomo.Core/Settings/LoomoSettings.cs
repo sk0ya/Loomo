@@ -187,9 +187,6 @@ public sealed class TabsPanelSettings
 
     /// <summary>ターミナルのタブを一覧に出すか。</summary>
     public bool ShowTerminal { get; set; } = true;
-
-    /// <summary>検索ペインのタブに残した検索結果を一覧に出すか。</summary>
-    public bool ShowSearch { get; set; } = true;
 }
 
 public sealed class VimSettings

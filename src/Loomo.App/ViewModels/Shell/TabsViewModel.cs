@@ -19,9 +19,7 @@ public enum TabEntryKind
 {
     Terminal,
     Editor,
-    Browser,
-    /// <summary>検索ペインのタブに残した検索結果（§23.3.1）。値は永続化しないので末尾へ足すだけでよい。</summary>
-    Search
+    Browser
 }
 
 public sealed partial class TabEntryViewModel : ObservableObject
@@ -95,7 +93,6 @@ public sealed partial class TabEntryViewModel : ObservableObject
     {
         TabEntryKind.Editor => "エディタ",
         TabEntryKind.Browser => "ブラウザ",
-        TabEntryKind.Search => "検索",
         _ => "ターミナル",
     };
 
@@ -103,15 +100,8 @@ public sealed partial class TabEntryViewModel : ObservableObject
     {
         TabEntryKind.Editor => 0,
         TabEntryKind.Browser => 1,
-        TabEntryKind.Search => 3,
         _ => 2,
     };
-
-    /// <summary>「別ウィンドウで開く」を出せるか。検索結果のタブは検索ペインの中の写しなので切り離さない。</summary>
-    public bool CanDetach => Kind != TabEntryKind.Search;
-
-    /// <summary>行のツールチップ（検索結果のタブは件数と残した時刻）。null なら出さない。</summary>
-    [ObservableProperty] private string? _toolTip;
 
     /// <summary>ブラウザのURLを表示グループへ反映する。</summary>
     public void SetBrowserUrl(string? url)
@@ -219,15 +209,11 @@ public sealed partial class TabsViewModel : ObservableObject
     private readonly TabKindRowViewModel _editorKind;
     private readonly TabKindRowViewModel _browserKind;
     private readonly TabKindRowViewModel _terminalKind;
-    private readonly TabKindRowViewModel _searchKind;
     private bool _groupBrowserTabsByDomain;
 
     public ObservableCollection<TabEntryViewModel> TerminalTabs { get; } = new();
     public ObservableCollection<TabEntryViewModel> EditorTabs { get; } = new();
     public ObservableCollection<TabEntryViewModel> BrowserTabs { get; } = new();
-    /// <summary>検索ペインのタブに残した検索結果。正本は <see cref="SearchPanelViewModel.PinnedTabs"/> で、
-    /// ここはその写し（<see cref="Services.SearchPanelLinks"/> が <see cref="SyncSearchTabs"/> で揃える）。</summary>
-    public ObservableCollection<TabEntryViewModel> SearchTabs { get; } = new();
     public ObservableCollection<TabEntryViewModel> AllTabs { get; } = new();
 
     /// <summary>3種のタブを1つの一覧としてグループ化する表示用ビュー。</summary>
@@ -249,8 +235,7 @@ public sealed partial class TabsViewModel : ObservableObject
     public int TotalCount
         => (ShowEditorTabs ? EditorTabs.Count : 0)
          + (ShowBrowserTabs ? BrowserTabs.Count : 0)
-         + (ShowTerminalTabs ? TerminalTabs.Count : 0)
-         + (ShowSearchTabs ? SearchTabs.Count : 0);
+         + (ShowTerminalTabs ? TerminalTabs.Count : 0);
 
     /// <summary>見出しクリックで開く設定ビュー（表示する種別を選ぶ）が開いているか。
     /// 面そのものの出し入れは ActivityBar が担うので、見出しクリックはこちらに使える。</summary>
@@ -296,26 +281,18 @@ public sealed partial class TabsViewModel : ObservableObject
         set => _terminalKind.IsShown = value;
     }
 
-    /// <summary>検索結果のタブを一覧に出すか。</summary>
-    public bool ShowSearchTabs
-    {
-        get => _searchKind.IsShown;
-        set => _searchKind.IsShown = value;
-    }
-
     /// <summary>いずれかの種別を隠している＝一覧に絞りが効いている。見出しの ⚙ に印を残すのに使う
     /// ——開かなくても「全部は出ていない」と分かる必要がある。</summary>
-    public bool IsFiltered => !(ShowEditorTabs && ShowBrowserTabs && ShowTerminalTabs && ShowSearchTabs);
+    public bool IsFiltered => !(ShowEditorTabs && ShowBrowserTabs && ShowTerminalTabs);
 
     /// <summary>その種別の行をいま並べるか（出す設定＋実際に1つ以上ある）。</summary>
     public bool IsEditorSectionVisible => ShowEditorTabs && EditorTabs.Count > 0;
     public bool IsBrowserSectionVisible => ShowBrowserTabs && BrowserTabs.Count > 0;
     public bool IsTerminalSectionVisible => ShowTerminalTabs && TerminalTabs.Count > 0;
-    public bool IsSearchSectionVisible => ShowSearchTabs && SearchTabs.Count > 0;
 
     /// <summary>3種とも隠していて、一覧が空になっている。タブが無いのか自分で隠したのかを
     /// 見分けられないと「壊れた」に見えるので、そのときだけ案内を出す。</summary>
-    public bool IsAllKindsHidden => !ShowEditorTabs && !ShowBrowserTabs && !ShowTerminalTabs && !ShowSearchTabs;
+    public bool IsAllKindsHidden => !ShowEditorTabs && !ShowBrowserTabs && !ShowTerminalTabs;
 
     // ===== ペインのヘッダーに出す「いま見ているもの」 =====
     // ヘッダーからタブ帯を外したので、ペインを見ただけでは何を映しているかが分からなくなった。
@@ -325,9 +302,6 @@ public sealed partial class TabsViewModel : ObservableObject
     [ObservableProperty] private TabEntryViewModel? _activeTerminalTab;
     [ObservableProperty] private TabEntryViewModel? _activeEditorTab;
     [ObservableProperty] private TabEntryViewModel? _activeBrowserTab;
-
-    /// <summary>検索ペインで見ている、残した検索結果のタブ（現在の検索を見ているときは null）。</summary>
-    [ObservableProperty] private TabEntryViewModel? _activeSearchTab;
 
     /// <summary>Editor ヘッダーのパスのうちフォルダー部分（末尾の区切りまで。ワークスペースからの表示用
     /// 相対パス）。幅が足りないときはここだけを省略し、ファイル名（<see cref="ActiveEditorFileName"/>）は残す。</summary>
@@ -357,9 +331,7 @@ public sealed partial class TabsViewModel : ObservableObject
         _editorKind = new(TabEntryKind.Editor, "エディタ", "TabsShowEditorToggle", EditorTabs);
         _browserKind = new(TabEntryKind.Browser, "ブラウザ", "TabsShowBrowserToggle", BrowserTabs);
         _terminalKind = new(TabEntryKind.Terminal, "ターミナル", "TabsShowTerminalToggle", TerminalTabs);
-        _searchKind = new(TabEntryKind.Search, "検索", "TabsShowSearchToggle", SearchTabs);
-        // 検索は末尾に足す（見出しの「＋」メニューが Kinds[0..2] を位置で引いているため）。
-        Kinds = [_editorKind, _browserKind, _terminalKind, _searchKind];
+        Kinds = [_editorKind, _browserKind, _terminalKind];
         _groupBrowserTabsByDomain = settings?.TabsPanel.GroupBrowserByDomain ?? false;
         TabsView = CollectionViewSource.GetDefaultView(AllTabs);
         TabsView.GroupDescriptions.Add(new PropertyGroupDescription(nameof(TabEntryViewModel.GroupLabel)));
@@ -369,14 +341,12 @@ public sealed partial class TabsViewModel : ObservableObject
         _editorKind.IsShown = settings?.TabsPanel.ShowEditor ?? true;
         _browserKind.IsShown = settings?.TabsPanel.ShowBrowser ?? true;
         _terminalKind.IsShown = settings?.TabsPanel.ShowTerminal ?? true;
-        _searchKind.IsShown = settings?.TabsPanel.ShowSearch ?? true;
         foreach (var kind in Kinds)
             kind.PropertyChanged += OnKindRowChanged;
         RefreshKindIcons();
         TerminalTabs.CollectionChanged += OnTabCollectionChanged;
         EditorTabs.CollectionChanged += OnTabCollectionChanged;
         BrowserTabs.CollectionChanged += OnTabCollectionChanged;
-        SearchTabs.CollectionChanged += OnTabCollectionChanged;
         // アプリと同じ寿命なので解除は要らない（フォルダーツリーと同じ扱い）。
         FileIcons.PaletteChanged += (_, _) => RefreshIcons();
         // フォルダーの追加・切替で相対パスの基準（と複数ルート時の前置）が変わる。
@@ -390,7 +360,6 @@ public sealed partial class TabsViewModel : ObservableObject
         foreach (var tab in EditorTabs) AllTabs.Add(tab);
         foreach (var tab in BrowserTabs) AllTabs.Add(tab);
         foreach (var tab in TerminalTabs) AllTabs.Add(tab);
-        foreach (var tab in SearchTabs) AllTabs.Add(tab);
         RefreshTabGroupProviders();
         TabsView.Refresh();
         NotifyCounts();
@@ -402,7 +371,6 @@ public sealed partial class TabsViewModel : ObservableObject
         ActiveTerminalTab = TerminalTabs.FirstOrDefault(t => t.IsActive);
         ActiveEditorTab = EditorTabs.FirstOrDefault(t => t.IsActive);
         ActiveBrowserTab = BrowserTabs.FirstOrDefault(t => t.IsActive);
-        ActiveSearchTab = SearchTabs.FirstOrDefault(t => t.IsActive);
         RefreshEditorHeader();
     }
 
@@ -430,7 +398,6 @@ public sealed partial class TabsViewModel : ObservableObject
         RefreshTabGroupProvider(_editorKind);
         RefreshTabGroupProvider(_browserKind);
         RefreshTabGroupProvider(_terminalKind);
-        RefreshTabGroupProvider(_searchKind);
     }
 
     private void RefreshTabGroupProvider(TabKindRowViewModel provider)
@@ -482,7 +449,6 @@ public sealed partial class TabsViewModel : ObservableObject
         {
             TabEntryKind.Editor => nameof(ShowEditorTabs),
             TabEntryKind.Browser => nameof(ShowBrowserTabs),
-            TabEntryKind.Search => nameof(ShowSearchTabs),
             _ => nameof(ShowTerminalTabs),
         });
         NotifyCounts();
@@ -518,7 +484,6 @@ public sealed partial class TabsViewModel : ObservableObject
         {
             TabEntryKind.Editor => _editorKind,
             TabEntryKind.Browser => _browserKind,
-            TabEntryKind.Search => _searchKind,
             _ => _terminalKind,
         };
         if (row.IsShown != tab.IsGroupShown)
@@ -530,12 +495,10 @@ public sealed partial class TabsViewModel : ObservableObject
         _editorKind.Count = EditorTabs.Count;
         _browserKind.Count = BrowserTabs.Count;
         _terminalKind.Count = TerminalTabs.Count;
-        _searchKind.Count = SearchTabs.Count;
         OnPropertyChanged(nameof(TotalCount));
         OnPropertyChanged(nameof(IsEditorSectionVisible));
         OnPropertyChanged(nameof(IsBrowserSectionVisible));
         OnPropertyChanged(nameof(IsTerminalSectionVisible));
-        OnPropertyChanged(nameof(IsSearchSectionVisible));
         OnPropertyChanged(nameof(IsAllKindsHidden));
         OnPropertyChanged(nameof(IsFiltered));
     }
@@ -547,7 +510,6 @@ public sealed partial class TabsViewModel : ObservableObject
         _settings.TabsPanel.ShowBrowser = ShowBrowserTabs;
         _settings.TabsPanel.GroupBrowserByDomain = GroupBrowserTabsByDomain;
         _settings.TabsPanel.ShowTerminal = ShowTerminalTabs;
-        _settings.TabsPanel.ShowSearch = ShowSearchTabs;
         try { _settingsStore?.Save(_settings); }
         catch { /* 永続化に失敗しても選択自体は効かせる */ }
     }
@@ -569,7 +531,6 @@ public sealed partial class TabsViewModel : ObservableObject
         _editorKind.Icon = FileIcons.ImageFor(FileIconData.DefaultFileIndex);
         _terminalKind.Icon = FileIcons.ImageFor(TerminalIconIndex);
         _browserKind.Icon = _icons.GetBrowserDefaultIcon();
-        _searchKind.Icon = _icons.GetSearchIcon();
     }
 
     public void AddTerminalTab(Guid id, string? title, bool isActive)
@@ -765,50 +726,6 @@ public sealed partial class TabsViewModel : ObservableObject
             UnwatchGroupState(tab);
             BrowserTabs.Remove(tab);
         }
-    }
-
-    /// <summary>検索ペインの残したタブ一覧（正本）に写しを揃える。並び・見出しを合わせ、
-    /// <paramref name="activeId"/> のタブだけを「見ている」にする（null＝現在の検索を見ている）。
-    /// 同じ ID の行は使い回す——作り直すと TABS の行が点滅し、右クリック中のメニューの対象が消える。</summary>
-    public void SyncSearchTabs(IReadOnlyList<(Guid Id, string Title, string? ToolTip)> tabs, Guid? activeId)
-    {
-        for (var i = SearchTabs.Count - 1; i >= 0; i--)
-        {
-            if (tabs.Any(t => t.Id == SearchTabs[i].Id)) continue;
-            UnwatchGroupState(SearchTabs[i]);
-            SearchTabs.RemoveAt(i);
-        }
-        for (var i = 0; i < tabs.Count; i++)
-        {
-            var (id, title, toolTip) = tabs[i];
-            var existing = SearchTabs.FirstOrDefault(t => t.Id == id);
-            if (existing is null)
-            {
-                existing = new TabEntryViewModel(id, TabEntryKind.Search, title, isActive: id == activeId,
-                    _icons.GetSearchIcon())
-                {
-                    IsGroupShown = ShowSearchTabs,
-                    ToolTip = toolTip,
-                };
-                WatchGroupState(existing);
-                SearchTabs.Insert(Math.Min(i, SearchTabs.Count), existing);
-                continue;
-            }
-            existing.Title = title;
-            existing.ToolTip = toolTip;
-            var index = SearchTabs.IndexOf(existing);
-            if (index != i)
-                SearchTabs.Move(index, i);
-        }
-        ActivateSearchTab(activeId);
-    }
-
-    /// <summary>見ている検索結果のタブを切り替える（null＝どれも見ていない＝現在の検索）。</summary>
-    public void ActivateSearchTab(Guid? id)
-    {
-        foreach (var tab in SearchTabs)
-            tab.IsActive = tab.Id == id;
-        ActiveSearchTab = SearchTabs.FirstOrDefault(t => t.IsActive);
     }
 
     public void UpdateTabIcon(Guid id, ImageSource? icon)
