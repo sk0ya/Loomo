@@ -227,6 +227,8 @@ public sealed partial class TabsViewModel : ObservableObject
     public event EventHandler<TabEntryViewModel>? TabCloseAllRequested;
     /// <summary>「別ウィンドウで開く」：このタブをフローティングウィンドウへ切り離す（複製／スピンオフ）。</summary>
     public event EventHandler<TabEntryViewModel>? TabDetachRequested;
+    /// <summary>「新しいタブ」：指定の種別で空のタブを1つ開く（見出しの＋・行の右クリック）。</summary>
+    public event EventHandler<TabEntryKind>? TabNewRequested;
 
     /// <summary>見出しの件数表示。<b>いま一覧に出ている</b>タブだけを数える——種別を隠しているのに
     /// 隠した分まで数えると、並んでいる行数と食い違って見出しが嘘をつく。</summary>
@@ -776,6 +778,10 @@ public sealed partial class TabsViewModel : ObservableObject
         if (tab is not null)
             TabDetachRequested?.Invoke(this, tab);
     }
+
+    [RelayCommand]
+    private void NewTab(TabEntryKind kind)
+        => TabNewRequested?.Invoke(this, kind);
 
     [RelayCommand]
     private void CopyPath(TabEntryViewModel? tab)

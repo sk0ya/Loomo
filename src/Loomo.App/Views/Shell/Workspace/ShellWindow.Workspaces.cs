@@ -21,6 +21,25 @@ public partial class ShellWindow {
                 break;
         }
     }
+    // TABS から開く新しいタブ。ペインを持つ側（ペイン内の＋・ショートカット）と違い、そのペインが
+    // 見えていないこともあるので、まず出してから開く——開いたのに何も起きないように見せない。
+    // エディタは EditorSupport が前に出ていても Editor を出す（空のタブは書くために開くもの）。
+    private void OnSidebarTabNewRequested(object? sender, TabEntryKind kind) {
+        switch (kind) {
+            case TabEntryKind.Terminal:
+                EnsurePaneVisibleOrSwapTopLeft(PaneKind.Terminal);
+                OnTerminalNewTab(this, new RoutedEventArgs());
+                break;
+            case TabEntryKind.Editor:
+                EnsurePaneVisibleOrSwapTopLeft(PaneKind.Editor);
+                OnEditorNewTab(this, new RoutedEventArgs());
+                break;
+            case TabEntryKind.Browser:
+                EnsurePaneVisibleOrSwapTopLeft(PaneKind.Browser);
+                OnBrowserNewTab(this, new RoutedEventArgs());
+                break;
+        }
+    }
     private async void OnSidebarTabCloseRequested(object? sender, TabEntryViewModel tab) {
         await CloseSidebarTabsAsync(tab, WorkspaceTabCloseScope.Selected);
     }

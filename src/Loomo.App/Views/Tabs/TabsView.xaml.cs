@@ -18,6 +18,15 @@ public partial class TabsView : UserControl
     private void OnSettingsToggle(object sender, MouseButtonEventArgs e)
         => PopupReopenGuard.SuppressReopen(sender, e, TabsSettingsPopup);
 
+    // ＋ は左クリックで種別メニューを開く（右クリック専用にすると押しても何も起きないボタンになる）。
+    private void OnNewTabButtonClick(object sender, RoutedEventArgs e)
+    {
+        NewTabMenu.DataContext = DataContext;
+        NewTabMenu.PlacementTarget = TabsNewButton;
+        NewTabMenu.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
+        NewTabMenu.IsOpen = true;
+    }
+
     // タブ行を中ボタンクリックで閉じる
     private void OnTabMiddleClick(object sender, MouseButtonEventArgs e)
     {

@@ -252,6 +252,7 @@ public partial class ShellWindow : Window {
         vm.Tabs.TabCloseOthersRequested += OnSidebarTabCloseOthersRequested;
         vm.Tabs.TabCloseAllRequested += OnSidebarTabCloseAllRequested;
         vm.Tabs.TabDetachRequested += OnSidebarTabDetachRequested;
+        vm.Tabs.TabNewRequested += OnSidebarTabNewRequested;
         vm.Workspaces.WorkspaceActivated += OnWorkspaceActivated;
         vm.Workspaces.WorkspaceRemoved += OnWorkspaceRemoved;
         vm.Recent.Changed += (_, _) => SaveActiveWorkspaceSnapshot();

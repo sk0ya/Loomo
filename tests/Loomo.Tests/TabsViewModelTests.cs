@@ -36,6 +36,21 @@ public sealed class TabsViewModelTests
         Assert.Equal(3, sut.TotalCount);
     }
 
+    [Theory]
+    [InlineData(TabEntryKind.Editor)]
+    [InlineData(TabEntryKind.Browser)]
+    [InlineData(TabEntryKind.Terminal)]
+    public void 新しいタブは選んだ種別のまま要求する(TabEntryKind kind)
+    {
+        var sut = Sut();
+        var requested = new List<TabEntryKind>();
+        sut.TabNewRequested += (_, k) => requested.Add(k);
+
+        sut.NewTabCommand.Execute(kind);
+
+        Assert.Equal([kind], requested);
+    }
+
     [Fact]
     public void 隠した種別は並べないがタブは閉じない()
     {
