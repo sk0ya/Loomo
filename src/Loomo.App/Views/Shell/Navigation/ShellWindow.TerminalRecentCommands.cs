@@ -15,17 +15,16 @@ public partial class ShellWindow {
         _terminalRunTrackers[tab.Id] = tracker;
         tab.View.CommandHistoryRecorded += (_, command) => tracker.OnCommandLine(command);
         tab.View.ShellCommandActivity += (_, e) => {
-            // Terminal が C／D にコマンド行を載せる版（ShellCommandActivityEventArgs.CommandLine）になったら
-            // ここで e.CommandLine を渡す——直前と同じコマンドの連続実行も毎回記録できるようになる。
+            // C／D に載るコマンド行（Terminal 1.0.37〜）を渡す——直前と同じコマンドの連続実行も毎回記録できる。
             switch (e.Phase) {
                 case ShellCommandPhase.PromptStart:
                     tracker.OnPromptStart();
                     break;
                 case ShellCommandPhase.CommandExecuted:
-                    tracker.OnExecuted();
+                    tracker.OnExecuted(e.CommandLine);
                     break;
                 case ShellCommandPhase.CommandDone:
-                    if (tracker.OnDone(e.ExitCode, DateTime.UtcNow) is { } run)
+                    if (tracker.OnDone(e.ExitCode, DateTime.UtcNow, e.CommandLine) is { } run)
                         RecordTerminalCommandRun(tab.Id, run);
                     break;
             }
