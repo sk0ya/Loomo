@@ -323,7 +323,12 @@
                 </TextBlock.Style>
             </TextBlock>
 
+            <!-- 操作ログ（reflog）の面。ペインヘッダーの「履歴／操作ログ」で履歴の面と入れ替える。
+                 履歴の面は畳むだけで捨てない（Visibility）——戻ったときに選択・スクロール・列幅が生きている。 -->
             <Grid>
+            <local:GitReflogView Visibility="{Binding IsReflogMode, Converter={StaticResource BoolToVis}}" />
+
+            <Grid Visibility="{Binding IsHistoryMode, Converter={StaticResource BoolToVis}}">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition x:Name="BranchColumn" Width="190" MinWidth="120" />
                     <ColumnDefinition x:Name="BranchSplitterColumn" Width="6" />
@@ -1211,6 +1216,7 @@
                         </DockPanel>
                     </Grid>
                 </Grid>
+            </Grid>
             </Grid>
         </DockPanel>
     </DockPanel>

@@ -53,4 +53,39 @@ public sealed class GitSessionCommitDetailTests
             try { File.Delete(path); } catch { }
         }
     }
+
+    [Fact]
+    public void 本体の面は履歴が既定で読めない値も履歴に落ちる()
+    {
+        Assert.Equal(GitSessionMode.History, CreateVm(null, null).Mode);
+        Assert.Equal(GitSessionMode.History, CreateVm(new LoomoSettings { GitSessionMode = "7" }, null).Mode);
+        Assert.Equal(GitSessionMode.Reflog, CreateVm(new LoomoSettings { GitSessionMode = "Reflog" }, null).Mode);
+    }
+
+    [Fact]
+    public void 面の切替は押し直しで外れず設定へ持ち越される()
+    {
+        var settings = new LoomoSettings();
+        var path = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-loomo-settings.json");
+        var store = new SettingsStore(path);
+        try
+        {
+            var vm = CreateVm(settings, store);
+
+            vm.IsReflogMode = true;
+            Assert.True(vm.IsReflogMode);
+            Assert.False(vm.IsHistoryModeChecked);
+            // ラジオの「外れた」書き込みは無視する（どちらかが必ず選ばれている）。
+            vm.IsReflogMode = false;
+            Assert.Equal(GitSessionMode.Reflog, vm.Mode);
+
+            var reloaded = new LoomoSettings();
+            store.Load(reloaded);
+            Assert.Equal("Reflog", reloaded.GitSessionMode);
+        }
+        finally
+        {
+            try { File.Delete(path); } catch { }
+        }
+    }
 }

@@ -59,6 +59,11 @@ public sealed class LoomoSettings
     /// （読めない値は既定＝タグに落とす）。</summary>
     public string GitReferenceTab { get; set; } = "Tags";
 
+    /// <summary>Git ペインの本体に出している面（"History"＝コミット履歴 / "Reflog"＝操作ログ）。
+    /// ペインヘッダーの切替から書き戻され、次回起動でも同じ面で開く。文字列で持つ理由は
+    /// <see cref="GitReferenceTab"/> と同じ（読めない値は既定＝履歴に落とす）。</summary>
+    public string GitSessionMode { get; set; } = "History";
+
     /// <summary>ActivityBar（左端の縦帯）の項目配置。上段バーと中段バーのどちらに何を置くかを持つ。</summary>
     public ActivityBarSettings ActivityBar { get; set; } = new();
 

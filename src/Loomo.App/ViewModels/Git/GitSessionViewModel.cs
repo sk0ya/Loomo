@@ -25,6 +25,16 @@ public enum GitReferenceTab
     Worktrees,
 }
 
+/// <summary>Git ペインの本体に出す面。ペインヘッダーの切替で選ぶ。</summary>
+public enum GitSessionMode
+{
+    /// <summary>コミット履歴（ブランチ一覧＋コミットグラフ＋詳細）。</summary>
+    History,
+
+    /// <summary>操作ログ（reflog）。</summary>
+    Reflog,
+}
+
 /// <summary>
 /// Git セッションペインの ViewModel。コミットグラフ（git log --graph）・ブランチ一覧と、
 /// rebase / merge / cherry-pick / reset などサイドバーに収まらない操作を担う。
@@ -75,6 +85,46 @@ public sealed partial class GitSessionViewModel : ObservableObject
         _settings.GitCommitDetailVisible = value;
         try { _settingsStore?.Save(_settings); }
         catch { /* 永続化に失敗しても表示切替自体は効かせる */ }
+    }
+
+    /// <summary>
+    /// 本体に出している面（履歴／操作ログ）。ペインヘッダーの切替で選び、設定へ持ち越す。
+    /// 操作ログは見えたときに初めて読む（履歴しか使わない人に reflog の読み込みを払わせない）。
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsHistoryMode))]
+    [NotifyPropertyChangedFor(nameof(IsReflogMode))]
+    private GitSessionMode _mode;
+
+    public bool IsHistoryMode => Mode == GitSessionMode.History;
+
+    /// <summary>ヘッダーの切替ボタンが結ぶ先。押し直しで外れないよう、false の書き込みは無視する
+    /// （2つのボタンで1つの面を選ぶ＝どちらかが必ず押されている）。</summary>
+    public bool IsReflogMode
+    {
+        get => Mode == GitSessionMode.Reflog;
+        set { if (value) Mode = GitSessionMode.Reflog; else OnPropertyChanged(); }
+    }
+
+    /// <summary><see cref="IsReflogMode"/> の対。</summary>
+    public bool IsHistoryModeChecked
+    {
+        get => Mode == GitSessionMode.History;
+        set { if (value) Mode = GitSessionMode.History; else OnPropertyChanged(); }
+    }
+
+    /// <summary>操作ログ面。</summary>
+    public GitReflogViewModel Reflog { get; }
+
+    partial void OnModeChanged(GitSessionMode value)
+    {
+        OnPropertyChanged(nameof(IsHistoryModeChecked));
+        if (value == GitSessionMode.Reflog && _loaded && IsRepository)
+            _ = Reflog.EnsureLoadedAsync();
+        if (_settings is null) return;
+        _settings.GitSessionMode = value.ToString();
+        try { _settingsStore?.Save(_settings); }
+        catch { /* 永続化に失敗しても切替自体は効かせる */ }
     }
 
     /// <summary>左列のブランチ一覧（タグ／リモート／サブモジュールを含む縦列）を表示するか。
@@ -212,6 +262,9 @@ public sealed partial class GitSessionViewModel : ObservableObject
         _referenceTab = Enum.TryParse<GitReferenceTab>(settings?.GitReferenceTab, out var tab)
             && Enum.IsDefined(tab)
             ? tab : GitReferenceTab.Tags;
+        _mode = Enum.TryParse<GitSessionMode>(settings?.GitSessionMode, out var mode) && Enum.IsDefined(mode)
+            ? mode : GitSessionMode.History;
+        Reflog = new GitReflogViewModel(git);
         Commands.StatusChanged += (_, status) =>
         {
             IsBusy = status.IsBusy;
@@ -313,6 +366,7 @@ public sealed partial class GitSessionViewModel : ObservableObject
             Submodules = Array.Empty<GitSubmoduleInfo>();
             Worktrees = Array.Empty<GitWorktreeInfo>();
             History.Clear();
+            Reflog.Clear();
             OperationInProgress = false;
             return;
         }
@@ -349,6 +403,14 @@ public sealed partial class GitSessionViewModel : ObservableObject
         Tags = overview.Tags;
         Submodules = overview.Submodules;
         await ReloadWorktreesAsync();
+
+        Reflog.SetBranches(_allBranches.Where(b => !b.IsRemote).Select(b => b.Name));
+        // 操作ログは見えている間だけ追従する。隠れている間の操作は、次に見えたとき読み直す
+        // （EnsureLoaded が「未読」に戻した状態から読む）。
+        if (IsReflogMode)
+            await Reflog.ReloadAsync();
+        else
+            Reflog.MarkStale();
 
         await History.ReloadAsync();
     }
@@ -564,6 +626,37 @@ public sealed partial class GitSessionViewModel : ObservableObject
         if (_query.ToFullPath(relativePath) is not { } fullPath) return;
         DiffWindowRequested?.Invoke(this,
             new CommitFileDiffRequest(hash, $"コミット {row.ShortHash}", fullPath));
+    }
+
+    // ===== 操作ログ（reflog）から =====
+
+    /// <summary>
+    /// 「この操作で何が変わったか」——操作の前に ref が指していたコミットから、後のコミットまでの差分。
+    /// リセットやリベースの前後を見比べるのはこれ（コミット1つの差分では、操作の影響が見えない）。
+    /// </summary>
+    public void OpenReflogOperationDiff(GitReflogRow row)
+    {
+        if (row.Entry is not { PreviousHash: { } previous } entry || !entry.MovedCommit) return;
+        var from = previous[..Math.Min(7, previous.Length)];
+        DiffOpenRequested?.Invoke(this, new DiffOpenTarget.CommitRange(
+            previous, entry.Hash, $"{entry.Selector} の前後（{from} → {entry.ShortHash}）"));
+    }
+
+    /// <summary>操作ログで選んだ記録のコミットの1ファイルを差分ウィンドウで（コミット詳細と同じ経路）。</summary>
+    public void RequestReflogFileDiffWindow(GitReflogRow row, string relativePath)
+    {
+        if (_query.ToFullPath(relativePath) is not { } fullPath) return;
+        DiffWindowRequested?.Invoke(this,
+            new CommitFileDiffRequest(row.Entry.Hash, $"コミット {row.ShortHash}", fullPath));
+    }
+
+    /// <summary>そのコミットを履歴の面で開く（履歴へ切り替えて、一覧のその行を選ぶ）。
+    /// どの ref からも辿れないコミットは一覧に出てこないので、呼ぶ前に <see cref="GitReflogRow.IsLost"/> を見る。</summary>
+    public async Task ShowReflogCommitInHistoryAsync(GitReflogRow row)
+    {
+        Mode = GitSessionMode.History;
+        // ブランチ・パス・絞り込みのスコープは SelectCommitAsync が外す（残っていると手繰れない）。
+        await History.SelectCommitAsync(row.Entry.Hash);
     }
 
     /// <summary>一覧の絞り込みをこのコミットの作者だけに切り替える（絞り込み帯の作者欄と同じ状態になる）。</summary>

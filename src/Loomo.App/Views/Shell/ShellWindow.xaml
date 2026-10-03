@@ -1860,12 +1860,34 @@
                                 Tag="Git" Click="OnHidePane" />
                         <!-- コミット詳細（下段）の表示/非表示。ペイン内ではなくタイトル領域に置き、
                              状態は設定へ永続化する（GitSessionViewModel.CommitDetailVisible）。 -->
+                        <!-- 詳細の開閉は履歴の面のもの（操作ログの面は詳細を常に右に持つ）。 -->
                         <ToggleButton DockPanel.Dock="Right" Margin="0,0,6,0" MinHeight="24"
                                       VerticalAlignment="Center" Content="▤ 詳細"
                                       Style="{StaticResource ToolbarToggleButton}"
                                       ToolTip="コミット詳細の表示／非表示"
-                                      IsChecked="{Binding GitSession.CommitDetailVisible, Mode=TwoWay}"
-                                      Visibility="{Binding GitSession.IsRepository, Converter={StaticResource BoolToVis}}" />
+                                      IsChecked="{Binding GitSession.CommitDetailVisible, Mode=TwoWay}">
+                            <ToggleButton.Visibility>
+                                <MultiBinding Converter="{StaticResource AllTrueToVisibilityConverter}">
+                                    <Binding Path="GitSession.IsRepository" />
+                                    <Binding Path="GitSession.IsHistoryMode" />
+                                </MultiBinding>
+                            </ToggleButton.Visibility>
+                        </ToggleButton>
+                        <!-- 本体の面の切替（履歴／操作ログ）。2つで1つを選ぶので RadioButton にする
+                             （ToggleButton だと押し直しで両方外れる）。選んだ面は設定へ持ち越す
+                             （GitSessionViewModel.Mode）。 -->
+                        <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" Margin="10,0,0,0"
+                                    VerticalAlignment="Center" Cursor="Arrow"
+                                    Visibility="{Binding GitSession.IsRepository, Converter={StaticResource BoolToVis}}">
+                            <RadioButton GroupName="GitSessionMode" Style="{StaticResource ToolbarToggleButton}"
+                                         MinHeight="22" Margin="0,0,3,0" Content="履歴"
+                                         ToolTip="コミット履歴（ブランチ一覧・コミットグラフ）"
+                                         IsChecked="{Binding GitSession.IsHistoryModeChecked, Mode=TwoWay}" />
+                            <RadioButton GroupName="GitSessionMode" Style="{StaticResource ToolbarToggleButton}"
+                                         MinHeight="22" Content="操作ログ"
+                                         ToolTip="操作ログ（reflog）：切り替え・コミット・リセット・リベースの記録。消えたコミットを探して取り戻す"
+                                         IsChecked="{Binding GitSession.IsReflogMode, Mode=TwoWay}" />
+                        </StackPanel>
                     </DockPanel>
                     <Border Style="{StaticResource PaneHeaderRule}" />
 

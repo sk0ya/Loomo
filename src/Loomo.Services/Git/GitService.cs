@@ -31,6 +31,7 @@ public sealed class GitService
     private readonly GitCompareService _compare;
     private readonly GitWorktreeService _worktrees;
     private readonly GitCloneService _clone;
+    private readonly GitReflogService _reflog;
     private readonly GitRepositoryMonitor _monitor;
 
     // GitService は Singleton なので、Git パネル・セッション・Diff が同じ照会結果を共有する。
@@ -74,6 +75,7 @@ public sealed class GitService
         _compare = new GitCompareService(_runner, _worktrees);
         _compareProgress = new CompareProgressRelay(message => CompareProgress?.Invoke(this, message));
         _clone = new GitCloneService(_runner);
+        _reflog = new GitReflogService(_runner);
         _monitor = new GitRepositoryMonitor(_rootState, _runner);
         _rootState.Changed += (_, _) => InvalidateReadCache();
         _monitor.RepositoryChanged += (_, _) =>
@@ -165,6 +167,19 @@ public sealed class GitService
             result => result.Failed,
             result => result.Rows);
     }
+
+    // ===== 操作ログ（reflog） =====
+    //
+    // 覚えない（キャッシュしない）。操作ログは「いまやった操作」が先頭に来るのを見に行く面なので、
+    // 古い答えを返すと、やったばかりの操作が載っていない＝取り戻したいものが見つからない。
+
+    /// <summary>ref の reflog を新しい順に1ページ（失敗は理由付き）。</summary>
+    public Task<GitReflogPage> GetReflogAsync(string refName, int skip, int take) =>
+        _reflog.GetPageAsync(refName, skip, take);
+
+    /// <summary>渡したコミットのうち、どの ref からも辿れない（＝放っておくと消える）もの。</summary>
+    public Task<IReadOnlySet<string>> GetUnreachableCommitsAsync(IEnumerable<string> hashes) =>
+        _reflog.GetUnreachableAsync(hashes);
 
     // ===== 特定リビジョンのファイル =====
 
