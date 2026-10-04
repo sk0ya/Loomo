@@ -28,6 +28,9 @@ public static class TodoTreeLayout
             }
             children.Add(group);
         }
+        for (var i = 0; i < roots.Count; i++)
+            if (roots[i] is TodoFolder folder)
+                roots[i] = Compact(folder, preserveRoot: workspace.Folders.Count > 1);
         Sort(roots);
         return roots;
 
@@ -39,6 +42,20 @@ public static class TodoTreeLayout
             parent.Add(folder);
             return folder;
         }
+    }
+
+    /// <summary>直下がフォルダー1つだけの区間を1行へまとめる。複数ルートの境界は残す。</summary>
+    private static TodoFolder Compact(TodoFolder folder, bool preserveRoot = false)
+    {
+        for (var i = 0; i < folder.Children.Count; i++)
+            if (folder.Children[i] is TodoFolder child)
+                folder.Children[i] = Compact(child);
+        if (preserveRoot || folder.Children.Count != 1 || folder.Children[0] is not TodoFolder only)
+            return folder;
+        var compact = new TodoFolder($"{folder.Name} / {only.Name}", only.FullPath,
+            folder.Paths.Concat(only.Paths).ToList());
+        foreach (var child in only.Children) compact.Children.Add(child);
+        return compact;
     }
 
     private static string RootName(string root)

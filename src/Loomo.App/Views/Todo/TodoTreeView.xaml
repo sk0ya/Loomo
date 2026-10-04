@@ -118,20 +118,26 @@
                 </ToggleButton>
             </DataTemplate></ItemsControl.ItemTemplate>
         </ItemsControl>
-        <Border DockPanel.Dock="Top" Padding="8,5" Background="{DynamicResource Bg}"
-                Visibility="{Binding IsExclusionVisible, Converter={StaticResource TodoVisibility}}">
-            <StackPanel>
-                <DockPanel Margin="0,0,0,3">
-                    <Button DockPanel.Dock="Right" Content="×" Style="{StaticResource PaneHeaderGhostButton}" Click="OnCloseExclusion" ToolTip="除外設定を閉じる" />
-                    <TextBlock Text="除外するパス" Foreground="{DynamicResource FgDim}" VerticalAlignment="Center" />
-                </DockPanel>
-                <DockPanel>
-                    <Button DockPanel.Dock="Right" Content="適用" Style="{StaticResource SecondaryButton}" Click="OnApplyExclusion" Margin="5,0,0,0" Padding="6,2" />
-                    <TextBox x:Name="ExcludeBox" Text="{Binding ExcludeGlob, UpdateSourceTrigger=Explicit}" AutomationProperties.Name="TODO 検索の除外 glob" />
-                </DockPanel>
-                <TextBlock Text="例: **/generated/**　空欄で除外を解除" Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs10}" Margin="0,4,0,0" />
-            </StackPanel>
-        </Border>
+        <Popup x:Name="SearchOptionsPopup" IsOpen="{Binding IsExclusionVisible}" Placement="Right" StaysOpen="False" AllowsTransparency="True">
+            <Border Width="360" Padding="12" Background="{DynamicResource Bg}" BorderBrush="{DynamicResource Border}" BorderThickness="1">
+                <StackPanel>
+                    <DockPanel Margin="0,0,0,8">
+                        <Button DockPanel.Dock="Right" Content="×" Style="{StaticResource PaneHeaderGhostButton}" Click="OnCloseExclusion" ToolTip="検索設定を閉じる" />
+                        <TextBlock Text="TODO の検索設定" FontWeight="SemiBold" VerticalAlignment="Center" />
+                    </DockPanel>
+                    <TextBlock Text="コード（コメント内のみ）" Margin="0,0,0,4" />
+                    <TextBox x:Name="CodeExtensionsBox" Text="{Binding CodeExtensions, Mode=OneWay}" TextWrapping="Wrap" MaxHeight="100" VerticalScrollBarVisibility="Auto" AutomationProperties.Name="コメントを検索する拡張子" />
+                    <TextBlock Text="文書（本文を検索・空欄なら対象外）" Margin="0,10,0,4" />
+                    <TextBox x:Name="DocumentExtensionsBox" Text="{Binding DocumentExtensions, Mode=OneWay}" AutomationProperties.Name="本文を検索する文書の拡張子" />
+                    <TextBlock Text="例: .md .txt　拡張子をスペースで区切って指定" Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs10}" Margin="0,4,0,0" />
+                    <TextBlock Text="除外するパス" Margin="0,10,0,4" />
+                    <TextBox x:Name="ExcludeBox" Text="{Binding ExcludeGlob, Mode=OneWay}" AutomationProperties.Name="TODO 検索の除外 glob" />
+                    <TextBlock Text="例: **/generated/**　空欄で除外を解除" Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs10}" Margin="0,4,0,0" />
+                    <TextBlock Text="{Binding SearchOptionsError}" TextWrapping="Wrap" Foreground="{DynamicResource Error}" Margin="0,6,0,0" />
+                    <Button Content="適用して再検索" HorizontalAlignment="Right" Style="{StaticResource SecondaryButton}" Click="OnApplyExclusion" Margin="0,8,0,0" Padding="10,4" />
+                </StackPanel>
+            </Border>
+        </Popup>
         <Border DockPanel.Dock="Bottom" BorderBrush="{DynamicResource Border}" BorderThickness="0,1,0,0" Padding="8,1,4,1">
             <DockPanel>
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">

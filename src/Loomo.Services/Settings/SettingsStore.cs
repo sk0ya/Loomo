@@ -208,17 +208,23 @@ public sealed class SettingsStore
     {
         public bool GroupByTag { get; set; }
         public string? ExcludeGlob { get; set; }
+        public string? CodeExtensions { get; set; }
+        public string? DocumentExtensions { get; set; }
         public List<string>? HiddenTags { get; set; }
         public static PersistedTodoTree From(TodoTreeSettings settings) => new()
         {
             GroupByTag = settings.GroupByTag,
             ExcludeGlob = settings.ExcludeGlob,
+            CodeExtensions = settings.CodeExtensions,
+            DocumentExtensions = settings.DocumentExtensions,
             HiddenTags = settings.HiddenTags.ToList(),
         };
         public void ApplyTo(TodoTreeSettings settings)
         {
             settings.GroupByTag = GroupByTag;
             settings.ExcludeGlob = ExcludeGlob ?? "";
+            settings.CodeExtensions = CodeExtensions ?? TodoTreeSettings.DefaultCodeExtensions;
+            settings.DocumentExtensions = DocumentExtensions ?? "";
             settings.HiddenTags = HiddenTags?.Where(t => t is "TODO" or "FIXME" or "HACK" or "NOTE").Distinct().ToList() ?? new();
         }
     }

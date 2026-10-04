@@ -433,6 +433,19 @@ public sealed class WorkspaceSearchService : IWorkspaceSearchService
         args.Add(options.CaseSensitive ? "-s" : "-i");
         if (!options.UseRegex)
             args.Add("-F"); // 固定文字列（正規表現として解釈しない）
+        if (options.Extensions is { Count: > 0 })
+        {
+            foreach (var extension in options.Extensions)
+            {
+                // -g の包含指定は .gitignore を上書きするため、ファイル種別で絞る。
+                var pattern = string.Concat(extension.Select(c => char.IsAsciiLetter(c)
+                    ? $"[{char.ToLowerInvariant(c)}{char.ToUpperInvariant(c)}]" : c.ToString()));
+                args.Add("--type-add");
+                args.Add("loomoext:*" + pattern);
+            }
+            args.Add("--type");
+            args.Add("loomoext");
+        }
         if (!string.IsNullOrWhiteSpace(options.IncludeGlob))
         {
             args.Add("-g");
@@ -546,6 +559,7 @@ public sealed class WorkspaceSearchService : IWorkspaceSearchService
 
         var include = GlobToRegex(options.IncludeGlob);
         var exclude = GlobToRegex(options.ExcludeGlob);
+        var extensions = options.Extensions?.ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         var hits = new List<ContentSearchHit>();
         foreach (var rel in EnumerateRelativeFiles(root))
@@ -553,6 +567,7 @@ public sealed class WorkspaceSearchService : IWorkspaceSearchService
             ct.ThrowIfCancellationRequested();
             if (hits.Count >= options.MaxResults)
                 break;
+            if (extensions is { Count: > 0 } && !extensions.Contains(Path.GetExtension(rel))) continue;
             if (include is not null && !include.IsMatch(rel)) continue;
             if (exclude is not null && exclude.IsMatch(rel)) continue;
 

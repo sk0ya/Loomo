@@ -6,9 +6,11 @@ namespace sk0ya.Loomo.App.ViewModels;
 /// <summary>検索位置は原文のまま保持し、一覧の本文だけを読みやすくする。</summary>
 public sealed partial class TodoEntry : ObservableObject
 {
-    public TodoEntry(string tag, ContentSearchHit hit) { Tag = tag; Hit = hit; }
+    public TodoEntry(string tag, ContentSearchHit hit, int? contentEndColumn = null)
+    { Tag = tag; Hit = hit; ContentEndColumn = contentEndColumn; }
     public string Tag { get; }
     public ContentSearchHit Hit { get; }
+    public int? ContentEndColumn { get; }
     public string Key => $"{Hit.FullPath}\0{Hit.Line}\0{Hit.Column}\0{Tag}";
     public string Label => Body;
     public string Body
@@ -16,7 +18,8 @@ public sealed partial class TodoEntry : ObservableObject
         get
         {
             var start = Math.Clamp(Hit.Column - 1 + Tag.Length, 0, Hit.LineText.Length);
-            var body = Hit.LineText[start..].TrimStart(' ', '\t', ':', '：', '-');
+            var end = Math.Clamp(ContentEndColumn ?? Hit.LineText.Length, start, Hit.LineText.Length);
+            var body = Hit.LineText[start..end].TrimStart(' ', '\t', ':', '：', '-');
             // タグの後ろだけを表示する。原文やコピー内容には手を加えない。
             var next = Regex.Match(body, TodoTreeViewModel.TagPattern);
             if (next.Success) body = body[..next.Index].TrimEnd();
@@ -52,9 +55,12 @@ public sealed partial class TodoGroup : ObservableObject
 /// <summary>TODO が見つかったフォルダー。件数とコピー対象は配下すべての一致行を含む。</summary>
 public sealed partial class TodoFolder : ObservableObject
 {
-    public TodoFolder(string name, string fullPath) { Name = name; FullPath = fullPath; }
+    public TodoFolder(string name, string fullPath, IReadOnlyList<string>? paths = null)
+    { Name = name; FullPath = fullPath; Paths = paths ?? [fullPath]; }
     public string Name { get; }
     public string FullPath { get; }
+    /// <summary>まとめた行が表すフォルダー。枝が増減しても各階層の開閉状態を引き継ぐ。</summary>
+    public IReadOnlyList<string> Paths { get; }
     public string Key => $"folder:{FullPath}";
     public ObservableCollection<object> Children { get; } = [];
     public IEnumerable<TodoEntry> Entries => TodoTreeLayout.Entries(Children);

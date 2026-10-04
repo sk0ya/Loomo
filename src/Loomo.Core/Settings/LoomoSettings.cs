@@ -414,7 +414,10 @@ public sealed class AppearanceSettings
 /// <summary>TODO Tree の表示設定。入力中の検索語や選択位置は保存しない。</summary>
 public sealed class TodoTreeSettings
 {
+    public const string DefaultCodeExtensions = ".cs .js .jsx .ts .tsx .py .c .cpp .h .hpp .rs .go .css .scss .less .html .htm .xml .xaml .ps1 .psm1 .sh .bash .sql .yaml .yml .toml .lua .rb";
     public bool GroupByTag { get; set; }
     public string ExcludeGlob { get; set; } = "";
+    public string CodeExtensions { get; set; } = DefaultCodeExtensions;
+    public string DocumentExtensions { get; set; } = "";
     public List<string> HiddenTags { get; set; } = new();
 }

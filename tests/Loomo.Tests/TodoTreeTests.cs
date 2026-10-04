@@ -1,3 +1,4 @@
+using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.App.ViewModels;
 using sk0ya.Loomo.Core.Abstractions;
 using sk0ya.Loomo.Core.Settings;
@@ -74,7 +75,7 @@ public sealed class TodoTreeTests
         vm.ExcludeGlob = "**/generated/**";
         await vm.RefreshCommand.ExecuteAsync(null);
         Assert.Equal("**/generated/**", search.Options!.ExcludeGlob);
-        Assert.True(search.Options.CaseSensitive && search.Options.UseRegex);
+        Assert.Equal(TodoTreeViewModel.ResultLimit, search.Options.MaxResults);
         Assert.Equal(TodoTreeViewModel.ResultLimit, Assert.Single(vm.Groups).Entries.Count);
         Assert.Contains("先頭", vm.Status);
     }
@@ -155,7 +156,7 @@ public sealed class TodoTreeTests
             using (var vm = new TodoTreeViewModel(new StubSearch(), new FakeWorkspaceService(), settings, store))
             {
                 vm.GroupByTag = true;
-                vm.ExcludeGlob = "**/generated/**";
+                Assert.True(vm.ApplySearchOptions(".cs .js", ".md", "**/generated/**"));
                 vm.TagFilters.Single(t => t.Tag == "NOTE").IsEnabled = false;
             }
             var loaded = new LoomoSettings();
@@ -163,6 +164,8 @@ public sealed class TodoTreeTests
             using var restored = new TodoTreeViewModel(new StubSearch(), new FakeWorkspaceService(), loaded);
             Assert.True(restored.GroupByTag);
             Assert.Equal("**/generated/**", restored.ExcludeGlob);
+            Assert.Equal(".cs .js", restored.CodeExtensions);
+            Assert.Equal(".md", restored.DocumentExtensions);
             Assert.False(restored.TagFilters.Single(t => t.Tag == "NOTE").IsEnabled);
             Assert.Equal("", restored.Filter);
         }
@@ -261,13 +264,77 @@ public sealed class TodoTreeTests
         Assert.Equal(new[] { @"C:\", @"D:\" }, vm.TreeItems.Cast<TodoFolder>().Select(f => f.Name));
     }
 
-    private sealed class StubSearch : IWorkspaceSearchService
+    [Fact]
+    public async Task 単一の子フォルダーが続く区間をまとめても移動先を維持する()
+    {
+        var root = @"C:\TodoWorkspace";
+        var full = root + @"\src\Components\Forms\Entry.cs";
+        var search = new StubSearch { Handler = _ => Task.FromResult<IReadOnlyList<ContentSearchHit>>([
+            new(full, "src/Components/Forms/Entry.cs", 7, 1, "TODO: one")]) };
+        using var vm = new TodoTreeViewModel(search, new FakeWorkspaceService(root));
+        await vm.RefreshCommand.ExecuteAsync(null);
+        var folder = Assert.IsType<TodoFolder>(Assert.Single(vm.TreeItems));
+        Assert.Equal("src / Components / Forms", folder.Name);
+        Assert.Equal(root + @"\src\Components\Forms", folder.FullPath);
+        Assert.Equal(3, folder.Paths.Count);
+        Assert.Equal(1, folder.Count);
+        Assert.IsType<TodoGroup>(Assert.Single(folder.Children));
+        vm.CollapseAllCommand.Execute(null);
+        vm.NextCommand.Execute(null);
+        Assert.True(folder.IsExpanded);
+        Assert.Equal(full, vm.SelectedEntry!.Hit.FullPath);
+        Assert.Equal(7, vm.SelectedEntry.Hit.Line);
+    }
+
+    [Fact]
+    public async Task 直下にファイルや複数の枝がある区間はまとめない()
+    {
+        var root = @"C:\TodoWorkspace";
+        var search = new StubSearch { Handler = _ => Task.FromResult<IReadOnlyList<ContentSearchHit>>([
+            new(root + @"\src\App.cs", "src/App.cs", 1, 1, "TODO: root"),
+            new(root + @"\src\Components\Forms\Entry.cs", "src/Components/Forms/Entry.cs", 1, 1, "TODO: one"),
+            new(root + @"\src\Other\App.cs", "src/Other/App.cs", 1, 1, "TODO: two")]) };
+        using var vm = new TodoTreeViewModel(search, new FakeWorkspaceService(root));
+        await vm.RefreshCommand.ExecuteAsync(null);
+        var src = Assert.IsType<TodoFolder>(Assert.Single(vm.TreeItems));
+        Assert.Equal("src", src.Name);
+        Assert.Equal(3, src.Children.Count);
+        Assert.Equal("Components / Forms", Assert.IsType<TodoFolder>(src.Children[0]).Name);
+        Assert.Equal("Other", Assert.IsType<TodoFolder>(src.Children[1]).Name);
+        Assert.Equal("App.cs", Assert.IsType<TodoGroup>(src.Children[2]).Title);
+    }
+
+    [Fact]
+    public async Task 絞り込みでフォルダーが結合分離しても開閉状態を維持する()
+    {
+        var root = @"C:\TodoWorkspace";
+        var search = new StubSearch { Handler = _ => Task.FromResult<IReadOnlyList<ContentSearchHit>>([
+            new(root + @"\src\Components\Forms\Entry.cs", "src/Components/Forms/Entry.cs", 1, 1, "TODO: one"),
+            new(root + @"\src\Other\App.cs", "src/Other/App.cs", 1, 1, "TODO: two")]) };
+        using var vm = new TodoTreeViewModel(search, new FakeWorkspaceService(root));
+        await vm.RefreshCommand.ExecuteAsync(null);
+        var src = Assert.IsType<TodoFolder>(Assert.Single(vm.TreeItems));
+        src.IsExpanded = false;
+        vm.Filter = "one";
+        var compact = Assert.IsType<TodoFolder>(Assert.Single(vm.TreeItems));
+        Assert.Equal("src / Components / Forms", compact.Name);
+        Assert.False(compact.IsExpanded);
+        vm.Filter = "";
+        Assert.False(Assert.IsType<TodoFolder>(Assert.Single(vm.TreeItems)).IsExpanded);
+        vm.ExpandAllCommand.Execute(null);
+        vm.Filter = "one";
+        Assert.True(Assert.IsType<TodoFolder>(Assert.Single(vm.TreeItems)).IsExpanded);
+    }
+
+    private sealed class StubSearch : ITodoSearchService
     {
         public Func<CancellationToken, Task<IReadOnlyList<ContentSearchHit>>> Handler { get; set; } = null!;
-        public GrepOptions? Options { get; private set; }
-        public Task<IReadOnlyList<ContentSearchHit>> GrepAsync(string query, GrepOptions options, CancellationToken ct, string? searchRoot = null)
-        { Options = options; return Handler(ct); }
-        public Task<IReadOnlyList<FileSearchHit>> FindFilesAsync(string q, int m, CancellationToken ct, string? root = null) => throw new NotSupportedException();
-        public Task<IReadOnlyList<AdvancedFileSearchHit>> SearchFilesAsync(AdvancedSearchOptions o, CancellationToken ct, string? root = null) => throw new NotSupportedException();
+        public TodoSearchOptions? Options { get; private set; }
+        public async Task<TodoSearchResult> SearchAsync(TodoSearchOptions options, CancellationToken ct)
+        {
+            Options = options;
+            var entries = TodoTreeViewModel.Parse(await Handler(ct));
+            return new(entries.Take(options.MaxResults).ToArray(), entries.Count > options.MaxResults);
+        }
     }
 }

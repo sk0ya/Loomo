@@ -13,7 +13,8 @@ public sealed record FileSearchHit(string FullPath, string RelativePath, int Sco
 /// <summary>grep の1ヒット。Line と Column は1始まり。</summary>
 public sealed record ContentSearchHit(string FullPath, string RelativePath, int Line, int Column, string LineText);
 /// <summary>grep のオプション。</summary>
-public sealed record GrepOptions(bool CaseSensitive = false, bool UseRegex = false, string? IncludeGlob = null, string? ExcludeGlob = null, int MaxResults = 500);
+public sealed record GrepOptions(bool CaseSensitive = false, bool UseRegex = false, string? IncludeGlob = null, string? ExcludeGlob = null, int MaxResults = 500,
+    IReadOnlyList<string>? Extensions = null);
 
 /// <summary>詳細検索のファイル種別。再解析点はサービス側で辿らない。</summary>
 public enum SearchFileKind

@@ -1,3 +1,4 @@
+using sk0ya.Loomo.App.Services;
 using System.IO;
 using System.Windows;
 using System.Windows.Automation;
@@ -19,15 +20,15 @@ public sealed class TodoTreeViewTests(WpfViewHost host)
     public async Task 実ビューの操作と全テーマの切替を確認する()
     {
         var root = Path.Combine(Path.GetTempPath(), $"todo-view-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(Path.Combine(root, "src"));
-        File.WriteAllText(Path.Combine(root, "src", "Example.cs"), "// TODO: 入力チェックを追加する\n// FIXME: 保存時のエラーを処理する\n// NOTE: 仕様の確認が必要");
+        Directory.CreateDirectory(Path.Combine(root, "src", "Components", "Forms"));
+        File.WriteAllText(Path.Combine(root, "src", "Components", "Forms", "Example.cs"), "// TODO: 入力チェックを追加する\n// FIXME: 保存時のエラーを処理する\n// NOTE: 仕様の確認が必要");
         TodoTreeViewModel? vm = null;
         try
         {
             Task? refresh = null;
             host.Run(() => {
                 var workspace = new FakeWorkspaceService(root);
-                vm = new TodoTreeViewModel(new WorkspaceSearchService(workspace), workspace);
+                vm = new TodoTreeViewModel(new TodoSearchQuery(new WorkspaceSearchService(workspace), workspace), workspace);
                 refresh = vm.RefreshCommand.ExecuteAsync(null);
             });
             await refresh!;
@@ -43,7 +44,7 @@ public sealed class TodoTreeViewTests(WpfViewHost host)
                     Assert.Equal(((SolidColorBrush)palette["BgAlt"]).Color, ((SolidColorBrush)view.Background).Color);
                     var tree = (TreeView)view.FindName("TodoTree");
                     var folder = Assert.IsType<TreeViewItem>(tree.ItemContainerGenerator.ContainerFromIndex(0));
-                    Assert.IsType<TodoFolder>(folder.DataContext);
+                    Assert.Equal("src / Components / Forms", Assert.IsType<TodoFolder>(folder.DataContext).Name);
                     Assert.True(folder.IsExpanded);
                     var group = Assert.IsType<TreeViewItem>(folder.ItemContainerGenerator.ContainerFromIndex(0));
                     Assert.True(group.IsExpanded);
@@ -84,11 +85,49 @@ public sealed class TodoTreeViewTests(WpfViewHost host)
         }
     }
     [Fact]
+    public void 検索設定の実ビューを全テーマで描画して適用と検証を確認する()
+    {
+        host.Run(() => {
+            var workspace = new FakeWorkspaceService();
+            using var vm = new TodoTreeViewModel(new TodoSearchQuery(new WorkspaceSearchService(workspace), workspace), workspace);
+            var view = new TodoTreeView { DataContext = vm, Width = 220, Height = 200 };
+            Layout(view);
+            var popup = (Popup)view.FindName("SearchOptionsPopup");
+            var content = (FrameworkElement)popup.Child;
+            content.Height = 370;
+            foreach (var theme in Enum.GetValues<AppTheme>())
+            {
+                var palette = new ResourceDictionary { Source = new Uri(
+                    $"pack://application:,,,/sk0ya.Loomo.App;component/Themes/Palette.{theme}.xaml") };
+                view.Resources.MergedDictionaries.Clear();
+                view.Resources.MergedDictionaries.Add(palette);
+                Layout(content);
+                Assert.Equal(((SolidColorBrush)palette["Bg"]).Color, ((SolidColorBrush)((Border)content).Background).Color);
+                if (theme is AppTheme.Dark or AppTheme.Light or AppTheme.HighContrast) Render(content, "Settings-" + theme);
+            }
+            var code = (TextBox)view.FindName("CodeExtensionsBox");
+            var documents = (TextBox)view.FindName("DocumentExtensionsBox");
+            var apply = Descendants(content).OfType<Button>().Single(b => Equals(b.Content, "適用して再検索"));
+            Assert.Equal(TodoTreeSettings.DefaultCodeExtensions, code.Text);
+            code.Text = ".unknown";
+            apply.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Assert.NotEmpty(vm.SearchOptionsError);
+            Assert.Equal(TodoTreeSettings.DefaultCodeExtensions, vm.CodeExtensions);
+            code.Text = ".cs";
+            documents.Text = ".md";
+            apply.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Assert.Equal(".cs", vm.CodeExtensions);
+            Assert.Equal(".md", vm.DocumentExtensions);
+            Assert.Empty(vm.SearchOptionsError);
+        });
+    }
+
+    [Fact]
     public void 画面外の行への移動でも親を開いて選択する()
     {
         host.Run(() => {
             var workspace = new FakeWorkspaceService();
-            using var vm = new TodoTreeViewModel(new WorkspaceSearchService(workspace), workspace);
+            using var vm = new TodoTreeViewModel(new TodoSearchQuery(new WorkspaceSearchService(workspace), workspace), workspace);
             for (var i = 0; i < 100; i++)
             {
                 var entry = new TodoEntry("TODO", new($"{i}.cs", $"{i}.cs", 1, 1, "TODO: sample"));

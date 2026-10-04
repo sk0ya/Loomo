@@ -93,6 +93,7 @@ public partial class TodoTreeView : UserControl
         _watchers.Clear();
         if (_model is not null)
         {
+            _model.IsExclusionVisible = false;
             _model.Workspace.FoldersChanged -= OnFoldersChanged;
             _model.Invalidated -= OnInvalidated;
             _model.SelectionRequested -= OnSelectionRequested;
@@ -192,7 +193,9 @@ public partial class TodoTreeView : UserControl
         }
         else if (e.Key == Key.Escape && vm.IsFilterVisible)
         { CloseFilter(); e.Handled = true; }
-        else if (e.Key == Key.Enter && ExcludeBox.IsKeyboardFocusWithin)
+        else if (e.Key == Key.Escape && vm.IsExclusionVisible)
+        { OnCloseExclusion(this, e); e.Handled = true; }
+        else if (e.Key == Key.Enter && vm.IsExclusionVisible)
         { ApplyExclusion(); e.Handled = true; }
         else if (TodoTree.IsKeyboardFocusWithin && TodoTree.SelectedItem is TodoEntry entry)
         {
@@ -220,10 +223,20 @@ public partial class TodoTreeView : UserControl
     private void OnCloseFilter(object sender, RoutedEventArgs e) => CloseFilter();
     private void OnCloseExclusion(object sender, RoutedEventArgs e)
     {
-        ExcludeBox.GetBindingExpression(TextBox.TextProperty)?.UpdateTarget();
+        ResetSearchDraft();
         if (Vm is { } vm) vm.IsExclusionVisible = false;
     }
-    private void ApplyExclusion() => ExcludeBox.GetBindingExpression(TextBox.TextProperty)?.UpdateSource();
+    private void ApplyExclusion()
+    {
+        if (Vm is { } vm && vm.ApplySearchOptions(CodeExtensionsBox.Text, DocumentExtensionsBox.Text, ExcludeBox.Text))
+            vm.IsExclusionVisible = false;
+    }
+    private void ResetSearchDraft()
+    {
+        foreach (var box in new[] { CodeExtensionsBox, DocumentExtensionsBox, ExcludeBox })
+            box.GetBindingExpression(TextBox.TextProperty)?.UpdateTarget();
+        if (Vm is { } vm) vm.SearchOptionsError = "";
+    }
     private void OnApplyExclusion(object sender, RoutedEventArgs e) => ApplyExclusion();
 
     private static MenuItem AddMenu(ContextMenu menu, string text, Action action, string? gesture = null)
@@ -246,9 +259,13 @@ public partial class TodoTreeView : UserControl
         AddMenu(menu, "表示中の TODO をコピー", () => vm.CopyResultsCommand.Execute(null)).IsEnabled = vm.HasEntries;
         menu.Items.Add(new Separator());
         AddMenu(menu, "絞り込みを解除", () => vm.ClearFiltersCommand.Execute(null)).IsEnabled = vm.IsFiltered;
-        AddMenu(menu, "除外するパスを設定…", () => {
-            vm.IsExclusionVisible = true;
-            ExcludeBox.Focus();
+        AddMenu(menu, "検索対象・除外を設定…", () => {
+            // メニューのマウスキャプチャが解除されてから設定を開く。
+            Dispatcher.BeginInvoke(() => {
+                ResetSearchDraft();
+                vm.IsExclusionVisible = true;
+                CodeExtensionsBox.Focus();
+            });
         }).IsChecked = vm.HasExclusion;
         target.ContextMenu = menu;
         menu.IsOpen = true;
