@@ -23,10 +23,14 @@ public sealed record WorkItemListEntry(
     int ParentIndex,
     bool IsAssigned);
 
-/// <summary>フィルターの条件。空文字・null は「絞らない」。</summary>
-public sealed record WorkItemListFilter(string? Text, string? State, string? WorkItemType)
+/// <summary>フィルターの条件。空文字・null・空集合は「絞らない」。状態・種類は複数選べて、どれかに合えば残る
+/// （「Active と New」）。欄どうし（文字・状態・種類）はすべて満たす必要がある。</summary>
+public sealed record WorkItemListFilter(
+    string? Text,
+    IReadOnlyCollection<string>? States = null,
+    IReadOnlyCollection<string>? WorkItemTypes = null)
 {
-    public bool HasFieldFilter => !string.IsNullOrEmpty(State) || !string.IsNullOrEmpty(WorkItemType);
+    public bool HasFieldFilter => States is { Count: > 0 } || WorkItemTypes is { Count: > 0 };
 }
 
 /// <summary>
@@ -83,7 +87,8 @@ public static class WorkItemList
     /// <summary>
     /// 見せる行。規則：
     /// <list type="bullet">
-    /// <item>Work Item は、文字（タイトル・状態・種類・ID・プロジェクト）と状態・種類の条件にすべて合えば残る。</item>
+    /// <item>Work Item は、文字（タイトル・状態・種類・ID・プロジェクト）と状態・種類の条件にすべて合えば残る
+/// （状態・種類は選んだもののどれかに合えばよい）。</item>
     /// <item>PR は、紐づく Work Item が条件に合って残るなら一緒に残る。状態・種類で絞っていないときは、
     /// PR 自身が文字に合っても残る（PR には状態・種類の欄が無い）。</item>
     /// <item>子が1つでも残れば、親（と見出し）は道しるべとして残す。</item>
@@ -102,7 +107,7 @@ public static class WorkItemList
                 case WorkItemListEntryKind.WorkItem:
                     var item = entry.WorkItem!;
                     selfMatch[i] = Contains(text, item.Title, item.State, item.WorkItemType, item.Project, item.Id.ToString())
-                        && Equal(filter.State, item.State) && Equal(filter.WorkItemType, item.WorkItemType);
+                        && AnyOf(filter.States, item.State) && AnyOf(filter.WorkItemTypes, item.WorkItemType);
                     visible[i] = selfMatch[i];
                     break;
                 case WorkItemListEntryKind.PullRequest:
@@ -120,9 +125,42 @@ public static class WorkItemList
         return visible;
     }
 
+    /// <summary>折りたたみの鍵。更新で一覧を作り直しても同じものを畳んだままにするため、位置ではなく中身で持つ。
+    /// 子を持てない PR は null。</summary>
+    public static string? CollapseKey(WorkItemListEntry entry) => entry.Kind switch
+    {
+        WorkItemListEntryKind.WorkItem => $"W{entry.WorkItem!.Id}",
+        WorkItemListEntryKind.Section => $"S:{entry.SectionTitle}",
+        _ => null,
+    };
+
+    /// <summary>見えている子を持つ行（折りたたみの ▸ を出す行）。絞り込みで子が消えた行には出さない。</summary>
+    public static bool[] HasVisibleChildren(IReadOnlyList<WorkItemListEntry> entries, bool[] visible)
+    {
+        var has = new bool[entries.Count];
+        for (var i = 0; i < entries.Count; i++)
+            if (visible[i] && entries[i].ParentIndex >= 0)
+                has[entries[i].ParentIndex] = true;
+        return has;
+    }
+
+    /// <summary>畳んだ行の子孫を隠す（畳んだ行そのものは残す）。親は必ず子より前にあるので前から一度なめれば足りる。</summary>
+    public static bool[] Collapse(IReadOnlyList<WorkItemListEntry> entries, bool[] visible, Func<int, bool> isCollapsed)
+    {
+        var hidden = new bool[entries.Count];
+        var result = new bool[entries.Count];
+        for (var i = 0; i < entries.Count; i++)
+        {
+            var parent = entries[i].ParentIndex;
+            hidden[i] = parent >= 0 && (hidden[parent] || isCollapsed(parent));
+            result[i] = visible[i] && !hidden[i];
+        }
+        return result;
+    }
+
     private static bool Contains(string text, params string[] fields)
         => text.Length == 0 || fields.Any(f => f.Contains(text, StringComparison.CurrentCultureIgnoreCase));
 
-    private static bool Equal(string? wanted, string actual)
-        => string.IsNullOrEmpty(wanted) || string.Equals(wanted, actual, StringComparison.OrdinalIgnoreCase);
+    private static bool AnyOf(IReadOnlyCollection<string>? wanted, string actual)
+        => wanted is not { Count: > 0 } || wanted.Any(w => string.Equals(w, actual, StringComparison.OrdinalIgnoreCase));
 }

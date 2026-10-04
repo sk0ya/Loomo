@@ -15,7 +15,7 @@ namespace sk0ya.Loomo.App.ViewModels;
 /// Work Items 一覧の1行（Work Item・PR・見出しのどれか）。種類の文字と ID は出さない——種類は左端の色で分かり、
 /// ID はツールチップとコピーで足りる。そのぶんタイトルに幅を回す。
 /// </summary>
-public sealed class WorkItemListRowViewModel(WorkItemListEntry entry)
+public sealed class WorkItemListRowViewModel(WorkItemListEntry entry, bool hasChildren = false, bool isCollapsed = false)
 {
     /// <summary>PR の色（Azure DevOps の PR アイコンの青）。</summary>
     private const string PullRequestColor = "#0078D4";
@@ -25,6 +25,15 @@ public sealed class WorkItemListRowViewModel(WorkItemListEntry entry)
     public bool IsPullRequest => entry.Kind == WorkItemListEntryKind.PullRequest;
     public bool IsSection => entry.Kind == WorkItemListEntryKind.Section;
     public bool CanOpen => !IsSection;
+
+    /// <summary>見えている子を持つ（▸／▾ を出して畳める）。</summary>
+    public bool HasChildren => hasChildren;
+
+    public bool IsCollapsed => isCollapsed;
+
+    public string Chevron => !hasChildren ? "" : isCollapsed ? "▸" : "▾";
+
+    public string ChevronToolTip => isCollapsed ? "展開" : "折りたたむ";
 
     public string Title => entry.WorkItem?.Title ?? entry.PullRequest?.Title ?? entry.SectionTitle;
 
@@ -88,6 +97,16 @@ public sealed class WorkItemListRowViewModel(WorkItemListEntry entry)
     };
 }
 
+/// <summary>状態・種類の絞り込みの選択肢1つ（☑ で複数選ぶ）。</summary>
+public sealed partial class WorkItemFilterOption(string value, bool isChecked, Action changed) : ObservableObject
+{
+    public string Value => value;
+
+    [ObservableProperty] private bool _isChecked = isChecked;
+
+    partial void OnIsCheckedChanged(bool value) => changed();
+}
+
 /// <summary>
 /// ActivityBar の Work Items（⌨ の上のアイコン）。<b>TaskAzure と同じ方式</b>：設定の組織 URL・プロジェクトで
 /// 自分に割り当たっている未完了の Work Item を引き、設定した PR 対象（プロジェクト/リポジトリ）から自分の進行中の PR を引いて
@@ -95,9 +114,6 @@ public sealed class WorkItemListRowViewModel(WorkItemListEntry entry)
 /// </summary>
 public sealed partial class WorkItemsViewModel : ObservableObject
 {
-    /// <summary>コンボボックスの「絞らない」。null を項目にすると WPF の ComboBox は選べない値として扱うので文字で持つ。</summary>
-    public const string AllOption = "すべて";
-
     /// <summary>開き直したときに取り直すまでの間隔。開くたびに取りに行くと、ちらっと覗くだけでも待たされる。</summary>
     private static readonly TimeSpan StaleAfter = TimeSpan.FromMinutes(2);
 
@@ -108,6 +124,12 @@ public sealed partial class WorkItemsViewModel : ObservableObject
     private IReadOnlyList<WorkItemListEntry> _entries = [];
     private CancellationTokenSource? _loading;
     private DateTime _loadedAt = DateTime.MinValue;
+
+    /// <summary>畳んでいる行の鍵（<see cref="WorkItemList.CollapseKey"/>）。更新で一覧を作り直しても畳んだままにする。</summary>
+    private readonly HashSet<string> _collapsed = new(StringComparer.Ordinal);
+
+    /// <summary>☑ をまとめて変えている最中（1つ変わるごとに絞り込み直さない）。</summary>
+    private bool _batchingOptions;
 
     public WorkItemsViewModel(LoomoSettings settings, SettingsStore settingsStore,
         AzureDevOpsPatStore pats, AzureDevOpsWorkItemClient client)
@@ -122,11 +144,27 @@ public sealed partial class WorkItemsViewModel : ObservableObject
     /// <summary>いま見せている行（フィルター後）。</summary>
     public ObservableCollection<WorkItemListRowViewModel> Items { get; } = new();
 
-    /// <summary>状態の選択肢（取れた Work Item に現れたものだけ）。</summary>
-    public ObservableCollection<string> StateOptions { get; } = [AllOption];
+    /// <summary>状態の選択肢（取れた Work Item に現れたものだけ）。1つも ☑ が無ければ絞らない。</summary>
+    public ObservableCollection<WorkItemFilterOption> StateOptions { get; } = new();
 
     /// <summary>種類の選択肢。</summary>
-    public ObservableCollection<string> TypeOptions { get; } = [AllOption];
+    public ObservableCollection<WorkItemFilterOption> TypeOptions { get; } = new();
+
+    /// <summary>状態の絞り込みボタンの文字（選んだものを並べる）。</summary>
+    public string StateFilterLabel => FilterLabel("状態", StateOptions);
+
+    public string TypeFilterLabel => FilterLabel("種類", TypeOptions);
+
+    public bool IsStateFiltered => StateOptions.Any(o => o.IsChecked);
+
+    public bool IsTypeFiltered => TypeOptions.Any(o => o.IsChecked);
+
+    /// <summary>絞り込み（文字・状態・種類のどれか）が効いている。× を出す。</summary>
+    public bool HasAnyFilter => FilterText.Length > 0 || IsStateFiltered || IsTypeFiltered;
+
+    [ObservableProperty] private bool _isStateFilterOpen;
+
+    [ObservableProperty] private bool _isTypeFilterOpen;
 
     /// <summary>一覧（ポップアップ）を開いているか。</summary>
     [ObservableProperty] private bool _isOpen;
@@ -155,10 +193,6 @@ public sealed partial class WorkItemsViewModel : ObservableObject
     /// <summary>文字で絞る（タイトル・状態・種類・ID・プロジェクト、PR はタイトル・リポジトリ・ID）。</summary>
     [ObservableProperty] private string _filterText = "";
 
-    [ObservableProperty] private string _selectedState = AllOption;
-
-    [ObservableProperty] private string _selectedType = AllOption;
-
     /// <summary>取れたが絞り込みで1件も残らない／そもそも0件のときの一言。</summary>
     [ObservableProperty] private string _emptyText = "";
 
@@ -172,8 +206,6 @@ public sealed partial class WorkItemsViewModel : ObservableObject
     }
 
     partial void OnFilterTextChanged(string value) => ApplyFilter();
-    partial void OnSelectedStateChanged(string value) => ApplyFilter();
-    partial void OnSelectedTypeChanged(string value) => ApplyFilter();
 
     [RelayCommand]
     private void ToggleOpen() => IsOpen = !IsOpen;
@@ -182,9 +214,42 @@ public sealed partial class WorkItemsViewModel : ObservableObject
     [RelayCommand]
     private void ClearFilter()
     {
+        _batchingOptions = true;
+        try
+        {
+            foreach (var option in StateOptions.Concat(TypeOptions)) option.IsChecked = false;
+        }
+        finally { _batchingOptions = false; }
         FilterText = "";
-        SelectedState = AllOption;
-        SelectedType = AllOption;
+        ApplyFilter();
+    }
+
+    /// <summary>1行の開閉（▸／▾）。</summary>
+    [RelayCommand]
+    private void ToggleCollapse(WorkItemListRowViewModel? row)
+    {
+        if (row is not { HasChildren: true } || WorkItemList.CollapseKey(row.Entry) is not { } key) return;
+        if (!_collapsed.Remove(key)) _collapsed.Add(key);
+        ApplyFilter();
+    }
+
+    /// <summary>すべて折りたたむ：子を持つ行をすべて畳む（いちばん上の段だけが並ぶ）。</summary>
+    [RelayCommand]
+    private void CollapseAll()
+    {
+        var hasChildren = WorkItemList.HasVisibleChildren(_entries, Enumerable.Repeat(true, _entries.Count).ToArray());
+        for (var i = 0; i < _entries.Count; i++)
+            if (hasChildren[i] && WorkItemList.CollapseKey(_entries[i]) is { } key)
+                _collapsed.Add(key);
+        ApplyFilter();
+    }
+
+    /// <summary>すべて展開。</summary>
+    [RelayCommand]
+    private void ExpandAll()
+    {
+        _collapsed.Clear();
+        ApplyFilter();
     }
 
     /// <summary>ブラウザペインで開く（既定の動き。部屋の中で読む）。</summary>
@@ -356,35 +421,55 @@ public sealed partial class WorkItemsViewModel : ObservableObject
     {
         _entries = entries;
         var items = entries.Where(e => e.WorkItem is not null).Select(e => e.WorkItem!).ToList();
-        ResetOptions(StateOptions, items.Select(i => i.State), SelectedState, v => SelectedState = v);
-        ResetOptions(TypeOptions, items.Select(i => i.WorkItemType), SelectedType, v => SelectedType = v);
+        ResetOptions(StateOptions, items.Select(i => i.State));
+        ResetOptions(TypeOptions, items.Select(i => i.WorkItemType));
         ApplyFilter();
     }
 
-    /// <summary>選択肢を取れた値で作り直す。選んでいた値が消えたら「すべて」へ戻す。</summary>
-    private static void ResetOptions(ObservableCollection<string> options, IEnumerable<string> values,
-        string selected, Action<string> select)
+    /// <summary>選択肢を取れた値で作り直す。☑ は値で引き継ぎ、消えた値の ☑ は捨てる（見えない条件で全部消えないように）。</summary>
+    private void ResetOptions(ObservableCollection<WorkItemFilterOption> options, IEnumerable<string> values)
     {
         var distinct = values.Where(v => v.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase)
             .OrderBy(v => v, StringComparer.CurrentCulture).ToList();
-        if (options.Skip(1).SequenceEqual(distinct))
+        if (options.Select(o => o.Value).SequenceEqual(distinct))
             return;
+        var checkedValues = options.Where(o => o.IsChecked).Select(o => o.Value).ToHashSet(StringComparer.OrdinalIgnoreCase);
         options.Clear();
-        options.Add(AllOption);
-        foreach (var value in distinct) options.Add(value);
-        select(distinct.Contains(selected) ? selected : AllOption);
+        foreach (var value in distinct)
+            options.Add(new WorkItemFilterOption(value, checkedValues.Contains(value), OnFilterOptionChanged));
+    }
+
+    private void OnFilterOptionChanged()
+    {
+        if (!_batchingOptions) ApplyFilter();
+    }
+
+    private static string FilterLabel(string name, IEnumerable<WorkItemFilterOption> options)
+    {
+        var selected = options.Where(o => o.IsChecked).Select(o => o.Value).ToList();
+        return selected.Count == 0 ? name : $"{name}: {string.Join(", ", selected)}";
     }
 
     private void ApplyFilter()
     {
         var filter = new WorkItemListFilter(FilterText,
-            SelectedState == AllOption ? null : SelectedState,
-            SelectedType == AllOption ? null : SelectedType);
+            StateOptions.Where(o => o.IsChecked).Select(o => o.Value).ToList(),
+            TypeOptions.Where(o => o.IsChecked).Select(o => o.Value).ToList());
         var visible = WorkItemList.Visible(_entries, filter);
+        var hasChildren = WorkItemList.HasVisibleChildren(_entries, visible);
+        // 文字で探している間は畳みを無視する——畳んだ中に合う行があっても見つからない、を避ける。
+        var searching = FilterText.Trim().Length > 0;
+        bool IsCollapsed(int i) => !searching && WorkItemList.CollapseKey(_entries[i]) is { } key && _collapsed.Contains(key);
+        var shown = WorkItemList.Collapse(_entries, visible, IsCollapsed);
         Items.Clear();
         for (var i = 0; i < _entries.Count; i++)
-            if (visible[i])
-                Items.Add(new WorkItemListRowViewModel(_entries[i]));
+            if (shown[i])
+                Items.Add(new WorkItemListRowViewModel(_entries[i], hasChildren[i], hasChildren[i] && IsCollapsed(i)));
+        OnPropertyChanged(nameof(StateFilterLabel));
+        OnPropertyChanged(nameof(TypeFilterLabel));
+        OnPropertyChanged(nameof(IsStateFiltered));
+        OnPropertyChanged(nameof(IsTypeFiltered));
+        OnPropertyChanged(nameof(HasAnyFilter));
         EmptyText = Items.Count > 0 ? ""
             : _entries.Count > 0 ? "条件に合うものはありません。"
             : _loadedAt != DateTime.MinValue ? "割り当たっている Work Item も進行中の PR もありません。" : "";

@@ -36,6 +36,32 @@
                 </Setter.Value>
             </Setter>
         </Style>
+
+        <!-- 見出しの小さなボタン（すべて展開／折りたたむ）。IconButton の 48px 角は見出しに大きすぎる。 -->
+        <Style x:Key="WorkItemHeaderButton" TargetType="Button" BasedOn="{StaticResource IconButton}">
+            <Setter Property="Width" Value="28" />
+            <Setter Property="Height" Value="28" />
+            <Setter Property="FontSize" Value="{DynamicResource Fs14}" />
+        </Style>
+
+        <!-- 行頭の ▸／▾。行ボタンの外に置く（中に入れると Click が行まで泡立ってメニューが開く）。 -->
+        <Style x:Key="WorkItemChevronButton" TargetType="Button" BasedOn="{StaticResource IconButton}">
+            <Setter Property="Width" Value="14" />
+            <Setter Property="Height" Value="18" />
+            <Setter Property="FontSize" Value="{DynamicResource Fs10}" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+
+        <!-- 状態・種類の ☑ 絞り込みボタン。 -->
+        <Style x:Key="WorkItemFilterToggle" TargetType="ToggleButton" BasedOn="{StaticResource ToolbarToggleButton}">
+            <Setter Property="Padding" Value="6,2" />
+            <Setter Property="MaxWidth" Value="150" />
+        </Style>
+
+        <DataTemplate x:Key="WorkItemFilterOptionTemplate" DataType="{x:Type vm:WorkItemFilterOption}">
+            <CheckBox Content="{Binding Value}" IsChecked="{Binding IsChecked, Mode=TwoWay}" Margin="2,2"
+                      FontSize="{DynamicResource Fs12}" />
+        </DataTemplate>
     </UserControl.Resources>
 
     <DockPanel>
@@ -48,6 +74,14 @@
             <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="⚙"
                     ToolTip="設定（組織 URL・プロジェクト・PR 対象）" Command="{Binding ToggleSettingsCommand}"
                     AutomationProperties.AutomationId="WorkItemsSettingsButton" />
+            <Button DockPanel.Dock="Right" Style="{StaticResource WorkItemHeaderButton}" Content="⊞"
+                    ToolTip="すべて展開" Command="{Binding ExpandAllCommand}"
+                    AutomationProperties.AutomationId="WorkItemsExpandAllButton"
+                    AutomationProperties.Name="すべて展開" />
+            <Button DockPanel.Dock="Right" Style="{StaticResource WorkItemHeaderButton}" Content="⊟"
+                    ToolTip="すべて折りたたむ" Command="{Binding CollapseAllCommand}"
+                    AutomationProperties.AutomationId="WorkItemsCollapseAllButton"
+                    AutomationProperties.Name="すべて折りたたむ" />
             <StackPanel VerticalAlignment="Center">
                 <TextBlock FontSize="{DynamicResource Fs13}" Foreground="{DynamicResource Fg}">
                     <Run Text="自分の Work Items" FontWeight="SemiBold" />
@@ -94,14 +128,44 @@
                     Content="保存" Command="{Binding SaveSettingsCommand}" />
         </Grid>
 
-        <!-- 絞り込み：文字（タイトル・状態・種類・ID）＋状態＋種類。 -->
+        <!-- 絞り込み：文字（タイトル・状態・種類・ID）＋状態（☑ 複数）＋種類（☑ 複数）。 -->
         <DockPanel DockPanel.Dock="Top" Margin="6,0,6,6">
-            <ComboBox DockPanel.Dock="Right" Width="96" Margin="4,0,0,0" FontSize="{DynamicResource Fs12}"
-                      ItemsSource="{Binding TypeOptions}" SelectedItem="{Binding SelectedType, Mode=TwoWay}"
-                      ToolTip="種類で絞る" AutomationProperties.AutomationId="WorkItemsTypeFilter" />
-            <ComboBox DockPanel.Dock="Right" Width="96" Margin="4,0,0,0" FontSize="{DynamicResource Fs12}"
-                      ItemsSource="{Binding StateOptions}" SelectedItem="{Binding SelectedState, Mode=TwoWay}"
-                      ToolTip="状態で絞る" AutomationProperties.AutomationId="WorkItemsStateFilter" />
+            <ToggleButton x:Name="TypeFilterButton" DockPanel.Dock="Right" Margin="4,0,0,0"
+                          Style="{StaticResource WorkItemFilterToggle}"
+                          IsChecked="{Binding IsTypeFilterOpen, Mode=TwoWay}"
+                          ToolTip="種類で絞る（☑ で複数選べる。何も選ばなければ絞らない）"
+                          AutomationProperties.AutomationId="WorkItemsTypeFilter">
+                <TextBlock Text="{Binding TypeFilterLabel, StringFormat={}{0} ▾}" TextTrimming="CharacterEllipsis" />
+            </ToggleButton>
+            <Popup PlacementTarget="{Binding ElementName=TypeFilterButton}" Placement="Bottom"
+                   StaysOpen="False" AllowsTransparency="True"
+                   IsOpen="{Binding IsTypeFilterOpen, Mode=TwoWay}">
+                <Border Background="{DynamicResource Panel}" BorderBrush="{DynamicResource Border}"
+                        BorderThickness="1" Padding="6,4" Margin="0,2,0,0" MinWidth="130">
+                    <ScrollViewer MaxHeight="300" VerticalScrollBarVisibility="Auto">
+                        <ItemsControl ItemsSource="{Binding TypeOptions}"
+                                      ItemTemplate="{StaticResource WorkItemFilterOptionTemplate}" />
+                    </ScrollViewer>
+                </Border>
+            </Popup>
+            <ToggleButton x:Name="StateFilterButton" DockPanel.Dock="Right" Margin="4,0,0,0"
+                          Style="{StaticResource WorkItemFilterToggle}"
+                          IsChecked="{Binding IsStateFilterOpen, Mode=TwoWay}"
+                          ToolTip="状態で絞る（☑ で複数選べる。何も選ばなければ絞らない）"
+                          AutomationProperties.AutomationId="WorkItemsStateFilter">
+                <TextBlock Text="{Binding StateFilterLabel, StringFormat={}{0} ▾}" TextTrimming="CharacterEllipsis" />
+            </ToggleButton>
+            <Popup PlacementTarget="{Binding ElementName=StateFilterButton}" Placement="Bottom"
+                   StaysOpen="False" AllowsTransparency="True"
+                   IsOpen="{Binding IsStateFilterOpen, Mode=TwoWay}">
+                <Border Background="{DynamicResource Panel}" BorderBrush="{DynamicResource Border}"
+                        BorderThickness="1" Padding="6,4" Margin="0,2,0,0" MinWidth="130">
+                    <ScrollViewer MaxHeight="300" VerticalScrollBarVisibility="Auto">
+                        <ItemsControl ItemsSource="{Binding StateOptions}"
+                                      ItemTemplate="{StaticResource WorkItemFilterOptionTemplate}" />
+                    </ScrollViewer>
+                </Border>
+            </Popup>
             <Grid>
                 <TextBox x:Name="FilterBox" Text="{Binding FilterText, UpdateSourceTrigger=PropertyChanged}"
                          FontSize="{DynamicResource Fs12}" VerticalContentAlignment="Center" Padding="2,0,20,0"
@@ -114,7 +178,7 @@
                 <Button Style="{StaticResource IconButton}" Content="×" HorizontalAlignment="Right"
                         Width="20" Height="20" Padding="0" ToolTip="絞り込みを外す"
                         Command="{Binding ClearFilterCommand}"
-                        Visibility="{Binding FilterText, Converter={StaticResource NonEmptyToVis}}" />
+                        Visibility="{Binding HasAnyFilter, Converter={StaticResource BoolToVis}}" />
             </Grid>
         </DockPanel>
 
@@ -130,61 +194,70 @@
             <ItemsControl ItemsSource="{Binding Items}">
                 <ItemsControl.ItemTemplate>
                     <DataTemplate DataType="{x:Type vm:WorkItemListRowViewModel}">
-                        <Grid>
-                            <!-- 見出し（紐づかない PR） -->
-                            <TextBlock Text="{Binding Title}" Margin="6,8,6,2"
-                                       FontSize="{DynamicResource Fs11}" Foreground="{DynamicResource FgDim}"
-                                       Visibility="{Binding IsSection, Converter={StaticResource BoolToVis}}" />
-                            <!-- Work Item / PR。右クリックでコピー（TaskAzure と同じ項目）。
-                                 ContextMenu は行テンプレートの中に置く（Style の Setter に置くと Click が結線されない）。 -->
-                            <Button Style="{StaticResource WorkItemRowButton}" ToolTip="{Binding ToolTip}"
-                                    Opacity="{Binding Opacity}"
-                                    Visibility="{Binding CanOpen, Converter={StaticResource BoolToVis}}"
-                                    Command="{Binding DataContext.OpenCommand,
+                        <!-- 字下げ → ▸／▾ → 行。▸／▾ は子のある行だけ見せ、無い行も同じ幅を空けて題名の頭を揃える。 -->
+                        <DockPanel Margin="{Binding Indent}">
+                            <Button DockPanel.Dock="Left" Style="{StaticResource WorkItemChevronButton}"
+                                    Content="{Binding Chevron}" ToolTip="{Binding ChevronToolTip}"
+                                    Command="{Binding DataContext.ToggleCollapseCommand,
                                                       RelativeSource={RelativeSource AncestorType=UserControl}}"
                                     CommandParameter="{Binding}"
-                                    Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                    AutomationProperties.Name="{Binding Title}">
-                                <Button.ContextMenu>
-                                    <ContextMenu DataContext="{Binding PlacementTarget.Tag, RelativeSource={RelativeSource Self}}">
-                                        <MenuItem Header="ブラウザペインで開く"
-                                                  Command="{Binding OpenCommand}"
-                                                  CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
-                                        <MenuItem Header="既定のブラウザで開く"
-                                                  Command="{Binding OpenExternalCommand}"
-                                                  CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
-                                        <Separator />
-                                        <MenuItem Header="ID をコピー"
-                                                  Command="{Binding CopyIdCommand}"
-                                                  CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
-                                        <MenuItem Header="タイトルをコピー"
-                                                  Command="{Binding CopyTitleCommand}"
-                                                  CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
-                                        <MenuItem Header="URL をコピー"
-                                                  Command="{Binding CopyUrlCommand}"
-                                                  CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
-                                        <MenuItem Header="リンクをコピー（Markdown / HTML）"
-                                                  Command="{Binding CopyLinkCommand}"
-                                                  CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
-                                    </ContextMenu>
-                                </Button.ContextMenu>
-                                <DockPanel Margin="{Binding Indent}">
-                                    <!-- 種類は色だけで示す（Work Item は種類の色、PR は青）。 -->
-                                    <Border DockPanel.Dock="Left" Width="3" Margin="0,1,7,1" CornerRadius="1"
-                                            Background="{Binding TypeColor}" />
-                                    <TextBlock DockPanel.Dock="Left" Text="PR" Margin="0,0,5,0" VerticalAlignment="Center"
-                                               FontSize="{DynamicResource Fs10}" FontWeight="SemiBold"
-                                               Foreground="{Binding TypeColor}"
-                                               Visibility="{Binding IsPullRequest, Converter={StaticResource BoolToVis}}" />
-                                    <TextBlock DockPanel.Dock="Right" Text="{Binding Detail}" Margin="8,0,0,0"
-                                               MaxWidth="140" TextTrimming="CharacterEllipsis"
-                                               FontSize="{DynamicResource Fs11}" Foreground="{DynamicResource FgDim}"
-                                               VerticalAlignment="Center" />
-                                    <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis"
-                                               FontSize="{DynamicResource Fs12}" VerticalAlignment="Center" />
-                                </DockPanel>
-                            </Button>
-                        </Grid>
+                                    IsHitTestVisible="{Binding HasChildren}"
+                                    AutomationProperties.Name="{Binding ChevronToolTip}" />
+                            <Grid>
+                                <!-- 見出し（紐づかない PR） -->
+                                <TextBlock Text="{Binding Title}" Margin="6,8,6,2"
+                                           FontSize="{DynamicResource Fs11}" Foreground="{DynamicResource FgDim}"
+                                           Visibility="{Binding IsSection, Converter={StaticResource BoolToVis}}" />
+                                <!-- Work Item / PR。クリックでメニュー（開く・コピー）、ダブルクリックでブラウザペインに開く。
+                                     クリック1回で部屋の中の Browser が勝手に切り替わらないように、開くのは明示の操作だけ。
+                                     ContextMenu は行テンプレートの中に置く（Style の Setter に置くと Click が結線されない）。 -->
+                                <Button Style="{StaticResource WorkItemRowButton}" ToolTip="{Binding ToolTip}"
+                                        Opacity="{Binding Opacity}"
+                                        Visibility="{Binding CanOpen, Converter={StaticResource BoolToVis}}"
+                                        Click="OnRowClick"
+                                        Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                        AutomationProperties.Name="{Binding Title}">
+                                    <Button.ContextMenu>
+                                        <ContextMenu DataContext="{Binding PlacementTarget.Tag, RelativeSource={RelativeSource Self}}">
+                                            <MenuItem Header="ブラウザペインで開く"
+                                                      Command="{Binding OpenCommand}"
+                                                      CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                                            <MenuItem Header="既定のブラウザで開く"
+                                                      Command="{Binding OpenExternalCommand}"
+                                                      CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                                            <Separator />
+                                            <MenuItem Header="ID をコピー"
+                                                      Command="{Binding CopyIdCommand}"
+                                                      CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                                            <MenuItem Header="タイトルをコピー"
+                                                      Command="{Binding CopyTitleCommand}"
+                                                      CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                                            <MenuItem Header="URL をコピー"
+                                                      Command="{Binding CopyUrlCommand}"
+                                                      CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                                            <MenuItem Header="リンクをコピー（Markdown / HTML）"
+                                                      Command="{Binding CopyLinkCommand}"
+                                                      CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                                        </ContextMenu>
+                                    </Button.ContextMenu>
+                                    <DockPanel>
+                                        <!-- 種類は色だけで示す（Work Item は種類の色、PR は青）。 -->
+                                        <Border DockPanel.Dock="Left" Width="3" Margin="0,1,7,1" CornerRadius="1"
+                                                Background="{Binding TypeColor}" />
+                                        <TextBlock DockPanel.Dock="Left" Text="PR" Margin="0,0,5,0" VerticalAlignment="Center"
+                                                   FontSize="{DynamicResource Fs10}" FontWeight="SemiBold"
+                                                   Foreground="{Binding TypeColor}"
+                                                   Visibility="{Binding IsPullRequest, Converter={StaticResource BoolToVis}}" />
+                                        <TextBlock DockPanel.Dock="Right" Text="{Binding Detail}" Margin="8,0,0,0"
+                                                   MaxWidth="140" TextTrimming="CharacterEllipsis"
+                                                   FontSize="{DynamicResource Fs11}" Foreground="{DynamicResource FgDim}"
+                                                   VerticalAlignment="Center" />
+                                        <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis"
+                                                   FontSize="{DynamicResource Fs12}" VerticalAlignment="Center" />
+                                    </DockPanel>
+                                </Button>
+                            </Grid>
+                        </DockPanel>
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
             </ItemsControl>

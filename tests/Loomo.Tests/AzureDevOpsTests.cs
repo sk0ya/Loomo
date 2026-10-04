@@ -99,16 +99,50 @@ public sealed class AzureDevOpsTests
             [Item(1, type: "User Story") with { Title = "認証" }]);
         var entries = WorkItemList.Build(rows, [Pull(70, 3), Pull(71)]);
 
-        var visible = WorkItemList.Visible(entries, new WorkItemListFilter("ログイン", null, null));
+        var visible = WorkItemList.Visible(entries, new WorkItemListFilter("ログイン"));
         Assert.Equal(["W1", "W3", "P70"], Shown(entries, visible));
 
         // 状態で絞るとき、紐づかない PR（状態を持たない）は出さない。
-        visible = WorkItemList.Visible(entries, new WorkItemListFilter("", "Active", null));
+        visible = WorkItemList.Visible(entries, new WorkItemListFilter("", ["Active"]));
         Assert.Equal(["W1", "W3", "P70", "W4"], Shown(entries, visible));
 
         // 文字が PR に合えば、PR だけでも残る（見出しは道しるべ）。
-        visible = WorkItemList.Visible(entries, new WorkItemListFilter("pr 71", null, null));
+        visible = WorkItemList.Visible(entries, new WorkItemListFilter("pr 71"));
         Assert.Equal(["S", "P71"], Shown(entries, visible));
+    }
+
+    [Fact]
+    public void 絞り込み_状態は複数選べて_どれかに合えば残る()
+    {
+        var rows = WorkItemTree.Arrange(
+            [Item(3) with { State = "Active" }, Item(4) with { State = "New" }, Item(5) with { State = "Resolved" }], []);
+        var entries = WorkItemList.Build(rows, []);
+
+        var visible = WorkItemList.Visible(entries, new WorkItemListFilter("", ["Active", "New"]));
+        Assert.Equal(["W3", "W4"], Shown(entries, visible));
+
+        // 空集合は「絞らない」。
+        visible = WorkItemList.Visible(entries, new WorkItemListFilter("", [], []));
+        Assert.Equal(["W3", "W4", "W5"], Shown(entries, visible));
+    }
+
+    [Fact]
+    public void 折りたたみ_畳んだ行は残り子孫だけ隠れる()
+    {
+        var rows = WorkItemTree.Arrange([Item(3, parent: 1), Item(5, type: "Bug")], [Item(1, type: "User Story")]);
+        var entries = WorkItemList.Build(rows, [Pull(70, 3), Pull(71)]);
+        var all = WorkItemList.Visible(entries, new WorkItemListFilter(""));
+
+        var hasChildren = WorkItemList.HasVisibleChildren(entries, all);
+        Assert.Equal(["W1", "W3", "S"], Shown(entries, hasChildren));
+
+        // Story 1 を畳むと、孫の PR 70 まで隠れる。
+        var story = WorkItemList.CollapseKey(entries[0]);
+        var shown = WorkItemList.Collapse(entries, all, i => WorkItemList.CollapseKey(entries[i]) == story);
+        Assert.Equal(["W1", "W5", "S", "P71"], Shown(entries, shown));
+
+        // PR は子を持てないので鍵が無い。
+        Assert.Null(WorkItemList.CollapseKey(entries[2]));
     }
 
     private static string[] Shown(IReadOnlyList<WorkItemListEntry> entries, bool[] visible)
