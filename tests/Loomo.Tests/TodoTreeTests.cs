@@ -78,6 +78,97 @@ public sealed class TodoTreeTests
         Assert.Equal(TodoTreeViewModel.ResultLimit, Assert.Single(vm.Groups).Entries.Count);
         Assert.Contains("先頭", vm.Status);
     }
+    [Theory]
+    [InlineData("// TODO: 入力を確認する", "入力を確認する")]
+    [InlineData("<!-- TODO: 文言を修正 -->", "文言を修正")]
+    [InlineData("/* TODO: 手直し */", "手直し")]
+    [InlineData("// TODO: first FIXME: second", "first")]
+    public void 表示の本文だけを整えて原文と列を維持する(string line, string expected)
+    {
+        var entry = TodoTreeViewModel.Parse([new("a", "a", 1, 1, line)])[0];
+        Assert.Equal(expected, entry.Body);
+        Assert.Equal(line, entry.Hit.LineText);
+        Assert.Equal(line.IndexOf("TODO", StringComparison.Ordinal) + 1, entry.Hit.Column);
+    }
+    [Fact]
+    public async Task 更新しても選択と折りたたみを維持しフィルターを戻すと展開状態も戻る()
+    {
+        var search = new StubSearch { Handler = _ => Task.FromResult<IReadOnlyList<ContentSearchHit>>([
+            new("a.cs", "a.cs", 1, 1, "TODO: one"), new("b.cs", "b.cs", 1, 1, "NOTE: two")]) };
+        using var vm = new TodoTreeViewModel(search, new FakeWorkspaceService("root"));
+        await vm.RefreshCommand.ExecuteAsync(null);
+        var group = vm.Groups[0];
+        var entry = group.Entries[0];
+        group.IsExpanded = false;
+        vm.SetSelection(entry);
+        await vm.RefreshCommand.ExecuteAsync(null);
+        Assert.Same(group, vm.Groups[0]);
+        Assert.Same(entry, vm.SelectedEntry);
+        Assert.False(group.IsExpanded);
+        vm.Filter = "b.cs";
+        Assert.Null(vm.SelectedEntry);
+        vm.Filter = "";
+        Assert.False(vm.Groups[0].IsExpanded);
+    }
+    [Fact]
+    public async Task タグを複数選んで絞り込み前後移動は表示中だけを巡回する()
+    {
+        var search = new StubSearch { Handler = _ => Task.FromResult<IReadOnlyList<ContentSearchHit>>([
+            new("a", "a", 1, 1, "TODO: one"), new("a", "a", 2, 1, "FIXME: two"), new("b", "b", 1, 1, "NOTE: three")]) };
+        using var vm = new TodoTreeViewModel(search, new FakeWorkspaceService("root"));
+        await vm.RefreshCommand.ExecuteAsync(null);
+        vm.TagFilters.Single(t => t.Tag == "FIXME").IsEnabled = false;
+        Assert.Equal(2, vm.VisibleCount);
+        Assert.Equal(1, vm.TagFilters.Single(t => t.Tag == "FIXME").Count);
+        var previews = new List<ContentSearchHit>();
+        var opened = 0;
+        vm.PreviewRequested += (_, hit) => previews.Add(hit);
+        vm.OpenRequested += (_, _) => opened++;
+        vm.CollapseAllCommand.Execute(null);
+        vm.NextCommand.Execute(null);
+        Assert.Equal("TODO", vm.SelectedEntry!.Tag);
+        Assert.True(vm.Groups[0].IsExpanded);
+        vm.NextCommand.Execute(null);
+        Assert.Equal("NOTE", vm.SelectedEntry!.Tag);
+        vm.NextCommand.Execute(null);
+        Assert.Equal("TODO", vm.SelectedEntry!.Tag);
+        vm.PreviousCommand.Execute(null);
+        Assert.Equal("NOTE", vm.SelectedEntry!.Tag);
+        Assert.Equal(4, previews.Count);
+        Assert.Equal(0, opened);
+        vm.OpenCommand.Execute(vm.SelectedEntry);
+        Assert.Equal(1, opened);
+        vm.Filter = "no such text";
+        Assert.False(vm.NextCommand.CanExecute(null));
+        Assert.True(vm.IsEmpty);
+        vm.ClearFiltersCommand.Execute(null);
+        Assert.Equal(3, vm.VisibleCount);
+    }
+    [Fact]
+    public void 表示条件を保存して次のインスタンスへ復元する()
+    {
+        var path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"todo-settings-{Guid.NewGuid():N}.json");
+        try
+        {
+            var settings = new LoomoSettings();
+            var store = new sk0ya.Loomo.Services.Settings.SettingsStore(path);
+            using (var vm = new TodoTreeViewModel(new StubSearch(), new FakeWorkspaceService(), settings, store))
+            {
+                vm.GroupByTag = true;
+                vm.ExcludeGlob = "**/generated/**";
+                vm.TagFilters.Single(t => t.Tag == "NOTE").IsEnabled = false;
+            }
+            var loaded = new LoomoSettings();
+            store.Load(loaded);
+            using var restored = new TodoTreeViewModel(new StubSearch(), new FakeWorkspaceService(), loaded);
+            Assert.True(restored.GroupByTag);
+            Assert.Equal("**/generated/**", restored.ExcludeGlob);
+            Assert.False(restored.TagFilters.Single(t => t.Tag == "NOTE").IsEnabled);
+            Assert.Equal("", restored.Filter);
+        }
+        finally { System.IO.File.Delete(path); }
+    }
+
     private sealed class StubSearch : IWorkspaceSearchService
     {
         public Func<CancellationToken, Task<IReadOnlyList<ContentSearchHit>>> Handler { get; set; } = null!;

@@ -3,63 +3,165 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:vm="clr-namespace:sk0ya.Loomo.App.ViewModels"
     Background="{DynamicResource BgAlt}" Foreground="{DynamicResource Fg}"
-    FontSize="{DynamicResource Fs12}">
+    FontSize="{DynamicResource Fs12}" PreviewKeyDown="OnPanelKeyDown">
     <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="TodoVisibility" />
+        <Style x:Key="TodoTagText" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource SymEnum}" />
+            <Setter Property="FontSize" Value="{DynamicResource Fs10}" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding Tag}" Value="FIXME"><Setter Property="Foreground" Value="{DynamicResource Error}" /></DataTrigger>
+                <DataTrigger Binding="{Binding Tag}" Value="HACK"><Setter Property="Foreground" Value="{DynamicResource SymMethod}" /></DataTrigger>
+                <DataTrigger Binding="{Binding Tag}" Value="NOTE"><Setter Property="Foreground" Value="{DynamicResource SymProperty}" /></DataTrigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="TodoTagToggle" TargetType="ToggleButton">
+            <Setter Property="Margin" Value="0,0,3,0" />
+            <Setter Property="Padding" Value="3,3" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border x:Name="Chip" Padding="{TemplateBinding Padding}" CornerRadius="3"
+                                BorderThickness="1" BorderBrush="{DynamicResource Border}" Background="Transparent" Opacity="0.45">
+                            <ContentPresenter />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Chip" Property="Background" Value="{DynamicResource Bg}" />
+                                <Setter TargetName="Chip" Property="Opacity" Value="1" />
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Chip" Property="BorderBrush" Value="{DynamicResource FgDim}" /></Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Chip" Property="BorderBrush" Value="{DynamicResource Accent}" /></Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
         <HierarchicalDataTemplate DataType="{x:Type vm:TodoGroup}" ItemsSource="{Binding Entries}">
-            <TextBlock Text="{Binding Label}" ToolTip="{Binding Name}" TextTrimming="CharacterEllipsis" />
+            <Grid Background="Transparent" ToolTip="{Binding Name}" MouseLeftButtonDown="OnGroupClick" Margin="0,3">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                <TextBlock TextTrimming="CharacterEllipsis" VerticalAlignment="Center">
+                    <Run Text="{Binding Title, Mode=OneWay}" FontWeight="SemiBold" />
+                    <Run Text="  " /><Run Text="{Binding Directory, Mode=OneWay}" Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs10}" />
+                </TextBlock>
+                <TextBlock Grid.Column="1" Text="{Binding Count}" Foreground="{DynamicResource FgDim}"
+                           FontSize="{DynamicResource Fs11}" Margin="8,0,6,0" VerticalAlignment="Center" />
+            </Grid>
         </HierarchicalDataTemplate>
         <DataTemplate DataType="{x:Type vm:TodoEntry}">
-            <StackPanel ToolTip="{Binding ToolTip}">
-                <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis" />
-                <TextBlock Text="{Binding Hit.RelativePath}" Foreground="{DynamicResource FgDim}"
-                           FontSize="{DynamicResource Fs11}" TextTrimming="CharacterEllipsis">
-                    <TextBlock.Style>
-                        <Style TargetType="TextBlock">
-                            <Setter Property="Visibility" Value="Collapsed" />
-                            <Style.Triggers>
-                                <DataTrigger Binding="{Binding DataContext.GroupByTag, RelativeSource={RelativeSource AncestorType=UserControl}}" Value="True">
-                                    <Setter Property="Visibility" Value="Visible" />
-                                </DataTrigger>
-                            </Style.Triggers>
-                        </Style>
-                    </TextBlock.Style>
-                </TextBlock>
+            <StackPanel ToolTip="{Binding ToolTip}" Margin="0,3" Background="Transparent">
+                <Grid>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                    <TextBlock Text="{Binding Tag}" Style="{StaticResource TodoTagText}" MinWidth="38" Margin="0,0,5,0" VerticalAlignment="Center" />
+                    <TextBlock Grid.Column="1" Text="{Binding Body}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                    <TextBlock Grid.Column="2" Text="{Binding Hit.Line}" Foreground="{DynamicResource FgDim}"
+                               FontSize="{DynamicResource Fs10}" Margin="10,0,6,0" VerticalAlignment="Center" />
+                </Grid>
+                <TextBlock Text="{Binding Hit.RelativePath}" Foreground="{DynamicResource FgDim}" Margin="43,2,0,0"
+                           FontSize="{DynamicResource Fs10}" TextTrimming="CharacterEllipsis"
+                           Visibility="{Binding DataContext.GroupByTag, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource TodoVisibility}}" />
             </StackPanel>
         </DataTemplate>
     </UserControl.Resources>
     <DockPanel>
-        <Border DockPanel.Dock="Top" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1" Padding="10,5">
+        <Border DockPanel.Dock="Top" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1" Padding="10,3,4,3">
             <DockPanel>
-                <Button DockPanel.Dock="Right" Content="↻" Style="{StaticResource PaneHeaderGhostButton}" Command="{Binding RefreshCommand}" ToolTip="再検索"
-                        AutomationProperties.Name="TODO を再検索" Padding="5,0" />
-                <TextBlock Text="TODO TREE" FontSize="{DynamicResource Fs11}" Foreground="{DynamicResource FgDim}" VerticalAlignment="Center" />
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                    <Button x:Name="FilterButton" Content="⌕" Style="{StaticResource PaneHeaderGhostButton}" Click="OnToggleFilter"
+                            ToolTip="絞り込み (Ctrl+F)" AutomationProperties.Name="TODO の絞り込みを表示" />
+                    <Button Content="↻" Style="{StaticResource PaneHeaderGhostButton}" Command="{Binding RefreshCommand}"
+                            ToolTip="再検索 (F5)" AutomationProperties.Name="TODO を再検索" />
+                    <Button Content="⊟" Style="{StaticResource PaneHeaderGhostButton}" Command="{Binding CollapseAllCommand}"
+                            ToolTip="すべて折りたたむ" AutomationProperties.Name="TODO をすべて折りたたむ" />
+                    <Button Content="⋯" Style="{StaticResource PaneHeaderGhostButton}" Click="OnMoreClick"
+                            ToolTip="表示と操作" AutomationProperties.Name="TODO の表示と操作" />
+                </StackPanel>
+                <TextBlock VerticalAlignment="Center" FontSize="{DynamicResource Fs11}" TextTrimming="CharacterEllipsis">
+                    <Run Text="TODO" FontWeight="SemiBold" /><Run Text="  " /><Run Text="{Binding CountLabel, Mode=OneWay}" Foreground="{DynamicResource FgDim}" />
+                </TextBlock>
             </DockPanel>
         </Border>
-        <StackPanel DockPanel.Dock="Top" Margin="8,5">
+        <DockPanel DockPanel.Dock="Top" Margin="8,5,6,0"
+                   Visibility="{Binding IsFilterVisible, Converter={StaticResource TodoVisibility}}">
+            <Button DockPanel.Dock="Right" Content="×" Style="{StaticResource PaneHeaderGhostButton}" Click="OnCloseFilter"
+                    ToolTip="絞り込みを解除して閉じる (Esc)" AutomationProperties.Name="TODO の絞り込みを閉じる" />
+            <Grid>
+                <TextBox x:Name="FilterBox" Text="{Binding Filter, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="TODO の絞り込み" />
+                <TextBlock Text="本文・タグ・ファイル名で絞り込み" Foreground="{DynamicResource FgDim}"
+                           IsHitTestVisible="False" Margin="7,0" VerticalAlignment="Center" FontSize="{DynamicResource Fs11}">
+                    <TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Visibility" Value="Collapsed" />
+                        <Style.Triggers><DataTrigger Binding="{Binding Filter}" Value=""><Setter Property="Visibility" Value="Visible" /></DataTrigger></Style.Triggers>
+                    </Style></TextBlock.Style>
+                </TextBlock>
+            </Grid>
+        </DockPanel>
+        <ItemsControl DockPanel.Dock="Top" ItemsSource="{Binding TagFilters}" Margin="8,6,4,5">
+            <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate><DataTemplate>
+                <ToggleButton IsChecked="{Binding IsEnabled, Mode=TwoWay}" Style="{StaticResource TodoTagToggle}"
+                              ToolTip="クリックでこのタグを表示／非表示" AutomationProperties.Name="{Binding Tag}">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="{Binding Tag}" Style="{StaticResource TodoTagText}" />
+                        <TextBlock Text="{Binding Count}" Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs10}" Margin="3,0,0,0" />
+                    </StackPanel>
+                </ToggleButton>
+            </DataTemplate></ItemsControl.ItemTemplate>
+        </ItemsControl>
+        <Border DockPanel.Dock="Top" Padding="8,5" Background="{DynamicResource Bg}"
+                Visibility="{Binding IsExclusionVisible, Converter={StaticResource TodoVisibility}}">
+            <StackPanel>
+                <DockPanel Margin="0,0,0,3">
+                    <Button DockPanel.Dock="Right" Content="×" Style="{StaticResource PaneHeaderGhostButton}" Click="OnCloseExclusion" ToolTip="除外設定を閉じる" />
+                    <TextBlock Text="除外するパス" Foreground="{DynamicResource FgDim}" VerticalAlignment="Center" />
+                </DockPanel>
+                <DockPanel>
+                    <Button DockPanel.Dock="Right" Content="適用" Style="{StaticResource SecondaryButton}" Click="OnApplyExclusion" Margin="5,0,0,0" Padding="6,2" />
+                    <TextBox x:Name="ExcludeBox" Text="{Binding ExcludeGlob, UpdateSourceTrigger=Explicit}" AutomationProperties.Name="TODO 検索の除外 glob" />
+                </DockPanel>
+                <TextBlock Text="例: **/generated/**　空欄で除外を解除" Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs10}" Margin="0,4,0,0" />
+            </StackPanel>
+        </Border>
+        <Border DockPanel.Dock="Bottom" BorderBrush="{DynamicResource Border}" BorderThickness="0,1,0,0" Padding="8,1,4,1">
             <DockPanel>
-            <TextBlock Text="絞込" Foreground="{DynamicResource FgDim}" VerticalAlignment="Center" Margin="0,0,6,0" />
-            <TextBox Text="{Binding Filter, UpdateSourceTrigger=PropertyChanged}" ToolTip="本文・タグ・ファイル名で絞り込み"
-                     AutomationProperties.Name="TODO の絞り込み" />
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                    <Button Content="↑" Style="{StaticResource PaneHeaderGhostButton}" Command="{Binding PreviousCommand}" ToolTip="前の TODO (Shift+F8)" AutomationProperties.Name="前の TODO" />
+                    <Button Content="↓" Style="{StaticResource PaneHeaderGhostButton}" Command="{Binding NextCommand}" ToolTip="次の TODO (F8)" AutomationProperties.Name="次の TODO" />
+                </StackPanel>
+                <TextBlock Text="{Binding Status}" ToolTip="{Binding Status}" Foreground="{DynamicResource FgDim}"
+                           FontSize="{DynamicResource Fs10}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
             </DockPanel>
-            <DockPanel Margin="0,5,0,0">
-                <CheckBox Content="タグ別" IsChecked="{Binding GroupByTag}" VerticalAlignment="Center" Margin="0,0,8,0" />
-                <TextBlock Text="除外" Foreground="{DynamicResource FgDim}" VerticalAlignment="Center" Margin="0,0,6,0" />
-                <TextBox Text="{Binding ExcludeGlob, UpdateSourceTrigger=PropertyChanged}" ToolTip="除外 glob（例: **/generated/**）。空欄でも検索基盤の標準除外が適用されます"
-                         AutomationProperties.Name="TODO 検索の除外 glob" />
-            </DockPanel>
-        </StackPanel>
-        <TextBlock DockPanel.Dock="Bottom" Text="{Binding Status}" Foreground="{DynamicResource FgDim}"
-                   FontSize="{DynamicResource Fs11}" TextWrapping="Wrap" Margin="8,4" />
-        <TreeView x:Name="TodoTree" ItemsSource="{Binding Groups}" BorderThickness="0"
-                  Background="{DynamicResource BgAlt}" Foreground="{DynamicResource Fg}"
-                  ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                  VirtualizingStackPanel.IsVirtualizing="True" VirtualizingStackPanel.VirtualizationMode="Recycling"
-                  SelectedItemChanged="OnSelectedItemChanged" PreviewKeyDown="OnTreeKeyDown">
-            <TreeView.ItemContainerStyle>
-                <Style TargetType="TreeViewItem" BasedOn="{StaticResource BranchTreeItem}">
-                    <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
-                </Style>
-            </TreeView.ItemContainerStyle>
-        </TreeView>
+        </Border>
+        <Grid>
+            <TreeView x:Name="TodoTree" ItemsSource="{Binding Groups}" BorderThickness="0"
+                      Background="{DynamicResource BgAlt}" Foreground="{DynamicResource Fg}"
+                      ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                      VirtualizingStackPanel.IsVirtualizing="True" VirtualizingStackPanel.VirtualizationMode="Recycling"
+                      SelectedItemChanged="OnSelectedItemChanged" PreviewMouseLeftButtonDown="OnTreeMouseDown"
+                      ContextMenuOpening="OnTreeContextMenuOpening" PreviewMouseRightButtonDown="OnTreeRightClick">
+                <TreeView.ContextMenu><ContextMenu /></TreeView.ContextMenu>
+                <TreeView.ItemContainerStyle>
+                    <Style TargetType="TreeViewItem" BasedOn="{StaticResource BranchTreeItem}">
+                        <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
+                        <Setter Property="IsSelected" Value="{Binding IsSelected, Mode=TwoWay}" />
+
+                    </Style>
+                </TreeView.ItemContainerStyle>
+            </TreeView>
+            <StackPanel Margin="16,10" VerticalAlignment="Center" IsHitTestVisible="True"
+                        Visibility="{Binding IsEmpty, Converter={StaticResource TodoVisibility}}">
+                <TextBlock Text="{Binding EmptyTitle}" TextWrapping="Wrap" FontWeight="SemiBold" />
+                <TextBlock Text="{Binding EmptyDescription}" TextWrapping="Wrap" Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs11}" Margin="0,5,0,8" />
+                <Button Content="条件を解除" Command="{Binding ResetConditionsCommand}" HorizontalAlignment="Left" Padding="8,3">
+                    <Button.Style><Style TargetType="Button" BasedOn="{StaticResource SecondaryButton}">
+                        <Setter Property="Visibility" Value="Collapsed" /><Style.Triggers>
+                            <DataTrigger Binding="{Binding IsFiltered}" Value="True"><Setter Property="Visibility" Value="Visible" /></DataTrigger>
+                            <DataTrigger Binding="{Binding HasExclusion}" Value="True"><Setter Property="Visibility" Value="Visible" /></DataTrigger>
+                        </Style.Triggers>
+                    </Style></Button.Style>
+                </Button>
+            </StackPanel>
+        </Grid>
     </DockPanel>
 </UserControl>

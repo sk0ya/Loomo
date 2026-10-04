@@ -136,6 +136,7 @@ public sealed class SettingsStore
         public PersistedInlineCompletion? InlineCompletion { get; set; }
         public PersistedActivityBar? ActivityBar { get; set; }
         public PersistedTabsPanel? TabsPanel { get; set; }
+        public PersistedTodoTree? TodoTree { get; set; }
         public PersistedExplorer? Explorer { get; set; }
         public PersistedAzureDevOps? AzureDevOps { get; set; }
 
@@ -163,6 +164,7 @@ public sealed class SettingsStore
             InlineCompletion = PersistedInlineCompletion.From(s.InlineCompletion),
             ActivityBar = PersistedActivityBar.From(s.ActivityBar),
             TabsPanel = PersistedTabsPanel.From(s.TabsPanel),
+            TodoTree = PersistedTodoTree.From(s.TodoTree),
             Explorer = PersistedExplorer.From(s.Explorer),
             AzureDevOps = PersistedAzureDevOps.From(s.AzureDevOps),
         };
@@ -191,6 +193,7 @@ public sealed class SettingsStore
             Keybindings?.ApplyTo(s.Keybindings); // 旧設定（null）は既定割り当て（上書き無し）を維持
             Lsp?.ApplyTo(s.Lsp);                 // 旧設定（null）は空（=促しを抑止しない）を維持
             ActivityBar?.ApplyTo(s.ActivityBar); // 旧設定（null）は空＝既定配置を維持
+            TodoTree?.ApplyTo(s.TodoTree);
             TabsPanel?.ApplyTo(s.TabsPanel);     // 旧設定（null）は3種とも表示を維持
             Explorer?.ApplyTo(s.Explorer);       // 旧設定（null）は既定（まとめ表示 ON・既定ルール）を維持
             AzureDevOps?.ApplyTo(s.AzureDevOps); // 旧設定（null）は未設定のまま
@@ -200,6 +203,25 @@ public sealed class SettingsStore
     // ===== ActivityBar の配置・選択・開閉状態と区画の寸法。平文で保持。 =====
 
     // ===== TABS（タブ一覧）に出す種別。平文で保持。 =====
+
+    private sealed class PersistedTodoTree
+    {
+        public bool GroupByTag { get; set; }
+        public string? ExcludeGlob { get; set; }
+        public List<string>? HiddenTags { get; set; }
+        public static PersistedTodoTree From(TodoTreeSettings settings) => new()
+        {
+            GroupByTag = settings.GroupByTag,
+            ExcludeGlob = settings.ExcludeGlob,
+            HiddenTags = settings.HiddenTags.ToList(),
+        };
+        public void ApplyTo(TodoTreeSettings settings)
+        {
+            settings.GroupByTag = GroupByTag;
+            settings.ExcludeGlob = ExcludeGlob ?? "";
+            settings.HiddenTags = HiddenTags?.Where(t => t is "TODO" or "FIXME" or "HACK" or "NOTE").Distinct().ToList() ?? new();
+        }
+    }
 
     private sealed class PersistedTabsPanel
     {

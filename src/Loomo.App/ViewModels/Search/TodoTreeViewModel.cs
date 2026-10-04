@@ -4,23 +4,7 @@ using CommunityToolkit.Mvvm.Input;
 
 namespace sk0ya.Loomo.App.ViewModels;
 
-public sealed record TodoEntry(string Tag, ContentSearchHit Hit)
-{
-    public bool IsExpanded { get; set; }
-    public string Label => $"{Hit.Line}: {Hit.LineText.Trim()}";
-    public string ToolTip => $"{Hit.FullPath}:{Hit.Line}";
-}
-
-public sealed partial class TodoGroup : ObservableObject
-{
-    public TodoGroup(string name, IReadOnlyList<TodoEntry> entries) { Name = name; Entries = entries; }
-    public string Name { get; }
-    public IReadOnlyList<TodoEntry> Entries { get; }
-    public string Label => $"{Name} ({Entries.Count})";
-    [ObservableProperty] private bool _isExpanded = true;
-}
-
-/// <summary>既存の全文検索を再利用する TODO 一覧。検索世代を照合し、古い部屋の結果を採用しない。</summary>
+/// <summary>TODO の検索・表示条件・選択。自動更新では同じ行とグループを再利用する。</summary>
 public sealed partial class TodoTreeViewModel : ObservableObject, IDisposable
 {
     public const string TagPattern = @"\b(TODO|FIXME|HACK|NOTE)\b";
@@ -28,29 +12,80 @@ public sealed partial class TodoTreeViewModel : ObservableObject, IDisposable
     private static readonly Regex Tags = new(TagPattern, RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
     private readonly IWorkspaceSearchService _search;
     private readonly IWorkspaceService _workspace;
+    private readonly LoomoSettings? _settings;
+    private readonly SettingsStore? _settingsStore;
+    private readonly Dictionary<string, bool> _expansion = new();
     private CancellationTokenSource? _searchCancellation;
     private IReadOnlyList<TodoEntry> _entries = [];
+    private IReadOnlyList<TodoEntry> _visibleEntries = [];
     private bool _truncated;
     private bool _disposed;
-    public TodoTreeViewModel(IWorkspaceSearchService search, IWorkspaceService workspace)
-    { _search = search; _workspace = workspace; }
+    private string? _error;
+    private TodoEntry? _selectedEntry;
+
+    public TodoTreeViewModel(IWorkspaceSearchService search, IWorkspaceService workspace,
+        LoomoSettings? settings = null, SettingsStore? settingsStore = null)
+    {
+        _search = search;
+        _workspace = workspace;
+        _settings = settings;
+        _settingsStore = settingsStore;
+        _groupByTag = settings?.TodoTree.GroupByTag ?? false;
+        _excludeGlob = settings?.TodoTree.ExcludeGlob ?? "";
+        foreach (var tag in TagFilters)
+        {
+            tag.IsEnabled = settings?.TodoTree.HiddenTags.Contains(tag.Tag) != true;
+            tag.PropertyChanged += (_, e) => {
+                if (e.PropertyName != nameof(TodoTagFilter.IsEnabled)) return;
+                RebuildGroups();
+                Persist();
+            };
+        }
+    }
     public ObservableCollection<TodoGroup> Groups { get; } = [];
+    public IReadOnlyList<TodoTagFilter> TagFilters { get; } =
+        [new("TODO"), new("FIXME"), new("HACK"), new("NOTE")];
     public event EventHandler<ContentSearchHit>? OpenRequested;
+    public event EventHandler<ContentSearchHit>? PreviewRequested;
+    public event EventHandler<TodoEntry>? SelectionRequested;
+    public event EventHandler? Invalidated;
+    public IWorkspaceService Workspace => _workspace;
+    public TodoEntry? SelectedEntry => _selectedEntry;
+    public bool IsUpdatingResults { get; private set; }
+    public int VisibleCount => _visibleEntries.Count;
+    public bool HasEntries => VisibleCount > 0;
+    public bool IsEmpty => !IsBusy && !HasEntries;
+    public bool IsFiltered => Filter.Length > 0 || TagFilters.Any(t => !t.IsEnabled);
+    public bool HasExclusion => !string.IsNullOrWhiteSpace(ExcludeGlob);
+    public string CountLabel => IsFiltered ? $"{VisibleCount} / {_entries.Count}" : $"{VisibleCount}";
+    public string PositionLabel => _selectedEntry is { } entry && _visibleEntries.ToList().IndexOf(entry) is var i && i >= 0
+        ? $"{i + 1} / {VisibleCount}" : $"{VisibleCount} 件";
+    public string EmptyTitle => _error is not null ? "検索できませんでした"
+        : _workspace.Folders.Count == 0 ? "フォルダーを開いてください"
+        : IsFiltered || HasExclusion ? "条件に一致する TODO がありません" : "TODO は見つかりませんでした";
+    public string EmptyDescription => _error ?? (_workspace.Folders.Count == 0
+        ? "開いたフォルダーの TODO をここに表示します。"
+        : IsFiltered || HasExclusion ? "絞り込みや除外条件を解除して確認できます。"
+        : "TODO・FIXME・HACK・NOTE を含む保存済みファイルを検索します。");
+
     [ObservableProperty] private string _filter = "";
     [ObservableProperty] private string _excludeGlob = "";
     [ObservableProperty] private bool _groupByTag;
     [ObservableProperty] private bool _isBusy;
-    [ObservableProperty] private string _status = "TODO / FIXME / HACK / NOTE を検索します";
-    public IWorkspaceService Workspace => _workspace;
+    [ObservableProperty] private bool _isFilterVisible;
+    [ObservableProperty] private bool _isExclusionVisible;
+    [ObservableProperty] private string _status = "保存済みファイルを検索します";
     partial void OnFilterChanged(string value) => RebuildGroups();
-    partial void OnGroupByTagChanged(bool value) => RebuildGroups();
-    partial void OnExcludeGlobChanged(string value) => Invalidate();
-    public event EventHandler? Invalidated;
+    partial void OnGroupByTagChanged(bool value) { RebuildGroups(); Persist(); }
+    partial void OnExcludeGlobChanged(string value) { Invalidate(); Persist(); }
+    partial void OnIsBusyChanged(bool value) => OnPropertyChanged(nameof(IsEmpty));
+
     public void Invalidate()
     {
         CancelSearch();
         _entries = [];
         _truncated = false;
+        _error = null;
         RebuildGroups();
         Invalidated?.Invoke(this, EventArgs.Empty);
     }
@@ -64,6 +99,7 @@ public sealed partial class TodoTreeViewModel : ObservableObject, IDisposable
         using var cancellation = new CancellationTokenSource();
         _searchCancellation = cancellation;
         IsBusy = true;
+        _error = null;
         Status = "検索中…";
         try
         {
@@ -73,13 +109,16 @@ public sealed partial class TodoTreeViewModel : ObservableObject, IDisposable
             var hits = await Task.Run(() => _search.GrepAsync(TagPattern, options, cancellation.Token), cancellation.Token);
             if (cancellation.IsCancellationRequested || _disposed) return;
             _truncated = hits.Count > ResultLimit;
-            _entries = Parse(hits.Take(ResultLimit));
+            var old = _entries.ToDictionary(e => e.Key);
+            _entries = Parse(hits.Take(ResultLimit)).Select(e => old.TryGetValue(e.Key, out var previous)
+                && previous.Hit == e.Hit ? previous : e).ToList();
             RebuildGroups();
         }
         catch (OperationCanceledException) { }
         catch (Exception ex)
         {
-            if (!cancellation.IsCancellationRequested) Status = $"検索できませんでした: {ex.Message}";
+            if (!cancellation.IsCancellationRequested)
+            { _error = ex.Message; Status = $"検索できませんでした: {ex.Message}"; NotifyState(); }
         }
         finally
         {
@@ -91,27 +130,114 @@ public sealed partial class TodoTreeViewModel : ObservableObject, IDisposable
     public static IReadOnlyList<TodoEntry> Parse(IEnumerable<ContentSearchHit> hits)
         => hits.SelectMany(hit => Tags.Matches(hit.LineText).Cast<Match>()
             .Select(match => new TodoEntry(match.Value, hit with { Column = match.Index + 1 })))
-            .DistinctBy(entry => (entry.Hit.FullPath, entry.Hit.Line, entry.Hit.Column))
-            .ToList();
+            .DistinctBy(entry => entry.Key).ToList();
 
     private void RebuildGroups()
     {
-        var expanded = Groups.ToDictionary(g => g.Name, g => g.IsExpanded);
-        var filter = Filter.Trim();
-        var entries = _entries.Where(e => filter.Length == 0 || e.Hit.RelativePath.Contains(filter, StringComparison.OrdinalIgnoreCase)
-            || e.Hit.LineText.Contains(filter, StringComparison.OrdinalIgnoreCase)).ToList();
-        Groups.Clear();
-        foreach (var group in entries.GroupBy(e => GroupByTag ? e.Tag : e.Hit.RelativePath)
-            .OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase))
-            Groups.Add(new TodoGroup(group.Key, group.OrderBy(e => e.Hit.RelativePath, StringComparer.OrdinalIgnoreCase)
-                .ThenBy(e => e.Hit.Line).ThenBy(e => e.Hit.Column).ToList())
-                { IsExpanded = !expanded.TryGetValue(group.Key, out var value) || value });
-        Status = _workspace.Folders.Count == 0 ? "フォルダーを開くと TODO を表示します"
-            : entries.Count == 0 ? "該当する TODO はありません"
-            : $"{entries.Count} 件 / {entries.Select(e => e.Hit.FullPath).Distinct().Count()} ファイル";
-        if (_truncated) Status += $"（先頭 {ResultLimit} 行まで。除外条件で絞り込めます）";
+        IsUpdatingResults = true;
+        try
+        {
+            foreach (var group in Groups) _expansion[group.Key] = group.IsExpanded;
+            var filter = Filter.Trim();
+            var matching = _entries.Where(e => filter.Length == 0 || e.Hit.RelativePath.Contains(filter, StringComparison.OrdinalIgnoreCase)
+                || e.Hit.LineText.Contains(filter, StringComparison.OrdinalIgnoreCase)).ToList();
+            foreach (var tag in TagFilters) tag.Count = matching.Count(e => e.Tag == tag.Tag);
+            var enabled = TagFilters.Where(t => t.IsEnabled).Select(t => t.Tag).ToHashSet();
+            var entries = matching.Where(e => enabled.Contains(e.Tag)).ToList();
+            var existing = Groups.ToDictionary(g => g.Key);
+            var groups = new List<TodoGroup>();
+            foreach (var grouping in entries.GroupBy(e => GroupByTag ? e.Tag : e.Hit.RelativePath)
+                .OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase))
+            {
+                var sorted = grouping.OrderBy(e => e.Hit.RelativePath, StringComparer.OrdinalIgnoreCase)
+                    .ThenBy(e => e.Hit.Line).ThenBy(e => e.Hit.Column).ToList();
+                var group = new TodoGroup(grouping.Key, [], GroupByTag);
+                if (existing.TryGetValue(group.Key, out var previous)) group = previous;
+                group.IsExpanded = !_expansion.TryGetValue(group.Key, out var expanded) || expanded;
+                Reconcile(group.Entries, sorted);
+                group.NotifyCount();
+                groups.Add(group);
+            }
+            Reconcile(Groups, groups);
+            _visibleEntries = groups.SelectMany(g => g.Entries).ToList();
+            // フィルターや更新で消えた行は、別の行を勝手に開かず選択だけを解除する。
+            SetSelection(_visibleEntries.FirstOrDefault(e => e.Key == _selectedEntry?.Key));
+            Status = _workspace.Folders.Count == 0 ? "フォルダー未選択"
+                : $"{VisibleCount} 件・{entries.Select(e => e.Hit.FullPath).Distinct().Count()} ファイル";
+            if (HasExclusion) Status += "・除外あり";
+            if (_truncated) Status += $"（先頭 {ResultLimit} 件まで）";
+            NotifyState();
+        }
+        finally { IsUpdatingResults = false; }
+    }
+
+    private static void Reconcile<T>(ObservableCollection<T> collection, IReadOnlyList<T> wanted)
+    {
+        var keep = wanted.ToHashSet();
+        for (var i = collection.Count - 1; i >= 0; i--)
+            if (!keep.Contains(collection[i])) collection.RemoveAt(i);
+        for (var i = 0; i < wanted.Count; i++)
+        {
+            if (i < collection.Count && EqualityComparer<T>.Default.Equals(collection[i], wanted[i])) continue;
+            var previous = collection.IndexOf(wanted[i]);
+            if (previous >= 0) collection.Move(previous, i);
+            else collection.Insert(i, wanted[i]);
+        }
+    }
+
+    public void SetSelection(TodoEntry? entry)
+    {
+        if (_selectedEntry != entry && _selectedEntry is not null) _selectedEntry.IsSelected = false;
+        _selectedEntry = entry;
+        if (entry is not null) entry.IsSelected = true;
+        OnPropertyChanged(nameof(SelectedEntry));
+        OnPropertyChanged(nameof(PositionLabel));
+    }
+    private void NotifyState()
+    {
+        foreach (var property in new[] { nameof(VisibleCount), nameof(HasEntries), nameof(IsEmpty), nameof(IsFiltered),
+            nameof(HasExclusion), nameof(CountLabel), nameof(PositionLabel), nameof(EmptyTitle), nameof(EmptyDescription) })
+            OnPropertyChanged(property);
+        NextCommand.NotifyCanExecuteChanged();
+        PreviousCommand.NotifyCanExecuteChanged();
     }
     [RelayCommand] private void Open(TodoEntry? entry)
-    { if (entry is not null) OpenRequested?.Invoke(this, entry.Hit); }
+    { if (entry is not null) { SetSelection(entry); OpenRequested?.Invoke(this, entry.Hit); } }
+    [RelayCommand] private void Preview(TodoEntry? entry)
+    { if (entry is not null) { SetSelection(entry); PreviewRequested?.Invoke(this, entry.Hit); } }
+    [RelayCommand(CanExecute = nameof(HasEntries))] private void Next() => MoveSelection(1);
+    [RelayCommand(CanExecute = nameof(HasEntries))] private void Previous() => MoveSelection(-1);
+    private void MoveSelection(int direction)
+    {
+        if (!HasEntries) return;
+        var index = _selectedEntry is null ? -1 : _visibleEntries.ToList().IndexOf(_selectedEntry);
+        var next = index < 0 ? direction > 0 ? 0 : VisibleCount - 1 : (index + direction + VisibleCount) % VisibleCount;
+        var entry = _visibleEntries[next];
+        foreach (var group in Groups.Where(g => g.Entries.Contains(entry))) group.IsExpanded = true;
+        SetSelection(entry);
+        SelectionRequested?.Invoke(this, entry);
+        PreviewRequested?.Invoke(this, entry.Hit);
+    }
+    [RelayCommand] private void ExpandAll() { foreach (var group in Groups) group.IsExpanded = true; }
+    [RelayCommand] private void CollapseAll() { foreach (var group in Groups) group.IsExpanded = false; }
+    [RelayCommand] private void ClearFilters()
+    {
+        Filter = "";
+        foreach (var tag in TagFilters) tag.IsEnabled = true;
+    }
+    [RelayCommand] private void ResetConditions() { ClearFilters(); ExcludeGlob = ""; }
+    [RelayCommand] private void ShowOnlyTag(string? tag)
+    { foreach (var item in TagFilters) item.IsEnabled = item.Tag == tag; }
+    [RelayCommand] private void CopyResults()
+        => ClipboardText.Set(string.Join(Environment.NewLine, _visibleEntries.Select(e => $"{e.Location} [{e.Tag}] {e.Body}")));
+    private void Persist()
+    {
+        if (_settings is null) return;
+        _settings.TodoTree.GroupByTag = GroupByTag;
+        _settings.TodoTree.ExcludeGlob = ExcludeGlob;
+        _settings.TodoTree.HiddenTags = TagFilters.Where(t => !t.IsEnabled).Select(t => t.Tag).ToList();
+        try { _settingsStore?.Save(_settings); }
+        catch (Exception ex) { Status = $"表示設定を保存できませんでした: {ex.Message}"; }
+    }
     public void Dispose() { _disposed = true; CancelSearch(); }
 }

@@ -71,6 +71,9 @@ public sealed class LoomoSettings
     /// <summary>サイドバーの TABS（タブ一覧）に出す種別。見出しクリックで開く設定ビューから書き戻される。</summary>
     public TabsPanelSettings TabsPanel { get; set; } = new();
 
+    /// <summary>TODO 一覧の分類・タグ表示・除外条件。</summary>
+    public TodoTreeSettings TodoTree { get; set; } = new();
+
     /// <summary>エクスプローラー（フォルダーツリー）の表示設定。関連ファイルのまとめ表示など。</summary>
     public ExplorerSettings Explorer { get; set; } = new();
 
@@ -406,4 +409,12 @@ public sealed class AppearanceSettings
     /// 比率を保って連動する。エディタ／ターミナルのフォントサイズ（<see cref="EditorFontSize"/> /
     /// <see cref="TerminalFontSize"/>）とは独立で連動しない。</summary>
     public double UiFontSize { get; set; }
+}
+
+/// <summary>TODO Tree の表示設定。入力中の検索語や選択位置は保存しない。</summary>
+public sealed class TodoTreeSettings
+{
+    public bool GroupByTag { get; set; }
+    public string ExcludeGlob { get; set; } = "";
+    public List<string> HiddenTags { get; set; } = new();
 }
