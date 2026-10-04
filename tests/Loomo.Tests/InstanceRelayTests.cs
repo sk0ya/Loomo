@@ -17,7 +17,7 @@ public sealed class InstanceRelayTests
 
         Assert.NotNull(reply);
         Assert.True(reply.Ok);
-        Assert.Equal([@"C:\work\app", @"C:\libs\shared"], reply.Folders);
+        Assert.Equal([@"C:\work\app", @"C:\libs\shared"], reply.Folders!);
         Assert.NotEqual(default, reply.LastActiveUtc);
     }
 

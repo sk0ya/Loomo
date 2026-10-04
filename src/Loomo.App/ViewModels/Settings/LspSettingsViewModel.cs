@@ -95,8 +95,10 @@ public sealed partial class LspSettingsViewModel : ObservableObject
     {
         if (_settings is null) return;
         var current = FileMoveReferenceUpdates.FirstOrDefault(c => c.Value == _settings.Lsp.UpdateReferencesOnFileMove);
+        // 生成プロパティを通してよい：変更時の処理は「設定と同じ値なら何もしない」ので、外で変わった値へ
+        // 表示を合わせるだけなら保存も「…にしました」の表示も走らない。
         if (!ReferenceEquals(current, SelectedFileMoveReferenceUpdate))
-            SetProperty(ref _selectedFileMoveReferenceUpdate, current, nameof(SelectedFileMoveReferenceUpdate));
+            SelectedFileMoveReferenceUpdate = current;
     }
     private void OnServerStateChanged()
     {
