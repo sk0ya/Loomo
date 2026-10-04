@@ -1,4 +1,3 @@
-using System.Text;
 using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.Core.Abstractions;
 
@@ -15,9 +14,6 @@ public sealed class SearchResultTab
     /// <summary>1枚に残す件数の上限。workspaces.json は保存のたびに書き出すので、際限なく膨らませない
     /// （grep 自体が 1000 件で打ち切るので、ふだんの検索はまるごと収まる）。</summary>
     public const int MaxHits = 5000;
-
-    /// <summary>ペグボードへ送るときの行数の上限（カードは全文を workspaces.json に持つため）。</summary>
-    public const int MaxPegboardLines = 1000;
 
     private readonly List<SearchTabHitSnapshot> _hits;
     private IReadOnlyList<object>? _roots;
@@ -188,40 +184,6 @@ public sealed class SearchResultTab
             })
             .ToList();
 
-    /// <summary>ペグボードへ送る本文（見出し行＋「path:line: 行テキスト」の一覧）。</summary>
-    public string ToPegboardText(IWorkspaceService workspace)
-        => FormatPegboardText(Title, CountText, _hits, workspace);
-
-    /// <summary>ペグボードのカードの見出し。</summary>
-    public string PegboardTitle => $"検索「{Shorten(Label, 40)}」（{CountText}）";
-
-    /// <summary>「見出し＋1件1行」の本文を組む。パスはワークスペースからの表示パス（マルチルートは
-    /// フォルダー名付き）。ターミナル内の一致（パスが空）は「ターミナル:行」で書く。</summary>
-    internal static string FormatPegboardText(string header, string? summary,
-        IReadOnlyList<SearchTabHitSnapshot> hits, IWorkspaceService workspace)
-    {
-        var sb = new StringBuilder();
-        sb.Append(header);
-        if (!string.IsNullOrEmpty(summary))
-            sb.Append("  ").Append(summary);
-        sb.Append('\n');
-        var shown = Math.Min(hits.Count, MaxPegboardLines);
-        for (var i = 0; i < shown; i++)
-            sb.Append(FormatHitLine(hits[i], workspace)).Append('\n');
-        if (hits.Count > shown)
-            sb.Append($"…ほか {hits.Count - shown} 件\n");
-        return sb.ToString();
-    }
-
-    /// <summary>1件を「path:line: 行テキスト」に（行を持たないファイルのヒットはパスだけ）。</summary>
-    internal static string FormatHitLine(SearchTabHitSnapshot hit, IWorkspaceService workspace)
-    {
-        var path = string.IsNullOrEmpty(hit.Path) ? "ターミナル" : DisplayPath(workspace, hit.Path);
-        if (hit.Line <= 0)
-            return path;
-        return $"{path}:{hit.Line}: {(hit.Text ?? "").Trim()}";
-    }
-
     private static string DisplayPath(IWorkspaceService workspace, string path)
         => workspace.ToDisplayPath(path).Replace('\\', '/');
 
@@ -260,6 +222,3 @@ public sealed partial class SearchTabStripEntry : CommunityToolkit.Mvvm.Componen
 
     [CommunityToolkit.Mvvm.ComponentModel.ObservableProperty] private bool _isActive;
 }
-
-/// <summary>ペグボードへ送る1枚ぶん（本文と見出し）。</summary>
-public sealed record SearchPegboardPayload(string Content, string Title);

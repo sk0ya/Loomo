@@ -7,7 +7,7 @@ using sk0ya.Loomo.Core.Abstractions;
 namespace sk0ya.Loomo.Tests;
 
 /// <summary>
-/// 検索結果をタブとして残す（VS Code の Search Editor 相当・§23.3.1）と、検索結果をペグボードへ送る（§23.3）。
+/// 検索結果をタブとして残す（VS Code の Search Editor 相当・§23.3.1）。
 /// 残したタブは「残した時点の写し」で、新しい検索をしても消えず、ワークスペース状態に載って再起動後も戻る。
 /// タブは検索ペイン内のタブ帯（と ▾ 一覧）で切り替え、サイドバーの TABS には載せない。
 /// </summary>
@@ -120,7 +120,6 @@ public sealed class SearchResultTabTests : IDisposable
 
         Assert.False(sut.CanPinResults);
         Assert.Null(sut.PinResults());
-        Assert.True(sut.HasLiveResults);   // ペグボードへは送れる
     }
 
     [Fact]
@@ -223,48 +222,16 @@ public sealed class SearchResultTabTests : IDisposable
         var sut = CreateSut(workspace);
         var libHit = new ContentSearchHit(@"C:\work\lib\x.cs", "lib/x.cs", 2, 1, "foo");
         ShowLiveResults(sut, "foo", Hit("a.cs", 1, "foo"), libHit);
-        var tab = sut.PinResults()!;
+        sut.ShowTab(sut.PinResults()!.Id);
 
-        var text = tab.ToPegboardText(workspace);
+        var paths = AllMatches(sut.DisplayedResults).Select(m => m.RelativePath.Replace('\\', '/')).ToList();
 
-        Assert.Contains("app/a.cs:1: foo", text);
-        Assert.Contains("lib/x.cs:2: foo", text);
-    }
-
-    // ===== ペグボードへ =====
-
-    [Fact]
-    public void 結果全体は検索語とpath_line_行の一覧で1枚になる()
-    {
-        var sut = CreateSut();
-        ShowLiveResults(sut, "foo", Hit("src/a.cs", 3, "    var foo = 1;"), Hit("src/b.cs", 7, "foo();"));
-        sut.StatusMessage = "2 件 / 2 ファイル";
-        SearchPegboardPayload? sent = null;
-        sut.PegboardSendRequested += (_, p) => sent = p;
-
-        sut.SendResultsToPegboard();
-
-        Assert.NotNull(sent);
-        Assert.Equal("検索「foo」（2 件 / 2 ファイル）", sent!.Title);
-        var lines = sent.Content.TrimEnd('\n').Split('\n');
-        Assert.Equal(["検索「foo」  2 件 / 2 ファイル", "src/a.cs:3: var foo = 1;", "src/b.cs:7: foo();"], lines);
+        Assert.Contains("app/a.cs", paths);
+        Assert.Contains("lib/x.cs", paths);
     }
 
     [Fact]
-    public void 一致行1件はその行だけを送る()
-    {
-        var sut = CreateSut();
-        ShowLiveResults(sut, "foo", Hit("src/a.cs", 3, "foo();"));
-        SearchPegboardPayload? sent = null;
-        sut.PegboardSendRequested += (_, p) => sent = p;
-
-        sut.SendMatchToPegboard(AllMatches(sut.Results).Single());
-
-        Assert.Equal(new SearchPegboardPayload("src/a.cs:3: foo();", "src/a.cs:3"), sent);
-    }
-
-    [Fact]
-    public void ファイル名検索のヒットはパスだけの行になる()
+    public void ファイル名検索の結果はファイルだけのタブになる()
     {
         var sut = CreateSut();
         sut.Scope = SearchScope.FileName;
@@ -273,19 +240,14 @@ public sealed class SearchResultTabTests : IDisposable
         sut.Results.Clear();
         var group = new SearchFileGroup(Path.Combine(Root, "README.md"), "README.md", []);
         sut.Results.Add(group);
-        SearchPegboardPayload? sent = null;
-        sut.PegboardSendRequested += (_, p) => sent = p;
-
-        sut.SendGroupToPegboard(group);
         var tab = sut.PinResults()!;
 
-        Assert.EndsWith("\nREADME.md\n", sent!.Content);
         Assert.Equal("ファイル「read」", tab.Title);
         Assert.Equal(0, tab.MatchCount);
         Assert.Equal(1, tab.FileCount);
     }
 
-    // ===== 検索ペイン内のタブ帯とペグボードへの配線 =====
+    // ===== 検索ペイン内のタブ帯 =====
 
     [Fact]
     public void タブ帯は現在の検索と残したタブを並べ_残すまでは出さない()
@@ -335,21 +297,6 @@ public sealed class SearchResultTabTests : IDisposable
         restored.RestoreTabs(sut.CaptureTabs());
 
         Assert.Equal([false, true], restored.TabStrip.Select(e => e.IsActive));
-    }
-
-    [Fact]
-    public void ペグボードへ送るとテキストの項目になる()
-    {
-        var sut = CreateSut();
-        var pegboard = new PegboardViewModel();
-        SearchPanelLinks.Connect(sut, pegboard);
-        ShowLiveResults(sut, "foo", Hit("a.cs", 4, "foo"));
-
-        sut.SendResultsToPegboard();
-
-        var item = Assert.Single(pegboard.Items);
-        Assert.Equal("text", item.Type);
-        Assert.Contains("a.cs:4: foo", item.Content);
     }
 
     private sealed class NoSearch : IWorkspaceSearchService

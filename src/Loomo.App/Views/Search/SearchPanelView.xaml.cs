@@ -280,18 +280,12 @@ public partial class SearchPanelView : UserControl
         vm.CloseTab(id);
     }
 
-    /// <summary>このファイルの一致（ファイル名検索ならファイルそのもの）をペグボードへ送る（ファイル見出しの右クリック）。</summary>
-    private void OnSendGroupToPegboardClick(object sender, RoutedEventArgs e)
+    /// <summary>結果行の右クリックメニューは「置換」だけなので、置換欄を出していないときは開かない
+    /// （項目がすべて隠れた空のメニューが出てしまうため）。</summary>
+    private void OnResultRowContextMenuOpening(object sender, ContextMenuEventArgs e)
     {
-        if (sender is FrameworkElement { DataContext: SearchFileGroup group } && Vm is { } vm)
-            vm.SendGroupToPegboard(group);
-    }
-
-    /// <summary>この1行を「path:line: 行テキスト」でペグボードへ送る（一致行の右クリック）。</summary>
-    private void OnSendMatchToPegboardClick(object sender, RoutedEventArgs e)
-    {
-        if (sender is FrameworkElement { DataContext: SearchMatchItem match } && Vm is { } vm)
-            vm.SendMatchToPegboard(match);
+        if (Vm is not { IsReplaceVisible: true })
+            e.Handled = true;
     }
 
     /// <summary>このファイル内の一致をまとめて置換する（ファイル見出しの右クリックメニュー「置換」）。</summary>

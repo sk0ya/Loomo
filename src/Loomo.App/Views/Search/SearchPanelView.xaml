@@ -229,10 +229,6 @@
                             Style="{StaticResource FolderBarButton}"
                             ToolTip="入力欄の検索（いまの結果）へ戻る。このタブは残る"
                             Command="{Binding ShowLiveCommand}" />
-                    <Button Content="ペグボードへ" Height="22" Padding="8,0" Margin="4,0,0,0"
-                            Style="{StaticResource FolderBarButton}"
-                            ToolTip="このタブの結果（検索語＋ path:line: 行）をペグボードへ1枚で送る"
-                            Command="{Binding SendResultsToPegboardCommand}" />
                     <Button Width="24" Padding="0" Margin="4,0,0,0" Style="{StaticResource FolderBarButton}"
                             ToolTip="すべて展開" Click="OnExpandAll">
                         <Path Width="11" Height="11" Stretch="Uniform"
@@ -497,7 +493,7 @@
                         Click="OnReplaceAllClick" />
             </Grid>
 
-            <!-- 結果の見出し行：件数＋結果全体への操作（タブに残す／ペグボードへ）＋停止。 -->
+            <!-- 結果の見出し行：件数＋結果全体への操作（タブに残す）＋停止。 -->
             <DockPanel Margin="0,4,0,0" LastChildFill="True">
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
                     <Button Content="タブに残す" Height="20" Padding="6,0" Margin="4,0,0,0" FontSize="{DynamicResource Fs10}"
@@ -505,11 +501,6 @@
                             ToolTip="いまの結果をタブとして残す（新しい検索をしても消えず、TABS・▾ から切り替えて見比べられる）"
                             Visibility="{Binding CanPinResults, Converter={StaticResource BoolToVis}}"
                             Command="{Binding PinCurrentResultsCommand}" />
-                    <Button Content="ペグボードへ" Height="20" Padding="6,0" Margin="4,0,0,0" FontSize="{DynamicResource Fs10}"
-                            Style="{StaticResource FolderBarButton}"
-                            ToolTip="いまの結果（検索語＋ path:line: 行）をペグボードへ1枚で送る"
-                            Visibility="{Binding HasLiveResults, Converter={StaticResource BoolToVis}}"
-                            Command="{Binding SendResultsToPegboardCommand}" />
                     <Button Content="停止" Height="20" Padding="6,0" Margin="4,0,0,0" FontSize="{DynamicResource Fs10}"
                             Style="{StaticResource FolderBarButton}" ToolTip="実行中の再帰検索をキャンセル"
                             Visibility="{Binding IsBusy, Converter={StaticResource BoolToVis}}"
@@ -614,7 +605,7 @@
                      （一致行と同じく、置換は右クリックメニューから。OnFileContextMenuOpened が開くたびに可否を判定する）。 -->
                 <HierarchicalDataTemplate DataType="{x:Type vm:SearchFileGroup}" ItemsSource="{Binding Matches}">
                     <Grid Background="Transparent" ToolTip="{Binding RelativePath}"
-                          MouseLeftButtonUp="OnRowClick">
+                          MouseLeftButtonUp="OnRowClick" ContextMenuOpening="OnResultRowContextMenuOpening">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="*" />
@@ -622,7 +613,6 @@
                         </Grid.ColumnDefinitions>
                         <Grid.ContextMenu>
                             <ContextMenu Opened="OnFileContextMenuOpened">
-                                <MenuItem Header="ペグボードへ送る" Click="OnSendGroupToPegboardClick" />
                                 <MenuItem Header="置換" Tag="ReplaceFileMenu" Click="OnReplaceInGroupClick" />
                             </ContextMenu>
                         </Grid.ContextMenu>
@@ -647,14 +637,13 @@
                     <!-- 右クリックで1件だけ置換できる（項目は置換欄を出しているときだけ見せる。
                          OnMatchContextMenuOpened が開くたびに可否を判定する）。置換済みは一覧から消さず、
                          取り消し線で示す（次々処理していく途中で一覧が消えたり並び直ったりしないように）。 -->
-                    <Grid Background="Transparent">
+                    <Grid Background="Transparent" ContextMenuOpening="OnResultRowContextMenuOpening">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
                         <Grid.ContextMenu>
                             <ContextMenu Opened="OnMatchContextMenuOpened">
-                                <MenuItem Header="ペグボードへ送る" Click="OnSendMatchToPegboardClick" />
                                 <MenuItem Header="置換" Tag="ReplaceOneMenu" Click="OnReplaceOneContextClick" />
                             </ContextMenu>
                         </Grid.ContextMenu>

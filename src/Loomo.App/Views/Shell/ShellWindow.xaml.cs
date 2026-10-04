@@ -324,10 +324,8 @@ public partial class ShellWindow : Window {
                 vm.Recent.RecordFolder(searchRoot);
         };
         vm.SearchPanel.SupportHighlightChanged += (_, _) => ApplyEditorSupportSearchHighlight();
-        // 残した検索結果のタブ（§23.3.1）は部屋の状態として保存する。ペグボードへの追加自体は
-        // SearchPanelLinks が受け持つので、ここでは「送った」ことだけを知らせる（ペグボードが見えていないことが多い）。
+        // 残した検索結果のタブ（§23.3.1）は部屋の状態として保存する。
         vm.SearchPanel.TabsChanged += (_, _) => SaveActiveWorkspaceSnapshot();
-        vm.SearchPanel.PegboardSendRequested += (_, _) => ToastService.Success("ペグボードへ送りました");
         vm.SearchPanel.FilesReplacedOnDisk += async (_, paths) =>
             await ReloadEditorTabsAfterReplaceAsync(paths, vm.SearchPanel.HighlightTerm);
         vm.SearchPanel.TerminalSearchProvider = (query, caseSensitive) => {

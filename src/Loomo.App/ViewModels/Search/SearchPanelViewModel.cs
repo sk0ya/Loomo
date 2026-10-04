@@ -201,9 +201,6 @@ public sealed partial class SearchPanelViewModel : ObservableObject
     public IReadOnlyList<object> DisplayedResults
         => ActiveTab is { } tab ? tab.GetRoots(_workspace, _treeMapper) : Results;
 
-    /// <summary>現在の検索に結果があるか（「ペグボードへ」の表示可否）。</summary>
-    public bool HasLiveResults => Results.Count > 0;
-
     /// <summary>現在の検索結果をタブに残せるか。ターミナル内の一致はその場限りの実体（再起動後の
     /// ターミナルでは同じ行を指せない）なので残さない。</summary>
     public bool CanPinResults => ActiveTab is null && Results.Count > 0 && Scope != SearchScope.Terminal;
@@ -211,9 +208,6 @@ public sealed partial class SearchPanelViewModel : ObservableObject
     /// <summary>タブの増減・見ているタブの切替（ShellWindow がワークスペース状態の保存に使う。
     /// <see cref="RestoreTabs"/> での入れ替えでは発火しない）。</summary>
     public event EventHandler? TabsChanged;
-
-    /// <summary>検索結果（全体・ファイル・1行）をペグボードへ送りたい（§23.3 素材の流れ）。</summary>
-    public event EventHandler<SearchPegboardPayload>? PegboardSendRequested;
 
     public SearchPanelViewModel(IWorkspaceService workspace, SearchPanelQuery searchQuery,
         SearchResultTreeMapper treeMapper)
@@ -224,7 +218,6 @@ public sealed partial class SearchPanelViewModel : ObservableObject
         _workspace.FoldersChanged += (_, _) => OnFoldersChanged();
         Results.CollectionChanged += (_, _) =>
         {
-            OnPropertyChanged(nameof(HasLiveResults));
             OnPropertyChanged(nameof(CanPinResults));
         };
         PinnedTabs.CollectionChanged += (_, _) =>
@@ -1007,78 +1000,6 @@ public sealed partial class SearchPanelViewModel : ObservableObject
             _restoringTabs = false;
         }
     }
-
-    /// <summary>いま結果ツリーに出ているもの全体（タブを見ていればそのタブ）をペグボードへ送る。</summary>
-    [RelayCommand]
-    public void SendResultsToPegboard()
-    {
-        if (ActiveTab is { } tab)
-        {
-            PegboardSendRequested?.Invoke(this, new(tab.ToPegboardText(_workspace), tab.PegboardTitle));
-            return;
-        }
-        var hits = ToHits(AllFileGroups().SelectMany(GroupHits));
-        if (hits.Count == 0)
-            return;
-        var title = $"検索「{LiveLabel()}」";
-        var count = StatusMessage is { Length: > 0 } status && !status.StartsWith("タブに残しました", StringComparison.Ordinal)
-            ? status : $"{hits.Count} 件";
-        PegboardSendRequested?.Invoke(this, new(
-            SearchResultTab.FormatPegboardText(title, count, hits, _workspace), $"{title}（{count}）"));
-    }
-
-    /// <summary>1ファイルぶんの一致をペグボードへ送る（ファイル見出しの右クリック）。</summary>
-    public void SendGroupToPegboard(SearchFileGroup group)
-    {
-        var hits = ToHits(GroupHits(group));
-        if (hits.Count == 0)
-            return;
-        var label = ActiveTab?.Title ?? $"検索「{LiveLabel()}」";
-        var name = string.IsNullOrEmpty(group.FullPath)
-            ? group.RelativePath
-            : _workspace.ToDisplayPath(group.FullPath).Replace('\\', '/');
-        var count = group.Count > 0 ? $"{name} {group.Count} 件" : name;
-        PegboardSendRequested?.Invoke(this, new(
-            SearchResultTab.FormatPegboardText(label, count, hits, _workspace), $"{label}（{count}）"));
-    }
-
-    /// <summary>1行ぶんをペグボードへ送る（一致行の右クリック）。本文は「path:line: 行テキスト」の1行。</summary>
-    public void SendMatchToPegboard(SearchMatchItem match)
-    {
-        var line = SearchResultTab.FormatHitLine(ToHit(match), _workspace);
-        var colon = line.IndexOf(": ", StringComparison.Ordinal);
-        PegboardSendRequested?.Invoke(this, new(line, colon > 0 ? line[..colon] : line));
-    }
-
-    private string LiveLabel()
-    {
-        var label = !string.IsNullOrWhiteSpace(HighlightQuery) ? HighlightQuery
-            : !string.IsNullOrWhiteSpace(FileNameHighlightQuery) ? FileNameHighlightQuery
-            : "詳細検索";
-        return label.ReplaceLineEndings(" ").Trim();
-    }
-
-    private static IEnumerable<object> GroupHits(SearchFileGroup group)
-        => group.Matches.Count == 0 ? new object[] { group } : group.Matches;
-
-    private static List<SearchTabHitSnapshot> ToHits(IEnumerable<object> items)
-        => items.Select(item => item switch
-            {
-                SearchMatchItem match => ToHit(match),
-                SearchFileGroup group => new SearchTabHitSnapshot { Path = group.FullPath },
-                _ => null,
-            })
-            .OfType<SearchTabHitSnapshot>()
-            .ToList();
-
-    // ターミナルの一致は FullPath が空・行は 1 始まりへ直した表示上の行。
-    private static SearchTabHitSnapshot ToHit(SearchMatchItem match) => new()
-    {
-        Path = match.FullPath,
-        Line = Math.Max(1, match.Line),
-        Column = Math.Max(1, match.Column),
-        Text = match.LineText,
-    };
 
     private static string? NullIfBlank(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
 }
