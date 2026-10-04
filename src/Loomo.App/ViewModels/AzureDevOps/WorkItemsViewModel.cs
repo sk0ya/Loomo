@@ -89,11 +89,9 @@ public sealed class WorkItemListRowViewModel(WorkItemListEntry entry)
 }
 
 /// <summary>
-/// ActivityBar の Work Items（⌨ の上のアイコン）。自分に割り当たっている未完了の Work Item を Story の下に
-/// Task が並ぶ形で出し、自分が作った進行中の PR を紐づく Work Item の下に添える（TaskAzure と同じ並べ方）。
-/// 認証は TaskAzure と同じ PAT（<see cref="AzureDevOpsPatStore"/>：環境変数 ADO_PAT → 資格情報マネージャー ADO_PAT）。
-/// <para>組織は設定（<see cref="AzureDevOpsSettings.Organization"/>）が空なら、ワークスペースの各フォルダーの
-/// git リモートから見つける。PR はプロジェクト単位で引く（Work Item のプロジェクト＋リモートのプロジェクト）。</para>
+/// ActivityBar の Work Items（⌨ の上のアイコン）。<b>TaskAzure と同じ方式</b>：設定の組織 URL・プロジェクトで
+/// 自分に割り当たっている未完了の Work Item を引き、設定した PR 対象（プロジェクト/リポジトリ）から自分の進行中の PR を引いて
+/// 紐づく Work Item の下に添える。PAT は環境変数 ADO_PAT → 資格情報マネージャー ADO_PAT を読むだけ（<see cref="AzureDevOpsPatStore"/>）。
 /// </summary>
 public sealed partial class WorkItemsViewModel : ObservableObject
 {
@@ -106,23 +104,19 @@ public sealed partial class WorkItemsViewModel : ObservableObject
     private readonly LoomoSettings _settings;
     private readonly SettingsStore _settingsStore;
     private readonly AzureDevOpsPatStore _pats;
-    private readonly AzureDevOpsOrganizationLocator _locator;
     private readonly AzureDevOpsWorkItemClient _client;
     private IReadOnlyList<WorkItemListEntry> _entries = [];
     private CancellationTokenSource? _loading;
     private DateTime _loadedAt = DateTime.MinValue;
 
-    public WorkItemsViewModel(IWorkspaceService workspace, LoomoSettings settings, SettingsStore settingsStore,
-        AzureDevOpsPatStore pats, AzureDevOpsOrganizationLocator locator, AzureDevOpsWorkItemClient client)
+    public WorkItemsViewModel(LoomoSettings settings, SettingsStore settingsStore,
+        AzureDevOpsPatStore pats, AzureDevOpsWorkItemClient client)
     {
         _settings = settings;
         _settingsStore = settingsStore;
         _pats = pats;
-        _locator = locator;
         _client = client;
-        _organizationInput = settings.AzureDevOps.Organization;
-        // 部屋を移ったら組織が変わり得るので、次に開いたとき取り直す。
-        workspace.FoldersChanged += (_, _) => _loadedAt = DateTime.MinValue;
+        LoadSettingsInputs();
     }
 
     /// <summary>いま見せている行（フィルター後）。</summary>
@@ -148,10 +142,15 @@ public sealed partial class WorkItemsViewModel : ObservableObject
     /// <summary>失敗の理由（空なら出さない）。</summary>
     [ObservableProperty] private string _errorText = "";
 
-    /// <summary>組織の入力欄を出すか（見つからなかったとき・人が切り替えたいとき）。</summary>
-    [ObservableProperty] private bool _isOrganizationEditorVisible;
+    /// <summary>設定欄（組織 URL・プロジェクト・PR 対象＝TaskAzure の設定と同じ項目）を出すか。</summary>
+    [ObservableProperty] private bool _isSettingsVisible;
 
-    [ObservableProperty] private string _organizationInput;
+    [ObservableProperty] private string _organizationUrlInput = "";
+
+    [ObservableProperty] private string _projectInput = "";
+
+    /// <summary>PR 対象。1行に「プロジェクト/リポジトリ」。</summary>
+    [ObservableProperty] private string _prTargetsInput = "";
 
     /// <summary>文字で絞る（タイトル・状態・種類・ID・プロジェクト、PR はタイトル・リポジトリ・ID）。</summary>
     [ObservableProperty] private string _filterText = "";
@@ -224,28 +223,40 @@ public sealed partial class WorkItemsViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void EditOrganization()
+    private void ToggleSettings()
     {
-        OrganizationInput = _settings.AzureDevOps.Organization.Length > 0
-            ? _settings.AzureDevOps.Organization
-            : OrganizationName;
-        IsOrganizationEditorVisible = !IsOrganizationEditorVisible;
+        if (!IsSettingsVisible) LoadSettingsInputs();
+        IsSettingsVisible = !IsSettingsVisible;
     }
 
-    /// <summary>入力された組織を保存して取り直す。空で保存すると「リモートから見つける」へ戻る。</summary>
-    [RelayCommand]
-    private async Task SaveOrganizationAsync()
+    private void LoadSettingsInputs()
     {
-        var text = OrganizationInput?.Trim() ?? "";
-        if (text.Length > 0 && !AzureDevOpsOrganization.TryParseUserInput(text, out _))
+        var a = _settings.AzureDevOps;
+        OrganizationUrlInput = a.OrganizationUrl;
+        ProjectInput = a.Project;
+        PrTargetsInput = string.Join(Environment.NewLine, a.PrTargets.Select(t => $"{t.Project}/{t.Repository}"));
+    }
+
+    /// <summary>設定を保存して取り直す。</summary>
+    [RelayCommand]
+    private async Task SaveSettingsAsync()
+    {
+        var a = _settings.AzureDevOps;
+        a.OrganizationUrl = (OrganizationUrlInput ?? "").Trim().TrimEnd('/');
+        a.Project = (ProjectInput ?? "").Trim();
+        a.PrTargets.Clear();
+        foreach (var line in (PrTargetsInput ?? "").Split('\n'))
         {
-            ErrorText = "組織名か、組織の URL（https://dev.azure.com/{組織}・https://{サーバー}/tfs/{コレクション}）を入力してください。";
-            return;
+            var slash = line.IndexOf('/');
+            if (slash <= 0) continue;
+            var project = line[..slash].Trim();
+            var repository = line[(slash + 1)..].Trim();
+            if (project.Length > 0 && repository.Length > 0)
+                a.PrTargets.Add(new AzureDevOpsPrTargetSettings { Project = project, Repository = repository });
         }
-        _settings.AzureDevOps.Organization = text;
         try { _settingsStore.Save(_settings); }
         catch { /* 保存に失敗しても、この起動中は効かせる */ }
-        IsOrganizationEditorVisible = false;
+        IsSettingsVisible = false;
         await RefreshAsync();
     }
 
@@ -260,65 +271,62 @@ public sealed partial class WorkItemsViewModel : ObservableObject
         StatusText = "読み込み中…";
         try
         {
-            var remotes = AzureDevOpsOrganization.TryParseUserInput(_settings.AzureDevOps.Organization, out var configured)
-                ? new AzureDevOpsWorkspaceRemotes(configured, [])
-                : await _locator.FindAsync(token);
-            if (token.IsCancellationRequested) return;
-            if (remotes.Organization is not { } organization)
+            var settings = _settings.AzureDevOps;
+            var organizationUrl = settings.OrganizationUrl.Trim().TrimEnd('/');
+            var project = settings.Project.Trim();
+            if (organizationUrl.Length == 0 || project.Length == 0)
             {
                 OrganizationName = "";
                 SetEntries([]);
                 StatusText = "";
-                ErrorText = "ワークスペースに Azure DevOps のリモートが見つかりません。組織の URL を入力してください。";
-                IsOrganizationEditorVisible = true;
+                ErrorText = "組織 URL とプロジェクトを設定してください（TaskAzure の設定と同じ値）。";
+                LoadSettingsInputs();
+                IsSettingsVisible = true;
                 return;
             }
-            OrganizationName = organization.Name;
+            OrganizationName = project;
 
             var pat = _pats.Get();
             if (pat is null)
             {
                 StatusText = "";
-                ErrorText = $"PAT が見つかりません。Windows 資格情報マネージャーの {AzureDevOpsPatStore.CredentialTarget}"
-                    + $"（TaskAzure と同じ）か、環境変数 {AzureDevOpsPatStore.EnvironmentVariable} に設定してください。";
+                ErrorText = $"PAT が取得できませんでした。環境変数 {AzureDevOpsPatStore.EnvironmentVariable} または"
+                    + $" Windows 資格情報マネージャー（{AzureDevOpsPatStore.CredentialTarget}）に PAT を設定してください。";
                 return;
             }
             var auth = AzureDevOpsPatStore.CreateHeader(pat);
+            var targets = settings.PrTargets.Select(t => new AzureDevOpsPrTarget(t.Project, t.Repository)).ToList();
 
-            var assignedTask = _client.GetAssignedToMeAsync(organization, auth, token);
-            var userTask = _client.GetCurrentUserIdAsync(organization, auth, token);
-            var assigned = await assignedTask;
+            // TaskAzure と同じく Work Item と PR を並べて引く。PR が取れなくても Work Item は出す。
+            var itemsTask = _client.GetMyWorkItemsAsync(organizationUrl, project, auth, token);
+            var prsTask = LoadPullRequestsAsync(organizationUrl, targets, auth, token);
+            var items = await itemsTask;
             // 自分の Task の親（Story など）が自分の担当でなくても、見出しとして取ってくる。
-            var assignedIds = assigned.Select(i => i.Id).ToHashSet();
-            var missingParents = assigned.Select(i => i.ParentId)
-                .Where(id => id != 0 && !assignedIds.Contains(id)).Distinct().ToList();
-            var parentsTask = missingParents.Count > 0
-                ? _client.GetByIdsAsync(organization, missingParents, auth, token)
-                : Task.FromResult<IReadOnlyList<AzureDevOpsWorkItem>>([]);
-            var pullsTask = LoadPullRequestsAsync(organization, auth, await userTask,
-                assigned.Select(i => i.Project).Concat(remotes.Projects), token);
-            var parents = await parentsTask;
-            var (pulls, pullError) = await pullsTask;
+            var itemIds = items.Select(i => i.Id).ToHashSet();
+            var missingParents = items.Select(i => i.ParentId)
+                .Where(id => id != 0 && !itemIds.Contains(id)).Distinct().ToList();
+            IReadOnlyList<AzureDevOpsWorkItem> parents = [];
+            if (missingParents.Count > 0)
+            {
+                try { parents = await _client.GetWorkItemsByIdsAsync(organizationUrl, project, missingParents, auth, token); }
+                catch (Exception ex) when (ex is not OperationCanceledException) { /* 親が取れなくても一覧は出す */ }
+            }
+            var (prs, prError) = await prsTask;
             if (token.IsCancellationRequested) return;
 
             _loadedAt = DateTime.UtcNow;
-            SetEntries(WorkItemList.Build(WorkItemTree.Arrange(assigned, parents), pulls));
-            StatusText = $"Work Item {assigned.Count} 件 ・ PR {pulls.Count} 件 ・ 更新 {DateTime.Now:HH:mm}";
-            if (pullError is not null)
-                ErrorText = pullError;
+            SetEntries(WorkItemList.Build(WorkItemTree.Arrange(items, parents), prs));
+            var prPart = targets.Count > 0 ? $" ・ PR {prs.Count} 件" : "";
+            StatusText = $"{items.Count} 件{prPart} ・ 更新 {DateTime.Now:HH:mm}";
+            if (prError is not null)
+                ErrorText = prError;
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)
         {
         }
-        catch (AzureDevOpsException ex) when (ex.IsAuthentication)
+        catch (Exception ex)
         {
-            StatusText = "";
-            ErrorText = ex.Message + $" 資格情報マネージャーの {AzureDevOpsPatStore.CredentialTarget} の PAT"
-                + "（期限切れ・Work Items 読み取り権限）と組織 URL を確かめてください。";
-        }
-        catch (Exception ex) when (ex is AzureDevOpsException or System.Net.Http.HttpRequestException or TaskCanceledException
-                                       or System.Text.Json.JsonException)
-        {
+            // どんな失敗でもアプリは落とさない（⟳・F5 の非同期コマンドから例外が漏れると落ちる）。
             StatusText = "";
             ErrorText = ex is TaskCanceledException ? "Azure DevOps への接続がタイムアウトしました。" : ex.Message;
         }
@@ -329,27 +337,19 @@ public sealed partial class WorkItemsViewModel : ObservableObject
         }
     }
 
-    /// <summary>プロジェクトごとに自分の進行中の PR を引く。PR が取れなくても Work Item は出したいので、
-    /// 失敗は例外にせず一言にして返す（PAT に Code の読み取り権限が無い、など）。</summary>
-    private async Task<(IReadOnlyList<AzureDevOpsPullRequest> Pulls, string? Error)> LoadPullRequestsAsync(
-        AzureDevOpsOrganization organization, System.Net.Http.Headers.AuthenticationHeaderValue auth, string userId,
-        IEnumerable<string> projects, CancellationToken token)
+    /// <summary>PR を引く（TaskAzure と同じ：設定した PR 対象ごと）。失敗しても Work Item は出したいので、例外にせず一言にして返す。</summary>
+    private async Task<(IReadOnlyList<AzureDevOpsPullRequest> Prs, string? Error)> LoadPullRequestsAsync(
+        string organizationUrl, IReadOnlyList<AzureDevOpsPrTarget> targets,
+        System.Net.Http.Headers.AuthenticationHeaderValue auth, CancellationToken token)
     {
-        var names = projects.Where(p => p.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-        var results = await Task.WhenAll(names.Select(async project =>
+        try
         {
-            try
-            {
-                return (Pulls: await _client.GetMyActivePullRequestsAsync(organization, project, userId, auth, token),
-                    Error: (string?)null);
-            }
-            catch (AzureDevOpsException ex)
-            {
-                return (Pulls: (IReadOnlyList<AzureDevOpsPullRequest>)[],
-                    Error: (string?)$"PR を取得できませんでした（{project}）: {ex.Message}");
-            }
-        }));
-        return (results.SelectMany(r => r.Pulls).ToList(), results.Select(r => r.Error).FirstOrDefault(e => e is not null));
+            return (await _client.GetMyPullRequestsAsync(organizationUrl, targets, auth, token), null);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return ([], $"PR を取得できませんでした: {ex.Message}");
+        }
     }
 
     private void SetEntries(IReadOnlyList<WorkItemListEntry> entries)

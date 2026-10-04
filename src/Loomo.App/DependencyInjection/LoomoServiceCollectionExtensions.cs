@@ -230,7 +230,6 @@ internal static class LoomoServiceCollectionExtensions
         services.AddSingleton<SessionsViewModel>();
         // Azure DevOps の Work Items（ActivityBar の ⌨ の上）。PAT は TaskAzure と同じ場所から読む。
         services.AddSingleton<AzureDevOpsPatStore>();
-        services.AddSingleton<AzureDevOpsOrganizationLocator>();
         services.AddSingleton(_ => new AzureDevOpsWorkItemClient());
         services.AddSingleton<WorkItemsViewModel>();
         services.AddSingleton<SettingsViewModel>();

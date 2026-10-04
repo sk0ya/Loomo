@@ -46,8 +46,8 @@
                     AutomationProperties.AutomationId="WorkItemsRefreshButton"
                     IsEnabled="{Binding IsLoading, Converter={StaticResource InverseBool}}" />
             <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="⚙"
-                    ToolTip="組織を切り替える" Command="{Binding EditOrganizationCommand}"
-                    AutomationProperties.AutomationId="WorkItemsOrganizationButton" />
+                    ToolTip="設定（組織 URL・プロジェクト・PR 対象）" Command="{Binding ToggleSettingsCommand}"
+                    AutomationProperties.AutomationId="WorkItemsSettingsButton" />
             <StackPanel VerticalAlignment="Center">
                 <TextBlock FontSize="{DynamicResource Fs13}" Foreground="{DynamicResource Fg}">
                     <Run Text="自分の Work Items" FontWeight="SemiBold" />
@@ -59,16 +59,40 @@
             </StackPanel>
         </DockPanel>
 
-        <!-- 組織の入力（リモートから見つからないとき・切り替えたいとき）。 -->
-        <DockPanel DockPanel.Dock="Top" Margin="6,0,6,6"
-                   Visibility="{Binding IsOrganizationEditorVisible, Converter={StaticResource BoolToVis}}">
-            <Button DockPanel.Dock="Right" Style="{StaticResource FlatButton}" Content="保存" Margin="4,0,0,0"
-                    Command="{Binding SaveOrganizationCommand}" />
-            <TextBox Text="{Binding OrganizationInput, UpdateSourceTrigger=PropertyChanged}"
-                     FontSize="{DynamicResource Fs12}" VerticalContentAlignment="Center"
-                     ToolTip="組織名、または組織の URL（https://dev.azure.com/{組織}・https://{サーバー}/tfs/{コレクション}）。空で保存するとワークスペースの git リモートから見つける"
-                     AutomationProperties.AutomationId="WorkItemsOrganizationBox" />
-        </DockPanel>
+        <!-- 設定：TaskAzure の設定と同じ項目（組織 URL・プロジェクト・PR 対象）。 -->
+        <Grid DockPanel.Dock="Top" Margin="6,0,6,6"
+              Visibility="{Binding IsSettingsVisible, Converter={StaticResource BoolToVis}}">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+            <TextBlock Grid.Row="0" Text="組織 URL" Margin="0,0,8,4" VerticalAlignment="Center"
+                       FontSize="{DynamicResource Fs12}" Foreground="{DynamicResource FgDim}" />
+            <TextBox Grid.Row="0" Grid.Column="1" Margin="0,0,0,4" FontSize="{DynamicResource Fs12}"
+                     Text="{Binding OrganizationUrlInput, UpdateSourceTrigger=PropertyChanged}"
+                     ToolTip="例: https://dev.azure.com/{組織}、https://{サーバー}/tfs/{コレクション}"
+                     AutomationProperties.AutomationId="WorkItemsOrganizationUrlBox" />
+            <TextBlock Grid.Row="1" Text="プロジェクト" Margin="0,0,8,4" VerticalAlignment="Center"
+                       FontSize="{DynamicResource Fs12}" Foreground="{DynamicResource FgDim}" />
+            <TextBox Grid.Row="1" Grid.Column="1" Margin="0,0,0,4" FontSize="{DynamicResource Fs12}"
+                     Text="{Binding ProjectInput, UpdateSourceTrigger=PropertyChanged}"
+                     AutomationProperties.AutomationId="WorkItemsProjectBox" />
+            <TextBlock Grid.Row="2" Text="PR 対象" Margin="0,2,8,4" VerticalAlignment="Top"
+                       FontSize="{DynamicResource Fs12}" Foreground="{DynamicResource FgDim}" />
+            <TextBox Grid.Row="2" Grid.Column="1" Margin="0,0,0,4" FontSize="{DynamicResource Fs12}"
+                     Text="{Binding PrTargetsInput, UpdateSourceTrigger=PropertyChanged}"
+                     AcceptsReturn="True" MinHeight="44" TextWrapping="NoWrap" VerticalScrollBarVisibility="Auto"
+                     ToolTip="1行に「プロジェクト/リポジトリ」。空なら PR は出さない"
+                     AutomationProperties.AutomationId="WorkItemsPrTargetsBox" />
+            <Button Grid.Row="3" Grid.Column="1" HorizontalAlignment="Right" Style="{StaticResource FlatButton}"
+                    Content="保存" Command="{Binding SaveSettingsCommand}" />
+        </Grid>
 
         <!-- 絞り込み：文字（タイトル・状態・種類・ID）＋状態＋種類。 -->
         <DockPanel DockPanel.Dock="Top" Margin="6,0,6,6">

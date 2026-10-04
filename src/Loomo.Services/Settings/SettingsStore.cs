@@ -193,7 +193,7 @@ public sealed class SettingsStore
             ActivityBar?.ApplyTo(s.ActivityBar); // 旧設定（null）は空＝既定配置を維持
             TabsPanel?.ApplyTo(s.TabsPanel);     // 旧設定（null）は3種とも表示を維持
             Explorer?.ApplyTo(s.Explorer);       // 旧設定（null）は既定（まとめ表示 ON・既定ルール）を維持
-            AzureDevOps?.ApplyTo(s.AzureDevOps); // 旧設定（null）は空＝リモートから見つけるを維持
+            AzureDevOps?.ApplyTo(s.AzureDevOps); // 旧設定（null）は未設定のまま
         }
     }
 
@@ -308,16 +308,31 @@ public sealed class SettingsStore
         }
     }
 
-    // ===== Azure DevOps 連携。組織だけ。平文で保持（PAT は資格情報マネージャーが持つ）。 =====
+    // ===== Azure DevOps 連携。組織だけ。平文で保持組織 URL・プロジェクト・PR 対象（TaskAzure と同じ項目）。PAT は資格情報マネージャーが持つ。 =====
 
     private sealed class PersistedAzureDevOps
     {
-        public string? Organization { get; set; }
+        public string? OrganizationUrl { get; set; }
+        public string? Project { get; set; }
+        public List<AzureDevOpsPrTargetSettings>? PrTargets { get; set; }
 
-        public static PersistedAzureDevOps From(AzureDevOpsSettings a) => new() { Organization = a.Organization };
+        public static PersistedAzureDevOps From(AzureDevOpsSettings a) => new()
+        {
+            OrganizationUrl = a.OrganizationUrl,
+            Project = a.Project,
+            PrTargets = a.PrTargets.Select(t => new AzureDevOpsPrTargetSettings { Project = t.Project, Repository = t.Repository }).ToList(),
+        };
 
         // 既存インスタンスを書き換える（DI シングルトンの参照を保つため置き換えない）。
-        public void ApplyTo(AzureDevOpsSettings a) => a.Organization = Organization?.Trim() ?? "";
+        public void ApplyTo(AzureDevOpsSettings a)
+        {
+            a.OrganizationUrl = OrganizationUrl?.Trim() ?? "";
+            a.Project = Project?.Trim() ?? "";
+            a.PrTargets.Clear();
+            foreach (var t in PrTargets ?? [])
+                if (!string.IsNullOrWhiteSpace(t.Project) && !string.IsNullOrWhiteSpace(t.Repository))
+                    a.PrTargets.Add(new AzureDevOpsPrTargetSettings { Project = t.Project.Trim(), Repository = t.Repository.Trim() });
+        }
     }
 
     // ===== LSP の UI 設定。促しバーを「今後表示しない」拡張子だけ。平文で保持。 =====

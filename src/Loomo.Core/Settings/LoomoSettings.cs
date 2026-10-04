@@ -195,11 +195,24 @@ public sealed class ActivityBarSettings
 }
 
 /// <summary>Azure DevOps 連携の設定。PAT は環境変数か資格情報マネージャー（ADO_PAT）が持つので、ここには秘密を持たない。</summary>
+/// <para>項目は TaskAzure の設定と同じ（組織 URL・プロジェクト・PR 対象）。</para>
 public sealed class AzureDevOpsSettings
 {
-    /// <summary>照会する組織（組織名・組織 URL・リモート URL のどれでも）。空ならワークスペースの
-    /// git リモートから見つける。</summary>
-    public string Organization { get; set; } = "";
+    /// <summary>組織 URL（例 https://dev.azure.com/{組織}、https://{サーバー}/tfs/{コレクション}）。</summary>
+    public string OrganizationUrl { get; set; } = "";
+
+    /// <summary>Work Item を照会するプロジェクト。</summary>
+    public string Project { get; set; } = "";
+
+    /// <summary>自分の PR を照会するリポジトリ（プロジェクトとリポジトリの組）。</summary>
+    public List<AzureDevOpsPrTargetSettings> PrTargets { get; set; } = new();
+}
+
+/// <summary>PR を照会する先（TaskAzure の PrTarget と同じ）。</summary>
+public sealed class AzureDevOpsPrTargetSettings
+{
+    public string Project { get; set; } = "";
+    public string Repository { get; set; } = "";
 }
 
 /// <summary>サイドバーの TABS（タブ一覧）に出す種別。タブそのものは種別ごとに混ぜずに並べてあるので、

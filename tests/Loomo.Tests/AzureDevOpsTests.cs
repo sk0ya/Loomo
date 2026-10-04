@@ -5,41 +5,6 @@ namespace sk0ya.Loomo.Tests;
 
 public sealed class AzureDevOpsTests
 {
-    [Theory]
-    [InlineData("https://dev.azure.com/contoso/Web/_git/site", "contoso", "https://dev.azure.com/contoso")]
-    [InlineData("https://contoso@dev.azure.com/contoso/Web/_git/site", "contoso", "https://dev.azure.com/contoso")]
-    [InlineData("git@ssh.dev.azure.com:v3/contoso/Web/site", "contoso", "https://dev.azure.com/contoso")]
-    [InlineData("ssh://git@ssh.dev.azure.com/v3/contoso/Web/site", "contoso", "https://dev.azure.com/contoso")]
-    [InlineData("https://contoso.visualstudio.com/DefaultCollection/Web/_git/site", "contoso", "https://contoso.visualstudio.com")]
-    [InlineData("contoso@vs-ssh.visualstudio.com:v3/contoso/Web/site", "contoso", "https://contoso.visualstudio.com")]
-    [InlineData("https://tfs.example.net/tfs/Products/Web/_git/site", "Products", "https://tfs.example.net/tfs/Products")]
-    public void リモートURLから組織を読む(string remote, string name, string baseUrl)
-    {
-        Assert.True(AzureDevOpsOrganization.TryParseRemote(remote, out var org));
-        Assert.Equal(name, org.Name);
-        Assert.Equal(baseUrl, org.BaseUrl);
-    }
-
-    [Theory]
-    [InlineData("https://github.com/sk0ya/Loomo.git")]
-    [InlineData("git@github.com:sk0ya/Loomo.git")]
-    [InlineData("https://dev.azure.com/")]
-    [InlineData("")]
-    public void AzureDevOps以外のリモートは読まない(string remote)
-        => Assert.False(AzureDevOpsOrganization.TryParseRemote(remote, out _));
-
-    [Theory]
-    [InlineData("contoso", "https://dev.azure.com/contoso")]
-    [InlineData("https://dev.azure.com/contoso/", "https://dev.azure.com/contoso")]
-    [InlineData("dev.azure.com/contoso", "https://dev.azure.com/contoso")]
-    [InlineData("https://contoso.visualstudio.com", "https://contoso.visualstudio.com")]
-    [InlineData("https://tfs.example.net/tfs/Products", "https://tfs.example.net/tfs/Products")]
-    public void 設定の入力から組織を読む(string input, string baseUrl)
-    {
-        Assert.True(AzureDevOpsOrganization.TryParseUserInput(input, out var org));
-        Assert.Equal(baseUrl, org.BaseUrl);
-    }
-
     [Fact]
     public void PATは空ユーザー名のBasicで送る()
     {
@@ -49,20 +14,21 @@ public sealed class AzureDevOpsTests
     }
 
     [Fact]
-    public void workitemsbatch_の応答を読む_取れなかったIDのnullは飛ばす()
+    public void WorkItemの応答を読む_親はrelationsから_取れなかったIDのnullは飛ばす()
     {
         using var doc = JsonDocument.Parse("""
             {"count":2,"value":[
-              {"id":12,"fields":{"System.Title":"ログイン","System.WorkItemType":"Task","System.State":"Active",
-                "System.TeamProject":"Web App","System.Parent":10,"System.ChangedDate":"2026-10-01T00:00:00Z"}},
+              {"id":12,"fields":{"System.Title":"ログイン","System.WorkItemType":"Task","System.State":"Active"},
+               "relations":[{"rel":"System.LinkTypes.Hierarchy-Reverse","url":"https://x/_apis/wit/workItems/10"}]},
               null
             ]}
             """);
-        var item = Assert.Single(AzureDevOpsWorkItemClient.ParseBatch(doc.RootElement,
-            AzureDevOpsOrganization.FromName("contoso")));
+        var item = Assert.Single(AzureDevOpsWorkItemClient.ParseWorkItems(doc.RootElement.GetProperty("value"),
+            "https://tfs.example.net/tfs/Products", "Web App"));
         Assert.Equal(12, item.Id);
         Assert.Equal(10, item.ParentId);
-        Assert.Equal("https://dev.azure.com/contoso/Web%20App/_workitems/edit/12", item.WebUrl);
+        Assert.Equal("Web App", item.Project);
+        Assert.Equal("https://tfs.example.net/tfs/Products/Web%20App/_workitems/edit/12", item.WebUrl);
     }
 
     private static AzureDevOpsWorkItem Item(int id, int parent = 0, string type = "Task")
@@ -90,29 +56,18 @@ public sealed class AzureDevOpsTests
         Assert.Equal(2, rows.Count);
     }
 
-    [Theory]
-    [InlineData("https://dev.azure.com/contoso/Web%20App/_git/site", "Web App")]
-    [InlineData("git@ssh.dev.azure.com:v3/contoso/Web/site", "Web")]
-    [InlineData("https://tfs.example.net/tfs/Products/Web/_git/site", "Web")]
-    [InlineData("https://github.com/sk0ya/Loomo.git", null)]
-    public void リモートURLからプロジェクトを読む(string remote, string? project)
-        => Assert.Equal(project, AzureDevOpsOrganization.ProjectFromRemote(remote));
-
     [Fact]
-    public void PRの一覧と紐づくWorkItemを読む()
+    public void PRの一覧とworkItemRefsを読む()
     {
         using var list = JsonDocument.Parse("""
             {"value":[{"pullRequestId":7,"title":"ログイン修正","isDraft":true,
-              "repository":{"id":"r-1","name":"site"}}]}
+              "workItemRefs":[{"id":"12","url":"u"},{"id":"13","url":"u"}]}]}
             """);
-        var (pull, repositoryId) = Assert.Single(AzureDevOpsWorkItemClient.ParsePullRequests(
-            list.RootElement, AzureDevOpsOrganization.FromName("contoso"), "Web"));
-        Assert.Equal("r-1", repositoryId);
+        var pull = Assert.Single(AzureDevOpsWorkItemClient.ParsePullRequests(
+            list.RootElement, "https://dev.azure.com/contoso", new AzureDevOpsPrTarget("Web", "site")));
         Assert.True(pull.IsDraft);
+        Assert.Equal([12, 13], pull.LinkedWorkItemIds);
         Assert.Equal("https://dev.azure.com/contoso/Web/_git/site/pullrequest/7", pull.WebUrl);
-
-        using var refs = JsonDocument.Parse("""{"count":2,"value":[{"id":"12","url":"u"},{"id":13}]}""");
-        Assert.Equal([12, 13], AzureDevOpsWorkItemClient.ParseWorkItemRefs(refs.RootElement));
     }
 
     private static AzureDevOpsPullRequest Pull(int id, params int[] linked)
