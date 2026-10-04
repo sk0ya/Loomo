@@ -194,4 +194,93 @@ public class ComposerPegboardTests
         Assert.Empty(vm.Items);
         Assert.NotEqual("", vm.EmptyMessage);
     }
+
+    // ===== カードの表示（見出し・所在・プレビュー） =====
+
+    private static PegboardItemVm Card(string type, string content, string? title = null)
+        => new() { Snapshot = new PegboardItemSnapshot { Type = type, Content = content, Title = title } };
+
+    [Fact]
+    public void Url_card_shows_title_with_address_below_or_address_alone()
+    {
+        var titled = Card("url", "https://example.com/docs/", "Docs");
+        Assert.Equal("Docs", titled.DisplayTitle);
+        Assert.Equal("example.com/docs", titled.Subtitle);
+        Assert.Equal("", titled.Preview);
+
+        var bare = Card("url", "https://example.com/docs");
+        Assert.Equal("example.com/docs", bare.DisplayTitle);
+        Assert.Equal("", bare.Subtitle); // 見出しと同じ所在は重ねない
+    }
+
+    [Fact]
+    public void File_card_shows_file_name_with_parent_folder_below()
+    {
+        var card = Card("file", @"C:\work\app\src\Program.cs");
+        Assert.Equal("Program.cs", card.DisplayTitle);
+        Assert.Equal(@"C:\work\app\src", card.Subtitle);
+        Assert.Equal("", card.Preview);
+    }
+
+    [Fact]
+    public void Text_card_preview_skips_the_title_line_and_dedents()
+    {
+        var card = Card("text", "if (x)\n    {\n        Run();\n    }");
+        Assert.Equal("if (x)", card.DisplayTitle);
+        Assert.Equal("{\n    Run();\n}", card.Preview);
+
+        Assert.Equal("", Card("text", "dotnet build").Preview); // 単一行は見出しだけ
+    }
+
+    [Theory]
+    [InlineData(0, 0, 30, "たった今")]
+    [InlineData(0, 0, 60 * 5, "5分前")]
+    [InlineData(0, 3, 0, "3時間前")]
+    [InlineData(1, 0, 0, "昨日")]
+    [InlineData(4, 0, 0, "4日前")]
+    [InlineData(20, 0, 0, "9/15")]
+    public void FormatRelative_uses_short_relative_labels(int days, int hours, int seconds, string expected)
+    {
+        var now = new DateTime(2026, 10, 5, 18, 0, 0);
+        var at = now.AddDays(-days).AddHours(-hours).AddSeconds(-seconds);
+        Assert.Equal(expected, PegboardItemVm.FormatRelative(at, now));
+    }
+
+    [Fact]
+    public void Filter_narrows_view_with_and_terms_and_reports_counts()
+    {
+        var vm = new PegboardViewModel();
+        vm.AddContent("dotnet build");
+        vm.AddContent("dotnet test");
+        vm.AddContent("git status");
+
+        vm.Filter = "dotnet TEST";
+
+        var visible = vm.ItemsView.Cast<PegboardItemVm>().ToList();
+        Assert.Equal("dotnet test", Assert.Single(visible).Content);
+        Assert.Equal("1 / 3", vm.CountLabel);
+
+        vm.Filter = "nothing";
+        Assert.Empty(vm.ItemsView.Cast<PegboardItemVm>());
+        Assert.NotEqual("", vm.EmptyMessage);
+
+        vm.CloseFilter();
+        Assert.Equal(3, vm.ItemsView.Cast<PegboardItemVm>().Count());
+        Assert.Equal("3", vm.CountLabel);
+    }
+
+    [Fact]
+    public void Section_headers_show_only_when_both_pinned_and_recent_are_visible()
+    {
+        var vm = new PegboardViewModel();
+        vm.AddContent("固定するメモ");
+        vm.AddContent("ふつうのメモ");
+        Assert.False(vm.ShowSections);
+
+        vm.TogglePinCommand.Execute(vm.Items.First(i => i.Content == "固定するメモ"));
+        Assert.True(vm.ShowSections);
+
+        vm.Filter = "ふつう"; // 固定群が絞り込みで消えたら見出しも消す
+        Assert.False(vm.ShowSections);
+    }
 }
