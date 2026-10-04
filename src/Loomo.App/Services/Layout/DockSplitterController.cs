@@ -23,7 +23,9 @@ internal sealed class DockSplitterController(
         bottomSplitter.DragStarted += (_, _) => setDragging(true);
         bottomSplitter.DragDelta += (_, e) =>
         {
-            state.SetBottomHeight(state.BottomHeight - e.VerticalChange);
+            // 窓に収まらず頭打ちになっている間は、見えている高さから動かす（保存値から動かすと、
+            // 縮めても見た目が変わらない区間ができる）。
+            state.SetBottomHeight(Math.Min(state.BottomHeight, bottomRow.MaxHeight) - e.VerticalChange);
             bottomRow.Height = new GridLength(state.BottomHeight);
         };
         bottomSplitter.DragCompleted += (_, _) =>
@@ -42,7 +44,7 @@ internal sealed class DockSplitterController(
         rightSplitter.DragStarted += (_, _) => setDragging(true);
         rightSplitter.DragDelta += (_, e) =>
         {
-            state.SetRightWidth(state.RightWidth - e.HorizontalChange);
+            state.SetRightWidth(Math.Min(state.RightWidth, rightColumn.MaxWidth) - e.HorizontalChange);   // 下と同じ理由
             rightColumn.Width = new GridLength(state.RightWidth);
         };
         rightSplitter.DragCompleted += (_, _) =>

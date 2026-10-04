@@ -36,11 +36,46 @@ public partial class ShellWindow {
     private DockPaneDragController DockPaneDrag
         => _dockPaneDrag ??= new DockPaneDragController(this, BeginDockPaneDrag);
 
-    private void InitializeDock()
-        => new DockSplitterController(
+    private void InitializeDock() {
+        new DockSplitterController(
             _dockMode, DockBottomSplitter, DockRightSplitter, DockBottomRow, DockRightColumn,
-            () => DockPresenter.ApplyTracks(), dragging => _paneSplitterDragging = dragging,
+            ApplyDockTracks, dragging => _paneSplitterDragging = dragging,
             () => SaveActiveWorkspaceSnapshot()).Attach();
+        // 窓の大きさ・サイドバーの幅が変わるたびに、右／下の領域が取ってよい上限を測り直す。
+        ShellLayout.SizeChanged += (_, _) => LimitDockTracksToWindow();
+        SidebarContainer.SizeChanged += (_, _) => LimitDockTracksToWindow();
+    }
+    private void ApplyDockTracks() {
+        DockPresenter.ApplyTracks();
+        LimitDockTracksToWindow();
+    }
+    /// <summary>決めた幅／高さの右・下の領域を、いまの窓に収まる分で頭打ちにする（<see cref="DockTrackLimit"/>）。
+    /// 枠の <c>MaxWidth</c>／<c>MaxHeight</c> で抑えるだけなので保存値は変わらず、窓を広げれば戻る。
+    /// 「残り全部」の枠（中央を畳んで右が引き取った等）に上限を掛けると空きが出るので、固定のときだけ。</summary>
+    private void LimitDockTracksToWindow() {
+        static double Fixed(GridLength length, double actual) => length.IsAbsolute ? length.Value : actual;
+        var rightMax = DockRightColumn.Width.IsAbsolute
+            ? DockTrackLimit.Max(
+                ShellLayout.ColumnDefinitions[1].ActualWidth,
+                Fixed(SidebarColumn.Width, SidebarColumn.ActualWidth)
+                    + Fixed(SidebarSplitterColumn.Width, SidebarSplitterColumn.ActualWidth)
+                    + Fixed(WingSplitterColumn.Width, WingSplitterColumn.ActualWidth)
+                    + WingColumn.ActualWidth
+                    + Fixed(DockRightSplitterColumn.Width, DockRightSplitterColumn.ActualWidth)
+                    + Fixed(DockBarColumn.Width, DockBarColumn.ActualWidth),
+                CenterColumn.MinWidth)
+            : double.PositiveInfinity;
+        if (DockRightColumn.MaxWidth != rightMax)
+            DockRightColumn.MaxWidth = rightMax;
+        var bottomMax = DockBottomRow.Height.IsAbsolute
+            ? DockTrackLimit.Max(
+                ShellLayout.RowDefinitions[1].ActualHeight,
+                Fixed(DockBottomSplitterRow.Height, DockBottomSplitterRow.ActualHeight),
+                CenterRow.MinHeight)
+            : double.PositiveInfinity;
+        if (DockBottomRow.MaxHeight != bottomMax)
+            DockBottomRow.MaxHeight = bottomMax;
+    }
 
     // ===== モード出入り =====
 
@@ -237,7 +272,7 @@ public partial class ShellWindow {
         DockPresenter.ApplyCenter(_paneFullscreen, _zoomedPane);
         DockPresenter.ApplyRegion(DockRegion.Bottom, _paneFullscreen);
         DockPresenter.ApplyRegion(DockRegion.Right, _paneFullscreen);
-        DockPresenter.ApplyTracks();
+        ApplyDockTracks();
         // 帯の印だけでなくヘッダー（モード名・中央の面）も合わせる。
         // UpdatePaneToggleStates が中で RebuildDockBar を呼ぶので、帯はここで二度組まない。
         UpdatePaneToggleStates();

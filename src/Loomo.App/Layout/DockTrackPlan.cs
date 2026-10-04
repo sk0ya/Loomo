@@ -59,3 +59,19 @@ public readonly record struct DockTrackPlan(
             RightSplitter: right && center);
     }
 }
+
+/// <summary>決めた幅／高さ（<see cref="DockTrackSize.Fixed"/>）の右・下の領域が、いまの窓で取ってよい上限。
+/// <para>保存してある幅は広い窓で決めた値なので、窓を縮めてもそのまま居座ると、中央が最小幅まで潰れた
+/// あとは右帯ごと窓の外へ押し出される（右の領域・下の領域の右端と右帯が見えなくなる）。中央の最小幅と
+/// 周りの固定幅を残した分で頭打ちにする——保存値そのものは変えないので、窓を広げれば元の幅に戻る。</para></summary>
+public static class DockTrackLimit
+{
+    /// <summary>どれだけ窓が狭くても、領域はこれより細くしない（掴めて中身が読める最低限）。</summary>
+    public const double Floor = 80;
+
+    /// <param name="available">器（メイン領域）のいまの幅／高さ。まだ測っていない（0 以下）なら上限なし。</param>
+    /// <param name="occupied">同じ向きに並ぶ固定の枠（サイドバー・スプリッター・右帯など）の合計。</param>
+    /// <param name="centerMinimum">中央に残す最小幅／高さ。</param>
+    public static double Max(double available, double occupied, double centerMinimum)
+        => available <= 0 ? double.PositiveInfinity : Math.Max(Floor, available - occupied - centerMinimum);
+}
