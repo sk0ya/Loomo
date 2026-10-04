@@ -39,12 +39,21 @@
                 </Setter.Value>
             </Setter>
         </Style>
+        <HierarchicalDataTemplate DataType="{x:Type vm:TodoFolder}" ItemsSource="{Binding Children}">
+            <Grid Background="Transparent" ToolTip="{Binding FullPath}" MouseLeftButtonDown="OnGroupClick" Margin="0,3">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                <Path Data="M1,3 L6,3 L8,5 L14,5 L14,13 L1,13 Z" Width="13" Height="12" Stretch="Uniform"
+                      Stroke="{DynamicResource FgDim}" StrokeThickness="1" Margin="0,0,5,0" VerticalAlignment="Center" />
+                <TextBlock Grid.Column="1" Text="{Binding Name}" TextTrimming="CharacterEllipsis" FontWeight="SemiBold" VerticalAlignment="Center" />
+                <TextBlock Grid.Column="2" Text="{Binding Count}" Foreground="{DynamicResource FgDim}"
+                           FontSize="{DynamicResource Fs11}" Margin="8,0,6,0" VerticalAlignment="Center" />
+            </Grid>
+        </HierarchicalDataTemplate>
         <HierarchicalDataTemplate DataType="{x:Type vm:TodoGroup}" ItemsSource="{Binding Entries}">
             <Grid Background="Transparent" ToolTip="{Binding Name}" MouseLeftButtonDown="OnGroupClick" Margin="0,3">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                 <TextBlock TextTrimming="CharacterEllipsis" VerticalAlignment="Center">
                     <Run Text="{Binding Title, Mode=OneWay}" FontWeight="SemiBold" />
-                    <Run Text="  " /><Run Text="{Binding Directory, Mode=OneWay}" Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs10}" />
                 </TextBlock>
                 <TextBlock Grid.Column="1" Text="{Binding Count}" Foreground="{DynamicResource FgDim}"
                            FontSize="{DynamicResource Fs11}" Margin="8,0,6,0" VerticalAlignment="Center" />
@@ -134,7 +143,7 @@
             </DockPanel>
         </Border>
         <Grid>
-            <TreeView x:Name="TodoTree" ItemsSource="{Binding Groups}" BorderThickness="0"
+            <TreeView x:Name="TodoTree" ItemsSource="{Binding TreeItems}" BorderThickness="0"
                       Background="{DynamicResource BgAlt}" Foreground="{DynamicResource Fg}"
                       ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                       VirtualizingStackPanel.IsVirtualizing="True" VirtualizingStackPanel.VirtualizationMode="Recycling"

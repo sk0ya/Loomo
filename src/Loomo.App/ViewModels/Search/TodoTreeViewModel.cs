@@ -43,6 +43,7 @@ public sealed partial class TodoTreeViewModel : ObservableObject, IDisposable
         }
     }
     public ObservableCollection<TodoGroup> Groups { get; } = [];
+    public ObservableCollection<object> TreeItems { get; } = [];
     public IReadOnlyList<TodoTagFilter> TagFilters { get; } =
         [new("TODO"), new("FIXME"), new("HACK"), new("NOTE")];
     public event EventHandler<ContentSearchHit>? OpenRequested;
@@ -138,6 +139,8 @@ public sealed partial class TodoTreeViewModel : ObservableObject, IDisposable
         try
         {
             foreach (var group in Groups) _expansion[group.Key] = group.IsExpanded;
+            var oldFolders = TodoTreeLayout.Folders(TreeItems).ToDictionary(f => f.Key, StringComparer.OrdinalIgnoreCase);
+            foreach (var folder in oldFolders.Values) _expansion[folder.Key] = folder.IsExpanded;
             var filter = Filter.Trim();
             var matching = _entries.Where(e => filter.Length == 0 || e.Hit.RelativePath.Contains(filter, StringComparison.OrdinalIgnoreCase)
                 || e.Hit.LineText.Contains(filter, StringComparison.OrdinalIgnoreCase)).ToList();
@@ -146,12 +149,12 @@ public sealed partial class TodoTreeViewModel : ObservableObject, IDisposable
             var entries = matching.Where(e => enabled.Contains(e.Tag)).ToList();
             var existing = Groups.ToDictionary(g => g.Key);
             var groups = new List<TodoGroup>();
-            foreach (var grouping in entries.GroupBy(e => GroupByTag ? e.Tag : e.Hit.RelativePath)
+            foreach (var grouping in entries.GroupBy(e => GroupByTag ? e.Tag : e.Hit.FullPath)
                 .OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase))
             {
                 var sorted = grouping.OrderBy(e => e.Hit.RelativePath, StringComparer.OrdinalIgnoreCase)
                     .ThenBy(e => e.Hit.Line).ThenBy(e => e.Hit.Column).ToList();
-                var group = new TodoGroup(grouping.Key, [], GroupByTag);
+                var group = new TodoGroup(GroupByTag ? grouping.Key : sorted[0].Hit.RelativePath, [], GroupByTag, grouping.Key);
                 if (existing.TryGetValue(group.Key, out var previous)) group = previous;
                 group.IsExpanded = !_expansion.TryGetValue(group.Key, out var expanded) || expanded;
                 Reconcile(group.Entries, sorted);
@@ -159,7 +162,20 @@ public sealed partial class TodoTreeViewModel : ObservableObject, IDisposable
                 groups.Add(group);
             }
             Reconcile(Groups, groups);
-            _visibleEntries = groups.SelectMany(g => g.Entries).ToList();
+            var tree = GroupByTag ? groups.Cast<object>().ToList() : TodoTreeLayout.Build(groups, _workspace);
+            Reconcile(TreeItems, tree.Select(ReuseFolder).ToList());
+            _visibleEntries = TodoTreeLayout.Entries(TreeItems).ToList();
+
+            object ReuseFolder(object node)
+            {
+                if (node is not TodoFolder desired) return node;
+                var folder = oldFolders.TryGetValue(desired.Key, out var previous) && previous.Name == desired.Name ? previous : desired;
+                folder.IsExpanded = !_expansion.TryGetValue(folder.Key, out var expanded) || expanded;
+                var children = desired.Children.Select(ReuseFolder).ToList();
+                Reconcile(folder.Children, children);
+                folder.NotifyCount();
+                return folder;
+            }
             // フィルターや更新で消えた行は、別の行を勝手に開かず選択だけを解除する。
             SetSelection(_visibleEntries.FirstOrDefault(e => e.Key == _selectedEntry?.Key));
             Status = _workspace.Folders.Count == 0 ? "フォルダー未選択"
@@ -213,13 +229,22 @@ public sealed partial class TodoTreeViewModel : ObservableObject, IDisposable
         var index = _selectedEntry is null ? -1 : _visibleEntries.ToList().IndexOf(_selectedEntry);
         var next = index < 0 ? direction > 0 ? 0 : VisibleCount - 1 : (index + direction + VisibleCount) % VisibleCount;
         var entry = _visibleEntries[next];
-        foreach (var group in Groups.Where(g => g.Entries.Contains(entry))) group.IsExpanded = true;
+        foreach (var ancestor in TodoTreeLayout.PathTo(TreeItems, entry))
+        {
+            if (ancestor is TodoFolder folder) folder.IsExpanded = true;
+            if (ancestor is TodoGroup group) group.IsExpanded = true;
+        }
         SetSelection(entry);
         SelectionRequested?.Invoke(this, entry);
         PreviewRequested?.Invoke(this, entry.Hit);
     }
-    [RelayCommand] private void ExpandAll() { foreach (var group in Groups) group.IsExpanded = true; }
-    [RelayCommand] private void CollapseAll() { foreach (var group in Groups) group.IsExpanded = false; }
+    [RelayCommand] private void ExpandAll() => SetAllExpanded(true);
+    [RelayCommand] private void CollapseAll() => SetAllExpanded(false);
+    private void SetAllExpanded(bool expanded)
+    {
+        foreach (var folder in TodoTreeLayout.Folders(TreeItems)) folder.IsExpanded = expanded;
+        foreach (var group in Groups) group.IsExpanded = expanded;
+    }
     [RelayCommand] private void ClearFilters()
     {
         Filter = "";

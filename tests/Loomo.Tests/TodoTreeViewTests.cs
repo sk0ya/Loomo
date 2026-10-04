@@ -42,7 +42,10 @@ public sealed class TodoTreeViewTests(WpfViewHost host)
                     Layout(view);
                     Assert.Equal(((SolidColorBrush)palette["BgAlt"]).Color, ((SolidColorBrush)view.Background).Color);
                     var tree = (TreeView)view.FindName("TodoTree");
-                    var group = Assert.IsType<TreeViewItem>(tree.ItemContainerGenerator.ContainerFromIndex(0));
+                    var folder = Assert.IsType<TreeViewItem>(tree.ItemContainerGenerator.ContainerFromIndex(0));
+                    Assert.IsType<TodoFolder>(folder.DataContext);
+                    Assert.True(folder.IsExpanded);
+                    var group = Assert.IsType<TreeViewItem>(folder.ItemContainerGenerator.ContainerFromIndex(0));
                     Assert.True(group.IsExpanded);
                     Assert.Equal(3, group.Items.Count);
                     Assert.False(vm!.IsFilterVisible);
@@ -89,7 +92,11 @@ public sealed class TodoTreeViewTests(WpfViewHost host)
             for (var i = 0; i < 100; i++)
             {
                 var entry = new TodoEntry("TODO", new($"{i}.cs", $"{i}.cs", 1, 1, "TODO: sample"));
-                vm.Groups.Add(new TodoGroup($"{i}.cs", [entry]) { IsExpanded = false });
+                var group = new TodoGroup($"{i}.cs", [entry]) { IsExpanded = false };
+                var folder = new TodoFolder($"folder-{i}", $"folder-{i}") { IsExpanded = false };
+                folder.Children.Add(group);
+                vm.Groups.Add(group);
+                vm.TreeItems.Add(folder);
             }
             var view = new TodoTreeView { DataContext = vm, Width = 220, Height = 200 };
             Layout(view);
@@ -98,6 +105,7 @@ public sealed class TodoTreeViewTests(WpfViewHost host)
             view.FocusSelectedEntry();
             Layout(view);
             Assert.True(vm.Groups[99].IsExpanded);
+            Assert.True(Assert.IsType<TodoFolder>(vm.TreeItems[99]).IsExpanded);
             Assert.Same(target, ((TreeView)view.FindName("TodoTree")).SelectedItem);
         });
     }

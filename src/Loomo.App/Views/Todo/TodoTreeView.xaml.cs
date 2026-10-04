@@ -125,11 +125,17 @@ public partial class TodoTreeView : UserControl
         _suppressPreview = true;
         try
         {
-            if (Vm?.Groups.FirstOrDefault(g => g.Entries.Contains(entry)) is not { } group) return;
-            group.IsExpanded = true;
-            var parent = RealizeItem(TodoTree, Vm.Groups.IndexOf(group));
-            var container = parent is null ? null : RealizeItem(parent, group.Entries.IndexOf(entry));
-            if (container is not null) { container.IsSelected = true; container.BringIntoView(); container.Focus(); }
+            if (Vm is null) return;
+            ItemsControl parent = TodoTree;
+            foreach (var node in TodoTreeLayout.PathTo(Vm.TreeItems, entry))
+            {
+                if (node is TodoFolder folder) folder.IsExpanded = true;
+                if (node is TodoGroup group) group.IsExpanded = true;
+                var container = RealizeItem(parent, parent.Items.IndexOf(node));
+                if (container is null) return;
+                if (node is TodoEntry) { container.IsSelected = true; container.BringIntoView(); container.Focus(); }
+                parent = container;
+            }
         }
         finally { _suppressPreview = false; }
     }
@@ -161,9 +167,13 @@ public partial class TodoTreeView : UserControl
     }
     private void OnGroupClick(object sender, MouseButtonEventArgs e)
     {
-        if (sender is not FrameworkElement { DataContext: TodoGroup group } element) return;
+        if (sender is not FrameworkElement element || element.DataContext is not (TodoGroup or TodoFolder)) return;
         CancelPreview();
-        if (e.ClickCount == 1) group.IsExpanded = !group.IsExpanded;
+        if (e.ClickCount == 1)
+        {
+            if (element.DataContext is TodoGroup group) group.IsExpanded = !group.IsExpanded;
+            if (element.DataContext is TodoFolder folder) folder.IsExpanded = !folder.IsExpanded;
+        }
         WpfTreeTraversal.FindAncestor<TreeViewItem>(element)?.Focus();
         e.Handled = true;
     }
@@ -228,7 +238,7 @@ public partial class TodoTreeView : UserControl
         if (Vm is not { } vm || sender is not FrameworkElement target) return;
         CancelPreview();
         var menu = new ContextMenu { PlacementTarget = target, Placement = PlacementMode.Bottom };
-        AddMenu(menu, "ファイル別に表示", () => vm.GroupByTag = false).IsChecked = !vm.GroupByTag;
+        AddMenu(menu, "フォルダー階層で表示", () => vm.GroupByTag = false).IsChecked = !vm.GroupByTag;
         AddMenu(menu, "タグ別に表示", () => vm.GroupByTag = true).IsChecked = vm.GroupByTag;
         menu.Items.Add(new Separator());
         AddMenu(menu, "すべて展開", () => vm.ExpandAllCommand.Execute(null));
@@ -270,6 +280,14 @@ public partial class TodoTreeView : UserControl
             AddMenu(menu, "エクスプローラーで表示", () => FileExplorerLauncher.RevealInExplorer(entry.Hit.FullPath));
             menu.Items.Add(new Separator());
             AddMenu(menu, $"{entry.Tag} だけを表示", () => vm.ShowOnlyTagCommand.Execute(entry.Tag));
+        }
+        else if (TodoTree.SelectedItem is TodoFolder folder)
+        {
+            AddMenu(menu, folder.IsExpanded ? "折りたたむ" : "展開する", () => folder.IsExpanded = !folder.IsExpanded);
+            AddMenu(menu, "このフォルダーの TODO をコピー", () => ClipboardText.Set(string.Join(Environment.NewLine,
+                folder.Entries.Select(item => $"{item.Location} [{item.Tag}] {item.Body}"))));
+            AddMenu(menu, "フォルダーのパスをコピー", () => ClipboardText.Set(folder.FullPath));
+            AddMenu(menu, "エクスプローラーで開く", () => FileExplorerLauncher.OpenInExplorer(folder.FullPath));
         }
         else if (TodoTree.SelectedItem is TodoGroup group)
         {

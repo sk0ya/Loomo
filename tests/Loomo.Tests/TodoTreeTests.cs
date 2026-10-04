@@ -169,6 +169,98 @@ public sealed class TodoTreeTests
         finally { System.IO.File.Delete(path); }
     }
 
+    [Fact]
+    public async Task フォルダー階層と直下ファイルを分け配下の件数を集計する()
+    {
+        var root = @"C:\TodoWorkspace";
+        var hits = new ContentSearchHit[] {
+            new(root + @"\src\api\Server.cs", "src/api/Server.cs", 1, 1, "TODO: api"),
+            new(root + @"\src\ui\Window.cs", "src/ui/Window.cs", 2, 1, "FIXME: ui"),
+            new(root + @"\src\ui\Window.cs", "src/ui/Window.cs", 3, 1, "NOTE: ui"),
+            new(root + @"\README.md", "README.md", 1, 1, "TODO: root"),
+        };
+        var search = new StubSearch { Handler = _ => Task.FromResult<IReadOnlyList<ContentSearchHit>>(hits) };
+        using var vm = new TodoTreeViewModel(search, new FakeWorkspaceService(root));
+        await vm.RefreshCommand.ExecuteAsync(null);
+        var src = Assert.IsType<TodoFolder>(vm.TreeItems[0]);
+        Assert.Equal("src", src.Name);
+        Assert.Equal(3, src.Count);
+        Assert.Equal(new[] { "api", "ui" }, src.Children.Cast<TodoFolder>().Select(f => f.Name));
+        Assert.Equal(2, ((TodoFolder)src.Children[1]).Count);
+        Assert.Equal("README.md", Assert.IsType<TodoGroup>(vm.TreeItems[1]).Title);
+        vm.CollapseAllCommand.Execute(null);
+        Assert.False(src.IsExpanded);
+        vm.NextCommand.Execute(null);
+        Assert.Equal("src/api/Server.cs", vm.SelectedEntry!.Hit.RelativePath);
+        Assert.True(src.IsExpanded);
+        Assert.True(((TodoFolder)src.Children[0]).IsExpanded);
+        Assert.True(((TodoGroup)((TodoFolder)src.Children[0]).Children[0]).IsExpanded);
+        vm.NextCommand.Execute(null);
+        Assert.Equal("src/ui/Window.cs", vm.SelectedEntry!.Hit.RelativePath);
+        vm.NextCommand.Execute(null);
+        vm.NextCommand.Execute(null);
+        Assert.Equal("README.md", vm.SelectedEntry!.Hit.RelativePath);
+    }
+
+    [Fact]
+    public async Task 同名の複数ルートを絶対パスで区別して結果を混ぜない()
+    {
+        var first = @"C:\one\project";
+        var second = @"C:\two\project";
+        var workspace = new FakeWorkspaceService(first);
+        workspace.AddFolder(second);
+        var search = new StubSearch { Handler = _ => Task.FromResult<IReadOnlyList<ContentSearchHit>>([
+            new(first + @"\src\App.cs", "project/src/App.cs", 1, 1, "TODO: one"),
+            new(second + @"\src\App.cs", "project/src/App.cs", 1, 1, "TODO: two")]) };
+        using var vm = new TodoTreeViewModel(search, workspace);
+        await vm.RefreshCommand.ExecuteAsync(null);
+        Assert.Equal(2, vm.TreeItems.Count);
+        Assert.Equal(2, vm.Groups.Count);
+        var roots = vm.TreeItems.Cast<TodoFolder>().ToList();
+        Assert.Equal(new[] { first, second }, roots.Select(r => r.FullPath));
+        Assert.NotEqual(roots[0].Name, roots[1].Name);
+        Assert.Equal("one", Assert.Single(roots[0].Entries).Body);
+        Assert.Equal("two", Assert.Single(roots[1].Entries).Body);
+    }
+
+    [Fact]
+    public async Task 自動更新と分類切替と絞り込みでフォルダーの開閉を維持する()
+    {
+        var root = @"C:\TodoWorkspace";
+        var search = new StubSearch { Handler = _ => Task.FromResult<IReadOnlyList<ContentSearchHit>>([
+            new(root + @"\src\App.cs", "src/App.cs", 1, 1, "TODO: one")]) };
+        using var vm = new TodoTreeViewModel(search, new FakeWorkspaceService(root));
+        await vm.RefreshCommand.ExecuteAsync(null);
+        var folder = Assert.IsType<TodoFolder>(Assert.Single(vm.TreeItems));
+        folder.IsExpanded = false;
+        await vm.RefreshCommand.ExecuteAsync(null);
+        Assert.Same(folder, vm.TreeItems[0]);
+        Assert.False(folder.IsExpanded);
+        vm.Filter = "missing";
+        Assert.Empty(vm.TreeItems);
+        vm.Filter = "";
+        Assert.False(Assert.IsType<TodoFolder>(vm.TreeItems[0]).IsExpanded);
+        vm.GroupByTag = true;
+        Assert.IsType<TodoGroup>(vm.TreeItems[0]);
+        vm.GroupByTag = false;
+        Assert.False(Assert.IsType<TodoFolder>(vm.TreeItems[0]).IsExpanded);
+        vm.ExpandAllCommand.Execute(null);
+        Assert.True(Assert.IsType<TodoFolder>(vm.TreeItems[0]).IsExpanded);
+    }
+
+    [Fact]
+    public async Task ドライブ直下をルートにしても表示名が空にならない()
+    {
+        var workspace = new FakeWorkspaceService(@"C:\");
+        workspace.AddFolder(@"D:\");
+        var search = new StubSearch { Handler = _ => Task.FromResult<IReadOnlyList<ContentSearchHit>>([
+            new(@"C:\src\App.cs", "src/App.cs", 1, 1, "TODO: one"),
+            new(@"D:\src\App.cs", "src/App.cs", 1, 1, "TODO: two")]) };
+        using var vm = new TodoTreeViewModel(search, workspace);
+        await vm.RefreshCommand.ExecuteAsync(null);
+        Assert.Equal(new[] { @"C:\", @"D:\" }, vm.TreeItems.Cast<TodoFolder>().Select(f => f.Name));
+    }
+
     private sealed class StubSearch : IWorkspaceSearchService
     {
         public Func<CancellationToken, Task<IReadOnlyList<ContentSearchHit>>> Handler { get; set; } = null!;

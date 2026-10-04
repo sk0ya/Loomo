@@ -33,11 +33,12 @@ public sealed partial class TodoEntry : ObservableObject
 
 public sealed partial class TodoGroup : ObservableObject
 {
-    public TodoGroup(string name, IReadOnlyList<TodoEntry> entries, bool byTag = false)
-    { Name = name; ByTag = byTag; Entries = new(entries); }
+    public TodoGroup(string name, IReadOnlyList<TodoEntry> entries, bool byTag = false, string? fullPath = null)
+    { Name = name; ByTag = byTag; FullPath = fullPath ?? name; Entries = new(entries); }
     public string Name { get; }
     public bool ByTag { get; }
-    public string Key => $"{(ByTag ? "tag" : "file")}:{Name}";
+    public string FullPath { get; }
+    public string Key => ByTag ? $"tag:{Name}" : $"file:{FullPath}";
     public string Title => ByTag ? Name : Path.GetFileName(Name);
     public string Directory => ByTag ? "" : Path.GetDirectoryName(Name) ?? "";
     public ObservableCollection<TodoEntry> Entries { get; }
@@ -46,6 +47,21 @@ public sealed partial class TodoGroup : ObservableObject
     [ObservableProperty] private bool _isSelected;
     public void NotifyCount() { OnPropertyChanged(nameof(Count)); OnPropertyChanged(nameof(Label)); }
     [ObservableProperty] private bool _isExpanded = true;
+}
+
+/// <summary>TODO が見つかったフォルダー。件数とコピー対象は配下すべての一致行を含む。</summary>
+public sealed partial class TodoFolder : ObservableObject
+{
+    public TodoFolder(string name, string fullPath) { Name = name; FullPath = fullPath; }
+    public string Name { get; }
+    public string FullPath { get; }
+    public string Key => $"folder:{FullPath}";
+    public ObservableCollection<object> Children { get; } = [];
+    public IEnumerable<TodoEntry> Entries => TodoTreeLayout.Entries(Children);
+    public int Count => Entries.Count();
+    public void NotifyCount() => OnPropertyChanged(nameof(Count));
+    [ObservableProperty] private bool _isExpanded = true;
+    [ObservableProperty] private bool _isSelected;
 }
 
 public sealed partial class TodoTagFilter : ObservableObject
