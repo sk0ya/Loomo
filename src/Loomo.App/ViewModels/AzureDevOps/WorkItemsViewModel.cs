@@ -55,7 +55,8 @@ public sealed class WorkItemRowViewModel(WorkItemTreeRow row)
 
 /// <summary>
 /// ActivityBar の Work Items（⌨ の上のアイコン）。自分に割り当たっている未完了の Work Item を、
-/// Story の下に Task が並ぶ形で出す。認証は Git Credential Manager に任せる（<see cref="GitCredentialTokenProvider"/>）。
+/// Story の下に Task が並ぶ形で出す。認証は TaskAzure と同じ PAT（<see cref="AzureDevOpsPatStore"/>：
+/// 環境変数 ADO_PAT → 資格情報マネージャー ADO_PAT）。
 /// <para>組織は設定（<see cref="AzureDevOpsSettings.Organization"/>）が空なら、ワークスペースの各フォルダーの
 /// git リモートから見つける——Azure Repos を開いていれば何も設定せずに出る。</para>
 /// </summary>
@@ -64,25 +65,25 @@ public sealed partial class WorkItemsViewModel : ObservableObject
     /// <summary>開き直したときに取り直すまでの間隔。開くたびに取りに行くと、ちらっと覗くだけでも待たされる。</summary>
     private static readonly TimeSpan StaleAfter = TimeSpan.FromMinutes(2);
 
-    private readonly IWorkspaceService _workspace;
     private readonly LoomoSettings _settings;
     private readonly SettingsStore _settingsStore;
-    private readonly GitCredentialTokenProvider _credentials;
+    private readonly AzureDevOpsPatStore _pats;
+    private readonly AzureDevOpsOrganizationLocator _locator;
     private readonly AzureDevOpsWorkItemClient _client;
     private CancellationTokenSource? _loading;
     private DateTime _loadedAt = DateTime.MinValue;
 
     public WorkItemsViewModel(IWorkspaceService workspace, LoomoSettings settings, SettingsStore settingsStore,
-        GitCredentialTokenProvider credentials, AzureDevOpsWorkItemClient client)
+        AzureDevOpsPatStore pats, AzureDevOpsOrganizationLocator locator, AzureDevOpsWorkItemClient client)
     {
-        _workspace = workspace;
         _settings = settings;
         _settingsStore = settingsStore;
-        _credentials = credentials;
+        _pats = pats;
+        _locator = locator;
         _client = client;
         _organizationInput = settings.AzureDevOps.Organization;
         // 部屋を移ったら組織が変わり得るので、次に開いたとき取り直す。
-        _workspace.FoldersChanged += (_, _) => _loadedAt = DateTime.MinValue;
+        workspace.FoldersChanged += (_, _) => _loadedAt = DateTime.MinValue;
     }
 
     public ObservableCollection<WorkItemRowViewModel> Items { get; } = new();
@@ -105,6 +106,9 @@ public sealed partial class WorkItemsViewModel : ObservableObject
     [ObservableProperty] private bool _isOrganizationEditorVisible;
 
     [ObservableProperty] private string _organizationInput;
+
+    /// <summary>PAT の入力欄を出すか（PAT が見つからない・認証が通らなかったとき）。</summary>
+    [ObservableProperty] private bool _isPatEditorVisible;
 
     /// <summary>行が選ばれた（ブラウザペインで開く）。ホストが購読する。</summary>
     public event Action<string, string>? OpenRequested;
@@ -142,13 +146,32 @@ public sealed partial class WorkItemsViewModel : ObservableObject
         var text = OrganizationInput?.Trim() ?? "";
         if (text.Length > 0 && !AzureDevOpsOrganization.TryParseUserInput(text, out _))
         {
-            ErrorText = "組織名か、https://dev.azure.com/{組織} の形で入力してください。";
+            ErrorText = "組織名か、組織の URL（https://dev.azure.com/{組織}・https://{サーバー}/tfs/{コレクション}）を入力してください。";
             return;
         }
         _settings.AzureDevOps.Organization = text;
         try { _settingsStore.Save(_settings); }
         catch { /* 保存に失敗しても、この起動中は効かせる */ }
         IsOrganizationEditorVisible = false;
+        await RefreshAsync();
+    }
+
+    /// <summary>入力された PAT を資格情報マネージャー（ADO_PAT＝TaskAzure と同じ場所）へ保存して取り直す。
+    /// PasswordBox は値をバインドできないので、ビューから文字列で受け取る。</summary>
+    [RelayCommand]
+    private async Task SavePatAsync(string? pat)
+    {
+        if (string.IsNullOrWhiteSpace(pat))
+        {
+            ErrorText = "PAT を入力してください。";
+            return;
+        }
+        if (!_pats.Save(pat))
+        {
+            ErrorText = "資格情報マネージャーへ保存できませんでした。";
+            return;
+        }
+        IsPatEditorVisible = false;
         await RefreshAsync();
     }
 
@@ -176,22 +199,24 @@ public sealed partial class WorkItemsViewModel : ObservableObject
             }
             OrganizationName = organization.Name;
 
-            var credential = await _credentials.GetAsync(organization, token);
-            if (token.IsCancellationRequested) return;
-            if (!credential.Success)
+            var pat = _pats.Get();
+            if (pat is null)
             {
                 StatusText = "";
-                ErrorText = credential.Message;
+                ErrorText = $"PAT が見つかりません。環境変数 {AzureDevOpsPatStore.EnvironmentVariable} に設定するか、"
+                    + "ここで入力して資格情報マネージャーへ保存してください（Work Items の読み取り権限が要ります）。";
+                IsPatEditorVisible = true;
                 return;
             }
+            var auth = AzureDevOpsPatStore.CreateHeader(pat);
 
-            var assigned = await _client.GetAssignedToMeAsync(organization, credential.Header!, token);
+            var assigned = await _client.GetAssignedToMeAsync(organization, auth, token);
             // 自分の Task の親（Story など）が自分の担当でなくても、見出しとして取ってくる。
             var assignedIds = assigned.Select(i => i.Id).ToHashSet();
             var missingParents = assigned.Select(i => i.ParentId)
                 .Where(id => id != 0 && !assignedIds.Contains(id)).Distinct().ToList();
             var parents = missingParents.Count > 0
-                ? await _client.GetByIdsAsync(organization, missingParents, credential.Header!, token)
+                ? await _client.GetByIdsAsync(organization, missingParents, auth, token)
                 : [];
             if (token.IsCancellationRequested) return;
 
@@ -207,8 +232,8 @@ public sealed partial class WorkItemsViewModel : ObservableObject
         catch (AzureDevOpsException ex) when (ex.IsAuthentication)
         {
             StatusText = "";
-            ErrorText = ex.Message + " ターミナルで一度 git fetch してサインインし直すか、"
-                + "git-credential-manager azure-repos bind で組織に使うアカウントを確かめてください。";
+            ErrorText = ex.Message + " PAT の期限切れ・権限（Work Items 読み取り）・組織 URL を確かめてください。";
+            IsPatEditorVisible = true;
         }
         catch (Exception ex) when (ex is AzureDevOpsException or System.Net.Http.HttpRequestException or TaskCanceledException
                                        or System.Text.Json.JsonException)
@@ -225,15 +250,7 @@ public sealed partial class WorkItemsViewModel : ObservableObject
 
     /// <summary>設定にあればそれ。無ければワークスペースの各フォルダーの git リモートから最初に見つかった組織。</summary>
     private async Task<AzureDevOpsOrganization?> ResolveOrganizationAsync(CancellationToken token)
-    {
-        if (AzureDevOpsOrganization.TryParseUserInput(_settings.AzureDevOps.Organization, out var configured))
-            return configured;
-        foreach (var folder in _workspace.Folders.ToList())
-        {
-            foreach (var url in await GitCredentialTokenProvider.GetRemoteUrlsAsync(folder, token))
-                if (AzureDevOpsOrganization.TryParseRemote(url, out var found))
-                    return found;
-        }
-        return null;
-    }
+        => AzureDevOpsOrganization.TryParseUserInput(_settings.AzureDevOps.Organization, out var configured)
+            ? configured
+            : await _locator.FindAsync(token);
 }

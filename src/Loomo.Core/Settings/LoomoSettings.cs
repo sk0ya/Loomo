@@ -194,7 +194,7 @@ public sealed class ActivityBarSettings
     public List<string> Secondary { get; set; } = new();
 }
 
-/// <summary>Azure DevOps 連携の設定。認証は Git Credential Manager に任せるので、ここには秘密を持たない。</summary>
+/// <summary>Azure DevOps 連携の設定。PAT は環境変数か資格情報マネージャー（ADO_PAT）が持つので、ここには秘密を持たない。</summary>
 public sealed class AzureDevOpsSettings
 {
     /// <summary>照会する組織（組織名・組織 URL・リモート URL のどれでも）。空ならワークスペースの

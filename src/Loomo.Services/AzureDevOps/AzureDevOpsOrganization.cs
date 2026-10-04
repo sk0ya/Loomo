@@ -3,19 +3,13 @@ using System;
 namespace sk0ya.Loomo.Services;
 
 /// <summary>
-/// Azure DevOps の組織。REST の土台 URL と、資格情報を引くときのホスト・パスを持つ。
-/// <para>旧形式（<c>{org}.visualstudio.com</c>）のリモートは、その形のまま扱う——Git Credential Manager は
-/// ホストごとに資格情報を覚えるので、ホストを dev.azure.com へ読み替えると、git で通っているのに
-/// Loomo だけサインインを求められる、ということが起きる。</para>
+/// Azure DevOps の組織（オンプレの Azure DevOps Server ならコレクション）。REST の土台 URL を持つ。
 /// </summary>
-public sealed record AzureDevOpsOrganization(string Name, string BaseUrl, string CredentialHost, string CredentialPath)
+public sealed record AzureDevOpsOrganization(string Name, string BaseUrl)
 {
     /// <summary>dev.azure.com 形式の組織。</summary>
     public static AzureDevOpsOrganization FromName(string name)
-        => new(name, $"https://dev.azure.com/{name}", "dev.azure.com", name);
-
-    private static AzureDevOpsOrganization FromLegacyHost(string name)
-        => new(name, $"https://{name}.visualstudio.com", $"{name}.visualstudio.com", "");
+        => new(name, $"https://dev.azure.com/{name}");
 
     /// <summary>git のリモート URL から組織を読む。対応する形：
     /// <list type="bullet">
@@ -23,6 +17,7 @@ public sealed record AzureDevOpsOrganization(string Name, string BaseUrl, string
     /// <item><c>https://{org}.visualstudio.com/[DefaultCollection/]{project}/_git/{repo}</c></item>
     /// <item><c>git@ssh.dev.azure.com:v3/{org}/{project}/{repo}</c></item>
     /// <item><c>{org}@vs-ssh.visualstudio.com:v3/{org}/{project}/{repo}</c></item>
+    /// <item><c>https://{server}/tfs/{collection}/{project}/_git/{repo}</c>（Azure DevOps Server）</item>
     /// </list></summary>
     public static bool TryParseRemote(string? remoteUrl, out AzureDevOpsOrganization organization)
     {
@@ -46,12 +41,13 @@ public sealed record AzureDevOpsOrganization(string Name, string BaseUrl, string
             return false;
         }
 
-        if (!Uri.TryCreate(value, UriKind.Absolute, out var uri))
+        if (!Uri.TryCreate(value, UriKind.Absolute, out var uri)
+            || !(uri.Scheme == Uri.UriSchemeHttps || uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == "ssh"))
             return false;
+        var segments = uri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
         if (uri.Host.Equals("dev.azure.com", StringComparison.OrdinalIgnoreCase)
             || uri.Host.Equals("ssh.dev.azure.com", StringComparison.OrdinalIgnoreCase))
         {
-            var segments = uri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
             // ssh://git@ssh.dev.azure.com/v3/{org}/... も同じ並び。
             var index = segments.Length > 0 && segments[0].Equals("v3", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
             if (segments.Length <= index || !IsName(Uri.UnescapeDataString(segments[index])))
@@ -64,7 +60,6 @@ public sealed record AzureDevOpsOrganization(string Name, string BaseUrl, string
             var name = uri.Host[..^".visualstudio.com".Length];
             if (name.Equals("vs-ssh", StringComparison.OrdinalIgnoreCase))
             {
-                var segments = uri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
                 if (segments.Length < 2 || !IsName(segments[1]))
                     return false;
                 organization = FromLegacyHost(segments[1]);
@@ -75,22 +70,44 @@ public sealed record AzureDevOpsOrganization(string Name, string BaseUrl, string
             organization = FromLegacyHost(name);
             return true;
         }
+
+        // Azure DevOps Server：「…/{collection}/{project}/_git/{repo}」。_git の2つ手前までがコレクション。
+        var git = Array.FindIndex(segments, s => s.Equals("_git", StringComparison.OrdinalIgnoreCase));
+        if (git >= 2 && (uri.Scheme == Uri.UriSchemeHttps || uri.Scheme == Uri.UriSchemeHttp))
+        {
+            var collection = string.Join('/', segments[..(git - 1)]);
+            organization = new AzureDevOpsOrganization(
+                Uri.UnescapeDataString(segments[git - 2]),
+                $"{uri.Scheme}://{uri.Authority}/{collection}");
+            return true;
+        }
         return false;
     }
 
-    /// <summary>人が設定に書いた値から組織を読む。リモート URL・組織 URL・組織名だけ、のどれでもよい。</summary>
+    /// <summary>人が設定に書いた値から組織を読む。リモート URL・組織（コレクション）URL・組織名だけ、のどれでもよい。
+    /// URL はそのまま土台にする（TaskAzure の「組織 URL」と同じ値を貼れる）。</summary>
     public static bool TryParseUserInput(string? text, out AzureDevOpsOrganization organization)
     {
         organization = null!;
         if (string.IsNullOrWhiteSpace(text))
             return false;
         var value = text.Trim().TrimEnd('/');
-        if (TryParseRemote(value, out organization))
+        if (value.Contains("/_git/", StringComparison.OrdinalIgnoreCase) && TryParseRemote(value, out organization))
             return true;
-        // スキームを省いた「dev.azure.com/org」も受ける。
-        if (!value.Contains("://", StringComparison.Ordinal) && value.Contains('.', StringComparison.Ordinal)
-            && TryParseRemote("https://" + value, out organization))
+        if (!value.Contains("://", StringComparison.Ordinal) && value.Contains('.', StringComparison.Ordinal))
+            value = "https://" + value;
+        if (Uri.TryCreate(value, UriKind.Absolute, out var uri)
+            && (uri.Scheme == Uri.UriSchemeHttps || uri.Scheme == Uri.UriSchemeHttp))
+        {
+            var segments = uri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            var name = segments.Length > 0
+                ? Uri.UnescapeDataString(segments[^1])
+                : uri.Host.EndsWith(".visualstudio.com", StringComparison.OrdinalIgnoreCase)
+                    ? uri.Host[..^".visualstudio.com".Length]
+                    : uri.Host;
+            organization = new AzureDevOpsOrganization(name, $"{uri.Scheme}://{uri.Authority}{uri.AbsolutePath.TrimEnd('/')}");
             return true;
+        }
         if (IsName(value))
         {
             organization = FromName(value);
@@ -98,6 +115,9 @@ public sealed record AzureDevOpsOrganization(string Name, string BaseUrl, string
         }
         return false;
     }
+
+    private static AzureDevOpsOrganization FromLegacyHost(string name)
+        => new(name, $"https://{name}.visualstudio.com");
 
     private static string? SshPathAfter(string value, string hostWithColon)
     {

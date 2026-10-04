@@ -308,7 +308,7 @@ public sealed class SettingsStore
         }
     }
 
-    // ===== Azure DevOps 連携。組織だけ。平文で保持（資格情報は GCM が持つ）。 =====
+    // ===== Azure DevOps 連携。組織だけ。平文で保持（PAT は資格情報マネージャーが持つ）。 =====
 
     private sealed class PersistedAzureDevOps
     {

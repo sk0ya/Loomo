@@ -66,6 +66,20 @@
                      AutomationProperties.AutomationId="WorkItemsOrganizationBox" />
         </DockPanel>
 
+        <!-- PAT の入力（見つからない・認証が通らなかったとき）。資格情報マネージャーの ADO_PAT へ保存する
+             ——TaskAzure と同じ場所なので、どちらで保存しても両方で効く。 -->
+        <DockPanel DockPanel.Dock="Top" Margin="6,0,6,6"
+                   Visibility="{Binding IsPatEditorVisible, Converter={StaticResource BoolToVis}}">
+            <Button DockPanel.Dock="Right" Style="{StaticResource FlatButton}" Content="保存" Margin="4,0,0,0"
+                    Click="OnSavePatClick" />
+            <TextBlock DockPanel.Dock="Left" Text="PAT" Margin="0,0,6,0" VerticalAlignment="Center"
+                       FontSize="{DynamicResource Fs12}" Foreground="{DynamicResource FgDim}" />
+            <PasswordBox x:Name="PatBox" FontSize="{DynamicResource Fs12}" VerticalContentAlignment="Center"
+                         KeyDown="OnPatKeyDown"
+                         ToolTip="Azure DevOps の個人用アクセストークン（Work Items 読み取り）"
+                         AutomationProperties.AutomationId="WorkItemsPatBox" />
+        </DockPanel>
+
         <TextBlock DockPanel.Dock="Top" Text="{Binding ErrorText}" TextWrapping="Wrap" Margin="6,0,6,6"
                    FontSize="{DynamicResource Fs12}" Foreground="{DynamicResource Error}"
                    Visibility="{Binding ErrorText, Converter={StaticResource NonEmptyToVis}}" />

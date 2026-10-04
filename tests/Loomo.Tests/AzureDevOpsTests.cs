@@ -6,18 +6,18 @@ namespace sk0ya.Loomo.Tests;
 public sealed class AzureDevOpsTests
 {
     [Theory]
-    [InlineData("https://dev.azure.com/contoso/Web/_git/site", "contoso", "dev.azure.com", "contoso")]
-    [InlineData("https://contoso@dev.azure.com/contoso/Web/_git/site", "contoso", "dev.azure.com", "contoso")]
-    [InlineData("git@ssh.dev.azure.com:v3/contoso/Web/site", "contoso", "dev.azure.com", "contoso")]
-    [InlineData("ssh://git@ssh.dev.azure.com/v3/contoso/Web/site", "contoso", "dev.azure.com", "contoso")]
-    [InlineData("https://contoso.visualstudio.com/DefaultCollection/Web/_git/site", "contoso", "contoso.visualstudio.com", "")]
-    [InlineData("contoso@vs-ssh.visualstudio.com:v3/contoso/Web/site", "contoso", "contoso.visualstudio.com", "")]
-    public void リモートURLから組織を読む(string remote, string name, string host, string path)
+    [InlineData("https://dev.azure.com/contoso/Web/_git/site", "contoso", "https://dev.azure.com/contoso")]
+    [InlineData("https://contoso@dev.azure.com/contoso/Web/_git/site", "contoso", "https://dev.azure.com/contoso")]
+    [InlineData("git@ssh.dev.azure.com:v3/contoso/Web/site", "contoso", "https://dev.azure.com/contoso")]
+    [InlineData("ssh://git@ssh.dev.azure.com/v3/contoso/Web/site", "contoso", "https://dev.azure.com/contoso")]
+    [InlineData("https://contoso.visualstudio.com/DefaultCollection/Web/_git/site", "contoso", "https://contoso.visualstudio.com")]
+    [InlineData("contoso@vs-ssh.visualstudio.com:v3/contoso/Web/site", "contoso", "https://contoso.visualstudio.com")]
+    [InlineData("https://tfs.example.net/tfs/Products/Web/_git/site", "Products", "https://tfs.example.net/tfs/Products")]
+    public void リモートURLから組織を読む(string remote, string name, string baseUrl)
     {
         Assert.True(AzureDevOpsOrganization.TryParseRemote(remote, out var org));
         Assert.Equal(name, org.Name);
-        Assert.Equal(host, org.CredentialHost);
-        Assert.Equal(path, org.CredentialPath);
+        Assert.Equal(baseUrl, org.BaseUrl);
     }
 
     [Theory]
@@ -33,6 +33,7 @@ public sealed class AzureDevOpsTests
     [InlineData("https://dev.azure.com/contoso/", "https://dev.azure.com/contoso")]
     [InlineData("dev.azure.com/contoso", "https://dev.azure.com/contoso")]
     [InlineData("https://contoso.visualstudio.com", "https://contoso.visualstudio.com")]
+    [InlineData("https://tfs.example.net/tfs/Products", "https://tfs.example.net/tfs/Products")]
     public void 設定の入力から組織を読む(string input, string baseUrl)
     {
         Assert.True(AzureDevOpsOrganization.TryParseUserInput(input, out var org));
@@ -40,20 +41,11 @@ public sealed class AzureDevOpsTests
     }
 
     [Fact]
-    public void Entraのトークンは_Bearer_PATは_Basic()
+    public void PATは空ユーザー名のBasicで送る()
     {
-        Assert.Equal("Bearer", GitCredentialTokenProvider.CreateHeader("eyJhbGciOi.eyJzdWIi.c2ln").Scheme);
-        var basic = GitCredentialTokenProvider.CreateHeader("patvalue");
-        Assert.Equal("Basic", basic.Scheme);
-        Assert.Equal(":patvalue", System.Text.Encoding.ASCII.GetString(Convert.FromBase64String(basic.Parameter!)));
-    }
-
-    [Fact]
-    public void credential_fill_の出力から値を取る()
-    {
-        var output = "protocol=https\r\nhost=dev.azure.com\r\nusername=me\r\npassword=a=b\r\n";
-        Assert.Equal("a=b", GitCredentialTokenProvider.ParseValue(output, "password"));
-        Assert.Null(GitCredentialTokenProvider.ParseValue(output, "pass"));
+        var header = AzureDevOpsPatStore.CreateHeader("patvalue");
+        Assert.Equal("Basic", header.Scheme);
+        Assert.Equal(":patvalue", System.Text.Encoding.ASCII.GetString(Convert.FromBase64String(header.Parameter!)));
     }
 
     [Fact]

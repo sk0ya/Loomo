@@ -228,8 +228,9 @@ internal static class LoomoServiceCollectionExtensions
             sp.GetRequiredService<LoomoSettings>(),
             sp.GetRequiredService<SettingsStore>()));
         services.AddSingleton<SessionsViewModel>();
-        // Azure DevOps の Work Items（ActivityBar の ⌨ の上）。資格情報は Git Credential Manager から借りる。
-        services.AddSingleton<GitCredentialTokenProvider>();
+        // Azure DevOps の Work Items（ActivityBar の ⌨ の上）。PAT は TaskAzure と同じ場所から読む。
+        services.AddSingleton<AzureDevOpsPatStore>();
+        services.AddSingleton<AzureDevOpsOrganizationLocator>();
         services.AddSingleton(_ => new AzureDevOpsWorkItemClient());
         services.AddSingleton<WorkItemsViewModel>();
         services.AddSingleton<SettingsViewModel>();
