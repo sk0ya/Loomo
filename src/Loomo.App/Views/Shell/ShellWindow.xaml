@@ -885,9 +885,10 @@
                                   ResizeDirection="Rows" ResizeBehavior="PreviousAndNext"
                                   Background="{DynamicResource Border}" />
 
-                    <!-- 中段区画。既定ではタブ一覧だけが住む。 -->
+                    <!-- 中段区画。既定ではタブ一覧と TODO Tree が住む。 -->
                     <Grid x:Name="SecondarySidebarHost" Grid.Row="2">
                         <views:TabsView x:Name="SidebarTabs" DataContext="{Binding Tabs}" />
+                        <views:TodoTreeView x:Name="SidebarTodoTree" DataContext="{Binding TodoTree}" Visibility="Collapsed" />
                     </Grid>
                 </Grid>
 

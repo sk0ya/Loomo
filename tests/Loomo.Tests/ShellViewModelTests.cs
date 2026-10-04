@@ -57,8 +57,8 @@ public class ShellViewModelTests
     public void ソリューションだけの区画は遅延検出後に保存した開閉状態へ戻る(bool primary, bool visible)
     {
         var settings = new LoomoSettings();
-        settings.ActivityBar.Primary = primary ? ["solution"] : ["explorer", "git", "pegboard", "tabs"];
-        settings.ActivityBar.Secondary = primary ? ["explorer", "git", "pegboard", "tabs"] : ["solution"];
+        settings.ActivityBar.Primary = primary ? ["solution"] : ["explorer", "git", "pegboard", "tabs", "todo"];
+        settings.ActivityBar.Secondary = primary ? ["explorer", "git", "pegboard", "tabs", "todo"] : ["solution"];
         settings.ActivityBar.PrimarySelection = primary ? "solution" : "explorer";
         settings.ActivityBar.SecondarySelection = primary ? "tabs" : "solution";
         settings.ActivityBar.PrimaryVisible = primary ? visible : true;
@@ -283,7 +283,7 @@ public class ShellViewModelTests
     public void 空の段は畳んだ状態で起動する()
     {
         var settings = new LoomoSettings();
-        settings.ActivityBar.Primary = ["explorer", "git", "solution", "pegboard", "tabs"];
+        settings.ActivityBar.Primary = ["explorer", "git", "solution", "pegboard", "tabs", "todo"];
         settings.ActivityBar.Secondary = [];
         var sut = CreateSut(activityBar: new ActivityBarViewModel(settings));
 
@@ -332,6 +332,8 @@ public class ShellViewModelTests
     public void 段が空になったらその区画は畳む()
     {
         var sut = CreateSut();
+
+        sut.ActivityBar.Move(sut.ActivityBar.ItemFor(SidebarPanel.Todo)!, ActivityBarSlot.Primary, 0);
 
         sut.ActivityBar.Move(sut.ActivityBar.ItemFor(SidebarPanel.Tabs)!, ActivityBarSlot.Primary, 0);
 

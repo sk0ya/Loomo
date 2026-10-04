@@ -250,6 +250,7 @@ internal static class LoomoServiceCollectionExtensions
         services.AddSingleton<SearchResultTreeMapper>();
         services.AddSingleton<SearchPanelQuery>();
         services.AddSingleton<SearchPanelViewModel>();
+        services.AddSingleton<TodoTreeViewModel>();
         services.AddSingleton<sk0ya.Loomo.Core.Debug.DebugLaunchProfileStore>();
         services.AddSingleton<DebugViewModel>();
         // TS IDE のプロファイルは dotnet と別ファイル（tsLaunchProfiles.json）に保存する（レコード形は共用）。

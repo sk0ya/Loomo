@@ -308,6 +308,11 @@ public partial class ShellWindow : Window {
         vm.FolderTree.EntryRenamed += (_, e) => OnFolderTreeEntryRenamed(e);
         vm.FolderTree.EntryDeleted += (_, path) => OnFolderTreeEntryDeleted(path);
         vm.FolderTree.RevealCurrentFileRequested += (_, _) => RevealActiveFileInFolderTree();
+        if (vm.TodoTree is { } todoTree)
+            todoTree.OpenRequested += async (_, hit) => {
+                await OpenFileInNewEditorTabAsync(hit.FullPath);
+                _activeEditorTab?.Control.NavigateTo(hit.Line - 1, Math.Max(0, hit.Column - 1));
+            };
         vm.SearchPanel.PreviewRequested += async (_, h) => {
             await OpenFileInPreviewTabAsync(h.FullPath);
             _activeEditorTab?.Control.NavigateTo(h.Line - 1, Math.Max(0, h.Column - 1));

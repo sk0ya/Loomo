@@ -178,6 +178,7 @@ public static class TrailLogic
         SidebarPanel.Pegboard => "ペグボード",
         SidebarPanel.Solution => "ソリューション",
         SidebarPanel.Tabs => "タブ一覧",
+        SidebarPanel.Todo => "TODO Tree",
         _ => panel.ToString()
     };
 }

@@ -75,8 +75,8 @@ public sealed partial class ActivityBarViewModel : ObservableObject
     /// <summary>既定で上段に並ぶ項目 Id（上から順）。</summary>
     public static readonly string[] DefaultPrimaryIds = ["explorer", "git", "solution", "pegboard"];
 
-    /// <summary>既定で中段に並ぶ項目 Id。中段は「タブ一覧だけ」から始める。</summary>
-    public static readonly string[] DefaultSecondaryIds = ["tabs"];
+    /// <summary>既定で中段に並ぶ項目 Id。タブ一覧の下に TODO Tree を並べる。</summary>
+    public static readonly string[] DefaultSecondaryIds = ["tabs", "todo"];
 
     public ActivityBarViewModel(LoomoSettings? settings = null, SettingsStore? settingsStore = null)
     {
@@ -90,6 +90,7 @@ public sealed partial class ActivityBarViewModel : ObservableObject
             new("pegboard", SidebarPanel.Pegboard, "📌", "ペグボード（スニペット・URL・パスの作業台）",
                 "PegboardPanelButton"),
             new("tabs", SidebarPanel.Tabs, "▤", "タブ一覧", "TabsPanelButton"),
+            new("todo", SidebarPanel.Todo, "☑", "TODO Tree", "TodoPanelButton"),
         ];
 
         var layout = Arrange(

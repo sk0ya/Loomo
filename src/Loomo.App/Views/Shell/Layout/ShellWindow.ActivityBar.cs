@@ -17,7 +17,7 @@ public partial class ShellWindow {
     private Point _activityDragOrigin;
     private ActivityBarItemViewModel? _activityDragItem;
 
-    /// <summary>パネル種別 → XAML で宣言したビュー。載せ替えの対象はこの5つ。</summary>
+    /// <summary>パネル種別 → XAML で宣言したビュー。載せ替えの対象はこの6つ。</summary>
     private IReadOnlyDictionary<SidebarPanel, FrameworkElement> SidebarPanelViews => _sidebarPanelViews
         ??= new Dictionary<SidebarPanel, FrameworkElement> {
             [SidebarPanel.Explorer] = SidebarFolderTree,
@@ -25,6 +25,7 @@ public partial class ShellWindow {
             [SidebarPanel.Pegboard] = SidebarPegboard,
             [SidebarPanel.Solution] = SidebarSolution,
             [SidebarPanel.Tabs] = SidebarTabs,
+            [SidebarPanel.Todo] = SidebarTodoTree,
         };
     private IReadOnlyDictionary<SidebarPanel, FrameworkElement>? _sidebarPanelViews;
 

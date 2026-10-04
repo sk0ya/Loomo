@@ -17,7 +17,9 @@ public enum SidebarPanel
     Tabs,
     /// <summary>C# ソリューションツリー。C# プロジェクトのあるワークスペースでだけ現れる
     /// （ActivityBar のアイコンごと出入りする）。フォルダーツリーとは別の面。</summary>
-    Solution
+    Solution,
+    /// <summary>ワークスペースの TODO タグ一覧。</summary>
+    Todo
 }
 
 /// <summary>中央オーバーレイ設定画面のカテゴリ（左ナビ）。</summary>
@@ -44,6 +46,7 @@ public sealed partial class ShellViewModel : ObservableObject
     public WorkspaceListViewModel Workspaces { get; }
     public AiBarViewModel AiBar { get; }
     public TabsViewModel Tabs { get; }
+    public TodoTreeViewModel? TodoTree { get; }
     public SessionsViewModel Sessions { get; }
     public RecentItemsViewModel Recent { get; }
     public SettingsViewModel Settings { get; }
@@ -162,13 +165,15 @@ public sealed partial class ShellViewModel : ObservableObject
         CSharpSolutionExplorerViewModel? csharpSolutionExplorer = null,
         StyleCopSettingsViewModel? styleCop = null,
         ActivityBarViewModel? activityBar = null,
-        WorkItemsViewModel? workItems = null)
+        WorkItemsViewModel? workItems = null,
+        TodoTreeViewModel? todoTree = null)
     {
         FolderTree = folderTree;
         Files = files;
         Workspaces = workspaces;
         AiBar = aiBar;
         Tabs = tabs;
+        TodoTree = todoTree;
         Sessions = sessions;
         Recent = recent ?? new RecentItemsViewModel(new RecentUsageService());
         Settings = settings;
