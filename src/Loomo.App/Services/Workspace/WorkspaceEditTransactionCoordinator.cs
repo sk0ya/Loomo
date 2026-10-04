@@ -6,10 +6,12 @@ using sk0ya.Loomo.CSharp.Refactoring;
 
 namespace sk0ya.Loomo.App.Services;
 
-/// <summary>WorkspaceEdit の成功・失敗を区別する。</summary>
-internal readonly record struct WorkspaceEditOutcome(string? Error)
+/// <summary>WorkspaceEdit の成功・失敗を区別する。成功時の <see cref="HistoryEntry"/> は、その適用だけを
+/// 取り消すための手がかり（<see cref="WorkspaceEditTransactionCoordinator.Revert"/>）。記録するものが
+/// 無かった適用では null。</summary>
+internal readonly record struct WorkspaceEditOutcome(string? Error, object? HistoryEntry = null)
 {
-    internal static WorkspaceEditOutcome Ok() => new((string?)null);
+    internal static WorkspaceEditOutcome Ok(object? historyEntry = null) => new((string?)null, historyEntry);
     internal static WorkspaceEditOutcome Fail(string error) => new(error);
 
     internal string? Describe(string what) =>
@@ -120,11 +122,11 @@ internal sealed class WorkspaceEditTransactionCoordinator
                 }
             }
 
-            RecordHistory("LSP／Roslyn WorkspaceEdit", fileSnapshots,
+            var entry = RecordHistory("LSP／Roslyn WorkspaceEdit", fileSnapshots,
                 CaptureFileSnapshots(fileSnapshots.Keys),
                 CaptureEditorTextSnapshots(editorSnapshots!),
                 CaptureEditorTextSnapshots(editorSnapshots!, currentDocument, useCurrentText: true));
-            return WorkspaceEditOutcome.Ok();
+            return WorkspaceEditOutcome.Ok(entry);
         }
         catch (Exception ex)
         {
@@ -139,6 +141,33 @@ internal sealed class WorkspaceEditTransactionCoordinator
                 return WorkspaceEditOutcome.Fail($"{ex.Message} 復元にも失敗しました: {rollback.Message}");
             }
             return WorkspaceEditOutcome.Fail(ex.Message);
+        }
+    }
+
+    /// <summary>直前に適用した WorkspaceEdit（<see cref="WorkspaceEditOutcome.HistoryEntry"/>）を、適用前へ戻して
+    /// 履歴からも降ろす（Redo には積まない——「無かったこと」にする）。エクスプローラでの移動が失敗したとき、
+    /// 前もって当てた参照の更新を取り消すのに使う。その後に別の適用が積まれていれば戻さない（失敗理由を返す）。</summary>
+    public string? Revert(object historyEntry,
+        IReadOnlyList<EditorTab> editorTabs,
+        Func<VimEditorControl, string?, bool> editorPathMatches)
+    {
+        if (_undo.Count == 0 || !ReferenceEquals(_undo[^1], historyEntry))
+            return "取り消す編集が履歴の先頭にありません。";
+        var entry = _undo[^1];
+        try
+        {
+            IsRestoring = true;
+            RestoreHistorySnapshots(entry.BeforeFiles, entry.BeforeEditors, editorTabs, editorPathMatches);
+            _undo.RemoveAt(_undo.Count - 1);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            return ex.Message;
+        }
+        finally
+        {
+            IsRestoring = false;
         }
     }
 
@@ -318,19 +347,21 @@ internal sealed class WorkspaceEditTransactionCoordinator
         RestoreFileSnapshots(files);
     }
 
-    private void RecordHistory(string description,
+    private WorkspaceEditHistoryEntry? RecordHistory(string description,
         IReadOnlyDictionary<string, LspFileSnapshot> beforeFiles,
         IReadOnlyDictionary<string, LspFileSnapshot> afterFiles,
         IReadOnlyDictionary<string, string> beforeEditors,
         IReadOnlyDictionary<string, string> afterEditors)
     {
         if (beforeFiles.Count == 0 && beforeEditors.Count == 0)
-            return;
-        _undo.Add(new WorkspaceEditHistoryEntry(description,
-            CopyFiles(beforeFiles), CopyFiles(afterFiles), CopyTexts(beforeEditors), CopyTexts(afterEditors)));
+            return null;
+        var entry = new WorkspaceEditHistoryEntry(description,
+            CopyFiles(beforeFiles), CopyFiles(afterFiles), CopyTexts(beforeEditors), CopyTexts(afterEditors));
+        _undo.Add(entry);
         if (_undo.Count > MaxHistory)
             _undo.RemoveAt(0);
         _redo.Clear();
+        return entry;
     }
 
     private static Dictionary<string, LspFileSnapshot> CopyFiles(

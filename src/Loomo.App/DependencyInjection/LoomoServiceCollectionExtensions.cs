@@ -181,9 +181,10 @@ internal static class LoomoServiceCollectionExtensions
         services.AddSingleton<Input.KeybindingService>();
         // ファイル操作の Undo／Redo 履歴。ツリーとファイル一覧ペインで 1 本を共有する
         // （部屋の中のファイル操作は、どのペインから行っても同じ履歴に積む）。
-        services.AddSingleton<FileOperationHistory>();
+        // 移動・改名の Undo／Redo もファイルを動かすので、参照の追従（下の participant）を通す。
+        services.AddSingleton(sp => new FileOperationHistory(sp.GetRequiredService<IFileMoveParticipant>()));
         // 移動・改名に合わせて言語サーバーに import 等を直させる（willRenameFiles）。ツリーとファイル一覧の
-        // 両方のハンドラーへ同じものを渡す——移動の経路はすべてこの 2 つのハンドラーを通る。
+        // 両方のハンドラーと、その Undo／Redo を持つ履歴へ同じものを渡す——移動の経路はすべてこの 3 つを通る。
         services.AddSingleton(sp => new LspFileMoveParticipant(
             sp.GetRequiredService<sk0ya.Loomo.Services.Lsp.LspWorkspaceService>(),
             sp.GetRequiredService<LoomoSettings>(),

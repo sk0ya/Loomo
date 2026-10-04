@@ -328,6 +328,115 @@ public sealed class LspFileRenameTests : IDisposable
             => Calls.Add($"before:{File.Exists(source) || Directory.Exists(source)}:{Path.GetFileName(destination)}");
         public void AfterMove(string source, string destination, bool isDirectory)
             => Calls.Add($"after:{File.Exists(destination) || Directory.Exists(destination)}:{Path.GetFileName(destination)}");
+        public void MoveFailed(string source, string destination, bool isDirectory)
+            => Calls.Add($"failed:{File.Exists(source) || Directory.Exists(source)}:{Path.GetFileName(destination)}");
+    }
+
+    /// <summary>移動が失敗したら after ではなく failed——前もって当てた参照の更新を戻す機会を渡す
+    /// （渡さないと import だけが存在しない新しい名前を指したまま残る）。</summary>
+    [Fact]
+    public void Handler_reports_a_failed_rename_instead_of_after()
+    {
+        var participant = new RecordingParticipant();
+        var handler = new FolderTreeCommandHandler(_workspace, new FileOperationHistory(), participant);
+        var source = Write(_root, "a.ts");
+
+        using (new FileStream(source, FileMode.Open, FileAccess.Read, FileShare.None))
+            Assert.Throws<InvalidOperationException>(() => handler.Rename(source, "b.ts", isDirectory: false));
+
+        Assert.Equal(["before:True:b.ts", "failed:True:b.ts"], participant.Calls);
+    }
+
+    [Fact]
+    public void Handler_reports_a_failed_paste_move()
+    {
+        var participant = new RecordingParticipant();
+        var handler = new FolderTreeCommandHandler(_workspace, new FileOperationHistory(), participant);
+        var target = Path.Combine(_root, "lib");
+        Directory.CreateDirectory(target);
+        var source = Write(_root, "moved.ts");
+
+        using (new FileStream(source, FileMode.Open, FileAccess.Read, FileShare.None))
+            Assert.ThrowsAny<Exception>(() => handler.PasteWithConflict(target, source, move: true, resolver: null));
+
+        Assert.Equal(["before:True:moved.ts", "failed:True:moved.ts"], participant.Calls);
+    }
+
+    /// <summary>改名の Undo／Redo もファイルが動く——逆向き（b→a）の移動として前後を知らせる。
+    /// 通さないと、Undo でファイルだけ a へ戻り、import は b を指したまま残っていた。</summary>
+    [Fact]
+    public void Undo_and_redo_of_a_rename_are_announced_as_moves()
+    {
+        var participant = new RecordingParticipant();
+        var history = new FileOperationHistory(participant);
+        var handler = new FolderTreeCommandHandler(_workspace, history, participant);
+        handler.Rename(Write(_root, "a.ts"), "b.ts", isDirectory: false);
+        participant.Calls.Clear();
+
+        history.Undo();
+        Assert.Equal(["before:True:a.ts", "after:True:a.ts"], participant.Calls);
+
+        participant.Calls.Clear();
+        history.Redo();
+        Assert.Equal(["before:True:b.ts", "after:True:b.ts"], participant.Calls);
+    }
+
+    /// <summary>コピーの Undo は参照先を動かさないので何も知らせない。</summary>
+    [Fact]
+    public void Undo_of_a_copy_is_not_a_move()
+    {
+        var participant = new RecordingParticipant();
+        var history = new FileOperationHistory(participant);
+        var handler = new FolderTreeCommandHandler(_workspace, history, participant);
+        var target = Path.Combine(_root, "lib");
+        Directory.CreateDirectory(target);
+        handler.PasteWithConflict(target, Write(_root, "copy.ts"), move: false, resolver: null);
+
+        history.Undo();
+
+        Assert.Empty(participant.Calls);
+    }
+
+    /// <summary>当てた編集は、移動が失敗したときだけ取り消す。成功した移動・当てなかった編集は戻さない。</summary>
+    [Fact]
+    public async Task Failed_move_reverts_the_applied_reference_update()
+    {
+        var (client, doc) = await StartTsServerAsync(_root);
+        using var _ = doc;
+        client.WillRenameProvider = _ => ImportEdit(Path.Combine(_root, "main.ts"), "./b");
+        var reverts = 0;
+        var errors = new List<string>();
+        var participant = new LspFileMoveParticipant(_lsp,
+            new LspSettings { UpdateReferencesOnFileMove = FileMoveReferenceUpdate.Always }, errors.Add);
+        participant.Attach(_ => null, revert: () => { reverts++; return null; });
+        var source = Write(_root, "a.ts");
+        var destination = Path.Combine(_root, "b.ts");
+
+        participant.BeforeMove(source, destination, false);
+        participant.AfterMove(source, destination, false);
+        participant.MoveFailed(source, destination, false);   // 成功のあとに来ても戻さない
+        Assert.Equal(0, reverts);
+
+        participant.BeforeMove(source, destination, false);
+        participant.MoveFailed(source, destination, false);
+        Assert.Equal(1, reverts);
+        Assert.Empty(errors);
+    }
+
+    [Fact]
+    public async Task Failed_move_without_an_applied_edit_reverts_nothing()
+    {
+        var (client, doc) = await StartTsServerAsync(_root);
+        using var _ = doc;
+        client.WillRenameProvider = _ => ImportEdit(Path.Combine(_root, "main.ts"), "./b");
+        var reverts = 0;
+        var participant = new LspFileMoveParticipant(_lsp, new LspSettings(), _ => { });
+        participant.Attach(_ => null, _ => FileMoveReferenceAnswer.Skip, () => { reverts++; return null; });
+
+        participant.BeforeMove(Write(_root, "a.ts"), Path.Combine(_root, "b.ts"), false);
+        participant.MoveFailed(Path.Combine(_root, "a.ts"), Path.Combine(_root, "b.ts"), false);
+
+        Assert.Equal(0, reverts);
     }
 
     [Fact]

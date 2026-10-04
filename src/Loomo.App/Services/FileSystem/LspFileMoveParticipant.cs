@@ -9,12 +9,17 @@ namespace sk0ya.Loomo.App.Services;
 /// ファイル／フォルダーの移動・改名に割り込む口。<see cref="FolderTreeCommandHandler"/> が
 /// 実際に動かす直前と直後に呼ぶ。ツリー・ファイル一覧ペインの名前変更・切り取り貼り付け・D&amp;D は
 /// すべてこのハンドラーへ落ちるので、ここ 1 か所で全経路を拾える。
-/// <para>どちらも UI スレッドから同期的に呼ばれる。<see cref="BeforeMove"/> が例外を投げると移動は行われない。</para>
+/// <para>どれも UI スレッドから同期的に呼ばれる。<see cref="BeforeMove"/> が例外を投げると移動は行われない。
+/// <see cref="BeforeMove"/> のあと移動そのものが失敗したら <see cref="AfterMove"/> の代わりに
+/// <see cref="MoveFailed"/> が来る——前もって当てた変更を戻す機会（戻さないと、参照だけが存在しない
+/// 移動先を指したまま残る）。ファイル操作の Undo／Redo（<see cref="FileOperationHistory"/>）も逆向きの
+/// 移動としてここを通る。</para>
 /// </summary>
 public interface IFileMoveParticipant
 {
     void BeforeMove(string source, string destination, bool isDirectory);
     void AfterMove(string source, string destination, bool isDirectory);
+    void MoveFailed(string source, string destination, bool isDirectory);
 }
 
 /// <summary>
@@ -44,7 +49,10 @@ public sealed class LspFileMoveParticipant : IFileMoveParticipant
     private readonly LoomoSettings? _rootSettings;
     private readonly Action<string> _reportError;
     private Func<LspWorkspaceEdit, string?>? _apply;
+    private Func<string?>? _revert;
     private Func<FileMoveReferencePrompt, FileMoveReferenceAnswer> _confirm;
+    /// <summary>直前の <see cref="BeforeMove"/> で編集を当てたまま、移動の結果をまだ聞いていない。</summary>
+    private bool _appliedPendingMove;
 
     public LspFileMoveParticipant(LspWorkspaceService lsp, LoomoSettings settings, Action<LoomoSettings>? save = null)
         : this(lsp, settings.Lsp, ToastService.Warning, save, settings) { }
@@ -66,18 +74,22 @@ public sealed class LspFileMoveParticipant : IFileMoveParticipant
 
     /// <summary>
     /// 編集の適用先を結ぶ（ShellWindow が起動時に1回）。<paramref name="apply"/> は失敗理由を返す（成功は null）。
-    /// 結ばれるまでは何もしない＝移動は従来どおり。
+    /// 結ばれるまでは何もしない＝移動は従来どおり。<paramref name="revert"/> は直前に <paramref name="apply"/>
+    /// で当てた編集を取り消す（失敗理由を返す）——移動そのものが失敗したときに使う。
     /// </summary>
     public void Attach(
         Func<LspWorkspaceEdit, string?> apply,
-        Func<FileMoveReferencePrompt, FileMoveReferenceAnswer>? confirm = null)
+        Func<FileMoveReferencePrompt, FileMoveReferenceAnswer>? confirm = null,
+        Func<string?>? revert = null)
     {
         _apply = apply;
+        _revert = revert;
         if (confirm is not null) _confirm = confirm;
     }
 
     public void BeforeMove(string source, string destination, bool isDirectory)
     {
+        _appliedPendingMove = false;
         if (_apply is null || _settings.UpdateReferencesOnFileMove == FileMoveReferenceUpdate.Never) return;
 
         var rename = new LspFileRename(Path.GetFullPath(source), Path.GetFullPath(destination), isDirectory);
@@ -131,10 +143,13 @@ public sealed class LspFileMoveParticipant : IFileMoveParticipant
 
         if (_apply(edit) is { } failure)
             _reportError($"参照を更新できませんでした: {failure}");
+        else
+            _appliedPendingMove = true;
     }
 
     public void AfterMove(string source, string destination, bool isDirectory)
     {
+        _appliedPendingMove = false;
         if (_apply is null) return;
         try
         {
@@ -144,6 +159,22 @@ public sealed class LspFileMoveParticipant : IFileMoveParticipant
         {
             // 通知の失敗で移動を失敗扱いにしない。
         }
+    }
+
+    /// <summary>移動が失敗した＝ファイルは元の場所のまま。前もって当てた参照の更新を取り消す
+    /// （移動先を指す import だけが残ると、存在しないパスを参照してビルドが壊れる）。
+    /// didRenameFiles は送らない——サーバーにとっても何も動いていない。</summary>
+    public void MoveFailed(string source, string destination, bool isDirectory)
+    {
+        if (!_appliedPendingMove) return;
+        _appliedPendingMove = false;
+        if (_revert is null)
+        {
+            _reportError("移動に失敗しましたが、更新した参照は元に戻せません。移動先を指す参照が残っています。");
+            return;
+        }
+        if (_revert() is { } failure)
+            _reportError($"移動に失敗しましたが、更新した参照を元に戻せませんでした: {failure}");
     }
 
     /// <summary>編集が及ぶファイル数（本文の編集＋ファイル操作の対象。重複は数えない）。</summary>

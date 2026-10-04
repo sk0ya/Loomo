@@ -48,10 +48,23 @@ public partial class ShellWindow
 
     /// <summary>エクスプローラでの移動・改名に合わせた参照の更新（willRenameFiles）を、リファクタリングと
     /// 同じ適用経路（<see cref="ApplyLspWorkspaceEdit"/>）へ結ぶ。移動はツリー／ファイル一覧から
-    /// UI スレッドで同期的に来るので、ここでもそのまま同期で当てる。</summary>
-    internal void AttachFileMoveParticipant(sk0ya.Loomo.App.Services.LspFileMoveParticipant participant)
-        => participant.Attach(edit => ApplyLspWorkspaceEdit(
-            edit.Changes, edit.DocumentVersions, edit.FileOperations).Error);
+    /// UI スレッドで同期的に来るので、ここでもそのまま同期で当てる。移動が失敗したら、当てた編集を
+    /// その1手だけ取り消す（Ctrl+Z の WorkspaceEdit 履歴からも降ろす）。</summary>
+    internal void AttachFileMoveParticipant(sk0ya.Loomo.App.Services.LspFileMoveParticipant participant) {
+        object? applied = null;
+        participant.Attach(
+            edit => {
+                var outcome = ApplyLspWorkspaceEdit(edit.Changes, edit.DocumentVersions, edit.FileOperations);
+                applied = outcome.HistoryEntry;
+                return outcome.Error;
+            },
+            revert: () => {
+                if (applied is not { } entry)
+                    return null;   // 記録するものが無かった＝戻すものも無い
+                applied = null;
+                return _workspaceEditTransactions.Revert(entry, _editorTabs, EditorPathMatches);
+            });
+    }
 
     private void AddRefactorMenuItems(ContextMenu menu, VimEditorControl? control)
     {

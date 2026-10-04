@@ -67,6 +67,13 @@ public sealed class FileOperationHistory
     private readonly List<FileOperationStep> _redo = [];
     private List<FileOperation>? _batch;
     private int _batchDepth;
+    private readonly IFileMoveParticipant? _moveParticipant;
+
+    /// <param name="moveParticipant">名前の変更・移動を戻す／やり直すときにも、通常の移動と同じく参照（import 等）を
+    /// 追従させる口。逆操作も「ファイルが動く」ことに変わりはなく、ここを通さないと a→b の改名で b を指すよう
+    /// 直した import が、Undo でファイルだけ a へ戻ったあとも b を指したまま残る。</param>
+    public FileOperationHistory(IFileMoveParticipant? moveParticipant = null)
+        => _moveParticipant = moveParticipant;
 
     /// <summary>履歴の内容が変わった（記録・Undo・Redo・クリア）。メニューの出し分けに使う。</summary>
     public event EventHandler? Changed;
@@ -158,9 +165,23 @@ public sealed class FileOperationHistory
             foreach (var operation in operations)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                effects.Add(undo
-                    ? UndoOne(operation)
-                    : await RedoOneAsync(operation, cancellationToken));
+                var move = MoveOf(operation, undo);
+                if (move is { } before)
+                    _moveParticipant?.BeforeMove(before.From, before.To, operation.IsDirectory);
+                try
+                {
+                    effects.Add(undo
+                        ? UndoOne(operation)
+                        : await RedoOneAsync(operation, cancellationToken));
+                }
+                catch
+                {
+                    if (move is { } failed)
+                        _moveParticipant?.MoveFailed(failed.From, failed.To, operation.IsDirectory);
+                    throw;
+                }
+                if (move is { } moved)
+                    _moveParticipant?.AfterMove(moved.From, moved.To, operation.IsDirectory);
             }
         }
         catch
@@ -176,6 +197,13 @@ public sealed class FileOperationHistory
         Changed?.Invoke(this, EventArgs.Empty);
         return new FileOperationResult(step.Description, effects);
     }
+
+    /// <summary>その一件がファイルを動かすなら、動く向き（戻すときは記録の逆向き）。コピー・作成・削除・ZIP は
+    /// 参照先が動かないので null（上書き退避の出し入れは参照の追従と関係しない）。</summary>
+    private static (string From, string To)? MoveOf(FileOperation operation, bool undo)
+        => operation.Kind is FileOperationKind.Rename or FileOperationKind.Move
+            ? undo ? (operation.Target, operation.Source) : (operation.Source, operation.Target)
+            : null;
 
     /// <summary>適用順（戻すときは記録の逆順）。</summary>
     private static List<FileOperation> Order(FileOperationStep step, bool undo)

@@ -15,9 +15,11 @@ internal sealed class DebugEditorController
     private readonly Action<string, int> _activateFrame;
     private bool _attached;
 
-    // 行末の値（Inline Values）。マネージャごとの最新の一揃いと、編集で値が古くなったので消したエディタ。
+    // 行末の値（Inline Values）。マネージャごとの最新の一揃いと、編集で値が古くなったので消したファイル。
+    // 古いかどうかはファイルの性質でエディタの性質ではない——エディタ単位で持つと、同じエディタへ
+    // 読み直す（一括置換・ブランチ切替・開き直し）だけで印が外れ、ずれた行に前の停止の値が戻っていた。
     private readonly Dictionary<DebugManagerViewModelBase, DebugInlineValueSet> _inlineValues = new();
-    private readonly HashSet<VimEditorControl> _inlineValuesStale = new();
+    private readonly HashSet<string> _inlineValuesStale = new(StringComparer.OrdinalIgnoreCase);
 
     internal DebugEditorController(
         DebugManagerViewModelBase dotnet,
@@ -62,12 +64,10 @@ internal sealed class DebugEditorController
     }
 
     /// <summary>エディタにファイルが載った後（<c>LoadFile</c> は行末の値を捨てるが <c>BufferChanged</c> を出さない）。
-    /// 停止と同時に開いたタブにも、すでに組み上がっている値を出す。</summary>
+    /// 停止と同時に開いたタブにも、すでに組み上がっている値を出す。停止後に編集したファイルは、読み直しても
+    /// 停止時の行並びではないので出さない（次の停止まで）。</summary>
     internal void OnEditorFileLoaded(VimEditorControl control)
-    {
-        _inlineValuesStale.Remove(control);
-        SyncInlineValues(control);
-    }
+        => SyncInlineValues(control);
 
     private void AttachManager(DebugManagerViewModelBase manager)
     {
@@ -85,7 +85,9 @@ internal sealed class DebugEditorController
     {
         _inlineValues[manager] = values;
         // 新しい停止（または続行による消去）が来たら、編集で消していた分も含めて出し直す。
-        _inlineValuesStale.Clear();
+        // 外すのはこのマネージャの管轄のファイルだけ（.NET と TypeScript を同時にデバッグしていると、
+        // もう一方の古い値まで戻ってしまう）。
+        _inlineValuesStale.RemoveWhere(path => ReferenceEquals(ManagerForPath(path), manager));
         foreach (var control in EditorsFor(manager))
             SyncInlineValues(control);
     }
@@ -94,7 +96,7 @@ internal sealed class DebugEditorController
     private void SyncInlineValues(VimEditorControl control)
     {
         var manager = ManagerForPath(control.FilePath);
-        var lines = _inlineValuesStale.Contains(control) || !_inlineValues.TryGetValue(manager, out var values)
+        var lines = IsStale(control.FilePath) || !_inlineValues.TryGetValue(manager, out var values)
             ? Array.Empty<DebugInlineValueLine>()
             : values.LinesFor(control.FilePath);
         ApplyInlineValues(control, lines);
@@ -104,12 +106,22 @@ internal sealed class DebugEditorController
     /// 次の停止で出し直す。</summary>
     private void OnEditorBufferChanged(VimEditorControl control)
     {
-        if (!_inlineValues.TryGetValue(ManagerForPath(control.FilePath), out var values)
+        if (StaleKey(control.FilePath) is not { } key
+            || !_inlineValues.TryGetValue(ManagerForPath(control.FilePath), out var values)
             || values.LinesFor(control.FilePath).Count == 0
-            || !_inlineValuesStale.Add(control))
+            || !_inlineValuesStale.Add(key))
             return;
-        ApplyInlineValues(control, Array.Empty<DebugInlineValueLine>());
+        // 同じファイルを分割・切り離しで複数のエディタに出していれば、どれもずれている。
+        foreach (var editor in _realizedEditors())
+            if (string.Equals(StaleKey(editor.FilePath), key, StringComparison.OrdinalIgnoreCase))
+                ApplyInlineValues(editor, Array.Empty<DebugInlineValueLine>());
     }
+
+    private bool IsStale(string? path)
+        => StaleKey(path) is { } key && _inlineValuesStale.Contains(key);
+
+    private static string? StaleKey(string? path)
+        => string.IsNullOrWhiteSpace(path) ? null : Path.GetFullPath(path);
 
     /// <summary>エディタへ描かせる。描画 API（<c>VimEditorControl.SetInlineValues</c>）は
     /// sk0ya.Editor.Controls 1.0.95 から。古いピンでは収集・無効化までで、描画は行わない（Loomo.App.csproj 参照）。</summary>

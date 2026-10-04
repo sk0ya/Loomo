@@ -99,9 +99,13 @@ public sealed class FolderTreeCommandHandler
             if (isDirectory) Directory.Move(oldPath, newPath);
             else File.Move(oldPath, newPath);
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        catch (Exception ex)
         {
-            throw new InvalidOperationException($"名前の変更に失敗しました: {ex.Message}", ex);
+            // 前もって当てた参照の更新を戻す（戻さないと import だけが存在しない新しい名前を指す）。
+            _moveParticipant?.MoveFailed(oldPath, newPath, isDirectory);
+            if (ex is IOException or UnauthorizedAccessException)
+                throw new InvalidOperationException($"名前の変更に失敗しました: {ex.Message}", ex);
+            throw;
         }
         _history.Record(FileOperation.Renamed(oldPath, newPath, isDirectory));
         _moveParticipant?.AfterMove(oldPath, newPath, isDirectory);
@@ -368,6 +372,7 @@ public sealed class FolderTreeCommandHandler
         try { ExecutePaste(source, destination, move, isDirectory); }
         catch
         {
+            if (move) _moveParticipant?.MoveFailed(source, destination, isDirectory);
             if (replaced is not null)
             {
                 RemovePartialDestination(destination);
@@ -407,6 +412,7 @@ public sealed class FolderTreeCommandHandler
         try { ExecutePaste(source, destination, move, isDirectory); }
         catch
         {
+            if (move) _moveParticipant?.MoveFailed(source, destination, isDirectory);
             if (replaced is not null)
             {
                 RemovePartialDestination(destination);
