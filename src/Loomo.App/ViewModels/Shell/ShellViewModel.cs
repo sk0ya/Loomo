@@ -85,6 +85,9 @@ public sealed partial class ShellViewModel : ObservableObject
     /// ドラッグ＆ドロップの結果を settings.json へ持ち越す。</summary>
     public ActivityBarViewModel ActivityBar { get; }
 
+    /// <summary>Azure DevOps の Work Items（ActivityBar の ⌨ の上のアイコン）。テストの組み立てでは無いことがある。</summary>
+    public WorkItemsViewModel? WorkItems { get; }
+
     /// <summary>上段サイドバー区画の表示状態。上段 ActivityBar のクリックで開閉する。</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsSidebarColumnVisible))]
@@ -158,7 +161,8 @@ public sealed partial class ShellViewModel : ObservableObject
         RecentItemsViewModel? recent = null,
         CSharpSolutionExplorerViewModel? csharpSolutionExplorer = null,
         StyleCopSettingsViewModel? styleCop = null,
-        ActivityBarViewModel? activityBar = null)
+        ActivityBarViewModel? activityBar = null,
+        WorkItemsViewModel? workItems = null)
     {
         FolderTree = folderTree;
         Files = files;
@@ -188,6 +192,7 @@ public sealed partial class ShellViewModel : ObservableObject
         Trail = trail;
         CSharpSolutionExplorer = csharpSolutionExplorer;
         ActivityBar = activityBar ?? new ActivityBarViewModel();
+        WorkItems = workItems;
         ActivityBar.SetAvailable(SidebarPanel.Solution, IsCSharpSolutionAvailable);
         // 段を移した項目は移した先で開いて見せる（同じ段での並べ替えでは開き直さない——
         // 人間がしていないナビゲーションになる）。取り残された区画は既定のパネルへ寄せ直す。

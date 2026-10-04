@@ -522,6 +522,29 @@
             <DockPanel Grid.Column="0" Grid.Row="1" Background="{DynamicResource ActivityBarBg}"
                        MouseLeftButtonDown="OnActivityBarMouseDown">
                 <StackPanel DockPanel.Dock="Bottom">
+                    <!-- Azure DevOps：自分に割り当たっている Work Item を右へ開く一覧で出す（ShellWindow.WorkItems.cs）。
+                         開いている間はボタンを押せなくする——StaysOpen=False の一覧は外側のクリックで閉じるので、
+                         ボタンで閉じようとすると「閉じる→押されて開く」になってしまう。 -->
+                    <Button x:Name="WorkItemsButton" Style="{StaticResource ActivityIconButton}" Content="📋"
+                            ToolTip="自分の Work Items（Azure DevOps）"
+                            DataContext="{Binding WorkItems}"
+                            Tag="{Binding IsOpen}"
+                            Command="{Binding ToggleOpenCommand}"
+                            IsHitTestVisible="{Binding IsOpen, Converter={StaticResource InverseBool}}"
+                            AutomationProperties.AutomationId="WorkItemsButton"
+                            AutomationProperties.Name="自分の Work Items" />
+                    <Popup x:Name="WorkItemsPopup" PlacementTarget="{Binding ElementName=WorkItemsButton}"
+                           Placement="Custom" StaysOpen="False" AllowsTransparency="True"
+                           DataContext="{Binding WorkItems}"
+                           IsOpen="{Binding IsOpen, Mode=TwoWay, FallbackValue=False}">
+                        <Border Background="{DynamicResource Panel}" BorderBrush="{DynamicResource Border}"
+                                BorderThickness="1" CornerRadius="3" Padding="4" Width="460" Margin="0,0,8,8">
+                            <Border.Effect>
+                                <DropShadowEffect BlurRadius="8" ShadowDepth="2" Opacity="0.3" />
+                            </Border.Effect>
+                            <views:WorkItemsView />
+                        </Border>
+                    </Popup>
                     <Button Style="{StaticResource ActivityIconButton}" Content="⌨" ToolTip="キーボードショートカット"
                             Tag="{Binding IsKeyboardSettingsSelected}"
                             Command="{Binding ShowKeyboardSettingsCommand}" />

@@ -137,6 +137,7 @@ public sealed class SettingsStore
         public PersistedActivityBar? ActivityBar { get; set; }
         public PersistedTabsPanel? TabsPanel { get; set; }
         public PersistedExplorer? Explorer { get; set; }
+        public PersistedAzureDevOps? AzureDevOps { get; set; }
 
         public static PersistedSettings From(LoomoSettings s) => new()
         {
@@ -163,6 +164,7 @@ public sealed class SettingsStore
             ActivityBar = PersistedActivityBar.From(s.ActivityBar),
             TabsPanel = PersistedTabsPanel.From(s.TabsPanel),
             Explorer = PersistedExplorer.From(s.Explorer),
+            AzureDevOps = PersistedAzureDevOps.From(s.AzureDevOps),
         };
 
         public void ApplyTo(LoomoSettings s)
@@ -191,6 +193,7 @@ public sealed class SettingsStore
             ActivityBar?.ApplyTo(s.ActivityBar); // 旧設定（null）は空＝既定配置を維持
             TabsPanel?.ApplyTo(s.TabsPanel);     // 旧設定（null）は3種とも表示を維持
             Explorer?.ApplyTo(s.Explorer);       // 旧設定（null）は既定（まとめ表示 ON・既定ルール）を維持
+            AzureDevOps?.ApplyTo(s.AzureDevOps); // 旧設定（null）は空＝リモートから見つけるを維持
         }
     }
 
@@ -303,6 +306,18 @@ public sealed class SettingsStore
                 if (!string.IsNullOrWhiteSpace(id))
                     target.Add(id.Trim());
         }
+    }
+
+    // ===== Azure DevOps 連携。組織だけ。平文で保持（資格情報は GCM が持つ）。 =====
+
+    private sealed class PersistedAzureDevOps
+    {
+        public string? Organization { get; set; }
+
+        public static PersistedAzureDevOps From(AzureDevOpsSettings a) => new() { Organization = a.Organization };
+
+        // 既存インスタンスを書き換える（DI シングルトンの参照を保つため置き換えない）。
+        public void ApplyTo(AzureDevOpsSettings a) => a.Organization = Organization?.Trim() ?? "";
     }
 
     // ===== LSP の UI 設定。促しバーを「今後表示しない」拡張子だけ。平文で保持。 =====

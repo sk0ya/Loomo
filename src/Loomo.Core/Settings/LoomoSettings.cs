@@ -74,6 +74,9 @@ public sealed class LoomoSettings
     /// <summary>エクスプローラー（フォルダーツリー）の表示設定。関連ファイルのまとめ表示など。</summary>
     public ExplorerSettings Explorer { get; set; } = new();
 
+    /// <summary>Azure DevOps 連携（ActivityBar の Work Items）。</summary>
+    public AzureDevOpsSettings AzureDevOps { get; set; } = new();
+
     /// <summary>コマンド実行・書込の安全設計（設計書 §10）。</summary>
     public SafetySettings Safety { get; set; } = new();
 
@@ -189,6 +192,14 @@ public sealed class ActivityBarSettings
 
     /// <summary>中段バーの項目 Id（上から順）。</summary>
     public List<string> Secondary { get; set; } = new();
+}
+
+/// <summary>Azure DevOps 連携の設定。認証は Git Credential Manager に任せるので、ここには秘密を持たない。</summary>
+public sealed class AzureDevOpsSettings
+{
+    /// <summary>照会する組織（組織名・組織 URL・リモート URL のどれでも）。空ならワークスペースの
+    /// git リモートから見つける。</summary>
+    public string Organization { get; set; } = "";
 }
 
 /// <summary>サイドバーの TABS（タブ一覧）に出す種別。タブそのものは種別ごとに混ぜずに並べてあるので、

@@ -242,6 +242,7 @@ public partial class ShellWindow : Window {
                     PaneLayoutDebugLog.Log($"WingColumn.Width -> {WingColumn.Width}", withCaller: true));
         }
         InitializeActivityBar();
+        InitializeWorkItems();
         HookAiActivity();
         vm.Settings.Saved += ApplyVimEnabledToOpenEditorTabs;
         vm.Settings.Saved += ApplyEditorSettingsToOpenEditorTabs;
