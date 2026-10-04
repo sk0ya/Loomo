@@ -10,15 +10,6 @@ public partial class WorkItemsView : UserControl
 {
     public WorkItemsView() => InitializeComponent();
 
-    private void OnSavePatClick(object sender, RoutedEventArgs e) => SavePat();
-
-    private void OnPatKeyDown(object sender, KeyEventArgs e)
-    {
-        if (e.Key != Key.Enter) return;
-        e.Handled = true;
-        SavePat();
-    }
-
     /// <summary>開いたらすぐ打ち込めるように絞り込み欄へ。</summary>
     public void FocusFilter()
     {
@@ -42,14 +33,5 @@ public partial class WorkItemsView : UserControl
             e.Handled = true;
             vm.OpenCommand.Execute(first);
         }
-    }
-
-    /// <summary>PasswordBox は値をバインドできないので、ここで取り出して渡し、すぐ消す。</summary>
-    private void SavePat()
-    {
-        if (DataContext is not WorkItemsViewModel vm) return;
-        var pat = PatBox.Password;
-        PatBox.Clear();
-        vm.SavePatCommand.Execute(pat);
     }
 }

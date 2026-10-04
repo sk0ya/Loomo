@@ -153,9 +153,6 @@ public sealed partial class WorkItemsViewModel : ObservableObject
 
     [ObservableProperty] private string _organizationInput;
 
-    /// <summary>PAT の入力欄を出すか（PAT が見つからない・認証が通らなかったとき）。</summary>
-    [ObservableProperty] private bool _isPatEditorVisible;
-
     /// <summary>文字で絞る（タイトル・状態・種類・ID・プロジェクト、PR はタイトル・リポジトリ・ID）。</summary>
     [ObservableProperty] private string _filterText = "";
 
@@ -252,25 +249,6 @@ public sealed partial class WorkItemsViewModel : ObservableObject
         await RefreshAsync();
     }
 
-    /// <summary>入力された PAT を資格情報マネージャー（ADO_PAT＝TaskAzure と同じ場所）へ保存して取り直す。
-    /// PasswordBox は値をバインドできないので、ビューから文字列で受け取る。</summary>
-    [RelayCommand]
-    private async Task SavePatAsync(string? pat)
-    {
-        if (string.IsNullOrWhiteSpace(pat))
-        {
-            ErrorText = "PAT を入力してください。";
-            return;
-        }
-        if (!_pats.Save(pat))
-        {
-            ErrorText = "資格情報マネージャーへ保存できませんでした。";
-            return;
-        }
-        IsPatEditorVisible = false;
-        await RefreshAsync();
-    }
-
     [RelayCommand]
     private async Task RefreshAsync()
     {
@@ -301,9 +279,8 @@ public sealed partial class WorkItemsViewModel : ObservableObject
             if (pat is null)
             {
                 StatusText = "";
-                ErrorText = $"PAT が見つかりません。環境変数 {AzureDevOpsPatStore.EnvironmentVariable} に設定するか、"
-                    + "ここで入力して資格情報マネージャーへ保存してください（Work Items と Code の読み取り権限が要ります）。";
-                IsPatEditorVisible = true;
+                ErrorText = $"PAT が見つかりません。Windows 資格情報マネージャーの {AzureDevOpsPatStore.CredentialTarget}"
+                    + $"（TaskAzure と同じ）か、環境変数 {AzureDevOpsPatStore.EnvironmentVariable} に設定してください。";
                 return;
             }
             var auth = AzureDevOpsPatStore.CreateHeader(pat);
@@ -336,8 +313,8 @@ public sealed partial class WorkItemsViewModel : ObservableObject
         catch (AzureDevOpsException ex) when (ex.IsAuthentication)
         {
             StatusText = "";
-            ErrorText = ex.Message + " PAT の期限切れ・権限（Work Items 読み取り）・組織 URL を確かめてください。";
-            IsPatEditorVisible = true;
+            ErrorText = ex.Message + $" 資格情報マネージャーの {AzureDevOpsPatStore.CredentialTarget} の PAT"
+                + "（期限切れ・Work Items 読み取り権限）と組織 URL を確かめてください。";
         }
         catch (Exception ex) when (ex is AzureDevOpsException or System.Net.Http.HttpRequestException or TaskCanceledException
                                        or System.Text.Json.JsonException)

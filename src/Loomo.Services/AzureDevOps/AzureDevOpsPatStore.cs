@@ -13,6 +13,8 @@ namespace sk0ya.Loomo.Services;
 /// <item>Windows 資格情報マネージャーの汎用資格情報 <c>ADO_PAT</c></item>
 /// </list>
 /// 置き場所を TaskAzure と揃えてあるので、TaskAzure で保存した PAT がそのまま使える。
+/// <para><b>読むだけ。書かない</b>——<c>ADO_PAT</c> は TaskAzure と共有している資格情報なので、Loomo から上書きすると
+/// TaskAzure の PAT まで書き換わる。PAT の登録・更新は TaskAzure（か資格情報マネージャー）で行う。</para>
 /// <para>はじめは Git Credential Manager から借りる方式にしたが、職場の環境で通らなかったため、
 /// 実際に動いている TaskAzure の方式に合わせた。</para>
 /// </summary>
@@ -27,31 +29,6 @@ public sealed class AzureDevOpsPatStore
     {
         var env = Environment.GetEnvironmentVariable(EnvironmentVariable);
         return !string.IsNullOrWhiteSpace(env) ? env.Trim() : ReadFromCredentialManager();
-    }
-
-    /// <summary>資格情報マネージャーへ保存する（TaskAzure と同じ形：汎用・ローカルコンピューター保存）。</summary>
-    public bool Save(string pat)
-    {
-        var bytes = Encoding.Unicode.GetBytes(pat.Trim());
-        var blob = Marshal.AllocHGlobal(bytes.Length);
-        try
-        {
-            Marshal.Copy(bytes, 0, blob, bytes.Length);
-            var credential = new NativeMethods.CREDENTIAL
-            {
-                Type = NativeMethods.CRED_TYPE_GENERIC,
-                TargetName = CredentialTarget,
-                CredentialBlobSize = (uint)bytes.Length,
-                CredentialBlob = blob,
-                Persist = NativeMethods.CRED_PERSIST_LOCAL_MACHINE,
-                UserName = CredentialTarget,
-            };
-            return NativeMethods.CredWrite(ref credential, 0);
-        }
-        finally
-        {
-            Marshal.FreeHGlobal(blob);
-        }
     }
 
     /// <summary>PAT を送るヘッダー（Basic、ユーザー名は空）。</summary>
@@ -81,7 +58,6 @@ public sealed class AzureDevOpsPatStore
     private static class NativeMethods
     {
         public const uint CRED_TYPE_GENERIC = 1;
-        public const uint CRED_PERSIST_LOCAL_MACHINE = 2;
 
         [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
         public struct CREDENTIAL
@@ -102,9 +78,6 @@ public sealed class AzureDevOpsPatStore
 
         [DllImport("advapi32.dll", EntryPoint = "CredReadW", CharSet = CharSet.Unicode, SetLastError = true)]
         public static extern bool CredRead(string target, uint type, int reserved, out IntPtr credential);
-
-        [DllImport("advapi32.dll", EntryPoint = "CredWriteW", CharSet = CharSet.Unicode, SetLastError = true)]
-        public static extern bool CredWrite([In] ref CREDENTIAL credential, uint flags);
 
         [DllImport("advapi32.dll")]
         public static extern void CredFree(IntPtr credential);
