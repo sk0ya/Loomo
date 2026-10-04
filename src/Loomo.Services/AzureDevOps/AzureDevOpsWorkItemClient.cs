@@ -23,6 +23,16 @@ public sealed record AzureDevOpsWorkItem(
     DateTimeOffset? ChangedDate,
     string WebUrl);
 
+/// <summary>プルリクエスト1件ぶんの表示に要る値。</summary>
+public sealed record AzureDevOpsPullRequest(
+    int Id,
+    string Title,
+    string Project,
+    string Repository,
+    bool IsDraft,
+    string WebUrl,
+    IReadOnlyList<int> LinkedWorkItemIds);
+
 /// <summary>取得の失敗。認証の失敗は <see cref="IsAuthentication"/> で見分ける（案内の文言が違う）。</summary>
 public sealed class AzureDevOpsException(string message, bool isAuthentication = false) : Exception(message)
 {
@@ -97,6 +107,92 @@ public sealed class AzureDevOpsWorkItemClient
         return ids.Distinct().Where(byId.ContainsKey).Select(id => byId[id]).ToList();
     }
 
+    /// <summary>認証している自分の ID（PR の作成者で絞るのに使う）。</summary>
+    public async Task<string> GetCurrentUserIdAsync(
+        AzureDevOpsOrganization organization, AuthenticationHeaderValue auth, CancellationToken cancellationToken)
+    {
+        using var doc = await SendAsync(HttpMethod.Get, $"{organization.BaseUrl}/_apis/connectionData",
+            null, auth, cancellationToken).ConfigureAwait(false);
+        return doc.RootElement.TryGetProperty("authenticatedUser", out var user)
+               && user.TryGetProperty("id", out var id) && id.GetString() is { Length: > 0 } value
+            ? value
+            : throw new AzureDevOpsException("自分のユーザー ID を取得できませんでした。");
+    }
+
+    /// <summary>
+    /// 自分が作成した進行中の PR（プロジェクト内の全リポジトリ）。TaskAzure はリポジトリを1つずつ設定して
+    /// 照会していたが、プロジェクト単位で引けば設定が要らない。紐づく Work Item も一緒に返す。
+    /// </summary>
+    public async Task<IReadOnlyList<AzureDevOpsPullRequest>> GetMyActivePullRequestsAsync(
+        AzureDevOpsOrganization organization, string project, string userId, AuthenticationHeaderValue auth,
+        CancellationToken cancellationToken)
+    {
+        var projectPath = Uri.EscapeDataString(project);
+        using var doc = await SendAsync(HttpMethod.Get,
+            $"{organization.BaseUrl}/{projectPath}/_apis/git/pullrequests"
+            + $"?searchCriteria.status=active&searchCriteria.creatorId={Uri.EscapeDataString(userId)}"
+            + $"&$top=100&api-version={ApiVersion}",
+            null, auth, cancellationToken).ConfigureAwait(false);
+
+        var pulls = ParsePullRequests(doc.RootElement, organization, project).ToList();
+        // 一覧の応答には紐づく Work Item が載らないので、PR ごとに聞く（自分の進行中の PR は数が少ない）。
+        var withLinks = await Task.WhenAll(pulls.Select(async pull =>
+        {
+            try
+            {
+                using var refs = await SendAsync(HttpMethod.Get,
+                    $"{organization.BaseUrl}/{projectPath}/_apis/git/repositories/{Uri.EscapeDataString(pull.RepositoryId)}"
+                    + $"/pullRequests/{pull.Item.Id}/workitems?api-version={ApiVersion}",
+                    null, auth, cancellationToken).ConfigureAwait(false);
+                return pull.Item with { LinkedWorkItemIds = ParseWorkItemRefs(refs.RootElement) };
+            }
+            catch (AzureDevOpsException)
+            {
+                return pull.Item;   // 紐づきが取れなくても PR 自体は出す（リンクなしとして並ぶ）
+            }
+        })).ConfigureAwait(false);
+        return withLinks;
+    }
+
+    internal static IEnumerable<(AzureDevOpsPullRequest Item, string RepositoryId)> ParsePullRequests(
+        JsonElement root, AzureDevOpsOrganization organization, string project)
+    {
+        if (!root.TryGetProperty("value", out var values) || values.ValueKind != JsonValueKind.Array)
+            yield break;
+        foreach (var pull in values.EnumerateArray())
+        {
+            if (!pull.TryGetProperty("pullRequestId", out var idProp) || !idProp.TryGetInt32(out var id))
+                continue;
+            var repositoryName = "";
+            var repositoryId = "";
+            if (pull.TryGetProperty("repository", out var repository))
+            {
+                repositoryName = Text(repository, "name");
+                repositoryId = Text(repository, "id");
+            }
+            var repoPath = Uri.EscapeDataString(repositoryName.Length > 0 ? repositoryName : repositoryId);
+            yield return (new AzureDevOpsPullRequest(
+                id,
+                Text(pull, "title"),
+                project,
+                repositoryName,
+                pull.TryGetProperty("isDraft", out var draft) && draft.ValueKind == JsonValueKind.True,
+                $"{organization.BaseUrl}/{Uri.EscapeDataString(project)}/_git/{repoPath}/pullrequest/{id}",
+                []), repositoryId.Length > 0 ? repositoryId : repositoryName);
+        }
+    }
+
+    internal static IReadOnlyList<int> ParseWorkItemRefs(JsonElement root)
+    {
+        var ids = new List<int>();
+        if (root.TryGetProperty("value", out var values) && values.ValueKind == JsonValueKind.Array)
+            foreach (var r in values.EnumerateArray())
+                if (r.TryGetProperty("id", out var id)
+                    && (id.ValueKind == JsonValueKind.Number ? id.TryGetInt32(out var n) : int.TryParse(id.GetString(), out n)))
+                    ids.Add(n);
+        return ids;
+    }
+
     internal static IEnumerable<AzureDevOpsWorkItem> ParseBatch(JsonElement root, AzureDevOpsOrganization organization)
     {
         if (!root.TryGetProperty("value", out var values) || values.ValueKind != JsonValueKind.Array)
@@ -128,13 +224,12 @@ public sealed class AzureDevOpsWorkItemClient
             ? value.GetString() ?? ""
             : "";
 
-    private async Task<JsonDocument> SendAsync(HttpMethod method, string url, string body,
+    private async Task<JsonDocument> SendAsync(HttpMethod method, string url, string? body,
         AuthenticationHeaderValue auth, CancellationToken cancellationToken)
     {
-        using var request = new HttpRequestMessage(method, url)
-        {
-            Content = new StringContent(body, Encoding.UTF8, "application/json"),
-        };
+        using var request = new HttpRequestMessage(method, url);
+        if (body is not null)
+            request.Content = new StringContent(body, Encoding.UTF8, "application/json");
         request.Headers.Authorization = auth;
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 

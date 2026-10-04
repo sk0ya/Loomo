@@ -89,4 +89,78 @@ public sealed class AzureDevOpsTests
         var rows = WorkItemTree.Arrange([Item(1, parent: 2), Item(2, parent: 1)], []);
         Assert.Equal(2, rows.Count);
     }
+
+    [Theory]
+    [InlineData("https://dev.azure.com/contoso/Web%20App/_git/site", "Web App")]
+    [InlineData("git@ssh.dev.azure.com:v3/contoso/Web/site", "Web")]
+    [InlineData("https://tfs.example.net/tfs/Products/Web/_git/site", "Web")]
+    [InlineData("https://github.com/sk0ya/Loomo.git", null)]
+    public void リモートURLからプロジェクトを読む(string remote, string? project)
+        => Assert.Equal(project, AzureDevOpsOrganization.ProjectFromRemote(remote));
+
+    [Fact]
+    public void PRの一覧と紐づくWorkItemを読む()
+    {
+        using var list = JsonDocument.Parse("""
+            {"value":[{"pullRequestId":7,"title":"ログイン修正","isDraft":true,
+              "repository":{"id":"r-1","name":"site"}}]}
+            """);
+        var (pull, repositoryId) = Assert.Single(AzureDevOpsWorkItemClient.ParsePullRequests(
+            list.RootElement, AzureDevOpsOrganization.FromName("contoso"), "Web"));
+        Assert.Equal("r-1", repositoryId);
+        Assert.True(pull.IsDraft);
+        Assert.Equal("https://dev.azure.com/contoso/Web/_git/site/pullrequest/7", pull.WebUrl);
+
+        using var refs = JsonDocument.Parse("""{"count":2,"value":[{"id":"12","url":"u"},{"id":13}]}""");
+        Assert.Equal([12, 13], AzureDevOpsWorkItemClient.ParseWorkItemRefs(refs.RootElement));
+    }
+
+    private static AzureDevOpsPullRequest Pull(int id, params int[] linked)
+        => new(id, $"pr {id}", "P", "repo", false, $"p/{id}", linked);
+
+    [Fact]
+    public void PRは紐づくWorkItemの下に_紐づかないPRは末尾の見出しの下に並ぶ()
+    {
+        var rows = WorkItemTree.Arrange([Item(3, parent: 1), Item(5, type: "Bug")], [Item(1, type: "User Story")]);
+        var entries = WorkItemList.Build(rows, [Pull(70, 3), Pull(71), Pull(72, 999)]);
+
+        Assert.Equal(
+            ["W1", "W3", "P70", "W5", "S", "P71", "P72"],
+            entries.Select(e => e.Kind switch
+            {
+                WorkItemListEntryKind.WorkItem => $"W{e.WorkItem!.Id}",
+                WorkItemListEntryKind.PullRequest => $"P{e.PullRequest!.Id}",
+                _ => "S",
+            }));
+        Assert.Equal(1, entries[2].ParentIndex);   // PR 70 → Task 3
+        Assert.Equal(0, entries[1].ParentIndex);   // Task 3 → Story 1
+    }
+
+    [Fact]
+    public void 絞り込み_子が合えば親は道しるべとして残り_合ったWorkItemのPRは一緒に残る()
+    {
+        var rows = WorkItemTree.Arrange(
+            [Item(3, parent: 1) with { Title = "ログイン画面" }, Item(4, parent: 1) with { Title = "一覧" }],
+            [Item(1, type: "User Story") with { Title = "認証" }]);
+        var entries = WorkItemList.Build(rows, [Pull(70, 3), Pull(71)]);
+
+        var visible = WorkItemList.Visible(entries, new WorkItemListFilter("ログイン", null, null));
+        Assert.Equal(["W1", "W3", "P70"], Shown(entries, visible));
+
+        // 状態で絞るとき、紐づかない PR（状態を持たない）は出さない。
+        visible = WorkItemList.Visible(entries, new WorkItemListFilter("", "Active", null));
+        Assert.Equal(["W1", "W3", "P70", "W4"], Shown(entries, visible));
+
+        // 文字が PR に合えば、PR だけでも残る（見出しは道しるべ）。
+        visible = WorkItemList.Visible(entries, new WorkItemListFilter("pr 71", null, null));
+        Assert.Equal(["S", "P71"], Shown(entries, visible));
+    }
+
+    private static string[] Shown(IReadOnlyList<WorkItemListEntry> entries, bool[] visible)
+        => entries.Where((_, i) => visible[i]).Select(e => e.Kind switch
+        {
+            WorkItemListEntryKind.WorkItem => $"W{e.WorkItem!.Id}",
+            WorkItemListEntryKind.PullRequest => $"P{e.PullRequest!.Id}",
+            _ => "S",
+        }).ToArray();
 }

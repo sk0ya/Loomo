@@ -84,6 +84,30 @@ public sealed record AzureDevOpsOrganization(string Name, string BaseUrl)
         return false;
     }
 
+    /// <summary>Azure DevOps のリモート URL からプロジェクト名を読む（PR をプロジェクト単位で引くのに使う）。
+    /// HTTPS は「…/{project}/_git/{repo}」、SSH は「v3/{org}/{project}/{repo}」。</summary>
+    public static string? ProjectFromRemote(string? remoteUrl)
+    {
+        if (!TryParseRemote(remoteUrl, out _))
+            return null;
+        var value = remoteUrl!.Trim();
+        var colon = value.IndexOf(":v3/", StringComparison.OrdinalIgnoreCase);
+        string path;
+        if (colon >= 0 && !value.Contains("://", StringComparison.Ordinal))
+            path = value[(colon + 1)..];
+        else if (Uri.TryCreate(value, UriKind.Absolute, out var uri))
+            path = uri.AbsolutePath;
+        else
+            return null;
+        var segments = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        var git = Array.FindIndex(segments, s => s.Equals("_git", StringComparison.OrdinalIgnoreCase));
+        if (git >= 1)
+            return Uri.UnescapeDataString(segments[git - 1]);
+        return segments.Length >= 4 && segments[0].Equals("v3", StringComparison.OrdinalIgnoreCase)
+            ? Uri.UnescapeDataString(segments[2])
+            : null;
+    }
+
     /// <summary>人が設定に書いた値から組織を読む。リモート URL・組織（コレクション）URL・組織名だけ、のどれでもよい。
     /// URL はそのまま土台にする（TaskAzure の「組織 URL」と同じ値を貼れる）。</summary>
     public static bool TryParseUserInput(string? text, out AzureDevOpsOrganization organization)

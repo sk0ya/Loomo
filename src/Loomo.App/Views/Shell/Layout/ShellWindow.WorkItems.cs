@@ -12,5 +12,8 @@ public partial class ShellWindow {
             [new CustomPopupPlacement(new Point(targetSize.Width, targetSize.Height - popupSize.Height),
                 PopupPrimaryAxis.Horizontal)];
         workItems.OpenRequested += (url, title) => _ = OpenUrlInBrowserAsync(url, title);
+        // 開いたらすぐ打ち込めるように絞り込み欄へ（描画後でないとフォーカスが入らない）。
+        WorkItemsPopup.Opened += (_, _) => Dispatcher.BeginInvoke(WorkItemsList.FocusFilter,
+            System.Windows.Threading.DispatcherPriority.Input);
     }
 }

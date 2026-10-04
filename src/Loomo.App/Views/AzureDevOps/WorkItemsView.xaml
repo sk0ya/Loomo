@@ -7,6 +7,10 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
 
+    <UserControl.InputBindings>
+        <KeyBinding Key="F5" Command="{Binding RefreshCommand}" />
+    </UserControl.InputBindings>
+
     <UserControl.Resources>
         <!-- 1行＝押せるボタン（素の ItemsControl の行は UIA に出ず、押せる要素が無いと実機で押せない）。 -->
         <Style x:Key="WorkItemRowButton" TargetType="Button">
@@ -38,7 +42,7 @@
         <!-- 見出し：組織名・件数と、更新／組織の切替。 -->
         <DockPanel DockPanel.Dock="Top" Margin="6,2,2,4">
             <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="⟳"
-                    ToolTip="取り直す" Command="{Binding RefreshCommand}"
+                    ToolTip="取り直す (F5)" Command="{Binding RefreshCommand}"
                     AutomationProperties.AutomationId="WorkItemsRefreshButton"
                     IsEnabled="{Binding IsLoading, Converter={StaticResource InverseBool}}" />
             <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="⚙"
@@ -62,7 +66,7 @@
                     Command="{Binding SaveOrganizationCommand}" />
             <TextBox Text="{Binding OrganizationInput, UpdateSourceTrigger=PropertyChanged}"
                      FontSize="{DynamicResource Fs12}" VerticalContentAlignment="Center"
-                     ToolTip="組織名、または https://dev.azure.com/{組織}。空で保存するとワークスペースの git リモートから見つける"
+                     ToolTip="組織名、または組織の URL（https://dev.azure.com/{組織}・https://{サーバー}/tfs/{コレクション}）。空で保存するとワークスペースの git リモートから見つける"
                      AutomationProperties.AutomationId="WorkItemsOrganizationBox" />
         </DockPanel>
 
@@ -76,40 +80,101 @@
                        FontSize="{DynamicResource Fs12}" Foreground="{DynamicResource FgDim}" />
             <PasswordBox x:Name="PatBox" FontSize="{DynamicResource Fs12}" VerticalContentAlignment="Center"
                          KeyDown="OnPatKeyDown"
-                         ToolTip="Azure DevOps の個人用アクセストークン（Work Items 読み取り）"
+                         ToolTip="Azure DevOps の個人用アクセストークン（Work Items と Code の読み取り）"
                          AutomationProperties.AutomationId="WorkItemsPatBox" />
+        </DockPanel>
+
+        <!-- 絞り込み：文字（タイトル・状態・種類・ID）＋状態＋種類。 -->
+        <DockPanel DockPanel.Dock="Top" Margin="6,0,6,6">
+            <ComboBox DockPanel.Dock="Right" Width="96" Margin="4,0,0,0" FontSize="{DynamicResource Fs12}"
+                      ItemsSource="{Binding TypeOptions}" SelectedItem="{Binding SelectedType, Mode=TwoWay}"
+                      ToolTip="種類で絞る" AutomationProperties.AutomationId="WorkItemsTypeFilter" />
+            <ComboBox DockPanel.Dock="Right" Width="96" Margin="4,0,0,0" FontSize="{DynamicResource Fs12}"
+                      ItemsSource="{Binding StateOptions}" SelectedItem="{Binding SelectedState, Mode=TwoWay}"
+                      ToolTip="状態で絞る" AutomationProperties.AutomationId="WorkItemsStateFilter" />
+            <Grid>
+                <TextBox x:Name="FilterBox" Text="{Binding FilterText, UpdateSourceTrigger=PropertyChanged}"
+                         FontSize="{DynamicResource Fs12}" VerticalContentAlignment="Center" Padding="2,0,20,0"
+                         KeyDown="OnFilterKeyDown"
+                         ToolTip="タイトル・状態・種類・ID・リポジトリで絞る（Esc で消す）"
+                         AutomationProperties.AutomationId="WorkItemsFilterBox" />
+                <TextBlock Text="絞り込み" Margin="6,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False"
+                           FontSize="{DynamicResource Fs12}" Foreground="{DynamicResource FgDim}"
+                           Visibility="{Binding FilterText, Converter={StaticResource EmptyToVis}}" />
+                <Button Style="{StaticResource IconButton}" Content="×" HorizontalAlignment="Right"
+                        Width="20" Height="20" Padding="0" ToolTip="絞り込みを外す"
+                        Command="{Binding ClearFilterCommand}"
+                        Visibility="{Binding FilterText, Converter={StaticResource NonEmptyToVis}}" />
+            </Grid>
         </DockPanel>
 
         <TextBlock DockPanel.Dock="Top" Text="{Binding ErrorText}" TextWrapping="Wrap" Margin="6,0,6,6"
                    FontSize="{DynamicResource Fs12}" Foreground="{DynamicResource Error}"
                    Visibility="{Binding ErrorText, Converter={StaticResource NonEmptyToVis}}" />
 
-        <ScrollViewer MaxHeight="520" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <TextBlock DockPanel.Dock="Top" Text="{Binding EmptyText}" Margin="6,8" HorizontalAlignment="Center"
+                   FontSize="{DynamicResource Fs12}" Foreground="{DynamicResource FgDim}"
+                   Visibility="{Binding EmptyText, Converter={StaticResource NonEmptyToVis}}" />
+
+        <ScrollViewer MaxHeight="560" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
             <ItemsControl ItemsSource="{Binding Items}">
                 <ItemsControl.ItemTemplate>
-                    <DataTemplate DataType="{x:Type vm:WorkItemRowViewModel}">
-                        <Button Style="{StaticResource WorkItemRowButton}" ToolTip="{Binding ToolTip}"
-                                Opacity="{Binding Opacity}"
-                                Command="{Binding DataContext.OpenCommand,
-                                                  RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                CommandParameter="{Binding}"
-                                AutomationProperties.Name="{Binding Title}">
-                            <DockPanel Margin="{Binding Indent}">
-                                <Border DockPanel.Dock="Left" Width="3" Margin="0,1,6,1" CornerRadius="1"
-                                        Background="{Binding TypeColor}" />
-                                <TextBlock DockPanel.Dock="Right" Text="{Binding State}" Margin="8,0,0,0"
-                                           FontSize="{DynamicResource Fs11}" Foreground="{DynamicResource FgDim}"
-                                           VerticalAlignment="Center" />
-                                <TextBlock DockPanel.Dock="Left" Width="44" VerticalAlignment="Center"
-                                           FontSize="{DynamicResource Fs11}" Foreground="{DynamicResource FgDim}"
-                                           Text="{Binding TypeShort}" TextTrimming="CharacterEllipsis" />
-                                <TextBlock DockPanel.Dock="Left" Text="{Binding IdText}" Margin="0,0,6,0"
-                                           FontSize="{DynamicResource Fs11}" Foreground="{DynamicResource FgDim}"
-                                           VerticalAlignment="Center" />
-                                <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis"
-                                           FontSize="{DynamicResource Fs12}" VerticalAlignment="Center" />
-                            </DockPanel>
-                        </Button>
+                    <DataTemplate DataType="{x:Type vm:WorkItemListRowViewModel}">
+                        <Grid>
+                            <!-- 見出し（紐づかない PR） -->
+                            <TextBlock Text="{Binding Title}" Margin="6,8,6,2"
+                                       FontSize="{DynamicResource Fs11}" Foreground="{DynamicResource FgDim}"
+                                       Visibility="{Binding IsSection, Converter={StaticResource BoolToVis}}" />
+                            <!-- Work Item / PR。右クリックでコピー（TaskAzure と同じ項目）。
+                                 ContextMenu は行テンプレートの中に置く（Style の Setter に置くと Click が結線されない）。 -->
+                            <Button Style="{StaticResource WorkItemRowButton}" ToolTip="{Binding ToolTip}"
+                                    Opacity="{Binding Opacity}"
+                                    Visibility="{Binding CanOpen, Converter={StaticResource BoolToVis}}"
+                                    Command="{Binding DataContext.OpenCommand,
+                                                      RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                    CommandParameter="{Binding}"
+                                    Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                    AutomationProperties.Name="{Binding Title}">
+                                <Button.ContextMenu>
+                                    <ContextMenu DataContext="{Binding PlacementTarget.Tag, RelativeSource={RelativeSource Self}}">
+                                        <MenuItem Header="ブラウザペインで開く"
+                                                  Command="{Binding OpenCommand}"
+                                                  CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                                        <MenuItem Header="既定のブラウザで開く"
+                                                  Command="{Binding OpenExternalCommand}"
+                                                  CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                                        <Separator />
+                                        <MenuItem Header="ID をコピー"
+                                                  Command="{Binding CopyIdCommand}"
+                                                  CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                                        <MenuItem Header="タイトルをコピー"
+                                                  Command="{Binding CopyTitleCommand}"
+                                                  CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                                        <MenuItem Header="URL をコピー"
+                                                  Command="{Binding CopyUrlCommand}"
+                                                  CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                                        <MenuItem Header="リンクをコピー（Markdown / HTML）"
+                                                  Command="{Binding CopyLinkCommand}"
+                                                  CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                                    </ContextMenu>
+                                </Button.ContextMenu>
+                                <DockPanel Margin="{Binding Indent}">
+                                    <!-- 種類は色だけで示す（Work Item は種類の色、PR は青）。 -->
+                                    <Border DockPanel.Dock="Left" Width="3" Margin="0,1,7,1" CornerRadius="1"
+                                            Background="{Binding TypeColor}" />
+                                    <TextBlock DockPanel.Dock="Left" Text="PR" Margin="0,0,5,0" VerticalAlignment="Center"
+                                               FontSize="{DynamicResource Fs10}" FontWeight="SemiBold"
+                                               Foreground="{Binding TypeColor}"
+                                               Visibility="{Binding IsPullRequest, Converter={StaticResource BoolToVis}}" />
+                                    <TextBlock DockPanel.Dock="Right" Text="{Binding Detail}" Margin="8,0,0,0"
+                                               MaxWidth="140" TextTrimming="CharacterEllipsis"
+                                               FontSize="{DynamicResource Fs11}" Foreground="{DynamicResource FgDim}"
+                                               VerticalAlignment="Center" />
+                                    <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis"
+                                               FontSize="{DynamicResource Fs12}" VerticalAlignment="Center" />
+                                </DockPanel>
+                            </Button>
+                        </Grid>
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
             </ItemsControl>

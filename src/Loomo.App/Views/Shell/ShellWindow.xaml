@@ -542,7 +542,7 @@
                             <Border.Effect>
                                 <DropShadowEffect BlurRadius="8" ShadowDepth="2" Opacity="0.3" />
                             </Border.Effect>
-                            <views:WorkItemsView />
+                            <views:WorkItemsView x:Name="WorkItemsList" />
                         </Border>
                     </Popup>
                     <Button Style="{StaticResource ActivityIconButton}" Content="⌨" ToolTip="キーボードショートカット"
