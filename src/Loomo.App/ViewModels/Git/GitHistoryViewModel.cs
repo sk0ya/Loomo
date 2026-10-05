@@ -167,6 +167,7 @@ public sealed partial class GitHistoryViewModel : ObservableObject
     partial void OnSelectedLogRowChanged(GitLogRow? value)
     {
         if (value?.Hash is { } hash) _ = LoadDetailAsync(hash);
+        if (IsRouteActive && value?.Hash is not null) RebuildRoute(raiseGraphChanged: true);
     }
 
     [RelayCommand]
@@ -400,8 +401,94 @@ public sealed partial class GitHistoryViewModel : ObservableObject
     {
         Graph = GitCommitGraph.Build(LogRows);
         GraphLaneCount = Graph.Count == 0 ? 0 : Graph.Max(row => row.LaneCount);
+        // ページを足すと上りの行き先（先端）や下りの系譜が伸びるので、経路も組み直す。
+        RebuildRoute(raiseGraphChanged: false);
         GraphChanged?.Invoke(this, EventArgs.Empty);
     }
+
+    // ---- 経路（グラフのコミットを押したときの強調） ----
+
+    /// <summary>経路表示中か。<b>表示中は選択に追従する</b>——矢印キーで1行ずつ動かしながら
+    /// 「このコミットはどのマージで入ったか」を順に見ていける。</summary>
+    [ObservableProperty] private bool _isRouteActive;
+
+    /// <summary>いま強調している経路。表示していない・絞り込み中（グラフ自体を出さない）は null。</summary>
+    public GitCommitRoute? Route { get; private set; }
+
+    /// <summary>一覧の上に出す経路の道のり（押されたコミット → 取り込んだマージ → 先端）。</summary>
+    public ObservableCollection<GitRouteChip> RouteChips { get; } = new();
+
+    /// <summary>経路の帯を出すか。</summary>
+    public bool HasRoute => Route is not null;
+
+    /// <summary>
+    /// グラフが押された。経路を出していなければ出し、押したのが今の経路の起点そのものなら畳む
+    /// （同じ丸をもう一度押す＝やめる、が一番手近な閉じ方）。
+    /// </summary>
+    public void ToggleRouteFrom(GitLogRow row)
+    {
+        if (row.Hash is null) return;
+        if (IsRouteActive && Route?.Focus == row.Hash)
+        {
+            ClearRoute();
+            return;
+        }
+        IsRouteActive = true;
+        // 選択の変更（＝OnSelectedLogRowChanged）でも組み直されるが、同じ行を押したときは
+        // 変更が起きないので自分で組む。
+        RebuildRoute(raiseGraphChanged: true, focus: row.Hash);
+    }
+
+    [RelayCommand]
+    private void ClearRoute()
+    {
+        IsRouteActive = false;
+        RebuildRoute(raiseGraphChanged: true);
+    }
+
+    /// <summary>経路のチップが押された：そのコミットへ移る（経路は選択に追従して組み直る）。</summary>
+    [RelayCommand]
+    private void GoToRouteChip(GitRouteChip? chip)
+    {
+        if (chip is null || FindCommitRow(chip.Hash) is not { } row) return;
+        SelectedLogRow = row;
+    }
+
+    private void RebuildRoute(bool raiseGraphChanged, string? focus = null)
+    {
+        focus ??= Route?.Focus is { } current && SelectedLogRow?.Hash is null ? current : SelectedLogRow?.Hash;
+        Route = IsRouteActive && ShowGraph && focus is not null ? GitCommitRoute.Build(LogRows, focus) : null;
+
+        RouteChips.Clear();
+        if (Route is { } route)
+        {
+            Add(route.Focus, GitRouteChipKind.Focus);
+            // 道のりは下（押したコミット）から上（先端）へ読ませる＝取り込まれた順。
+            foreach (var step in route.Merges.Reverse())
+                Add(step.Hash, GitRouteChipKind.Merge);
+            if (route.Tip is { } tip && tip != route.Focus)
+                Add(tip, GitRouteChipKind.Tip);
+        }
+        OnPropertyChanged(nameof(Route));
+        OnPropertyChanged(nameof(HasRoute));
+        if (raiseGraphChanged) GraphChanged?.Invoke(this, EventArgs.Empty);
+
+        void Add(string hash, GitRouteChipKind kind)
+        {
+            var row = FindCommitRow(hash);
+            RouteChips.Add(new GitRouteChip(hash, row?.ShortHash ?? hash[..Math.Min(7, hash.Length)],
+                row?.Subject ?? "", kind,
+                row?.RefLabels.FirstOrDefault(label => label.Kind != GitRefKind.Head)?.Name));
+        }
+    }
+
+    // ---- グラフ列の幅 ----
+
+    /// <summary>グラフ列の幅の上限（px）。null は「全レーンが収まる幅」。マージが増えて枝が横へ
+    /// 広がりすぎたときに件名の場所を取り返すためのつまみ。</summary>
+    [ObservableProperty] private double? _graphWidth;
+
+    partial void OnGraphWidthChanged(double? value) => GraphChanged?.Invoke(this, EventArgs.Empty);
 
     /// <summary>グラフを組み直した（ビューは行の描画を更新する）。</summary>
     public event EventHandler? GraphChanged;
@@ -449,6 +536,8 @@ public sealed partial class GitHistoryViewModel : ObservableObject
         OnPropertyChanged(nameof(HasActiveFilters));
         OnPropertyChanged(nameof(ShowGraph));
         LogView.Refresh();
+        // 絞り込み中はグラフを出さない＝経路も出さない（外れたら同じ起点で戻る）。
+        RebuildRoute(raiseGraphChanged: false);
         // 絞り込みの有無でグラフの出し入れが変わるので、行を描き直させる。
         GraphChanged?.Invoke(this, EventArgs.Empty);
     }
@@ -478,4 +567,30 @@ public sealed partial class GitHistoryViewModel : ObservableObject
     }
 
     private async Task LoadDetailAsync(string hash) => CommitDetail = await _query.GetCommitSummaryAsync(hash);
+}
+
+/// <summary>経路チップの役どころ。</summary>
+public enum GitRouteChipKind
+{
+    /// <summary>押されたコミット（経路の起点）。</summary>
+    Focus,
+
+    /// <summary>起点を第2親以降として取り込んだマージ。</summary>
+    Merge,
+
+    /// <summary>上りの行き着いた先端（HEAD など）。</summary>
+    Tip,
+}
+
+/// <summary>一覧の上に並べる経路の1件。</summary>
+public sealed record GitRouteChip(string Hash, string ShortHash, string Subject, GitRouteChipKind Kind, string? RefName)
+{
+    /// <summary>チップの見出し。先端は参照名があればそれで呼ぶ（main のような名前の方が通じる）。</summary>
+    public string Label => Kind switch
+    {
+        GitRouteChipKind.Tip when RefName is { Length: > 0 } name => name,
+        _ => ShortHash,
+    };
+
+    public string ToolTipText => Subject.Length == 0 ? ShortHash : $"{ShortHash}  {Subject}";
 }

@@ -47,6 +47,7 @@ public partial class GitSessionView : UserControl
             this, LogList, BranchList, BranchFilterBox, LogFilterBox,
             () => Vm, () => SelectedTreeBranch, ShowBranchLogGuardedAsync);
         SetupLogColumnResize();
+        SetupGraphWidthGrip();
         SetupLogFilter();
         // 無選択で立ち上がるので、選んだ1本に効く操作は最初から押せない状態にしておく
         _branchMenuController.UpdateSelectionActions(SelectedTreeBranch);

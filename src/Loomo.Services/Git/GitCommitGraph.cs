@@ -18,8 +18,13 @@ public enum GitGraphEdgeKind
 }
 
 /// <summary>行の帯に引く線1本。<paramref name="FromLane"/> が上側、<paramref name="ToLane"/> が下側の列。</summary>
+/// <param name="Parent">この線が下端で行き着く親コミット（一覧に居ない親でも綴りは入る）。</param>
+/// <param name="Children">この線に乗っている子コミット。1本のレーンには、先に開いた子のほかに
+/// 後から同じ親へ合流してきた子も相乗りする——経路の強調（<see cref="GitCommitRoute"/>）は
+/// 「親子の組」で線を引き当てるので、相乗りしている子を全部持たせる。</param>
 public readonly record struct GitGraphEdge(
-    GitGraphEdgeKind Kind, int FromLane, int ToLane, int Color);
+    GitGraphEdgeKind Kind, int FromLane, int ToLane, int Color,
+    string? Parent = null, IReadOnlyList<string>? Children = null);
 
 /// <summary>
 /// 1行ぶんのグラフ。<paramref name="Lane"/> がこのコミットの丸の位置、
@@ -75,6 +80,10 @@ public static class GitCommitGraph
         // 各レーンが「次に待っているコミット」。null は空きレーン。
         var waiting = new List<string?>();
         var colors = new List<int>();
+        // 各レーンに乗っている子コミット（＝そのレーンの線がどの親子の組を描いているか）。
+        // 合流で相乗りが増えるときは配列ごと作り直す——既に出した線が同じ配列を握っているので、
+        // その場で書き足すと過去の行の線まで「相乗りしていた」ことになる。
+        var riders = new List<string[]>();
         var nextColor = 0;
         // この一覧に本当に出てくるコミット。ここに居ない親のためにレーンを開いたままにすると、
         // そのレーンは<b>二度と閉じない</b>——git log --first-parent は第2親のコミットを出さないのに
@@ -93,7 +102,7 @@ public static class GitCommitGraph
                 var passing = new List<GitGraphEdge>();
                 for (var i = 0; i < waiting.Count; i++)
                     if (waiting[i] is not null)
-                        passing.Add(new GitGraphEdge(GitGraphEdgeKind.Through, i, i, colors[i]));
+                        passing.Add(new GitGraphEdge(GitGraphEdgeKind.Through, i, i, colors[i], waiting[i], riders[i]));
                 result.Add(new GitGraphRow(-1, 0, passing, Math.Max(waiting.Count, 1)));
                 continue;
             }
@@ -102,18 +111,22 @@ public static class GitCommitGraph
             // ——素通りの判定は<b>入ってきた側</b>で決まる（この行で新しく開いたレーンは素通りではない）。
             var incoming = waiting.ToList();
             var lane = incoming.IndexOf(hash);
-            if (lane < 0) lane = TakeFreeLane(waiting, colors, ref nextColor);
+            var incomingRiders = riders.ToList();
+            if (lane < 0) lane = TakeFreeLane(waiting, colors, riders, ref nextColor);
             var color = colors[lane];
             var edges = new List<GitGraphEdge>();
 
             for (var i = 0; i < incoming.Count; i++)
                 if (incoming[i] == hash)
-                    edges.Add(new GitGraphEdge(GitGraphEdgeKind.In, i, lane, colors[i]));
+                    edges.Add(new GitGraphEdge(GitGraphEdgeKind.In, i, lane, colors[i], hash, incomingRiders[i]));
 
             // 自分を待っていた他のレーンは、ここで丸に合流したので閉じる。
             for (var i = 0; i < waiting.Count; i++)
                 if (i != lane && waiting[i] == hash)
+                {
                     waiting[i] = null;
+                    riders[i] = [];
+                }
 
             var parents = row.Parents;
             // 第1親はこのレーンをそのまま下へ引き継ぐ（色も引き継ぐ＝枝の色が続く）。
@@ -123,9 +136,11 @@ public static class GitCommitGraph
             // ただし空けるのは<b>この行の処理が終わってから</b>——先に空けると、第2親の
             // レーン探しが同じレーンを再利用して色を上書きし、いま引いた線と二重に描かれる。
             var firstParentIsPresent = parents.Count > 0 && present.Contains(parents[0]);
+            string[] self = [hash];
             waiting[lane] = parents.Count > 0 ? parents[0] : null;
+            riders[lane] = parents.Count > 0 ? self : [];
             if (parents.Count > 0)
-                edges.Add(new GitGraphEdge(GitGraphEdgeKind.Out, lane, lane, color));
+                edges.Add(new GitGraphEdge(GitGraphEdgeKind.Out, lane, lane, color, parents[0], self));
 
             // 第2親以降はマージ。既にその親を待っているレーンがあればそこへ、無ければ新しく開く。
             for (var p = 1; p < parents.Count; p++)
@@ -134,24 +149,33 @@ public static class GitCommitGraph
                 var target = waiting.IndexOf(parent);
                 if (target < 0)
                 {
-                    target = TakeFreeLane(waiting, colors, ref nextColor);
+                    target = TakeFreeLane(waiting, colors, riders, ref nextColor);
                     // 一覧に居ない親は待たない（開いたままにすると永久に閉じないレーンになる）。
                     // 線だけはこの行の下端まで引く＝「ここで枝が合流している」は見える。
                     waiting[target] = present.Contains(parent) ? parent : null;
+                    riders[target] = waiting[target] is null ? [] : self;
                 }
-                edges.Add(new GitGraphEdge(GitGraphEdgeKind.Out, lane, target, colors[target]));
+                else
+                {
+                    riders[target] = [.. riders[target], hash];
+                }
+                edges.Add(new GitGraphEdge(GitGraphEdgeKind.Out, lane, target, colors[target], parent, self));
             }
 
             // 一覧に出てこない第1親の待ちはここで落とす（上の理由でこの位置）。
-            if (!firstParentIsPresent) waiting[lane] = null;
+            if (!firstParentIsPresent)
+            {
+                waiting[lane] = null;
+                riders[lane] = [];
+            }
 
             // 残り（この行と無関係なレーン）は縦に素通り。
             for (var i = 0; i < incoming.Count; i++)
                 if (i != lane && incoming[i] is not null && incoming[i] != hash)
-                    edges.Add(new GitGraphEdge(GitGraphEdgeKind.Through, i, i, colors[i]));
+                    edges.Add(new GitGraphEdge(GitGraphEdgeKind.Through, i, i, colors[i], incoming[i], incomingRiders[i]));
 
             var laneCount = Math.Max(Math.Max(incoming.Count, waiting.Count), lane + 1);
-            TrimTrailingFreeLanes(waiting, colors);
+            TrimTrailingFreeLanes(waiting, colors, riders);
             result.Add(new GitGraphRow(lane, color, edges, laneCount));
         }
 
@@ -159,13 +183,14 @@ public static class GitCommitGraph
     }
 
     /// <summary>空きレーンを取る（無ければ足す）。新しい枝なので色も割り当て直す。</summary>
-    private static int TakeFreeLane(List<string?> waiting, List<int> colors, ref int nextColor)
+    private static int TakeFreeLane(List<string?> waiting, List<int> colors, List<string[]> riders, ref int nextColor)
     {
         var lane = waiting.IndexOf(null);
         if (lane < 0)
         {
             waiting.Add(null);
             colors.Add(0);
+            riders.Add([]);
             lane = waiting.Count - 1;
         }
         colors[lane] = nextColor;
@@ -174,12 +199,13 @@ public static class GitCommitGraph
     }
 
     /// <summary>右端の空きレーンは畳む（枝が閉じたあとも幅を取り続けないように）。</summary>
-    private static void TrimTrailingFreeLanes(List<string?> waiting, List<int> colors)
+    private static void TrimTrailingFreeLanes(List<string?> waiting, List<int> colors, List<string[]> riders)
     {
         while (waiting.Count > 0 && waiting[^1] is null)
         {
             waiting.RemoveAt(waiting.Count - 1);
             colors.RemoveAt(colors.Count - 1);
+            riders.RemoveAt(riders.Count - 1);
         }
     }
 }

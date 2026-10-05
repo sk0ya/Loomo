@@ -123,6 +123,14 @@ internal sealed class GitSessionKeyboardController
     internal void OnLogListKeyDown(object sender, KeyEventArgs e)
     {
         var vm = _getViewModel();
+        // 経路を出している間の Esc は経路を畳む（絞り込みの解除より手前＝今いちばん目の前にあるもの）。
+        if (e.Key == Key.Escape && Keyboard.Modifiers == ModifierKeys.None && vm?.History.IsRouteActive == true)
+        {
+            vm.History.ClearRouteCommand.Execute(null);
+            _pendingLogG = false;
+            e.Handled = true;
+            return;
+        }
         var result = GitSessionKeyboardMapper.ResolveLogKey(
             e.Key, Keyboard.Modifiers, _pendingLogG, vm?.History.HasActiveFilters ?? false);
         _pendingLogG = result.PendingG;
