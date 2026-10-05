@@ -25,6 +25,8 @@ public enum ClaudeUsageProblem
     NotSignedIn,
     /// <summary>トークンの期限切れ。Loomo は更新しない——Claude Code を使えば Claude Code が更新する。</summary>
     TokenExpired,
+    /// <summary>取得の制限（429）。この API は同じトークンでの連続取得をかなり厳しく断るので、間隔を空けて待つ。</summary>
+    RateLimited,
     /// <summary>通信・応答の失敗（一時的）。</summary>
     Failed,
 }
@@ -72,6 +74,8 @@ public sealed class ClaudeUsageClient
             using var response = await _http.SendAsync(request, cancellationToken).ConfigureAwait(false);
             if (response.StatusCode == HttpStatusCode.Unauthorized)
                 return new(null, ClaudeUsageProblem.TokenExpired);
+            if (response.StatusCode == HttpStatusCode.TooManyRequests)
+                return new(null, ClaudeUsageProblem.RateLimited);
             if (!response.IsSuccessStatusCode) return new(null, ClaudeUsageProblem.Failed);
             var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
             var usage = Parse(json);

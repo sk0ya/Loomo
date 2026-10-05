@@ -14,7 +14,7 @@ namespace sk0ya.Loomo.App.ViewModels;
 /// <summary>
 /// Terminal ペインのヘッダーに出す Claude Code の使用量（5時間枠）。ターミナルで Claude Code を回している人が、
 /// 画面を切り替えずに「あとどれだけ使えるか」を周辺視野で見られるようにする。詳細（週枠・リセット時刻）はツールチップ。
-/// Claude Code にログインしていなければ何も出さない。
+/// Claude Code にログインしていなければ何も出さない。取得と保存・429 の待ちは <see cref="ClaudeUsageSource"/>。
 /// </summary>
 public sealed partial class ClaudeUsageViewModel : ObservableObject
 {
@@ -24,19 +24,20 @@ public sealed partial class ClaudeUsageViewModel : ObservableObject
     /// <summary>この割合以上で警告色にする。</summary>
     public const double WarningPercent = 80;
 
-    private readonly ClaudeUsageClient _client;
+    private readonly ClaudeUsageSource _source;
     private readonly DispatcherTimer _timer;
     private int _fetching;
 
     private ClaudeUsage? _usage;
     private DateTimeOffset? _fetchedAt;
     private ClaudeUsageProblem _problem;
+    private DateTimeOffset? _retryAt;
 
-    public ClaudeUsageViewModel(ClaudeUsageClient client)
+    public ClaudeUsageViewModel(ClaudeUsageSource source)
     {
-        _client = client;
+        _source = source;
         _timer = new DispatcherTimer(DispatcherPriority.Background) { Interval = PollInterval };
-        _timer.Tick += (_, _) => _ = RefreshAsync();
+        _timer.Tick += (_, _) => _ = RefreshAsync(force: false);
     }
 
     /// <summary>ヘッダーに出すか（ログインしていて、一度でも値が取れた）。</summary>
@@ -63,12 +64,14 @@ public sealed partial class ClaudeUsageViewModel : ObservableObject
     [ObservableProperty]
     private string _footer = "";
 
-    /// <summary>定期取得を始める（初回はすぐ）。</summary>
+    /// <summary>定期取得を始める。保存してある最後の値をすぐ出し、取得は裏で（断られていても表示は出る）。</summary>
     public void Start()
     {
         if (_timer.IsEnabled) return;
         _timer.Start();
-        _ = RefreshAsync();
+        try { Take(_source.LoadCached()); }
+        catch (Exception) { /* 保存が読めなくても取得で埋まる */ }
+        _ = RefreshAsync(force: false);
     }
 
     /// <summary>ツールチップを開く直前に残り時間と経過線を今の時刻で引き直す（取得は3分おきなので、そのままだとずれる）。</summary>
@@ -79,31 +82,28 @@ public sealed partial class ClaudeUsageViewModel : ObservableObject
 
     /// <summary>今すぐ取り直す（表示のクリック）。</summary>
     [RelayCommand]
-    private Task Refresh() => RefreshAsync();
+    private Task Refresh() => RefreshAsync(force: true);
 
-    private async Task RefreshAsync()
+    private async Task RefreshAsync(bool force)
     {
         if (Interlocked.Exchange(ref _fetching, 1) == 1) return;
         try
         {
-            var result = await Task.Run(() => _client.FetchAsync(CancellationToken.None));
-            _problem = result.Problem;
-            if (result.Usage is { } usage)
-            {
-                _usage = usage;
-                _fetchedAt = DateTimeOffset.Now;
-            }
-            else if (result.Problem == ClaudeUsageProblem.NotSignedIn)
-            {
-                _usage = null;
-                _fetchedAt = null;
-            }
-            Apply(DateTimeOffset.Now);
+            Take(await Task.Run(() => _source.GetAsync(force, CancellationToken.None)));
         }
         finally
         {
             Interlocked.Exchange(ref _fetching, 0);
         }
+    }
+
+    private void Take(ClaudeUsageSnapshot snapshot)
+    {
+        _usage = snapshot.Usage;
+        _fetchedAt = snapshot.FetchedAt;
+        _problem = snapshot.Problem;
+        _retryAt = snapshot.RetryAt;
+        Apply(DateTimeOffset.Now);
     }
 
     private void Apply(DateTimeOffset now)
@@ -120,7 +120,7 @@ public sealed partial class ClaudeUsageViewModel : ObservableObject
     private void ApplyDetail(DateTimeOffset now)
     {
         Rows = BuildRows(_usage!, now);
-        Footer = FormatFooter(_fetchedAt, _problem);
+        Footer = FormatFooter(_fetchedAt, _problem, _retryAt, now);
     }
 
     /// <summary>ヘッダーの短い表示。5時間枠の%（無い応答なら週枠）。</summary>
@@ -146,10 +146,7 @@ public sealed partial class ClaudeUsageViewModel : ObservableObject
             var left = reset - now;
             elapsed = Math.Clamp(100 * (1 - left / length), 0, 100);
             remaining = FormatRemaining(left);
-            var local = reset.ToLocalTime();
-            resetAt = local.Date == now.ToLocalTime().Date
-                ? local.ToString("HH:mm", CultureInfo.InvariantCulture)
-                : local.ToString("M/d HH:mm", CultureInfo.InvariantCulture);
+            resetAt = FormatTime(reset, now);
         }
         return new ClaudeUsageRow($"{name}  {Percent(window.Percent)}", window.Percent, elapsed,
             remaining, resetAt, window.Percent >= WarningPercent);
@@ -162,17 +159,29 @@ public sealed partial class ClaudeUsageViewModel : ObservableObject
         : left.TotalMinutes >= 60 ? $"{(int)left.TotalHours}時間{left.Minutes}分"
         : $"{Math.Max(1, (int)Math.Ceiling(left.TotalMinutes))}分";
 
-    /// <summary>ツールチップの末尾。</summary>
-    public static string FormatFooter(DateTimeOffset? fetchedAt, ClaudeUsageProblem problem)
+    /// <summary>ツールチップの末尾。保存した値を起動直後に出すので、前日以前の値なら日付も付ける。</summary>
+    public static string FormatFooter(
+        DateTimeOffset? fetchedAt, ClaudeUsageProblem problem, DateTimeOffset? retryAt, DateTimeOffset now)
     {
-        var at = fetchedAt is { } t ? t.ToLocalTime().ToString("HH:mm", CultureInfo.InvariantCulture) + " 時点" : "";
+        var at = fetchedAt is { } t ? FormatTime(t, now) + " 時点" : "";
         var state = problem switch
         {
             ClaudeUsageProblem.TokenExpired => "・認証の期限切れで停止中（Claude Code を使うと再開）",
+            ClaudeUsageProblem.RateLimited => retryAt is { } r
+                ? $"・取得制限中（{FormatTime(r, now)} から再開）"
+                : "・取得制限中",
             ClaudeUsageProblem.Failed => "・直近の取得に失敗",
             _ => "",
         };
         return $"{at}{state}　クリックで更新";
+    }
+
+    private static string FormatTime(DateTimeOffset time, DateTimeOffset now)
+    {
+        var local = time.ToLocalTime();
+        return local.Date == now.ToLocalTime().Date
+            ? local.ToString("HH:mm", CultureInfo.InvariantCulture)
+            : local.ToString("M/d HH:mm", CultureInfo.InvariantCulture);
     }
 
     private static string Percent(double value) => $"{Math.Round(value).ToString(CultureInfo.InvariantCulture)}%";

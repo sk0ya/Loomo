@@ -138,18 +138,137 @@ public class ClaudeUsageTests
     public void FormatFooter_取得時刻と状態()
     {
         var at = new DateTimeOffset(2026, 10, 5, 22, 21, 0, TimeSpan.FromHours(9));
-        Assert.Contains("認証の期限切れ", ClaudeUsageViewModel.FormatFooter(at, ClaudeUsageProblem.TokenExpired));
-        Assert.Contains("クリックで更新", ClaudeUsageViewModel.FormatFooter(at, ClaudeUsageProblem.None));
+        Assert.Contains("認証の期限切れ", ClaudeUsageViewModel.FormatFooter(at, ClaudeUsageProblem.TokenExpired, null, at));
+        Assert.Contains("クリックで更新", ClaudeUsageViewModel.FormatFooter(at, ClaudeUsageProblem.None, null, at));
+        Assert.Contains("取得制限中", ClaudeUsageViewModel.FormatFooter(at, ClaudeUsageProblem.RateLimited, at.AddMinutes(3), at));
+        // 保存した前日の値を出しているなら日付も付ける
+        var noon = new DateTimeOffset(new DateTime(2026, 10, 5, 12, 0, 0, DateTimeKind.Local));
+        Assert.StartsWith("10/4 12:00", ClaudeUsageViewModel.FormatFooter(noon.AddDays(-1), ClaudeUsageProblem.None, null, noon));
     }
 
-    private sealed class CountingHandler : HttpMessageHandler
+    [Fact]
+    public async Task FetchAsync_429は取得制限()
+    {
+        using var credentials = new TempCredentials();
+        var client = new ClaudeUsageClient(new HttpClient(new CountingHandler(HttpStatusCode.TooManyRequests)), credentials.Path);
+
+        var result = await client.FetchAsync(CancellationToken.None);
+
+        Assert.Equal(ClaudeUsageProblem.RateLimited, result.Problem);
+    }
+
+    [Fact]
+    public async Task Source_取れた値は保存され_別のインスタンスでも起動直後から出る()
+    {
+        using var credentials = new TempCredentials();
+        var source = new ClaudeUsageSource(
+            new ClaudeUsageClient(new HttpClient(new CountingHandler()), credentials.Path), credentials.StatePath);
+
+        var fetched = await source.GetAsync(force: false, CancellationToken.None);
+        Assert.Equal(34.0, fetched.Usage!.FiveHour!.Percent);
+
+        // 別の Loomo（取りに行けない状態）でも、保存した値で最初から表示できる
+        var other = new ClaudeUsageSource(
+            new ClaudeUsageClient(new HttpClient(new CountingHandler(HttpStatusCode.TooManyRequests)), credentials.Path),
+            credentials.StatePath);
+        var cached = other.LoadCached();
+        Assert.Equal(34.0, cached.Usage!.FiveHour!.Percent);
+        Assert.NotNull(cached.FetchedAt);
+    }
+
+    [Fact]
+    public async Task Source_直前にどこかが取りに行っていれば取りに行かない_クリックは取りに行く()
+    {
+        using var credentials = new TempCredentials();
+        var handler = new CountingHandler();
+        var now = DateTimeOffset.UtcNow;
+        var client = new ClaudeUsageClient(new HttpClient(handler), credentials.Path);
+        var a = new ClaudeUsageSource(client, credentials.StatePath, () => now);
+        var b = new ClaudeUsageSource(client, credentials.StatePath, () => now.AddMinutes(1));
+
+        await a.GetAsync(force: false, CancellationToken.None);
+        var fromB = await b.GetAsync(force: false, CancellationToken.None);
+        Assert.Equal(1, handler.Calls);
+        Assert.Equal(34.0, fromB.Usage!.FiveHour!.Percent);
+
+        await b.GetAsync(force: true, CancellationToken.None);
+        Assert.Equal(2, handler.Calls);
+    }
+
+    [Fact]
+    public async Task Source_429の間は値を残し_待ちが明けるまでクリックでも取りに行かない()
+    {
+        using var credentials = new TempCredentials();
+        var now = DateTimeOffset.UtcNow;
+        var ok = new ClaudeUsageSource(
+            new ClaudeUsageClient(new HttpClient(new CountingHandler()), credentials.Path), credentials.StatePath, () => now);
+        await ok.GetAsync(force: false, CancellationToken.None);
+
+        var limitedHandler = new CountingHandler(HttpStatusCode.TooManyRequests);
+        var clock = now.AddMinutes(5);
+        var limited = new ClaudeUsageSource(
+            new ClaudeUsageClient(new HttpClient(limitedHandler), credentials.Path), credentials.StatePath, () => clock);
+
+        var snapshot = await limited.GetAsync(force: false, CancellationToken.None);
+        Assert.Equal(ClaudeUsageProblem.RateLimited, snapshot.Problem);
+        Assert.Equal(34.0, snapshot.Usage!.FiveHour!.Percent);
+        Assert.Equal(clock + ClaudeUsageSource.InitialBackoff, snapshot.RetryAt);
+
+        clock = clock.AddMinutes(1);
+        await limited.GetAsync(force: true, CancellationToken.None);
+        Assert.Equal(1, limitedHandler.Calls);
+
+        clock = snapshot.RetryAt!.Value;
+        var again = await limited.GetAsync(force: false, CancellationToken.None);
+        Assert.Equal(2, limitedHandler.Calls);
+        Assert.Equal(clock + ClaudeUsageSource.Backoff(2), again.RetryAt);
+    }
+
+    [Fact]
+    public void Source_Backoffは倍々で30分まで()
+    {
+        Assert.Equal(TimeSpan.FromMinutes(3), ClaudeUsageSource.Backoff(1));
+        Assert.Equal(TimeSpan.FromMinutes(6), ClaudeUsageSource.Backoff(2));
+        Assert.Equal(TimeSpan.FromMinutes(24), ClaudeUsageSource.Backoff(4));
+        Assert.Equal(TimeSpan.FromMinutes(30), ClaudeUsageSource.Backoff(5));
+    }
+
+    [Fact]
+    public void Source_未ログインになったら保存した値も捨てる()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var state = new ClaudeUsageState { FiveHour = new(34, null), FetchedAt = now };
+
+        var next = ClaudeUsageSource.Apply(state, new(null, ClaudeUsageProblem.NotSignedIn), now);
+
+        Assert.Null(next.FiveHour);
+        Assert.Null(next.FetchedAt);
+    }
+
+    private sealed class TempCredentials : IDisposable
+    {
+        private readonly DirectoryInfo _dir = Directory.CreateTempSubdirectory("loomo-claude-usage-");
+
+        public TempCredentials()
+        {
+            var expires = DateTimeOffset.UtcNow.AddHours(1).ToUnixTimeMilliseconds();
+            File.WriteAllText(Path, $$$"""{"claudeAiOauth":{"accessToken":"tok","expiresAt":{{{expires}}}}}""");
+        }
+
+        public string Path => System.IO.Path.Combine(_dir.FullName, ".credentials.json");
+        public string StatePath => System.IO.Path.Combine(_dir.FullName, "claude-usage.json");
+
+        public void Dispose() => _dir.Delete(recursive: true);
+    }
+
+    private sealed class CountingHandler(HttpStatusCode status = HttpStatusCode.OK) : HttpMessageHandler
     {
         public int Calls { get; private set; }
 
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             Calls++;
-            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(SampleResponse) });
+            return Task.FromResult(new HttpResponseMessage(status) { Content = new StringContent(SampleResponse) });
         }
     }
 }
