@@ -475,9 +475,14 @@ public partial class ShellWindow : Window {
         WingCollapseButton.ToolTip = _isWingCollapsed ? "袖を展開" : "袖を折りたたむ";
         WingSplitter.IsHitTestVisible = !_isWingCollapsed;
     }
+    /// <summary>Claude Code 使用量のツールチップを開く直前に、残り時間を今の時刻で書き直す。</summary>
+    private void OnClaudeUsageToolTipOpening(object sender, System.Windows.Controls.ToolTipEventArgs e) =>
+        _vm.ClaudeUsage?.RefreshDetail();
+
     private async void OnLoaded(object sender, RoutedEventArgs e) {
         StartupProfiler.Mark("OnLoaded 開始");
         UiJankProfiler.Start(Dispatcher);
+        _vm.ClaudeUsage?.Start();
         try {
             if (_vm.Workspaces.ActiveWorkspace is { } workspace)
                 await SwitchWorkspaceAsync(workspace, captureCurrent: false, deferHydration: true);

@@ -265,6 +265,8 @@ internal static class LoomoServiceCollectionExtensions
                 "Loomo", "tsLaunchProfiles.json"))));
         services.AddSingleton<TrailStore>();
         services.AddSingleton<TrailViewModel>();
+        services.AddSingleton(_ => new ClaudeUsageClient());
+        services.AddSingleton<ClaudeUsageViewModel>();
         services.AddSingleton<ShellViewModel>();
         services.AddSingleton<ShellWindow>();
 

@@ -930,6 +930,47 @@
                         <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="24" Height="24"
                                 Content="▾" FontSize="{DynamicResource Fs11}" ToolTip="タブ一覧"
                                 Tag="Terminal" Click="OnTabOverflowClick" />
+                        <!-- Claude Code の使用量（5時間枠）。ターミナルで Claude Code を回しながら残りを周辺視野で見る。
+                             詳細（週枠・リセット時刻）はツールチップ、クリックで今すぐ取り直す。未ログインなら出さない -->
+                        <Button DockPanel.Dock="Right" DataContext="{Binding ClaudeUsage}"
+                                Style="{StaticResource CaptionButton}" Height="24" Padding="6,0" Margin="0,0,4,0"
+                                Visibility="{Binding IsVisible, Converter={StaticResource BoolToVis}, FallbackValue=Collapsed}"
+                                Command="{Binding RefreshCommand}"
+                                ToolTip="{Binding Detail}" ToolTipOpening="OnClaudeUsageToolTipOpening"
+                                ToolTipService.ShowDuration="60000">
+                            <StackPanel VerticalAlignment="Center">
+                                <TextBlock x:Name="ClaudeUsageLabel" Text="{Binding Label}" HorizontalAlignment="Center"
+                                           FontSize="{DynamicResource Fs11}" Foreground="{DynamicResource FgDim}" />
+                                <Grid Width="44" Height="3" Margin="0,1,0,0">
+                                    <Border Background="{DynamicResource Border}" CornerRadius="1.5" />
+                                    <ProgressBar Minimum="0" Maximum="100" Value="{Binding FiveHourPercent, Mode=OneWay}"
+                                                 Background="Transparent" BorderThickness="0" Height="3">
+                                        <ProgressBar.Style>
+                                            <Style TargetType="ProgressBar">
+                                                <Setter Property="Foreground" Value="{DynamicResource Accent}" />
+                                                <!-- 既定テンプレートの光沢アニメーションは周辺視野に煩いので、素の棒だけにする -->
+                                                <Setter Property="Template">
+                                                    <Setter.Value>
+                                                        <ControlTemplate TargetType="ProgressBar">
+                                                            <Grid>
+                                                                <Border x:Name="PART_Track" />
+                                                                <Border x:Name="PART_Indicator" HorizontalAlignment="Left"
+                                                                        Background="{TemplateBinding Foreground}" CornerRadius="1.5" />
+                                                            </Grid>
+                                                        </ControlTemplate>
+                                                    </Setter.Value>
+                                                </Setter>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsWarning}" Value="True">
+                                                        <Setter Property="Foreground" Value="{DynamicResource Error}" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </ProgressBar.Style>
+                                    </ProgressBar>
+                                </Grid>
+                            </StackPanel>
+                        </Button>
                         <!-- 見ているタブの見出し（シェルが付けるタイトル）。帯を外した代わりに、何を映しているかをここで言う。
                              見出しは「見ているタブ」そのものとして扱う：ホバーで × ／中クリックで閉じる／右クリックで閉じる操作 -->
                         <Grid Background="Transparent" Tag="{Binding Tabs.ActiveTerminalTab}"
