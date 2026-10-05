@@ -1023,7 +1023,9 @@
                              ContextMenuOpening="OnCommitContextMenuOpening"
                              FontFamily="Cascadia Mono, Consolas">
                         <ListView.View>
-                            <GridView>
+                            <!-- 列の並び・表示／非表示は見出しの右クリック（とドラッグ）で変えられ、設定へ残る
+                                 （GitSessionView.LogColumns.cs）。ここに書く順は既定の並び。 -->
+                            <GridView x:Name="LogGridView">
                                 <!-- 左列（ブランチ一覧）の開閉ボタンはここには置かない。操作バーの
                                      いちばん上が持ち場で、畳んでいる間もバーごと残る＝戻す入口が
                                      消えない（見出しに置くと、開閉の対象と押す場所が離れていた）。 -->

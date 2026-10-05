@@ -122,6 +122,9 @@ public sealed class SettingsStore
         /// <summary>Git ペインの本体の面（履歴／操作ログ）。null=旧設定（未指定）→ 既定（履歴）を維持。</summary>
         public string? GitSessionMode { get; set; }
 
+        /// <summary>Git ペインのコミット一覧の列の並びと表示。null=旧設定（未指定）→ 既定（全列を既定の並び）を維持。</summary>
+        public PersistedGitLogColumns? GitLogColumns { get; set; }
+
         /// <summary>ブラウザのブックマークバーの表示ON/OFF。null=旧設定（未指定）→ 既定（表示）を維持。</summary>
         public bool? BrowserBookmarkBarVisible { get; set; }
 
@@ -152,6 +155,7 @@ public sealed class SettingsStore
             GitBranchColumnVisible = s.GitBranchColumnVisible,
             GitReferenceTab = s.GitReferenceTab,
             GitSessionMode = s.GitSessionMode,
+            GitLogColumns = PersistedGitLogColumns.From(s.GitLogColumns),
             BrowserBookmarkBarVisible = s.BrowserBookmarkBarVisible,
             Local = PersistedProvider.From(s.Local),
             Safety = PersistedSafety.From(s.Safety),
@@ -182,6 +186,7 @@ public sealed class SettingsStore
             if (GitBranchColumnVisible is { } gitBranches) s.GitBranchColumnVisible = gitBranches; // 同上
             if (GitReferenceTab is { Length: > 0 } gitRefTab) s.GitReferenceTab = gitRefTab;      // 同上
             if (GitSessionMode is { Length: > 0 } gitMode) s.GitSessionMode = gitMode;           // 同上
+            GitLogColumns?.ApplyTo(s.GitLogColumns);                                              // 同上
             if (BrowserBookmarkBarVisible is { } bookmarkBar) s.BrowserBookmarkBarVisible = bookmarkBar; // 同上
             Local.ApplyTo(s.Local);
             Safety.ApplyTo(s.Safety);
@@ -226,6 +231,27 @@ public sealed class SettingsStore
             settings.CodeExtensions = CodeExtensions ?? TodoTreeSettings.DefaultCodeExtensions;
             settings.DocumentExtensions = DocumentExtensions ?? "";
             settings.HiddenTags = HiddenTags?.Where(t => t is "TODO" or "FIXME" or "HACK" or "NOTE").Distinct().ToList() ?? new();
+        }
+    }
+
+    // ===== Git コミット一覧の列。ID の解釈（未知の ID を捨てる等）は読む側（App）が行う。 =====
+
+    private sealed class PersistedGitLogColumns
+    {
+        public List<string>? Order { get; set; }
+        public List<string>? Hidden { get; set; }
+
+        public static PersistedGitLogColumns From(GitLogColumnSettings c) => new()
+        {
+            Order = c.Order.ToList(),
+            Hidden = c.Hidden.ToList(),
+        };
+
+        // 既存インスタンスを書き換える（DI シングルトンの参照を保つため置き換えない）。
+        public void ApplyTo(GitLogColumnSettings c)
+        {
+            c.Order = Order?.Where(id => !string.IsNullOrWhiteSpace(id)).ToList() ?? new();
+            c.Hidden = Hidden?.Where(id => !string.IsNullOrWhiteSpace(id)).ToList() ?? new();
         }
     }
 

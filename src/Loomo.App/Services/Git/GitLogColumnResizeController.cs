@@ -17,6 +17,7 @@ internal sealed class GitLogColumnResizeController : IDisposable
 {
     private const double UserSizeThresholdPx = 3;
     private const int TailMeasureRows = 400;
+    private const string FillColumnHeader = "コミット";
 
     private static readonly (string Header, Func<GitLogRow, string?> Value)[] TailColumns =
     [
@@ -30,6 +31,7 @@ internal sealed class GitLogColumnResizeController : IDisposable
     private readonly Canvas _overlay;
     private readonly List<Thumb> _thumbs = new();
     private readonly HashSet<GridViewColumn> _userSizedColumns = new();
+    private readonly HashSet<GridViewColumn> _watchedColumns = new();
     private readonly List<(DependencyPropertyDescriptor Descriptor, object Target, EventHandler Handler)> _valueHandlers = new();
     private GridView? _gridView;
     private ScrollViewer? _scrollViewer;
@@ -70,18 +72,15 @@ internal sealed class GitLogColumnResizeController : IDisposable
         if (_scrollViewer is not null)
             _scrollViewer.ScrollChanged -= OnLogScrollChanged;
         _logList.SizeChanged -= OnLogListSizeChanged;
+        if (_gridView is not null)
+            _gridView.Columns.CollectionChanged -= OnColumnsCollectionChanged;
         if (_measureSource is not null)
             _measureSource.CollectionChanged -= OnLogMeasureSourceChanged;
         foreach (var (descriptor, target, handler) in _valueHandlers)
             descriptor.RemoveValueChanged(target, handler);
         _valueHandlers.Clear();
-        foreach (var thumb in _thumbs)
-        {
-            thumb.DragStarted -= OnLogColumnDragStarted;
-            thumb.DragDelta -= OnLogColumnThumbDragDelta;
-            _overlay.Children.Remove(thumb);
-        }
-        _thumbs.Clear();
+        _watchedColumns.Clear();
+        RemoveThumbs();
         if (_fontProbe is not null)
             _overlay.Children.Remove(_fontProbe);
         if (_headerFillerMask is not null)
@@ -134,19 +133,8 @@ internal sealed class GitLogColumnResizeController : IDisposable
         Watch(DependencyPropertyDescriptor.FromProperty(TextBlock.FontSizeProperty, typeof(TextBlock)),
             _fontProbe, OnLogFontSizeChanged);
 
-        var thumbStyle = (Style)_owner.FindResource("LogColumnResizeThumb");
-        for (var index = 0; index < gridView.Columns.Count; index++)
-        {
-            var column = gridView.Columns[index];
-            var thumb = new Thumb { Width = 6, Style = thumbStyle };
-            if (index == gridView.Columns.Count - 1) thumb.Visibility = Visibility.Collapsed;
-            thumb.DragStarted += OnLogColumnDragStarted;
-            thumb.DragDelta += OnLogColumnThumbDragDelta;
-            _thumbs.Add(thumb);
-            _overlay.Children.Add(thumb);
-            Watch(DependencyPropertyDescriptor.FromProperty(GridViewColumn.WidthProperty, typeof(GridViewColumn)),
-                column, OnLogColumnWidthChanged);
-        }
+        BuildThumbs();
+        gridView.Columns.CollectionChanged += OnColumnsCollectionChanged;
 
         _scrollViewer.ScrollChanged += OnLogScrollChanged;
         _logList.SizeChanged += OnLogListSizeChanged;
@@ -154,6 +142,50 @@ internal sealed class GitLogColumnResizeController : IDisposable
             _logList, OnLogItemsSourceChanged);
         HookMeasureSource();
         HideHeaderGrippers();
+        UpdateThumbPositions();
+    }
+
+    /// <summary>列境界ごとのつまみを今の列数ぶん作り直す。列の表示／非表示・並べ替えで列数や
+    /// 「最後の列」が変わるので、そのたびに呼ぶ（つまみは位置で列を指すので並べ替えにも追従する）。</summary>
+    private void BuildThumbs()
+    {
+        if (_gridView is null) return;
+        RemoveThumbs();
+        var thumbStyle = (Style)_owner.FindResource("LogColumnResizeThumb");
+        for (var index = 0; index < _gridView.Columns.Count; index++)
+        {
+            var column = _gridView.Columns[index];
+            var thumb = new Thumb { Width = 6, Style = thumbStyle };
+            if (index == _gridView.Columns.Count - 1) thumb.Visibility = Visibility.Collapsed;
+            thumb.DragStarted += OnLogColumnDragStarted;
+            thumb.DragDelta += OnLogColumnThumbDragDelta;
+            _thumbs.Add(thumb);
+            _overlay.Children.Add(thumb);
+            if (_watchedColumns.Add(column))
+                Watch(DependencyPropertyDescriptor.FromProperty(GridViewColumn.WidthProperty, typeof(GridViewColumn)),
+                    column, OnLogColumnWidthChanged);
+        }
+    }
+
+    private void RemoveThumbs()
+    {
+        foreach (var thumb in _thumbs)
+        {
+            thumb.DragStarted -= OnLogColumnDragStarted;
+            thumb.DragDelta -= OnLogColumnThumbDragDelta;
+            _overlay.Children.Remove(thumb);
+        }
+        _thumbs.Clear();
+    }
+
+    /// <summary>列の出し入れ・並べ替え。見出しは作り直されるので既定のつまみをまた隠し、
+    /// 「最後の列だけ隙間なし」の幅も並びで変わるので測り直す。</summary>
+    private void OnColumnsCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        if (_disposed) return;
+        BuildThumbs();
+        _owner.Dispatcher.BeginInvoke(new Action(() => HideHeaderGrippers()), DispatcherPriority.Loaded);
+        QueueTailColumnWidths();
         UpdateThumbPositions();
     }
 
@@ -188,12 +220,18 @@ internal sealed class GitLogColumnResizeController : IDisposable
     private void OnLogColumnThumbDragDelta(object sender, DragDeltaEventArgs e)
     {
         if (_gridView is null) return;
+        var columns = _gridView.Columns;
         var index = _thumbs.IndexOf((Thumb)sender);
-        if (index < 0 || index + 1 >= _gridView.Columns.Count) return;
-        var column = _gridView.Columns[index + 1];
+        if (index < 0 || index + 1 >= columns.Count) return;
+        // 余りを吸う列（コミット）は幅を直接いじらない。境界がマウスに付いてくるのは、境界と
+        // 吸う列の<b>反対側</b>の列を変えたとき——吸う列が左にあれば右隣を縮め、右にあれば左隣を広げる。
+        var fillIndex = columns.IndexOf(FillColumn(columns));
+        var resizeRight = fillIndex <= index;
+        var column = columns[resizeRight ? index + 1 : index];
+        var change = resizeRight ? -e.HorizontalChange : e.HorizontalChange;
         _dragTotal += e.HorizontalChange;
         if (Math.Abs(_dragTotal) >= UserSizeThresholdPx) _userSizedColumns.Add(column);
-        column.Width = Math.Max(30, column.ActualWidth - e.HorizontalChange);
+        column.Width = Math.Max(30, column.ActualWidth + change);
     }
 
     private static Func<GitLogRow, string?>? TailColumnValue(object? header)
@@ -275,13 +313,21 @@ internal sealed class GitLogColumnResizeController : IDisposable
         if (viewport <= 0) return;
         var extent = 0.0;
         foreach (var column in columns) extent += ColumnWidth(column);
-        var fillColumn = columns[0];
+        var fillColumn = FillColumn(columns);
         var current = fillColumn.ActualWidth;
         var target = GitLogColumnLayoutPolicy.LogFillColumnWidth(current, viewport, extent);
         if (Math.Abs(current - target) < 1.5) return;
         _fillColumnUpdating = true;
         try { fillColumn.Width = target; }
         finally { _fillColumnUpdating = false; }
+    }
+
+    /// <summary>余りの幅を吸う列（コミット）。並べ替えでどこへ動いても同じ列。見当たらなければ先頭。</summary>
+    private static GridViewColumn FillColumn(GridViewColumnCollection columns)
+    {
+        foreach (var column in columns)
+            if (Equals(column.Header, FillColumnHeader)) return column;
+        return columns[0];
     }
 
     private static double ColumnWidth(GridViewColumn column)

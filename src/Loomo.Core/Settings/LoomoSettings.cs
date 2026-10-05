@@ -65,6 +65,9 @@ public sealed class LoomoSettings
     /// <see cref="GitReferenceTab"/> と同じ（読めない値は既定＝履歴に落とす）。</summary>
     public string GitSessionMode { get; set; } = "History";
 
+    /// <summary>Git ペインのコミット一覧の列の並びと表示／非表示。列見出しの右クリック・見出しのドラッグから書き戻される。</summary>
+    public GitLogColumnSettings GitLogColumns { get; set; } = new();
+
     /// <summary>ActivityBar（左端の縦帯）の項目配置。上段バーと中段バーのどちらに何を置くかを持つ。</summary>
     public ActivityBarSettings ActivityBar { get; set; } = new();
 
@@ -234,6 +237,17 @@ public sealed class TabsPanelSettings
 
     /// <summary>ターミナルのタブを一覧に出すか。</summary>
     public bool ShowTerminal { get; set; } = true;
+}
+
+/// <summary>Git ペインのコミット一覧の列。列は ID 文字列（"Commit" / "Date" / "Author" / "Id"）で持つ——
+/// 列が増減しても古い settings.json が読めなくならないように、読めない ID は読む側で捨て、知らない列は既定位置へ足す。</summary>
+public sealed class GitLogColumnSettings
+{
+    /// <summary>左からの並び（隠している列も含む＝表示に戻したとき元の位置へ戻る）。空なら既定の並び。</summary>
+    public List<string> Order { get; set; } = new();
+
+    /// <summary>隠している列。</summary>
+    public List<string> Hidden { get; set; } = new();
 }
 
 /// <summary>エクスプローラー（フォルダーツリー）の表示設定。</summary>

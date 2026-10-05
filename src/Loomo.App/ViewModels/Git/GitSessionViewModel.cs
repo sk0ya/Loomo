@@ -139,6 +139,31 @@ public sealed partial class GitSessionViewModel : ObservableObject
         catch { /* 永続化に失敗しても表示切替自体は効かせる */ }
     }
 
+    /// <summary>コミット一覧の列の並び（隠している列も含む。<see cref="GitLogColumnLayout"/>）。</summary>
+    public IReadOnlyList<string> LogColumnOrder { get; private set; } = GitLogColumnLayout.DefaultOrder;
+
+    /// <summary>コミット一覧で隠している列。</summary>
+    public IReadOnlyList<string> LogHiddenColumns { get; private set; } = [];
+
+    /// <summary>列の並び・表示が変わった（ビューはこれを受けて GridView の列を組み直す）。</summary>
+    public event EventHandler? LogColumnsChanged;
+
+    /// <summary>列の並び・表示を変えて設定へ永続化する。</summary>
+    public void SetLogColumns(IReadOnlyList<string> order, IReadOnlyList<string> hidden)
+    {
+        order = GitLogColumnLayout.NormalizeOrder(order);
+        hidden = GitLogColumnLayout.NormalizeHidden(hidden);
+        if (order.SequenceEqual(LogColumnOrder) && hidden.SequenceEqual(LogHiddenColumns)) return;
+        LogColumnOrder = order;
+        LogHiddenColumns = hidden;
+        LogColumnsChanged?.Invoke(this, EventArgs.Empty);
+        if (_settings is null) return;
+        _settings.GitLogColumns.Order = order.ToList();
+        _settings.GitLogColumns.Hidden = hidden.ToList();
+        try { _settingsStore?.Save(_settings); }
+        catch { /* 永続化に失敗しても表示の変更自体は効かせる */ }
+    }
+
     /// <summary>
     /// 左列の下段で選んでいる参照の種類。タグ／リモート／サブモジュールを縦に積むと、本命の
     /// ブランチ一覧が 190px の列の中で潰れる（リモートは滅多に触らないのに場所だけ取る）ので、
@@ -256,6 +281,8 @@ public sealed partial class GitSessionViewModel : ObservableObject
         // 保存された表示状態を初期反映する（field 直接代入なので OnCommitDetailVisibleChanged＝永続化は走らない）。
         _commitDetailVisible = settings?.GitCommitDetailVisible ?? true;
         _branchColumnVisible = settings?.GitBranchColumnVisible ?? true;
+        LogColumnOrder = GitLogColumnLayout.NormalizeOrder(settings?.GitLogColumns.Order);
+        LogHiddenColumns = GitLogColumnLayout.NormalizeHidden(settings?.GitLogColumns.Hidden);
         // 読めない値（手書き・古い版）は既定へ落とす。ここで例外にすると起動ごと落ちる。
         // IsDefined まで見るのは、TryParse が "7" のような数値文字列を<b>成功させて</b>
         // 定義の無い値を返すため——どのタブにも一致せず、左列の下段が空白のまま操作不能になる。

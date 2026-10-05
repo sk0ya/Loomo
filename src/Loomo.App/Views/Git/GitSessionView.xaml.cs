@@ -46,6 +46,7 @@ public partial class GitSessionView : UserControl
         _keyboardController = new GitSessionKeyboardController(
             this, LogList, BranchList, BranchFilterBox, LogFilterBox,
             () => Vm, () => SelectedTreeBranch, ShowBranchLogGuardedAsync);
+        SetupLogColumns();
         SetupLogColumnResize();
         SetupGraphWidthGrip();
         SetupLogFilter();
@@ -72,6 +73,7 @@ public partial class GitSessionView : UserControl
     {
         _selectedLogRowPresenter.Attach(Vm?.History);
         _columnVisibilityController.Attach(Vm);
+        AttachLogColumns(Vm);
     }
 
     /// <summary>
