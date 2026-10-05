@@ -936,12 +936,72 @@
                                 Style="{StaticResource CaptionButton}" Height="24" Padding="6,0" Margin="0,0,4,0"
                                 Visibility="{Binding IsVisible, Converter={StaticResource BoolToVis}, FallbackValue=Collapsed}"
                                 Command="{Binding RefreshCommand}"
-                                ToolTip="{Binding Detail}" ToolTipOpening="OnClaudeUsageToolTipOpening"
+                                ToolTipOpening="OnClaudeUsageToolTipOpening"
                                 ToolTipService.ShowDuration="60000">
+                            <!-- 枠ごとの横棒：塗り＝使用率、縦線＝枠の時間がどこまで経ったか（塗りが線より手前なら、このペースで枠内に収まる） -->
+                            <Button.ToolTip>
+                                <ToolTip Padding="10,8">
+                                    <ToolTip.Resources>
+                                        <ControlTemplate x:Key="UsageFillTemplate" TargetType="ProgressBar">
+                                            <Grid>
+                                                <Border x:Name="PART_Track" />
+                                                <Border x:Name="PART_Indicator" HorizontalAlignment="Left"
+                                                        Background="{TemplateBinding Background}" CornerRadius="3" />
+                                            </Grid>
+                                        </ControlTemplate>
+                                        <!-- 経過線：指示部の右端だけを線として描く -->
+                                        <ControlTemplate x:Key="UsageTickTemplate" TargetType="ProgressBar">
+                                            <Grid>
+                                                <Border x:Name="PART_Track" />
+                                                <Border x:Name="PART_Indicator" HorizontalAlignment="Left"
+                                                        BorderBrush="{TemplateBinding Foreground}" BorderThickness="0,0,2,0" />
+                                            </Grid>
+                                        </ControlTemplate>
+                                    </ToolTip.Resources>
+                                    <StackPanel Width="260">
+                                        <TextBlock Text="Claude Code の使用量" FontWeight="SemiBold" Margin="0,0,0,6" />
+                                        <ItemsControl ItemsSource="{Binding Rows}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Grid Height="20" Margin="0,0,0,4">
+                                                        <Border Background="{DynamicResource Border}" CornerRadius="3" />
+                                                        <ProgressBar Minimum="0" Maximum="100" Value="{Binding Percent, Mode=OneWay}"
+                                                                     Template="{StaticResource UsageFillTemplate}" Opacity="0.75">
+                                                            <ProgressBar.Style>
+                                                                <Style TargetType="ProgressBar">
+                                                                    <Setter Property="Background" Value="{DynamicResource Accent}" />
+                                                                    <Style.Triggers>
+                                                                        <DataTrigger Binding="{Binding IsWarning}" Value="True">
+                                                                            <Setter Property="Background" Value="{DynamicResource Error}" />
+                                                                        </DataTrigger>
+                                                                    </Style.Triggers>
+                                                                </Style>
+                                                            </ProgressBar.Style>
+                                                        </ProgressBar>
+                                                        <ProgressBar Minimum="0" Maximum="100"
+                                                                     Value="{Binding ElapsedPercent, Mode=OneWay, TargetNullValue=0}"
+                                                                     Visibility="{Binding HasElapsed, Converter={StaticResource BoolToVis}}"
+                                                                     Template="{StaticResource UsageTickTemplate}"
+                                                                     Foreground="{DynamicResource Fg}" Opacity="0.85" />
+                                                        <TextBlock Text="{Binding Name}" Margin="8,0" VerticalAlignment="Center"
+                                                                   HorizontalAlignment="Left" Foreground="{DynamicResource Fg}" />
+                                                        <TextBlock Text="{Binding Remaining}" Margin="8,0" VerticalAlignment="Center"
+                                                                   HorizontalAlignment="Right" Foreground="{DynamicResource Fg}" />
+                                                    </Grid>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                        <TextBlock Text="右端＝リセットまで ／ 縦線＝枠の経過時間" Margin="0,2,0,0"
+                                                   FontSize="{DynamicResource Fs11}" Foreground="{DynamicResource FgDim}" />
+                                        <TextBlock Text="{Binding Footer}" TextWrapping="Wrap"
+                                                   FontSize="{DynamicResource Fs11}" Foreground="{DynamicResource FgDim}" />
+                                    </StackPanel>
+                                </ToolTip>
+                            </Button.ToolTip>
                             <StackPanel VerticalAlignment="Center">
                                 <TextBlock x:Name="ClaudeUsageLabel" Text="{Binding Label}" HorizontalAlignment="Center"
                                            FontSize="{DynamicResource Fs11}" Foreground="{DynamicResource FgDim}" />
-                                <Grid Width="44" Height="3" Margin="0,1,0,0">
+                                <Grid Width="32" Height="3" Margin="0,1,0,0">
                                     <Border Background="{DynamicResource Border}" CornerRadius="1.5" />
                                     <ProgressBar Minimum="0" Maximum="100" Value="{Binding FiveHourPercent, Mode=OneWay}"
                                                  Background="Transparent" BorderThickness="0" Height="3">

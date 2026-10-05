@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Net;
 using System.Net.Http;
@@ -94,35 +94,52 @@ public class ClaudeUsageTests
     }
 
     [Fact]
-    public void FormatLabel_5時間枠を丸めて出す_無ければ週枠()
+    public void FormatLabel_5時間枠の割合だけ_無ければ週枠()
     {
-        Assert.Equal("5h 35%", ClaudeUsageViewModel.FormatLabel(new(new(34.6, null), new(98, null))));
-        Assert.Equal("週 98%", ClaudeUsageViewModel.FormatLabel(new(null, new(98, null))));
+        Assert.Equal("35%", ClaudeUsageViewModel.FormatLabel(new(new(34.6, null), new(98, null))));
+        Assert.Equal("98%", ClaudeUsageViewModel.FormatLabel(new(null, new(98, null))));
     }
 
     [Fact]
-    public void FormatReset_同日は時刻だけ_別日は日付も_残り時間を添える()
+    public void FormatRemaining_分_時間分_日時間()
     {
-        var now = new DateTimeOffset(2026, 10, 5, 22, 21, 0, TimeSpan.FromHours(9));
-
-        Assert.Equal("22:40（あと19分）", ClaudeUsageViewModel.FormatReset(now.AddMinutes(19), now));
-        Assert.Equal("10/6 01:00（あと2時間39分）", ClaudeUsageViewModel.FormatReset(now.AddMinutes(159), now));
-        Assert.Equal("10/8 22:21（あと3日0時間）", ClaudeUsageViewModel.FormatReset(now.AddDays(3), now));
-        Assert.Equal("22:20", ClaudeUsageViewModel.FormatReset(now.AddMinutes(-1), now));
+        Assert.Equal("19分", ClaudeUsageViewModel.FormatRemaining(TimeSpan.FromMinutes(18.2)));
+        Assert.Equal("2時間39分", ClaudeUsageViewModel.FormatRemaining(TimeSpan.FromMinutes(159)));
+        Assert.Equal("4日15時間", ClaudeUsageViewModel.FormatRemaining(TimeSpan.FromHours(4 * 24 + 15.5)));
+        Assert.Equal("まもなく", ClaudeUsageViewModel.FormatRemaining(TimeSpan.FromMinutes(-1)));
     }
 
     [Fact]
-    public void FormatDetail_両方の枠と取得時刻と状態を書く()
+    public void BuildRows_経過線は枠の長さとリセット時刻から出す()
     {
         var now = new DateTimeOffset(2026, 10, 5, 22, 21, 0, TimeSpan.FromHours(9));
-        var usage = new ClaudeUsage(new(34, now.AddMinutes(19)), new(98, now.AddHours(2)));
+        var usage = new ClaudeUsage(new(34, now.AddHours(1)), new(98, now.AddDays(3.5)));
 
-        var detail = ClaudeUsageViewModel.FormatDetail(usage, now, ClaudeUsageProblem.TokenExpired, now);
+        var rows = ClaudeUsageViewModel.BuildRows(usage, now);
 
-        Assert.Contains("5時間枠: 34% 使用", detail);
-        Assert.Contains("あと19分", detail);
-        Assert.Contains("週枠: 98% 使用", detail);
-        Assert.Contains("認証の期限切れ", detail);
+        Assert.Equal(2, rows.Count);
+        Assert.Equal("5時間  34%", rows[0].Name);
+        Assert.Equal(80, rows[0].ElapsedPercent!.Value, precision: 6);   // 5時間のうち4時間経過
+        Assert.Equal("1時間0分", rows[0].Remaining);
+        Assert.False(rows[0].IsWarning);
+        Assert.Equal(50, rows[1].ElapsedPercent!.Value, precision: 6);
+        Assert.True(rows[1].IsWarning);
+    }
+
+    [Fact]
+    public void BuildRows_リセット時刻が無ければ経過線を出さない()
+    {
+        var row = Assert.Single(ClaudeUsageViewModel.BuildRows(new(new(10, null), null), DateTimeOffset.Now));
+        Assert.False(row.HasElapsed);
+        Assert.Equal("", row.Remaining);
+    }
+
+    [Fact]
+    public void FormatFooter_取得時刻と状態()
+    {
+        var at = new DateTimeOffset(2026, 10, 5, 22, 21, 0, TimeSpan.FromHours(9));
+        Assert.Contains("認証の期限切れ", ClaudeUsageViewModel.FormatFooter(at, ClaudeUsageProblem.TokenExpired));
+        Assert.Contains("クリックで更新", ClaudeUsageViewModel.FormatFooter(at, ClaudeUsageProblem.None));
     }
 
     private sealed class CountingHandler : HttpMessageHandler

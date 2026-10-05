@@ -1,4 +1,5 @@
-using System;
+﻿using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
 using System.Threading;
@@ -54,9 +55,13 @@ public sealed partial class ClaudeUsageViewModel : ObservableObject
     [ObservableProperty]
     private bool _isWarning;
 
-    /// <summary>ツールチップの詳細。</summary>
+    /// <summary>ツールチップの行（5時間枠・週枠）。</summary>
     [ObservableProperty]
-    private string _detail = "";
+    private IReadOnlyList<ClaudeUsageRow> _rows = [];
+
+    /// <summary>ツールチップの末尾（取得時刻と状態）。</summary>
+    [ObservableProperty]
+    private string _footer = "";
 
     /// <summary>定期取得を始める（初回はすぐ）。</summary>
     public void Start()
@@ -66,10 +71,10 @@ public sealed partial class ClaudeUsageViewModel : ObservableObject
         _ = RefreshAsync();
     }
 
-    /// <summary>ツールチップを開く直前に「あと何分」を今の時刻で書き直す（取得は3分おきなので、そのままだとずれる）。</summary>
+    /// <summary>ツールチップを開く直前に残り時間と経過線を今の時刻で引き直す（取得は3分おきなので、そのままだとずれる）。</summary>
     public void RefreshDetail()
     {
-        if (_usage is not null) Detail = FormatDetail(_usage, _fetchedAt, _problem, DateTimeOffset.Now);
+        if (_usage is not null) ApplyDetail(DateTimeOffset.Now);
     }
 
     /// <summary>今すぐ取り直す（表示のクリック）。</summary>
@@ -109,54 +114,73 @@ public sealed partial class ClaudeUsageViewModel : ObservableObject
         FiveHourPercent = five?.Percent ?? 0;
         Label = FormatLabel(_usage);
         IsWarning = (five?.Percent ?? 0) >= WarningPercent || (_usage.SevenDay?.Percent ?? 0) >= WarningPercent;
-        Detail = FormatDetail(_usage, _fetchedAt, _problem, now);
+        ApplyDetail(now);
     }
 
-    /// <summary>ヘッダーの短い表示。5時間枠が無い応答なら週枠を出す。</summary>
+    private void ApplyDetail(DateTimeOffset now)
+    {
+        Rows = BuildRows(_usage!, now);
+        Footer = FormatFooter(_fetchedAt, _problem);
+    }
+
+    /// <summary>ヘッダーの短い表示。5時間枠の%（無い応答なら週枠）。</summary>
     public static string FormatLabel(ClaudeUsage usage) =>
-        usage.FiveHour is { } five ? $"5h {Percent(five.Percent)}"
-        : usage.SevenDay is { } week ? $"週 {Percent(week.Percent)}"
-        : "";
+        (usage.FiveHour ?? usage.SevenDay) is { } window ? Percent(window.Percent) : "";
 
-    /// <summary>ツールチップの本文。</summary>
-    public static string FormatDetail(ClaudeUsage usage, DateTimeOffset? fetchedAt, ClaudeUsageProblem problem, DateTimeOffset now)
+    /// <summary>ツールチップの行。枠の長さが分かっているので、リセット時刻から「枠のどこまで時間が経ったか」も出す。</summary>
+    public static IReadOnlyList<ClaudeUsageRow> BuildRows(ClaudeUsage usage, DateTimeOffset now)
     {
-        var sb = new StringBuilder("Claude Code の使用量");
-        AppendWindow(sb, "5時間枠", usage.FiveHour, now);
-        AppendWindow(sb, "週枠", usage.SevenDay, now);
-        sb.AppendLine().AppendLine();
-        if (fetchedAt is { } at) sb.Append(CultureInfo.InvariantCulture, $"{at.ToLocalTime():HH:mm} 時点");
-        sb.Append(problem switch
-        {
-            ClaudeUsageProblem.TokenExpired => "（認証の期限切れで更新を止めています。Claude Code を使うと再開します）",
-            ClaudeUsageProblem.Failed => "（直近の取得に失敗しました）",
-            _ => "",
-        });
-        sb.AppendLine().Append("クリックで今すぐ更新");
-        return sb.ToString();
+        var rows = new List<ClaudeUsageRow>(2);
+        if (usage.FiveHour is { } five) rows.Add(BuildRow("5時間", five, TimeSpan.FromHours(5), now));
+        if (usage.SevenDay is { } week) rows.Add(BuildRow("週", week, TimeSpan.FromDays(7), now));
+        return rows;
     }
 
-    private static void AppendWindow(StringBuilder sb, string name, ClaudeUsageWindow? window, DateTimeOffset now)
+    private static ClaudeUsageRow BuildRow(string name, ClaudeUsageWindow window, TimeSpan length, DateTimeOffset now)
     {
-        if (window is null) return;
-        sb.AppendLine().Append(CultureInfo.InvariantCulture, $"{name}: {Percent(window.Percent)} 使用");
+        double? elapsed = null;
+        var remaining = "";
+        var resetAt = "";
         if (window.ResetsAt is { } reset)
-            sb.Append(CultureInfo.InvariantCulture, $"　リセット {FormatReset(reset.ToLocalTime(), now.ToLocalTime())}");
+        {
+            var left = reset - now;
+            elapsed = Math.Clamp(100 * (1 - left / length), 0, 100);
+            remaining = FormatRemaining(left);
+            var local = reset.ToLocalTime();
+            resetAt = local.Date == now.ToLocalTime().Date
+                ? local.ToString("HH:mm", CultureInfo.InvariantCulture)
+                : local.ToString("M/d HH:mm", CultureInfo.InvariantCulture);
+        }
+        return new ClaudeUsageRow($"{name}  {Percent(window.Percent)}", window.Percent, elapsed,
+            remaining, resetAt, window.Percent >= WarningPercent);
     }
 
-    /// <summary>リセット時刻。今日なら時刻だけ、別の日なら日付も。残り時間を添える。</summary>
-    public static string FormatReset(DateTimeOffset reset, DateTimeOffset now)
+    /// <summary>リセットまでの残り（「15分」「2時間34分」「4日15時間」）。過ぎていれば「まもなく」。</summary>
+    public static string FormatRemaining(TimeSpan left) =>
+        left <= TimeSpan.Zero ? "まもなく"
+        : left.TotalHours >= 24 ? $"{(int)left.TotalDays}日{left.Hours}時間"
+        : left.TotalMinutes >= 60 ? $"{(int)left.TotalHours}時間{left.Minutes}分"
+        : $"{Math.Max(1, (int)Math.Ceiling(left.TotalMinutes))}分";
+
+    /// <summary>ツールチップの末尾。</summary>
+    public static string FormatFooter(DateTimeOffset? fetchedAt, ClaudeUsageProblem problem)
     {
-        var when = reset.Date == now.Date
-            ? reset.ToString("HH:mm", CultureInfo.InvariantCulture)
-            : reset.ToString("M/d HH:mm", CultureInfo.InvariantCulture);
-        var left = reset - now;
-        if (left <= TimeSpan.Zero) return when;
-        var remain = left.TotalHours >= 24 ? $"{(int)left.TotalDays}日{left.Hours}時間"
-            : left.TotalMinutes >= 60 ? $"{(int)left.TotalHours}時間{left.Minutes}分"
-            : $"{Math.Max(1, (int)Math.Ceiling(left.TotalMinutes))}分";
-        return $"{when}（あと{remain}）";
+        var at = fetchedAt is { } t ? t.ToLocalTime().ToString("HH:mm", CultureInfo.InvariantCulture) + " 時点" : "";
+        var state = problem switch
+        {
+            ClaudeUsageProblem.TokenExpired => "・認証の期限切れで停止中（Claude Code を使うと再開）",
+            ClaudeUsageProblem.Failed => "・直近の取得に失敗",
+            _ => "",
+        };
+        return $"{at}{state}　クリックで更新";
     }
 
     private static string Percent(double value) => $"{Math.Round(value).ToString(CultureInfo.InvariantCulture)}%";
+}
+
+/// <summary>ツールチップの1行。<paramref name="ElapsedPercent"/> は枠の時間がどこまで経ったか（縦線の位置）。</summary>
+public sealed record ClaudeUsageRow(
+    string Name, double Percent, double? ElapsedPercent, string Remaining, string ResetAt, bool IsWarning)
+{
+    public bool HasElapsed => ElapsedPercent is not null;
 }
