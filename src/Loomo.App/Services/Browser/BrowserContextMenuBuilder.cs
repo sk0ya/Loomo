@@ -1,6 +1,8 @@
 namespace sk0ya.Loomo.App.Services;
 
-/// <summary>WebView2 の既定コンテキストメニューへ Loomo のページ操作を組み立てる。</summary>
+/// <summary>WebView2 の既定コンテキストメニューへ Loomo のページ操作を組み立てる。
+/// 並びは「選択テキスト → リンク → このページ ▸」の順で先頭にまとめ、区切り線の下に Chromium 既定の項目を残す。
+/// 動詞は §24.3 の共通語彙（送る／開く／残す）に揃える——ペグボードへ入れるのは「残す」で、「ピン」は使わない。</summary>
 internal static class BrowserContextMenuBuilder
 {
     public static void AddItems(
@@ -34,9 +36,9 @@ internal static class BrowserContextMenuBuilder
                 var sourceUrl = core.Source;
                 var sourceTitle = core.DocumentTitle;
                 items.Add(Command(core, dispatcher, "AIへ送る", () => askAbout(selection)));
-                items.Add(Command(core, dispatcher, "ペグボードへ送る",
-                    () => pinText(selection, sourceUrl, sourceTitle)));
                 items.Add(Command(core, dispatcher, "コンポーザへ送る", () => sendToComposer(selection)));
+                items.Add(Command(core, dispatcher, "ペグボードへ残す",
+                    () => pinText(selection, sourceUrl, sourceTitle)));
             }
             if (target.HasLinkUri && !string.IsNullOrWhiteSpace(target.LinkUri))
             {
@@ -44,7 +46,7 @@ internal static class BrowserContextMenuBuilder
                 var linkText = string.IsNullOrWhiteSpace(target.LinkText) ? null : target.LinkText;
                 items.Add(Command(core, dispatcher, "リンクを新しいタブで開く", () => openNewTab(link)));
                 items.Add(Command(core, dispatcher, "リンクを別ウィンドウで開く", () => openDetachedWindow(link)));
-                items.Add(Command(core, dispatcher, "リンクをペグボードへピン", () => pinLink(link, linkText)));
+                items.Add(Command(core, dispatcher, "リンクをペグボードへ残す", () => pinLink(link, linkText)));
             }
             if (items.Count > 0)
                 items.Add(Separator(core));
@@ -53,6 +55,11 @@ internal static class BrowserContextMenuBuilder
                 toggleBookmark, toggleBookmarkBar, openFind, copyUrl, openExternalBrowser));
             for (var i = 0; i < items.Count; i++)
                 e.MenuItems.Insert(i, items[i]);
+            // Loomo の項目と Chromium 既定の項目（コピー・印刷…）の境目。無いと「このページ」の直後に
+            // 「コピー」が地続きで並び、どこまでが Loomo の操作か分からない。
+            if (e.MenuItems.Count > items.Count
+                && e.MenuItems[items.Count].Kind != CoreWebView2ContextMenuItemKind.Separator)
+                e.MenuItems.Insert(items.Count, Separator(core));
         }
         catch
         {
@@ -74,11 +81,11 @@ internal static class BrowserContextMenuBuilder
         Action<string> openExternalBrowser)
     {
         var parent = core.Environment.CreateContextMenuItem(
-            "Loomo", null, CoreWebView2ContextMenuItemKind.Submenu);
+            "このページ", null, CoreWebView2ContextMenuItemKind.Submenu);
         var url = core.Source;
         var title = core.DocumentTitle;
-        parent.Children.Add(Command(core, dispatcher, "このページをエディタへ送る（Markdown）", sendPageToEditor));
-        parent.Children.Add(Command(core, dispatcher, "このページをペグボードへピン",
+        parent.Children.Add(Command(core, dispatcher, "エディタへ送る（Markdown）", sendPageToEditor));
+        parent.Children.Add(Command(core, dispatcher, "ペグボードへ残す",
             () => pinPage(url, title)));
         parent.Children.Add(Command(core, dispatcher,
             isBookmarked ? "ブックマークを外す" : "ブックマークに追加", toggleBookmark));
