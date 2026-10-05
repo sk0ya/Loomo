@@ -499,6 +499,66 @@
                     PreviewMouseMove="OnActivityItemMouseMove" />
         </DataTemplate>
 
+        <!-- Claude Code 使用量の詳細（Terminal ヘッダー）。ホバーのツールチップとクリックのポップアップで共有する。
+             枠ごとの横棒：塗り＝使用率、縦線＝枠の時間がどこまで経ったか（塗りが線より手前なら、このペースで枠内に収まる） -->
+        <DataTemplate x:Key="ClaudeUsageDetailTemplate">
+            <DataTemplate.Resources>
+                <ControlTemplate x:Key="UsageFillTemplate" TargetType="ProgressBar">
+                    <Grid>
+                        <Border x:Name="PART_Track" />
+                        <Border x:Name="PART_Indicator" HorizontalAlignment="Left"
+                                Background="{TemplateBinding Background}" CornerRadius="3" />
+                    </Grid>
+                </ControlTemplate>
+                <!-- 経過線：指示部の右端だけを線として描く -->
+                <ControlTemplate x:Key="UsageTickTemplate" TargetType="ProgressBar">
+                    <Grid>
+                        <Border x:Name="PART_Track" />
+                        <Border x:Name="PART_Indicator" HorizontalAlignment="Left"
+                                BorderBrush="{TemplateBinding Foreground}" BorderThickness="0,0,2,0" />
+                    </Grid>
+                </ControlTemplate>
+            </DataTemplate.Resources>
+            <StackPanel Width="260">
+                <TextBlock Text="Claude Code の使用量" FontWeight="SemiBold" Margin="0,0,0,6"
+                           Foreground="{DynamicResource Fg}" FontSize="{DynamicResource Fs12}" />
+                <ItemsControl ItemsSource="{Binding Rows}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Height="20" Margin="0,0,0,4">
+                                <Border Background="{DynamicResource Border}" CornerRadius="3" />
+                                <ProgressBar Minimum="0" Maximum="100" Value="{Binding Percent, Mode=OneWay}"
+                                             Template="{StaticResource UsageFillTemplate}" Opacity="0.75">
+                                    <ProgressBar.Style>
+                                        <Style TargetType="ProgressBar">
+                                            <Setter Property="Background" Value="{DynamicResource Accent}" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsWarning}" Value="True">
+                                                    <Setter Property="Background" Value="{DynamicResource Error}" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </ProgressBar.Style>
+                                </ProgressBar>
+                                <ProgressBar Minimum="0" Maximum="100"
+                                             Value="{Binding ElapsedPercent, Mode=OneWay, TargetNullValue=0}"
+                                             Visibility="{Binding HasElapsed, Converter={StaticResource BoolToVis}}"
+                                             Template="{StaticResource UsageTickTemplate}"
+                                             Foreground="{DynamicResource Fg}" Opacity="0.85" />
+                                <TextBlock Text="{Binding Name}" Margin="8,0" VerticalAlignment="Center" FontSize="{DynamicResource Fs12}"
+                                           HorizontalAlignment="Left" Foreground="{DynamicResource Fg}" />
+                                <TextBlock Text="{Binding Remaining}" Margin="8,0" VerticalAlignment="Center" FontSize="{DynamicResource Fs12}"
+                                           HorizontalAlignment="Right" Foreground="{DynamicResource Fg}" />
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <TextBlock Text="右端＝リセットまで ／ 縦線＝枠の経過時間" Margin="0,2,0,0"
+                           FontSize="{DynamicResource Fs11}" Foreground="{DynamicResource FgDim}" />
+                <TextBlock Text="{Binding Footer}" TextWrapping="Wrap"
+                           FontSize="{DynamicResource Fs11}" Foreground="{DynamicResource FgDim}" />
+            </StackPanel>
+        </DataTemplate>
     </Window.Resources>
 
     <!-- 最大化は code-behind で制御：通常は WM_GETMINMAXINFO でワーク領域に制限し、
@@ -932,70 +992,17 @@
                                 Tag="Terminal" Click="OnTabOverflowClick" />
                         <!-- Claude Code の使用量（5時間枠）。ターミナルで Claude Code を回しながら残りを周辺視野で見る。
                              詳細（週枠・リセット時刻）はツールチップ、クリックで今すぐ取り直す。未ログインなら出さない -->
-                        <Button DockPanel.Dock="Right" DataContext="{Binding ClaudeUsage}"
+                        <Button x:Name="ClaudeUsageButton" DockPanel.Dock="Right" DataContext="{Binding ClaudeUsage}"
                                 Style="{StaticResource CaptionButton}" Height="24" Padding="6,0" Margin="0,0,4,0"
                                 Visibility="{Binding IsVisible, Converter={StaticResource BoolToVis}, FallbackValue=Collapsed}"
-                                Command="{Binding RefreshCommand}"
+                                Command="{Binding RefreshCommand}" Click="OnClaudeUsageClick"
+                                PreviewMouseLeftButtonDown="OnClaudeUsagePreviewMouseDown"
                                 ToolTipOpening="OnClaudeUsageToolTipOpening"
                                 ToolTipService.ShowDuration="60000">
                             <!-- 枠ごとの横棒：塗り＝使用率、縦線＝枠の時間がどこまで経ったか（塗りが線より手前なら、このペースで枠内に収まる） -->
                             <Button.ToolTip>
-                                <ToolTip Padding="10,8">
-                                    <ToolTip.Resources>
-                                        <ControlTemplate x:Key="UsageFillTemplate" TargetType="ProgressBar">
-                                            <Grid>
-                                                <Border x:Name="PART_Track" />
-                                                <Border x:Name="PART_Indicator" HorizontalAlignment="Left"
-                                                        Background="{TemplateBinding Background}" CornerRadius="3" />
-                                            </Grid>
-                                        </ControlTemplate>
-                                        <!-- 経過線：指示部の右端だけを線として描く -->
-                                        <ControlTemplate x:Key="UsageTickTemplate" TargetType="ProgressBar">
-                                            <Grid>
-                                                <Border x:Name="PART_Track" />
-                                                <Border x:Name="PART_Indicator" HorizontalAlignment="Left"
-                                                        BorderBrush="{TemplateBinding Foreground}" BorderThickness="0,0,2,0" />
-                                            </Grid>
-                                        </ControlTemplate>
-                                    </ToolTip.Resources>
-                                    <StackPanel Width="260">
-                                        <TextBlock Text="Claude Code の使用量" FontWeight="SemiBold" Margin="0,0,0,6" />
-                                        <ItemsControl ItemsSource="{Binding Rows}">
-                                            <ItemsControl.ItemTemplate>
-                                                <DataTemplate>
-                                                    <Grid Height="20" Margin="0,0,0,4">
-                                                        <Border Background="{DynamicResource Border}" CornerRadius="3" />
-                                                        <ProgressBar Minimum="0" Maximum="100" Value="{Binding Percent, Mode=OneWay}"
-                                                                     Template="{StaticResource UsageFillTemplate}" Opacity="0.75">
-                                                            <ProgressBar.Style>
-                                                                <Style TargetType="ProgressBar">
-                                                                    <Setter Property="Background" Value="{DynamicResource Accent}" />
-                                                                    <Style.Triggers>
-                                                                        <DataTrigger Binding="{Binding IsWarning}" Value="True">
-                                                                            <Setter Property="Background" Value="{DynamicResource Error}" />
-                                                                        </DataTrigger>
-                                                                    </Style.Triggers>
-                                                                </Style>
-                                                            </ProgressBar.Style>
-                                                        </ProgressBar>
-                                                        <ProgressBar Minimum="0" Maximum="100"
-                                                                     Value="{Binding ElapsedPercent, Mode=OneWay, TargetNullValue=0}"
-                                                                     Visibility="{Binding HasElapsed, Converter={StaticResource BoolToVis}}"
-                                                                     Template="{StaticResource UsageTickTemplate}"
-                                                                     Foreground="{DynamicResource Fg}" Opacity="0.85" />
-                                                        <TextBlock Text="{Binding Name}" Margin="8,0" VerticalAlignment="Center"
-                                                                   HorizontalAlignment="Left" Foreground="{DynamicResource Fg}" />
-                                                        <TextBlock Text="{Binding Remaining}" Margin="8,0" VerticalAlignment="Center"
-                                                                   HorizontalAlignment="Right" Foreground="{DynamicResource Fg}" />
-                                                    </Grid>
-                                                </DataTemplate>
-                                            </ItemsControl.ItemTemplate>
-                                        </ItemsControl>
-                                        <TextBlock Text="右端＝リセットまで ／ 縦線＝枠の経過時間" Margin="0,2,0,0"
-                                                   FontSize="{DynamicResource Fs11}" Foreground="{DynamicResource FgDim}" />
-                                        <TextBlock Text="{Binding Footer}" TextWrapping="Wrap"
-                                                   FontSize="{DynamicResource Fs11}" Foreground="{DynamicResource FgDim}" />
-                                    </StackPanel>
+                                <ToolTip Padding="10,8" Placement="Bottom">
+                                    <ContentPresenter Content="{Binding}" ContentTemplate="{StaticResource ClaudeUsageDetailTemplate}" />
                                 </ToolTip>
                             </Button.ToolTip>
                             <StackPanel VerticalAlignment="Center">
@@ -1031,6 +1038,15 @@
                                 </Grid>
                             </StackPanel>
                         </Button>
+                        <!-- クリックで開く詳細。ホバーのツールチップはマウスが離れると閉じるので、こちらは外をクリックするまで残す -->
+                        <Popup x:Name="ClaudeUsagePopup" DockPanel.Dock="Right" DataContext="{Binding ClaudeUsage}"
+                               PlacementTarget="{Binding ElementName=ClaudeUsageButton}" Placement="Bottom"
+                               StaysOpen="False" AllowsTransparency="True" PopupAnimation="Fade">
+                            <Border Background="{DynamicResource BgAlt}" BorderBrush="{DynamicResource Border}"
+                                    BorderThickness="1" CornerRadius="4" Padding="10,8">
+                                <ContentPresenter Content="{Binding}" ContentTemplate="{StaticResource ClaudeUsageDetailTemplate}" />
+                            </Border>
+                        </Popup>
                         <!-- 見ているタブの見出し（シェルが付けるタイトル）。帯を外した代わりに、何を映しているかをここで言う。
                              見出しは「見ているタブ」そのものとして扱う：ホバーで × ／中クリックで閉じる／右クリックで閉じる操作 -->
                         <Grid Background="Transparent" Tag="{Binding Tabs.ActiveTerminalTab}"

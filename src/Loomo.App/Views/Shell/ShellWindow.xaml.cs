@@ -475,9 +475,26 @@ public partial class ShellWindow : Window {
         WingCollapseButton.ToolTip = _isWingCollapsed ? "袖を展開" : "袖を折りたたむ";
         WingSplitter.IsHitTestVisible = !_isWingCollapsed;
     }
-    /// <summary>Claude Code 使用量のツールチップを開く直前に、残り時間を今の時刻で書き直す。</summary>
-    private void OnClaudeUsageToolTipOpening(object sender, System.Windows.Controls.ToolTipEventArgs e) =>
+    /// <summary>Claude Code 使用量のツールチップを開く直前に、残り時間を今の時刻で書き直す。
+    /// クリックで詳細を開いている間は、同じ中身を重ねて出さない。</summary>
+    private void OnClaudeUsageToolTipOpening(object sender, System.Windows.Controls.ToolTipEventArgs e) {
+        if (ClaudeUsagePopup.IsOpen) { e.Handled = true; return; }
         _vm.ClaudeUsage?.RefreshDetail();
+    }
+
+    /// <summary>Claude Code 使用量のクリック：取り直し（Command）に加えて、ホバーを待たずに詳細を開く。
+    /// 開いている最中の再クリックは閉じる（外クリックで閉じた直後に開き直さないよう、押下時点の状態で判定）。</summary>
+    private void OnClaudeUsageClick(object sender, RoutedEventArgs e) {
+        if (_claudeUsagePopupWasOpen) { _claudeUsagePopupWasOpen = false; return; }
+        _vm.ClaudeUsage?.RefreshDetail();
+        if (ClaudeUsageButton.ToolTip is System.Windows.Controls.ToolTip tip) tip.IsOpen = false;
+        ClaudeUsagePopup.IsOpen = true;
+    }
+
+    private bool _claudeUsagePopupWasOpen;
+
+    private void OnClaudeUsagePreviewMouseDown(object sender, System.Windows.Input.MouseButtonEventArgs e) =>
+        _claudeUsagePopupWasOpen = ClaudeUsagePopup.IsOpen;
 
     private async void OnLoaded(object sender, RoutedEventArgs e) {
         StartupProfiler.Mark("OnLoaded 開始");
