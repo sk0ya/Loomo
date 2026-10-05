@@ -415,11 +415,9 @@ public sealed partial class GitHistoryViewModel : ObservableObject
     /// <summary>いま強調している経路。表示していない・絞り込み中（グラフ自体を出さない）は null。</summary>
     public GitCommitRoute? Route { get; private set; }
 
-    /// <summary>一覧の上に出す経路の道のり（押されたコミット → 取り込んだマージ → 先端）。</summary>
-    public ObservableCollection<GitRouteChip> RouteChips { get; } = new();
-
-    /// <summary>経路の帯を出すか。</summary>
-    public bool HasRoute => Route is not null;
+    /// <summary>経路の道のりを文字にしたもの（押したコミット → 取り込んだマージ → 先端、の順）。
+    /// 一覧の上に帯を常設すると一覧を押し下げて邪魔なので、グラフのツールチップで出す。経路が無ければ null。</summary>
+    public string? RouteSummary { get; private set; }
 
     /// <summary>
     /// グラフが押された。経路を出していなければ出し、押したのが今の経路の起点そのものなら畳む
@@ -446,39 +444,39 @@ public sealed partial class GitHistoryViewModel : ObservableObject
         RebuildRoute(raiseGraphChanged: true);
     }
 
-    /// <summary>経路のチップが押された：そのコミットへ移る（経路は選択に追従して組み直る）。</summary>
-    [RelayCommand]
-    private void GoToRouteChip(GitRouteChip? chip)
-    {
-        if (chip is null || FindCommitRow(chip.Hash) is not { } row) return;
-        SelectedLogRow = row;
-    }
-
     private void RebuildRoute(bool raiseGraphChanged, string? focus = null)
     {
         focus ??= Route?.Focus is { } current && SelectedLogRow?.Hash is null ? current : SelectedLogRow?.Hash;
         Route = IsRouteActive && ShowGraph && focus is not null ? GitCommitRoute.Build(LogRows, focus) : null;
 
-        RouteChips.Clear();
-        if (Route is { } route)
-        {
-            Add(route.Focus, GitRouteChipKind.Focus);
-            // 道のりは下（押したコミット）から上（先端）へ読ませる＝取り込まれた順。
-            foreach (var step in route.Merges.Reverse())
-                Add(step.Hash, GitRouteChipKind.Merge);
-            if (route.Tip is { } tip && tip != route.Focus)
-                Add(tip, GitRouteChipKind.Tip);
-        }
+        RouteSummary = Route is { } route ? DescribeRoute(route) : null;
         OnPropertyChanged(nameof(Route));
-        OnPropertyChanged(nameof(HasRoute));
+        OnPropertyChanged(nameof(RouteSummary));
         if (raiseGraphChanged) GraphChanged?.Invoke(this, EventArgs.Empty);
+    }
 
-        void Add(string hash, GitRouteChipKind kind)
+    /// <summary>下（押したコミット）から上（先端）へ＝取り込まれた順に1行ずつ。</summary>
+    private string DescribeRoute(GitCommitRoute route)
+    {
+        var lines = new List<string> { "経路" };
+        lines.Add(Line("●", route.Focus, withRef: false));
+        foreach (var step in route.Merges.Reverse())
+            lines.Add(Line("⑂", step.Hash, withRef: false));
+        if (route.Tip is { } tip && tip != route.Focus)
+            lines.Add(Line("◆", tip, withRef: true));
+        return string.Join(Environment.NewLine, lines);
+
+        string Line(string mark, string hash, bool withRef)
         {
             var row = FindCommitRow(hash);
-            RouteChips.Add(new GitRouteChip(hash, row?.ShortHash ?? hash[..Math.Min(7, hash.Length)],
-                row?.Subject ?? "", kind,
-                row?.RefLabels.FirstOrDefault(label => label.Kind != GitRefKind.Head)?.Name));
+            var shortHash = row?.ShortHash ?? hash[..Math.Min(7, hash.Length)];
+            // 先端は参照名で呼ぶ（main のような名前の方が通じる）。
+            var refName = withRef
+                ? row?.RefLabels.FirstOrDefault(label => label.Kind != GitRefKind.Head)?.Name
+                : null;
+            return refName is { Length: > 0 } name
+                ? $"{mark} {name}  ({shortHash})"
+                : $"{mark} {shortHash}  {row?.Subject}".TrimEnd();
         }
     }
 
@@ -567,30 +565,4 @@ public sealed partial class GitHistoryViewModel : ObservableObject
     }
 
     private async Task LoadDetailAsync(string hash) => CommitDetail = await _query.GetCommitSummaryAsync(hash);
-}
-
-/// <summary>経路チップの役どころ。</summary>
-public enum GitRouteChipKind
-{
-    /// <summary>押されたコミット（経路の起点）。</summary>
-    Focus,
-
-    /// <summary>起点を第2親以降として取り込んだマージ。</summary>
-    Merge,
-
-    /// <summary>上りの行き着いた先端（HEAD など）。</summary>
-    Tip,
-}
-
-/// <summary>一覧の上に並べる経路の1件。</summary>
-public sealed record GitRouteChip(string Hash, string ShortHash, string Subject, GitRouteChipKind Kind, string? RefName)
-{
-    /// <summary>チップの見出し。先端は参照名があればそれで呼ぶ（main のような名前の方が通じる）。</summary>
-    public string Label => Kind switch
-    {
-        GitRouteChipKind.Tip when RefName is { Length: > 0 } name => name,
-        _ => ShortHash,
-    };
-
-    public string ToolTipText => Subject.Length == 0 ? ShortHash : $"{ShortHash}  {Subject}";
 }

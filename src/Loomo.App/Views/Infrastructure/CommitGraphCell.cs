@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using sk0ya.Loomo.App.ViewModels;
@@ -79,15 +80,19 @@ public sealed class CommitGraphCell : FrameworkElement
     public CommitGraphCell()
     {
         Cursor = Cursors.Hand;
-        ToolTip = "クリックでこのコミットの経路（どのマージを通って先端へ届いたか）を表示";
+        ToolTip = HintText;
         ToolTipService.SetInitialShowDelay(this, 900);
+        MouseLeave += (_, _) => CloseRouteTip();
         // 行コンテナは使い回される（仮想化）ので、中身が差し替わるたびに自分の位置を引き直す。
         DataContextChanged += (_, _) => Resolve();
         Loaded += (_, _) => Resolve();
         Unloaded += (_, _) => Detach();
     }
 
+    private const string HintText = "クリックでこのコミットの経路（どのマージを通って先端へ届いたか）を表示";
+
     private GitHistoryViewModel? _history;
+    private ToolTip? _routeTip;
     private GitLogRow? _commit;
     private double? _widthLimit;
 
@@ -121,6 +126,12 @@ public sealed class CommitGraphCell : FrameworkElement
         }
         // 経路は行の中身ではなく一覧全体の状態なので、Row が同じでも描き直す。
         InvalidateVisual();
+        // 押したときのツールチップは経路に追従させる（Esc で畳めば閉じ、矢印キーで動けば中身が変わる）。
+        if (_routeTip is not null)
+        {
+            if (_history?.RouteSummary is { } summary) _routeTip.Content = summary;
+            else CloseRouteTip();
+        }
     }
 
     private void Attach(GitHistoryViewModel? history)
@@ -147,7 +158,35 @@ public sealed class CommitGraphCell : FrameworkElement
         // 修飾キー付きは複数選択の操作なので経路には触らない。
         if (e.ClickCount == 1 && Keyboard.Modifiers == ModifierKeys.None
             && _commit is { IsCommit: true } commit && _history is { } history && Row is not null)
+        {
             history.ToggleRouteFrom(commit);
+            CloseRouteTip();
+            // 押したその場で道のりを出す（待ち時間のあるホバーのツールチップを待たせない）。
+            if (history.RouteSummary is { } summary)
+            {
+                _routeTip = new ToolTip { Content = summary, PlacementTarget = this, Placement = PlacementMode.Bottom };
+                _routeTip.IsOpen = true;
+            }
+        }
+    }
+
+    /// <summary>ホバーのツールチップ：経路を出している間は道のり、そうでなければ操作の案内。</summary>
+    protected override void OnToolTipOpening(ToolTipEventArgs e)
+    {
+        if (_routeTip is { IsOpen: true })
+        {
+            e.Handled = true; // 押したときのものを出している
+            return;
+        }
+        ToolTip = _history?.RouteSummary ?? HintText;
+        base.OnToolTipOpening(e);
+    }
+
+    private void CloseRouteTip()
+    {
+        if (_routeTip is null) return;
+        _routeTip.IsOpen = false;
+        _routeTip = null;
     }
 
     /// <summary>この列の幅（全レーンぶんか、上限か）。</summary>

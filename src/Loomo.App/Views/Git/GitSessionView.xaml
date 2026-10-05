@@ -940,69 +940,6 @@
                                        ToolTip="{Binding History.PathScopeLabel}" />
                         </DockPanel>
                     </Border>
-                    <!-- 経路の帯（グラフのコミットを押している間だけ）。押したコミット → それを取り込んだ
-                         マージ → 先端、の順に並べる＝「どのマージを通って入ってきたか」を一行で読ませる。
-                         チップを押すとそのコミットへ移る（経路は選択に追従するので、そのまま辿っていける）。 -->
-                    <Border DockPanel.Dock="Top" Margin="0,0,0,2" Padding="8,3"
-                            Background="{DynamicResource BgAlt}" BorderBrush="{DynamicResource Border}"
-                            BorderThickness="0,0,0,1"
-                            Visibility="{Binding History.HasRoute, Converter={StaticResource BoolToVis}}">
-                        <DockPanel LastChildFill="True">
-                            <Button DockPanel.Dock="Right" Style="{StaticResource ToolbarButton}" Margin="6,0,0,0"
-                                    Content="✕" Command="{Binding History.ClearRouteCommand}"
-                                    ToolTip="経路の表示をやめる（Esc）" />
-                            <TextBlock DockPanel.Dock="Left" Text="経路:" VerticalAlignment="Center"
-                                       Margin="0,0,6,0" FontSize="{DynamicResource Fs11}"
-                                       Foreground="{DynamicResource FgDim}" />
-                            <ItemsControl ItemsSource="{Binding History.RouteChips}" ClipToBounds="True"
-                                          VerticalAlignment="Center">
-                                <ItemsControl.ItemsPanel>
-                                    <ItemsPanelTemplate>
-                                        <WrapPanel Orientation="Horizontal" />
-                                    </ItemsPanelTemplate>
-                                </ItemsControl.ItemsPanel>
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate>
-                                        <StackPanel Orientation="Horizontal">
-                                            <TextBlock x:Name="arrow" Text="→" Margin="4,0" VerticalAlignment="Center"
-                                                       Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs11}" />
-                                            <Button Style="{StaticResource ToolbarButton}" Padding="4,0"
-                                                    Command="{Binding DataContext.History.GoToRouteChipCommand,
-                                                              RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                                    CommandParameter="{Binding}"
-                                                    ToolTip="{Binding ToolTipText}">
-                                                <StackPanel Orientation="Horizontal">
-                                                    <TextBlock x:Name="mark" Text="●" Margin="0,0,4,0" VerticalAlignment="Center"
-                                                               FontSize="{DynamicResource Fs10}" Foreground="{DynamicResource Accent}" />
-                                                    <TextBlock Text="{Binding Label}" VerticalAlignment="Center"
-                                                               FontFamily="Cascadia Mono, Consolas" FontSize="{DynamicResource Fs11}"
-                                                               Foreground="{DynamicResource Fg}" />
-                                                    <TextBlock x:Name="subject" Text="{Binding Subject}" Margin="6,0,0,0"
-                                                               MaxWidth="220" TextTrimming="CharacterEllipsis"
-                                                               VerticalAlignment="Center" FontSize="{DynamicResource Fs11}"
-                                                               Foreground="{DynamicResource FgDim}" />
-                                                </StackPanel>
-                                            </Button>
-                                        </StackPanel>
-                                        <DataTemplate.Triggers>
-                                            <!-- 先頭（押したコミット）の前に矢印は要らない -->
-                                            <DataTrigger Binding="{Binding Kind}" Value="Focus">
-                                                <Setter TargetName="arrow" Property="Visibility" Value="Collapsed" />
-                                            </DataTrigger>
-                                            <DataTrigger Binding="{Binding Kind}" Value="Merge">
-                                                <Setter TargetName="mark" Property="Text" Value="⑂" />
-                                            </DataTrigger>
-                                            <!-- 先端は参照名で呼ぶので件名は省く（帯を長くしない） -->
-                                            <DataTrigger Binding="{Binding Kind}" Value="Tip">
-                                                <Setter TargetName="mark" Property="Text" Value="◆" />
-                                                <Setter TargetName="subject" Property="Visibility" Value="Collapsed" />
-                                            </DataTrigger>
-                                        </DataTemplate.Triggers>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                        </DockPanel>
-                    </Border>
                     <Grid>
                     <!-- 列幅は列境界をドラッグして調整できる（日時・作者が固定幅でコミットメッセージを
                          圧迫し、狭いペインで見出しがほぼ読めなくなる問題への対処）。ここの Width は
