@@ -4,6 +4,10 @@ public partial class ShellWindow {
     private void InitializePegboard() {
         _vm.Pegboard.Changed += (_, _) => SaveActiveWorkspaceSnapshot();
         _vm.Pegboard.OpenRequested += async (_, item) => await OpenPegboardItemAsync(item);
+        _vm.Pegboard.OpenSourceRequested += async (_, item) => {
+            if (item.SourceLink is { } link)
+                await OpenUrlInNewBrowserTabAsync(link);
+        };
         _vm.Pegboard.BrowserPinRequested += (_, _) => PinBrowserUrlToPegboard();
         _vm.Pegboard.EditorSelectionPinRequested += (_, _) => PinEditorSelectionToPegboard();
         _vm.Pegboard.SendToTerminalRequested += (_, item) => SendPegboardItemToTerminal(item);
@@ -28,12 +32,15 @@ public partial class ShellWindow {
         _activeTerminalTab?.View.SendTerminalInput(text);
         FocusPane(PaneKind.Terminal);
     }
+    private async Task OpenUrlInNewBrowserTabAsync(string url) {
+        EnsurePaneVisibleOrSwapTopLeft(PaneKind.Browser);
+        var tab = await CreateBrowserTabAsync(url);
+        ActivateBrowserTab(tab.Id);
+    }
     private async Task OpenPegboardItemAsync(PegboardItemVm item) {
         switch (item.Type) {
             case "url":
-                EnsurePaneVisibleOrSwapTopLeft(PaneKind.Browser);
-                var tab = await CreateBrowserTabAsync(item.Content);
-                ActivateBrowserTab(tab.Id);
+                await OpenUrlInNewBrowserTabAsync(item.Content);
                 break;
             case "file" when File.Exists(item.Content):
                 await OpenFileInNewEditorTabAsync(item.Content);

@@ -8,7 +8,8 @@ internal static class BrowserContextMenuBuilder
         CoreWebView2ContextMenuRequestedEventArgs e,
         Dispatcher dispatcher,
         Action<string> askAbout,
-        Action<string> pinText,
+        Action<string, string, string?> pinText,
+        Action<string> sendToComposer,
         Action<string, string?> pinPage,
         Action<string> openNewTab,
         Action<string> openDetachedWindow,
@@ -29,8 +30,13 @@ internal static class BrowserContextMenuBuilder
             if (target.HasSelection && !string.IsNullOrWhiteSpace(target.SelectionText))
             {
                 var selection = target.SelectionText;
+                // 出典はメニューを開いた時点のページ（選んでいる間に遷移しても、引用元は選んだページ）。
+                var sourceUrl = core.Source;
+                var sourceTitle = core.DocumentTitle;
                 items.Add(Command(core, dispatcher, "AIへ送る", () => askAbout(selection)));
-                items.Add(Command(core, dispatcher, "ペグボードへ送る", () => pinText(selection)));
+                items.Add(Command(core, dispatcher, "ペグボードへ送る",
+                    () => pinText(selection, sourceUrl, sourceTitle)));
+                items.Add(Command(core, dispatcher, "コンポーザへ送る", () => sendToComposer(selection)));
             }
             if (target.HasLinkUri && !string.IsNullOrWhiteSpace(target.LinkUri))
             {

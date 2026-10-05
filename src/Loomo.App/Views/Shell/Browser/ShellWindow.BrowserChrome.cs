@@ -214,10 +214,11 @@ public partial class ShellWindow {
                 EnsurePaneVisibleOrSwapTopLeft(PaneKind.Ai);
                 _vm.AiBar.AskAbout(selection);
             },
-            selection => {
-                _vm.Pegboard.AddContent(selection, type: "text");
-                ToastService.Success("選択テキストをペグボードへ残しました。");
+            (selection, url, title) => {
+                _vm.Pegboard.AddContent(selection, type: "text", sourceUrl: url, sourceTitle: title);
+                ToastService.Success("選択テキストを出典付きでペグボードへ残しました。");
             },
+            InsertIntoComposer,
             (url, title) => {
                 _vm.Pegboard.AddContent(url, type: "url", title: title);
                 ToastService.Success("ページをペグボードへ残しました。");

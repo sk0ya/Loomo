@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using sk0ya.Loomo.App.Services;
@@ -282,5 +283,90 @@ public class ComposerPegboardTests
 
         vm.Filter = "ふつう"; // 固定群が絞り込みで消えたら見出しも消す
         Assert.False(vm.ShowSections);
+    }
+
+    // ===== ブラウザの抜き書き（出典付き text・§24.24） =====
+
+    [Fact]
+    public void Browser_selection_keeps_its_source_and_shows_it_below_the_quote()
+    {
+        var vm = new PegboardViewModel();
+        vm.AddContent("  The quick brown fox  ", type: "text",
+                      sourceUrl: "https://example.com/a", sourceTitle: "Example Article");
+
+        var card = Assert.Single(vm.Items);
+        Assert.True(card.HasSource);
+        Assert.Equal("The quick brown fox", card.DisplayTitle);
+        Assert.Equal("出典: Example Article", card.Subtitle);
+        Assert.Equal("https://example.com/a#:~:text=The%20quick%20brown%20fox", card.SourceLink);
+
+        // 題名が無ければアドレスで呼ぶ
+        vm.AddContent("text", type: "text", sourceUrl: "https://example.com/b", sourceTitle: " ");
+        Assert.Equal("出典: example.com/b", vm.Items[0].Subtitle);
+    }
+
+    [Fact]
+    public void Source_is_kept_only_for_text_and_is_searchable()
+    {
+        var vm = new PegboardViewModel();
+        vm.AddContent("https://example.com/x", type: "url", title: "X", sourceUrl: "https://example.com/page");
+        Assert.Null(vm.Items[0].Snapshot.SourceUrl);
+        Assert.False(vm.Items[0].HasSource);
+
+        vm.AddContent("引用した一節", type: "text", sourceUrl: "https://docs.example.com/guide", sourceTitle: "ガイド");
+        vm.Filter = "ガイド";
+        Assert.Equal("引用した一節", Assert.Single(vm.ItemsView.Cast<PegboardItemVm>()).Content);
+        vm.Filter = "docs.example";
+        Assert.Single(vm.ItemsView.Cast<PegboardItemVm>());
+    }
+
+    [Fact]
+    public void Open_source_is_requested_only_for_cards_with_a_source()
+    {
+        var vm = new PegboardViewModel();
+        vm.AddContent("メモ");
+        vm.AddContent("抜き書き", type: "text", sourceUrl: "https://example.com/", sourceTitle: "E");
+        var requested = new List<PegboardItemVm>();
+        vm.OpenSourceRequested += (_, item) => requested.Add(item);
+
+        foreach (var item in vm.Items.ToList())
+            vm.OpenSourceCommand.Execute(item);
+
+        Assert.Equal("抜き書き", Assert.Single(requested).Content);
+    }
+
+    [Theory]
+    // 短い1行はまるごと一致。- , & は指令の区切りなので必ずエンコードする
+    [InlineData("https://e.com/p", "a-b, c & d", "https://e.com/p#:~:text=a%2Db%2C%20c%20%26%20d")]
+    // 既存のフラグメントは残し、既存の Text Fragment は置き換える
+    [InlineData("https://e.com/p#sec", "word", "https://e.com/p#sec:~:text=word")]
+    [InlineData("https://e.com/p#sec:~:text=old", "new", "https://e.com/p#sec:~:text=new")]
+    // http(s) 以外・空の引用はそのまま
+    [InlineData("file:///C:/a.html", "word", "file:///C:/a.html")]
+    [InlineData("https://e.com/p", " \n ", "https://e.com/p")]
+    public void Text_fragment_points_back_to_the_quote(string url, string quote, string expected)
+        => Assert.Equal(expected, BrowserTextFragment.Build(url, quote));
+
+    [Fact]
+    public void Long_or_multi_paragraph_quote_becomes_a_range_cut_at_word_boundaries()
+    {
+        var quote = "First paragraph starts here with several words in it\r\n\r\n"
+                  + "middle\nThe last paragraph finally ends with these closing words";
+
+        var directive = BrowserTextFragment.Directive(quote);
+
+        Assert.Equal("First%20paragraph%20starts%20here%20with%20several,finally%20ends%20with%20these%20closing%20words", directive);
+    }
+
+    [Fact]
+    public void Long_quote_without_spaces_is_cut_by_length()
+    {
+        var quote = new string('あ', 30) + new string('い', 60) + new string('う', 30);
+
+        var directive = BrowserTextFragment.Directive(quote)!;
+
+        var parts = directive.Split(',').Select(Uri.UnescapeDataString).ToArray();
+        Assert.Equal(new string('あ', 30) + new string('い', 10), parts[0]);
+        Assert.Equal(new string('い', 10) + new string('う', 30), parts[1]);
     }
 }

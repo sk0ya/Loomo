@@ -618,6 +618,10 @@ public sealed class PegboardItemSnapshot
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
     /// <summary>上部固定。</summary>
     public bool Pinned { get; set; }
+    /// <summary>出典のページ（ブラウザの選択から残した text だけが持つ・§24.24）。null なら出典なし。</summary>
+    public string? SourceUrl { get; set; }
+    /// <summary>出典のページ題名（残した時点のもの）。</summary>
+    public string? SourceTitle { get; set; }
 }
 
 /// <summary>検索ペインのタブに残した検索結果1枚ぶん（<see cref="WorkspaceSnapshot.SearchTabs"/>）。</summary>

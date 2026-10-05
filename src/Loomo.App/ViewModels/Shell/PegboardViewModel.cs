@@ -62,7 +62,19 @@ public sealed partial class PegboardItemVm : ObservableObject
         }
     }
 
-    /// <summary>見出しの下に薄く出す所在（url＝アドレス、file＝親フォルダー）。見出しと同じなら空。</summary>
+    /// <summary>出典のページを持つ（ブラウザの選択から残した text・§24.24）。</summary>
+    public bool HasSource => Type == "text" && !string.IsNullOrWhiteSpace(Snapshot.SourceUrl);
+
+    /// <summary>出典の呼び名（題名、無ければスキームを除いたアドレス）。出典が無ければ空。</summary>
+    public string SourceLabel
+        => !HasSource ? ""
+         : !string.IsNullOrWhiteSpace(Snapshot.SourceTitle) ? Snapshot.SourceTitle!
+         : StripScheme(Snapshot.SourceUrl!);
+
+    /// <summary>出典へ戻る URL。引用した一節へスクロールして強調する Text Fragment 付き。</summary>
+    public string? SourceLink => HasSource ? BrowserTextFragment.Build(Snapshot.SourceUrl!, Content) : null;
+
+    /// <summary>見出しの下に薄く出す所在（url＝アドレス、file＝親フォルダー、出典付き text＝出典）。見出しと同じなら空。</summary>
     public string Subtitle
     {
         get
@@ -71,6 +83,7 @@ public sealed partial class PegboardItemVm : ObservableObject
             {
                 "url" => StripScheme(Content),
                 "file" => ParentOf(Content),
+                _ when HasSource => $"出典: {SourceLabel}",
                 _ => "",
             };
             return subtitle == DisplayTitle ? "" : subtitle;
@@ -160,10 +173,12 @@ public sealed partial class PegboardItemVm : ObservableObject
         catch { return ""; }
     }
 
-    /// <summary>絞り込み語（空白区切り AND・大小無視）が見出し・本文のすべてに当たるか。</summary>
+    /// <summary>絞り込み語（空白区切り AND・大小無視）が見出し・本文・出典のすべてに当たるか。</summary>
     internal bool Matches(string[] terms)
         => terms.All(t => DisplayTitle.Contains(t, StringComparison.OrdinalIgnoreCase)
-                       || Content.Contains(t, StringComparison.OrdinalIgnoreCase));
+                       || Content.Contains(t, StringComparison.OrdinalIgnoreCase)
+                       || (HasSource && (SourceLabel.Contains(t, StringComparison.OrdinalIgnoreCase)
+                                         || Snapshot.SourceUrl!.Contains(t, StringComparison.OrdinalIgnoreCase))));
 }
 
 /// <summary>
@@ -180,6 +195,9 @@ public sealed partial class PegboardViewModel : ObservableObject
 
     /// <summary>「開く」要求。url→ブラウザ / file→エディタ等の振り分けは ShellWindow が担う。</summary>
     public event EventHandler<PegboardItemVm>? OpenRequested;
+
+    /// <summary>「出典を開く」要求（出典付き text・§24.24）。ブラウザで開くのは ShellWindow が担う。</summary>
+    public event EventHandler<PegboardItemVm>? OpenSourceRequested;
 
     /// <summary>「ブラウザのURLを残す」要求。表示中 URL の取得は ShellWindow が担う。</summary>
     public event EventHandler? BrowserPinRequested;
@@ -262,8 +280,10 @@ public sealed partial class PegboardViewModel : ObservableObject
         AddContent(text);
     }
 
-    /// <summary>内容から種別（text/url/file）を判定して追加する。明示指定があればそれを使う。</summary>
-    public void AddContent(string content, string? type = null, string? title = null)
+    /// <summary>内容から種別（text/url/file）を判定して追加する。明示指定があればそれを使う。
+    /// <paramref name="sourceUrl"/> はブラウザの選択から残すときの出典（text のときだけ持たせる・§24.24）。</summary>
+    public void AddContent(string content, string? type = null, string? title = null,
+                           string? sourceUrl = null, string? sourceTitle = null)
     {
         var trimmed = content.Trim();
         if (trimmed.Length == 0) return;
@@ -274,6 +294,11 @@ public sealed partial class PegboardViewModel : ObservableObject
             Content = trimmed,
             Title = title,
         };
+        if (snapshot.Type == "text" && !string.IsNullOrWhiteSpace(sourceUrl))
+        {
+            snapshot.SourceUrl = sourceUrl;
+            snapshot.SourceTitle = string.IsNullOrWhiteSpace(sourceTitle) ? null : sourceTitle;
+        }
         // 新規は「ピン留め群の直後」（未ピンの先頭）に置く。
         var vm = ToVm(snapshot);
         Items.Insert(Items.Count(i => i.Pinned), vm);
@@ -320,6 +345,14 @@ public sealed partial class PegboardViewModel : ObservableObject
 
     [RelayCommand]
     private void Open(PegboardItemVm item) => OpenRequested?.Invoke(this, item);
+
+    /// <summary>出典のページを、引用した一節を強調した状態でブラウザに開く。</summary>
+    [RelayCommand]
+    private void OpenSource(PegboardItemVm item)
+    {
+        if (item.HasSource)
+            OpenSourceRequested?.Invoke(this, item);
+    }
 
     [RelayCommand]
     private void Delete(PegboardItemVm item)
