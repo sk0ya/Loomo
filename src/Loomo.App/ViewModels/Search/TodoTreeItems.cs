@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Windows.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace sk0ya.Loomo.App.ViewModels;
@@ -47,6 +48,9 @@ public sealed partial class TodoGroup : ObservableObject
     public ObservableCollection<TodoEntry> Entries { get; }
     public int Count => Entries.Count;
     public string Label => $"{Name} ({Count})";
+    /// <summary>フォルダーツリーと同じ拡張子別アイコン。タグでまとめた行はファイルではないので持たない。</summary>
+    public ImageSource? IconImage => ByTag ? null : FileIcons.ImageFor(FileIcons.IndexFor(FullPath, isDirectory: false));
+    public void RefreshIcon() => OnPropertyChanged(nameof(IconImage));
     [ObservableProperty] private bool _isSelected;
     public void NotifyCount() { OnPropertyChanged(nameof(Count)); OnPropertyChanged(nameof(Label)); }
     [ObservableProperty] private bool _isExpanded = true;
@@ -66,8 +70,13 @@ public sealed partial class TodoFolder : ObservableObject
     public IEnumerable<TodoEntry> Entries => TodoTreeLayout.Entries(Children);
     public int Count => Entries.Count();
     public void NotifyCount() => OnPropertyChanged(nameof(Count));
-    [ObservableProperty] private bool _isExpanded = true;
+    // フォルダーアイコンは開閉で絵が変わるので、開閉に追随させる（フォルダーツリーと同じ）。
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IconImage))]
+    private bool _isExpanded = true;
     [ObservableProperty] private bool _isSelected;
+    public ImageSource IconImage => FileIcons.FolderImage(IsExpanded);
+    public void RefreshIcon() => OnPropertyChanged(nameof(IconImage));
 }
 
 public sealed partial class TodoTagFilter : ObservableObject

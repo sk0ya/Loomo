@@ -45,6 +45,15 @@ public sealed partial class TodoTreeViewModel : ObservableObject, IDisposable
                 Persist();
             };
         }
+        FileIcons.PaletteChanged += OnIconPaletteChanged;
+    }
+
+    // 明暗テーマの切替でアイコンの配色が変わるので、表示中の行に引き直させる。
+    private void OnIconPaletteChanged(object? sender, EventArgs e)
+    {
+        if (_disposed) return;
+        foreach (var folder in TodoTreeLayout.Folders(TreeItems)) folder.RefreshIcon();
+        foreach (var group in Groups) group.RefreshIcon();
     }
     public ObservableCollection<TodoGroup> Groups { get; } = [];
     public ObservableCollection<object> TreeItems { get; } = [];
@@ -294,5 +303,5 @@ public sealed partial class TodoTreeViewModel : ObservableObject, IDisposable
         try { _settingsStore?.Save(_settings); }
         catch (Exception ex) { Status = $"表示設定を保存できませんでした: {ex.Message}"; }
     }
-    public void Dispose() { _disposed = true; CancelSearch(); }
+    public void Dispose() { _disposed = true; FileIcons.PaletteChanged -= OnIconPaletteChanged; CancelSearch(); }
 }

@@ -42,8 +42,8 @@
         <HierarchicalDataTemplate DataType="{x:Type vm:TodoFolder}" ItemsSource="{Binding Children}">
             <Grid Background="Transparent" ToolTip="{Binding FullPath}" MouseLeftButtonDown="OnGroupClick" Margin="0,3">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                <Path Data="M1,3 L6,3 L8,5 L14,5 L14,13 L1,13 Z" Width="13" Height="12" Stretch="Uniform"
-                      Stroke="{DynamicResource FgDim}" StrokeThickness="1" Margin="0,0,5,0" VerticalAlignment="Center" />
+                <!-- フォルダーツリーと同じ FileIcons（色ちがいの線 数本の DrawingImage）を 1 要素で描く。 -->
+                <Image Source="{Binding IconImage}" Width="16" Height="16" Margin="0,0,5,0" VerticalAlignment="Center" />
                 <TextBlock Grid.Column="1" Text="{Binding Name}" TextTrimming="CharacterEllipsis" FontWeight="SemiBold" VerticalAlignment="Center" />
                 <TextBlock Grid.Column="2" Text="{Binding Count}" Foreground="{DynamicResource FgDim}"
                            FontSize="{DynamicResource Fs11}" Margin="8,0,6,0" VerticalAlignment="Center" />
@@ -51,27 +51,33 @@
         </HierarchicalDataTemplate>
         <HierarchicalDataTemplate DataType="{x:Type vm:TodoGroup}" ItemsSource="{Binding Entries}">
             <Grid Background="Transparent" ToolTip="{Binding Name}" MouseLeftButtonDown="OnGroupClick" Margin="0,3">
-                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                <TextBlock TextTrimming="CharacterEllipsis" VerticalAlignment="Center">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                <Image Source="{Binding IconImage}" Width="16" Height="16" Margin="0,0,5,0" VerticalAlignment="Center">
+                    <Image.Style><Style TargetType="Image">
+                        <Style.Triggers><DataTrigger Binding="{Binding ByTag}" Value="True"><Setter Property="Visibility" Value="Collapsed" /></DataTrigger></Style.Triggers>
+                    </Style></Image.Style>
+                </Image>
+                <TextBlock Grid.Column="1" TextTrimming="CharacterEllipsis" VerticalAlignment="Center">
                     <Run Text="{Binding Title, Mode=OneWay}" FontWeight="SemiBold" />
                 </TextBlock>
-                <TextBlock Grid.Column="1" Text="{Binding Count}" Foreground="{DynamicResource FgDim}"
+                <TextBlock Grid.Column="2" Text="{Binding Count}" Foreground="{DynamicResource FgDim}"
                            FontSize="{DynamicResource Fs11}" Margin="8,0,6,0" VerticalAlignment="Center" />
             </Grid>
         </HierarchicalDataTemplate>
         <DataTemplate DataType="{x:Type vm:TodoEntry}">
-            <StackPanel ToolTip="{Binding ToolTip}" Margin="0,3" Background="Transparent">
-                <Grid>
-                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                    <TextBlock Text="{Binding Tag}" Style="{StaticResource TodoTagText}" MinWidth="38" Margin="0,0,5,0" VerticalAlignment="Center" />
-                    <TextBlock Grid.Column="1" Text="{Binding Body}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
-                    <TextBlock Grid.Column="2" Text="{Binding Hit.Line}" Foreground="{DynamicResource FgDim}"
-                               FontSize="{DynamicResource Fs10}" Margin="10,0,6,0" VerticalAlignment="Center" />
-                </Grid>
-                <TextBlock Text="{Binding Hit.RelativePath}" Foreground="{DynamicResource FgDim}" Margin="43,2,0,0"
+            <!-- 行番号はエディタのガターと同じく行頭（タグの左）に置き、桁を右で揃える。
+                 ファイル名の行は本文の列に揃える（行番号・タグの幅が変わっても崩れない）。 -->
+            <Grid ToolTip="{Binding ToolTip}" Margin="0,3" Background="Transparent">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+                <TextBlock Text="{Binding Hit.Line}" Foreground="{DynamicResource FgDim}" TextAlignment="Right" MinWidth="26"
+                           FontSize="{DynamicResource Fs10}" Margin="0,0,6,0" VerticalAlignment="Center" />
+                <TextBlock Grid.Column="1" Text="{Binding Tag}" Style="{StaticResource TodoTagText}" MinWidth="38" Margin="0,0,5,0" VerticalAlignment="Center" />
+                <TextBlock Grid.Column="2" Text="{Binding Body}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                <TextBlock Grid.Row="1" Grid.Column="2" Text="{Binding Hit.RelativePath}" Foreground="{DynamicResource FgDim}" Margin="0,2,0,0"
                            FontSize="{DynamicResource Fs10}" TextTrimming="CharacterEllipsis"
                            Visibility="{Binding DataContext.GroupByTag, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource TodoVisibility}}" />
-            </StackPanel>
+            </Grid>
         </DataTemplate>
     </UserControl.Resources>
     <DockPanel>
