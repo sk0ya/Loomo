@@ -244,6 +244,12 @@ public partial class ShellWindow {
     private void UpdateTrailTrailingMargin() => _trailBar.UpdateTrailingMargin();
     private void OnTrailBackToLatest(object sender, RoutedEventArgs e) => _trailBar.BackToLatest();
     private void OnTrailBackToLatestFromPopup(object sender, RoutedEventArgs e) => _trailBar.BackToLatestFromPopup();
+    private void OnTrailDaySummaryFromPopup(object sender, RoutedEventArgs e) {
+        TrailDateTimePopup.IsOpen = false;
+        ShowTrailDaySummary();
+    }
+    private void OnTrailShowDaySummary(object sender, RoutedEventArgs e) => ShowTrailDaySummary();
+    private void OnTrailReshowAwaySummary(object sender, RoutedEventArgs e) => ReshowAwaySummary();
     private void OnTrailDateTimeClick(object sender, RoutedEventArgs e) => _trailBar.ToggleDateTimePopup();
     private void OnTrailCalendarSelected(object? sender, SelectionChangedEventArgs e) => _trailBar.SelectCalendarDate();
     private void OnTrailHourSelected(object sender, RoutedEventArgs e) {

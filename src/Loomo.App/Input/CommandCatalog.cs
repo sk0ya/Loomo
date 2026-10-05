@@ -104,6 +104,8 @@ public static class CommandCatalog
         new CommandDescriptor("terminal.openOutput", CatTerminal, "コマンドの出力をエディタで開く", null),
         new CommandDescriptor("trail.bookmark", CatTrail, "いまの地点にしおりを付ける", null),
         new CommandDescriptor("trail.bookmarks", CatTrail, "しおり一覧", null),
+        new CommandDescriptor("trail.daySummary", CatTrail, "この日のまとめ", null),
+        new CommandDescriptor("trail.reshowAway", CatTrail, "留守中のまとめをもう一度表示", null),
 
         // ===== 問題 =====
         new CommandDescriptor("problems.next", CatProblems, "次の問題へ移動", "F8"),

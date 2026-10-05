@@ -15,6 +15,11 @@
                 <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="20" Height="20"
                         VerticalAlignment="Top" Content="×" Foreground="{DynamicResource FgDim}"
                         ToolTip="閉じる" Command="{Binding CloseCommand}" />
+                <!-- 日報の下書きなどへ貼れるよう、並んでいる行を Markdown でクリップボードへ（§24.23）。 -->
+                <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Height="20" Padding="6,0"
+                        Margin="0,0,2,0" VerticalAlignment="Top" Content="コピー" Foreground="{DynamicResource FgDim}"
+                        FontSize="{DynamicResource Fs11}"
+                        ToolTip="この一覧を Markdown でコピー（日報の下書きに）" Command="{Binding CopyCommand}" />
                 <StackPanel>
                     <TextBlock Text="{Binding Header}" Foreground="{DynamicResource Fg}"
                                FontSize="{DynamicResource Fs12}" FontWeight="SemiBold" />
@@ -59,6 +64,10 @@
                                 </DataTrigger>
                                 <DataTrigger Binding="{Binding Kind}" Value="File">
                                     <Setter TargetName="KindGlyph" Property="Text" Value="✎" />
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding Kind}" Value="Bookmark">
+                                    <Setter TargetName="KindGlyph" Property="Text" Value="⚑" />
+                                    <Setter TargetName="KindGlyph" Property="Foreground" Value="{DynamicResource Accent}" />
                                 </DataTrigger>
                                 <DataTrigger Binding="{Binding IsFailure}" Value="True">
                                     <Setter TargetName="BadgeText" Property="Foreground" Value="{DynamicResource Error}" />

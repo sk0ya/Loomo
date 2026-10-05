@@ -36,6 +36,8 @@ public partial class ShellWindow {
         var owner = _terminalWorkspaces.FirstOrDefault(pair => pair.Value.Tabs.Any(t => t.Id == tabId)).Key;
         if (owner == Guid.Empty)
             return;   // どのワークスペースにも属さない仮のタブ（ワークスペース未選択時）は残さない
+        // 1回ずつの記録（この日のまとめ・§24.23）。最近のコマンドは同じ行をまとめてしまうので別に残す。
+        _vm.Trail.RecordCommandRun(owner.ToString(), run);
         if (_activeWorkspace is { } active && active.Id == owner) {
             if (RecentTerminalCommands.Record(active.RecentTerminalCommands, run) is { } updated) {
                 active.RecentTerminalCommands = updated;

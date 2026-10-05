@@ -440,6 +440,25 @@ public sealed partial class TrailViewModel : ObservableObject
             ? uri.Host
             : url;
 
+    // ===== コマンドの実行記録（§24.23 この日のまとめ） =====
+
+    /// <summary>可視ターミナルで終わった実行を1回分残す。<paramref name="workspaceKey"/> はそのタブの持ち主
+    /// （裏のワークスペースのタブで終わった実行もその部屋の記録にする）。書けなくても何も止めない。</summary>
+    public void RecordCommandRun(string workspaceKey, RecentTerminalCommandRun run)
+    {
+        if (string.IsNullOrWhiteSpace(run.Command))
+            return;
+        try { _store.AppendCommandRunDeferred(workspaceKey, run.FinishedUtc.ToLocalTime(), run.Command.Trim(), run.ExitCode); }
+        catch { /* 記録は補助。失敗しても実行そのものには関係しない */ }
+    }
+
+    /// <summary>このワークスペースのその日のコマンド実行（古い順）。読めなければ空。</summary>
+    public IReadOnlyList<CommandRunRecord> LoadCommandRuns(DateOnly day)
+    {
+        try { return _store.LoadCommandRuns(_workspaceKey, day); }
+        catch { return Array.Empty<CommandRunRecord>(); }
+    }
+
     // ===== しおり（§27.13） =====
 
     /// <summary>地点にしおりを付ける（メモを付け替える）。空白なら外す。</summary>

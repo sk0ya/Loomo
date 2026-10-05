@@ -24,6 +24,9 @@ public sealed record TrailRecord(
 public sealed record TrailNoteRecord(long Id, DateOnly Day, DateTime Timestamp, int Kind, string Target, string Label,
     string Note);
 
+/// <summary>可視ターミナルで実行し終えたコマンドの1回分（§24.23 この日のまとめ）。出力は持たない。</summary>
+public sealed record CommandRunRecord(DateTime Timestamp, string Command, int? ExitCode);
+
 /// <summary>
 /// まだ書かれていないかもしれない軌跡1行への参照。<see cref="TrailStore.AppendDeferred"/> は即座にこれを返し、
 /// 書き出しスレッドが INSERT を終えた時点で id が入る。後続の更新（デデュープ・離脱位置・配置）も同じ
@@ -147,6 +150,25 @@ public sealed class TrailStore : IDisposable
         // しおり（§27.13）。user_version は上げない——列を足すだけなら古い本体は読まないだけで困らないが、
         // 上げると古い本体が「新しすぎるスキーマ」として trail.db ごと開けなくなる。
         AddColumnIfMissing(connection, "note", "TEXT NULL");
+
+        // コマンドの実行記録（§24.23）。「最近のコマンド」は同じ行を1件にまとめて最新50件しか持たないので、
+        // その日に何をいつ打って成否がどうだったかはここにしか残らない。出力は入れない（§24.21 と同じ理由）。
+        // テーブルを足すだけなので user_version は上げない（しおりと同じ）。
+        using (var commands = connection.CreateCommand())
+        {
+            commands.CommandText = """
+                CREATE TABLE IF NOT EXISTS command_runs (
+                    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+                    workspace TEXT    NOT NULL,
+                    day       TEXT    NOT NULL,
+                    timestamp TEXT    NOT NULL,
+                    command   TEXT    NOT NULL,
+                    exit_code INTEGER NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_command_runs_ws_day ON command_runs(workspace, day, id);
+                """;
+            commands.ExecuteNonQuery();
+        }
 
         using (var finish = connection.CreateCommand())
         {
@@ -402,6 +424,59 @@ public sealed class TrailStore : IDisposable
                     reader.GetString(4),
                     reader.GetString(5),
                     reader.GetString(6)));
+            }
+            return list;
+        }
+    }
+
+    /// <summary>コマンドの実行を1回分残す（<paramref name="finished"/> はローカル時刻。day はそこから決める）。</summary>
+    public void AppendCommandRun(string workspace, DateTime finished, string command, int? exitCode)
+    {
+        lock (_gate)
+        {
+            using var cmd = Connection.CreateCommand();
+            cmd.CommandText = """
+                INSERT INTO command_runs(workspace, day, timestamp, command, exit_code)
+                VALUES ($ws, $day, $ts, $command, $exit);
+                """;
+            cmd.Parameters.AddWithValue("$ws", workspace);
+            cmd.Parameters.AddWithValue("$day", finished.ToString("yyyy-MM-dd"));
+            cmd.Parameters.AddWithValue("$ts", finished.ToString(TimestampFormat));
+            cmd.Parameters.AddWithValue("$command", command);
+            cmd.Parameters.AddWithValue("$exit", exitCode is { } code ? code : DBNull.Value);
+            cmd.ExecuteNonQuery();
+        }
+    }
+
+    /// <summary><see cref="AppendCommandRun"/> の遅延版（書き出しスレッドで書く。失敗は捨てる）。</summary>
+    public void AppendCommandRunDeferred(string workspace, DateTime finished, string command, int? exitCode)
+        => _writes.Enqueue(() =>
+        {
+            try { AppendCommandRun(workspace, finished, command, exitCode); }
+            catch { }
+        });
+
+    /// <summary>指定ワークスペース×指定日のコマンド実行を古い順に読む。</summary>
+    public IReadOnlyList<CommandRunRecord> LoadCommandRuns(string workspace, DateOnly day)
+    {
+        _writes.Flush();   // 積んである書き込みより前を読まない
+        lock (_gate)
+        {
+            var list = new List<CommandRunRecord>();
+            using var cmd = Connection.CreateCommand();
+            cmd.CommandText = """
+                SELECT timestamp, command, exit_code FROM command_runs
+                WHERE workspace = $ws AND day = $day ORDER BY id;
+                """;
+            cmd.Parameters.AddWithValue("$ws", workspace);
+            cmd.Parameters.AddWithValue("$day", day.ToString("yyyy-MM-dd"));
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+            {
+                list.Add(new CommandRunRecord(
+                    DateTime.ParseExact(reader.GetString(0), TimestampFormat, null),
+                    reader.GetString(1),
+                    reader.IsDBNull(2) ? null : reader.GetInt32(2)));
             }
             return list;
         }

@@ -27,14 +27,33 @@ public sealed partial class AwaySummaryViewModel : ObservableObject
     /// <summary>行が押された（ShellWindow が種類ごとの開き方を持つ）。</summary>
     public event EventHandler<AwayItem>? ItemOpenRequested;
 
+    /// <summary>「コピー」が押された（中身は <see cref="AwaySummary.ToMarkdown"/>。クリップボードは ShellWindow が触る）。</summary>
+    public event EventHandler<string>? CopyRequested;
+
+    private AwaySummary? _summary;
+
+    /// <summary>直前の留守中のまとめ（§24.22）。閉じた後でも「もう一度表示」で出し直せるよう、この日のまとめ
+    /// （§24.23）で置き換わっても別に覚えておく。</summary>
+    public AwaySummary? LastAway { get; private set; }
+
     public void Show(AwaySummary summary)
     {
+        _summary = summary;
+        if (summary.Title is null)
+            LastAway = summary;
         Items.Clear();
         foreach (var item in summary.Items)
             Items.Add(item);
         Header = summary.Header;
         Counts = summary.Counts;
         IsVisible = Items.Count > 0;
+    }
+
+    [RelayCommand]
+    private void Copy()
+    {
+        if (_summary is { IsEmpty: false } summary)
+            CopyRequested?.Invoke(this, summary.ToMarkdown());
     }
 
     [RelayCommand]

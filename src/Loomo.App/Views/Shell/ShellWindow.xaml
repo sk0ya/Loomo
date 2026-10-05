@@ -2764,6 +2764,9 @@
                         <MenuItem x:Name="TrailBookmarkMenuItem" Header="この地点にしおりを付ける…" Click="OnTrailBookmarkEntry" />
                         <MenuItem Header="しおり一覧…" Click="OnTrailShowBookmarks" />
                         <Separator />
+                        <MenuItem Header="この日のまとめ" Click="OnTrailShowDaySummary" />
+                        <MenuItem Header="留守中のまとめをもう一度表示" Click="OnTrailReshowAwaySummary" />
+                        <Separator />
                         <MenuItem Header="軌跡を非表示にする"
                                   Command="{Binding PlacementTarget.DataContext.Trail.HideCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
                     </ContextMenu>
@@ -2810,6 +2813,12 @@
                                             Padding="10,4" FontSize="{DynamicResource Fs12}" HorizontalContentAlignment="Left"
                                             Content="⟳ 最新に戻る" ToolTip="ライブの最新地点（今）へ戻る"
                                             Click="OnTrailBackToLatestFromPopup" />
+                                    <!-- この日のまとめ（§24.23）：カレンダーで選んでいる日の、しおり・コマンド・Git・
+                                         変更中のファイルを右下のカードに出す。押したらポップアップは閉じる。 -->
+                                    <Button DockPanel.Dock="Top" Style="{StaticResource FlatButton}"
+                                            Padding="10,4" Margin="0,2,0,0" FontSize="{DynamicResource Fs12}" HorizontalContentAlignment="Left"
+                                            Content="≡ この日のまとめ" ToolTip="この日のしおり・コマンド・Git・変更中のファイルをまとめて見る"
+                                            Click="OnTrailDaySummaryFromPopup" />
                                     <Border DockPanel.Dock="Top" Height="1" Margin="4,3"
                                             Background="{DynamicResource Border}" />
                                     <!-- 時間帯：その日に記録のある時間（HH:00）を縦に並べ、選ぶとその時間帯の

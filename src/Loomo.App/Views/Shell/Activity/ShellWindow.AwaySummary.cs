@@ -41,6 +41,13 @@ public partial class ShellWindow {
         };
         _presenceTimer.Start();
         _vm.AwaySummary.ItemOpenRequested += (_, item) => OpenAwayItem(item);
+        _vm.AwaySummary.CopyRequested += (_, text) => {
+            try {
+                Clipboard.SetText(text);
+                ToastService.Info("まとめを Markdown でコピーしました。");
+            }
+            catch { /* クリップボード占有中は無視 */ }
+        };
         Closed += (_, _) => _presenceTimer.Stop();
     }
 
@@ -120,6 +127,63 @@ public partial class ShellWindow {
             case AwayFileChange file:
                 ShowDiff(new DiffOpenTarget.WorkingTreeFile(file.Entry, IsStaged: file.Entry.WorkStatus is ' ' or '.'));
                 break;
+            case TrailNoteRecord bookmark:
+                if (!_vm.Trail.JumpToBookmark(bookmark))
+                    ToastService.Info("そのしおりの地点が見つかりませんでした。");
+                break;
+        }
+    }
+
+    /// <summary>直前の留守中のまとめをもう一度出す（× で閉じた後に読み返す口・§24.22）。</summary>
+    private void ReshowAwaySummary() {
+        if (_vm.AwaySummary.LastAway is { } last)
+            _vm.AwaySummary.Show(last);
+        else
+            ToastService.Info("まだ留守中のまとめはありません（5分以上離れて戻ると出ます）。");
+    }
+
+    /// <summary>この日のまとめを読む reflog の上限（ページ単位でその日より前に届くまで読む）。</summary>
+    private const int DaySummaryReflogPage = 100;
+    private const int DaySummaryReflogMax = 1000;
+
+    /// <summary>軌跡で表示中の日のまとめ（§24.23）。</summary>
+    private void ShowTrailDaySummary() => _ = ShowDaySummaryAsync(_vm.Trail.DisplayDate);
+
+    /// <summary>その日に部屋で起きたこと（しおり・コマンド・Git・変更中のファイル）を留守中と同じカードで出す。
+    /// まとめは保存せず、開くたびに記録から組み立てる。</summary>
+    private async Task ShowDaySummaryAsync(DateOnly day) {
+        if (_activeWorkspace is not { } workspace)
+            return;
+        try {
+            var trail = _vm.Trail;
+            var (bookmarks, runs) = await Task.Run(() => (trail.ListBookmarks(), trail.LoadCommandRuns(day)));
+            var reflog = new List<GitReflogEntry>();
+            IReadOnlyList<AwayFileChange> files = Array.Empty<AwayFileChange>();
+            if (_git.RootPath is { Length: > 0 } root) {
+                // reflog は新しい順。その日の始まりより古い記録に届くまでページを読む
+                var dayStart = new DateTimeOffset(day.ToDateTime(TimeOnly.MinValue, DateTimeKind.Local));
+                for (int skip = 0; skip < DaySummaryReflogMax; skip += DaySummaryReflogPage) {
+                    var page = await _git.GetReflogAsync("HEAD", skip, DaySummaryReflogPage);
+                    if (page.Error is not null)
+                        break;
+                    reflog.AddRange(page.Entries);
+                    if (!page.HasMore || page.Entries.Count == 0 || page.Entries[^1].Time is { } oldest && oldest < dayStart)
+                        break;
+                }
+                var status = await _git.GetStatusAsync();
+                if (status.IsRepository)
+                    files = await Task.Run(() => StatChangedFiles(root, status));
+            }
+            if (!ReferenceEquals(_activeWorkspace, workspace))
+                return;
+            var summary = DaySummaryBuilder.Build(day, bookmarks, runs, reflog, files);
+            if (summary.IsEmpty)
+                ToastService.Info($"{day:M/d} の記録（しおり・コマンド・Git・変更中のファイル）はありません。");
+            else
+                _vm.AwaySummary.Show(summary);
+        }
+        catch (Exception ex) when (ex is IOException or InvalidOperationException or UnauthorizedAccessException) {
+            ToastService.Info("この日のまとめを読めませんでした。");
         }
     }
 
