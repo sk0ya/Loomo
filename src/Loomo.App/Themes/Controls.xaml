@@ -865,6 +865,49 @@
         <Setter Property="Background" Value="{DynamicResource Border}" />
     </Style>
 
+    <!-- ペインヘッダーの見出し（見ているタブ）の直後に付く ×。見ているタブを閉じる。
+         常設するとヘッダーのボタン列が1つ増えるだけなので、ヘッダーにマウスが乗っている間だけ出す
+         （出ていないときは幅も取らない）。置き方は「ヘッダー(DockPanel) > 見出し帯(Grid) > 見出し(DockPanel) > ×」
+         の入れ子が前提で、2段上の DockPanel＝ヘッダーのホバーを見る。 -->
+    <Style x:Key="PaneHeaderTabClose" TargetType="Button">
+        <Setter Property="DockPanel.Dock" Value="Right" />
+        <Setter Property="Width" Value="18" />
+        <Setter Property="Height" Value="18" />
+        <Setter Property="Margin" Value="4,0,0,0" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="Cursor" Value="Arrow" />
+        <Setter Property="Focusable" Value="False" />
+        <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
+        <Setter Property="Visibility" Value="Collapsed" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="b" Background="Transparent" CornerRadius="3">
+                        <Path Width="7" Height="7" Stretch="Uniform" StrokeThickness="1.3"
+                              Stroke="{TemplateBinding Foreground}" Data="M0,0 L8,8 M0,8 L8,0"
+                              HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="b" Property="Background" Value="{DynamicResource Border}" />
+                            <Setter Property="Foreground" Value="{DynamicResource Fg}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+        <Style.Triggers>
+            <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=DockPanel, AncestorLevel=2}}"
+                         Value="True">
+                <Setter Property="Visibility" Value="Visible" />
+            </DataTrigger>
+            <!-- Tag には閉じる対象（見ているタブ）を束ねる。タブが無いときは押す先が無いので出さない。 -->
+            <Trigger Property="Tag" Value="{x:Null}">
+                <Setter Property="Visibility" Value="Collapsed" />
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
     <!-- ペイン境界のリサイズつまみ。6px の操作領域は透明のまま確保し、通常時はテーマの
          Border で 1px、ホバー／ドラッグ時だけ Accent の 2px 線として見せる。 -->
     <Style x:Key="PaneResizeThumb" TargetType="Thumb">
