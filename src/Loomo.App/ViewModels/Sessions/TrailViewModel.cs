@@ -16,6 +16,7 @@ public sealed partial class TrailViewModel : ObservableObject
     private readonly SettingsStore? _settingsStore;
     private readonly TrailRecordHandler _recorder;
     private readonly TrailHistoryQuery _history;
+    private readonly TrailStore _store;
     private bool _loaded;
     private int _workspaceLoadVersion;
 
@@ -35,6 +36,7 @@ public sealed partial class TrailViewModel : ObservableObject
         _settings = settings;
         _settingsStore = settingsStore;
         _now = clock ?? (() => DateTime.Now);
+        _store = store;
         _recorder = new TrailRecordHandler(store, _now);
         _history = new TrailHistoryQuery(store);
         _displayDate = Today;
@@ -437,6 +439,47 @@ public sealed partial class TrailViewModel : ObservableObject
         => Uri.TryCreate(url, UriKind.Absolute, out var uri) && !string.IsNullOrEmpty(uri.Host)
             ? uri.Host
             : url;
+
+    // ===== しおり（§27.13） =====
+
+    /// <summary>地点にしおりを付ける（メモを付け替える）。空白なら外す。</summary>
+    public void SetNote(TrailEntryViewModel entry, string? note)
+    {
+        var normalized = NormalizeNote(note);
+        entry.Note = normalized;
+        try { _store.SetNoteDeferred(entry.Row, normalized); }
+        catch { /* 永続化に失敗してもメモ自体は表示に残す（メモリ内動作へ縮退） */ }
+    }
+
+    /// <summary>しおりのメモの正規化：前後の空白を落とし、改行は1行に畳む（ツールチップと一覧で1行に読める）。</summary>
+    public static string? NormalizeNote(string? note)
+    {
+        var text = string.Join(" ", (note ?? "").Split('\r', '\n')
+            .Select(part => part.Trim()).Where(part => part.Length > 0));
+        return text.Length == 0 ? null : text;
+    }
+
+    /// <summary>このワークスペースのしおり（新しい順・日をまたぐ）。読めなければ空。</summary>
+    public IReadOnlyList<TrailNoteRecord> ListBookmarks()
+    {
+        try { return _history.ListNotes(_workspaceKey); }
+        catch { return Array.Empty<TrailNoteRecord>(); }
+    }
+
+    /// <summary>しおりの地点へ戻る：その日の軌跡を読み込み、その点を現在地にしてジャンプを要求する。
+    /// その日の読み込みに失敗したか、点が見つからなければ false（画面は変えない）。</summary>
+    public bool JumpToBookmark(TrailNoteRecord bookmark)
+    {
+        if (bookmark.Day != DisplayDate)
+            ShowDate(bookmark.Day);
+        if (DisplayDate != bookmark.Day)
+            return false;
+        var entry = Entries.FirstOrDefault(e => e.Id == bookmark.Id);
+        if (entry is null)
+            return false;
+        Jump(entry);
+        return true;
+    }
 
     [RelayCommand]
     private void Jump(TrailEntryViewModel? entry)

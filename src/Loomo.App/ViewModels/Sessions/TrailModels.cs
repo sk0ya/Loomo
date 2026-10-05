@@ -117,6 +117,15 @@ public sealed partial class TrailEntryViewModel : ObservableObject
     /// 境目に細い区切り（|）を1本入れるために使う（§27.7.3）。先頭エントリは常に false。</summary>
     [ObservableProperty] private bool _startsNewHour;
 
+    /// <summary>しおりのメモ（§27.13）。null ならしおりではない。</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasNote))]
+    [NotifyPropertyChangedFor(nameof(Tooltip))]
+    [NotifyPropertyChangedFor(nameof(AccessibleName))]
+    private string? _note;
+
+    public bool HasNote => !string.IsNullOrWhiteSpace(Note);
+
     /// <summary>バー上とツールチップに出す種別記号。すべて単色の幾何記号（絵文字は使わない）で、
     /// 前景色を継承できるためテーマ追従と現在地の色強調が効く。種別ごとに一意（§27.11-D）。</summary>
     public string Glyph => Kind switch
@@ -194,7 +203,8 @@ public sealed partial class TrailEntryViewModel : ObservableObject
                 ? $"{Label}、{Line + 1}行"
                 : Label;
             var current = IsCurrent ? "、現在地" : string.Empty;
-            return $"軌跡、{kind}、{name}、{Timestamp:HH:mm:ss}{current}";
+            var note = HasNote ? $"、しおり「{Note}」" : string.Empty;
+            return $"軌跡、{kind}、{name}、{Timestamp:HH:mm:ss}{current}{note}";
         }
     }
 
@@ -216,7 +226,8 @@ public sealed partial class TrailEntryViewModel : ObservableObject
             var mode = Mode == DisplayMode.Solo
                 ? $"集中 · {StagePane?.ToString() ?? "不明"}"
                 : "レイアウト";
-            return $"{body}\n{mode}\n{Timestamp:yyyy-MM-dd HH:mm:ss}";
+            var note = HasNote ? $"しおり: {Note}\n" : string.Empty;
+            return $"{note}{body}\n{mode}\n{Timestamp:yyyy-MM-dd HH:mm:ss}";
         }
     }
 }

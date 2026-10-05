@@ -264,6 +264,13 @@ public partial class ShellWindow {
         AddSearchScopeCommand(list, "シンボル", SearchScope.Symbol);
         list.Add(new("ターミナル", "最近のコマンドを選び直す", OpenRecentTerminalCommands,
             Sc("terminal.recentCommands"), "terminal.recentCommands"));
+        list.Add(new("ターミナル", "コマンドの出力を前回と比較", OpenTerminalOutputComparisons,
+            Sc("terminal.compareOutput"), "terminal.compareOutput"));
+        list.Add(new("ターミナル", "コマンドの出力をエディタで開く", OpenTerminalOutputs,
+            Sc("terminal.openOutput"), "terminal.openOutput"));
+        list.Add(new("軌跡", "いまの地点にしおりを付ける", () => BookmarkTrailEntry(_vm.Trail.CurrentEntry),
+            Sc("trail.bookmark"), "trail.bookmark"));
+        list.Add(new("軌跡", "しおり一覧", OpenTrailBookmarks, Sc("trail.bookmarks"), "trail.bookmarks"));
         list.Add(new("タブ", "新しいターミナルタブ", () => OnTerminalNewTab(this, new RoutedEventArgs()), Sc("tab.newTerminal"), "tab.newTerminal"));
         list.Add(new("タブ", "新しいエディタタブ", () => OnEditorNewTab(this, new RoutedEventArgs()), Sc("tab.newEditor"), "tab.newEditor"));
         list.Add(new("タブ", "新しいブラウザタブ", () => OnBrowserNewTab(this, new RoutedEventArgs()), Sc("tab.newBrowser"), "tab.newBrowser"));

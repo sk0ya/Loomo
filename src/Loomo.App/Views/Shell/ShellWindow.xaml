@@ -2758,8 +2758,11 @@
                      「軌跡を非表示にする」（設定「外観」の軌跡トグルから再表示）を出す。子ボタンは自前の
                      メニューを持たないので ContextMenuService がこの Border のメニューへ遡って解決する。 -->
                 <Border.ContextMenu>
-                    <ContextMenu>
+                    <ContextMenu Opened="OnTrailContextMenuOpened">
                         <MenuItem Header="最新に戻る" Click="OnTrailBackToLatest" />
+                        <Separator />
+                        <MenuItem x:Name="TrailBookmarkMenuItem" Header="この地点にしおりを付ける…" Click="OnTrailBookmarkEntry" />
+                        <MenuItem Header="しおり一覧…" Click="OnTrailShowBookmarks" />
                         <Separator />
                         <MenuItem Header="軌跡を非表示にする"
                                   Command="{Binding PlacementTarget.DataContext.Trail.HideCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
@@ -2962,6 +2965,11 @@
                                                             </Style>
                                                         </Path.Style>
                                                     </Path>
+                                                    <!-- しおり（§27.13）：メモを付けた地点だけ、右上に小さなリボンを出す -->
+                                                    <Path Data="M0,0 L5,0 L5,7 L2.5,5.2 L0,7 Z" Fill="{DynamicResource Accent}"
+                                                          HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,1,1,0"
+                                                          IsHitTestVisible="False"
+                                                          Visibility="{Binding HasNote, Converter={StaticResource BoolToVis}}" />
                                                 </Grid>
                                                 <ControlTemplate.Triggers>
                                                     <Trigger Property="IsMouseOver" Value="True">
@@ -2984,10 +2992,15 @@
             <Canvas x:Name="DragGhostLayer" Grid.Column="0" Grid.ColumnSpan="2" Grid.Row="0" Grid.RowSpan="3"
                     Panel.ZIndex="200" IsHitTestVisible="False" Visibility="Collapsed" />
 
+            <!-- 右下の知らせの束：上に「留守中に起きたこと」（§24.22・閉じるまで残る）、下にトースト（自動で消える）。
+                 同じ束に入れて、両方出ても重ならないようにする。 -->
+            <StackPanel Grid.ColumnSpan="4" Grid.RowSpan="3" Panel.ZIndex="250"
+                        HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,16,16">
+            <views:AwaySummaryCard DataContext="{Binding AwaySummary}" />
+
             <!-- トースト通知：右下に積み上げ表示。MessageBox.Show と違い非モーダルで自動的に消える
                  （ToastService／ToastHostViewModel、§03参照）。決定が要る確認は引き続き MessageBox。 -->
-            <ItemsControl Grid.ColumnSpan="4" Grid.RowSpan="3" Panel.ZIndex="250" IsHitTestVisible="True"
-                          HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,16,16"
+            <ItemsControl IsHitTestVisible="True" HorizontalAlignment="Right"
                           ItemsSource="{Binding Toasts.Items}">
                 <ItemsControl.ItemsPanel>
                     <ItemsPanelTemplate>
@@ -3037,6 +3050,7 @@
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
+            </StackPanel>
         </Grid>
     </Border>
 </Window>

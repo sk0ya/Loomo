@@ -84,6 +84,9 @@ public sealed partial class ShellViewModel : ObservableObject
     /// <summary>右下に積み上げて表示する非モーダルなトースト通知（<see cref="Services.ToastService"/>）。</summary>
     public ToastHostViewModel Toasts { get; } = new();
 
+    /// <summary>留守中に起きたことのカード（§24.22）。</summary>
+    public AwaySummaryViewModel AwaySummary { get; } = new();
+
     /// <summary>ActivityBar（左端の縦帯）2本ぶんの項目配置。どのアイコンがどちらの段に住むかを持ち、
     /// ドラッグ＆ドロップの結果を settings.json へ持ち越す。</summary>
     public ActivityBarViewModel ActivityBar { get; }

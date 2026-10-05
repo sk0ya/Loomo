@@ -29,6 +29,7 @@ public partial class ShellWindow {
                     break;
             }
         };
+        HookTerminalCommandOutputs(tab);
     }
 
     private void RecordTerminalCommandRun(Guid tabId, RecentTerminalCommandRun run) {

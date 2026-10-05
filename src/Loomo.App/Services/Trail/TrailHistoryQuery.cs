@@ -16,7 +16,10 @@ public sealed class TrailHistoryQuery
         {
             Line = record.Line,
             Column = record.Column,
+            Note = record.Note,
         }).ToList();
+
+    public IReadOnlyList<TrailNoteRecord> ListNotes(string workspaceKey) => _store.ListNotes(workspaceKey);
 
     public bool HasAny(string workspaceKey) => _store.HasAny(workspaceKey);
 }

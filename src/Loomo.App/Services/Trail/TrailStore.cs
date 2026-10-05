@@ -17,7 +17,12 @@ public sealed record TrailRecord(
     int Column,
     DisplayMode DisplayMode,
     PaneKind? StagePane,
-    string? PaneLayout);
+    string? PaneLayout,
+    string? Note = null);
+
+/// <summary>しおり（メモを付けた地点）の1件。一覧から日をまたいでその地点へ戻るための最小限（§27.13）。</summary>
+public sealed record TrailNoteRecord(long Id, DateOnly Day, DateTime Timestamp, int Kind, string Target, string Label,
+    string Note);
 
 /// <summary>
 /// まだ書かれていないかもしれない軌跡1行への参照。<see cref="TrailStore.AppendDeferred"/> は即座にこれを返し、
@@ -139,6 +144,9 @@ public sealed class TrailStore : IDisposable
         AddColumnIfMissing(connection, "display_mode", "INTEGER NOT NULL DEFAULT 1");
         AddColumnIfMissing(connection, "stage_pane", "INTEGER NULL");
         AddColumnIfMissing(connection, "layout_id", "INTEGER NULL REFERENCES trail_layouts(id)");
+        // しおり（§27.13）。user_version は上げない——列を足すだけなら古い本体は読まないだけで困らないが、
+        // 上げると古い本体が「新しすぎるスキーマ」として trail.db ごと開けなくなる。
+        AddColumnIfMissing(connection, "note", "TEXT NULL");
 
         using (var finish = connection.CreateCommand())
         {
@@ -323,7 +331,7 @@ public sealed class TrailStore : IDisposable
             using var cmd = Connection.CreateCommand();
             cmd.CommandText = """
                 SELECT e.id, e.timestamp, e.kind, e.target, e.label, e.line, e.col,
-                       e.display_mode, e.stage_pane, l.snapshot
+                       e.display_mode, e.stage_pane, l.snapshot, e.note
                 FROM trail_entries e
                 LEFT JOIN trail_layouts l ON l.id = e.layout_id
                 WHERE e.workspace = $ws AND e.day = $day ORDER BY e.id;
@@ -343,7 +351,57 @@ public sealed class TrailStore : IDisposable
                     reader.GetInt32(6),
                     (DisplayMode)reader.GetInt32(7),
                     reader.IsDBNull(8) ? null : (PaneKind)reader.GetInt32(8),
-                    reader.IsDBNull(9) ? null : reader.GetString(9)));
+                    reader.IsDBNull(9) ? null : reader.GetString(9),
+                    reader.IsDBNull(10) ? null : reader.GetString(10)));
+            }
+            return list;
+        }
+    }
+
+    /// <summary>しおりのメモを付け替える（null・空白なら外す）。デデュープの更新はこの列に触れないので、
+    /// 同じ地点を通り直してもしおりは残る。</summary>
+    public void SetNote(long id, string? note)
+    {
+        lock (_gate)
+        {
+            using var cmd = Connection.CreateCommand();
+            cmd.CommandText = "UPDATE trail_entries SET note = $note WHERE id = $id;";
+            cmd.Parameters.AddWithValue("$note", string.IsNullOrWhiteSpace(note) ? DBNull.Value : note);
+            cmd.Parameters.AddWithValue("$id", id);
+            cmd.ExecuteNonQuery();
+        }
+    }
+
+    /// <summary><see cref="SetNote"/> の遅延版（まだ INSERT 待ちの行にも付けられる）。</summary>
+    public void SetNoteDeferred(TrailRowRef row, string? note)
+        => EnqueueRowUpdate(row, id => SetNote(id, note));
+
+    /// <summary>そのワークスペースのしおり（新しい順）。日をまたいだ一覧に使う。</summary>
+    public IReadOnlyList<TrailNoteRecord> ListNotes(string workspace)
+    {
+        _writes.Flush();   // 積んである書き込みより前を読まない
+        lock (_gate)
+        {
+            var list = new List<TrailNoteRecord>();
+            using var cmd = Connection.CreateCommand();
+            cmd.CommandText = """
+                SELECT id, day, timestamp, kind, target, label, note
+                FROM trail_entries
+                WHERE workspace = $ws AND note IS NOT NULL
+                ORDER BY timestamp DESC, id DESC;
+                """;
+            cmd.Parameters.AddWithValue("$ws", workspace);
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+            {
+                list.Add(new TrailNoteRecord(
+                    reader.GetInt64(0),
+                    DateOnly.ParseExact(reader.GetString(1), "yyyy-MM-dd"),
+                    DateTime.ParseExact(reader.GetString(2), TimestampFormat, null),
+                    reader.GetInt32(3),
+                    reader.GetString(4),
+                    reader.GetString(5),
+                    reader.GetString(6)));
             }
             return list;
         }

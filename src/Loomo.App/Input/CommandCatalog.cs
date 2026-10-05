@@ -41,6 +41,7 @@ public static class CommandCatalog
     private const string CatEditor = "エディタ";
     private const string CatSearch = "検索";
     private const string CatTerminal = "ターミナル";
+    private const string CatTrail = "軌跡";
 
     public static IReadOnlyList<CommandDescriptor> All { get; } = new CommandDescriptor[]
     {
@@ -99,6 +100,10 @@ public static class CommandCatalog
         // 最近のコマンド（§24.20）。選ぶとプロンプトへ入力するだけで実行はしない（§24.3 の「送る」）。
         // 既定キーは与えない——パレットの一覧にも並ぶので、毎回の起点にしたい人だけが付ければよい。
         new CommandDescriptor("terminal.recentCommands", CatTerminal, "最近のコマンドを選び直す", null),
+        new CommandDescriptor("terminal.compareOutput", CatTerminal, "コマンドの出力を前回と比較", null),
+        new CommandDescriptor("terminal.openOutput", CatTerminal, "コマンドの出力をエディタで開く", null),
+        new CommandDescriptor("trail.bookmark", CatTrail, "いまの地点にしおりを付ける", null),
+        new CommandDescriptor("trail.bookmarks", CatTrail, "しおり一覧", null),
 
         // ===== 問題 =====
         new CommandDescriptor("problems.next", CatProblems, "次の問題へ移動", "F8"),
