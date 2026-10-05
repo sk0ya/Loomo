@@ -11,12 +11,12 @@ public sealed class ActivityBarTests
     private static readonly string[] Known = ["explorer", "git", "solution", "pegboard", "tabs"];
 
     [Fact]
-    public void 初回起動は中段のタブ一覧の下にTODOを配置する()
+    public void 初回起動は中段のタブ一覧の下にTODOとペグボードを配置する()
     {
         var sut = new ActivityBarViewModel();
 
-        Assert.Equal(["explorer", "git", "solution", "pegboard"], sut.PrimaryItems.Select(i => i.Id));
-        Assert.Equal(["tabs", "todo"], sut.SecondaryItems.Select(i => i.Id));
+        Assert.Equal(["explorer", "git", "solution"], sut.PrimaryItems.Select(i => i.Id));
+        Assert.Equal(["tabs", "todo", "pegboard"], sut.SecondaryItems.Select(i => i.Id));
         Assert.Equal(ActivityBarSlot.Secondary, sut.SlotOf(SidebarPanel.Tabs));
         Assert.Equal(ActivityBarSlot.Primary, sut.SlotOf(SidebarPanel.Explorer));
     }
@@ -28,11 +28,12 @@ public sealed class ActivityBarTests
             Known, ["tabs", "git", "からっぽ"], ["explorer"]);
 
         // 保存された順がそのまま並びになり、知らない Id は落ちる。
-        Assert.Equal(["explorer"], secondary);
+        Assert.Equal("explorer", secondary[0]);
         Assert.Equal(["tabs", "git"], primary.Take(2));
-        // 保存に無かった項目は消さずに既定の段（既定が中段なのはタブ一覧だけ）の末尾へ落とす
+        // 保存に無かった項目は消さずに既定の段（既定が中段なのはタブ一覧・TODO・ペグボード）の末尾へ落とす
         // ——アプリ更新で項目が増えても消えない。
-        Assert.Equal(["tabs", "git", "solution", "pegboard"], primary);
+        Assert.Equal(["tabs", "git", "solution"], primary);
+        Assert.Equal(["explorer", "pegboard"], secondary);
     }
 
     [Fact]
@@ -41,10 +42,11 @@ public sealed class ActivityBarTests
         var (primary, secondary) = ActivityBarViewModel.Arrange(Known, ["tabs"], ["tabs", "git"]);
 
         Assert.Equal("tabs", primary[0]);          // 2度目の tabs（中段）は捨てる
-        Assert.Equal(["git"], secondary);
+        Assert.Equal("git", secondary[0]);
         Assert.DoesNotContain("tabs", secondary);
-        // 保存に無かった残りは既定の段（＝上段）の末尾へ。
-        Assert.Equal(["tabs", "explorer", "solution", "pegboard"], primary);
+        // 保存に無かった残りはそれぞれの既定の段の末尾へ。
+        Assert.Equal(["tabs", "explorer", "solution"], primary);
+        Assert.Equal(["git", "pegboard"], secondary);
     }
 
     [Fact]
@@ -55,14 +57,14 @@ public sealed class ActivityBarTests
         var git = sut.ItemFor(SidebarPanel.Git)!;
 
         Assert.True(sut.Move(tabs, ActivityBarSlot.Primary, 0));
-        Assert.Equal(["tabs", "explorer", "git", "solution", "pegboard"], sut.PrimaryItems.Select(i => i.Id));
-        Assert.Equal(["todo"], sut.SecondaryItems.Select(i => i.Id));
+        Assert.Equal(["tabs", "explorer", "git", "solution"], sut.PrimaryItems.Select(i => i.Id));
+        Assert.Equal(["todo", "pegboard"], sut.SecondaryItems.Select(i => i.Id));
         Assert.Equal(ActivityBarSlot.Primary, tabs.Slot);
 
         // 同じ段の中での並べ替え（下へ動かすと抜けたぶん詰まる）。
         Assert.True(sut.Move(git, ActivityBarSlot.Primary, 4));
-        Assert.Equal(["tabs", "explorer", "solution", "git", "pegboard"], sut.PrimaryItems.Select(i => i.Id));
-        // 自分の前（3）も自分の直後（4）も「いまと同じ場所」なので動かさない。
+        Assert.Equal(["tabs", "explorer", "solution", "git"], sut.PrimaryItems.Select(i => i.Id));
+        // 自分の前（3）も自分の直後（4＝末尾）も「いまと同じ場所」なので動かさない。
         Assert.False(sut.Move(git, ActivityBarSlot.Primary, 3));
         Assert.False(sut.Move(git, ActivityBarSlot.Primary, 4));
     }
@@ -77,7 +79,7 @@ public sealed class ActivityBarTests
 
         Assert.True(sut.Move(explorer, ActivityBarSlot.Primary, sut.PrimaryItems.Count));
 
-        Assert.Equal(["git", "solution", "pegboard", "explorer"], sut.PrimaryItems.Select(i => i.Id));
+        Assert.Equal(["git", "solution", "explorer"], sut.PrimaryItems.Select(i => i.Id));
     }
 
     /// <summary>段をまたいだのか並べ替えただけなのかを通知で区別すること
@@ -104,12 +106,12 @@ public sealed class ActivityBarTests
 
         sut.Move(sut.ItemFor(SidebarPanel.Git)!, ActivityBarSlot.Secondary, 0);
 
-        Assert.Equal(["explorer", "solution", "pegboard"], settings.ActivityBar.Primary);
-        Assert.Equal(["git", "tabs", "todo"], settings.ActivityBar.Secondary);
+        Assert.Equal(["explorer", "solution"], settings.ActivityBar.Primary);
+        Assert.Equal(["git", "tabs", "todo", "pegboard"], settings.ActivityBar.Secondary);
 
         // 保存した並びで起動し直すとそのまま戻る。
         var restored = new ActivityBarViewModel(settings);
-        Assert.Equal(["git", "tabs", "todo"], restored.SecondaryItems.Select(i => i.Id));
+        Assert.Equal(["git", "tabs", "todo", "pegboard"], restored.SecondaryItems.Select(i => i.Id));
     }
 
     [Fact]

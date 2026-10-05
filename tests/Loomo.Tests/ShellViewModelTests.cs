@@ -23,15 +23,15 @@ public class ShellViewModelTests
     {
         var settings = new LoomoSettings();
         var first = CreateSut(activityBar: new ActivityBarViewModel(settings));
-        first.ActivePanel = SidebarPanel.Pegboard;
+        first.ActivePanel = SidebarPanel.Git;
         first.IsSecondarySidebarVisible = false;
 
         var restored = CreateSut(activityBar: new ActivityBarViewModel(settings));
 
-        Assert.Equal(SidebarPanel.Pegboard, restored.ActivePanel);
+        Assert.Equal(SidebarPanel.Git, restored.ActivePanel);
         Assert.True(restored.IsSidebarVisible);
         Assert.False(restored.IsSecondarySidebarVisible);
-        Assert.True(restored.ActivityBar.ItemFor(SidebarPanel.Pegboard)!.IsSelected);
+        Assert.True(restored.ActivityBar.ItemFor(SidebarPanel.Git)!.IsSelected);
     }
 
     [Fact]
@@ -333,6 +333,7 @@ public class ShellViewModelTests
     {
         var sut = CreateSut();
 
+        sut.ActivityBar.Move(sut.ActivityBar.ItemFor(SidebarPanel.Pegboard)!, ActivityBarSlot.Primary, 0);
         sut.ActivityBar.Move(sut.ActivityBar.ItemFor(SidebarPanel.Todo)!, ActivityBarSlot.Primary, 0);
 
         sut.ActivityBar.Move(sut.ActivityBar.ItemFor(SidebarPanel.Tabs)!, ActivityBarSlot.Primary, 0);
@@ -348,8 +349,9 @@ public class ShellViewModelTests
         var sut = CreateSut();
 
         sut.ShowPegboardCommand.Execute(null);
-        Assert.True(sut.IsSidebarVisible);
-        Assert.Equal(SidebarPanel.Pegboard, sut.ActivePanel);
+        // 既定ではペグボードは中段（TODO Tree の下）に住むので、中段の区画で開く。
+        Assert.True(sut.IsSecondarySidebarVisible);
+        Assert.Equal(SidebarPanel.Pegboard, sut.SecondaryPanel);
     }
 
     [Fact]

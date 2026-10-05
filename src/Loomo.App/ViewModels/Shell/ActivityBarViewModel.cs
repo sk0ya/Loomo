@@ -73,10 +73,10 @@ public sealed partial class ActivityBarViewModel : ObservableObject
     private readonly List<ActivityBarItemViewModel> _items;
 
     /// <summary>既定で上段に並ぶ項目 Id（上から順）。</summary>
-    public static readonly string[] DefaultPrimaryIds = ["explorer", "git", "solution", "pegboard"];
+    public static readonly string[] DefaultPrimaryIds = ["explorer", "git", "solution"];
 
-    /// <summary>既定で中段に並ぶ項目 Id。タブ一覧の下に TODO Tree を並べる。</summary>
-    public static readonly string[] DefaultSecondaryIds = ["tabs", "todo"];
+    /// <summary>既定で中段に並ぶ項目 Id。タブ一覧の下に TODO Tree、その下にペグボードを並べる。</summary>
+    public static readonly string[] DefaultSecondaryIds = ["tabs", "todo", "pegboard"];
 
     public ActivityBarViewModel(LoomoSettings? settings = null, SettingsStore? settingsStore = null)
     {
