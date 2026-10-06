@@ -57,8 +57,9 @@ public static class SideBySideDiff
                     break;
                 default:
                     FlushChanges(rows, removed, added);
+                    // 空白を無視した比較では、文脈行でも左右の綴りが違うことがある（左は旧側の綴り）。
                     rows.Add(new SideBySideRow(
-                        SideCellKind.Context, line.Text, SideCellKind.Context, line.Text,
+                        SideCellKind.Context, line.LeftText, SideCellKind.Context, line.Text,
                         oldLine++, newLine++));
                     break;
             }
@@ -110,6 +111,23 @@ public static class SideBySideDiff
         }
         FlushChanges(rows, removed, added);
         return rows;
+    }
+
+    /// <summary>
+    /// 全文の左右並び（<see cref="FromUnifiedPatch"/> の <c>hideChrome</c> など、全行を持つもの）から左右の本文を
+    /// 組み直し、<paramref name="options"/> で比べ直す。git の出力をそのまま使えない比べ方（空白の無視で、
+    /// 左に旧側の本当の綴りを残したいとき）のための入口。行番号は組み直した本文の行＝実ファイルの行のまま。
+    /// </summary>
+    public static IReadOnlyList<SideBySideRow> Rediff(IReadOnlyList<SideBySideRow> rows, DiffOptions options)
+    {
+        var left = new List<string>();
+        var right = new List<string>();
+        foreach (var row in rows)
+        {
+            if (row.LeftLine is not null) left.Add(row.LeftText);
+            if (row.RightLine is not null) right.Add(row.RightText);
+        }
+        return Build(DiffUtil.ComputeFull(string.Join("\n", left), string.Join("\n", right), options));
     }
 
     /// <summary>ハンク見出し <c>@@ -a,b +c,d @@</c> から左右の開始行番号（a, c）を取り出す。</summary>
@@ -171,20 +189,25 @@ public static class SideBySideDiff
         return SideCellKind.Context;
     }
 
-    /// <summary>溜めた削除（左）と追加（右）を行単位で対にして吐き出す。足りない側は Empty で埋める。</summary>
+    /// <summary>
+    /// 溜めた削除（左）と追加（右）を左右に並べて吐き出す。似ている行どうしを同じ高さに置き
+    /// （<see cref="LinePairing"/>）、足りない側は Empty で埋める。
+    /// </summary>
     private static void FlushChanges(
         List<SideBySideRow> rows,
         List<(string Text, int Line)> removed,
         List<(string Text, int Line)> added)
     {
-        var count = Math.Max(removed.Count, added.Count);
-        for (var i = 0; i < count; i++)
+        if (removed.Count == 0 && added.Count == 0)
+            return;
+        var pairs = LinePairing.Pair(removed.ConvertAll(r => r.Text), added.ConvertAll(a => a.Text));
+        foreach (var (r, a) in pairs)
         {
-            var (leftKind, leftText, leftLine) = i < removed.Count
-                ? (SideCellKind.Removed, removed[i].Text, (int?)removed[i].Line)
+            var (leftKind, leftText, leftLine) = r >= 0
+                ? (SideCellKind.Removed, removed[r].Text, (int?)removed[r].Line)
                 : (SideCellKind.Empty, "", (int?)null);
-            var (rightKind, rightText, rightLine) = i < added.Count
-                ? (SideCellKind.Added, added[i].Text, (int?)added[i].Line)
+            var (rightKind, rightText, rightLine) = a >= 0
+                ? (SideCellKind.Added, added[a].Text, (int?)added[a].Line)
                 : (SideCellKind.Empty, "", (int?)null);
             rows.Add(new SideBySideRow(leftKind, leftText, rightKind, rightText, leftLine, rightLine));
         }

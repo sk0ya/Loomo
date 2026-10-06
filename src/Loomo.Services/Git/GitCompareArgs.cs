@@ -82,15 +82,24 @@ public static class GitCompareArgs
             "--no-optional-locks", LiteralPathspecs, "diff", "--name-status", "--find-renames", baseRef, "--",
         };
 
+    /// <summary>
+    /// 空白の違いを無視する <c>git diff</c> の引数（<c>-w</c>）。行の中の空白をすべて除いて比べる——
+    /// 字下げの付け直しや整形だけのコミットを読むときに、本当の変更だけを残す。
+    /// </summary>
+    public const string IgnoreAllSpace = "--ignore-all-space";
+
     /// <summary>基準に対する1ファイルの差分を引く引数。リネームは旧パスも pathspec に含める
     /// （新パスだけだと、名前が変わったファイルの中身の差分が空になる）。</summary>
-    public static string[] FileDiffArgs(string baseRef, GitCommitFileChange file, int contextLines)
+    public static string[] FileDiffArgs(
+        string baseRef, GitCommitFileChange file, int contextLines, bool ignoreWhitespace = false)
     {
         var args = new List<string>
         {
             "--no-optional-locks", LiteralPathspecs, "diff", $"--unified={contextLines}",
-            "--find-renames", baseRef, "--",
+            "--find-renames", baseRef,
         };
+        if (ignoreWhitespace) args.Add(IgnoreAllSpace);
+        args.Add("--");
         if (file.OrigPath is not null)
             args.Add(file.OrigPath);
         args.Add(file.Path);

@@ -1730,6 +1730,36 @@
         </Setter>
     </Style>
 
+    <!-- セグメントの中に置く単独のオン／オフ（「空白無視」など）。見た目は SourceToggle と同じで、
+         押すたびに入／切が替わる（RadioButton は一度入れると押しても切れない）。 -->
+    <Style x:Key="SegmentToggle" TargetType="ToggleButton">
+        <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
+        <Setter Property="FontSize" Value="{DynamicResource Fs12}" />
+        <Setter Property="Padding" Value="9,0" />
+        <Setter Property="Height" Value="20" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ToggleButton">
+                    <Border x:Name="b" Background="Transparent" CornerRadius="3"
+                            Padding="{TemplateBinding Padding}">
+                        <ContentPresenter VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="b" Property="Background" Value="{DynamicResource Border}" />
+                            <Setter Property="Foreground" Value="{DynamicResource Fg}" />
+                        </Trigger>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="b" Property="Background" Value="{DynamicResource SelectionBg}" />
+                            <Setter Property="Foreground" Value="{DynamicResource Fg}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!-- Diff ヘッダーの線画アイコン（12px 想定・Stroke で描く）。PaneHeaderGhostButton の Tag に渡す。 -->
     <StreamGeometry x:Key="DiffIcon.Prev">M3,9.5 L7,5.5 L11,9.5</StreamGeometry>
     <StreamGeometry x:Key="DiffIcon.Next">M3,4.5 L7,8.5 L11,4.5</StreamGeometry>

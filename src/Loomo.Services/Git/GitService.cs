@@ -201,8 +201,9 @@ public sealed class GitService
     public Task<string> GetDiffTextAsync(GitChangeEntry entry, bool staged, int contextLines = 3) =>
         _diff.GetDiffTextAsync(entry, staged, contextLines);
 
-    public Task<string> GetHeadDiffTextAsync(GitChangeEntry entry, int contextLines = 3) =>
-        _diff.GetHeadDiffTextAsync(entry, contextLines);
+    public Task<string> GetHeadDiffTextAsync(
+        GitChangeEntry entry, int contextLines = 3, bool ignoreWhitespace = false) =>
+        _diff.GetHeadDiffTextAsync(entry, contextLines, ignoreWhitespace);
 
     // ===== 比較基準（作業ツリー／ブランチ／分岐点） =====
 
@@ -320,8 +321,8 @@ public sealed class GitService
 
     /// <summary>基準に対する1ファイルの差分テキスト。</summary>
     public Task<string> GetCompareFileDiffAsync(
-        string baseRef, GitCommitFileChange file, int contextLines = 3) =>
-        _compare.GetFileDiffAsync(baseRef, file, contextLines);
+        string baseRef, GitCommitFileChange file, int contextLines = 3, bool ignoreWhitespace = false) =>
+        _compare.GetFileDiffAsync(baseRef, file, contextLines, ignoreWhitespace);
 
     public Task<string> GetCommitSummaryAsync(string hash) => _history.GetCommitSummaryAsync(hash);
 
@@ -347,8 +348,10 @@ public sealed class GitService
     }
 
     public async Task<string> GetRangeFileDiffAsync(
-        string? fromHash, string toHash, GitCommitFileChange file, int contextLines = 3)
-        => await _history.GetRangeFileDiffAsync(fromHash, toHash, file, contextLines).ConfigureAwait(false);
+        string? fromHash, string toHash, GitCommitFileChange file, int contextLines = 3,
+        bool ignoreWhitespace = false)
+        => await _history.GetRangeFileDiffAsync(fromHash, toHash, file, contextLines, ignoreWhitespace)
+            .ConfigureAwait(false);
 
     public Task<string?> GetConflictStageContentAsync(string path, int stage) =>
         _diff.GetConflictStageContentAsync(path, stage);

@@ -31,6 +31,10 @@ public sealed partial class DiffSessionViewModel
     /// 色を付けてしまう（行が入れ替われば直るが、一瞬化ける）。</summary>
     public IReadOnlyList<SyntaxToken[]?> UnifiedSyntax { get; private set; } = DiffSyntaxHighlighter.None;
 
+    /// <summary>統合表示の各行と1対1の行内差分の範囲（書き換えた行の中で変わった文字。無い行は null）。
+    /// <see cref="UnifiedSyntax"/> と同じく、<b>行と必ず同時に差し替える</b>。</summary>
+    public IReadOnlyList<IReadOnlyList<TextSpan>?> UnifiedInline { get; private set; } = DiffInlineHighlighter.None;
+
     /// <summary>
     /// <see cref="SideRows"/> がどの項目の差分か。左右並びの本文はエディタ2つで出すので、どのファイルを
     /// 右で編集させるか・見出しを何にするかは<b>行と同じ項目</b>から決める——<see cref="SelectedFile"/> で
@@ -81,7 +85,8 @@ public sealed partial class DiffSessionViewModel
     }
 
     /// <summary>統合表示の組み立て結果（行＋その行の構文トークン）。行と色付けを一組で運ぶための器。</summary>
-    private sealed record UnifiedContent(List<DiffRowVm> Rows, IReadOnlyList<SyntaxToken[]?> Syntax);
+    private sealed record UnifiedContent(
+        List<DiffRowVm> Rows, IReadOnlyList<SyntaxToken[]?> Syntax, IReadOnlyList<IReadOnlyList<TextSpan>?> Inline);
 
     /// <summary>左右並び表示の組み立て結果。構文の色はエディタ自身が付ける。</summary>
     private sealed record SideContent(List<DiffSideRowVm> Rows);
@@ -123,10 +128,13 @@ public sealed partial class DiffSessionViewModel
         else
         {
             var content = await BuildUnifiedContentAsync(item);
-            var rows = stageMap is null ? content.Rows : MarkStaged(content.Rows, await GetPatchTextAsync(item!, 3), stageMap);
+            var rows = stageMap is null
+                ? content.Rows
+                : MarkStaged(content.Rows, await GetPatchTextAsync(item!, 3, IgnoreWhitespace), stageMap);
             if (version != _diffLoadVersion)
                 return;
             UnifiedSyntax = content.Syntax;
+            UnifiedInline = content.Inline;
             ReplaceIfChanged(DiffRows, rows);
         }
     }
@@ -149,7 +157,7 @@ public sealed partial class DiffSessionViewModel
     /// （統合↔左右）では git を再実行せずここから返す。一覧やリポジトリが変わるたびに
     /// <see cref="RefreshAsync"/> 冒頭で破棄するので、作業ツリーの変化には追従する。
     /// </summary>
-    private readonly Dictionary<(DiffFileItem Item, int Context), string> _patchCache = new();
+    private readonly Dictionary<(DiffFileItem Item, int Context, bool IgnoreWhitespace), string> _patchCache = new();
 
     /// <summary>
     /// 作業ツリー git 差分のパッチキャッシュを、その1ファイル分だけ捨てる。ファイルを選択し直すたびに呼び、
@@ -164,18 +172,21 @@ public sealed partial class DiffSessionViewModel
             _patchCache.Remove(key);
     }
 
-    /// <summary>Git 差分のパッチテキストを取得する（作業ツリー／コミット範囲）。同じファイルの再取得はキャッシュで省く。</summary>
-    private async Task<string> GetPatchTextAsync(DiffFileItem item, int contextLines)
+    /// <summary>
+    /// Git 差分のパッチテキストを取得する（作業ツリー／コミット範囲）。同じファイルの再取得はキャッシュで省く。
+    /// <paramref name="ignoreWhitespace"/> は <c>git diff -w</c>（統合表示の行をそのまま出すときに使う）。
+    /// </summary>
+    private async Task<string> GetPatchTextAsync(DiffFileItem item, int contextLines, bool ignoreWhitespace = false)
     {
-        var key = (item, contextLines);
+        var key = (item, contextLines, ignoreWhitespace);
         if (_patchCache.TryGetValue(key, out var cached))
             return cached;
         // 比較基準の項目は、その項目が作られたときの ref で引く（項目と ref を一緒に持たせてある）。
         var text = await (item.CommitFile is { } commitFile && _commitRange is { } range
-            ? _git.GetRangeFileDiffAsync(range.From, range.To, commitFile, contextLines)
+            ? _git.GetRangeFileDiffAsync(range.From, range.To, commitFile, contextLines, ignoreWhitespace)
             : item.CompareBaseFile is { } compareFile
-                ? _git.GetCompareFileDiffAsync(compareFile.BaseRef, compareFile.Change, contextLines)
-                : _git.GetHeadDiffTextAsync(item.Entry!, contextLines));
+                ? _git.GetCompareFileDiffAsync(compareFile.BaseRef, compareFile.Change, contextLines, ignoreWhitespace)
+                : _git.GetHeadDiffTextAsync(item.Entry!, contextLines, ignoreWhitespace));
         _patchCache[key] = text;
         return text;
     }
@@ -188,25 +199,28 @@ public sealed partial class DiffSessionViewModel
 
     private async Task<UnifiedContent> BuildUnifiedContentAsync(DiffFileItem? item)
     {
-        if (item is null) return new UnifiedContent(new List<DiffRowVm>(), DiffSyntaxHighlighter.None);
+        if (item is null)
+            return new UnifiedContent(new List<DiffRowVm>(), DiffSyntaxHighlighter.None, DiffInlineHighlighter.None);
         var path = item.FullPath;
 
         // アドホック比較は git を引かず、素材の全文2つから組み立てる。
+        var options = DiffOptions;
         if (item.Comparison is { } comparison)
         {
             var (oldText, newText) = (comparison.LeftText, comparison.RightText);
             return await Task.Run(() =>
             {
                 var rows = new List<DiffRowVm>();
-                foreach (var line in DiffUtil.Compute(oldText, newText))
+                foreach (var line in DiffUtil.Compute(oldText, newText, options: options))
                     rows.Add(new DiffRowVm(line.Kind.ToString(), line.Text));
                 // アドホック比較は全文2つから組み立てる経路で、行は本文そのもの（パッチの1文字プレフィックス無し）。
                 return new UnifiedContent(
-                    rows, DiffSyntaxHighlighter.ForUnified(path, hasPatchPrefix: false, rows));
+                    rows, DiffSyntaxHighlighter.ForUnified(path, hasPatchPrefix: false, rows),
+                    DiffInlineHighlighter.ForUnified(rows, hasPatchPrefix: false));
             });
         }
 
-        var text = await GetPatchTextAsync(item, 3);
+        var text = await GetPatchTextAsync(item, 3, options.IgnoreWhitespace);
         if (text.Length == 0) return UnifiedMessage(NoDiffMessage);
         return await Task.Run(() =>
         {
@@ -214,7 +228,8 @@ public sealed partial class DiffSessionViewModel
             foreach (var raw in text.Replace("\r\n", "\n").Split('\n'))
                 rows.Add(new DiffRowVm(SideBySideDiff.ClassifyPatchLine(raw).ToString(), raw));
             return new UnifiedContent(
-                rows, DiffSyntaxHighlighter.ForUnified(path, hasPatchPrefix: true, rows));
+                rows, DiffSyntaxHighlighter.ForUnified(path, hasPatchPrefix: true, rows),
+                DiffInlineHighlighter.ForUnified(rows, hasPatchPrefix: true));
         });
     }
 
@@ -223,23 +238,30 @@ public sealed partial class DiffSessionViewModel
         if (item is null)
             return new SideContent(new List<DiffSideRowVm>());
 
+        var options = DiffOptions;
         if (item.Comparison is { } comparison)
         {
             var (oldText, newText) = (comparison.LeftText, comparison.RightText);
             // 左右は実際のファイルのように全文を行番号付きで対比する（ハンク折りたたみなし）
             return await Task.Run(() =>
-                new SideContent(ToSideRows(SideBySideDiff.Build(DiffUtil.ComputeFull(oldText, newText)))));
+                new SideContent(ToSideRows(SideBySideDiff.Build(DiffUtil.ComputeFull(oldText, newText, options)))));
         }
 
-        // 全文コンテキストの diff を取り、git ヘッダ・ハンク見出しを隠してファイルそのものに見せる
+        // 全文コンテキストの diff を取り、git ヘッダ・ハンク見出しを隠してファイルそのものに見せる。
+        // 空白を無視するときも git には -w を渡さない——-w の文脈行は新側の綴りしか持たず、左に旧側の
+        // 本当の字下げを出せなくなる。全文から左右の本文を組み直して、手元で比べ直す。
         var text = await GetPatchTextAsync(item, FullFileContext);
         if (text.Length == 0) return SideMessage(NoDiffMessage);
         return await Task.Run(() =>
-            new SideContent(ToSideRows(SideBySideDiff.FromUnifiedPatch(text, hideChrome: true))));
+        {
+            var rows = SideBySideDiff.FromUnifiedPatch(text, hideChrome: true);
+            if (options.IgnoreWhitespace) rows = SideBySideDiff.Rediff(rows, options);
+            return new SideContent(ToSideRows(rows));
+        });
     }
 
     private static UnifiedContent UnifiedMessage(string message)
-        => new([new DiffRowVm("Header", message)], DiffSyntaxHighlighter.None);
+        => new([new DiffRowVm("Header", message)], DiffSyntaxHighlighter.None, DiffInlineHighlighter.None);
 
     private static SideContent SideMessage(string message)
         => new([SharedRow("Header", message)]);
@@ -310,7 +332,8 @@ public sealed partial class DiffSessionViewModel
         var head = new HashSet<int>();
         var worktree = new HashSet<int>();
         if (SelectedFile is not { } item) return (head, worktree);
-        var lines = UnifiedPatchEditor.DescribeLines(await GetPatchTextAsync(item, 3));
+        // 統合表示の行と同じ取り方（-w の有無）のパッチで数える——行の添字はそのパッチの行。
+        var lines = UnifiedPatchEditor.DescribeLines(await GetPatchTextAsync(item, 3, IgnoreWhitespace));
         foreach (var index in rowIndices)
         {
             if (index < 0 || index >= lines.Count) continue;

@@ -69,6 +69,15 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
     public bool IsCompareMode { get => Source == DiffSource.Compare; set { if (value) Source = DiffSource.Compare; } }
     private bool _suppressModeChangeRefresh;
     [ObservableProperty] private bool _isSideBySide = true;
+
+    /// <summary>
+    /// 空白の違いを無視して比べる（<c>git diff -w</c> と同じ）。字下げの付け直し・整形だけの変更を消して、
+    /// 本当の変更だけを読むためのもの。行番号は実ファイルのままなので、ステージ・破棄・行へ飛ぶはそのまま使える。
+    /// </summary>
+    [ObservableProperty] private bool _ignoreWhitespace;
+
+    /// <summary>いまの比べ方（<see cref="IgnoreWhitespace"/>）。行を取り直す計算はすべてこれで比べる。</summary>
+    public DiffOptions DiffOptions => new(IgnoreWhitespace);
     [ObservableProperty] private string _gitTargetLabel = "";
     /// <summary>単一コミットの差分を表示中なら、そのコミットを Git 一覧で選択できる。</summary>
     public bool CanOpenCommitInGit => _commitRange is { From: null };
@@ -363,6 +372,15 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
         CanDiscardSelected = gitWorkingTree && capabilities.CanDiscard && SelectedFile?.Entry is not null;
         CanStageLines = gitWorkingTree && capabilities.CanApplyLines && SupportsLineStaging(SelectedFile);
         CanDiscardLines = CanStageLines;
+    }
+
+    partial void OnIgnoreWhitespaceChanged(bool value)
+    {
+        // パッチの取り方（-w）が変わるので、覚えている git の出力は使えない。
+        _patchCache.Clear();
+        OnPropertyChanged(nameof(DiffOptions));
+        ResetChangeCursor();
+        _ = LoadAndAutoJumpAsync(SelectedFile);
     }
 
     partial void OnIsSideBySideChanged(bool value)

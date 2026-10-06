@@ -318,10 +318,10 @@ public sealed class GitCompareService
 
     /// <summary>基準に対する1ファイルの差分テキスト（失敗時は git のメッセージをそのまま返す）。</summary>
     public async Task<string> GetFileDiffAsync(
-        string baseRef, GitCommitFileChange file, int contextLines = 3)
+        string baseRef, GitCommitFileChange file, int contextLines = 3, bool ignoreWhitespace = false)
     {
         var result = await _runner
-            .RunAsync(GitCompareArgs.FileDiffArgs(baseRef, file, contextLines)).ConfigureAwait(false);
+            .RunAsync(GitCompareArgs.FileDiffArgs(baseRef, file, contextLines, ignoreWhitespace)).ConfigureAwait(false);
         return result.Success ? result.Output : result.Message;
     }
 

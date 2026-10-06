@@ -42,10 +42,12 @@ public static class DiffEditorAlignment
     /// 末尾の空き行で埋める。
     /// </summary>
     public static (DiffEditorSide Left, DiffEditorSide Right) Build(
-        IReadOnlyList<DiffSideRowVm> rows, int leftEditorLineCount, int rightEditorLineCount)
+        IReadOnlyList<DiffSideRowVm> rows, int leftEditorLineCount, int rightEditorLineCount,
+        Func<DiffSideRowVm, InlineChange?>? inlineOf = null)
     {
-        var left = BuildSide(rows, left: true);
-        var right = BuildSide(rows, left: false);
+        var inline = InlineChanges(rows, inlineOf ?? DiffInlineHighlighter.ForSideRow);
+        var left = BuildSide(rows, inline, left: true);
+        var right = BuildSide(rows, inline, left: false);
         var leftExtra = Math.Max(0, leftEditorLineCount - left.Lines.Count);
         var rightExtra = Math.Max(0, rightEditorLineCount - right.Lines.Count);
         // 両側に同じだけ余りがあれば（どちらも末尾改行で終わる）、その行どうしが揃うので足さない。
@@ -61,15 +63,31 @@ public static class DiffEditorAlignment
     }
 
     /// <summary>
+    /// 行ごとの行内差分（同じ高さに並んだ削除行と追加行の、変わった文字の範囲）。行数が多すぎる差分は取らない
+    /// （構文色と同じ頭打ち——全行を書き換えた巨大ファイルで、UI スレッドの組み立てが重くならないように）。
+    /// </summary>
+    private static InlineChange?[] InlineChanges(
+        IReadOnlyList<DiffSideRowVm> rows, Func<DiffSideRowVm, InlineChange?> inlineOf)
+    {
+        var result = new InlineChange?[rows.Count];
+        if (rows.Count > DiffInlineHighlighter.MaxLines) return result;
+        for (var i = 0; i < rows.Count; i++)
+            if (rows[i] is { LeftKind: "Removed", RightKind: "Added" })
+                result[i] = inlineOf(rows[i]);
+        return result;
+    }
+
+    /// <summary>
     /// 旧側の本文と、エディタで編集中の新側の本文から、行を取り直す（保存前の編集に差分を追従させる）。
     /// 新側は末尾改行を1つ落としてから比べる——git の行もそれを行として数えないため。
     /// </summary>
-    public static List<DiffSideRowVm> Recompute(IReadOnlyList<string> leftLines, string rightText)
+    public static List<DiffSideRowVm> Recompute(
+        IReadOnlyList<string> leftLines, string rightText, DiffOptions? options = null)
     {
         var left = string.Join("\n", leftLines);
         var right = TrimOneTrailingNewline(rightText.Replace("\r\n", "\n"));
         var rows = new List<DiffSideRowVm>();
-        foreach (var row in SideBySideDiff.Build(DiffUtil.ComputeFull(left, right)))
+        foreach (var row in SideBySideDiff.Build(DiffUtil.ComputeFull(left, right, options)))
             rows.Add(new DiffSideRowVm(
                 row.LeftKind.ToString(), row.LeftText, row.RightKind.ToString(), row.RightText,
                 row.LeftLine?.ToString() ?? "", row.RightLine?.ToString() ?? ""));
@@ -100,14 +118,16 @@ public static class DiffEditorAlignment
     public static int LineOfRow(IReadOnlyList<DiffSideRowVm> rows, int rowIndex, bool left)
         => Math.Max(0, DiffRowLineMapper.LineForSideRow(rows, rowIndex, left) - 1);
 
-    private static DiffEditorSide BuildSide(IReadOnlyList<DiffSideRowVm> rows, bool left)
+    private static DiffEditorSide BuildSide(IReadOnlyList<DiffSideRowVm> rows, InlineChange?[] inline, bool left)
     {
         var lines = new List<string>();
         var kinds = new Dictionary<int, DiffDecorationKind>();
         var spacers = new Dictionary<int, int>();
+        var changes = new Dictionary<int, IReadOnlyList<DiffInlineRange>>();
         var pending = 0;
-        foreach (var row in rows)
+        for (var index = 0; index < rows.Count; index++)
         {
+            var row = rows[index];
             var (number, kind, text) = left
                 ? (row.LeftLine, row.LeftKind, row.LeftText)
                 : (row.RightLine, row.RightKind, row.RightText);
@@ -123,12 +143,34 @@ public static class DiffEditorAlignment
             }
             if (kind == nameof(SideCellKind.Added)) kinds[lines.Count] = DiffDecorationKind.Added;
             else if (kind == nameof(SideCellKind.Removed)) kinds[lines.Count] = DiffDecorationKind.Removed;
+            if (inline[index] is { } change && (left ? change.Left : change.Right) is { Count: > 0 } spans)
+                changes[lines.Count] = ToRanges(spans, lines.Count == 0 ? BomLength(text) : 0);
             lines.Add(text);
         }
         if (pending > 0)
             spacers[lines.Count] = pending;
-        return new DiffEditorSide(lines, new DiffDecorations(kinds, spacers));
+        // 空き行は反対側にだけある行：左の空き行は右で足された行、右の空き行は左で消えた行。スクロールバーは
+        // 右にしか出さないので、これで削除だけの変更の位置も右のスクロールバーに出る。
+        return new DiffEditorSide(lines, new DiffDecorations(kinds, spacers, changes)
+        {
+            SpacerKind = left ? DiffDecorationKind.Added : DiffDecorationKind.Removed,
+        });
     }
+
+    /// <summary>行内差分の範囲をエディタの範囲へ。1行目の BOM はエディタに載せない（<see cref="WithoutBom"/>）ぶん左へずらす。</summary>
+    private static DiffInlineRange[] ToRanges(IReadOnlyList<TextSpan> spans, int shift)
+    {
+        var ranges = new List<DiffInlineRange>(spans.Count);
+        foreach (var span in spans)
+        {
+            var start = Math.Max(0, span.Start - shift);
+            var end = Math.Max(start, span.End - shift);
+            if (end > start) ranges.Add(new DiffInlineRange(start, end - start));
+        }
+        return ranges.ToArray();
+    }
+
+    private static int BomLength(string text) => text.Length - text.TrimStart('\uFEFF').Length;
 
     private static DiffEditorSide WithTrailingSpacers(DiffEditorSide side, int count)
     {
@@ -137,7 +179,13 @@ public static class DiffEditorAlignment
         // 行数ちょうどの番号は末尾扱い。すでに末尾の空き行があればそこへ足す。
         var key = side.Lines.Count;
         spacers[key] = spacers.GetValueOrDefault(key) + count;
-        return side with { Decorations = new DiffDecorations(side.Decorations.Lines, spacers) };
+        return side with
+        {
+            Decorations = new DiffDecorations(side.Decorations.Lines, spacers, side.Decorations.InlineChanges)
+            {
+                SpacerKind = side.Decorations.SpacerKind,
+            },
+        };
     }
 
     /// <summary>本文の行をエディタへ載せたときの行数（空文書も1行）。</summary>

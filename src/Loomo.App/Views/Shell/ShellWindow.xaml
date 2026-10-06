@@ -2241,6 +2241,14 @@
                                                  IsChecked="{Binding DiffSession.IsSideBySide, Converter={StaticResource InverseBool}}" />
                                 </StackPanel>
                             </Border>
+                            <!-- 空白の違いを無視して比べる（git diff -w）。字下げ・整形だけの変更を消して本当の変更を読む。
+                                 行番号は実ファイルのままなので、ステージ・破棄・行へ飛ぶはそのまま使える。 -->
+                            <Border Style="{StaticResource SegmentGroup}"
+                                    Visibility="{Binding DiffSession.CanChooseTextLayout, Converter={StaticResource BoolToVis}}">
+                                <ToggleButton Style="{StaticResource SegmentToggle}" Content="空白無視"
+                                              ToolTip="空白の違いを無視して比べる（字下げ・整形だけの変更を消す）"
+                                              IsChecked="{Binding DiffSession.IgnoreWhitespace}" />
+                            </Border>
                             <!-- Markdown 差分のレンダリング表示（§24.10）。テキスト／描画の切り替えは
                                  **対象が Markdown のときだけ**出す（押せるのに何も起きない項目を作らない・§24.7）。 -->
                             <Border Style="{StaticResource SegmentGroup}"

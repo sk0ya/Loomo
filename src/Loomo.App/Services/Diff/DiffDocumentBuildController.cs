@@ -60,7 +60,8 @@ internal sealed class DiffDocumentBuildController : IDisposable
         var viewModel = _viewModel();
         var rows = viewModel?.DiffRows.ToList() ?? [];
         var syntax = viewModel?.UnifiedSyntax ?? DiffSyntaxHighlighter.None;
-        var document = _renderer.BuildUnified(rows, syntax);
+        var inline = viewModel?.UnifiedInline ?? DiffInlineHighlighter.None;
+        var document = _renderer.BuildUnified(rows, syntax, inline);
         _unifiedBox.Document = document.Document;
         _unifiedBuild = document.Build;
         Pump(_unifiedBuild);

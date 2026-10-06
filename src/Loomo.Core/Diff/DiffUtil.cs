@@ -12,22 +12,35 @@ public enum DiffLineKind
     Gap       // 省略マーカー（… N行省略）
 }
 
-public sealed record DiffLine(DiffLineKind Kind, string Text);
+/// <summary>
+/// 差分の1行。<paramref name="OldText"/> は空白を無視した比較で「同じ」とみなした文脈行のうち、旧側の綴りが
+/// 新側と違うものだけに入る（それ以外は null ＝旧側も <paramref name="Text"/> と同じ）。
+/// </summary>
+public sealed record DiffLine(DiffLineKind Kind, string Text, string? OldText = null)
+{
+    /// <summary>旧側（左）の綴り。</summary>
+    public string LeftText => OldText ?? Text;
+}
+
+/// <summary>行差分の比べ方。</summary>
+/// <param name="IgnoreWhitespace">空白の違いを無視する（<c>git diff -w</c> と同じ：行の中の空白をすべて除いて比べる）。</param>
+public sealed record DiffOptions(bool IgnoreWhitespace = false)
+{
+    public static DiffOptions Default { get; } = new();
+}
 
 /// <summary>
-/// 行単位の差分（LCS）を計算し、変更箇所の周辺だけを抜き出した「ハンク」形式で返す。
+/// 行単位の差分（<see cref="MyersDiff"/>）を計算し、変更箇所の周辺だけを抜き出した「ハンク」形式で返す。
 /// ファイル編集ツールの承認カードで色付き差分を見せるために使う。UI 非依存。
 /// </summary>
 public static class DiffUtil
 {
-    private const int MaxDpLines = 5000; // これを超える巨大ファイルは全置換表示にフォールバック
-
     /// <summary>追加/削除の行数を数える。</summary>
-    public static (int added, int removed) Stat(string oldText, string newText)
+    public static (int added, int removed) Stat(string oldText, string newText, DiffOptions? options = null)
     {
         var added = 0;
         var removed = 0;
-        foreach (var op in RawDiff(Split(oldText), Split(newText)))
+        foreach (var op in RawDiff(Split(oldText), Split(newText), options ?? DiffOptions.Default))
         {
             if (op.Kind == DiffLineKind.Added) added++;
             else if (op.Kind == DiffLineKind.Removed) removed++;
@@ -36,15 +49,16 @@ public static class DiffUtil
     }
 
     /// <summary>変更箇所の周辺 <paramref name="context"/> 行だけを残したハンクを返す。</summary>
-    public static IReadOnlyList<DiffLine> Compute(string oldText, string newText, int context = 3)
-        => Hunkify(RawDiff(Split(oldText), Split(newText)), context);
+    public static IReadOnlyList<DiffLine> Compute(
+        string oldText, string newText, int context = 3, DiffOptions? options = null)
+        => Hunkify(RawDiff(Split(oldText), Split(newText), options ?? DiffOptions.Default), context);
 
     /// <summary>
     /// 全行を Context/Added/Removed で返す（ハンク化・Gap 省略なし）。左右並びで実際のファイルのように
     /// 全文を対比するために使う。
     /// </summary>
-    public static IReadOnlyList<DiffLine> ComputeFull(string oldText, string newText)
-        => RawDiff(Split(oldText), Split(newText));
+    public static IReadOnlyList<DiffLine> ComputeFull(string oldText, string newText, DiffOptions? options = null)
+        => RawDiff(Split(oldText), Split(newText), options ?? DiffOptions.Default);
 
     /// <summary>差分行を +/-/空白/… 接頭辞付きのテキストへ整形する（承認サマリ用）。</summary>
     public static string ToUnifiedText(IReadOnlyList<DiffLine> lines)
@@ -114,52 +128,95 @@ public static class DiffUtil
         => text.Length == 0 ? Array.Empty<string>() : text.Replace("\r\n", "\n").Split('\n');
 
     // ===== 全行を Context/Added/Removed に分類した生の差分 =====
-    private static List<DiffLine> RawDiff(string[] a, string[] b)
+    //
+    // 行を整数へ写して（同じ行＝同じ番号）Myers 法で差分を取り、変更のかたまりを「削除 → 追加」の順へ
+    // 揃えてから、片側だけのかたまりを読みやすい位置へ寄せる（DiffCompaction）。
+    private static List<DiffLine> RawDiff(string[] a, string[] b, DiffOptions options)
     {
-        var result = new List<DiffLine>();
+        var ids = new Dictionary<string, int>(StringComparer.Ordinal);
+        var aKeys = ToKeys(a, ids, options);
+        var bKeys = ToKeys(b, ids, options);
+        var edits = OrderChangeRuns(MyersDiff.Diff(aKeys, bKeys));
+        DiffCompaction.Compact(edits, aKeys, bKeys, Blanks(a), Blanks(b));
 
-        // 巨大ファイルは DP を避け、全削除→全追加で表現する
-        if ((long)a.Length * b.Length > (long)MaxDpLines * MaxDpLines)
+        var result = new List<DiffLine>(edits.Count);
+        foreach (var edit in edits)
         {
-            foreach (var line in a) result.Add(new DiffLine(DiffLineKind.Removed, line));
-            foreach (var line in b) result.Add(new DiffLine(DiffLineKind.Added, line));
-            return result;
-        }
-
-        // LCS 長さの DP テーブル
-        var n = a.Length;
-        var m = b.Length;
-        var lcs = new int[n + 1, m + 1];
-        for (var i = n - 1; i >= 0; i--)
-            for (var j = m - 1; j >= 0; j--)
-                lcs[i, j] = a[i] == b[j]
-                    ? lcs[i + 1, j + 1] + 1
-                    : Math.Max(lcs[i + 1, j], lcs[i, j + 1]);
-
-        // バックトラックして差分列を復元
-        var x = 0;
-        var y = 0;
-        while (x < n && y < m)
-        {
-            if (a[x] == b[y])
+            switch (edit.Kind)
             {
-                result.Add(new DiffLine(DiffLineKind.Context, a[x]));
-                x++; y++;
-            }
-            else if (lcs[x + 1, y] >= lcs[x, y + 1])
-            {
-                result.Add(new DiffLine(DiffLineKind.Removed, a[x]));
-                x++;
-            }
-            else
-            {
-                result.Add(new DiffLine(DiffLineKind.Added, b[y]));
-                y++;
+                case EditKind.Delete:
+                    result.Add(new DiffLine(DiffLineKind.Removed, a[edit.A]));
+                    break;
+                case EditKind.Insert:
+                    result.Add(new DiffLine(DiffLineKind.Added, b[edit.B]));
+                    break;
+                default:
+                    var (oldLine, newLine) = (a[edit.A], b[edit.B]);
+                    result.Add(new DiffLine(
+                        DiffLineKind.Context, newLine, oldLine == newLine ? null : oldLine));
+                    break;
             }
         }
-        while (x < n) result.Add(new DiffLine(DiffLineKind.Removed, a[x++]));
-        while (y < m) result.Add(new DiffLine(DiffLineKind.Added, b[y++]));
         return result;
+    }
+
+    private static int[] ToKeys(string[] lines, Dictionary<string, int> ids, DiffOptions options)
+    {
+        var keys = new int[lines.Length];
+        for (var i = 0; i < lines.Length; i++)
+        {
+            var key = options.IgnoreWhitespace ? WithoutWhitespace(lines[i]) : lines[i];
+            if (!ids.TryGetValue(key, out var id))
+                ids[key] = id = ids.Count;
+            keys[i] = id;
+        }
+        return keys;
+    }
+
+    private static string WithoutWhitespace(string line)
+    {
+        var any = false;
+        foreach (var ch in line)
+            if (char.IsWhiteSpace(ch)) { any = true; break; }
+        if (!any) return line;
+        var sb = new StringBuilder(line.Length);
+        foreach (var ch in line)
+            if (!char.IsWhiteSpace(ch)) sb.Append(ch);
+        return sb.ToString();
+    }
+
+    private static bool[] Blanks(string[] lines)
+    {
+        var blank = new bool[lines.Length];
+        for (var i = 0; i < lines.Length; i++)
+            blank[i] = string.IsNullOrWhiteSpace(lines[i]);
+        return blank;
+    }
+
+    /// <summary>一致行に挟まれた変更のかたまりの中を「削除 → 追加」の順へ並べ替える（それぞれの順序は保つ）。</summary>
+    private static List<Edit> OrderChangeRuns(List<Edit> edits)
+    {
+        var ordered = new List<Edit>(edits.Count);
+        var inserts = new List<Edit>();
+        foreach (var edit in edits)
+        {
+            switch (edit.Kind)
+            {
+                case EditKind.Equal:
+                    ordered.AddRange(inserts);
+                    inserts.Clear();
+                    ordered.Add(edit);
+                    break;
+                case EditKind.Delete:
+                    ordered.Add(edit);
+                    break;
+                default:
+                    inserts.Add(edit);
+                    break;
+            }
+        }
+        ordered.AddRange(inserts);
+        return ordered;
     }
 
     // ===== 変更周辺だけ残し、長い無変更区間を Gap に畳む =====

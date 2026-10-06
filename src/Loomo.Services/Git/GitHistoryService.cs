@@ -138,7 +138,8 @@ public sealed class GitHistoryService
     }
 
     public async Task<string> GetRangeFileDiffAsync(
-        string? fromHash, string toHash, GitCommitFileChange file, int contextLines = 3)
+        string? fromHash, string toHash, GitCommitFileChange file, int contextLines = 3,
+        bool ignoreWhitespace = false)
     {
         var unified = $"--unified={contextLines}";
         var args = new List<string>();
@@ -147,6 +148,7 @@ public sealed class GitHistoryService
                 { "diff-tree", "--root", "-p", unified, "-m", "--first-parent", "--no-commit-id", toHash });
         else
             args.AddRange(new[] { "diff", unified, "--find-renames", fromHash, toHash });
+        if (ignoreWhitespace) args.Add(GitCompareArgs.IgnoreAllSpace);
         args.Add("--");
         if (file.OrigPath is not null)
             args.Add(file.OrigPath);

@@ -66,6 +66,12 @@ public sealed class DiffStandaloneToolbarTests
                 .ToList();
             Assert.Contains("IsSideBySide", toggles);
             Assert.Contains("IsMarkdownRender", toggles);
+
+            // 空白無視は入／切の単独トグル（RadioButton だと一度入れたら押しても切れない）。
+            var ignoreWhitespace = Descendants(bar).OfType<ToggleButton>()
+                .Where(t => t is not RadioButton)
+                .Select(t => BindingOperations.GetBinding(t, ToggleButton.IsCheckedProperty)?.Path.Path);
+            Assert.Contains("IgnoreWhitespace", ignoreWhitespace);
         });
     }
 

@@ -52,6 +52,8 @@ internal sealed class DiffSideEditorPresenter : IDisposable
     /// <summary>右で打ったのでタブを開いている最中（その読み込みの知らせで右を出し直さない）。</summary>
     private bool _adopting;
     private IReadOnlyList<DiffSideRowVm> _rows = [];
+    /// <summary>行内差分の覚え書き（右を打つたびに全行を比べ直さない）。</summary>
+    private readonly DiffInlineCache _inlineCache = new();
     private IReadOnlyList<string> _leftLines = [];
     private string? _leftLanguageKey;
     private string? _rightLanguageKey;
@@ -447,8 +449,10 @@ internal sealed class DiffSideEditorPresenter : IDisposable
     private void ApplyLayout(IReadOnlyList<DiffSideRowVm> rows)
     {
         _rows = rows;
+        _inlineCache.Rotate();
         var (left, right) = DiffEditorAlignment.Build(
-            rows, _left!.Engine.CurrentBuffer.Text.LineCount, _right!.Engine.CurrentBuffer.Text.LineCount);
+            rows, _left!.Engine.CurrentBuffer.Text.LineCount, _right!.Engine.CurrentBuffer.Text.LineCount,
+            _inlineCache.Get);
         _left.SetDiffDecorations(left.Decorations);
         _right.SetDiffDecorations(right.Decorations);
         // 空き行が変わると片側だけ行が増減する。右を左の位置へ揃え直す。
@@ -467,7 +471,8 @@ internal sealed class DiffSideEditorPresenter : IDisposable
         var text = _right.Text;
         var (_, currentRight) = DiffEditorAlignment.SideLines(_rows);
         if (DiffEditorAlignment.SameText(currentRight, text)) return;   // 読み込み・保存で本文は変わっていない
-        var rows = await Task.Run(() => DiffEditorAlignment.Recompute(leftLines, text));
+        var options = vm.DiffOptions;
+        var rows = await Task.Run(() => DiffEditorAlignment.Recompute(leftLines, text, options));
         // 取り直している間に別のファイルへ移った（または読み直した）なら捨てる。世代だけでは、
         // 未保存の確認ダイアログの間に割り込んだ継続を止められない。
         if (generation != _rediffGeneration || _disposed

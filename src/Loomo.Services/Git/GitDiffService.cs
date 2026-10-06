@@ -60,7 +60,8 @@ public sealed class GitDiffService
     /// ステージしても行が消えない差分表示の本体になる。未追跡ファイルは <see cref="GetDiffTextAsync"/> と同じ合成パッチ。
     /// まだコミットが無ければ空のツリーと比べる。
     /// </summary>
-    public async Task<string> GetHeadDiffTextAsync(GitChangeEntry entry, int contextLines = 3)
+    public async Task<string> GetHeadDiffTextAsync(
+        GitChangeEntry entry, int contextLines = 3, bool ignoreWhitespace = false)
     {
         if (entry.IsUntracked)
             return await GetDiffTextAsync(entry, staged: false, contextLines).ConfigureAwait(false);
@@ -68,9 +69,11 @@ public sealed class GitDiffService
         var unified = $"--unified={contextLines}";
         var literal = GitCompareArgs.LiteralPathspecs;
         var hasHead = (await _runner.RunAsync("rev-parse", "--verify", "--quiet", "HEAD").ConfigureAwait(false)).Success;
-        var result = await _runner
-            .RunAsync(literal, "diff", hasHead ? "HEAD" : EmptyTree, unified, "--", entry.Path)
-            .ConfigureAwait(false);
+        var args = new List<string> { literal, "diff", hasHead ? "HEAD" : EmptyTree, unified };
+        if (ignoreWhitespace) args.Add(GitCompareArgs.IgnoreAllSpace);
+        args.Add("--");
+        args.Add(entry.Path);
+        var result = await _runner.RunAsync(args.ToArray()).ConfigureAwait(false);
         return result.Success ? result.Output : result.Message;
     }
 
