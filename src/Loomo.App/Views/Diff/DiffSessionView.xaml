@@ -326,19 +326,6 @@
                             Command="{Binding CloseComparisonCommand}"
                             Visibility="{Binding IsCompareMode, Converter={StaticResource BoolToVis}}" />
                     <Border Style="{StaticResource PaneHeaderSeparator}" />
-                    <!-- 変更ブロック間のジャンプ。上下の矢印だけにして、キーはツールチップで知らせる。 -->
-                    <Button Style="{StaticResource PaneHeaderGhostButton}" Tag="{StaticResource DiffIcon.Prev}"
-                            ToolTip="前の変更へ（Shift+F8／Alt+↑。先頭を越えたら前のファイルへ）"
-                            Command="{Binding JumpToPrevChangeCommand}" />
-                    <Button Style="{StaticResource PaneHeaderGhostButton}" Tag="{StaticResource DiffIcon.Next}"
-                            ToolTip="次の変更へ（F8／Alt+↓。末尾を越えたら次のファイルへ）"
-                            Command="{Binding JumpToNextChangeCommand}" />
-                    <!-- いま何番目の変更にいるか（↑↓ で飛んだ先は本文側で枠を引く）。まだ飛んでいなければ出さない。 -->
-                    <TextBlock Text="{Binding ChangePositionLabel}" VerticalAlignment="Center" Margin="2,0,2,0"
-                               FontSize="{DynamicResource Fs11}" Foreground="{DynamicResource FgDim}"
-                               ToolTip="いま見ている変更ブロック / このファイルの変更ブロックの数"
-                               Visibility="{Binding ChangePositionLabel, Converter={StaticResource NonEmptyToVis}}" />
-                    <Border Style="{StaticResource PaneHeaderSeparator}" />
                     <Button Style="{StaticResource PaneHeaderGhostButton}" Content="エディタで開く"
                             Tag="{StaticResource DiffIcon.OpenInEditor}"
                             ToolTip="いま選んでいるファイルを（現在の内容で）エディタで開く"
@@ -354,25 +341,21 @@
                     </StackPanel>
                 </StackPanel>
                 <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
-                    <Border Style="{StaticResource SegmentGroup}">
-                        <StackPanel Orientation="Horizontal">
-                            <RadioButton Style="{StaticResource SourceToggle}" Content="Git"
-                                         ToolTip="作業ツリー・コミットの差分"
-                                         IsChecked="{Binding IsGitMode}" />
-                            <!-- アドホック比較（クリップボード ↔ 選択範囲 など）。素材はエディタ・ターミナル・
-                                 エクスプローラーの右クリックから送られてくる（設計書 §23.3）。 -->
-                            <RadioButton Style="{StaticResource SourceToggle}" Content="比較"
-                                         ToolTip="クリップボードや選択範囲どうしの比較（右クリックの「Diff へ送る」で作れます）"
-                                         IsChecked="{Binding IsCompareMode}" />
-                        </StackPanel>
-                    </Border>
-                    <!-- 比較基準（作業ツリー／ブランチ／分岐点）。サイドバー Git パネルと同じ状態を
-                         見ているので、どちらで切り替えても一覧と差分本体の両方がその基準になる。
-                         コミット範囲を表示している間は出さない（そちらが優先で効かないため）。 -->
-                    <Border Margin="0,0,8,0" VerticalAlignment="Center"
-                            Visibility="{Binding ShowCompareBaseSelector, Converter={StaticResource BoolToVis}}">
-                        <local:GitCompareBaseView DataContext="{Binding CompareBase}" />
-                    </Border>
+                    <!-- 何を見せるか（Git／比較・比較基準）はここでは選ばない。差分を開いた側（Git パネル・
+                         コミット一覧・「Diff へ送る」）で中身は確定しているので、ここに並ぶのは読み方だけ。
+                         変更ブロック間のジャンプは読む手の起点なので左端に置く。キーはツールチップで知らせる。 -->
+                    <Button Style="{StaticResource PaneHeaderGhostButton}" Tag="{StaticResource DiffIcon.Prev}"
+                            ToolTip="前の変更へ（Shift+F8／Alt+↑。先頭を越えたら前のファイルへ）"
+                            Command="{Binding JumpToPrevChangeCommand}" />
+                    <Button Style="{StaticResource PaneHeaderGhostButton}" Tag="{StaticResource DiffIcon.Next}"
+                            ToolTip="次の変更へ（F8／Alt+↓。末尾を越えたら次のファイルへ）"
+                            Command="{Binding JumpToNextChangeCommand}" />
+                    <!-- いま何番目の変更にいるか（↑↓ で飛んだ先は本文側で枠を引く）。まだ飛んでいなければ出さない。 -->
+                    <TextBlock Text="{Binding ChangePositionLabel}" VerticalAlignment="Center" Margin="2,0,2,0"
+                               FontSize="{DynamicResource Fs11}" Foreground="{DynamicResource FgDim}"
+                               ToolTip="いま見ている変更ブロック / このファイルの変更ブロックの数"
+                               Visibility="{Binding ChangePositionLabel, Converter={StaticResource NonEmptyToVis}}" />
+                    <Border Style="{StaticResource PaneHeaderSeparator}" />
                     <!-- 差分の表示形式（左右並び / 統合）。既定の左右を先頭に置く。
                          Markdown をレンダリング表示している間は出さない——押しても画面は変わらず、
                          差分の読み直しだけが走る（押せるのに何も起きない・§24.7）。 -->

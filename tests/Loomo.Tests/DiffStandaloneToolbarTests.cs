@@ -71,7 +71,7 @@ public sealed class DiffStandaloneToolbarTests
 
     /// <summary>この窓は「Diff ペインが隠れているときの差分の行き先」でもある（§24.5.2）＝
     /// git の差分もアドホック比較もここへ来る。ペインヘッダーにしか無かった操作
-    /// （ソース切替・比較の入替/再比較/閉じる・変更を破棄・作業ツリーへ戻す）が窓でも要るのはそのため。</summary>
+    /// （比較の入替/再比較/閉じる・変更を破棄・作業ツリーへ戻す）が窓でも要るのはそのため。</summary>
     [Fact]
     public void 切り離しツールバーは比較と作業ツリーの操作も持つ()
     {
@@ -91,13 +91,33 @@ public sealed class DiffStandaloneToolbarTests
             Assert.Contains("CloseComparisonCommand", commands);
             Assert.Contains("DiscardCommand", commands);
             Assert.Contains("ClearGitTargetCommand", commands);
+        });
+    }
 
-            // ソース（Git／比較）の切替そのものもヘッダー側にしか無かった
+    /// <summary>差分を開いた時点で見せるものは確定している（Git パネル・コミット一覧・「Diff へ送る」が決める）
+    /// ので、ツールバーで中身（Git／比較・比較基準）は選ばせない。並ぶのは読み方（ジャンプ・左右/統合）で、
+    /// 読む手の起点の ↑↓ は左端。</summary>
+    [Fact]
+    public void ツールバーは中身を選ばせずジャンプを左端に置く()
+    {
+        _host.Run(() =>
+        {
+            var view = new DiffSessionView();
+            view.ShowStandaloneToolbar();
+            var bar = (FrameworkElement)view.FindName("StandaloneToolbar")!;
+
             var toggles = Descendants(bar).OfType<RadioButton>()
                 .Select(r => BindingOperations.GetBinding(r, ToggleButton.IsCheckedProperty)?.Path.Path)
                 .ToList();
-            Assert.Contains("IsGitMode", toggles);
-            Assert.Contains("IsCompareMode", toggles);
+            Assert.DoesNotContain("IsGitMode", toggles);
+            Assert.DoesNotContain("IsCompareMode", toggles);
+            Assert.Empty(Descendants(bar).OfType<GitCompareBaseView>());
+
+            var left = Descendants(bar).OfType<StackPanel>()
+                .First(p => DockPanel.GetDock(p) == Dock.Left && p.Parent is DockPanel);
+            var firstButton = left.Children.OfType<ButtonBase>().First();
+            Assert.Equal("JumpToPrevChangeCommand",
+                BindingOperations.GetBinding(firstButton, ButtonBase.CommandProperty)?.Path.Path);
         });
     }
 
