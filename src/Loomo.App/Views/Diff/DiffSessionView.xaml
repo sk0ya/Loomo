@@ -350,11 +350,6 @@
                     <Button Style="{StaticResource PaneHeaderGhostButton}" Tag="{StaticResource DiffIcon.Next}"
                             ToolTip="次の変更へ（F8／Alt+↓。末尾を越えたら次のファイルへ）"
                             Command="{Binding JumpToNextChangeCommand}" />
-                    <!-- いま何番目の変更にいるか（↑↓ で飛んだ先は本文側で枠を引く）。まだ飛んでいなければ出さない。 -->
-                    <TextBlock Text="{Binding ChangePositionLabel}" VerticalAlignment="Center" Margin="2,0,2,0"
-                               FontSize="{DynamicResource Fs11}" Foreground="{DynamicResource FgDim}"
-                               ToolTip="いま見ている変更ブロック / このファイルの変更ブロックの数"
-                               Visibility="{Binding ChangePositionLabel, Converter={StaticResource NonEmptyToVis}}" />
                     <Border Style="{StaticResource PaneHeaderSeparator}" />
                     <!-- 差分の表示形式（左右並び / 統合）。既定の左右を先頭に置く。
                          Markdown をレンダリング表示している間は出さない——押しても画面は変わらず、
@@ -389,6 +384,12 @@
                                Margin="0,0,8,0" TextTrimming="CharacterEllipsis" MaxWidth="240"
                                ToolTip="{Binding GitTargetLabel}"
                                Visibility="{Binding GitTargetLabel, Converter={StaticResource NonEmptyToVis}}" />
+                    <!-- いま何番目の変更にいるか（↑↓ で飛んだ先は本文側で枠を引く）。まだ飛んでいなければ出さない。
+                         出たり消えたりするので左グループの末尾に置く——↑↓ の直後だと、そのたびに後ろの左右／統合がズレる。 -->
+                    <TextBlock Text="{Binding ChangePositionLabel}" VerticalAlignment="Center" Margin="2,0,2,0"
+                               FontSize="{DynamicResource Fs11}" Foreground="{DynamicResource FgDim}"
+                               ToolTip="いま見ている変更ブロック / このファイルの変更ブロックの数"
+                               Visibility="{Binding ChangePositionLabel, Converter={StaticResource NonEmptyToVis}}" />
                 </StackPanel>
             </DockPanel>
         </Border>
