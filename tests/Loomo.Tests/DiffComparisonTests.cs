@@ -64,18 +64,39 @@ public class DiffComparisonTests
     }
 
     [Fact]
-    public void 最後の比較を閉じると作り方の案内へ戻る()
+    public void 最後の比較を閉じると作業ツリーの差分へ戻る()
     {
+        // ヘッダーに Git／比較の切り替えは無いので、空の比較一覧に取り残すとペインの中から戻れない。
         var sut = CreateSut();
         sut.ShowComparison(Compare("A"));
 
         sut.CloseComparisonCommand.Execute(null);   // 引数なし＝今見ている比較
 
-        Assert.Empty(sut.Files);
-        Assert.Null(sut.SelectedFile);
+        Assert.True(sut.IsGitMode);
         Assert.False(sut.HasComparison);
         Assert.Equal("", sut.CompareCaption);       // 帯を出したままにしない
-        Assert.Contains("比較する内容がありません", sut.EmptyMessage);
+        Assert.False(sut.HasStockedComparisons);    // 戻る先も無い
+    }
+
+    [Fact]
+    public void Git差分を開いても残った比較へ戻れる()
+    {
+        // Git パネルから差分を開くと Git 表示になるが、積んだ比較は残る。そこへ戻る口が無いと手が届かない。
+        var sut = CreateSut();
+        sut.ShowComparison(Compare("A"));
+        sut.ShowComparison(Compare("B"));
+        Assert.False(sut.HasStockedComparisons);    // 比較を見ている間は出さない（一覧そのものが見えている）
+
+        sut.IsGitMode = true;
+
+        Assert.True(sut.HasStockedComparisons);
+        Assert.Equal("比較（2件）", sut.StockedComparisonsLabel);
+
+        sut.ShowStockedComparisonsCommand.Execute(null);
+
+        Assert.True(sut.IsCompareMode);
+        Assert.Equal(2, sut.Files.Count);
+        Assert.False(sut.HasStockedComparisons);
     }
 
     [Fact]
@@ -125,8 +146,8 @@ public class DiffComparisonTests
 
         sut.CloseAllComparisonsCommand.Execute(null);
 
-        Assert.Empty(sut.Files);
-        Assert.Equal("比較（0件）", sut.FileListHeader);
+        Assert.True(sut.IsGitMode);
+        Assert.False(sut.HasStockedComparisons);
     }
 
     [Fact]

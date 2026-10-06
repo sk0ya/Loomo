@@ -91,6 +91,7 @@ public sealed class DiffStandaloneToolbarTests
             Assert.Contains("CloseComparisonCommand", commands);
             Assert.Contains("DiscardCommand", commands);
             Assert.Contains("ClearGitTargetCommand", commands);
+            Assert.Contains("ShowStockedComparisonsCommand", commands);   // Git 表示から残った比較へ戻る口
         });
     }
 
@@ -114,7 +115,7 @@ public sealed class DiffStandaloneToolbarTests
             Assert.Empty(Descendants(bar).OfType<GitCompareBaseView>());
 
             var left = Descendants(bar).OfType<StackPanel>()
-                .First(p => DockPanel.GetDock(p) == Dock.Left && p.Parent is DockPanel);
+                .First(p => p.ReadLocalValue(DockPanel.DockProperty) is Dock.Left && p.Parent is DockPanel);
             var firstButton = left.Children.OfType<ButtonBase>().First();
             Assert.Equal("JumpToPrevChangeCommand",
                 BindingOperations.GetBinding(firstButton, ButtonBase.CommandProperty)?.Path.Path);

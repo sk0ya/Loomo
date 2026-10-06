@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
@@ -73,10 +73,6 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
     /// <summary>単一コミットの差分を表示中なら、そのコミットを Git 一覧で選択できる。</summary>
     public bool CanOpenCommitInGit => _commitRange is { From: null };
 
-    /// <summary>比較基準の選択をヘッダーに出すか。Git モードで、かつコミット範囲を表示していないときだけ
-    /// ——コミット範囲は「何と比べているか」を自分で持っているので、そこに基準を並べても効かない
-    /// （押せるのに何も起きない項目になる）。</summary>
-    public bool ShowCompareBaseSelector => IsGitMode && !HasGitTarget;
     [ObservableProperty] private DiffFileItem? _selectedFile;
     [ObservableProperty] private string _emptyMessage = "";
     [ObservableProperty] private string _statusMessage = "";
@@ -285,6 +281,7 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(HasComparison));
         OnPropertyChanged(nameof(CompareCaption));
         OnPropertyChanged(nameof(FileListHeader));
+        NotifyStockedComparisons();
         ResetChangeCursor();
         if (value != DiffSource.Git)
         {
@@ -360,7 +357,6 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
     {
         // 破棄も行・範囲単位の適用も「作業ツリー vs インデックス／HEAD」の概念。基準がブランチ／分岐点の
         // ときは存在しないので、ビュー側の表示ごと消す（無効化して押せるのに何も起きない項目にしない）。
-        OnPropertyChanged(nameof(ShowCompareBaseSelector));
         // 判定は GitCompareCapabilities 一箇所（Git パネル側のゲートと同じもの）。
         var capabilities = CompareBase.Capabilities;
         var gitWorkingTree = IsGitMode && !HasGitTarget;
@@ -568,6 +564,29 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
     public string FileListHeader
         => Source == DiffSource.Compare ? $"比較（{_comparisons.Count}件）" : "変更ファイル";
 
+    /// <summary>Git の差分を見ている間も比較が残っているか。ヘッダーに Git／比較の切り替えは置かない
+    /// （見せるものは開いた側が決める）ので、残っている比較へ戻る口はこれが出す——無いと、Git パネルから
+    /// 差分を開いた瞬間に積んだ比較が手の届かないところへ行く。</summary>
+    public bool HasStockedComparisons => IsGitMode && _comparisons.Count > 0;
+
+    /// <summary>残っている比較へ戻るボタンの文言（一覧の見出しと同じ「比較（N件）」）。</summary>
+    public string StockedComparisonsLabel => $"比較（{_comparisons.Count}件）";
+
+    private void NotifyStockedComparisons()
+    {
+        OnPropertyChanged(nameof(HasStockedComparisons));
+        OnPropertyChanged(nameof(StockedComparisonsLabel));
+    }
+
+    /// <summary>Git の差分から、残っている比較の一覧へ戻る。</summary>
+    [RelayCommand]
+    private void ShowStockedComparisons()
+    {
+        if (_comparisons.Count == 0) return;
+        _pendingCompareSelect ??= _comparisons[0];
+        IsCompareMode = true;   // OnSourceChanged 経由で読み直しが走る
+    }
+
     /// <summary>
     /// 任意のテキスト2つを比較して表示する（左＝旧・右＝新）。<b>今ある比較は消さずに積み増す</b>
     /// （設計書 §24.5）。ペインの表示・フォーカスは呼び出し側が行う——「素材を別のペインへ渡す」動線の
@@ -604,6 +623,7 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
             _suppressModeChangeRefresh = false;
         }
         SetStatus("", isError: false);
+        NotifyStockedComparisons();
         _ = RefreshAsync(force: true);
     }
 
@@ -620,7 +640,18 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
         _pendingCompareSelect = _comparisons.Count == 0
             ? null
             : _comparisons[Math.Min(index, _comparisons.Count - 1)];
-        _ = RefreshAsync(force: true);
+        RefreshAfterComparisonsChanged();
+    }
+
+    /// <summary>比較の一覧が変わったあとの読み直し。最後の1件を閉じたら作業ツリーの差分へ戻る——
+    /// ヘッダーに Git／比較の切り替えは無いので、空の比較一覧に取り残すとペインの中から戻る手段が無い。</summary>
+    private void RefreshAfterComparisonsChanged()
+    {
+        NotifyStockedComparisons();
+        if (_comparisons.Count == 0 && IsCompareMode)
+            IsGitMode = true;   // OnSourceChanged 経由で読み直しが走る
+        else
+            _ = RefreshAsync(force: true);
     }
 
     /// <summary>ストックした比較をすべて閉じる。</summary>
@@ -630,7 +661,7 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
         if (_comparisons.Count == 0) return;
         _comparisons.Clear();
         _pendingCompareSelect = null;
-        _ = RefreshAsync(force: true);
+        RefreshAfterComparisonsChanged();
     }
 
     private DiffFileList LoadComparison()

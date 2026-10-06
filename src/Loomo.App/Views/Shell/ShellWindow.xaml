@@ -2167,6 +2167,13 @@
                              横一列に並んで、どれが表示切替でどれが操作か・どれが危険かが読めなかった）。
                              ペインが狭いときは左の切り替えより先にこちらが場所を取る（先に Dock するため）。 -->
                         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,4,0">
+                            <!-- Git の差分を見ている間も比較が残っていれば、そこへ戻る口。Git／比較の切り替えは置かない
+                                 （見せるものは開いた側が決める）ので、これが無いと積んだ比較に手が届かなくなる。
+                                 出入りするので右寄せの群に置く（左だと後ろの表示切り替えがズレる）。 -->
+                            <Button Style="{StaticResource PaneHeaderGhostButton}" Content="{Binding DiffSession.StockedComparisonsLabel}"
+                                    ToolTip="残っている比較（「Diff へ送る」で作ったもの）の一覧へ戻る"
+                                    Command="{Binding DiffSession.ShowStockedComparisonsCommand}"
+                                    Visibility="{Binding DiffSession.HasStockedComparisons, Converter={StaticResource BoolToVis}}" />
                             <!-- Git セッションから連携されたコミット範囲の操作 -->
                             <Button Style="{StaticResource PaneHeaderGhostButton}" Content="Git 一覧で表示"
                                     Tag="{StaticResource DiffIcon.Commits}"
