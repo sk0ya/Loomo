@@ -33,6 +33,7 @@ internal sealed class GitBranchTreeMenuController
     private readonly ButtonBase? _operationDelete;
     private DispatcherTimer? _menuTimer;
     private TreeViewItem? _pendingItem;
+    private int _downClickCount;
 
     [DllImport("user32.dll")]
     private static extern uint GetDoubleClickTime();
@@ -74,6 +75,7 @@ internal sealed class GitBranchTreeMenuController
         _operationMerge = operationMerge;
         _operationDelete = operationDelete;
 
+        _tree.PreviewMouseLeftButtonDown += OnTreeLeftButtonDown;
         _tree.PreviewMouseLeftButtonUp += OnTreeLeftButtonUp;
         _tree.ContextMenuOpening += OnContextMenuOpening;
         _tree.PreviewMouseRightButtonDown += OnTreeRightButtonDown;
@@ -105,6 +107,18 @@ internal sealed class GitBranchTreeMenuController
         _pendingItem = null;
     }
 
+    /// <summary>
+    /// 押した時点のクリック回数を覚えておく。WPF の MouseUp の <c>ClickCount</c> はダブルクリックの
+    /// 2回目でも 1 で届くため、離した側で数えると2回目が「単クリック」に化けてメニューを予約し直し、
+    /// ダブルクリック（＝コミット一覧）の後にブランチ操作メニューまで出てしまう。
+    /// </summary>
+    private void OnTreeLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        _downClickCount = e.ClickCount;
+        if (_deferSingleClick && e.ClickCount > 1)
+            CancelPendingMenu();
+    }
+
     private void OnTreeLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
         var source = e.OriginalSource as DependencyObject;
@@ -113,7 +127,7 @@ internal sealed class GitBranchTreeMenuController
             var item = WpfTreeTraversal.FindAncestor<TreeViewItem>(source);
             var clickedNode = item?.DataContext as BranchTreeNode;
             switch (GitBranchTreeClickPolicy.Resolve(
-                e.ClickCount,
+                Math.Max(e.ClickCount, _downClickCount),
                 WpfTreeTraversal.FindAncestor<ToggleButton>(source) is not null,
                 clickedNode is not null,
                 clickedNode?.IsFolder == true))
