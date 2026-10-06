@@ -363,6 +363,14 @@ public partial class GitSessionView : UserControl
             _ = vm.History.LoadMoreAsync();
     }
 
+    /// <summary>複数選択を詳細列へ渡す（2件以上なら選んだコミットぶんの変更ファイルを出す）。
+    /// SelectedItems は束縛できないので、ここで VM へ写す。</summary>
+    private void OnLogSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (ReferenceEquals(e.OriginalSource, LogList))
+            Vm?.History.SetSelectedCommits(SelectedCommits);
+    }
+
     /// <summary>選択コミットの差分を Diff セッションへ（1件=コミットの変更、複数=端点間の比較）。</summary>
     private void OnCommitShowDiff(object sender, RoutedEventArgs e)
         => GitSessionSelectionPresenter.OpenCommitDiff(Vm, LogList.SelectedItems);

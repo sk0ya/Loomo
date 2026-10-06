@@ -325,6 +325,14 @@ public sealed class GitService
 
     public Task<string> GetCommitSummaryAsync(string hash) => _history.GetCommitSummaryAsync(hash);
 
+    /// <summary>コミット範囲（起点は含まない）の <c>--numstat</c>。</summary>
+    public Task<string> GetRangeNumstatAsync(string fromHash, string toHash) =>
+        _history.GetRangeNumstatAsync(fromHash, toHash);
+
+    /// <summary>コミット範囲に入るコミット数（数えられなければ null）。</summary>
+    public Task<int?> CountRangeCommitsAsync(string fromHash, string toHash) =>
+        _history.CountRangeCommitsAsync(fromHash, toHash);
+
     public Task<string> GetCommitPatchAsync(string hash) => _history.GetCommitPatchAsync(hash);
 
     /// <summary>リネームを追った履歴の「コミットごとのパス」表。</summary>

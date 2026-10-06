@@ -951,6 +951,7 @@
                              ItemsSource="{Binding History.LogView}"
                              SelectedItem="{Binding History.SelectedLogRow, Mode=TwoWay}"
                              SelectionMode="Extended"
+                             SelectionChanged="OnLogSelectionChanged"
                              ScrollViewer.HorizontalScrollBarVisibility="Auto"
                              ScrollViewer.ScrollChanged="OnLogScrollChanged"
                              PreviewKeyDown="OnLogListKeyDown"
@@ -1161,7 +1162,8 @@
                                   HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
                                   Background="{DynamicResource Border}" />
 
-                    <!-- 選択コミットの詳細。上＝変更ファイル一覧（フォルダ構造つき）、
+                    <!-- 選択コミットの詳細（複数選択なら、選んだコミットぶん＝最古の親→最新の範囲。
+                         GitHistoryViewModel.SelectedRange）。上＝変更ファイル一覧（フォルダ構造つき）、
                          下＝コミットの情報（サマリ「12 ファイル +34 -5」とコミットコメント）。
                          一覧が主役なので最上段を丸ごと一覧に使い、サマリは見出しとして一覧の
                          上に載せず、下段の情報帯の先頭へ回す。 -->

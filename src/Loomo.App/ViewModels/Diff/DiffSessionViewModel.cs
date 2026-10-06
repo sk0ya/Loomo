@@ -401,7 +401,7 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
                 ShowCommitRange(r.FromHash, r.ToHash, r.Label);
                 return Task.CompletedTask;
             case DiffOpenTarget.CommitFile f:
-                return ShowCommitFileAsync(f.Hash, f.Label, f.Path, f.LineInCommit);
+                return ShowCommitFileAsync(f.Hash, f.Label, f.Path, f.LineInCommit, f.FromHash);
             case DiffOpenTarget.WorkingTreeFile w:
                 return ShowWorkingTreeFileAsync(w.Entry);
             case DiffOpenTarget.CompareBase b:
@@ -478,7 +478,8 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
     /// 通常の「最初の変更へ」の自動ジャンプにフォールバックする。
     /// ペインの表示は呼び出し側（ShellWindow）が行う。
     /// </summary>
-    public async Task ShowCommitFileAsync(string hash, string label, string? filePath, int lineInCommit)
+    public async Task ShowCommitFileAsync(
+        string hash, string label, string? filePath, int lineInCommit, string? fromHash = null)
     {
         // マルチルート：filePath が現在の Git 操作対象と違うワークスペースフォルダーに属していたら、
         // そのフォルダーのリポジトリへ切り替えてからコミットを引く（さもないと hash が別リポジトリの
@@ -486,7 +487,7 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
         if (!string.IsNullOrEmpty(filePath))
             _git.SetActiveRootForPath(filePath);
         _loaded = true;
-        SetCommitRange((null, hash));
+        SetCommitRange((fromHash, hash));
         OnPropertyChanged(nameof(CanOpenCommitInGit));
         GitTargetLabel = label;
         UpdateCanDiscard();

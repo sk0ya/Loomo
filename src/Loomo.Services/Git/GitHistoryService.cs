@@ -75,6 +75,32 @@ public sealed class GitHistoryService
         return result.Success ? result.Output : result.Message;
     }
 
+    /// <summary>空のツリー。親の無い（ルート）コミットを範囲の起点に含めるときの「その前」。</summary>
+    public const string EmptyTreeHash = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
+
+    /// <summary>
+    /// コミット範囲（<paramref name="fromHash"/> は含まない）の変更ファイルを <c>--numstat</c> で。
+    /// 1コミット版（<see cref="GetCommitSummaryAsync"/>）と同じ行の形なので、同じ解析
+    /// （<see cref="CommitSummary.Parse"/>）でフォルダ構造の一覧へ組み直せる。
+    /// </summary>
+    public async Task<string> GetRangeNumstatAsync(string fromHash, string toHash)
+    {
+        // 末尾の "--" は GetRangeChangesAsync と同じ理由（ref と同名のディレクトリで曖昧にならないように）。
+        var result = await _runner
+            .RunAsync("diff", "--numstat", "--find-renames", fromHash, toHash, "--")
+            .ConfigureAwait(false);
+        return result.Success ? result.Output : result.Message;
+    }
+
+    /// <summary><paramref name="fromHash"/> から <paramref name="toHash"/> までに入るコミット数
+    /// （<c>rev-list --count from..to</c>。起点が空のツリーなら to までの全部）。数えられなければ null。</summary>
+    public async Task<int?> CountRangeCommitsAsync(string fromHash, string toHash)
+    {
+        var range = fromHash == EmptyTreeHash ? toHash : $"{fromHash}..{toHash}";
+        var result = await _runner.RunAsync("rev-list", "--count", range, "--").ConfigureAwait(false);
+        return result.Success && int.TryParse(result.Output.Trim(), out var count) ? count : null;
+    }
+
     public async Task<string> GetCommitPatchAsync(string hash)
     {
         var result = await _runner.RunAsync("show", hash).ConfigureAwait(false);

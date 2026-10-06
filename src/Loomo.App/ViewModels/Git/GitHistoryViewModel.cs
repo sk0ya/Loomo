@@ -147,6 +147,9 @@ public sealed partial class GitHistoryViewModel : ObservableObject
     /// <summary>生の詳細が変わったら、コメントとフォルダ構造つきの変更ファイル一覧へ組み直す。</summary>
     partial void OnCommitDetailChanged(string value)
     {
+        // 空にされた（一覧の消去・選択なし）なら、次に同じコミットを選んだときも読み直す。
+        if (value.Length == 0) _detailKey = null;
+
         var summary = CommitSummary.Parse(value);
         CommitMessage = summary.Header;
 
@@ -166,9 +169,61 @@ public sealed partial class GitHistoryViewModel : ObservableObject
 
     partial void OnSelectedLogRowChanged(GitLogRow? value)
     {
-        if (value?.Hash is { } hash) _ = LoadDetailAsync(hash);
+        RefreshDetail();
         if (IsRouteActive && value?.Hash is not null) RebuildRoute(raiseGraphChanged: true);
     }
+
+    // ---- 詳細の対象（1コミット／選択した複数コミット） ----
+
+    /// <summary>一覧で選んでいるコミット（複数選択）。ListView の SelectedItems は束縛できないので
+    /// ビューが <see cref="SetSelectedCommits"/> で渡す。</summary>
+    private IReadOnlyList<GitLogRow> _selectedCommits = Array.Empty<GitLogRow>();
+
+    /// <summary>詳細読み込みの世代。選択を素早く動かしたとき、追い越された古い結果で上書きしないための番号。</summary>
+    private int _detailGeneration;
+
+    /// <summary>いま詳細に出している対象（同じ対象の読み直しを省くための鍵）。</summary>
+    private string? _detailKey;
+
+    /// <summary>
+    /// 2件以上選んでいるときの範囲（最古の親 → 最新）。詳細の変更ファイル一覧も、そこからの
+    /// ファイル単位の差分も<b>この1本</b>から引く——一覧と差分で範囲が食い違わないように。
+    /// 1件以下なら null（＝ <see cref="SelectedLogRow"/> 1コミットの詳細）。
+    /// </summary>
+    public GitCommitSelectionRange? SelectedRange { get; private set; }
+
+    /// <summary>一覧の選択が変わった（ビューから）。2件以上なら選んだコミットぶんの詳細に切り替える。</summary>
+    public void SetSelectedCommits(IReadOnlyList<GitLogRow> rows)
+    {
+        _selectedCommits = rows.Where(r => r.Hash is not null).ToList();
+        RefreshDetail();
+    }
+
+    private void RefreshDetail()
+    {
+        // 単一選択の行（SelectedLogRow）が複数選択の外に出ていたら、複数選択の方が古い。
+        IReadOnlyList<GitLogRow> commits = _selectedCommits.Count > 1
+            && (SelectedLogRow is null || _selectedCommits.Contains(SelectedLogRow))
+            ? OrderNewestFirst(_selectedCommits)
+            : Array.Empty<GitLogRow>();
+        SelectedRange = commits.Count > 1 ? GitCommitSelectionRange.From(commits) : null;
+
+        var key = SelectedRange is { } range
+            ? $"{range.FromHash}..{range.ToHash}|{string.Join(',', commits.Select(c => c.Hash))}"
+            : SelectedLogRow?.Hash;
+        if (key is null || key == _detailKey) return;
+        _detailKey = key;
+        var generation = ++_detailGeneration;
+        _ = SelectedRange is { } r ? LoadRangeDetailAsync(r, commits, generation)
+            : LoadDetailAsync(SelectedLogRow!.Hash!, generation);
+    }
+
+    /// <summary>一覧の並び（新しい順）に揃える。SelectedItems は選んだ順なので当てにならない。
+    /// 一覧に無い行（読み直しで入れ替わった直後など）は渡された順のまま後ろへ。</summary>
+    private List<GitLogRow> OrderNewestFirst(IReadOnlyList<GitLogRow> rows)
+        => rows.Select((row, i) => (row, i, index: LogRows.IndexOf(row)))
+            .OrderBy(x => x.index < 0 ? int.MaxValue : x.index).ThenBy(x => x.i)
+            .Select(x => x.row).ToList();
 
     [RelayCommand]
     private void ClearLogFilters() => ClearFilters(requery: true);
@@ -564,5 +619,65 @@ public sealed partial class GitHistoryViewModel : ObservableObject
             AuthorSelection = AllAuthorsLabel;
     }
 
-    private async Task LoadDetailAsync(string hash) => CommitDetail = await _query.GetCommitSummaryAsync(hash);
+    private async Task LoadDetailAsync(string hash, int generation)
+    {
+        var detail = await _query.GetCommitSummaryAsync(hash);
+        if (generation == _detailGeneration) CommitDetail = detail;
+    }
+
+    /// <summary>
+    /// 選んだ複数コミットの詳細。変更ファイルは範囲の正味の差分（<c>git diff --numstat</c>）で、
+    /// コメント欄には選んだコミットを1行ずつ並べる（細い列に本文まで全部は入らない）。
+    /// 見出し行を numstat の前に置けば、1コミットのときと同じ <see cref="CommitDetail"/> → 解析の
+    /// 1本道に乗る（numstat より前の行は見出しとして扱われる）。
+    /// </summary>
+    private async Task LoadRangeDetailAsync(
+        GitCommitSelectionRange range, IReadOnlyList<GitLogRow> commits, int generation)
+    {
+        var numstatTask = _query.GetRangeNumstatAsync(range.FromHash, range.ToHash);
+        var count = await _query.CountRangeCommitsAsync(range.FromHash, range.ToHash);
+        var numstat = await numstatTask;
+        if (generation != _detailGeneration) return;
+        CommitDetail = GitCommitSelectionRange.DescribeHeader(range, commits, count) + "\n" + numstat;
+    }
+}
+
+/// <summary>
+/// 複数選択したコミットを1本の範囲として見るときの両端。起点は<b>最古のコミットの親</b>
+/// （＝最古のコミット自身の変更も含める。最古そのものを起点にすると、選んだ3件のうち2件ぶんしか出ない）。
+/// 親の無いルートコミットなら空のツリーから。
+/// </summary>
+public sealed record GitCommitSelectionRange(string FromHash, string ToHash, string Label)
+{
+    /// <param name="newestFirst">一覧の並び（新しい順）に揃えた、2件以上のコミット。</param>
+    public static GitCommitSelectionRange From(IReadOnlyList<GitLogRow> newestFirst)
+    {
+        var newest = newestFirst[0];
+        var oldest = newestFirst[^1];
+        var from = oldest.Parents.FirstOrDefault() ?? GitHistoryService.EmptyTreeHash;
+        return new GitCommitSelectionRange(from, newest.Hash!,
+            $"{newestFirst.Count} コミット {oldest.ShortHash}…{newest.ShortHash}");
+    }
+
+    /// <summary>
+    /// 詳細のコメント欄に出す見出し。範囲に入るコミット数（<paramref name="rangeCount"/>）が
+    /// 選んだ数より多ければ、<b>間の未選択コミットの変更も一覧に混ざる</b>ことを書いておく
+    /// （飛び飛びに選んだとき・別の枝のコミットを混ぜたとき）——黙っていると、選んでいない変更を
+    /// 選んだコミットのものと読んでしまう。
+    /// </summary>
+    public static string DescribeHeader(
+        GitCommitSelectionRange range, IReadOnlyList<GitLogRow> newestFirst, int? rangeCount)
+    {
+        var builder = new System.Text.StringBuilder();
+        builder.Append(newestFirst.Count).Append(" コミットを選択");
+        if (rangeCount is { } count && count > newestFirst.Count)
+            builder.Append('\n').Append("※ 変更ファイルは ")
+                .Append(newestFirst[^1].ShortHash).Append(" 〜 ").Append(newestFirst[0].ShortHash)
+                .Append(" の範囲全体（未選択の ").Append(count - newestFirst.Count).Append(" コミットを含む）");
+        builder.Append('\n');
+        foreach (var row in newestFirst)
+            builder.Append('\n').Append(row.ShortHash).Append("  ").Append(row.Subject)
+                .Append("  (").Append(row.Author).Append(')');
+        return builder.ToString();
+    }
 }

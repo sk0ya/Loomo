@@ -54,11 +54,13 @@ public abstract record DiffOpenTarget
     }
 
     /// <summary>1コミットの1ファイル。<paramref name="LineInCommit"/> はコミット時点の新側行番号
-    /// （1始まり。0なら通常の「最初の変更へ」）。</summary>
-    public sealed record CommitFile(string Hash, string Label, string? Path, int LineInCommit)
+    /// （1始まり。0なら通常の「最初の変更へ」）。<paramref name="FromHash"/> を渡すと
+    /// 範囲（FromHash → Hash。Git ペインで複数コミットを選んだとき）の中の1ファイルになる。</summary>
+    public sealed record CommitFile(string Hash, string Label, string? Path, int LineInCommit, string? FromHash = null)
         : DiffOpenTarget
     {
-        public override string TitleFor(string? path) => Trim(WithFile(path, $"@{Short(Hash)}"));
+        public override string TitleFor(string? path) => Trim(WithFile(path, FromHash is null
+            ? $"@{Short(Hash)}" : $"@{Short(FromHash)}→{Short(Hash)}"));
         public override string IconPath => Path ?? "";
     }
 

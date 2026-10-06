@@ -404,7 +404,8 @@ public partial class ShellWindow : Window {
         // （ペインの DIFF は動かさないので、一覧と見比べたまま何枚でも開ける）。行き先は
         // ShowDiffInDetachedWindow と同じ約束＝既に切り離しウィンドウが出ていればそこのタブ。
         vm.GitSession.DiffWindowRequested += (_, request) => ShowDiffInDetachedWindow(
-            new DiffOpenTarget.CommitFile(request.Hash, request.Label, request.FullPath, LineInCommit: 0));
+            new DiffOpenTarget.CommitFile(request.Hash, request.Label, request.FullPath, LineInCommit: 0,
+                FromHash: request.FromHash));
         // 差分本体の行から、その実ファイルの同じ行をエディタで開く（行が特定できないときは 0＝開くだけ）。
         vm.DiffSession.EditorLineOpenRequested += async (_, target) => {
             await OpenPathInEditorAsync(Path.GetFullPath(target.Path), target.Line, column: 0);

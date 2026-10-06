@@ -18,6 +18,12 @@ public sealed class GitSessionQuery
 
     public Task<string> GetCommitSummaryAsync(string hash) => _git.GetCommitSummaryAsync(hash);
 
+    public Task<string> GetRangeNumstatAsync(string fromHash, string toHash) =>
+        _git.GetRangeNumstatAsync(fromHash, toHash);
+
+    public Task<int?> CountRangeCommitsAsync(string fromHash, string toHash) =>
+        _git.CountRangeCommitsAsync(fromHash, toHash);
+
     public async Task<GitSessionOverview> LoadOverviewAsync()
     {
         var status = await _git.GetStatusAsync();

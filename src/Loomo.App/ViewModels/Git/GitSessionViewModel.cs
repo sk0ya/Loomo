@@ -649,8 +649,15 @@ public sealed partial class GitSessionViewModel : ObservableObject
     /// </summary>
     public void RequestChangedFileDiffWindow(string relativePath)
     {
-        if (History.SelectedLogRow is not { Hash: { } hash } row) return;
         if (_query.ToFullPath(relativePath) is not { } fullPath) return;
+        // 複数選択中は、詳細の一覧と同じ範囲（最古の親 → 最新）でそのファイルを見せる。
+        if (History.SelectedRange is { } range)
+        {
+            DiffWindowRequested?.Invoke(this,
+                new CommitFileDiffRequest(range.ToHash, range.Label, fullPath, range.FromHash));
+            return;
+        }
+        if (History.SelectedLogRow is not { Hash: { } hash } row) return;
         DiffWindowRequested?.Invoke(this,
             new CommitFileDiffRequest(hash, $"コミット {row.ShortHash}", fullPath));
     }
@@ -855,4 +862,5 @@ public sealed partial class GitSessionViewModel : ObservableObject
 /// <param name="Hash">対象コミット（親との差分を見る）。</param>
 /// <param name="Label">ウィンドウ・ヘッダーに出す対象の呼び名（「コミット 0c92f1e」）。</param>
 /// <param name="FullPath">対象ファイルの絶対パス。マルチルートで対象リポジトリを決めるのにも使う。</param>
-public readonly record struct CommitFileDiffRequest(string Hash, string Label, string FullPath);
+/// <param name="FromHash">複数コミットを選んでいるときの範囲の起点（含まない）。null なら <paramref name="Hash"/> 1コミット。</param>
+public readonly record struct CommitFileDiffRequest(string Hash, string Label, string FullPath, string? FromHash = null);
