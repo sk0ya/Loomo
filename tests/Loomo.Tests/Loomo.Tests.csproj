@@ -35,6 +35,8 @@
     <ProjectReference Include="..\..\src\Loomo.Ai\Loomo.Ai.csproj" />
     <ProjectReference Include="..\..\src\Loomo.CSharp\Loomo.CSharp.csproj" />
     <ProjectReference Include="..\..\src\Loomo.App\Loomo.App.csproj" />
+    <!-- 端末の常駐ホスト（§34）。サーバーをテストのプロセス内で回し、本体側の窓口と突き合わせる。 -->
+    <ProjectReference Include="..\..\src\Loomo.Pty.Host\Loomo.Pty.Host.csproj" />
     <!-- Editor のローカル開発版をテストからも直接参照する。 -->
     <ProjectReference Include="..\..\..\Editor\src\Editor.Controls.Defaults\Editor.Controls.Defaults.csproj"
                       Condition="'$(UseLocalEditor)' != 'false'" />

@@ -814,6 +814,14 @@
                                     <TextBlock Text="プログラミング合字を有効にする（=&gt; != -&gt; 等）" TextWrapping="Wrap" />
                                 </CheckBox>
 
+                                <CheckBox Margin="0,12,0,0"
+                                          IsChecked="{Binding Appearance.PersistentTerminalSessions}"
+                                          ToolTip="シェルを常駐プロセスに持たせ、Loomo を閉じても落ちても生かしておきます。次に開くと同じ画面（実行中のコマンドや vim も）へ戻ります。タブを閉じたときだけシェルも終わります。">
+                                    <TextBlock Text="Loomo を閉じてもシェルを残す（tmux のように再接続）" TextWrapping="Wrap" />
+                                </CheckBox>
+                                <TextBlock Style="{StaticResource FieldHint}"
+                                           Text="切り替えは次に開くタブから効きます。" />
+
                                 <TextBlock Text="{Binding Appearance.Status}" Foreground="{DynamicResource FgDim}"
                                            Margin="0,14,0,0" TextWrapping="Wrap" FontSize="{DynamicResource Fs11}" />
                             </StackPanel>

@@ -344,8 +344,21 @@ Terminal/Editor come from NuGet packages `sk0ya.Terminal.Controls` and `sk0ya.Ed
 `Process` (`RunViaProcessAsync`) so AI output never mixes into the human's terminal; the visible terminal is
 human-only. cwd is tracked via `cd` detection (`TrackChdir`). `SetWorkingDirectory` still drives
 `TerminalTabView.RunCommandAsync` on the UI thread to make the *visible* terminal follow the opened folder.
-The package versions are pinned in **one place only**: `src/Loomo.Services/Loomo.Services.csproj` (App
-references transitively) — check there for the exact versions in use.
+The package versions are pinned in **one place only**: the root `Directory.Build.props`
+(`EditorPackageVersion`, `TerminalPackageVersion` — the Terminal one is shared with the pty host below); the
+per-version change notes live next to the `PackageReference` in `src/Loomo.Services/Loomo.Services.csproj`.
+
+**Visible-terminal shells outlive Loomo (tmux-style, `docs/設計/34-端末の常駐セッション.md` = §34).** With
+`LoomoSettings.PersistentTerminalSessions` on (default), a workspace's terminal tab does not own its ConPTY:
+`TerminalTabView.SessionFactory` hands the start to `PtyHostClient`, which talks over a named pipe to the
+resident **`sk0ya.Loomo.Pty.Host`** process (ConPTY + Terminal's `HeadlessTerminal` screen model per session).
+The **tab id is the session key**; tab id/name/cwd/split layout go into `WorkspaceSnapshot.TerminalTabs`, and on
+restore the same ids re-attach — the host replays the screen as a VT snapshot (bracketed by a private replay
+OSC so OSC 133 marks inside it are treated as history, not new activity). Rules that matter when editing:
+`RemotePtySession.Dispose` **kills** (tab closed / restarted); Loomo exiting or crashing never disposes, so the
+pipe just drops and the shell survives. The host is copied to `%LOCALAPPDATA%\Loomo\ptyhost\<content-hash>\`
+before launch (never run from `bin` — a resident process would lock the build). Both pipe ends **must** be
+`PipeOptions.Asynchronous`: a synchronous handle serializes read and write and deadlocks both sides.
 
 Terminal auto-injects OSC 133 shell integration into interactive pwsh, and exposes the
 `TerminalTabView.ShellCommandActivity` public event (command phase + exit code, for human-typed commands

@@ -364,6 +364,15 @@ public sealed class WorkspaceSnapshot
     public EditorSnapshot Editor { get; set; } = new();
     public List<EditorTabSnapshot> EditorTabs { get; set; } = new();
     public List<BrowserTabSnapshot> BrowserTabs { get; set; } = new();
+
+    /// <summary>ターミナルタブ（§34）。シェル自体は常駐ホストが生かしているので、ここに残すのは
+    /// 「どのタブがあったか」——再接続の鍵になるタブ ID と、人が付けた名前、ホストに居なかったとき
+    /// （OS の再起動など）に新しいシェルを立てる cwd だけ。画面はホストが持っている。</summary>
+    public List<TerminalTabSnapshot> TerminalTabs { get; set; } = new();
+    public Guid? ActiveTerminalTabId { get; set; }
+
+    /// <summary>Terminal ペイン内部の分割木。<see cref="TerminalTabs"/> の ID を指す。</summary>
+    public ViewportNodeSnapshot? TerminalViewLayout { get; set; }
     /// <summary>このワークスペースで開いている切り離しウィンドウ。</summary>
     public List<DetachedWindowSnapshot> DetachedWindows { get; set; } = new();
 
@@ -400,9 +409,7 @@ public sealed class WorkspaceSnapshot
     public PaneNodeSnapshot? PaneLayout { get; set; }
 
     /// <summary>Editor ペイン内部の分割木。各リーフは表示中タブとフォーカス位置を持つ。
-    /// <para>ターミナルの分割木はここに無い——端末タブは<b>セッション限りの実体</b>で、
-    /// 保存しても復元できるのは「この cwd のシェルが N 本」だけ（履歴も画面も戻らない）。
-    /// ワークスペース切替をまたぐ保持は生きたタブ集合（<c>TerminalWorkspaceTabs</c>）が受け持つ。</para></summary>
+    /// ターミナルの分割木は <see cref="TerminalViewLayout"/>。</summary>
     public ViewportNodeSnapshot? EditorViewLayout { get; set; }
 
     /// <summary>レイアウトモードで最後に操作していたメインペイン。ソロでは <see cref="Stage"/> が正本。</summary>
@@ -855,6 +862,14 @@ public sealed class EditorTabSnapshot
 
     /// <summary>縦スクロール位置（0..1）。レイアウト前は取れないため null あり・復元はベストエフォート。</summary>
     public double? ScrollRatio { get; set; }
+}
+
+/// <summary>ターミナルタブ1枚（§34）。<see cref="Id"/> がそのまま常駐ホストのセッション ID。</summary>
+public sealed class TerminalTabSnapshot
+{
+    public Guid Id { get; set; }
+    public string? CustomName { get; set; }
+    public string? WorkingDirectory { get; set; }
 }
 
 public sealed class BrowserTabSnapshot

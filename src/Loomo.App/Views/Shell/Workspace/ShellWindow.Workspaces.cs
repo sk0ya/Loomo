@@ -92,6 +92,8 @@ public partial class ShellWindow {
             ex => ToastService.Error($"ワークスペースの切替に失敗しました: {ex.Message}"));
     }
     private async void OnWorkspaceRemoved(object? sender, Guid workspaceId) {
+        // 一度も開かなかった（＝ここにタブ実体の無い）ワークスペースのシェルも常駐ホストに居る（§34）。
+        _ = _ptyHost.KillWorkspaceAsync(workspaceId);
         await WorkspaceSessionCoordinator.DisposeWorkspaceTabsAsync(
             workspaceId, _terminalWorkspaces, _editorWorkspaces, _browserWorkspaces);
     }
@@ -219,6 +221,7 @@ public partial class ShellWindow {
         WorkspaceSessionCoordinator.CaptureEditorTabs(snapshot, _editorTabs, _activeEditorTab?.Id);
         snapshot.BrowserTabs = WorkspaceSessionCoordinator.CaptureBrowserTabs(
             _browserTabs, _activeBrowserTab?.Id);
+        CaptureTerminalTabs(snapshot);
         snapshot.DetachedWindows = _detached?.Capture(CaptureDetachedItem) ?? new();
         snapshot.PinnedFolders = _vm.FolderTree.PinnedFolders.ToList();
         snapshot.TreeRootPath = _vm.FolderTree.TreeRootOverride;

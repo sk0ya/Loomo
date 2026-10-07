@@ -46,6 +46,11 @@ public sealed class LoomoSettings
     /// バーの右クリック・ブックマーク一覧の切替ボタン・Ctrl+Shift+B からここへ書き戻され、次回起動でも保たれる。</summary>
     public bool BrowserBookmarkBarVisible { get; set; } = true;
 
+    /// <summary>ターミナルのシェルを常駐ホストに持たせ、Loomo を閉じても・落ちても生かしておくか（tmux 相当、§34）。
+    /// 既定は ON。次に開いたときは同じ画面（スクロールバック・実行中のコマンド・vim など）へ繋ぎ直す。
+    /// OFF にすると従来どおり Loomo の中で ConPTY を持ち、閉じればシェルも終わる（切替は新しいタブから効く）。</summary>
+    public bool PersistentTerminalSessions { get; set; } = true;
+
     /// <summary>Git ペインの下段「コミット詳細」（選択コミットの <c>git show --stat</c>）を表示するか。
     /// 既定は表示。Git ペインのタイトル領域のトグルからここへ書き戻され、次回起動でも保たれる。</summary>
     public bool GitCommitDetailVisible { get; set; } = true;

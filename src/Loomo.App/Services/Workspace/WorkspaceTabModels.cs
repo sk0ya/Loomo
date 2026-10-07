@@ -34,8 +34,8 @@ internal sealed class TerminalTab(Guid id, TerminalTabView view)
     public Guid Id { get; } = id;
     public TerminalTabView View { get; } = view;
 
-    /// <summary>人が付けた名前（未設定は null）。端末タブは永続化しないので、ワークスペース切替で
-    /// TABS の行が作り直されても名前が残るよう、生きたタブの側に持つ。変わる値を持つので record にはしない
+    /// <summary>人が付けた名前（未設定は null）。ワークスペース切替で TABS の行が作り直されても名前が
+    /// 残るよう、生きたタブの側に持つ（スナップショットへも書く、§34）。変わる値を持つので record にはしない
     /// （値の等価・ハッシュに名前が混ざらないように）。</summary>
     public string? CustomName { get; set; }
 }
@@ -120,11 +120,13 @@ internal sealed record BrowserTab(Guid Id, WebView2CompositionControl InitialVie
         public bool IsLoading { get; set; }
     }
 
-/// <summary>ワークスペースごとの端末タブ。端末は<b>保存しても戻らない</b>（新しいシェルが立つだけ）ので
-/// 永続化せず、生きた <see cref="TerminalTabView"/> をここで抱えたままワークスペース切替をまたぐ。
-/// ペイン内分割もここに置く——スナップショットへ書くと、復元時に実在しないタブ ID を指す木になる。</summary>
+/// <summary>ワークスペースごとの端末タブ。生きた <see cref="TerminalTabView"/> をここで抱えたまま
+/// ワークスペース切替をまたぐ。プロセスをまたぐ保持は常駐ホスト（§34）の受け持ちで、スナップショットには
+/// タブの ID・名前・cwd・分割木だけを書く。</summary>
 internal sealed class TerminalWorkspaceTabs
     {
+        /// <summary>持ち主のワークスペース。null はワークスペースを開く前の仮の集合（常駐させない）。</summary>
+        public Guid? WorkspaceId { get; init; }
         public List<TerminalTab> Tabs { get; } = new();
         public Guid? ActiveTabId { get; set; }
         public int NextTabNumber { get; set; } = 1;

@@ -33,6 +33,7 @@ internal static class LoomoServiceCollectionExtensions
         AddAliasedSingleton<WorkspaceService, IWorkspaceService>(services);
         AddAliasedSingleton<WorkspaceSearchService, IWorkspaceSearchService>(services);
         AddAliasedSingleton<TerminalService, ITerminalService>(services);
+        services.AddSingleton<sk0ya.Loomo.Services.Terminal.PtyHostClient>();
         AddAliasedSingleton<EditorService, IEditorService>(services);
         AddAliasedSingleton<BrowserService, IBrowserService>(services);
         AddAliasedSingleton<UiApprovalService, IApprovalService>(services);

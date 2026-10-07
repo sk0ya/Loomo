@@ -4,7 +4,7 @@ public partial class ShellWindow {
     private void RestoreTerminalTabs(
         WorkspaceSnapshot workspace, WorkspaceSwitchProfiler? profile = null) {
         var terminalWorkspace = WorkspaceSessionCoordinator.GetOrCreateWorkspace(
-            _terminalWorkspaces, workspace.Id, static () => new TerminalWorkspaceTabs());
+            _terminalWorkspaces, workspace.Id, () => new TerminalWorkspaceTabs { WorkspaceId = workspace.Id });
         _activeTerminalWorkspace = terminalWorkspace;
         _terminalTabs = terminalWorkspace.Tabs;
         if (terminalWorkspace.IsInitialized && _terminalTabs.Count > 0) {
@@ -15,11 +15,15 @@ public partial class ShellWindow {
             _terminalViews?.Restore(terminalWorkspace.ViewLayout, _terminalTabs.Select(t => t.Id));
             return;
         }
-        // 端末は永続化しない。復元できるのは殻（cwd だけの新しいシェル）で、前回の画面も実行中の
-        // コマンドも戻らないから——初回はワークスペースのルートに素のタブを1枚だけ立てる。
         terminalWorkspace.IsInitialized = true;
         var cwd = WorkspaceSessionCoordinator.ResolveWorkingDirectory(
             workspace.RootPath, _terminal.CurrentDirectory) ?? _terminal.CurrentDirectory;
+        // 常駐させているなら、前回のタブを同じ ID で立て直す——ID が常駐ホストのセッションの鍵なので、
+        // 表示された時点で生きているシェルへ繋ぎ直る（§34）。
+        if (RestorePersistentTerminalTabs(workspace, terminalWorkspace, cwd))
+            return;
+        // 常駐させないなら端末は戻らない（前回の画面も実行中のコマンドも戻らない）ので、
+        // 初回はワークスペースのルートに素のタブを1枚だけ立てる。
         var tab = CreateTerminalTab(cwd);
         _terminalTabs.Add(tab);
         _vm.Tabs.AddTerminalTab(tab.Id, tab.View.HeaderTitle, false);

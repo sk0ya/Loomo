@@ -74,6 +74,7 @@ public partial class ShellWindow {
         var tab = _terminalTabs[index];
         ViewportTree.Detach(tab.View);
         await tab.View.CloseAsync();
+        KillPersistentTerminal(id);
         _terminalTabs.RemoveAt(index);
         _vm.Tabs.RemoveTerminalTab(id);
         _terminalViews?.RemoveTab(id);

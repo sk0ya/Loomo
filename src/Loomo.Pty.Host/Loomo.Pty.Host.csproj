@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    端末の常駐ホスト（設計 §34）。ConPTY とシェルを Loomo 本体の外で持ち、本体が閉じても・落ちても
+    シェルを生かしておく（tmux のサーバー役）。再接続した本体には、ホストが自分で回している画面モデル
+    （Terminal の HeadlessTerminal）から今の画面を VT 列に組み直して渡す。
+
+    本体の bin から直接は起こさない——常駐するので DLL を掴み続け、以後のビルドが全部落ちる。
+    起動側（PtyHostLauncher）が %LOCALAPPDATA%\Loomo\ptyhost\<ハッシュ>\ へ写してから起こす。
+    そのため依存は最小にする：Terminal.Controls（ConPtySession と画面モデル）と、やり取りの約束（PtyProtocol）だけ。
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\Loomo.Core\Loomo.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 版は Directory.Build.props の TerminalPackageVersion 一か所で決める（本体と同じ版を同梱するため）。 -->
+    <PackageReference Include="sk0ya.Terminal.Controls" Version="$(TerminalPackageVersion)" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <!-- コンソール窓を出さない（Loomo が閉じたあとも残るので、窓があると取り残される）。 -->
+    <OutputType>WinExe</OutputType>
+    <RootNamespace>sk0ya.Loomo.Pty.Host</RootNamespace>
+    <AssemblyName>sk0ya.Loomo.Pty.Host</AssemblyName>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <!-- 画面モデル（AnsiTerminalBuffer）が WPF の値型を使うので WindowsDesktop を参照する。窓は作らない。 -->
+    <UseWPF>true</UseWPF>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="sk0ya.Loomo.Tests" />
+  </ItemGroup>
+
+</Project>

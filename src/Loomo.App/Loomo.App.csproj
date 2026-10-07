@@ -31,6 +31,22 @@
           Condition="Exists('%(CompletionHostApphost.FullPath)')" />
   </Target>
 
+  <!-- 端末の常駐ホスト（§34）。参照は「一緒にビルドさせる」ためで、本体はそのアセンブリを使わない
+       （やり取りは名前付きパイプだけ）。出力フォルダーごと $(OutDir)ptyhost\ へ置き、起動側
+       （PtyHostLauncher）がそこから %LOCALAPPDATA% へ写して起こす——bin を掴ませないため。 -->
+  <ItemGroup>
+    <ProjectReference Include="../Loomo.Pty.Host/Loomo.Pty.Host.csproj"
+                      ReferenceOutputAssembly="false" Private="false" />
+  </ItemGroup>
+
+  <Target Name="CopyPtyHost" AfterTargets="Build">
+    <ItemGroup>
+      <PtyHostFiles Include="$(MSBuildThisFileDirectory)../Loomo.Pty.Host/bin/$(Configuration)/*.dll;$(MSBuildThisFileDirectory)../Loomo.Pty.Host/bin/$(Configuration)/*.exe;$(MSBuildThisFileDirectory)../Loomo.Pty.Host/bin/$(Configuration)/*.json" />
+    </ItemGroup>
+    <Copy SourceFiles="@(PtyHostFiles)" DestinationFolder="$(OutDir)ptyhost" SkipUnchangedFiles="true"
+          Condition="Exists('%(PtyHostFiles.FullPath)')" />
+  </Target>
+
   <!-- .NET Framework 用デバッグアダプタ（net48、64bit と 32bit の2本）。参照は「一緒にビルドさせる」ためで、
        本体はそのアセンブリを使わない（やり取りは DAP の標準入出力だけ）。TFM が違うので参照の互換判定は飛ばし、
        出力フォルダーごと $(OutDir)netfxdbg\ へ置く（DebugAdapterCatalog.NetFxExecutable が探す場所）。
