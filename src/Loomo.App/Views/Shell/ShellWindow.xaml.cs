@@ -123,7 +123,12 @@ public partial class ShellWindow : Window {
             RestoreFocusReturnOrigin);
         _terminal = terminal;
         _editor = editor;
-        _editor.BeforeSaveAsync = PrepareEditorSaveAsync;
+        // 保存前処理が入れる変更（整形・C# の整理）は人の編集ではないので、軌跡の「編集」に数えない。
+        _editor.BeforeSaveAsync = async (control, targetPath) => {
+            _trailEditCommit.BeginSavePreparation(control);
+            try { await PrepareEditorSaveAsync(control, targetPath); }
+            finally { _trailEditCommit.EndSavePreparation(control); }
+        };
         _browser = browser;
         // フロントデバッグ（TS IDE）が dev URL をペインへ出すためのフック：可視化＋フォーカス＋実体化して遷移。
         _browser.ShowAndNavigateRequested = url => ShowBrowserPaneAndNavigateAsync(url);
