@@ -29,7 +29,16 @@ namespace sk0ya.Loomo.App.Services;
 
 /// <summary>ワークスペース内のタブ実体モデル（端末／エディタ／ブラウザの各タブと、
 /// ワークスペース単位のタブ集合）。エディタタブは起動を速くするため遅延実体化する。</summary>
-internal sealed record TerminalTab(Guid Id, TerminalTabView View);
+internal sealed class TerminalTab(Guid id, TerminalTabView view)
+{
+    public Guid Id { get; } = id;
+    public TerminalTabView View { get; } = view;
+
+    /// <summary>人が付けた名前（未設定は null）。端末タブは永続化しないので、ワークスペース切替で
+    /// TABS の行が作り直されても名前が残るよう、生きたタブの側に持つ。変わる値を持つので record にはしない
+    /// （値の等価・ハッシュに名前が混ざらないように）。</summary>
+    public string? CustomName { get; set; }
+}
     /// <summary><see cref="VirtualTitle"/> は仮想ドキュメント（設定の長文項目など）を開いたタブの表示名。
     /// 仮想ドキュメントは FilePath を持たないため、タブ名はこの値から決める（通常ファイルは null）。</summary>
     /// <summary>エディタタブ。起動を速くするため <see cref="Control"/>（VimEditorControl の生成＋ファイル

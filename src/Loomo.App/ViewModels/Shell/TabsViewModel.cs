@@ -83,6 +83,13 @@ public sealed partial class TabEntryViewModel : ObservableObject
     /// 「パスをコピー」「エクスプローラーで表示」の表示可否・対象に使う。</summary>
     [ObservableProperty] private string? _filePath;
 
+    /// <summary>人が付けた名前（Terminal タブのみ。未設定は null）。見出しは「名前 · シェルのタイトル」になり、
+    /// シェルが付けるタイトル（実行中のコマンド等）は名前を付けても見え続ける。</summary>
+    [ObservableProperty] private string? _customName;
+
+    /// <summary>名前を付けられる種別か（右クリックの「名前を付ける…」の表示可否）。</summary>
+    public bool CanRename => Kind == TabEntryKind.Terminal;
+
     /// <summary>TABS の種別表示設定を GroupStyle の中身へ反映する。</summary>
     [ObservableProperty] private bool _isGroupShown = true;
 
@@ -227,6 +234,8 @@ public sealed partial class TabsViewModel : ObservableObject
     public event EventHandler<TabEntryViewModel>? TabCloseAllRequested;
     /// <summary>「別ウィンドウで開く」：このタブをフローティングウィンドウへ切り離す（複製／スピンオフ）。</summary>
     public event EventHandler<TabEntryViewModel>? TabDetachRequested;
+    /// <summary>「名前を付ける…」：タブに人が付けた名前を設定・解除する（Terminal のみ）。</summary>
+    public event EventHandler<TabEntryViewModel>? TabRenameRequested;
     /// <summary>「新しいタブ」：指定の種別で空のタブを1つ開く（見出しの＋・行の右クリック）。</summary>
     public event EventHandler<TabEntryKind>? TabNewRequested;
 
@@ -533,9 +542,13 @@ public sealed partial class TabsViewModel : ObservableObject
         _browserKind.Icon = _icons.GetBrowserDefaultIcon();
     }
 
-    public void AddTerminalTab(Guid id, string? title, bool isActive)
+    public void AddTerminalTab(Guid id, string? title, bool isActive, string? customName = null)
     {
-        var tab = new TabEntryViewModel(id, TabEntryKind.Terminal, TerminalTitle(title), isActive);
+        var name = NormalizeCustomName(customName);
+        var tab = new TabEntryViewModel(id, TabEntryKind.Terminal, TerminalTitle(name, title), isActive)
+        {
+            CustomName = name,
+        };
         tab.IsGroupShown = ShowTerminalTabs;
         WatchGroupState(tab);
         tab.SetFileIcon(TerminalIconIndex);
@@ -547,8 +560,22 @@ public sealed partial class TabsViewModel : ObservableObject
         var tab = TerminalTabs.FirstOrDefault(t => t.Id == id);
         if (tab is null) return;
 
-        tab.Title = TerminalTitle(title);
+        tab.Title = TerminalTitle(tab.CustomName, title);
         tab.SetFileIcon(TerminalIconIndex);
+    }
+
+    /// <summary>Terminal タブに名前を付ける（空なら外す）。<paramref name="shellTitle"/> はシェルが付けている
+    /// いまのタイトル——見出しは名前とそれを並べて組み直す。戻り値は正規化した名前（前後の空白を落とし、
+    /// 空は null）で、呼び出し側はこれをそのまま持つ——正規化をここ1か所にしておくため。</summary>
+    public string? RenameTerminalTab(Guid id, string? customName, string? shellTitle)
+    {
+        var name = NormalizeCustomName(customName);
+        var tab = TerminalTabs.FirstOrDefault(t => t.Id == id);
+        if (tab is null) return name;
+
+        tab.CustomName = name;
+        tab.Title = TerminalTitle(name, shellTitle);
+        return name;
     }
 
     public void ActivateTerminalTab(Guid id)
@@ -741,8 +768,19 @@ public sealed partial class TabsViewModel : ObservableObject
     private static string BrowserTitle(string? title)
         => title?.Trim() ?? string.Empty;
 
-    private static string TerminalTitle(string? title)
+    private static string TerminalTitle(string? customName, string? title)
+    {
+        var shellTitle = TerminalShellTitle(title);
+        return customName is null ? shellTitle : $"{customName} · {shellTitle}";
+    }
+
+    /// <summary>人が付けた名前を含まない、シェル側の見出し。軌跡のラベルはこちらを使う——名前を付け外しする
+    /// たびに同じタブが別のラベルで記録されないように。</summary>
+    internal static string TerminalShellTitle(string? title)
         => string.IsNullOrWhiteSpace(title) ? "Terminal" : title.Trim();
+
+    private static string? NormalizeCustomName(string? name)
+        => string.IsNullOrWhiteSpace(name) ? null : name.Trim();
 
     [RelayCommand]
     private void ActivateTab(TabEntryViewModel? tab)
@@ -777,6 +815,13 @@ public sealed partial class TabsViewModel : ObservableObject
     {
         if (tab is not null)
             TabDetachRequested?.Invoke(this, tab);
+    }
+
+    [RelayCommand]
+    private void RenameTab(TabEntryViewModel? tab)
+    {
+        if (tab is { CanRename: true })
+            TabRenameRequested?.Invoke(this, tab);
     }
 
     [RelayCommand]

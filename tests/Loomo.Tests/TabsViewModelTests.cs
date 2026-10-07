@@ -320,4 +320,35 @@ public sealed class TabsViewModelTests
         Assert.Equal("Example Domain", sut.ActiveBrowserTab?.Title);
         Assert.Equal(@"C:\work", sut.ActiveTerminalTab?.Title);
     }
+
+    [Fact]
+    public void ターミナルタブの名前はシェルのタイトルの前に並び_タイトルが変わっても残る()
+    {
+        var sut = Sut();
+        var shell = Guid.NewGuid();
+        sut.AddTerminalTab(shell, "pwsh", isActive: true);
+
+        Assert.Equal("ビルド", sut.RenameTerminalTab(shell, "  ビルド  ", "pwsh"));
+        Assert.Equal("ビルド · pwsh", sut.TerminalTabs[0].Title);
+
+        sut.UpdateTerminalTab(shell, "dotnet");
+        Assert.Equal("ビルド · dotnet", sut.TerminalTabs[0].Title);
+
+        Assert.Null(sut.RenameTerminalTab(shell, "   ", "dotnet"));
+        Assert.Null(sut.TerminalTabs[0].CustomName);
+        Assert.Equal("dotnet", sut.TerminalTabs[0].Title);
+    }
+
+    [Fact]
+    public void 行を作り直しても名前を引き継ぐ_名前を付けられるのはターミナルだけ()
+    {
+        var sut = Sut();
+        var shell = Guid.NewGuid();
+        sut.AddTerminalTab(shell, "pwsh", isActive: false, customName: "サーバー");
+        sut.AddEditorTab(Guid.NewGuid(), @"C:\work\a.cs", isModified: false, isActive: false);
+
+        Assert.Equal("サーバー · pwsh", sut.TerminalTabs[0].Title);
+        Assert.True(sut.TerminalTabs[0].CanRename);
+        Assert.False(sut.EditorTabs[0].CanRename);
+    }
 }

@@ -154,6 +154,11 @@
                         <MenuItem Header="別ウィンドウで開く"
                                   Command="{Binding PlacementTarget.Tag.DetachTabCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                   CommandParameter="{Binding}" />
+                        <!-- ターミナルだけ：人が付けた名前は「名前 · シェルのタイトル」として見出しに出る -->
+                        <MenuItem Header="名前を付ける…"
+                                  Visibility="{Binding CanRename, Converter={StaticResource BoolToVis}}"
+                                  Command="{Binding PlacementTarget.Tag.RenameTabCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                  CommandParameter="{Binding}" />
                         <Separator Visibility="{Binding FilePath, Converter={StaticResource NonEmptyToVis}}" />
                         <MenuItem Header="パスをコピー"
                                   Visibility="{Binding FilePath, Converter={StaticResource NonEmptyToVis}}"

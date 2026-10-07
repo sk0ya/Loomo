@@ -17,6 +17,22 @@ public partial class ShellWindow {
         ActivateTerminalTab(tab.Id);
         SaveActiveWorkspaceSnapshot();
     }
+    private void OnSidebarTabRenameRequested(object? sender, TabEntryViewModel entry)
+        => RenameTerminalTab(entry.Id);
+    /// <summary>ターミナルタブに名前を付ける（TABS／ペインヘッダーの右クリック）。名前はシェルのタイトルを
+    /// 置き換えず前に並ぶ——実行中のコマンドなど、シェルが見出しで伝えていることは名前を付けても見え続ける。
+    /// 空で OK すると名前を外す。</summary>
+    private void RenameTerminalTab(Guid id) {
+        var tab = _terminalTabs.FirstOrDefault(t => t.Id == id);
+        if (tab is null)
+            return;
+        var name = InputDialog.Prompt(this, "ターミナルタブの名前",
+            "このタブの名前を入力してください（空にすると名前を外します）",
+            tab.CustomName ?? "", allowEmpty: true);
+        if (name is null)
+            return;
+        tab.CustomName = _vm.Tabs.RenameTerminalTab(tab.Id, name, tab.View.HeaderTitle);
+    }
     private TerminalWorkspaceTabs CurrentTerminalWorkspace
         => _activeTerminalWorkspace ?? _scratchTerminalWorkspace;
     private EditorWorkspaceTabs CurrentEditorWorkspace

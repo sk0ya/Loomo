@@ -119,8 +119,7 @@ public partial class ShellWindow {
     }
     private void RecordTrailTerminalTab(TerminalTab tab) {
         var label = TrailLogic.TerminalLabel(
-            _vm.Tabs.TerminalTabs.FirstOrDefault(t => t.Id == tab.Id)?.Title,
-            tab.View.HeaderTitle);
+            TabsViewModel.TerminalShellTitle(tab.View.HeaderTitle), null);
         RecordTrail((mode, stagePane, layout) =>
             _vm.Trail.RecordTerminal(tab.Id, label, mode, stagePane, layout));
     }
@@ -133,8 +132,7 @@ public partial class ShellWindow {
         var line = editor is { IsRealized: true } ? editor.Control.Caret.Line : -1;
         var column = editor is { IsRealized: true } ? editor.Control.Caret.Column : -1;
         var terminalLabel = terminal is null ? null : TrailLogic.TerminalLabel(
-            _vm.Tabs.TerminalTabs.FirstOrDefault(t => t.Id == terminal.Id)?.Title,
-            terminal.View.HeaderTitle);
+            TabsViewModel.TerminalShellTitle(terminal.View.HeaderTitle), null);
         var target = TrailLogic.CreatePaneRecordTarget(
             kind, editor?.PeekFilePath, editor?.PeekIsVirtual ?? true, line, column,
             terminal?.Id, terminalLabel, preview?.PeekFilePath, preview?.PeekIsVirtual ?? true,

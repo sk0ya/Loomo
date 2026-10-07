@@ -30,6 +30,12 @@ public partial class ShellWindow {
         AddPaneHeaderCloseItem(menu, "閉じる", tab, WorkspaceTabCloseScope.Selected, enabled: true);
         AddPaneHeaderCloseItem(menu, "他のタブを閉じる", tab, WorkspaceTabCloseScope.Others, enabled: count > 1);
         AddPaneHeaderCloseItem(menu, "すべて閉じる", tab, WorkspaceTabCloseScope.All, enabled: true);
+        if (tab.CanRename) {
+            menu.Items.Add(new Separator());
+            var rename = new MenuItem { Header = "名前を付ける…" };
+            rename.Click += (_, _) => RenameTerminalTab(tab.Id);
+            menu.Items.Add(rename);
+        }
         menu.IsOpen = true;
     }
 
