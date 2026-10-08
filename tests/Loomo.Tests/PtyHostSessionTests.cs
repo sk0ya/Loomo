@@ -120,6 +120,36 @@ public sealed class PtyHostSessionTests : IDisposable
     }
 
     [Fact]
+    public void TheFirstConnectionKeepsTheShellAndALaterOneIsTurnedAway()
+    {
+        var id = Guid.NewGuid();
+        var workspace = Guid.NewGuid();
+        var first = _client.OpenSession(id, workspace, Request());
+        var firstOutput = new Collector(first);
+        first.Start();
+        firstOutput.WaitFor(t => t.Contains(">>"), "プロンプト");
+
+        // 先勝ち：後から来た方には渡さず、先の接続はそのまま流れ続ける。
+        Assert.Throws<PtySessionInUseException>(() => _client.OpenSession(id, workspace, Request()));
+        first.Write("echo still-mine\r");
+        firstOutput.WaitFor(t => Count(t, "still-mine") >= 2, "先の接続の echo");
+        Assert.Null(firstOutput.ExitCode);
+
+        // 先の Loomo が落ちれば席は空き、次は繋がる。
+        first.Abandon();
+        var watch = Stopwatch.StartNew();
+        RemotePtySession? second = null;
+        while (second is null)
+        {
+            try { second = _client.OpenSession(id, workspace, Request()); }
+            catch (PtySessionInUseException) when (watch.Elapsed < Wait) { Thread.Sleep(20); }
+        }
+
+        Assert.False(second.Created);
+        second.Dispose();
+    }
+
+    [Fact]
     public async Task ExitingTheShellEndsTheSessionAndReportsTheCode()
     {
         var id = Guid.NewGuid();

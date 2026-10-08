@@ -41,8 +41,6 @@ public static class PtyProtocol
         Output = 10,
         /// <summary>ホスト→本体：シェルが終わった（int32 LE の終了コード）。</summary>
         Exited = 11,
-        /// <summary>ホスト→本体：別の接続が同じセッションを取った。この接続はもう流れない。</summary>
-        TakenOver = 12,
         /// <summary>本体→ホスト：入力（生バイト）。</summary>
         Input = 20,
         /// <summary>本体→ホスト：大きさ（int16 LE 桁, int16 LE 行）。</summary>
@@ -82,7 +80,8 @@ public static class PtyProtocol
 
     /// <param name="Created">新しく作ったなら true、生きていたものに繋いだなら false。</param>
     /// <param name="Sessions">一覧の要求への答え。</param>
-    public sealed record Response(bool Created = false, List<SessionInfo>? Sessions = null);
+    /// <param name="InUse">開こうとしたシェルには別の接続が繋がっている（先勝ち。後から来た方には渡さない）。</param>
+    public sealed record Response(bool Created = false, List<SessionInfo>? Sessions = null, bool InUse = false);
 
     public sealed record SessionInfo(
         Guid SessionId,

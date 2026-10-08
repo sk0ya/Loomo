@@ -83,6 +83,14 @@ internal sealed class PtyHostServer(string pipeName, TimeSpan? idleExit)
                         return;
                     }
 
+                    if (!session.TryClaim(client))
+                    {
+                        // 先勝ち。後から来た方には渡さない（finally で Detach されても持ち主ではないので何も起きない）。
+                        client.Send(PtyProtocol.FrameType.Response, Json(new PtyProtocol.Response(InUse: true)));
+                        session = null;
+                        return;
+                    }
+
                     client.Send(PtyProtocol.FrameType.Response, Json(new PtyProtocol.Response(Created: created)));
                     session.Attach(client, request.Columns, request.Rows);
                     ReadInput(pipe, session);

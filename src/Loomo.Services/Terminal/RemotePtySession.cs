@@ -119,10 +119,6 @@ public sealed class RemotePtySession : ITerminalSession
                     case PtyProtocol.FrameType.Exited:
                         RaiseExited(PtyProtocol.DecodeExitCode(frame.Payload));
                         return;
-                    case PtyProtocol.FrameType.TakenOver:
-                        // 別の Loomo が同じシェルを取った。こちらから見ればもう流れない。
-                        RaiseExited(-1);
-                        return;
                 }
             }
         }

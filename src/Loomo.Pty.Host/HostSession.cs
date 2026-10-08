@@ -22,6 +22,7 @@ internal sealed class HostSession
     private readonly BlockingCollection<Action> _work = new();
     private readonly Action<HostSession> _ended;
     private ClientConnection? _client;
+    private ClientConnection? _owner;
     private int _exitCode = -1;
     private int _finished;
 
@@ -48,7 +49,7 @@ internal sealed class HostSession
     public DateTime CreatedUtc { get; }
     public volatile string? Title;
     public volatile string? WorkingDirectory;
-    public volatile bool Attached;
+    public bool Attached => Volatile.Read(ref _owner) is not null;
     public bool HasFinished => Volatile.Read(ref _finished) != 0;
 
     public static HostSession Start(PtyProtocol.Request request, Action<HostSession> ended)
@@ -62,33 +63,38 @@ internal sealed class HostSession
         new(Id, WorkspaceId, Title, WorkingDirectory, CreatedUtc, Attached);
 
     /// <summary>
-    /// 本体を繋ぐ。今の大きさに合わせてから画面を VT 列に組み直して最初の出力として渡し、
-    /// 以後の出力をその後ろへ流す。前に繋がっていた接続には「取られた」と告げて閉じる。
+    /// このシェルを <paramref name="client"/> の持ち物にする。先勝ち：もう誰かが繋がっていれば false で、
+    /// 後から来た方には渡さない（奪うと先の Loomo の画面が黙って止まる）。持ち主の接続が切れれば
+    /// <see cref="Detach"/> で空くので、落ちた Loomo の再起動は普通に繋がる。
+    /// </summary>
+    public bool TryClaim(ClientConnection client) =>
+        Interlocked.CompareExchange(ref _owner, client, null) is null;
+
+    /// <summary>
+    /// 持ち主（<see cref="TryClaim"/> 済み）を繋ぐ。今の大きさに合わせてから画面を VT 列に組み直して
+    /// 最初の出力として渡し、以後の出力をその後ろへ流す。
     /// </summary>
     public void Attach(ClientConnection client, short columns, short rows) => Post(() =>
     {
-        if (_client is { } previous && !ReferenceEquals(previous, client))
-        {
-            previous.Send(PtyProtocol.FrameType.TakenOver, []);
-            previous.Close();
-        }
-
+        if (!ReferenceEquals(Volatile.Read(ref _owner), client))
+            return;
         _client = client;
-        Attached = true;
         ResizeOnThread(columns, rows);
         client.SendOutput(_screen.CreateVtSnapshot());
         if (HasFinished)
             client.SendExited(_exitCode);
     });
 
-    public void Detach(ClientConnection client) => Post(() =>
+    public void Detach(ClientConnection client)
     {
-        if (ReferenceEquals(_client, client))
+        // 持ち主の席はすぐ空ける（再起動した Loomo が待たされない）。出力の流し先は画面モデルのスレッドで外す。
+        Interlocked.CompareExchange(ref _owner, null, client);
+        Post(() =>
         {
-            _client = null;
-            Attached = false;
-        }
-    });
+            if (ReferenceEquals(_client, client))
+                _client = null;
+        });
+    }
 
     public void Write(byte[] input)
     {
@@ -149,7 +155,7 @@ internal sealed class HostSession
         _client?.SendExited(exitCode);
         _client?.Close();
         _client = null;
-        Attached = false;
+        Volatile.Write(ref _owner, null);
         _ended(this);
         _work.CompleteAdding();
         // ConPTY の破棄は出力の読み取り側と待ち合うことがあるので、画面モデルのスレッドを塞がない。

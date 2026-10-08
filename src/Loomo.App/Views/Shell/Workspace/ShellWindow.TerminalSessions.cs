@@ -1,3 +1,4 @@
+using Terminal.Sessions;
 using Terminal.Tabs;
 
 namespace sk0ya.Loomo.App.Views;
@@ -11,8 +12,23 @@ public partial class ShellWindow {
     private void ConfigurePersistentTerminal(TerminalTabView view, Guid tabId, Guid? workspaceId) {
         if (workspaceId is not { } owner || !PersistentTerminalsEnabled)
             return;
-        view.SessionFactory = request => _ptyHost.OpenSession(tabId, owner, request);
+        view.SessionFactory = request => {
+            try {
+                var session = _ptyHost.OpenSession(tabId, owner, request);
+                _localTerminalTabs.TryRemove(tabId, out _);
+                return session;
+            } catch (sk0ya.Loomo.Services.Terminal.PtySessionInUseException) {
+                // 同じシェルは先勝ち（§34.5）：別の Loomo が繋いでいる。奪わず、このタブには常駐しない新しい
+                // シェルを立てる。閉じても向こうのシェルを殺さないよう覚えておく。
+                _localTerminalTabs[tabId] = 0;
+                return new ConPtySession(request.Columns, request.Rows, request.LaunchCommandLine,
+                    request.WorkingDirectory, request.EnvironmentVariables);
+            }
+        };
     }
+
+    /// <summary>先勝ちに負けて自前のシェルで立てたタブ。端末ビューのバックグラウンドスレッドから書かれる。</summary>
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, byte> _localTerminalTabs = new();
 
     /// <summary>今のワークスペースのターミナルタブをスナップショットへ書く。切替の途中などで、いま見えている
     /// タブ集合がこのスナップショットの持ち物でないときは触らない（前に書いた内容を残す）。</summary>
@@ -96,6 +112,9 @@ public partial class ShellWindow {
     /// </summary>
     private void KillPersistentTerminal(Guid tabId) {
         // 設定は今の値で、このタブが常駐で作られたかとは限らないので見ない（居なければ何も起きない）。
+        // 先勝ちに負けたタブの同じ ID のシェルは、別の Loomo の持ち物。
+        if (_localTerminalTabs.TryRemove(tabId, out _))
+            return;
         if (_ptyHost.IsAvailable)
             _ = _ptyHost.KillAsync(tabId);
     }

@@ -20,7 +20,7 @@ namespace sk0ya.Loomo.Services.Terminal;
 ///
 /// <para>ホストは本体の <c>bin\ptyhost\</c> から直接は起こさない。常駐して DLL を掴み続けるので、
 /// 以後のビルドが全部落ちる。<c>%LOCALAPPDATA%\Loomo\ptyhost\&lt;内容ハッシュ&gt;\</c> へ写してから起こす
-/// （§34.7）。版の違うホストがセッションを抱えて生きていても、パイプ名の版が同じならそちらに繋ぐ。</para>
+/// （§34.5）。版の違うホストがセッションを抱えて生きていても、パイプ名の版が同じならそちらに繋ぐ。</para>
 /// </summary>
 public sealed class PtyHostClient
 {
@@ -65,8 +65,10 @@ public sealed class PtyHostClient
             PtyProtocol.WriteJson(pipe, PtyProtocol.FrameType.Request, new PtyProtocol.Request(
                 PtyProtocol.Operation.Open, sessionId, workspaceId, request.LaunchCommandLine,
                 request.WorkingDirectory, request.Columns, request.Rows, request.ScrollbackLimit, environment));
-            var created = ReadResponse(pipe).Created;
-            return new RemotePtySession(pipe, created);
+            var response = ReadResponse(pipe);
+            if (response.InUse)
+                throw new PtySessionInUseException(sessionId);
+            return new RemotePtySession(pipe, response.Created);
         }
         catch
         {
@@ -296,4 +298,13 @@ public sealed class PtyHostClient
 
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern bool CloseHandle(IntPtr handle);
+}
+
+/// <summary>
+/// 開こうとしたシェルは別の Loomo が繋いでいる。同じシェルは先勝ちで、後から来た方には渡さない（§34.5）。
+/// </summary>
+public sealed class PtySessionInUseException(Guid sessionId)
+    : InvalidOperationException($"端末セッション {sessionId:N} は別の接続が使用中です。")
+{
+    public Guid SessionId { get; } = sessionId;
 }
