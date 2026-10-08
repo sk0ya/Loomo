@@ -154,6 +154,7 @@ public partial class ShellWindow {
             _editorSupport.IsPinned = false;
             UpdateEditorSupportPinToggle();
         }
+        DisposeExcerptTab(id);
         if (tab.IsRealized) {
             // 破棄する前に C# 診断（StyleCop／compiler フォールバック）の購読と保持を外す。
             // 外さないと解析中のタスクが Dispose 済みコントロールへ結果を書き戻し、

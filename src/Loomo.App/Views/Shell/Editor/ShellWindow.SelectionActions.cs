@@ -47,6 +47,7 @@ public partial class ShellWindow {
         });
         // ③ このファイルそのものを扱う
         AddMenuGroup(e.Menu, menu => {
+            AddExcerptMenuItems(menu, control);
             AddRunScriptMenuItem(menu, control);
             AddMarkdownTableMenuItem(menu, control);
             AddOpenLinkInWindowMenuItem(menu, control);

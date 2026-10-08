@@ -16,10 +16,11 @@
          C:\Projects\Editor のプロジェクト参照へ切り替える。
 
          1.0.90 でガターのクイックフィックス電球とスクロールバーの診断マーカーを公開した。
-         1.0.97（2026-10-06 公開、左右並びの差分の行内差分・スクロールバーの変更位置の印・
-         差分の色を現在行の強調の上に描く）を nuget.org 最新版として使用する。 -->
+         1.0.98（本文の変更を差分として通知する TextEdited・編集の関門 EditGuard・ガター行番号の差し替え。
+         §35.3 の抜粋タブが使う）を使用する。※未公開（nuget.org の最新は 1.0.97）。公開するまでこのピンは
+         ローカルの pack をキャッシュに入れた環境でしか restore できないので、main へは公開後に入れる。 -->
     <UseLocalEditor Condition="'$(UseLocalEditor)' == ''">false</UseLocalEditor>
-    <EditorPackageVersion Condition="'$(EditorPackageVersion)' == ''">1.0.97</EditorPackageVersion>
+    <EditorPackageVersion Condition="'$(EditorPackageVersion)' == ''">1.0.98</EditorPackageVersion>
     <!-- sk0ya.Terminal.Controls の版。本体（Loomo.Services）と端末の常駐ホスト（Loomo.Pty.Host、§34）が
          同じ版を参照するので、ここ一か所で決める。版ごとの変更点は Loomo.Services.csproj の注記にある。 -->
     <TerminalPackageVersion Condition="'$(TerminalPackageVersion)' == ''">1.0.41</TerminalPackageVersion>

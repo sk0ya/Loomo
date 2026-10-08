@@ -59,6 +59,7 @@ public partial class ShellWindow {
         ReferencesPopupTitle.Text = title;
         ReferencesPopupList.Children.Clear();
         ReferencesPopupPeek.Visibility = Visibility.Collapsed;
+        AddOpenAsExcerptsRow(items, title);
         if (items.Count == 0) {
             ReferencesPopupList.Children.Add(new TextBlock {
                 Text = "使用箇所が見つかりませんでした", FontSize = UiFontManager.Scaled(12), Margin = new Thickness(10, 6, 10, 6), Foreground = (Brush)FindResource("FgDim"), });
@@ -89,6 +90,29 @@ public partial class ShellWindow {
             ReferencesPopupList.Children.Add(row);
         }
         ShowReferencePeek(items[0]);
+    }
+
+    /// <summary>一覧の先頭に「抜粋タブで開く」（§35.3）。一覧のまま読むのではなく、該当箇所の前後を
+    /// 1枚に並べてその場で直したいとき用。ファイルのパスを持つ行が無ければ出さない。開けるかどうか
+    /// （ディスクを見る判定）は押したときに <see cref="OpenExcerptTab"/> が行う——一覧を出すたびに全行の
+    /// File.Exists を UI スレッドで回さないように。</summary>
+    private void AddOpenAsExcerptsRow(IReadOnlyList<FindReferenceItem> items, string title) {
+        var requests = items
+            .Where(i => !string.IsNullOrEmpty(i.FilePath) && Path.IsPathFullyQualified(i.FilePath))
+            .Select(i => new sk0ya.Loomo.Services.ExcerptRequest(i.FilePath, i.Line))
+            .ToList();
+        if (requests.Count == 0)
+            return;
+        var row = new Button {
+            Style = (Style)FindResource("BranchMenuItem"), FontSize = UiFontManager.Scaled(12),
+            Content = new TextBlock { Text = "▤ 抜粋タブで開く（その場で編集できます）", Foreground = (Brush)FindResource("Accent") },
+            ToolTip = "各箇所の前後を1枚のタブに並べます。見出し以外の行の編集は元のファイルへそのまま入ります。",
+        };
+        row.Click += (_, _) => {
+            ReferencesPopup.IsOpen = false;
+            OpenExcerptTab("抜粋: " + title, requests);
+        };
+        ReferencesPopupList.Children.Add(row);
     }
 
     private void ShowReferencePeek(FindReferenceItem item)

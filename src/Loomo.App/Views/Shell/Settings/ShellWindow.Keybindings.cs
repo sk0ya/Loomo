@@ -128,6 +128,9 @@ public partial class ShellWindow {
             return;
 
         var control = tab.Control;
+        // 抜粋タブ（§35.3）は仮想文書だが、保存は「結び付いた元ファイルの保存」として通す。
+        if (await TrySaveExcerptTabAsync(tab))
+            return;
         if (control.IsVirtualDocument)
         {
             control.ShowStatusMessage("仮想ドキュメントは Ctrl+S では保存できません。");

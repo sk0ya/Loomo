@@ -70,6 +70,10 @@
          同じ経路で確かめてから点灯）と、垂直スクロールバーへの診断マーカー（エラー／警告／情報／
          不要な using 等のヒントを行単位で射影・クリックでその行へジャンプ）。あわせてブレークポイントは
          専用列をやめて行番号の上へ移した（行番号のクリックでトグル。デバッグ有効時もガター幅が増えない）。 -->
+    <!-- 1.0.98: 本文の変更を差分として通知する（TextBuffer.Changed / VimEditorControl.TextEdited。
+         変更前の座標の範囲＋新しい文字列、読み込みは Reload）。購読者がいるときだけ計算する。
+         文書の一部を守る編集の関門（VimEditorControl.EditGuard。断った編集は差分としても流れない）と、
+         ガターの行番号の差し替え（SetLineNumberLabels）。抜粋タブ（§35.3）が使う。 -->
     <ProjectReference Include="..\..\..\Editor\src\Editor.Controls.Defaults\Editor.Controls.Defaults.csproj"
                       Condition="'$(UseLocalEditor)' != 'false'" />
     <!-- Defaults はパッケージ化時に Core/Controls を同梱する構成で、プロジェクト参照では
