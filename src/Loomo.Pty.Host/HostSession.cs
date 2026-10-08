@@ -25,6 +25,7 @@ internal sealed class HostSession
     private ClientConnection? _owner;
     private int _exitCode = -1;
     private int _finished;
+    private volatile bool _killRequested;
 
     private HostSession(PtyProtocol.Request request, Action<HostSession> ended)
     {
@@ -50,7 +51,9 @@ internal sealed class HostSession
     public volatile string? Title;
     public volatile string? WorkingDirectory;
     public bool Attached => Volatile.Read(ref _owner) is not null;
-    public bool HasFinished => Volatile.Read(ref _finished) != 0;
+    /// <summary>終わった、または殺すよう頼まれた（殺しは画面モデルのスレッドで後から起きるが、同じ ID で
+    /// 作り直しに来た Open にはもう渡さない）。</summary>
+    public bool HasFinished => _killRequested || Volatile.Read(ref _finished) != 0;
 
     public static HostSession Start(PtyProtocol.Request request, Action<HostSession> ended)
     {
@@ -74,16 +77,27 @@ internal sealed class HostSession
     /// 持ち主（<see cref="TryClaim"/> 済み）を繋ぐ。今の大きさに合わせてから画面を VT 列に組み直して
     /// 最初の出力として渡し、以後の出力をその後ろへ流す。
     /// </summary>
-    public void Attach(ClientConnection client, short columns, short rows) => Post(() =>
+    public void Attach(ClientConnection client, short columns, short rows)
+    {
+        // Open が見てから TryClaim までの間にシェルが終わっていたら、Attach はもう並ばない。
+        // 黙って捨てると本体は応答だけ受けて何も流れてこない空のタブになるので、終わったと伝える。
+        if (!Post(() => AttachOnThread(client, columns, rows)))
+        {
+            client.SendExited(_exitCode);
+            client.Close();
+        }
+    }
+
+    private void AttachOnThread(ClientConnection client, short columns, short rows)
     {
         if (!ReferenceEquals(Volatile.Read(ref _owner), client))
             return;
         _client = client;
         ResizeOnThread(columns, rows);
         client.SendOutput(_screen.CreateVtSnapshot());
-        if (HasFinished)
+        if (Volatile.Read(ref _finished) != 0)
             client.SendExited(_exitCode);
-    });
+    }
 
     public void Detach(ClientConnection client)
     {
@@ -114,7 +128,11 @@ internal sealed class HostSession
     public void Resize(short columns, short rows) => Post(() => ResizeOnThread(columns, rows));
 
     /// <summary>本体がタブを閉じた・作り直した。シェルごと殺す。</summary>
-    public void Kill() => Post(() => Finish(-1));
+    public void Kill()
+    {
+        _killRequested = true;
+        Post(() => Finish(-1));
+    }
 
     private void OnOutput(string text)
     {
@@ -166,15 +184,17 @@ internal sealed class HostSession
         }, null);
     }
 
-    private void Post(Action action)
+    private bool Post(Action action)
     {
         try
         {
             _work.Add(action);
+            return true;
         }
         catch (InvalidOperationException)
         {
             // もう終わった。
+            return false;
         }
     }
 

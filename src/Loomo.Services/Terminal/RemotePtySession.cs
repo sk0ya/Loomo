@@ -23,6 +23,8 @@ public sealed class RemotePtySession : ITerminalSession
     private int _started;
     private int _disposed;
     private int _exitRaised;
+    private readonly ManualResetEventSlim _readerDone = new(initialState: true);
+    private Thread? _reader;
 
     internal RemotePtySession(NamedPipeClientStream pipe, bool created)
     {
@@ -44,7 +46,9 @@ public sealed class RemotePtySession : ITerminalSession
         if (Interlocked.Exchange(ref _started, 1) != 0)
             return;
         // 読み取りはパイプの寿命ぶん塞がるので、スレッドプールではなく専用スレッド（§31.16）。
-        new Thread(ReadLoop) { IsBackground = true, Name = "RemotePtySessionReader" }.Start();
+        _readerDone.Reset();
+        _reader = new Thread(ReadLoop) { IsBackground = true, Name = "RemotePtySessionReader" };
+        _reader.Start();
     }
 
     public void Write(string input) => Write(Encoding.UTF8.GetBytes(input));
@@ -72,6 +76,10 @@ public sealed class RemotePtySession : ITerminalSession
         if (Interlocked.Exchange(ref _disposed, 1) != 0)
             return;
         Send(PtyProtocol.FrameType.Kill, [], evenIfDisposed: true);
+        // ホストが Kill を読み終える（＝接続を閉じる）まで待つ。待たないと、すぐ後に同じタブ ID で
+        // 作り直しに来た Open が、まだ殺される前のシェルを掴んでしまう（再起動ボタン）。
+        if (!ReferenceEquals(Thread.CurrentThread, _reader))
+            _readerDone.Wait(TimeSpan.FromSeconds(2));
         try { _pipe.Dispose(); } catch { }
     }
 
@@ -107,26 +115,32 @@ public sealed class RemotePtySession : ITerminalSession
 
     private void ReadLoop()
     {
+        int exitCode = -1;
         try
         {
             while (PtyProtocol.ReadFrame(_pipe) is { } frame)
             {
-                switch (frame.Type)
+                if (frame.Type == PtyProtocol.FrameType.Output)
                 {
-                    case PtyProtocol.FrameType.Output:
-                        OutputReceived?.Invoke(this, PtyProtocol.DecodeText(frame.Payload));
-                        break;
-                    case PtyProtocol.FrameType.Exited:
-                        RaiseExited(PtyProtocol.DecodeExitCode(frame.Payload));
-                        return;
+                    OutputReceived?.Invoke(this, PtyProtocol.DecodeText(frame.Payload));
+                }
+                else if (frame.Type == PtyProtocol.FrameType.Exited)
+                {
+                    exitCode = PtyProtocol.DecodeExitCode(frame.Payload);
+                    break;
                 }
             }
         }
         catch (Exception ex) when (ex is IOException or ObjectDisposedException or InvalidDataException)
         {
         }
+        finally
+        {
+            // 終了を知らせる前に：受け手が UI スレッドへ同期で回すと、Dispose で待っている UI スレッドと詰む。
+            _readerDone.Set();
+        }
 
-        RaiseExited(-1);
+        RaiseExited(exitCode);
     }
 
     private void RaiseExited(int exitCode)

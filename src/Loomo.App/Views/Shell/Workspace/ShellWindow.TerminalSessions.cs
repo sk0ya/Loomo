@@ -17,9 +17,12 @@ public partial class ShellWindow {
                 var session = _ptyHost.OpenSession(tabId, owner, request);
                 _localTerminalTabs.TryRemove(tabId, out _);
                 return session;
-            } catch (sk0ya.Loomo.Services.Terminal.PtySessionInUseException) {
-                // 同じシェルは先勝ち（§34.5）：別の Loomo が繋いでいる。奪わず、このタブには常駐しない新しい
-                // シェルを立てる。閉じても向こうのシェルを殺さないよう覚えておく。
+            } catch (Exception ex) {
+                // 同じシェルは先勝ち（§34.5）：別の Loomo が繋いでいるなら奪わない。ホストが起きない・答えない
+                // ときも端末が使えなくなるよりはよい。どちらもこのタブには常駐しない新しいシェルを立て、
+                // 閉じても同じ ID の向こうのシェルを殺さないよう覚えておく。
+                if (ex is not sk0ya.Loomo.Services.Terminal.PtySessionInUseException)
+                    System.Diagnostics.Trace.WriteLine($"端末の常駐ホストを使えないため自前のシェルで開きます: {ex.Message}");
                 _localTerminalTabs[tabId] = 0;
                 return new ConPtySession(request.Columns, request.Rows, request.LaunchCommandLine,
                     request.WorkingDirectory, request.EnvironmentVariables);

@@ -185,6 +185,10 @@ public sealed class PtyHostClient
         if (File.Exists(Path.Combine(target, HostExecutableName)))
             return target;
 
+        // exe の無い同名フォルダーは片付けの途中で残った半端もの。置き換えの邪魔になるので先に消す。
+        if (Directory.Exists(target))
+            Directory.Delete(target, recursive: true);
+
         // 途中で落ちても半端なフォルダーを「入っている」と見なさないよう、別名で揃えてから名前を変える。
         var staging = target + ".tmp-" + Environment.ProcessId;
         Directory.CreateDirectory(staging);
@@ -203,16 +207,28 @@ public sealed class PtyHostClient
         return target;
     }
 
-    /// <summary>古い版の一式を片付ける。動いているホストが掴んでいるものは消せないので、そのまま残る。</summary>
+    /// <summary>
+    /// 古い版の一式を片付ける。動いているホストの一式は exe が掴まれていて消せないので、先に exe だけを
+    /// 消してみて、消せたものだけをフォルダーごと消す——いきなりフォルダーを消すと、掴まれていない
+    /// dll や設定だけが消えた半端な一式が残り、同じ版の次の起動がそれを「入っている」と見て使ってしまう。
+    /// 別の Loomo が入れている途中の作業フォルダー（.tmp-）には触らない。
+    /// </summary>
     private void RemoveStaleInstalls(string current)
     {
         try
         {
             foreach (var directory in Directory.GetDirectories(_installRoot))
             {
-                if (string.Equals(directory, current, StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(directory, current, StringComparison.OrdinalIgnoreCase) ||
+                    Path.GetFileName(directory).Contains(".tmp-", StringComparison.Ordinal))
                     continue;
-                try { Directory.Delete(directory, recursive: true); }
+                try
+                {
+                    var executable = Path.Combine(directory, HostExecutableName);
+                    if (File.Exists(executable))
+                        File.Delete(executable);
+                    Directory.Delete(directory, recursive: true);
+                }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
             }
         }

@@ -62,11 +62,14 @@ internal sealed class PtyHostServer(string pipeName, TimeSpan? idleExit)
                     client.Send(PtyProtocol.FrameType.Response, Json(new PtyProtocol.Response(Sessions: List())));
                     return;
                 case PtyProtocol.Operation.Kill:
-                    Find(request.SessionId)?.Kill();
+                    // 外からの Kill は、誰も繋いでいないシェルにだけ効く。繋いでいる Loomo は自分の接続で殺す
+                    // （タブを閉じた）ので、ここで繋がっているものを殺すと別の Loomo のシェルを奪うことになる。
+                    if (Find(request.SessionId) is { Attached: false } target)
+                        target.Kill();
                     client.Send(PtyProtocol.FrameType.Response, Json(new PtyProtocol.Response()));
                     return;
                 case PtyProtocol.Operation.KillWorkspace:
-                    foreach (var doomed in SessionsOf(request.WorkspaceId))
+                    foreach (var doomed in SessionsOf(request.WorkspaceId).Where(s => !s.Attached))
                         doomed.Kill();
                     client.Send(PtyProtocol.FrameType.Response, Json(new PtyProtocol.Response()));
                     return;

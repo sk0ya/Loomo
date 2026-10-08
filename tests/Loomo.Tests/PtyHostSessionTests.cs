@@ -150,6 +150,50 @@ public sealed class PtyHostSessionTests : IDisposable
     }
 
     [Fact]
+    public void RestartingATabStartsAFreshShellUnderTheSameId()
+    {
+        var id = Guid.NewGuid();
+        var workspace = Guid.NewGuid();
+        var first = _client.OpenSession(id, workspace, Request());
+        var firstOutput = new Collector(first);
+        first.Start();
+        firstOutput.WaitFor(t => t.Contains(">>"), "プロンプト");
+
+        // 再起動ボタン：殺してすぐ同じ ID で開き直す。殺される途中のシェルを掴んではいけない。
+        first.Dispose();
+        var second = _client.OpenSession(id, workspace, Request());
+        Assert.True(second.Created);
+        var secondOutput = new Collector(second);
+        second.Start();
+        secondOutput.WaitFor(t => t.Contains(">>"), "新しいシェルのプロンプト");
+        Assert.Null(secondOutput.ExitCode);
+        second.Dispose();
+    }
+
+    [Fact]
+    public async Task KillFromOutsideSparesAShellSomeoneIsAttachedTo()
+    {
+        var id = Guid.NewGuid();
+        var workspace = Guid.NewGuid();
+        var session = _client.OpenSession(id, workspace, Request());
+        var output = new Collector(session);
+        session.Start();
+        output.WaitFor(t => t.Contains(">>"), "プロンプト");
+
+        // 別の Loomo がタブを閉じた・ワークスペースを消した：繋いでいるこちらのシェルは殺させない。
+        await _client.KillAsync(id);
+        await _client.KillWorkspaceAsync(workspace);
+        session.Write("echo alive\r");
+        output.WaitFor(t => Count(t, "alive") >= 2, "生きているシェルの echo");
+
+        // 誰も繋いでいなければ効く。
+        session.Abandon();
+        await WaitUntilAsync(async () => (await _client.ListAsync()).Any(s => s.SessionId == id && !s.Attached), "切り離し");
+        await _client.KillAsync(id);
+        await WaitUntilAsync(async () => (await _client.ListAsync()).All(s => s.SessionId != id), "セッションの終了");
+    }
+
+    [Fact]
     public async Task ExitingTheShellEndsTheSessionAndReportsTheCode()
     {
         var id = Guid.NewGuid();
@@ -174,13 +218,17 @@ public sealed class PtyHostSessionTests : IDisposable
         var kept = _client.OpenSession(Guid.NewGuid(), keptWorkspace, Request());
         doomed.Start();
         kept.Start();
+        // 消すのは誰も繋いでいないシェル（一度も開いていないワークスペース・常駐を切った後の復元）。
+        doomed.Abandon();
+        kept.Abandon();
+        await WaitUntilAsync(async () => (await _client.ListAsync()).Count(s => !s.Attached &&
+            (s.WorkspaceId == doomedWorkspace || s.WorkspaceId == keptWorkspace)) == 2, "切り離し");
 
         await _client.KillWorkspaceAsync(doomedWorkspace);
 
         await WaitUntilAsync(async () => (await _client.ListAsync()).All(s => s.WorkspaceId != doomedWorkspace), "削除");
         Assert.Contains(await _client.ListAsync(), s => s.WorkspaceId == keptWorkspace);
-        kept.Dispose();
-        doomed.Dispose();
+        await _client.KillWorkspaceAsync(keptWorkspace);
     }
 
     [Fact]

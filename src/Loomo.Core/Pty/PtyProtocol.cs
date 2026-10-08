@@ -20,7 +20,7 @@ namespace sk0ya.Loomo.Core.Pty;
 public static class PtyProtocol
 {
     /// <summary>互換の無い変更をしたら上げる。パイプ名に入るので、版の違うホストとは最初から出会わない。</summary>
-    public const int Version = 1;
+    public const int Version = 2;
 
     /// <summary>1フレームの上限。スナップショット（スクロールバック全体）が一番大きい。</summary>
     public const int MaxFrameBytes = 256 * 1024 * 1024;
