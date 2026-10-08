@@ -510,6 +510,18 @@ public sealed class GitService
     public Task<GitCommandResult> RunAsync(params string[] args) => _runner.RunAsync(args);
 
     /// <summary>外部変更を取り込む前など、次の照会を必ず Git へ通すためのキャッシュ破棄。</summary>
+    /// <summary>ワークツリー一覧のキャッシュだけを捨てる。ワークツリーは Loomo の外（エージェント等）で作られ・
+    /// 消され、こちらのリポジトリ監視には必ずしも現れない——それを拾い直すためだけに、ブランチや状態の
+    /// キャッシュまで巻き添えにしない。</summary>
+    public void InvalidateWorktreeCache()
+    {
+        lock (_readCacheGate)
+        {
+            _cachedWorktrees = null;
+            _cachedWorktreesWithCounts = null;
+        }
+    }
+
     public void InvalidateReadCache()
     {
         lock (_readCacheGate)

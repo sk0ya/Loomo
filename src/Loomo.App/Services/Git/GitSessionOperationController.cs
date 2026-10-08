@@ -132,7 +132,11 @@ internal static class GitSessionOperationController
                 await vm.ShowBranchLogAsync(branch);
                 break;
             case GitBranchOperation.Checkout:
-                await vm.Commands.CheckoutBranchAsync(branch);
+                // 別のワークツリーが持っているブランチは git がチェックアウトさせない——そこへ移る（§24.17.1）。
+                if (vm.WorktreeHolding(branch) is { } holder)
+                    vm.OpenWorktree(holder, GitWorktreeOpenMode.Workspace);
+                else
+                    await vm.Commands.CheckoutBranchAsync(branch);
                 break;
             case GitBranchOperation.Merge:
                 await vm.Commands.MergeAsync(branch);

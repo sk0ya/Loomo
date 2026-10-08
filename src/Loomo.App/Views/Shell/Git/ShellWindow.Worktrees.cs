@@ -12,14 +12,14 @@ public partial class ShellWindow {
     private void WireWorktreeRequests() {
         _vm.GitSession.WorktreeOpenRequested += (_, request) => OpenWorktree(request);
         _vm.GitSession.WorktreeRemoving += (_, path) => DetachWorktreeFolders(path);
+        _vm.GitSession.WorktreeRemoved += (_, path) => _vm.Workspaces.RemoveWorktreeRoom(path);
     }
 
     private void OpenWorktree(GitWorktreeOpenRequest request) {
         var path = request.Path;
         switch (request.Mode) {
             case GitWorktreeOpenMode.Workspace:
-                // 一覧に無ければ新しい部屋として足してから移る（ActivateFolder が両方をやる）。
-                _vm.Workspaces.ActivateFolder(path);
+                SwitchToWorktree(path);
                 break;
             case GitWorktreeOpenMode.AddFolder:
                 if (_workspace.Folders.Any(f => WorkspacePaths.IsWithin(f, path) && WorkspacePaths.IsWithin(path, f)))
@@ -41,9 +41,31 @@ public partial class ShellWindow {
     }
 
     /// <summary>
+    /// ブランチを切り替えるようにワークツリーへ移る（§24.17.1）。部屋が無ければ今の部屋を写して作る
+    /// ——写し元は<b>いまこの瞬間</b>の状態なので、先に捕まえてから渡す（定期保存は間引かれていて古い）。
+    /// 切替の途中に押されたら、捨てずに終わるのを待つ（途中で写すと、半分入れ替わった部屋が写し元になる）。
+    /// </summary>
+    private async void SwitchToWorktree(string path) {
+        try {
+            await _workspaceTransition.WhenSettledAsync();
+            SaveActiveWorkspaceSnapshot(immediate: true);
+            var git = _vm.GitSession;
+            var request = new WorktreeSwitchRequest(
+                path,
+                git.CurrentWorktree?.Path ?? _workspace.PrimaryFolder ?? path,
+                git.MainWorktreePath ?? path,
+                git.Worktrees.Select(w => w.Path).ToList());
+            _vm.Workspaces.ActivateWorktree(request, _activeWorkspace, p => File.Exists(p) || Directory.Exists(p));
+        } catch (Exception ex) {
+            ToastService.Error($"ワークツリーへ切り替えられませんでした: {ex.Message}");
+        }
+    }
+
+    /// <summary>
     /// 消すワークツリーを（フォルダーとして足してあれば）今のワークスペースから先に外す。言語サーバー・
     /// ファイル監視・ツリーが握ったまま消すと、Windows では「使用中」で削除が失敗する。
     /// プライマリは外せない（そもそも「いま開いているワークツリー」は削除できないようにしてある）。
+    /// 写して作ったそのワークツリーの部屋は、ここではなく<b>消し終えてから</b>片付ける（<c>WorktreeRemoved</c>）。
     /// </summary>
     private void DetachWorktreeFolders(string worktreePath) {
         var inside = _workspace.Folders

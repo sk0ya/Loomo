@@ -233,6 +233,10 @@
                                 <Style TargetType="Border">
                                     <Setter Property="Background" Value="Transparent" />
                                     <Style.Triggers>
+                                        <!-- ワークツリーの部屋は本体の部屋の下へ字下げして畳む（§24.17.1） -->
+                                        <DataTrigger Binding="{Binding IsNested}" Value="True">
+                                            <Setter Property="Margin" Value="16,0,0,0" />
+                                        </DataTrigger>
                                         <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=ListBoxItem}}"
                                                      Value="True">
                                             <Setter Property="Background" Value="{DynamicResource BgAlt}" />
@@ -266,6 +270,11 @@
                                     </Style>
                                 </Ellipse.Style>
                             </Ellipse>
+
+                            <TextBlock DockPanel.Dock="Left" Text="🌿" FontSize="{DynamicResource Fs10}"
+                                       VerticalAlignment="Center" Margin="0,0,4,0"
+                                       ToolTip="git ワークツリーの部屋"
+                                       Visibility="{Binding IsWorktreeRoom, Converter={StaticResource BoolToVis}}" />
 
                             <!-- 右側：最終利用と、ホバーで現れるフォルダー表示トグル -->
                             <TextBlock DockPanel.Dock="Right" Text="{Binding LastUsedLabel}"

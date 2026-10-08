@@ -310,17 +310,21 @@ public sealed class WorkspaceSummary
     /// 書かれた索引で、空リスト（追加フォルダー無し）とは区別する（一覧を開いたときに一度だけ拾い直す）。</summary>
     public List<string>? AdditionalFolders { get; set; }
 
+    /// <summary><see cref="WorkspaceSnapshot.WorktreeOf"/> の索引側の写し（一覧で本体の下に畳むのに、
+    /// 詳細を読まずに要る）。</summary>
+    public string? WorktreeOf { get; set; }
+
     public static WorkspaceSummary From(WorkspaceSnapshot s) => new()
     {
         Id = s.Id, RootPath = s.RootPath, Name = s.Name, LastUsedUtc = s.LastUsedUtc,
-        Pinned = s.Pinned, CustomName = s.CustomName,
+        Pinned = s.Pinned, CustomName = s.CustomName, WorktreeOf = s.WorktreeOf,
         // 未読込のままなら索引から復元した値（未確認なら null）をそのまま書き戻す。
         AdditionalFolders = s.IsDetailsLoaded ? s.FolderPaths.ToList() : s.CachedAdditionalFolders
     };
     public WorkspaceSnapshot ToSnapshot() => new()
     {
         Id = Id, RootPath = RootPath, Name = Name, LastUsedUtc = LastUsedUtc,
-        Pinned = Pinned, CustomName = CustomName,
+        Pinned = Pinned, CustomName = CustomName, WorktreeOf = WorktreeOf,
         CachedAdditionalFolders = AdditionalFolders, IsDetailsLoaded = false
     };
 }
@@ -349,6 +353,12 @@ public sealed class WorkspaceSnapshot
     public bool Pinned { get; set; }
 
     public DateTime LastUsedUtc { get; set; } = DateTime.UtcNow;
+
+    /// <summary>この部屋が git の（本体以外の）ワークツリー用に写して作ったものなら、<b>本体のワークツリーの
+    /// パス</b>（§24.17.1）。一覧で本体の部屋の下に畳む・ワークツリーが消えたら一緒に片付ける、の目印。
+    /// null は普通の部屋。部屋の Id ではなくパスで持つのは、本体の部屋が後から作られても・消されても
+    /// 目印が宙に浮かないため（本体の部屋はルートで引ける）。</summary>
+    public string? WorktreeOf { get; set; }
 
     /// <summary>詳細（state.json）が未読込のときに一覧へ出す追加フォルダー。索引から復元した値で、
     /// null は未確認（この項目より前に書かれた索引）。読むときは <see cref="FolderPaths"/> を使う。</summary>

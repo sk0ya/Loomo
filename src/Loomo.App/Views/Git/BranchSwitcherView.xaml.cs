@@ -53,7 +53,12 @@ public partial class BranchSwitcherView : UserControl
     {
         StatusText.Visibility = Visibility.Collapsed;
         if (Vm is { } vm)
+        {
             vm.BranchFilter = "";
+            // ワークツリーは Loomo の外（Claude Code など）で作られ・消される。こちらのリポジトリ監視には
+            // 必ずしも現れないので、開くたびに読み直す（git worktree list 1回。件数は数えない）。
+            _ = vm.ReloadWorktreeListAsync();
+        }
         // ポップアップが開いてレイアウトされた後でないとフォーカスが入らない
         Dispatcher.BeginInvoke(new Action(() => FilterBox.Focus()),
             System.Windows.Threading.DispatcherPriority.Input);
@@ -98,6 +103,18 @@ public partial class BranchSwitcherView : UserControl
         else
             Close();
         e.Handled = true;
+    }
+
+    // ===== ワークツリー =====
+
+    /// <summary>ワークツリーの行：その部屋へ移る（無ければ今の部屋を写して作る。§24.17.1）。</summary>
+    private void OnWorktreeRowClick(object sender, RoutedEventArgs e)
+    {
+        if (Vm is not { } vm || (sender as FrameworkElement)?.DataContext is not GitWorktreeInfo worktree)
+            return;
+        Close();
+        if (!worktree.IsCurrent)
+            vm.OpenWorktree(worktree, GitWorktreeOpenMode.Workspace);
     }
 
     // ===== 一覧 =====
@@ -150,6 +167,13 @@ public partial class BranchSwitcherView : UserControl
     private async void OnMenuCheckout(object sender, RoutedEventArgs e)
     {
         if (Vm is not { } vm || Target is not { } branch) return;
+        // 別のワークツリーが持っているブランチは git がチェックアウトさせない——そこへ移ることと読む。
+        if (vm.WorktreeHolding(branch) is { } holder)
+        {
+            Close();
+            vm.OpenWorktree(holder, GitWorktreeOpenMode.Workspace);
+            return;
+        }
         var result = await vm.Commands.CheckoutBranchAsync(branch);
         if (result is { Success: true })
             Close();

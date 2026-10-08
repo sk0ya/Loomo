@@ -680,8 +680,21 @@
                             ToolTip="ブランチを切り替え" Click="OnTitleBarBranchClick"
                             WindowChrome.IsHitTestVisibleInChrome="True">
                         <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="⎇" Foreground="{DynamicResource FgDim}" VerticalAlignment="Center"
-                                       Margin="0,0,5,0" />
+                            <!-- ワークツリーの部屋にいる間は 🌿（同じ見た目の部屋を取り違えない・§24.17.1） -->
+                            <TextBlock VerticalAlignment="Center" Margin="0,0,5,0">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Text" Value="⎇" />
+                                        <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding GitSession.IsInLinkedWorktree}" Value="True">
+                                                <Setter Property="Text" Value="🌿" />
+                                                <Setter Property="ToolTip" Value="git ワークツリーの部屋にいます" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
                             <TextBlock Text="{Binding GitSession.BranchLabel}" FontSize="{DynamicResource Fs12}"
                                        VerticalAlignment="Center" MaxWidth="220"
                                        TextTrimming="CharacterEllipsis" />

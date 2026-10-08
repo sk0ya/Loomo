@@ -36,10 +36,26 @@ public sealed partial class GitSessionViewModel
     /// <summary>ワークツリー一覧（先頭がメイン）。ワークツリーのタブを見ている間だけ未コミットの件数まで数える。</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(LinkedWorktreeCount))]
+    [NotifyPropertyChangedFor(nameof(IsInLinkedWorktree))]
+    [NotifyPropertyChangedFor(nameof(SwitchableWorktrees))]
     private IReadOnlyList<GitWorktreeInfo> _worktrees = Array.Empty<GitWorktreeInfo>();
 
     /// <summary>メイン以外のワークツリーの数（タブの件数）。メインしか無いリポジトリでは 0。</summary>
     public int LinkedWorktreeCount => Math.Max(0, Worktrees.Count - 1);
+
+    /// <summary>いまの部屋がメイン以外のワークツリーを開いているか（タイトルバーの ⎇ を 🌿 にする）。</summary>
+    public bool IsInLinkedWorktree => CurrentWorktree is { IsMain: false };
+
+    /// <summary>ブランチ切替ポップアップに並べる行き先（実在するワークツリー。bare は開けない）。§24.17.1</summary>
+    public IReadOnlyList<GitWorktreeInfo> SwitchableWorktrees
+        => Worktrees.Where(w => !w.IsBare && !w.IsPrunable).ToList();
+
+    /// <summary>このローカルブランチを<b>別の</b>ワークツリーがチェックアウトしているならそれ。
+    /// git は同じブランチを2か所に置けないので、そのブランチへの「チェックアウト」はそこへ移ることと読む。</summary>
+    public GitWorktreeInfo? WorktreeHolding(GitBranchInfo branch)
+        => branch.IsRemote ? null
+            : Worktrees.FirstOrDefault(w => !w.IsCurrent && w.Exists
+                && string.Equals(w.Branch, branch.Name, StringComparison.Ordinal));
 
     /// <summary>ワークツリーを開いてほしい（ワークスペース切替・フォルダー追加・ターミナル・エクスプローラー）。</summary>
     public event EventHandler<GitWorktreeOpenRequest>? WorktreeOpenRequested;
@@ -118,6 +134,20 @@ public sealed partial class GitSessionViewModel
         return ReloadWorktreesAsync();
     }
 
+    /// <summary>ワークツリー一覧だけを読み直す（ブランチ切替ポップアップを開くたび。他のキャッシュは捨てない）。
+    /// 失敗しても一覧が古いままになるだけなので、例外は飲む（投げっぱなしで呼ばれる）。</summary>
+    public async Task ReloadWorktreeListAsync()
+    {
+        try
+        {
+            _git.InvalidateWorktreeCache();
+            await ReloadWorktreesAsync();
+        }
+        catch (Exception)
+        {
+        }
+    }
+
     /// <summary>ワークツリーを作る。成功したら <paramref name="openAfter"/> の開き方で開く。</summary>
     public async Task<bool> CreateWorktreeAsync(GitWorktreeAddRequest request, GitWorktreeOpenMode? openAfter)
     {
@@ -135,11 +165,18 @@ public sealed partial class GitSessionViewModel
     /// </summary>
     public event EventHandler<string>? WorktreeRemoving;
 
+    /// <summary>ワークツリーを消し終えた（git が成功した後だけ）。そのワークツリー用の部屋を片付ける合図
+    /// ——消す前に片付けると、git が断ったとき（未コミット・使用中）にワークツリーは残って部屋だけ失う。</summary>
+    public event EventHandler<string>? WorktreeRemoved;
+
     public async Task<GitCommandResult?> RemoveWorktreeAsync(GitWorktreeInfo worktree, bool force)
     {
         if (!worktree.CanRemove || worktree.IsCurrent) return null;
         WorktreeRemoving?.Invoke(this, worktree.Path);
-        return await Commands.RemoveWorktreeAsync(worktree, force);
+        var result = await Commands.RemoveWorktreeAsync(worktree, force);
+        if (result is { Success: true })
+            WorktreeRemoved?.Invoke(this, worktree.Path);
+        return result;
     }
 
     public Task<GitCommandResult?> PruneWorktreesAsync() => Commands.PruneWorktreesAsync();

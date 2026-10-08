@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Win32;
 using sk0ya.Loomo.App.Services;
+using sk0ya.Loomo.Core.Files;
 
 namespace sk0ya.Loomo.App.ViewModels;
 
@@ -40,11 +41,20 @@ public sealed partial class WorkspaceEntryViewModel : ObservableObject
         _customName = snapshot.CustomName;
         _isPinned = snapshot.Pinned;
         _lastUsedUtc = snapshot.LastUsedUtc;
+        WorktreeOf = snapshot.WorktreeOf;
         ApplyFolders(snapshot.FolderPaths);
     }
 
     public Guid Id { get; }
     public string RootPath { get; }
+
+    /// <summary>git ワークツリー用に写して作った部屋なら、本体のワークツリーのパス（§24.17.1）。</summary>
+    public string? WorktreeOf { get; }
+
+    public bool IsWorktreeRoom => WorktreeOf is not null;
+
+    /// <summary>一覧で本体の部屋の下に字下げして並べているか（本体が絞り込みで外れたら上の階層へ出る）。</summary>
+    [ObservableProperty] private bool _isNested;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(Label))]
@@ -98,6 +108,8 @@ public sealed partial class WorkspaceEntryViewModel : ObservableObject
         get
         {
             var lines = new List<string> { RootPath };
+            if (IsWorktreeRoom)
+                lines.Add("🌿 ワークツリーの部屋（ワークツリーが消えると一覧からも外れます）");
             if (HasCustomName)
                 lines.Add($"フォルダ名: {Name}");
             lines.Add($"最終利用: {LastUsedUtc.ToLocalTime():yyyy/M/d HH:mm}（{LastUsedLabel}）");
@@ -320,6 +332,7 @@ public sealed partial class WorkspaceListViewModel : ObservableObject
     public void Refresh()
     {
         var probed = false;
+        PruneVanishedWorktreeRooms();
         foreach (var entry in Workspaces)
         {
             entry.IsMissing = !string.IsNullOrWhiteSpace(entry.RootPath) && !Directory.Exists(entry.RootPath);
@@ -365,15 +378,86 @@ public sealed partial class WorkspaceListViewModel : ObservableObject
             Activate(next);
         }
 
-        _state.Workspaces.RemoveAll(w => w.Id == entry.Id);
-        Workspaces.Remove(entry);
-        _store.DeleteWorkspace(entry.Id);
+        Drop([entry]);
+    }
+
+    /// <summary>（アクティブでない）部屋を一覧と保存から消す。何件でも保存と一覧の組み直しは1回。</summary>
+    private void Drop(IReadOnlyList<WorkspaceEntryViewModel> entries)
+    {
+        if (entries.Count == 0)
+            return;
+        foreach (var entry in entries)
+        {
+            _state.Workspaces.RemoveAll(w => w.Id == entry.Id);
+            Workspaces.Remove(entry);
+            _store.DeleteWorkspace(entry.Id);
+        }
         _store.Save(_state);
         RemoveWorkspaceCommand.NotifyCanExecuteChanged();
         RefreshEntries();
 
-        WorkspaceRemoved?.Invoke(this, entry.Id);
+        foreach (var entry in entries)
+            WorkspaceRemoved?.Invoke(this, entry.Id);
     }
+
+    /// <summary>
+    /// ワークツリーへ「ブランチを切り替えるように」移る（§24.17.1）。そのワークツリーの部屋があれば
+    /// 前回の状態のまま戻り、無ければ<b>今の部屋を写して</b>作ってから移る（<see cref="WorktreeRoomSeed"/>）。
+    /// </summary>
+    /// <param name="current">写し元＝今の部屋（呼び出し側が直前に最新の状態を捕まえておく）。</param>
+    public void ActivateWorktree(
+        WorktreeSwitchRequest request, WorkspaceSnapshot? current, Func<string, bool> exists)
+    {
+        var fullPath = Path.GetFullPath(request.Target);
+        if (FindByRoot(fullPath) is { } existing)
+        {
+            Activate(existing);
+            return;
+        }
+        if (current is not { IsDetailsLoaded: true })
+        {
+            ActivateFolder(fullPath);
+            return;
+        }
+
+        var seed = WorktreeRoomSeed.Seed(current, request, exists);
+        // 畳み先は本体のワークツリー。本体へ移るときは（ワークツリーの部屋から写したとしても）子にしない。
+        seed.WorktreeOf = SamePath(fullPath, request.Main) ? null : Path.GetFullPath(request.Main);
+        _state.Workspaces.Add(seed);
+        Workspaces.Insert(0, new WorkspaceEntryViewModel(seed));
+        RemoveWorkspaceCommand.NotifyCanExecuteChanged();
+        Activate(seed);
+    }
+
+    /// <summary>ワークツリーを Loomo から消し終えたら、写して作ったその部屋も片付ける
+    /// （開いている部屋そのものは消さない——Git ペインは「いま」のワークツリーを消させない）。</summary>
+    public void RemoveWorktreeRoom(string worktreePath)
+    {
+        if (FindByRoot(Path.GetFullPath(worktreePath)) is not { WorktreeOf: not null } snapshot
+            || snapshot.Id == _state.ActiveWorkspaceId
+            || Workspaces.FirstOrDefault(w => w.Id == snapshot.Id) is not { } entry)
+            return;
+        Drop([entry]);
+    }
+
+    /// <summary>
+    /// フォルダーが消えたワークツリーの部屋を一覧から外す。Claude Code などはセッションを閉じると
+    /// ワークツリーを自分で消すので、Loomo の外で消えたものはここで拾う。普通の部屋は「見つかりません」の
+    /// 警告で残す（ワークツリーの部屋は写しなので戻す意味がない）。<b>本体のワークツリーが見えているときだけ</b>
+    /// 外す——ドライブごと見えない（外付け・ネットワークが一時的に外れた）なら、消えたのではない。
+    /// </summary>
+    private void PruneVanishedWorktreeRooms()
+        => Drop(Workspaces
+            .Where(w => w.WorktreeOf is { } main && Directory.Exists(main)
+                        && w.Id != _state.ActiveWorkspaceId
+                        && !string.IsNullOrWhiteSpace(w.RootPath) && !Directory.Exists(w.RootPath))
+            .ToList());
+
+    private static bool SamePath(string a, string? b)
+        => WorkspacePaths.IsWithin(a, b) && WorkspacePaths.IsWithin(b, a);
+
+    private WorkspaceSnapshot? FindByRoot(string fullPath)
+        => _state.Workspaces.FirstOrDefault(w => SamePath(w.RootPath, fullPath));
 
     private bool CanRemoveWorkspace(WorkspaceEntryViewModel? entry)
         => entry is not null && Workspaces.Count > 1;
@@ -521,13 +605,35 @@ public sealed partial class WorkspaceListViewModel : ObservableObject
     private void RebuildFiltered()
     {
         var terms = Filter.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        var next = Workspaces
+        var matched = Workspaces
             .Where(w => terms.All(t =>
                 w.Label.Contains(t, StringComparison.OrdinalIgnoreCase) ||
                 w.RootPath.Contains(t, StringComparison.OrdinalIgnoreCase)))
             .OrderByDescending(w => w.IsPinned)
             .ThenByDescending(w => w.LastUsedUtc)
             .ToList();
+
+        // ワークツリーの部屋は本体の部屋の直下へ畳む（§24.17.1）。本体が絞り込みで外れたら上の階層へ出す。
+        // 親は「本体のワークツリーをルートに持つ部屋」。目印はパスなので、親の部屋が後から作られても畳める。
+        var next = new List<WorkspaceEntryViewModel>(matched.Count);
+        foreach (var top in matched.Where(w => w.WorktreeOf is not { } main
+                                               || !matched.Any(p => p != w && SamePath(p.RootPath, main))))
+        {
+            top.IsNested = false;
+            next.Add(top);
+            foreach (var child in matched.Where(w => w != top && w.WorktreeOf is { } main
+                                                     && SamePath(top.RootPath, main)))
+            {
+                child.IsNested = true;
+                next.Add(child);
+            }
+        }
+        // 親子が入れ子になった（本来作らない形の）保存でも、行を落とさない。
+        foreach (var orphan in matched.Where(w => !next.Contains(w)))
+        {
+            orphan.IsNested = false;
+            next.Add(orphan);
+        }
 
         if (FilteredWorkspaces.SequenceEqual(next))
             return;
