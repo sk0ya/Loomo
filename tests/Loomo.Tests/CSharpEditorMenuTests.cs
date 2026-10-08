@@ -18,7 +18,7 @@ public sealed class CSharpEditorMenuTests
 
     private static string[] AllIds(CSharpMenuPlan plan)
         => PrimaryIds(plan)
-            .Concat(plan.MoreRewrite.Concat(plan.MoreGenerate).Concat(plan.Tidy)
+            .Concat(plan.MoreRewrite.Concat(plan.MoreGenerate).Concat(plan.Tidy).Concat(plan.Structure)
                 .Select(entry => entry.CommandId))
             .ToArray();
 

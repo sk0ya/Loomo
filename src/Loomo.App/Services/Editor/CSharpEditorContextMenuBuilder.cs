@@ -26,6 +26,8 @@ internal static class CSharpEditorContextMenuBuilder
             gestureFor, executeCommand);
         AddSubmenu(root, control, "生成", "CSharpMoreGenerate", plan.MoreGenerate,
             gestureFor, executeCommand);
+        AddSubmenu(root, control, "構造", "CSharpStructure", plan.Structure,
+            gestureFor, executeCommand);
         AddTidySubmenu(root, control, plan.Tidy, path, gestureFor, executeCommand,
             addFixAllMenuItems);
 

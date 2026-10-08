@@ -17,11 +17,13 @@ public sealed record CSharpMenuSection(string Name, IReadOnlyList<CSharpMenuEntr
 /// <param name="MoreGenerate">「生成」入れ子（たまに使う生成）。</param>
 /// <param name="Tidy">「まとめて整える」入れ子のうちコマンド由来のもの。
 /// プロジェクト／ソリューション範囲の一括修正は範囲の話なので View 側が足す。</param>
+/// <param name="Structure">「構造」入れ子（構文木を単位にした移動・削除、§35.2）。</param>
 public sealed record CSharpMenuPlan(
     IReadOnlyList<CSharpMenuSection> Primary,
     IReadOnlyList<CSharpMenuEntry> MoreRewrite,
     IReadOnlyList<CSharpMenuEntry> MoreGenerate,
-    IReadOnlyList<CSharpMenuEntry> Tidy);
+    IReadOnlyList<CSharpMenuEntry> Tidy,
+    IReadOnlyList<CSharpMenuEntry> Structure);
 
 /// <summary>
 /// C# の右クリックメニューの<b>並び</b>を決める純関数。WPF に触らないので、
@@ -132,6 +134,16 @@ public static class CSharpEditorMenu
     /// <summary>「まとめて整える」入れ子のコマンド由来ぶん。</summary>
     private static readonly string[] TidyIds = [CSharpEditorCommandCatalog.Cleanup];
 
+    /// <summary>「構造」入れ子。キャレット位置の構文要素が対象なので選択は要らない。</summary>
+    private static readonly string[] StructureIds =
+    [
+        CSharpEditorCommandCatalog.MoveStatementUp,
+        CSharpEditorCommandCatalog.MoveStatementDown,
+        CSharpEditorCommandCatalog.MoveElementLeft,
+        CSharpEditorCommandCatalog.MoveElementRight,
+        CSharpEditorCommandCatalog.DeleteSyntaxNode,
+    ];
+
     /// <summary>その操作が今の選択状態で実行できるか（メニューに出すかの判定に使う）。</summary>
     public static bool IsApplicable(string commandId, bool hasSelection)
         => hasSelection || !RequiresSelection.Contains(commandId);
@@ -150,7 +162,8 @@ public static class CSharpEditorMenu
             Sections(hasSelection, PrimarySections),
             Entries(hasSelection, MoreRewriteIds),
             Entries(hasSelection, MoreGenerateIds),
-            Entries(hasSelection, TidyIds));
+            Entries(hasSelection, TidyIds),
+            Entries(hasSelection, StructureIds));
 
     private static IReadOnlyList<CSharpMenuEntry> Entries(bool hasSelection, string[] ids)
         => ids

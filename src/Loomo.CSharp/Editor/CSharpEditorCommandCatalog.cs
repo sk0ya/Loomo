@@ -51,6 +51,11 @@ public static class CSharpEditorCommandCatalog
     public const string GenerateAsyncDisposePattern = "editor.csharp.generateAsyncDisposePattern";
     public const string GenerateNullGuards = "editor.csharp.generateNullGuards";
     public const string GenerateJsonTypes = "editor.csharp.generateJsonTypes";
+    public const string MoveStatementUp = "editor.csharp.structure.moveUp";
+    public const string MoveStatementDown = "editor.csharp.structure.moveDown";
+    public const string MoveElementLeft = "editor.csharp.structure.moveLeft";
+    public const string MoveElementRight = "editor.csharp.structure.moveRight";
+    public const string DeleteSyntaxNode = "editor.csharp.structure.delete";
 
     public static IReadOnlyList<CSharpEditorCommand> All { get; } =
     [
@@ -95,6 +100,12 @@ public static class CSharpEditorCommandCatalog
         new(GenerateAsyncDisposePattern, "非同期Disposeパターンを生成"),
         new(GenerateNullGuards, "引数のnull guardを生成"),
         new(GenerateJsonTypes, "JSONからC#型を生成"),
+        // 構文木を単位にした編集（§35.2）。キーは Rider の Move Statement／Move Element に合わせる。
+        new(MoveStatementUp, "文・メンバーを上へ移動", "Ctrl+Shift+Up"),
+        new(MoveStatementDown, "文・メンバーを下へ移動", "Ctrl+Shift+Down"),
+        new(MoveElementLeft, "引数・要素を左へ移動", "Ctrl+Alt+Shift+Left"),
+        new(MoveElementRight, "引数・要素を右へ移動", "Ctrl+Alt+Shift+Right"),
+        new(DeleteSyntaxNode, "構文要素を区切りごと削除"),
     ];
 
     public static bool Contains(string id)

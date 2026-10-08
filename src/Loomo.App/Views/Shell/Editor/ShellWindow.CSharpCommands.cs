@@ -38,6 +38,8 @@ public partial class ShellWindow
             control.ExecuteCommand(nativeCommand);
             return;
         }
+        if (TryRunStructuralEdit(id, control))
+            return;
 
         switch (id)
         {

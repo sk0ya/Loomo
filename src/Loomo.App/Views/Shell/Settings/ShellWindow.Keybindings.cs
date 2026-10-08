@@ -51,7 +51,8 @@ public partial class ShellWindow {
     /// 届く（<see cref="KeyboardDispatcher"/>）。ここはウィンドウの PreviewKeyDown から走るので、
     /// 対象ペイン以外で押されたキーを黙って食べないための最後の関門になる。
     /// <list type="bullet">
-    /// <item>C#専用コマンドは .cs 以外なら素通し（エディタ自身のLSP操作へ委ねる）。</item>
+    /// <item>C#専用コマンドは .cs 以外なら素通し（エディタ自身のLSP操作へ委ねる）。
+    /// 本文を書き換える構造編集（§35.2）はさらにエディタにフォーカスがあるときだけ。</item>
     /// <item>Ctrl+S はエディタにフォーカスがあるときだけ。ターミナル／ブラウザ／コンポーザで
     /// 押した Ctrl+S が、無関係なエディタタブをディスクへ書きつつそのペインにも届かない、
     /// という二重の事故を防ぐ。コマンドパレット経由の保存はこの関門を通らない。</item>
@@ -63,6 +64,10 @@ public partial class ShellWindow {
         // OnPaneNavKey が TryExecuteScoped で拾う）。
         "palette.nextScope" or "palette.previousScope" => IsPaletteOpen,
         "editor.save" => IsEditorFocused(),
+        // 構造編集は本文を書き換えるので、エディタにフォーカスがあるときだけ。ターミナルで押した
+        // Ctrl+Shift+↑ が、裏のC#タブの文を黙って動かす事故を防ぐ（キーは内側のペインへ届く）。
+        _ when id.StartsWith("editor.csharp.structure.", StringComparison.Ordinal)
+            => IsEditorFocused() && ActiveCSharpEditor() is not null,
         _ => !id.StartsWith("editor.csharp.", StringComparison.Ordinal) ||
             ActiveCSharpEditor() is not null,
     };
