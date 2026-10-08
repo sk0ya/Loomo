@@ -62,15 +62,24 @@ public sealed partial class LspSettingsViewModel : ObservableObject
             _workspace.ServerStateChanged += OnServerStateChanged;
     }
 
+    /// <summary>直近に取り直した一覧（導入状況込み）。サーバーの状態変化ではこれを使い回す。</summary>
+    private IReadOnlyList<LspServerRow>? _rows;
+
     /// <summary>設定オーバーレイを開いたとき（およびインストール後）に呼ぶ。一覧と導入状況を取り直す。</summary>
     public void Refresh()
     {
         SyncFileMoveReferenceUpdate();
+        _rows = _service.GetRows();
+        RebuildRows(_rows);
+    }
+
+    private void RebuildRows(IReadOnlyList<LspServerRow> rows)
+    {
         Servers.Clear();
         var runtime = _workspace?.ServerStatuses
             .GroupBy(s => s.Executable, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(g => g.Key, g => g.OrderByDescending(x => x.State).First(), StringComparer.OrdinalIgnoreCase);
-        foreach (var row in _service.GetRows())
+        foreach (var row in rows)
         {
             LspServerRuntimeStatus? status = null;
             runtime?.TryGetValue(row.Executable, out status);
@@ -100,10 +109,19 @@ public sealed partial class LspSettingsViewModel : ObservableObject
         if (!ReferenceEquals(current, SelectedFileMoveReferenceUpdate))
             SelectedFileMoveReferenceUpdate = current;
     }
+    /// <summary>
+    /// サーバーの起動・初期化・停止のたびに来る。変わったのは実行状態だけなので、導入状況（PATH 検出）は
+    /// 取り直さず、前回の一覧に状態を当て直す。取り直すと拡張子の行ごとに PATH の全フォルダを stat するので、
+    /// 起動直後の状態の連打だけで UI スレッドが 1 回 100ms 以上止まっていた。設定画面をまだ開いていなければ
+    /// 一覧も無いので何もしない（開いたときの <see cref="Refresh"/> が組む）。
+    /// </summary>
     private void OnServerStateChanged()
     {
         if (_dispatcher.HasShutdownStarted || _dispatcher.HasShutdownFinished) return;
-        _ = _dispatcher.InvokeAsync(Refresh);
+        _ = _dispatcher.InvokeAsync(() =>
+        {
+            if (_rows is { } rows) RebuildRows(rows);
+        });
     }
     private void SetStatus(string message) => Status = message;
 
