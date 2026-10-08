@@ -17,8 +17,7 @@
 
          1.0.90 でガターのクイックフィックス電球とスクロールバーの診断マーカーを公開した。
          1.0.98（本文の変更を差分として通知する TextEdited・編集の関門 EditGuard・ガター行番号の差し替え。
-         §35.3 の抜粋タブが使う）を使用する。※未公開（nuget.org の最新は 1.0.97）。公開するまでこのピンは
-         ローカルの pack をキャッシュに入れた環境でしか restore できないので、main へは公開後に入れる。 -->
+         §35.3 の抜粋タブが使う）（2026-10-08 公開）を nuget.org 最新版として使用する。 -->
     <UseLocalEditor Condition="'$(UseLocalEditor)' == ''">false</UseLocalEditor>
     <EditorPackageVersion Condition="'$(EditorPackageVersion)' == ''">1.0.98</EditorPackageVersion>
     <!-- sk0ya.Terminal.Controls の版。本体（Loomo.Services）と端末の常駐ホスト（Loomo.Pty.Host、§34）が
