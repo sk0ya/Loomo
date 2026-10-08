@@ -143,6 +143,22 @@ public class DetachedPaneWindowTests
     }
 
     [Fact]
+    public void 中身はリサイズ枠と重ならない()
+    {
+        // 枠の上の押下は非クライアント（サイズ変更）扱いで WPF へ届かない。中身を縁まで敷くと、縁に貼り付く
+        // エディタのスクロールバー（幅 6px＝枠と同じ）が見えているのに掴めなかった（左右並び差分の右エディタ）。
+        RunSta(() =>
+        {
+            var window = new DetachedPaneWindow(new DetachedWindowManager(new Window()));
+            var border = System.Windows.Shell.WindowChrome.GetWindowChrome(window).ResizeBorderThickness;
+            var host = (Grid)window.FindName("ContentHost");
+
+            Assert.True(border.Right > 0);
+            Assert.Equal(new Thickness(border.Left, 0, border.Right, border.Bottom), host.Margin);
+        });
+    }
+
+    [Fact]
     public void 戻せるタブはメインの帯へ返せる()
     {
         RunSta(() =>

@@ -9,6 +9,7 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Shell;
 using System.Windows.Threading;
 using sk0ya.Loomo.App.Detach;
 using sk0ya.Loomo.App.Services;
@@ -33,6 +34,7 @@ public partial class DetachedPaneWindow : Window
     {
         _manager = manager;
         InitializeComponent();
+        ContentHost.Margin = ContentInsetForResizeBorder(WindowChrome.GetWindowChrome(this));
         TabStripItems.ItemsSource = _items;
         TabOverflowList.ItemsSource = _items;
         Closed += OnWindowClosed;
@@ -53,6 +55,17 @@ public partial class DetachedPaneWindow : Window
         }
         catch { /* アイコン無しで続行 */ }
     }
+
+    /// <summary>
+    /// 中身をリサイズ枠の内側へ寄せる余白（上はタイトルバーが受けるので 0）。枠の上の押下は非クライアント
+    /// （サイズ変更）として扱われ WPF へ届かないため、縁まで中身を敷くと縁のスクロールバーが掴めなくなる。
+    /// 値は XAML の <c>ResizeBorderThickness</c> から取る（片方だけ変えてずれないように）。
+    /// </summary>
+    internal static Thickness ContentInsetForResizeBorder(WindowChrome? chrome)
+        => chrome is null
+            ? new Thickness(0)
+            : new Thickness(chrome.ResizeBorderThickness.Left, 0,
+                chrome.ResizeBorderThickness.Right, chrome.ResizeBorderThickness.Bottom);
 
     // ===== キャプションボタン（WindowChrome） =====
 

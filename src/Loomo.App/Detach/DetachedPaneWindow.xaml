@@ -186,7 +186,10 @@
             </StackPanel>
         </Grid>
 
-        <!-- アクティブ項目の実コントロールを載せるホスト（他項目は Collapsed で退避） -->
+        <!-- アクティブ項目の実コントロールを載せるホスト（他項目は Collapsed で退避）。
+             左・右・下はリサイズ枠（WindowChrome.ResizeBorderThickness）のぶん内側へ寄せる（コード側で設定）。
+             枠の上は WM_NCHITTEST が非クライアントと答えるので WPF にマウスが届かない——中身を窓の縁まで
+             敷くと、縁に貼り付くエディタのスクロールバー（幅 6px＝枠と同じ）が見えているのに一切掴めない。 -->
         <Grid x:Name="ContentHost" />
         </DockPanel>
 
