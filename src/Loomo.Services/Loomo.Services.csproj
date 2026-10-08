@@ -95,8 +95,9 @@
          タブの別ウィンドウ切り離し、貼り付け改行のCR正規化、ConPTY破棄時のデッドロック修正、FlowDocument描画経路の削除 -->
     <!-- 1.0.33: 行数を縮めたとき画面の中身（カーソル行）を履歴へ押し出さないよう修正、
          入力を送ったら表示を生きている画面へ戻すよう修正（履歴を読んでいる最中のCtrl+L・打鍵） -->
-    <!-- 1.0.40: セッション生成の差し替え口（TerminalTabView.SessionFactory）、UI 無しの画面モデル
-         （HeadlessTerminal）と、その状態を VT 列へ組み直すスナップショット（再生中の印は過去として扱う）。§34 -->
+    <!-- 1.0.41: セッション生成の差し替え口（TerminalTabView.SessionFactory）、UI 無しの画面モデル
+         （HeadlessTerminal）と、その状態を VT 列へ組み直すスナップショット（再生中の印は過去として扱う）。§34
+         （1.0.40 は欠番：公開前に再生枠の偽装対策・代替画面中リサイズの印ずれ・復元印の時刻なし等を入れて番号を上げた） -->
     <!-- 版は Directory.Build.props の TerminalPackageVersion（常駐ホストと共有するため一か所） -->
     <PackageReference Include="sk0ya.Terminal.Controls" Version="$(TerminalPackageVersion)" />
   </ItemGroup>
