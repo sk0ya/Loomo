@@ -268,6 +268,9 @@ public partial class ShellWindow {
             Sc("terminal.compareOutput"), "terminal.compareOutput"));
         list.Add(new("ターミナル", "コマンドの出力をエディタで開く", OpenTerminalOutputs,
             Sc("terminal.openOutput"), "terminal.openOutput"));
+        list.Add(new("タスク", "タスクを実行…", OpenWorkspaceTasks, Sc("tasks.run"), "tasks.run"));
+        list.Add(new("タスク", "既定のビルドタスクを実行", RunDefaultBuildTask,
+            Sc("tasks.runDefaultBuild"), "tasks.runDefaultBuild"));
         list.Add(new("軌跡", "いまの地点にしおりを付ける", () => BookmarkTrailEntry(_vm.Trail.CurrentEntry),
             Sc("trail.bookmark"), "trail.bookmark"));
         list.Add(new("軌跡", "しおり一覧", OpenTrailBookmarks, Sc("trail.bookmarks"), "trail.bookmarks"));

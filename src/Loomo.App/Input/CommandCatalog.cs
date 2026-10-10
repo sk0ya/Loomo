@@ -42,6 +42,7 @@ public static class CommandCatalog
     private const string CatSearch = "検索";
     private const string CatTerminal = "ターミナル";
     private const string CatTrail = "軌跡";
+    private const string CatTask = "タスク";
 
     public static IReadOnlyList<CommandDescriptor> All { get; } = new CommandDescriptor[]
     {
@@ -107,6 +108,11 @@ public static class CommandCatalog
         new CommandDescriptor("trail.daySummary", CatTrail, "この日のまとめ", null),
         new CommandDescriptor("trail.reshowAway", CatTrail, "留守中のまとめをもう一度表示", null),
         new CommandDescriptor("trail.toggleExpanded", CatTrail, "軌跡の展開ビューを開く／閉じる", null),
+
+        // ===== タスク（tasks.json・§31.17） =====
+        // 既定キーは与えない。VS Code の Ctrl+Shift+B は「型定義へ移動」とブラウザのブックマークバーが使っている。
+        new CommandDescriptor("tasks.run", CatTask, "タスクを実行…", null),
+        new CommandDescriptor("tasks.runDefaultBuild", CatTask, "既定のビルドタスクを実行", null),
 
         // ===== 問題 =====
         new CommandDescriptor("problems.next", CatProblems, "次の問題へ移動", "F8"),

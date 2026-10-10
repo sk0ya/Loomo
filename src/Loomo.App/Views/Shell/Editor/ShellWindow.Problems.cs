@@ -38,6 +38,9 @@ public partial class ShellWindow
         => Dispatcher.BeginInvoke(new Action(() => {
             _vm.Debug.Problems.ClearLspDiagnostics();
             _vm.TsIde.Problems.ClearLspDiagnostics();
+            // タスクの結果（§31.17）は前のワークスペースのファイルを指しているので捨てる。
+            _vm.Debug.Problems.ClearTaskProblems();
+            _vm.TsIde.Problems.ClearTaskProblems();
             // 開いたままのエディタぶんも一度消して、今のスナップショットから出し直す。
             // 消すだけだと、ワークスペースを切り替えても開き続けている文書の問題が空欄になる。
             _vm.Debug.Problems.ClearAllEditorDiagnostics();

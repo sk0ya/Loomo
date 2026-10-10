@@ -79,6 +79,8 @@
 実装（主にLoomo、Code Actionの文書操作はEditor APIを再利用）：
 
 - Error/Warning、Build/LSP、現在ファイル／ワークスペース全体のフィルターと件数を追加する。
+  発生源は Build・Compiler・LSP・StyleCop に、tasks.json のタスク出力を problem matcher で変換した
+  **Task**（§31.17）を加えた。
 - URI＋range＋source＋message＋codeを安定キーにし、Build/LSPの同一内容を必要に応じて重複排除する。
 - `F8`/`Shift+F8`相当の次／前の問題コマンドを追加し、ファイルを開いて該当rangeを選択・中央表示する。
 - 行の主操作をジャンプ、副操作をCode Action（Quick Fix）にする。複数候補、適用失敗、文書版不一致を表示する。
@@ -599,6 +601,81 @@ UI スレッドは読み終えたものを載せるところだけを払う。
   MSBuild 評価の子プロセスが `BelowNormal` で走っていること、タイトルバーのブランチ表示
   （git 経路が生きている証拠）。
 - Loomo: 3496 件成功。
+
+## §31.17 汎用タスクランナー——tasks.json と problem matcher（2026-10-10）
+
+TS IDE ペインの npm スクリプト一覧（§29）はドメイン特化の主導線で、「任意のコマンドを定義し、その出力を
+問題へ変換する」仕組みではなかった。これを Problems（§31.5）の**第3の発生源 `Task`** として足した。
+
+### §31.17.1 定義は `.vscode/tasks.json` をそのまま読む
+
+Loomo 独自の書式は**作らない**。既存のリポジトリにはすでに tasks.json があり、二つ目の書式を作れば
+「どちらに書くか」「両方あるときどちらが勝つか」を利用者に背負わせるだけで、得るものが無い（書式の
+表現力で困った場面がまだ無い）。必要になったら tasks.json の部分集合を広げる方が先。
+
+- 読むのはワークスペースの**全フォルダー**の `.vscode/tasks.json`（マルチルート。各タスクは定義元フォルダーを
+  `${workspaceFolder}` として持ち、`dependsOn` は同じフォルダーのタスクを優先して探す）。
+- JSONC（コメント・末尾カンマ）を許す。部分集合：`label`・`type`（shell / process / npm）・`command`・`args`・
+  `options.cwd`（最上位も）・`windows` 上書き・`group`（文字列 / `{kind,isDefault}`）・`isBackground`・
+  `dependsOn`・`detail`・`problemMatcher`（組み込み名 / インライン `pattern` / `base` 付き上書き / 配列。
+  `fileLocation`・`severity`・`owner`・複数行パターンと `loop`）。
+- 組み込み matcher：`$msCompile`・`$tsc`（`$tsc-watch`）・`$eslint-stylish`・`$eslint-compact`・`$gcc`。
+  VS Code の定義を下敷きに、行頭の空白（.NET の Terminal Logger の字下げ）を許し、MSBuild の末尾
+  `[proj.csproj]` をメッセージから落とした（Build ソースの既存パーサーと同じ扱い＝重複排除が効く）。
+- 読めない項目・未対応の指定（`options.env`、未知の type / matcher、壊れた正規表現、重複ラベル）は捨てて
+  **警告に理由を積む**。1項目の誤りで全部消えると直す場所が見えない。警告はパレットの末尾に出る。
+- `${input:…}` / `${command:…}` / `${config:…}` は実行を断る。空に展開すると別のコマンドが走るため。
+  `${file}` 系はエディタで開いているファイルから展開し、無ければ断る。
+- `options.env` は未対応：可視ターミナルのシェルへ `$env:` を残してしまう（後の人間のコマンドに効く）。
+
+### §31.17.2 走らせる場所は人間の可視ターミナル
+
+`ITerminalService.RunCommandInVisibleTerminalAsync`——可視ターミナルの PTY へ打ち込み、OSC 133 の C〜D で
+区切られた出力と終了コードを受け取る（TS IDE の型チェックと同じ経路）。裏のプロセス（`ChildProcessIo`）で
+走らせて結果だけ Problems に出す案も比べたが、それでは部屋の中で何が起きたかが人間に見えず、Ctrl+C で
+止めることも出力を遡ることもできない。ビルドの出力は人間が読むものでもあるので、見える場所で走らせ、
+同じ出力を機械も読む。
+
+- 作業フォルダーは `Set-Location -LiteralPath '…'; <コマンド>` で移す。`Push-Location; try{}finally{Pop-Location}`
+  で戻すと、プロンプトが見る `$?` が Pop-Location の成功で上書きされ、OSC 133 の終了コードが常に 0 になる
+  （失敗が成功に見える）。人間が `cd` したのと同じ結果を受け入れる——どこにいるかは画面に出ている。
+- `dependsOn` は依存を先に1つずつ順に流し、失敗したら後続を止める。`dependsOrder: "parallel"` も順に流す
+  （可視ターミナルは1本で、同時に打ち込むと前のタスクの標準入力に入る）。同じ理由で同時実行は1つだけ。
+- `isBackground`（watch）は打ち込むだけで終わりを待たず、問題へは変換しない（VS Code の背景 matcher の
+  begins/ends は未実装）。依存に使うと後続が打ち込めないので、実行前に断る。
+
+**可視ターミナルの折り返し（既知の制約と緩和）。** ターミナルが返す本文は画面の1行ごとで、画面幅で
+折り返された1行は2行に割れて届く（Terminal の `ShellCommandOutputEventArgs.Output` の仕様。画面幅も公開
+されていない）。MSBuild の診断は絶対パス＋プロジェクトパスでほぼ必ず画面幅を超える。そこで
+`ProblemMatcherEngine.RejoinSoftWraps` が、出力の**最長行の長さを画面幅とみなし**（折り返しが起きていれば
+前半はちょうど画面幅まで埋まる）、その長さの行を次の行と継ぎ直す。次の行が空白で始まる・それ自体が
+matcher に当たる場合は継がない。行末がちょうど空白で割れた行（末尾が削られて幅に届かない）は継げず、
+メッセージが途中で切れる——位置は前半の行から取れるのでジャンプは壊れない。根本解決は Terminal 側で
+折り返し行を連結した本文を出すこと（パッケージ側の宿題）。スクロールバック上限で頭が落ちた出力
+（`HeadLost`）の前半も拾えない。
+
+### §31.17.3 Problems の第3の発生源
+
+`ProblemSource.Task`（フィルター「Task」）。鍵はタスク（フォルダー＋ラベル）で、**同じタスクを走らせ直すと
+そのタスクの分だけ丸ごと差し替え**、別のタスクの結果は残す（lint を走らせただけで直前のビルドの問題が
+消えない）。0件なら消す＝きれいになった。matcher を持たないタスクは問題に触れない（「0件」と取り違えて
+前回の結果を消さない）。ワークスペース切替で全部捨てる。走っている間に切り替えたら、結果は流し込まない。
+同じ診断が Build と重なれば Build が正本（優先度 Build→Task→LSP→Compiler）。パスは matcher の
+`fileLocation` に従い、基準は `${workspaceFolder}`＝定義元フォルダー・`${cwd}`＝タスクの作業フォルダー。
+出力がすでに絶対パスならどのモードでもそのまま使う。`autoDetect` は基準で見つからなければもう一方の
+基準も試す。
+
+### §31.17.4 入口と置き場所
+
+- コマンドパレット「タスクを実行…」（既定のビルドタスク→build→test→その他の順。開いているファイルの持ち主
+  フォルダーを先に）と「既定のビルドタスクを実行」（`isDefault` の build、無ければ build がちょうど1つのとき
+  それ、決められなければ一覧を開く）。既定キーは無し——VS Code の Ctrl+Shift+B は「型定義へ移動」と
+  ブラウザのブックマークバーが使っている。tasks.json は実行のたびに読み直す（編集してすぐ試せる方が大事）。
+- 純粋部品は `Loomo.Core/Tasks/`：`TasksJsonParser`・`BuiltInProblemMatchers`・`ProblemMatcherEngine`・
+  `TaskCommandBuilder`・`TaskPlanner`・`WorkspaceTaskCatalog`・`WorkspaceTaskRunner`。入口と Problems への
+  流し込みは `ShellWindow.Tasks.cs`。結果はエディタのステータスバーに1行（成否・エラー/警告件数）。
+- 検証：`TaskRunnerTests` 38 件（JSONC・各組み込み matcher のフィクスチャ出力・折り返しの継ぎ直し・パス解決・
+  引用・変数・dependsOn・実行の直列化・Problems の差し替え・三点同期）。実機は未確認。
 
 ## §31.10 非目標
 

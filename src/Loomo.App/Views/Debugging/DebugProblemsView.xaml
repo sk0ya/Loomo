@@ -164,6 +164,8 @@
             <CheckBox Content="Compiler" IsChecked="{Binding ShowCompiler}" Margin="0,0,8,0" />
             <CheckBox Content="LSP" IsChecked="{Binding ShowLsp}" Margin="0,0,8,0" />
             <CheckBox Content="StyleCop" IsChecked="{Binding ShowStyleCop}" Margin="0,0,8,0" />
+            <CheckBox Content="Task" IsChecked="{Binding ShowTask}" Margin="0,0,8,0"
+                      ToolTip="tasks.json のタスク出力から拾った問題" />
             <ComboBox SelectedValue="{Binding Scope}" SelectedValuePath="Tag" MinWidth="112">
                 <ComboBoxItem Content="ワークスペース" Tag="{x:Static vm:ProblemScope.Workspace}" />
                 <ComboBoxItem Content="現在のファイル" Tag="{x:Static vm:ProblemScope.CurrentFile}" />
