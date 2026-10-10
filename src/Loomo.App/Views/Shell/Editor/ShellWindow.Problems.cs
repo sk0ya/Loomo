@@ -11,6 +11,8 @@ public partial class ShellWindow
         _vm.TsIde.Problems.OpenRequested += OnProblemOpenRequested;
         _vm.Debug.Problems.QuickFixRequested += OnProblemQuickFixRequested;
         _vm.TsIde.Problems.QuickFixRequested += OnProblemQuickFixRequested;
+        _vm.Debug.Problems.ExcerptRequested += OnProblemExcerptRequested;
+        _vm.TsIde.Problems.ExcerptRequested += OnProblemExcerptRequested;
         _lspWorkspace.DiagnosticsPublished += OnLspDiagnosticsPublished;
         _workspace.FoldersChanged += OnProblemWorkspaceFoldersChanged;
     }
@@ -62,6 +64,21 @@ public partial class ShellWindow
         if (_activeEditorTab is { IsRealized: true } tab &&
             string.Equals(tab.Control.FilePath, item.FilePath, StringComparison.OrdinalIgnoreCase))
             tab.Control.ExecuteCommand("QuickFix");
+    }
+
+    /// <summary>問題一覧から抜粋タブ（§35.3）を開く。どの行を流すか（表示中・同じコード・1ファイル）は
+    /// <see cref="ProblemExcerpts"/> が決めており、ここは開くだけ。</summary>
+    private void OnProblemExcerptRequested(ProblemExcerptPlan plan)
+    {
+        if (plan.Requests.Count == 0)
+        {
+            ShowRefactorStatus(plan.OutsideCount > 0
+                ? $"抜粋にできる問題がありません（ワークスペースの外の {plan.OutsideCount} 件は抜粋にしません）。"
+                : "抜粋にできる問題がありません。");
+            return;
+        }
+        OpenExcerptTab(plan.Title, plan.Requests,
+            plan.OutsideCount > 0 ? $"ワークスペースの外の {plan.OutsideCount} 件は除きました。" : null);
     }
 
     private void SelectProblemRange(ProblemItemViewModel item)

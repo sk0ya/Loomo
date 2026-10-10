@@ -73,6 +73,11 @@ public sealed class ProblemItemViewModel
     public string LineColumn => $"{Line1}:{Column1}";
     /// <summary>行のツールチップ（メッセージ全文＋コード＋位置）。</summary>
     public string ToolTipText => $"{Message}\n{SourceLabel} · {Code} · {FileName}:{Line1}:{Column1}";
+    /// <summary>右クリックの「同じコードの問題を抜粋タブで開く」の見出し。コードを持たない診断は
+    /// 発生源名で同一視すると無関係な診断まで拾うので、同じメッセージのものに絞ると書く。</summary>
+    public string SameCodeExcerptHeader => HasCode
+        ? $"{Code} をすべて抜粋タブで開く"
+        : "同じメッセージの問題をすべて抜粋タブで開く";
     public string SeverityGlyph => Severity switch
     {
         ProblemSeverity.Error => "✕",
@@ -204,6 +209,51 @@ public sealed partial class ProblemsViewModel : ObservableObject
         _navigationKey = NavigationKey(item);
         QuickFixRequested?.Invoke(item);
     }
+
+    /// <summary>抜粋タブ（§35.3）で開く要求。ShellWindow が購読して <c>OpenExcerptTab</c> へ渡す。</summary>
+    public event Action<ProblemExcerptPlan>? ExcerptRequested;
+
+    /// <summary>表示中の問題すべてを抜粋タブで開く（フィルター・範囲は一覧に見えているとおり）。</summary>
+    [RelayCommand]
+    private void OpenDisplayedAsExcerpts() => RequestExcerpt(PlanDisplayedExcerpts());
+
+    /// <summary>ファイル見出し（または診断行の属するファイル）の問題を抜粋タブで開く。</summary>
+    [RelayCommand]
+    private void OpenFileAsExcerpts(object? target)
+    {
+        if (PlanFileExcerpts(target) is { } plan) RequestExcerpt(plan);
+    }
+
+    /// <summary>選んだ問題と同じコードの問題すべてを抜粋タブで開く。</summary>
+    [RelayCommand]
+    private void OpenSameCodeAsExcerpts(ProblemItemViewModel? item)
+    {
+        if (item is not null) RequestExcerpt(PlanSameCodeExcerpts(item));
+    }
+
+    private void RequestExcerpt(ProblemExcerptPlan plan) => ExcerptRequested?.Invoke(plan);
+
+    internal ProblemExcerptPlan PlanDisplayedExcerpts() => ProblemExcerpts.Displayed(Groups, IsInWorkspace);
+
+    internal ProblemExcerptPlan? PlanFileExcerpts(object? target)
+    {
+        var group = target switch
+        {
+            ProblemFileGroup g => g,
+            ProblemItemViewModel item => Groups.FirstOrDefault(g =>
+                string.Equals(g.FilePath, item.FilePath, System.StringComparison.OrdinalIgnoreCase)),
+            _ => null,
+        };
+        return group is null ? null : ProblemExcerpts.ForFile(group, IsInWorkspace);
+    }
+
+    /// <summary>同じコードの問題は、範囲（現在のファイル）だけは外して集める——「全ファイルの CS8618」を
+    /// 見たいときに範囲が現在のファイルのままだと1ファイル分しか出ない。重要度・発生源のフィルターは守る。</summary>
+    internal ProblemExcerptPlan PlanSameCodeExcerpts(ProblemItemViewModel item)
+        => ProblemExcerpts.SameCode(item,
+            GroupByFile(CollectVisible(applyScope: false)).SelectMany(g => g.Items), IsInWorkspace);
+
+    private bool IsInWorkspace(string path) => _workspace is null || _workspace.Contains(path);
 
     [RelayCommand]
     private void Next() => Move(1);
@@ -407,35 +457,10 @@ public sealed partial class ProblemsViewModel : ObservableObject
     private void Rebuild()
     {
         var expanded = Groups.ToDictionary(g => g.FilePath, g => g.IsExpanded, System.StringComparer.OrdinalIgnoreCase);
-        var items = _buildItems.Concat(_taskItems.Values.SelectMany(x => x))
-            .Concat(_editorItems.Values.SelectMany(x => x.Items))
-            .Concat(_compilerItems.Values.SelectMany(x => x))
-            .Concat(_lspItems.Values.SelectMany(x => x))
-            .Concat(_styleCopItems.Values.SelectMany(x => x))
-            // 発生源フィルターを重複排除より先に適用する。同じ診断が Build/LSP の双方にあるとき、
-            // Build を隠しただけで代表に選ばれた Build 項目と一緒に LSP 項目まで消してはならない。
-            .Where(IsVisible)
-            // severity／message は除外する。Analyzer の設定やローカライズが一時的に異なっても、
-            // 同じ ID・位置の診断を二重表示せず、SourcePriorityの正本を残す。
-            // Build出力は終端rangeを持たず開始位置だけなので、終端位置はキーに含めない。
-            // ただしコードを持たない診断（Code が発生源名の代用）は ID で区別できないので、
-            // 同じ位置の別々の診断が消えないようメッセージまで鍵に含める。
-            .GroupBy(i => i.HasCode
-                    ? $"{i.FilePath}|{i.Line1}|{i.Column1}|{i.Code}"
-                    : $"{i.FilePath}|{i.Line1}|{i.Column1}|{i.Code}|{i.Message}",
-                System.StringComparer.OrdinalIgnoreCase)
-            .Select(g => g.OrderBy(SourcePriority).First())
-            .ToList();
-
-        var groups = items
-            .GroupBy(i => i.FilePath, System.StringComparer.OrdinalIgnoreCase)
-            .Select(g => new ProblemFileGroup(g.Key, ToRelativeDir(g.Key),
-                g.OrderBy(i => i.Line1).ThenBy(i => i.Column1).ToList()))
-            .OrderByDescending(g => g.HasErrors)
-            .ThenBy(g => g.FileName, System.StringComparer.OrdinalIgnoreCase);
         var replacement = new ObservableCollection<ProblemFileGroup>();
-        foreach (var g in groups)
+        foreach (var (filePath, fileItems) in GroupByFile(CollectVisible(applyScope: true)))
         {
+            var g = new ProblemFileGroup(filePath, ToRelativeDir(filePath), fileItems);
             if (expanded.TryGetValue(g.FilePath, out var e)) g.IsExpanded = e;
             replacement.Add(g);
         }
@@ -448,7 +473,41 @@ public sealed partial class ProblemsViewModel : ObservableObject
         HintCount = Groups.Sum(g => g.HintCount);
     }
 
-    private bool IsVisible(ProblemItemViewModel item)
+    /// <summary>全発生源を合わせ、フィルターを通して重複を除いた問題。<paramref name="applyScope"/> が false なら
+    /// 範囲（現在のファイル）だけは見ない（同じコードの問題を全ファイルから集めるとき用）。</summary>
+    private List<ProblemItemViewModel> CollectVisible(bool applyScope)
+    {
+        return _buildItems.Concat(_taskItems.Values.SelectMany(x => x))
+            .Concat(_editorItems.Values.SelectMany(x => x.Items))
+            .Concat(_compilerItems.Values.SelectMany(x => x))
+            .Concat(_lspItems.Values.SelectMany(x => x))
+            .Concat(_styleCopItems.Values.SelectMany(x => x))
+            // 発生源フィルターを重複排除より先に適用する。同じ診断が Build/LSP の双方にあるとき、
+            // Build を隠しただけで代表に選ばれた Build 項目と一緒に LSP 項目まで消してはならない。
+            .Where(i => IsVisible(i, applyScope))
+            // severity／message は除外する。Analyzer の設定やローカライズが一時的に異なっても、
+            // 同じ ID・位置の診断を二重表示せず、SourcePriorityの正本を残す。
+            // Build出力は終端rangeを持たず開始位置だけなので、終端位置はキーに含めない。
+            // ただしコードを持たない診断（Code が発生源名の代用）は ID で区別できないので、
+            // 同じ位置の別々の診断が消えないようメッセージまで鍵に含める。
+            .GroupBy(i => i.HasCode
+                    ? $"{i.FilePath}|{i.Line1}|{i.Column1}|{i.Code}"
+                    : $"{i.FilePath}|{i.Line1}|{i.Column1}|{i.Code}|{i.Message}",
+                System.StringComparer.OrdinalIgnoreCase)
+            .Select(g => g.OrderBy(SourcePriority).First())
+            .ToList();
+    }
+
+    /// <summary>ツリーの並び：エラーを含むファイルが先、次いでファイル名順。ファイル内は行・列順。</summary>
+    private static IEnumerable<(string FilePath, List<ProblemItemViewModel> Items)> GroupByFile(
+        IEnumerable<ProblemItemViewModel> items)
+        => items
+            .GroupBy(i => i.FilePath, System.StringComparer.OrdinalIgnoreCase)
+            .Select(g => (FilePath: g.Key, Items: g.OrderBy(i => i.Line1).ThenBy(i => i.Column1).ToList()))
+            .OrderByDescending(g => g.Items.Any(i => i.Severity == ProblemSeverity.Error))
+            .ThenBy(g => Path.GetFileName(g.FilePath), System.StringComparer.OrdinalIgnoreCase);
+
+    private bool IsVisible(ProblemItemViewModel item, bool applyScope)
     {
         if (item.Severity == ProblemSeverity.Error && !ShowErrors) return false;
         if (item.Severity == ProblemSeverity.Warning && !ShowWarnings) return false;
@@ -459,7 +518,7 @@ public sealed partial class ProblemsViewModel : ObservableObject
         if (item.Source == ProblemSource.Lsp && !ShowLsp) return false;
         if (item.Source == ProblemSource.StyleCop && !ShowStyleCop) return false;
         if (item.Source == ProblemSource.Task && !ShowTask) return false;
-        return Scope != ProblemScope.CurrentFile ||
+        return !applyScope || Scope != ProblemScope.CurrentFile ||
             (!string.IsNullOrWhiteSpace(CurrentFilePath) &&
              string.Equals(Path.GetFullPath(item.FilePath), Path.GetFullPath(CurrentFilePath),
                  System.StringComparison.OrdinalIgnoreCase));

@@ -36,7 +36,7 @@ public partial class ShellWindow {
             ["search.scope.terminal"] = () => OpenSearch(SearchScope.Terminal),
             ["search.scope.class"] = () => OpenSearch(SearchScope.Class),
             ["search.scope.symbol"] = () => OpenSearch(SearchScope.Symbol),
-            ["problems.next"] = () => CurrentProblems().NextCommand.Execute(null), ["problems.previous"] = () => CurrentProblems().PreviousCommand.Execute(null),
+            ["problems.next"] = () => CurrentProblems().NextCommand.Execute(null), ["problems.previous"] = () => CurrentProblems().PreviousCommand.Execute(null), ["problems.openAsExcerpts"] = () => CurrentProblems().OpenDisplayedAsExcerptsCommand.Execute(null),
             ["editor.save"] = SaveActiveEditor,
             ["editor.selection.expand"] = ExpandSemanticSelection, ["editor.selection.shrink"] = ShrinkSemanticSelection, ["editor.test.runAtCaret"] = RunTestAtCaret,
             ["stage.cycle"] = () => CycleInActiveMode(1), ["mode.toggle"] = ToggleDisplayMode,

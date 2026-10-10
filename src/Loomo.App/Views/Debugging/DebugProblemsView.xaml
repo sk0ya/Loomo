@@ -172,18 +172,25 @@
             </ComboBox>
         </WrapPanel>
 
-        <TextBlock Grid.Row="1" HorizontalAlignment="Right" Margin="0,0,4,4"
-                   FontSize="{DynamicResource Fs11}" Foreground="{DynamicResource FgDim}"
+        <!-- 件数の行の左端に「表示中の問題を抜粋タブで開く」（§35.3）。問題が無いときは行ごと畳む。 -->
+        <DockPanel Grid.Row="1" Margin="4,0,4,4" LastChildFill="False"
                    Visibility="{Binding HasItems, Converter={StaticResource BoolToVis}}">
-            <Run Text="✕" Foreground="{StaticResource ProblemsError}" />
-            <Run Text="{Binding ErrorCount, Mode=OneWay}" />
-            <Run Text="   ▲" Foreground="{StaticResource ProblemsWarning}" />
-            <Run Text="{Binding WarningCount, Mode=OneWay}" />
-            <Run Text="   ●" Foreground="{StaticResource ProblemsInformation}" />
-            <Run Text="{Binding InformationCount, Mode=OneWay}" />
-            <Run Text="   ·" Foreground="{StaticResource ProblemsHint}" />
-            <Run Text="{Binding HintCount, Mode=OneWay}" />
-        </TextBlock>
+            <Button DockPanel.Dock="Left" Content="▤ 抜粋タブ" Style="{StaticResource ProblemQuickFixButton}"
+                    Padding="6,0" MinHeight="18"
+                    ToolTip="表示中の問題の前後を1枚のタブに並べます（フィルターと範囲は一覧のとおり）。見出し以外の行の編集は元のファイルへそのまま入ります。"
+                    Command="{Binding OpenDisplayedAsExcerptsCommand}" />
+            <TextBlock DockPanel.Dock="Right" VerticalAlignment="Center"
+                       FontSize="{DynamicResource Fs11}" Foreground="{DynamicResource FgDim}">
+                <Run Text="✕" Foreground="{StaticResource ProblemsError}" />
+                <Run Text="{Binding ErrorCount, Mode=OneWay}" />
+                <Run Text="   ▲" Foreground="{StaticResource ProblemsWarning}" />
+                <Run Text="{Binding WarningCount, Mode=OneWay}" />
+                <Run Text="   ●" Foreground="{StaticResource ProblemsInformation}" />
+                <Run Text="{Binding InformationCount, Mode=OneWay}" />
+                <Run Text="   ·" Foreground="{StaticResource ProblemsHint}" />
+                <Run Text="{Binding HintCount, Mode=OneWay}" />
+            </TextBlock>
+        </DockPanel>
 
         <Border Grid.Row="2" Background="{DynamicResource Bg}" BorderBrush="{DynamicResource Border}"
                 BorderThickness="1">
@@ -207,7 +214,19 @@
                         <!-- ファイル見出し：ファイル名（強調）＋相対ディレクトリ（薄く）＋右端に ✕/▲ 件数。
                              行のどこをクリックしても配下を開閉する。 -->
                         <HierarchicalDataTemplate DataType="{x:Type vm:ProblemFileGroup}" ItemsSource="{Binding Items}">
-                            <Grid Background="Transparent" ToolTip="{Binding FilePath}">
+                            <!-- 右クリックメニューは行テンプレートの中に置く（Style の Setter に置くと Click／Command が
+                                 結線されない）。ContextMenu はビジュアルツリーの外なので、VM へは Tag 経由で届く。 -->
+                            <Grid Background="Transparent" ToolTip="{Binding FilePath}"
+                                  Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=UserControl}}">
+                                <Grid.ContextMenu>
+                                    <ContextMenu>
+                                        <MenuItem Header="このファイルの問題を抜粋タブで開く"
+                                                  Command="{Binding PlacementTarget.Tag.OpenFileAsExcerptsCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                  CommandParameter="{Binding}" />
+                                        <MenuItem Header="表示中の問題をすべて抜粋タブで開く"
+                                                  Command="{Binding PlacementTarget.Tag.OpenDisplayedAsExcerptsCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                                    </ContextMenu>
+                                </Grid.ContextMenu>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="*" />
@@ -234,7 +253,20 @@
 
                         <!-- 診断行：グリフ・メッセージ（1行・省略・全文はツールチップ）・コード（薄く）・行:列。 -->
                         <DataTemplate DataType="{x:Type vm:ProblemItemViewModel}">
-                            <Grid Background="Transparent" ToolTip="{Binding ToolTipText}">
+                            <Grid Background="Transparent" ToolTip="{Binding ToolTipText}"
+                                  Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=UserControl}}">
+                                <Grid.ContextMenu>
+                                    <ContextMenu>
+                                        <MenuItem Header="{Binding SameCodeExcerptHeader}"
+                                                  Command="{Binding PlacementTarget.Tag.OpenSameCodeAsExcerptsCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                  CommandParameter="{Binding}" />
+                                        <MenuItem Header="このファイルの問題を抜粋タブで開く"
+                                                  Command="{Binding PlacementTarget.Tag.OpenFileAsExcerptsCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                  CommandParameter="{Binding}" />
+                                        <MenuItem Header="表示中の問題をすべて抜粋タブで開く"
+                                                  Command="{Binding PlacementTarget.Tag.OpenDisplayedAsExcerptsCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                                    </ContextMenu>
+                                </Grid.ContextMenu>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="16" />
                                     <ColumnDefinition Width="*" />

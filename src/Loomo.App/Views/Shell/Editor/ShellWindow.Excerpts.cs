@@ -32,8 +32,9 @@ public partial class ShellWindow
             .ToList();
     }
 
-    /// <summary>一覧の各行（ファイル＋行）を前後2行ずつの抜粋にまとめ、抜粋タブで開く。</summary>
-    private void OpenExcerptTab(string title, IReadOnlyList<ExcerptRequest> requests)
+    /// <summary>一覧の各行（ファイル＋行）を前後2行ずつの抜粋にまとめ、抜粋タブで開く。
+    /// <paramref name="note"/> は開いたときの案内に添える一言（入口ごとの事情。外した件数など）。</summary>
+    private void OpenExcerptTab(string title, IReadOnlyList<ExcerptRequest> requests, string? note = null)
     {
         var source = new ExcerptSourceReader(this);
         var existing = requests
@@ -54,7 +55,8 @@ public partial class ShellWindow
         var document = AttachExcerptDocument(tab, tab.Control, spans, source, _editorTabs);
         UpdateEditorTab(tab);
         ShowRefactorStatus(
-            $"抜粋 {spans.Count} か所（{document.Paths.Count()} ファイル）を開きました。見出し以外の行は、そのまま元のファイルへ入ります。");
+            $"抜粋 {spans.Count} か所（{document.Paths.Count()} ファイル）を開きました。見出し以外の行は、そのまま元のファイルへ入ります。"
+            + (note is null ? "" : " " + note));
     }
 
     /// <summary>抜粋の本文の読み元。開いているタブがあればその本文（未保存の変更も含む）、無ければディスク。
