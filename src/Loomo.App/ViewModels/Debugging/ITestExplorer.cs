@@ -6,7 +6,7 @@ namespace sk0ya.Loomo.App.ViewModels;
 
 /// <summary>テストエクスプローラのビュー（DebugTestsView）と、エディタのガターのテスト実行▶／結果グリフ
 /// （<see cref="Services.EditorTestGlyphMap"/>）が DataContext／窓口に要求する最小の面。
-/// dotnet 版（<see cref="DebugTestsViewModel"/>）と TS 版（<see cref="TsDebugTestsViewModel"/>）が実装し、
+/// dotnet 版（<see cref="DebugTestsViewModel"/>）とスクリプト系（<see cref="ScriptTestsViewModel"/>＝vitest / jest / pytest）が実装し、
 /// 同じビューを両ペインで共有する（残りのバインドは同名メンバーで解決）。</summary>
 internal interface ITestExplorer
 {

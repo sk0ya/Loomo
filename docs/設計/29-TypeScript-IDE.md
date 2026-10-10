@@ -146,13 +146,15 @@ npm スクリプト launch の出力・自然終了。node/js-debug 未導入環
   URL 欄・例外チェック・node プロセス一覧＋ポートアタッチ。
 - **テストタブ（vitest / jest）**：`TsTestDiscovery` が `*.test.ts`/`*.spec.ts` 系から
   `describe`/`it`/`test` の第 1 引数を波かっこ深度近似で拾い（入れ子 describe は「a &gt; b &gt; タイトル」に連結、
-  行番号付き＝ダブルクリックでジャンプ）、`TsTestRunner` が package.json からランナー判定
-  （devDependencies → scripts.test）して `npx vitest run --reporter=json` / `npx jest --json` を実行、
-  **jest 互換 JSON を 1 本のパーサ**で反映（実 vitest で形状検証済み）。グループ＝ファイル、全実行は
-  パッケージごと、ファイル/1 件実行は `-t 葉タイトル`（PowerShell シングルクォート）。VM は
-  `TsDebugTestsViewModel`（dotnet 版と**同名メンバー**にして `DebugTestsView` を共有、コードビハインドの
-  結合は `ITestExplorer` で吸収）。テストソース監視（`TestSourceWatcher` のパターン/無視ディレクトリを
-  パラメータ化）で自動再収集。
+  行番号付き＝ダブルクリックでジャンプ）、ランナーは §28.14 の `ITestRunner`（`VitestRunner` / `JestRunner`）が
+  受け持つ：判定は `JsTestRunnerDetection`（依存 → `vitest.config.*`/`jest.config.*` → `"jest"` キー →
+  scripts.test）、実行は `node_modules/.bin` の実体（無ければ `npx --no-install`）で
+  `vitest run --reporter=json` / `jest --json`、**jest 互換 JSON を 1 本のパーサ**（`JestJsonResultParser`）で反映
+  （実 vitest で形状検証済み）。グループ＝ファイル、全実行はパッケージごと、ファイル/1 件実行は
+  `-t 葉タイトル`（正規表現エスケープ＋PowerShell シングルクォート。jest のファイルは `--runTestsByPath`）。VM は
+  `ScriptTestsViewModel`＋`ScriptTestProfile.TypeScript`（dotnet 版と**同名メンバー**にして `DebugTestsView` を共有、
+  コードビハインドの結合は `ITestExplorer` で吸収。pytest も同じ VM を別プロファイルで使う）。テストソース監視
+  （`TestSourceWatcher` のパターン/無視ディレクトリをパラメータ化）で自動再収集。
 - **自動変数（Autos）**：`AutosExtractor` に TS/JS キーワード集合を追加（`console` 等のノイズ除外・
   テンプレートリテラルの空白化）。停止フレームの拡張子で言語を自動選択。
 - ペイン配管（新 PaneKind の接点）：`_paneElements`／`TsIdePane`（DebugPane クローン、ツールバーは
@@ -177,7 +179,7 @@ dotnet 側と**同じ動線**が `*.test.ts` / `*.spec.ts` にも出る（正本
 
 - 位置は `TsTestDiscovery`（`TsDiscoveredTest.FilePath` / `Line1`）がそのまま宣言位置になる
   ——dotnet と違い探索の時点でファイルと行が判っているので、追加の走査は要らない。
-- 単体実行は既存の `TsDebugTestsViewModel.RunSingleTestCommand`（ファイル限定＋`-t 葉タイトル`）を
+- 単体実行は既存の `ScriptTestsViewModel.RunSingleTestCommand`（ファイル限定＋`-t 葉タイトル`）を
   そのまま使う。**「TS では 1 件だけ走らせられない」ということはない**ので、dotnet 先行にはしていない。
 - 所要時間は jest 互換 JSON の `duration`（ミリ秒）。欠落・null・負値は「不明」として出さない。
 - 管轄の振り分けはデバッグの `ManagerForPath` と同じ拡張子表（`.ts/.mts/.cts/.tsx/.js/.jsx/.mjs/.cjs`）。

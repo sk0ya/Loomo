@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -40,13 +41,46 @@ public partial class DebugView : UserControl
         _inspectionNavigation = new DebugInspectionNavigationController(
             DebugTabs,
             () => DebugTabs.SelectedIndex == TestTab,
-            () => { if (DataContext is DebugViewModel vm) vm.Tests.EnsureTestsDiscovered(); },
+            () =>
+            {
+                if (DataContext is not DebugViewModel vm) return;
+                vm.Tests.EnsureTestsDiscovered();
+                vm.PyTests.EnsureTestsDiscovered();
+            },
             () => DataContext as DebugManagerViewModelBase);
         DataContextChanged += OnDataContextChanged;
     }
 
     private void OnDataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
-        => _outputConsole.Attach(DataContext as DebugManagerViewModelBase);
+    {
+        _outputConsole.Attach(DataContext as DebugManagerViewModelBase);
+        if (e.OldValue is DebugViewModel old)
+        {
+            old.Tests.PropertyChanged -= OnTestKindAvailabilityChanged;
+            old.PyTests.PropertyChanged -= OnTestKindAvailabilityChanged;
+        }
+        if (e.NewValue is DebugViewModel vm)
+        {
+            vm.Tests.PropertyChanged += OnTestKindAvailabilityChanged;
+            vm.PyTests.PropertyChanged += OnTestKindAvailabilityChanged;
+            SelectTestKind(vm);
+        }
+    }
+
+    private void OnTestKindAvailabilityChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(DebugTestsViewModel.HasTestResults) && DataContext is DebugViewModel vm)
+            SelectTestKind(vm);
+    }
+
+    /// <summary>テストタブの内側（.NET / pytest）の選択。pytest が無ければ見出しごと消えるので .NET へ戻し、
+    /// .NET が空で pytest だけあるときは pytest を前に出す（Python だけのワークスペースで空の .NET 枠を見せない）。
+    /// 両方あるときは利用者の選択を動かさない。</summary>
+    private void SelectTestKind(DebugViewModel vm)
+    {
+        if (!vm.PyTests.HasTestResults) TestKindTabs.SelectedIndex = 0;
+        else if (!vm.Tests.HasTestResults) TestKindTabs.SelectedIndex = 1;
+    }
 
     private void OnClearOutputClick(object sender, RoutedEventArgs e) => _outputConsole.ClearOutput();
 

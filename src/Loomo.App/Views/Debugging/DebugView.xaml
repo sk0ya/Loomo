@@ -404,7 +404,28 @@
 
             <!-- 3 テスト -->
             <TabItem x:Name="TestsTabItem" Style="{StaticResource DebugTabItem}" Header="テスト">
-                <v:DebugTestsView DataContext="{Binding Tests}" />
+                <!-- .NET（dotnet test）と pytest。pytest のテストが見つかったときだけ内側の見出し（.NET / pytest）を出す
+                     ——.NET だけのワークスペースでは従来どおりの 1 枚に見え、見出しの帯ぶん本文が下がらない。 -->
+                <TabControl x:Name="TestKindTabs" SelectedIndex="0" Background="Transparent" BorderThickness="0">
+                    <TabControl.Template>
+                        <ControlTemplate TargetType="TabControl">
+                            <DockPanel>
+                                <Border DockPanel.Dock="Top" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1"
+                                        Visibility="{Binding PyTests.HasTestResults, Converter={StaticResource BoolToVis}}">
+                                    <TabPanel IsItemsHost="True" Background="Transparent" Margin="0,2,0,0" />
+                                </Border>
+                                <!-- 名前は PART_SelectedContentHost（UI Automation から中身が見えるように。外側の DebugTabControl と同じ理由）。 -->
+                                <ContentPresenter x:Name="PART_SelectedContentHost" ContentSource="SelectedContent" />
+                            </DockPanel>
+                        </ControlTemplate>
+                    </TabControl.Template>
+                    <TabItem Style="{StaticResource DebugTabItem}" Header=".NET">
+                        <v:DebugTestsView DataContext="{Binding Tests}" />
+                    </TabItem>
+                    <TabItem x:Name="PytestTabItem" Style="{StaticResource DebugTabItem}" Header="pytest">
+                        <v:DebugTestsView DataContext="{Binding PyTests}" />
+                    </TabItem>
+                </TabControl>
             </TabItem>
 
             <!-- 4 構成（起動構成・例外・アタッチ）。普段の実行は「実行」タブから行う。 -->

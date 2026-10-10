@@ -19,7 +19,7 @@ public sealed class TsDebugViewModel : DebugManagerViewModelBase
     public TsDebugAttachViewModel Attach { get; }
     public TsDebugLaunchViewModel Launch { get; }
     public DebugProfilesViewModel Profiles { get; }
-    public TsDebugTestsViewModel Tests { get; }
+    public ScriptTestsViewModel Tests { get; }
 
     public TsDebugViewModel(JsDebugSessionFactory sessionFactory, IWorkspaceService workspace, ITerminalService terminal,
         IBrowserService browser, DebugLaunchProfileStore profileStore)
@@ -31,7 +31,7 @@ public sealed class TsDebugViewModel : DebugManagerViewModelBase
         Launch = new TsDebugLaunchViewModel(this, workspace, terminal, browser, Attach, Profiles);
         Profiles.AttachLaunch(Launch);
         Launch.ApplyDefaultTargetIfEmpty();  // 起動時点でワークスペースが開いていれば既定ターゲット（種別で振り分け）を適用
-        Tests = new TsDebugTestsViewModel(workspace, terminal, this);
+        Tests = new ScriptTestsViewModel(workspace, terminal, this, ScriptTestProfile.TypeScript);
     }
 
     /// <summary>型チェック対象＝tsconfig.json のあるディレクトリを解決する。無ければ null（理由はコンソールへ）。</summary>

@@ -23,6 +23,9 @@ public sealed partial class DebugTestsViewModel : ObservableObject, ITestExplore
     /// <summary>共有テストビューでC#のtesthostデバッグ操作を表示する。</summary>
     public bool IsTestDebugSupported => true;
 
+    /// <summary>共有テストビューの dotnet 専用の操作（失敗の再実行・公式検出・カバレッジ）を出す。</summary>
+    public bool IsDotnetToolsVisible => true;
+
     private readonly IWorkspaceService _workspace;
     private readonly ITerminalService _terminal;
     private readonly ITestDiscoveryService _testDiscovery;

@@ -10,21 +10,71 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using sk0ya.Loomo.Core.Abstractions;
 using sk0ya.Loomo.Core.Debug;
+using sk0ya.Loomo.Services.Testing;
 
 namespace sk0ya.Loomo.App.ViewModels;
 
-/// <summary>TS テストエクスプローラのサブ ViewModel（<see cref="DebugTestsViewModel"/> の TS 版）。
-/// ソース走査（<see cref="TsTestDiscovery"/>）で vitest / jest のテストを自動収集し、JSON 結果
-/// （<see cref="TsTestRunner"/>）で各行のステータスを更新する。公開メンバー名は dotnet 版と揃えてあり、
-/// ビュー（DebugTestsView）をそのまま共有する。グループ＝テストファイル、葉＝テストタイトル。</summary>
-public sealed partial class TsDebugTestsViewModel : ObservableObject, ITestExplorer, IDisposable
+/// <summary>スクリプト系テストエクスプローラ 1 枚ぶんの設定（どのランナーを、どの探索で、どう案内するか）。
+/// TS IDE ペイン（vitest / jest）と IDE ペインの pytest 枠が同じ <see cref="ScriptTestsViewModel"/> をこれで使い分ける。</summary>
+internal sealed record ScriptTestProfile(
+    string LanguageLabel,
+    IReadOnlyList<ITestRunner> Runners,
+    Func<string, IReadOnlyList<ScriptDiscoveredTest>> Discover,
+    string[] WatchPatterns,
+    string[] WatchIgnoreDirs,
+    string EmptyHint,
+    bool RequireProject,
+    string MissingRunnerMessage,
+    Func<string, string> LeafOf)
 {
-    /// <summary>共有テストビューのデバッグ列は、Node testhost経路が未実装のため隠す。</summary>
+    /// <summary>TS IDE ペイン：vitest / jest。探索は <see cref="TsTestDiscovery"/>。テストはランナーが特定できなくても
+    /// 一覧に出す（従来どおり。実行時に「特定できません」と理由を出す）。</summary>
+    public static ScriptTestProfile TypeScript { get; } = new(
+        "TypeScript",
+        [new VitestRunner(), new JestRunner()],
+        root => TsTestDiscovery.Discover(root)
+            .Select(d => new ScriptDiscoveredTest(d.FilePath, d.Title, d.Line1, d.IsEach)).ToList(),
+        TsTestDiscovery.TestFilePatterns,
+        ["node_modules", "dist", "build", "coverage"],
+        "テストが見つかりませんでした（*.test.ts / *.spec.ts 等。ソース変更で自動収集します）。",
+        RequireProject: false,
+        "テストランナー（vitest / jest）を package.json・設定ファイルから特定できません",
+        // 葉＝describe 前置を落としたタイトル（-t に渡す名前）。
+        title => title.LastIndexOf(" > ", StringComparison.Ordinal) is var at and >= 0 ? title[(at + 3)..] : title);
+
+    /// <summary>IDE ペインの pytest 枠。Python のプロジェクトだと判る手掛かり（<see cref="PytestRunner.Detect"/>）の
+    /// 無い場所の test_*.py は一覧に出さない——.NET リポジトリの補助スクリプトでテスト枠が現れないように。</summary>
+    public static ScriptTestProfile Python { get; } = new(
+        "Python",
+        [new PytestRunner()],
+        PytestDiscovery.Discover,
+        PytestDiscovery.TestFilePatterns,
+        [".venv", "venv", "env", "__pycache__", ".pytest_cache", ".tox", "node_modules", "build", "dist"],
+        "テストが見つかりませんでした（test_*.py / *_test.py。ソース変更で自動収集します）。",
+        RequireProject: true,
+        "pytest のプロジェクト（pytest.ini / pyproject.toml / conftest.py 等）を特定できません",
+        // ノード ID 後半（TestCls::test_x）がそのまま葉であり、1 件指定でもある。
+        title => title);
+}
+
+/// <summary>スクリプト系（vitest / jest / pytest）のテストエクスプローラのサブ ViewModel（<see cref="DebugTestsViewModel"/> の
+/// ランナー非依存版）。ソース走査で自動収集し、<see cref="ITestRunner"/> のレポート（<see cref="ScriptTestRunner"/>）で
+/// 各行のステータスを更新する。公開メンバー名は dotnet 版と揃えてあり、ビュー（DebugTestsView）をそのまま共有する。
+/// グループ＝テストファイル、葉＝テストタイトル（JS は describe 連結、pytest はノード ID 後半）。
+/// <para>どのランナーで走らせるかはファイルごとに <see cref="TestProjectLocator"/> が決める（ワークスペースフォルダー単位、
+/// マルチルート対応）。全実行はプロジェクトごとに 1 回ずつ走らせて結果をまとめる。</para></summary>
+public sealed partial class ScriptTestsViewModel : ObservableObject, ITestExplorer, IDisposable
+{
+    /// <summary>共有テストビューのデバッグ列は、スクリプト系の testhost 経路が未実装のため隠す。</summary>
     public bool IsTestDebugSupported => false;
+
+    /// <summary>共有テストビューの dotnet 専用の操作（失敗の再実行・公式検出・カバレッジ）を隠す。</summary>
+    public bool IsDotnetToolsVisible => false;
 
     private readonly IWorkspaceService _workspace;
     private readonly ITerminalService _terminal;
     private readonly IDebugSession _session;
+    private readonly ScriptTestProfile _profile;
     private readonly Dispatcher _dispatcher;
     private readonly List<TestSourceWatcher> _watchers = new();
 
@@ -36,9 +86,7 @@ public sealed partial class TsDebugTestsViewModel : ObservableObject, ITestExplo
     [ObservableProperty] private bool _hasTestResults;
     [ObservableProperty] private bool _isDiscoveringTests;
 
-    public string TestEmptyHint => IsDiscoveringTests
-        ? "テストを収集しています…"
-        : "テストが見つかりませんでした（*.test.ts / *.spec.ts 等。ソース変更で自動収集します）。";
+    public string TestEmptyHint => IsDiscoveringTests ? "テストを収集しています…" : _profile.EmptyHint;
 
     [ObservableProperty] private bool _showPassed = true;
     [ObservableProperty] private bool _showFailed = true;
@@ -46,8 +94,7 @@ public sealed partial class TsDebugTestsViewModel : ObservableObject, ITestExplo
 
     [ObservableProperty] private string _testFilter = "";
 
-    /// <summary>共有テストビューのタグ絞り込み。現在のTS探索はタグを返さないが、公式adapter由来の行と
-    /// C#版で同じ表示契約を保つ。</summary>
+    /// <summary>共有テストビューのタグ絞り込み。現在のスクリプト系の探索はタグを返さないが、C# 版と同じ表示契約を保つ。</summary>
     [ObservableProperty] private string _traitFilter = "";
 
     [ObservableProperty] private bool _hasVisibleTests;
@@ -68,11 +115,13 @@ public sealed partial class TsDebugTestsViewModel : ObservableObject, ITestExplo
     /// <summary>ファイル単位にまとめたテストツリー（TreeView の表示元）。</summary>
     public ObservableCollection<TestGroupViewModel> TestTree { get; } = new();
 
-    internal TsDebugTestsViewModel(IWorkspaceService workspace, ITerminalService terminal, IDebugSession session)
+    internal ScriptTestsViewModel(IWorkspaceService workspace, ITerminalService terminal, IDebugSession session,
+        ScriptTestProfile profile)
     {
         _workspace = workspace;
         _terminal = terminal;
         _session = session;
+        _profile = profile;
         _dispatcher = Dispatcher.CurrentDispatcher;
 
         _session.SessionStateChanged += () =>
@@ -105,9 +154,8 @@ public sealed partial class TsDebugTestsViewModel : ObservableObject, ITestExplo
         _watchers.Clear();
         foreach (var folder in _workspace.Folders)
         {
-            var w = new TestSourceWatcher(_dispatcher,
-                filters: TsTestDiscovery.TestFilePatterns,
-                ignoreDirs: ["node_modules", "dist", "build", "coverage"]);
+            var w = new TestSourceWatcher(_dispatcher, filters: _profile.WatchPatterns,
+                ignoreDirs: _profile.WatchIgnoreDirs);
             w.Changed += () => _ = DiscoverTestsAsync();
             w.Watch(folder);
             _watchers.Add(w);
@@ -119,8 +167,8 @@ public sealed partial class TsDebugTestsViewModel : ObservableObject, ITestExplo
 
     IReadOnlyList<TestItemViewModel> ITestExplorer.TestItems => Tests;
 
-    /// <summary>ガターの ▶／コマンドパレットからの単体実行（ファイル限定＋<c>-t</c>）。
-    /// vitest / jest とも 1 件だけ走らせる手段があるので、dotnet 側と同じ動線をそのまま出せる。</summary>
+    /// <summary>ガターの ▶／コマンドパレットからの単体実行（ファイル限定＋1 件指定）。
+    /// vitest / jest は <c>-t</c>、pytest はノード ID で 1 件だけ走らせられるので、dotnet 側と同じ動線をそのまま出せる。</summary>
     async Task<bool> ITestExplorer.RunTestAsync(TestItemViewModel test)
     {
         if (!RunSingleTestCommand.CanExecute(test)) return false;
@@ -134,7 +182,7 @@ public sealed partial class TsDebugTestsViewModel : ObservableObject, ITestExplo
         if (Tests.Count == 0 && !IsDiscoveringTests) _ = DiscoverTestsAsync();
     }
 
-    /// <summary>テスト行のダブルクリック：探索で拾ったソース位置へジャンプする。</summary>
+    /// <summary>テスト行のダブルクリック：探索で拾ったソース位置（失敗していればトレースバックの位置）へジャンプする。</summary>
     public void NavigateToTestSource(TestItemViewModel? t)
     {
         if (t is { HasSource: true, SourcePath: { } p })
@@ -168,9 +216,9 @@ public sealed partial class TsDebugTestsViewModel : ObservableObject, ITestExplo
                 _rediscoverRequested = false;
                 var generation = Volatile.Read(ref _discoveryGeneration);
                 var folders = _workspace.Folders.ToArray();
-                IReadOnlyList<TsTestDiscovery.TsDiscoveredTest> found;
-                try { found = await Task.Run(() => folders.SelectMany(TsTestDiscovery.Discover).ToList()); }
-                catch { found = Array.Empty<TsTestDiscovery.TsDiscoveredTest>(); }
+                IReadOnlyList<ScriptDiscoveredTest> found;
+                try { found = await Task.Run(() => DiscoverAll(folders)); }
+                catch { found = Array.Empty<ScriptDiscoveredTest>(); }
                 await _dispatcher.InvokeAsync(() =>
                 {
                     if (generation == Volatile.Read(ref _discoveryGeneration))
@@ -183,9 +231,26 @@ public sealed partial class TsDebugTestsViewModel : ObservableObject, ITestExplo
         finally { IsDiscoveringTests = false; }
     }
 
+    /// <summary>全フォルダーを走査する（バックグラウンド）。<see cref="ScriptTestProfile.RequireProject"/> なら、
+    /// ランナーのプロジェクトに属さないファイルのテストを落とす（判定はディレクトリ単位でキャッシュ）。</summary>
+    private List<ScriptDiscoveredTest> DiscoverAll(IReadOnlyList<string> folders)
+    {
+        var found = folders.SelectMany(_profile.Discover).ToList();
+        if (!_profile.RequireProject) return found;
+
+        var owned = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+        return found.Where(d =>
+        {
+            var dir = Path.GetDirectoryName(d.FilePath) ?? "";
+            if (!owned.TryGetValue(dir, out var ok))
+                owned[dir] = ok = TestProjectLocator.Find(d.FilePath, folders, _profile.Runners) is not null;
+            return ok;
+        }).ToList();
+    }
+
     /// <summary>収集結果を既存の一覧へマージする（dotnet 版と同じ流儀：新規は追加、消えた未実行テストは除去、
     /// 結果を持つ行は残す）。位置（ファイル/行）は再収集のたびに追従する。</summary>
-    private void ApplyDiscovered(IReadOnlyList<TsTestDiscovery.TsDiscoveredTest> found)
+    internal void ApplyDiscovered(IReadOnlyList<ScriptDiscoveredTest> found)
     {
         var keep = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var existing = new Dictionary<string, TestItemViewModel>(StringComparer.OrdinalIgnoreCase);
@@ -193,17 +258,18 @@ public sealed partial class TsDebugTestsViewModel : ObservableObject, ITestExplo
 
         foreach (var d in found)
         {
-            var fqn = TsTestRunner.MakeFqn(d.FilePath, d.Title);
+            var fqn = ScriptTestRunner.MakeFqn(d.FilePath, d.Title);
             keep.Add(fqn);
             if (!existing.TryGetValue(fqn, out var item))
             {
                 item = CreateItem(d.FilePath, d.Title);
                 Tests.Add(item);
+                existing[fqn] = item;
             }
-            item.IsParameterized = d.IsEach;
+            item.IsParameterized = d.IsParameterized;
             item.SourcePath = d.FilePath;
             item.Line = d.Line1;
-            // 宣言位置はエディタのガターの ▶ を置く場所（TS は探索の位置がそのまま宣言位置）。
+            // 宣言位置はエディタのガターの ▶ を置く場所（スクリプト系は探索の位置がそのまま宣言位置）。
             item.DeclarationPath = d.FilePath;
             item.DeclarationLine = d.Line1;
         }
@@ -221,24 +287,23 @@ public sealed partial class TsDebugTestsViewModel : ObservableObject, ITestExplo
         TestsChanged?.Invoke();
     }
 
-    /// <summary>1 テスト行を TS 規約で作る：グループキー＝正規化ファイルパス、葉表示＝タイトル、
-    /// 個別実行フィルタ＝葉タイトル（-t 用。describe 前置は落とす）。</summary>
-    private static TestItemViewModel CreateItem(string filePath, string title)
+    /// <summary>1 テスト行を作る：グループキー＝正規化ファイルパス、葉表示＝タイトル、個別実行の指定＝
+    /// JS は葉タイトル（<c>-t</c> 用。describe 前置は落とす）、pytest はノード ID 後半そのもの。</summary>
+    private TestItemViewModel CreateItem(string filePath, string title)
     {
         string full;
         try { full = Path.GetFullPath(filePath); } catch { full = filePath; }
-        var lastSep = title.LastIndexOf(" > ", StringComparison.Ordinal);
-        var leaf = lastSep >= 0 ? title[(lastSep + 3)..] : title;
+        var leaf = _profile.LeafOf(title);
         return new TestItemViewModel(
-            fullyQualifiedName: TsTestRunner.MakeFqn(full, title),
+            fullyQualifiedName: ScriptTestRunner.MakeFqn(full, title),
             className: full,
             methodName: title,
             displayName: $"{Path.GetFileName(full)}: {leaf}",
             filterExpression: leaf);
     }
 
-    /// <summary>ワークスペースの全テストを実行する。テストが複数パッケージにまたがる場合は
-    /// パッケージ（最寄りの package.json）ごとに 1 回ずつ実行して結果をまとめる。</summary>
+    /// <summary>ワークスペースの全テストを実行する。テストが複数プロジェクトにまたがる場合は
+    /// プロジェクトごとに 1 回ずつ実行して結果をまとめる。</summary>
     [RelayCommand(CanExecute = nameof(CanRunTask))]
     private async Task Test()
     {
@@ -250,11 +315,25 @@ public sealed partial class TsDebugTestsViewModel : ObservableObject, ITestExplo
             _session.StatusMessage = "テスト実行中…";
             foreach (var t in Tests) t.SetRunning();
             TestsChanged?.Invoke();   // 実行中グリフ（…）をガターへすぐ出す
+            var folders = _workspace.Folders.ToArray();
+            var projects = new Dictionary<string, ITestRunner>(StringComparer.OrdinalIgnoreCase);
+            var missing = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var file in Tests.Select(t => t.ClassName).Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                if (TestProjectLocator.Find(file, folders, _profile.Runners) is { } p)
+                    projects.TryAdd(p.ProjectDir, p.Runner);
+                else
+                    missing.Add(file);
+            }
+            if (missing.Count > 0)
+                _session.Append(DebugOutputCategory.Important, missing.Count == 1
+                    ? $"{_profile.MissingRunnerMessage}: {missing.First()}"
+                    : $"{_profile.MissingRunnerMessage}（{missing.Count} ファイル）: {missing.First()} ほか");
+
             var hadResults = false;
-            foreach (var pkgDir in Tests.Select(t => FindPackageDir(t.ClassName)).Where(d => d is not null)
-                         .Distinct(StringComparer.OrdinalIgnoreCase).ToList())
-                hadResults |= await RunPackageAsync(pkgDir!, fileScope: null, testName: null,
-                    $"テスト: {Path.GetFileName(pkgDir!)}");
+            foreach (var (dir, runner) in projects)
+                hadResults |= await RunProjectAsync(dir, runner, fileScope: null, selector: null,
+                    $"テスト（{runner.Id}）: {Path.GetFileName(dir)}");
             _session.StatusMessage = CountStatus(hadResults, Tests);
         }
         finally
@@ -268,7 +347,7 @@ public sealed partial class TsDebugTestsViewModel : ObservableObject, ITestExplo
         }
     }
 
-    /// <summary>1 件のテストだけ実行する（ファイル限定＋<c>-t 葉タイトル</c>。同名タイトルが同ファイルに
+    /// <summary>1 件のテストだけ実行する（ファイル限定＋1 件指定。JS の <c>-t</c> は同名タイトルが同ファイルに
     /// 複数あれば全部走る——ベストエフォート）。</summary>
     [RelayCommand(CanExecute = nameof(CanRunTask))]
     private async Task RunSingleTest(TestItemViewModel? item)
@@ -289,47 +368,39 @@ public sealed partial class TsDebugTestsViewModel : ObservableObject, ITestExplo
     private async Task RunGroup(TestGroupViewModel? group)
     {
         if (group is null) return;
-        await RunScopedAsync(group.Tests.ToList(), group.Key, testName: null,
+        await RunScopedAsync(group.Tests.ToList(), group.Key, selector: null,
             $"テスト実行中… {group.Name}", $"テスト: {group.Name}",
             had => CountStatus(had, group.Tests));
     }
 
-    /// <summary>共有テストビューのファイル単位実行。TSではグループ自体がファイルなので、
-    /// グループ実行へ委譲する。</summary>
+    /// <summary>共有テストビューのファイル単位実行。スクリプト系ではグループ自体がファイルなので、グループ実行へ委譲する。</summary>
     [RelayCommand(CanExecute = nameof(CanRunTask))]
     private Task RunFile(TestGroupViewModel? group) => RunGroup(group);
 
-    // DebugTestsView はC#／TypeScriptで共有するため、TS側にも同名Commandを用意する。
-    // NodeテストのDAP起動仕様（vitest／jestのinspect経路）は別実装であり、C#のtesthostへ誤接続しない。
+    // DebugTestsView は C# とスクリプト系で共有するため、こちらにも同名 Command を用意する。
+    // Node／Python テストの DAP 起動（vitest／jest の inspect、debugpy）は別実装であり、C# の testhost へ誤接続しない。
     [RelayCommand(CanExecute = nameof(CanRunTask))]
-    private Task DebugSingleTest(TestItemViewModel? item)
-    {
-        _session.StatusMessage = "TypeScriptテストのデバッグは未対応です";
-        return Task.CompletedTask;
-    }
+    private Task DebugSingleTest(TestItemViewModel? item) => DebugNotSupported();
 
     [RelayCommand(CanExecute = nameof(CanRunTask))]
-    private Task DebugGroup(TestGroupViewModel? group)
-    {
-        _session.StatusMessage = "TypeScriptテストのデバッグは未対応です";
-        return Task.CompletedTask;
-    }
+    private Task DebugGroup(TestGroupViewModel? group) => DebugNotSupported();
 
     [RelayCommand(CanExecute = nameof(CanRunTask))]
-    private Task DebugFile(TestGroupViewModel? group)
+    private Task DebugFile(TestGroupViewModel? group) => DebugNotSupported();
+
+    private Task DebugNotSupported()
     {
-        _session.StatusMessage = "TypeScriptテストのデバッグは未対応です";
+        _session.StatusMessage = $"{_profile.LanguageLabel}テストのデバッグは未対応です";
         return Task.CompletedTask;
     }
 
     /// <summary>ファイル限定実行の共通処理（1 件/グループ）。</summary>
-    private async Task RunScopedAsync(IReadOnlyList<TestItemViewModel> running, string filePath, string? testName,
+    private async Task RunScopedAsync(IReadOnlyList<TestItemViewModel> running, string filePath, string? selector,
         string runningStatus, string label, Func<bool, string> finalStatus)
     {
-        var pkgDir = FindPackageDir(filePath);
-        if (pkgDir is null)
+        if (TestProjectLocator.Find(filePath, _workspace.Folders.ToArray(), _profile.Runners) is not { } project)
         {
-            _session.Append(DebugOutputCategory.Important, $"package.json が見つかりません: {filePath}");
+            _session.Append(DebugOutputCategory.Important, $"{_profile.MissingRunnerMessage}: {filePath}");
             return;
         }
 
@@ -341,8 +412,8 @@ public sealed partial class TsDebugTestsViewModel : ObservableObject, ITestExplo
             foreach (var t in running) t.SetRunning();
             UpdateAggregates();
             TestsChanged?.Invoke();   // 実行中グリフ（…）をガターへすぐ出す
-            var rel = Path.GetRelativePath(pkgDir, filePath);
-            var had = await RunPackageAsync(pkgDir, rel, testName, label);
+            var rel = Path.GetRelativePath(project.ProjectDir, filePath);
+            var had = await RunProjectAsync(project.ProjectDir, project.Runner, rel, selector, label);
             _session.StatusMessage = finalStatus(had);
         }
         finally
@@ -356,33 +427,16 @@ public sealed partial class TsDebugTestsViewModel : ObservableObject, ITestExplo
         }
     }
 
-    /// <summary>1 パッケージ分の実行（ランナー判定 → npx → JSON 反映）。結果が得られたら true。</summary>
-    private async Task<bool> RunPackageAsync(string pkgDir, string? fileScope, string? testName, string label)
+    /// <summary>1 プロジェクト分の実行（コマンド組み立て → 可視ターミナル → レポート反映）。結果が得られたら true。</summary>
+    private async Task<bool> RunProjectAsync(string projectDir, ITestRunner runner, string? fileScope,
+        string? selector, string label)
     {
-        var pkgJson = Path.Combine(pkgDir, "package.json");
-        var runner = TsTestRunner.DetectRunner(pkgJson);
-        if (runner is null)
-        {
-            _session.Append(DebugOutputCategory.Important,
-                $"テストランナー（vitest / jest）を package.json から特定できません: {pkgJson}");
-            return false;
-        }
-
-        var json = await TsTestRunner.RunAsync(_terminal, _session, runner, pkgDir, fileScope, testName, label);
-        if (json is null) return false;
-        try { TsTestRunner.ApplyResults(json, _session, Tests, CreateItem); }
-        finally { TsTestRunner.DeleteResults(json); }   // 実行ごとに一意名なので、読んだら消す
-        return true;
-    }
-
-    /// <summary>テストファイルの最寄りの package.json のディレクトリ（ファイルのディレクトリから最大 6 段上る）。</summary>
-    private static string? FindPackageDir(string filePath)
-    {
-        var dir = Path.GetDirectoryName(filePath);
-        for (var i = 0; i < 6 && dir is not null; i++, dir = Path.GetDirectoryName(dir))
-            if (File.Exists(Path.Combine(dir, "package.json")))
-                return dir;
-        return null;
+        var tools = new TestToolLocator(_workspace.Folders.ToArray());
+        var report = await ScriptTestRunner.RunAsync(_terminal, _session, runner, projectDir, fileScope, selector,
+            tools, label);
+        if (report is null) return false;
+        try { return ScriptTestRunner.ApplyResults(runner, report, projectDir, _session, Tests, CreateItem); }
+        finally { ScriptTestRunner.DeleteResults(report); }   // 実行ごとに一意名なので、読んだら消す
     }
 
     private static string CountStatus(bool hadResults, IEnumerable<TestItemViewModel> set)
@@ -419,10 +473,10 @@ public sealed partial class TsDebugTestsViewModel : ObservableObject, ITestExplo
         foreach (var g in Tests.GroupBy(t => t.ClassName, StringComparer.OrdinalIgnoreCase)
                      .OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase))
         {
-            var visible = g.Where(MatchesFilter).OrderBy(t => t.Line).ToList();
+            var visible = g.Where(MatchesFilter).OrderBy(t => t.DeclarationLine).ToList();
             if (visible.Count == 0) continue;
 
-            var node = new TestGroupViewModel(g.Key, ToRelativeDisplay(g.Key), g.Key);
+            var node = new TestGroupViewModel(g.Key, _workspace.ToDisplayPath(g.Key), g.Key);
             foreach (var t in visible) node.Tests.Add(t);
             node.IsExpanded = filtering || (expanded.TryGetValue(g.Key, out var e) && e);
             node.RecomputeAggregate();
@@ -430,18 +484,6 @@ public sealed partial class TsDebugTestsViewModel : ObservableObject, ITestExplo
         }
 
         HasVisibleTests = TestTree.Count > 0;
-    }
-
-    /// <summary>グループ見出し用のワークスペース相対パス（SEARCH/問題タブと同じく / 区切り）。外なら絶対のまま。</summary>
-    private string ToRelativeDisplay(string filePath)
-    {
-        foreach (var folder in _workspace.Folders)
-        {
-            var rel = Path.GetRelativePath(folder, filePath);
-            if (!rel.StartsWith("..", StringComparison.Ordinal) && !Path.IsPathRooted(rel))
-                return rel.Replace('\\', '/');
-        }
-        return filePath;
     }
 
     private bool MatchesFilter(TestItemViewModel t)
