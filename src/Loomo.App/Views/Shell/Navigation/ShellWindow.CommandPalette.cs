@@ -274,6 +274,8 @@ public partial class ShellWindow {
         list.Add(new("ナビゲーション", "最近のファイル", OpenRecentFilesOrToggle, Sc("nav.recentFiles"), "nav.recentFiles"));
         list.Add(new("ナビゲーション", "最近の場所", () => { _ = OpenRecentLocationsAsync(); },
             Sc("nav.recentLocations"), "nav.recentLocations"));
+        list.Add(new("ナビゲーション", "テスト⇔実装を行き来する", () => { _ = GoToRelatedTestAsync(); },
+            Sc("nav.relatedTest"), "nav.relatedTest"));
         list.Add(new("ナビゲーション", "ファイル構造（宣言の一覧）", () => { _ = OpenFileStructureAsync(); },
             Sc("nav.fileStructure"), "nav.fileStructure"));
         list.Add(new("問題", "表示中の問題を抜粋タブで開く",

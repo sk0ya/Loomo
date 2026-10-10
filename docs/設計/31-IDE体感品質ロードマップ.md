@@ -729,6 +729,25 @@ WorkspaceEdit を除く）。
 `MouseNavigationPolicyTests`。実機（SendInput の実キー）で、ファイル構造→絞り込み→ジャンプ、別ファイルを
 開いてから戻る、最近のファイル→二度押しで最近の場所、最後の編集箇所へ、を確認（2026-10-10）。
 
+### §31.18.1 追補：CamelHumps 一致・テスト⇔実装・構造は名前だけで絞る（2026-10-10）
+
+- **CamelHumps**（`FuzzyMatcher.MatchHumps`）。語の頭（先頭・小文字の後の大文字・区切り文字の後・英字の後の
+  数字・`HTMLParser` の `P`）から1文字以上ずつ拾う一致で、`ELH`／`EdLoHi` が `EditorLocationHistory` に当たる。
+  以前は飛び石一致と同点で、`E…L…H` をどこかに含むファイルに埋もれていた。尺度は
+  前方一致 0 ＞ 先頭の語からの CamelHumps 1 ＞ 部分一致 2 ＞ 途中の語からの CamelHumps 3 ＞ 飛び石 4。
+  ファイル名検索（パレットの `/`・検索ペイン）と `PaletteFilter`（コマンド・最近のファイル・ファイル構造）が
+  同じ尺度を使う。失敗した (語, クエリ位置) を覚えるので、語の多いパスでも組合せ爆発しない。
+- **テスト⇔実装**（`nav.relatedTest`、Ctrl+Alt+T。Rider の Ctrl+Shift+T は表示モードの切替が使っている）。
+  命名規約だけで相手の名前を出す（`RelatedTestFiles`：C# `Foo`⇔`FooTests`／`FooTest`／`Foo.Tests`、TS/JS
+  `foo`⇔`foo.test`／`foo.spec`、Python `foo`⇔`test_foo`／`foo_test`）。テストランナーの検出結果は「どのテストが
+  在るか」は知っていても「何のテストか」は知らないので使わない。全フォルダーから探し、1件なら開き、複数なら
+  フォルダーの近い順（`Foo.Tests`→`Foo` のようにテストらしさを落として共通部分を数える）にパレットへ並べる。
+- **ファイル構造は名前だけで絞る**（`PaletteCommand.MatchTitleOnly`）。カテゴリが種類名なので、`me` が全メソッドに
+  当たっていた。
+
+検証：`CamelHumpsMatchingTests`・`RelatedTestFilesTests` 26 件。実機で Ctrl+P `ELH` の先頭2件が
+`EditorLocationHistory.cs`／`…Tests.cs`、Ctrl+Alt+T で実装→テスト→実装を確認。
+
 ## §31.19 C# の Quick Fix は言語サーバーを先に訊く（2026-10-10）
 
 「修正候補が出るのが遅い」。Alt+Enter と電球（ガターの💡）だけが遅く、右クリックの Quick Fix は速かった。

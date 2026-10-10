@@ -75,6 +75,7 @@ public static class EditorNavigationPaletteItems
                     jump(target))
                 {
                     Target = target,
+                    MatchTitleOnly = true,
                 });
                 Walk(node.Children, depth + 1);
             }

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using sk0ya.Loomo.Services.Search;
 
 namespace sk0ya.Loomo.App.Services;
 
@@ -28,6 +29,10 @@ public sealed record PaletteCommand(string Category, string Title, Action Execut
     /// <summary>右の欄に出す説明。null なら既定（ショートカットと「Enter で実行」）。</summary>
     public string? Detail { get; init; }
 
+    /// <summary>絞り込みを名前（<see cref="Title"/>）だけで行う。ファイル構造のようにカテゴリが種類名
+    /// （method／property…）の一覧で、「me」が全メソッドに当たらないようにする。</summary>
+    public bool MatchTitleOnly { get; init; }
+
     /// <summary>行の右端の文字（状態があればそれ、無ければショートカット）。</summary>
     public string? RightText => Badge ?? Shortcut;
 
@@ -52,8 +57,9 @@ public sealed record PaletteTarget(string FullPath, int Line = 0, int Column = 0
 public static class PaletteFilter
 {
     /// <summary>
-    /// 空白区切りの各語がすべて一致するコマンドを、一致の強さ
-    /// （名前の前方一致 ＞ 部分一致 ＞ 文字の飛び石一致）で並べて返す。
+    /// 空白区切りの各語がすべて一致するコマンドを、一致の強さで並べて返す。尺度はファイル名検索と同じ
+    /// <see cref="FuzzyMatcher"/>（名前の前方一致 ＞ 先頭からの CamelHumps ＞ 部分一致 ＞ 途中からの CamelHumps
+    /// ＞ 飛び石一致）。名前で当たらなければカテゴリ込みの文字列で部分一致・飛び石一致を見る。
     /// 空クエリは元の順のまま全件。
     /// </summary>
     public static IReadOnlyList<PaletteCommand> Filter(IReadOnlyList<PaletteCommand> commands, string? query)
@@ -71,17 +77,20 @@ public static class PaletteFilter
             var matched = true;
             foreach (var token in tokens)
             {
-                if (command.Title.StartsWith(token, StringComparison.OrdinalIgnoreCase))
-                    total += 0;
-                else if (command.SearchText.Contains(token, StringComparison.OrdinalIgnoreCase))
-                    total += 1;
-                else if (IsSubsequence(token, command.SearchText))
-                    total += 3;
-                else
+                var score = FuzzyMatcher.TokenScore(command.Title.TrimStart(), token);
+                if (score is null && !command.MatchTitleOnly)
+                {
+                    if (command.SearchText.Contains(token, StringComparison.OrdinalIgnoreCase))
+                        score = FuzzyMatcher.ContainsScore;
+                    else if (IsSubsequence(token, command.SearchText))
+                        score = FuzzyMatcher.SubsequenceScore;
+                }
+                if (score is not { } value)
                 {
                     matched = false;
                     break;
                 }
+                total += value;
             }
 
             if (matched)

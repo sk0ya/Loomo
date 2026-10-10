@@ -157,6 +157,7 @@ public partial class ShellWindow : Window {
             (DataTemplate)PaletteBox.FindResource("PaletteNavigationRow"));
         // シンボルの供給口だけは部屋側（LSP セッションは ShellWindow が持つ）。表示パスの綴りは
         // マルチルート対応の ToDisplayPath に任せる。
+        _workspaceSearch = search;
         _paletteSearch = new PaletteSearchCoordinator(search, async (query, ct) =>
             PaletteNavigationItems.FromSymbols(
                 await WorkspaceSymbolSearch.SearchAsync(lspWorkspace, query, isClass: false, ct),

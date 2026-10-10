@@ -132,6 +132,8 @@ public static class CommandCatalog
         new CommandDescriptor("nav.lastEditLocation", CatNavigate, "最後に編集した場所へ（続けて押すと遡る）", "Ctrl+Shift+Backspace"),
         new CommandDescriptor("nav.recentFiles", CatNavigate, "最近のファイル（もう一度押すと最近の場所）", "Ctrl+Shift+E"),
         new CommandDescriptor("nav.recentLocations", CatNavigate, "最近の場所", null),
+        // Rider の Navigate to Test（Ctrl+Shift+T）は「表示モードの切替」が使っているので Ctrl+Alt+T に置く。
+        new CommandDescriptor("nav.relatedTest", CatNavigate, "テスト⇔実装を行き来する", "Ctrl+Alt+T"),
         new CommandDescriptor("nav.fileStructure", CatNavigate, "ファイル構造（宣言の一覧）へ移動", "Ctrl+F12"),
         new CommandDescriptor("problems.openAsExcerpts", CatProblems, "表示中の問題を抜粋タブで開く", null),
 

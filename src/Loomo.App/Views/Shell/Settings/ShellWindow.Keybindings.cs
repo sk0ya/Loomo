@@ -41,6 +41,7 @@ public partial class ShellWindow {
             ["nav.lastEditLocation"] = GoToLastEditLocation,
             ["nav.recentFiles"] = OpenRecentFilesOrToggle, ["nav.recentLocations"] = () => { _ = OpenRecentLocationsAsync(); },
             ["nav.fileStructure"] = () => { _ = OpenFileStructureAsync(); },
+            ["nav.relatedTest"] = () => { _ = GoToRelatedTestAsync(); },
             ["editor.save"] = SaveActiveEditor,
             ["editor.selection.expand"] = ExpandSemanticSelection, ["editor.selection.shrink"] = ShrinkSemanticSelection, ["editor.test.runAtCaret"] = RunTestAtCaret,
             ["stage.cycle"] = () => CycleInActiveMode(1), ["mode.toggle"] = ToggleDisplayMode,

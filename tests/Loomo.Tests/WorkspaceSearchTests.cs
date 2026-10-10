@@ -29,7 +29,7 @@ public class WorkspaceSearchTests
     {
         var prefix = FuzzyMatcher.Score("readme.md", "read");
         var contains = FuzzyMatcher.Score("the-readme.md", "read");
-        var subseq = FuzzyMatcher.Score("r-e-a-d.md", "read");
+        var subseq = FuzzyMatcher.Score("rxexaxd.md", "read");
         Assert.NotNull(prefix);
         Assert.NotNull(contains);
         Assert.NotNull(subseq);

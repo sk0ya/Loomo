@@ -12,6 +12,7 @@ public partial class ShellWindow {
         public EditLocationTrail Edits { get; } = new();
     }
     private readonly Dictionary<Guid, LocationNavigationState> _locationNavigation = new();
+    private sk0ya.Loomo.Core.Abstractions.IWorkspaceSearchService? _workspaceSearch;
     /// <summary>いまパレットに出しているナビゲーション一覧（同じキーをもう一度押したときの切替先を決める）。</summary>
     private IReadOnlyList<PaletteCommand>? _recentFilesPaletteItems;
 
@@ -190,5 +191,35 @@ public partial class ShellWindow {
             PaletteList.SelectedIndex = selected;
             PaletteList.ScrollIntoView(PaletteList.SelectedItem);
         }
+    }
+
+    /// <summary>テスト⇔実装（<c>nav.relatedTest</c>）。命名規約（<see cref="RelatedTestFiles"/>）で相手の名前を出し、
+    /// ワークスペース全フォルダーから探す。1件ならそのまま開き、複数ならフォルダーの近い順にパレットへ並べる。</summary>
+    private async Task GoToRelatedTestAsync() {
+        if (ActiveEditorFilePath() is not { Length: > 0 } path || _workspaceSearch is not { } search)
+            return;
+        var names = RelatedTestFiles.CounterpartNames(path);
+        var isTest = RelatedTestFiles.IsTestFile(path);
+        if (names.Count == 0) {
+            ShowEditorStatus("テスト⇔実装：このファイルの種類には対応規則がありません（.cs／.ts・.js 系／.py）");
+            return;
+        }
+        var results = await Task.WhenAll(names.Select(name =>
+            search.FindFilesAsync(Path.GetFileNameWithoutExtension(name), 500, CancellationToken.None)));
+        var wanted = new HashSet<string>(names, StringComparer.OrdinalIgnoreCase);
+        var ranked = RelatedTestFiles.RankByProximity(path, results.SelectMany(hits => hits)
+            .Where(hit => wanted.Contains(Path.GetFileName(hit.FullPath)))
+            .Select(hit => hit.FullPath));
+        if (ranked.Count == 0) {
+            ShowEditorStatus($"{(isTest ? "実装" : "テスト")}が見つかりません（{string.Join("／", names.Take(3))}）");
+            return;
+        }
+        if (ranked.Count == 1) {
+            await OpenPaletteTargetAsync(new PaletteTarget(ranked[0]));
+            return;
+        }
+        var items = EditorNavigationPaletteItems.ForRecentFiles(ranked, path, _workspace.ToDisplayPath, JumpToPaletteTarget);
+        _recentFilesPaletteItems = null;
+        OpenCommandPalette(PaletteMode.Command, items);
     }
 }
