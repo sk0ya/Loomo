@@ -262,6 +262,9 @@ public partial class ShellWindow {
         AddSearchScopeCommand(list, "ターミナル", SearchScope.Terminal);
         AddSearchScopeCommand(list, "クラス", SearchScope.Class);
         AddSearchScopeCommand(list, "シンボル", SearchScope.Symbol);
+        list.Add(new("問題", "表示中の問題を抜粋タブで開く",
+            () => CurrentProblems().OpenDisplayedAsExcerptsCommand.Execute(null),
+            Sc("problems.openAsExcerpts"), "problems.openAsExcerpts"));
         list.Add(new("ターミナル", "最近のコマンドを選び直す", OpenRecentTerminalCommands,
             Sc("terminal.recentCommands"), "terminal.recentCommands"));
         list.Add(new("ターミナル", "コマンドの出力を前回と比較", OpenTerminalOutputComparisons,

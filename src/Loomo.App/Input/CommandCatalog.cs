@@ -111,6 +111,9 @@ public static class CommandCatalog
         // ===== 問題 =====
         new CommandDescriptor("problems.next", CatProblems, "次の問題へ移動", "F8"),
         new CommandDescriptor("problems.previous", CatProblems, "前の問題へ移動", "Shift+F8"),
+        // 表示中の問題の箇所を1枚の抜粋タブに並べる（§35.3）。既定キーは与えない——同じことが問題一覧の
+        // 「▤ 抜粋タブ」と右クリックから届くので、毎回の起点にしたい人だけが付ければよい。
+        new CommandDescriptor("problems.openAsExcerpts", CatProblems, "表示中の問題を抜粋タブで開く", null),
 
         // ===== エディタ（意味的な選択・§24.9） =====
         // 既定キーは VS Code 準拠。Ctrl+W 系は<b>使わない</b>——Loomo ではペイン操作の vim 風
