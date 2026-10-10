@@ -11,12 +11,25 @@ namespace sk0ya.Loomo.App.Services;
 /// （Vim の <c>Esc :w</c>、切り離し窓や Diff の右側での保存が本体を保存済みに揃えるのも含む）印は消え、
 /// すぐ保存する人の編集が一つも残らなかった。</para>
 /// <para>保存前処理（保存時の整形・C# の整理）が入れる変更は人の編集ではないので、
-/// <see cref="BeginSavePreparation"/>〜<see cref="EndSavePreparation"/> の間は数えない。</para></summary>
+/// <see cref="BeginSavePreparation"/>〜<see cref="EndSavePreparation"/> の間は数えない。</para>
+/// <para><paramref name="positionOf"/> はタブの「どのファイルのどこか」。既定はタブのファイルとキャレットで、
+/// 抜粋タブ（§35.3）なら元ファイルの位置に直したものを返す（仮想文書のままでは記録できない）。</para></summary>
 internal sealed class TrailEditCommitController(
     TrailViewModel trail,
     Func<bool> isSuppressed,
-    Action<Action<DisplayMode, PaneKind?, string?>> record)
+    Action<Action<DisplayMode, PaneKind?, string?>> record,
+    Func<EditorTab, TrailFilePosition?>? positionOf = null)
 {
+    private TrailFilePosition? PositionOf(EditorTab tab)
+    {
+        if (positionOf is not null)
+            return positionOf(tab);
+        var path = tab.PeekFilePath;
+        if (!TrailLogic.IsRecordableFile(path, tab.PeekIsVirtual))
+            return null;
+        return tab.IsRealized ? new(path!, tab.Control.Caret.Line, tab.Control.Caret.Column) : new(path!, -1, -1);
+    }
+
     private readonly HashSet<VimEditorControl> _preparingSave = new();
     private DispatcherTimer? _timer;
     private EditorTab? _pendingTab;
@@ -32,7 +45,7 @@ internal sealed class TrailEditCommitController(
                 Cancel();
             return;
         }
-        if (!TrailLogic.IsRecordableFile(tab.PeekFilePath, tab.PeekIsVirtual))
+        if (PositionOf(tab) is null)
             return;
 
         if (_pendingTab is { } pending && !ReferenceEquals(pending, tab))
@@ -70,12 +83,9 @@ internal sealed class TrailEditCommitController(
         if (isSuppressed() || !tab.IsRealized)
             return;
 
-        var path = tab.PeekFilePath;
-        if (!TrailLogic.IsRecordableFile(path, tab.PeekIsVirtual))
+        if (PositionOf(tab) is not { } position)
             return;
-        var line = tab.Control.Caret.Line;
-        var column = tab.Control.Caret.Column;
         record((mode, stagePane, layout) =>
-            trail.RecordEdit(path, line, column, mode, stagePane, layout));
+            trail.RecordEdit(position.Path, position.Line, position.Column, mode, stagePane, layout));
     }
 }

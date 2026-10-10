@@ -261,7 +261,13 @@ public partial class ShellWindow {
         control.BufferChanged += (_, _) => {
             _workspaceEditTransactions.OnEditorBufferChanged();
             UpdateEditorTab(tab);
-            _trailEditCommit.Request(tab);
+            // 抜粋タブから入った編集は抜粋タブの編集として数える（位置は抜粋の中のキャレット＝元ファイルの行）。
+            // 抜粋タブ自身の変更通知は数えない：人の編集は元タブ側の通知で数え済みで、残りは元ファイルから
+            // 写されてきた変更（人が元タブで打ったもの）だから。
+            if (ExcerptTabForwardingInto(control) is { } excerptTab)
+                _trailEditCommit.Request(excerptTab);
+            else if (!_excerptTabs.ContainsKey(tab.Id))
+                _trailEditCommit.Request(tab);
             if (ReferenceEquals(_editorSupport.Source, tab))
                 ScheduleEditorSupportUpdate();
             ScheduleStyleCopAnalysis(control);

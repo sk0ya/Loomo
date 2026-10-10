@@ -51,6 +51,9 @@ internal sealed class ExcerptTabController : IDisposable
     public ExcerptDocument Document { get; }
     public VimEditorControl View { get; }
 
+    /// <summary>抜粋タブでの編集を元ファイルへ入れている最中か（元タブの変更通知が自分から来たものかの判定用）。</summary>
+    public bool IsForwarding => _applying;
+
     /// <summary>結び付けている元ファイルのエディタ（保存の対象）。</summary>
     public IEnumerable<VimEditorControl> Sources => _sources.Keys;
 

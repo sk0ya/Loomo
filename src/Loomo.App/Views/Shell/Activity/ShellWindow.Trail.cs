@@ -15,7 +15,7 @@ public partial class ShellWindow {
     private void InitializeTrail() {
         RegisterTrailJumps();
         InitializeTrailBookmarks();
-        _trailEditCommit = new TrailEditCommitController(_vm.Trail, () => _trailSuppressed, RecordTrail);
+        _trailEditCommit = new TrailEditCommitController(_vm.Trail, () => _trailSuppressed, RecordTrail, TrailFilePositionOf);
         _trailPaneCommit = new TrailPaneCommitController(
             () => _trailSuppressed,
             () => _stageActive,
@@ -74,22 +74,31 @@ public partial class ShellWindow {
         var snapshot = _root is null ? null : ToSnapshot(_root);
         return TrailLogic.CreateLayoutState(mode, stagePane, snapshot, CurrentDockKey());
     }
-    private void RecordTrailEditorTab(EditorTab tab) {
+    /// <summary>タブの「どのファイルのどこか」。抜粋タブは仮想文書なので、キャレットの下の抜粋の元ファイルの
+    /// 位置に直す（§35.3）——戻るときは元ファイルを開き直す（抜粋タブは軌跡の戻り先にならない）。</summary>
+    private TrailFilePosition? TrailFilePositionOf(EditorTab tab) {
+        if (ExcerptSourcePosition(tab) is { } excerpt)
+            return excerpt;
         var path = tab.PeekFilePath;
         if (!TrailLogic.IsRecordableFile(path, tab.PeekIsVirtual))
+            return null;
+        return tab.IsRealized ? new(path!, tab.Control.Caret.Line, tab.Control.Caret.Column) : new(path!, -1, -1);
+    }
+    private void RecordTrailEditorTab(EditorTab tab) {
+        if (TrailFilePositionOf(tab) is not { } position)
             return;
-        var line = -1;
-        var column = -1;
-        if (tab.IsRealized) {
-            line = tab.Control.Caret.Line;
-            column = tab.Control.Caret.Column;
-        }
         RecordTrail((mode, stagePane, layout) =>
-            _vm.Trail.RecordFile(path, line, column, mode, stagePane, layout));
+            _vm.Trail.RecordFile(position.Path, position.Line, position.Column, mode, stagePane, layout));
     }
     private void RefreshLatestTrailFilePosition() {
         if (_vm.Trail.LatestFileTarget is not { } target)
             return;
+        // 抜粋タブを見ているなら、裏で開いている元タブのキャレットではなく抜粋の中の位置で更新する。
+        if (_activeEditorTab is { } active && ExcerptSourcePosition(active) is { } excerpt) {
+            if (string.Equals(excerpt.Path, target, StringComparison.OrdinalIgnoreCase))
+                _vm.Trail.UpdateLatestFilePosition(target, excerpt.Line, excerpt.Column);
+            return;
+        }
         var tab = _editorTabs.FirstOrDefault(t => t.IsRealized
             && string.Equals(t.PeekFilePath, target, StringComparison.OrdinalIgnoreCase));
         if (tab is not null)
@@ -129,12 +138,11 @@ public partial class ShellWindow {
         var editor = _activeEditorTab;
         var terminal = _activeTerminalTab;
         var preview = _editorSupport.Source;
-        var line = editor is { IsRealized: true } ? editor.Control.Caret.Line : -1;
-        var column = editor is { IsRealized: true } ? editor.Control.Caret.Column : -1;
+        var editorPosition = editor is null ? null : TrailFilePositionOf(editor);
         var terminalLabel = terminal is null ? null : TrailLogic.TerminalLabel(
             TabsViewModel.TerminalShellTitle(terminal.View.HeaderTitle), null);
         var target = TrailLogic.CreatePaneRecordTarget(
-            kind, editor?.PeekFilePath, editor?.PeekIsVirtual ?? true, line, column,
+            kind, editorPosition?.Path, editorPosition is null, editorPosition?.Line ?? -1, editorPosition?.Column ?? -1,
             terminal?.Id, terminalLabel, preview?.PeekFilePath, preview?.PeekIsVirtual ?? true,
             BrowserUrlOf(_activeBrowserTab), _activeBrowserTab?.CurrentTitle,
             DefaultBrowserUrl);

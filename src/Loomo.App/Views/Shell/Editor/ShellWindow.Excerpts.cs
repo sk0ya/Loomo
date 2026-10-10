@@ -89,7 +89,44 @@ public partial class ShellWindow
         _excerptTabs[tab.Id] = new ExcerptEntry(new ExcerptTabController(
             document, control, DiffWorkingDocuments.Find, DiffWorkingDocuments.Open,
             ReadExcerptSourceFromDisk, ShowRefactorStatus), owner);
+        control.CaretMoved += (_, _) => OnExcerptCaretMoved(tab);
         return document;
+    }
+
+    /// <summary>抜粋タブのキャレットの下の、元ファイルの位置（本文の行ならその行・桁、見出しならその抜粋の先頭行）。
+    /// 抜粋タブでなければ null。</summary>
+    private TrailFilePosition? ExcerptSourcePosition(EditorTab tab)
+    {
+        if (!tab.IsRealized || !_excerptTabs.TryGetValue(tab.Id, out var entry))
+            return null;
+        var document = entry.Controller.Document;
+        var caret = entry.Controller.View.Caret;
+        var info = document.Describe(caret.Line);
+        if (info.Excerpt < 0 || info.Excerpt >= document.Excerpts.Count)
+            return null;
+        var excerpt = document.Excerpts[info.Excerpt];
+        return info.Kind == ExcerptLineKind.Content
+            ? new TrailFilePosition(excerpt.Path, info.SourceLine, caret.Column)
+            : new TrailFilePosition(excerpt.Path, excerpt.Source.Start.Line, 0);
+    }
+
+    /// <summary>いまこの元ファイルのエディタへ編集を入れている抜粋タブ（無ければ null）。</summary>
+    private EditorTab? ExcerptTabForwardingInto(VimEditorControl source)
+    {
+        foreach (var (id, entry) in _excerptTabs)
+            if (entry.Controller.IsForwarding && entry.Controller.Sources.Contains(source))
+                return entry.Owner.FirstOrDefault(t => t.Id == id);
+        return null;
+    }
+
+    /// <summary>抜粋タブの中で別のファイルの抜粋へ移った：そのファイルへ行ったのと同じなので軌跡に点を打つ（§27）。
+    /// 同じファイルの中の移動は、普通のタブと同じく離れるときの位置の上書きに任せる。</summary>
+    private void OnExcerptCaretMoved(EditorTab tab)
+    {
+        if (!ReferenceEquals(_activeEditorTab, tab) || ExcerptSourcePosition(tab) is not { } position)
+            return;
+        if (!string.Equals(position.Path, _vm.Trail.LatestFileTarget, StringComparison.OrdinalIgnoreCase))
+            RecordTrailEditorTab(tab);
     }
 
     /// <summary>復元待ちの抜粋タブ（§35.3）。開いたとき（実体化）に、保存した範囲から抜粋を組み直す。</summary>
@@ -239,15 +276,10 @@ public partial class ShellWindow
     private void AddExcerptMenuItems(ContextMenu menu, VimEditorControl? control)
     {
         if (control is null) return;
-        var excerpt = _excerptTabs.Values.Select(e => e.Controller).FirstOrDefault(e => ReferenceEquals(e.View, control));
-        if (excerpt is null) return;
-        var info = excerpt.Document.Describe(control.Caret.Line);
-        if (info.Excerpt >= excerpt.Document.Excerpts.Count) return;
-        var target = excerpt.Document.Excerpts[info.Excerpt];
-        var line = info.Kind == ExcerptLineKind.Content ? info.SourceLine : target.Source.Start.Line;
-        var column = info.Kind == ExcerptLineKind.Content ? control.Caret.Column : 0;
+        var tab = _editorTabs.FirstOrDefault(t => t.IsRealized && ReferenceEquals(t.Control, control));
+        if (tab is null || ExcerptSourcePosition(tab) is not { } target) return;
         var item = new MenuItem { Header = "元のファイルのこの行を開く" };
-        item.Click += (_, _) => _ = OpenPathInEditorAsync(target.Path, line + 1, column + 1);
+        item.Click += (_, _) => _ = OpenPathInEditorAsync(target.Path, target.Line + 1, target.Column + 1);
         menu.Items.Add(item);
     }
 

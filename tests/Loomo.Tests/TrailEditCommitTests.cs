@@ -89,11 +89,57 @@ public sealed class TrailEditCommitTests : IDisposable
         });
     }
 
-    private (TrailViewModel Trail, TrailEditCommitController Sut) Create()
+    /// <summary>抜粋タブ（§35.3）の編集は、抜粋タブのキャレットではなく位置の解決（＝元ファイルの行）で残す。</summary>
+    [Fact]
+    public void An_edit_is_recorded_at_the_position_the_resolver_maps_it_to()
+    {
+        _host.Run(() =>
+        {
+            var source = Path.Combine(_dir, "source.cs");
+            var (trail, sut) = Create(tab => tab.PeekIsVirtual
+                ? new TrailFilePosition(source, 41, 3)
+                : new TrailFilePosition(tab.PeekFilePath!, tab.Control.Caret.Line, tab.Control.Caret.Column));
+            var excerpt = new EditorTab(Guid.NewGuid());
+            var view = new VimEditorControl();
+            view.OpenVirtualDocument("抜粋", "// ── source.cs\nline", null);
+            excerpt.SetControl(view);
+            Replace(excerpt, "// ── source.cs", "// ── source.cs!");
+            Assert.True(view.IsModified);   // 仮想文書でも編集で未保存になる（Request はこれを見る）
+            sut.Request(excerpt);
+
+            EditAnotherTab(sut, "b.txt");   // 待っていた抜粋の編集はここで確定する
+
+            var edit = Assert.Single(trail.Entries, e => e.Kind == TrailEntryKind.Edit && e.Target == source);
+            Assert.Equal((source, 41), (edit.Target, edit.Line));
+        });
+    }
+
+    /// <summary>抜粋タブから元ファイルへ入れた編集かどうかは「元タブの変更通知が抜粋タブの書き込みの最中に来たか」で
+    /// 判定している（<c>ExcerptTabController.IsForwarding</c>）。それは BufferChanged が書き込みの中で同期に飛ぶ前提。</summary>
+    [Fact]
+    public void BufferChanged_is_raised_synchronously_inside_an_applied_edit()
+    {
+        _host.Run(() =>
+        {
+            var tab = OpenTab("sync.txt");
+            var inside = false;
+            var raisedInside = false;
+            tab.Control.BufferChanged += (_, _) => raisedInside |= inside;
+
+            inside = true;
+            Replace(tab, "on disk", "edited");
+            inside = false;
+
+            Assert.True(raisedInside);
+        });
+    }
+
+    private (TrailViewModel Trail, TrailEditCommitController Sut) Create(
+        Func<EditorTab, TrailFilePosition?>? positionOf = null)
     {
         var trail = new TrailViewModel(_store, () => new DateTime(2026, 10, 7, 9, 0, 0));
         var sut = new TrailEditCommitController(trail, () => false,
-            record => record(DisplayMode.Layout, null, null));
+            record => record(DisplayMode.Layout, null, null), positionOf);
         return (trail, sut);
     }
 

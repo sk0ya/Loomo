@@ -6,6 +6,8 @@ internal readonly record struct TrailPaneRecordTarget(
 internal readonly record struct TrailLayoutState(
     string Key, DisplayMode Mode, PaneKind? StagePane, string? PaneLayout);
 internal readonly record struct TrailLayoutKeyTransition(string Key, bool ShouldRecord);
+/// <summary>軌跡に残すファイルの位置（行・桁は 0 始まり、分からなければ -1）。抜粋タブ（§35.3）は元ファイルの位置に直したもの。</summary>
+internal readonly record struct TrailFilePosition(string Path, int Line, int Column);
 
 /// <summary>軌跡の分類・表示・変更検出に使うUI非依存ロジック。</summary>
 public static class TrailLogic
