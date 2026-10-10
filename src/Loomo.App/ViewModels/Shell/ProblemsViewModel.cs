@@ -8,6 +8,7 @@ using CommunityToolkit.Mvvm.Input;
 using Editor.Core.Lsp;
 using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.Core.Abstractions;
+using sk0ya.Loomo.Core.Tasks;
 
 namespace sk0ya.Loomo.App.ViewModels;
 
@@ -20,7 +21,8 @@ public enum ProblemSeverity
     Hint,
 }
 
-public enum ProblemSource { Build, Compiler, Lsp, StyleCop }
+/// <summary>「問題」の発生源。<see cref="Task"/> は tasks.json のタスク出力に problem matcher を当てたもの（§31.17）。</summary>
+public enum ProblemSource { Build, Compiler, Lsp, StyleCop, Task }
 
 public enum ProblemScope { Workspace, CurrentFile }
 
@@ -63,6 +65,7 @@ public sealed class ProblemItemViewModel
         ProblemSource.Compiler => "Compiler",
         ProblemSource.Lsp => "LSP",
         ProblemSource.StyleCop => "StyleCop",
+        ProblemSource.Task => "Task",
         _ => "Build",
     };
 
@@ -134,6 +137,10 @@ public sealed partial class ProblemsViewModel : ObservableObject
         new(System.StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, IReadOnlyList<ProblemItemViewModel>> _styleCopItems =
         new(System.StringComparer.OrdinalIgnoreCase);
+    /// <summary>タスクの問題（§31.17）。鍵はタスク（フォルダー＋ラベル）で、同じタスクを走らせ直すと丸ごと差し替わる
+    /// ——別のタスクの結果は残す（lint を走らせただけで直前のビルドの問題が消えないように）。</summary>
+    private readonly Dictionary<string, IReadOnlyList<ProblemItemViewModel>> _taskItems =
+        new(System.StringComparer.OrdinalIgnoreCase);
     private string? _navigationKey;
 
     public ProblemsViewModel(IWorkspaceService? workspace = null) => _workspace = workspace;
@@ -158,6 +165,7 @@ public sealed partial class ProblemsViewModel : ObservableObject
     [ObservableProperty] private bool _showCompiler = true;
     [ObservableProperty] private bool _showLsp = true;
     [ObservableProperty] private bool _showStyleCop = true;
+    [ObservableProperty] private bool _showTask = true;
     [ObservableProperty] private ProblemScope _scope;
     [ObservableProperty] private string? _currentFilePath;
 
@@ -169,6 +177,7 @@ public sealed partial class ProblemsViewModel : ObservableObject
     partial void OnShowCompilerChanged(bool value) => Rebuild();
     partial void OnShowLspChanged(bool value) => Rebuild();
     partial void OnShowStyleCopChanged(bool value) => Rebuild();
+    partial void OnShowTaskChanged(bool value) => Rebuild();
     partial void OnScopeChanged(ProblemScope value) => Rebuild();
     partial void OnCurrentFilePathChanged(string? value)
     {
@@ -223,6 +232,43 @@ public sealed partial class ProblemsViewModel : ObservableObject
     public void SetFromBuildOutput(string output, string? baseDir = null)
     {
         _buildItems = ParseBuildOutput(output, baseDir);
+        Rebuild();
+    }
+
+    /// <summary>タスク1回分の問題を、そのタスクの前回分と丸ごと差し替える（0件なら消す＝きれいになった）。
+    /// <paramref name="taskKey"/> はタスクの同一性（フォルダー＋ラベル）。</summary>
+    public void SetTaskProblems(string taskKey, IReadOnlyList<TaskProblem> problems)
+    {
+        var items = problems.Select(ToProblemItem).ToList();
+        if (items.Count == 0)
+        {
+            if (!_taskItems.Remove(taskKey)) return;
+        }
+        else
+        {
+            _taskItems[taskKey] = items;
+        }
+        Rebuild();
+    }
+
+    /// <summary>コードを拾わない matcher（gcc 等）は、LSP と同じく発生源名（matcher の owner）で代用する。</summary>
+    internal static ProblemItemViewModel ToProblemItem(TaskProblem problem)
+        => new(problem.FilePath, problem.Line, problem.Column,
+            problem.Severity switch
+            {
+                TaskProblemSeverity.Error => ProblemSeverity.Error,
+                TaskProblemSeverity.Warning => ProblemSeverity.Warning,
+                TaskProblemSeverity.Information => ProblemSeverity.Information,
+                _ => ProblemSeverity.Hint,
+            },
+            problem.Code ?? problem.Owner, problem.Message, ProblemSource.Task,
+            problem.EndLine, problem.EndColumn, hasCode: problem.Code is not null);
+
+    /// <summary>ワークスペース切替で、前のワークスペースのタスク結果を捨てる。</summary>
+    public void ClearTaskProblems()
+    {
+        if (_taskItems.Count == 0) return;
+        _taskItems.Clear();
         Rebuild();
     }
 
@@ -361,7 +407,8 @@ public sealed partial class ProblemsViewModel : ObservableObject
     private void Rebuild()
     {
         var expanded = Groups.ToDictionary(g => g.FilePath, g => g.IsExpanded, System.StringComparer.OrdinalIgnoreCase);
-        var items = _buildItems.Concat(_editorItems.Values.SelectMany(x => x.Items))
+        var items = _buildItems.Concat(_taskItems.Values.SelectMany(x => x))
+            .Concat(_editorItems.Values.SelectMany(x => x.Items))
             .Concat(_compilerItems.Values.SelectMany(x => x))
             .Concat(_lspItems.Values.SelectMany(x => x))
             .Concat(_styleCopItems.Values.SelectMany(x => x))
@@ -411,6 +458,7 @@ public sealed partial class ProblemsViewModel : ObservableObject
         if (item.Source == ProblemSource.Compiler && !ShowCompiler) return false;
         if (item.Source == ProblemSource.Lsp && !ShowLsp) return false;
         if (item.Source == ProblemSource.StyleCop && !ShowStyleCop) return false;
+        if (item.Source == ProblemSource.Task && !ShowTask) return false;
         return Scope != ProblemScope.CurrentFile ||
             (!string.IsNullOrWhiteSpace(CurrentFilePath) &&
              string.Equals(Path.GetFullPath(item.FilePath), Path.GetFullPath(CurrentFilePath),
@@ -422,10 +470,12 @@ public sealed partial class ProblemsViewModel : ObservableObject
         // Build is the persisted command result and remains the canonical copy when
         // its location/message is also reported by an editor source.
         ProblemSource.Build => 0,
-        ProblemSource.Lsp => 1,
+        // タスクもコマンドの実行結果なので、エディタ由来の写しより正本に近い（Build の次）。
+        ProblemSource.Task => 1,
+        ProblemSource.Lsp => 2,
         // Compiler is a fallback and must not hide a later LSP copy during a race.
-        ProblemSource.Compiler => 2,
-        _ => 3,
+        ProblemSource.Compiler => 3,
+        _ => 4,
     };
 
     [ObservableProperty] private int _informationCount;
