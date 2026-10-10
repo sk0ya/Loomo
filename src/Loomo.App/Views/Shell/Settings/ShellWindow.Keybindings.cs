@@ -19,6 +19,7 @@ public partial class ShellWindow {
             ["trail.bookmarks"] = OpenTrailBookmarks,
             ["trail.daySummary"] = ShowTrailDaySummary,
             ["trail.reshowAway"] = ReshowAwaySummary,
+            ["trail.toggleExpanded"] = ToggleTrailExpanded,
             ["pane.focus.left"] = () => FocusPaneInDirection(DropZone.Left), ["pane.focus.down"] = () => FocusPaneInDirection(DropZone.Below), ["pane.focus.up"] = () => FocusPaneInDirection(DropZone.Above), ["pane.focus.right"] = () => FocusPaneInDirection(DropZone.Right),
             ["pane.resize.left"] = () => ResizeFocusedPane(DropZone.Left), ["pane.resize.down"] = () => ResizeFocusedPane(DropZone.Below), ["pane.resize.up"] = () => ResizeFocusedPane(DropZone.Above), ["pane.resize.right"] = () => ResizeFocusedPane(DropZone.Right),
             ["pane.zoom"] = ToggleZoom, ["pane.fullscreen"] = TogglePaneFullscreen, ["pane.close"] = () => { if (!CloseFocusedViewport()) HideFocusedRegion(); }, ["pane.split.vertical"] = () => HandleViewportSplitKey(Key.V), ["pane.split.horizontal"] = () => HandleViewportSplitKey(Key.S), ["pane.split.closeView"] = () => HandleViewportSplitKey(Key.Q),

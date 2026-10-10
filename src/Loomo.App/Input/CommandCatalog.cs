@@ -106,6 +106,7 @@ public static class CommandCatalog
         new CommandDescriptor("trail.bookmarks", CatTrail, "しおり一覧", null),
         new CommandDescriptor("trail.daySummary", CatTrail, "この日のまとめ", null),
         new CommandDescriptor("trail.reshowAway", CatTrail, "留守中のまとめをもう一度表示", null),
+        new CommandDescriptor("trail.toggleExpanded", CatTrail, "軌跡の展開ビューを開く／閉じる", null),
 
         // ===== 問題 =====
         new CommandDescriptor("problems.next", CatProblems, "次の問題へ移動", "F8"),

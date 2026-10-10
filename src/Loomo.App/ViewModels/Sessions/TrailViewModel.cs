@@ -42,6 +42,7 @@ public sealed partial class TrailViewModel : ObservableObject
         _displayDate = Today;
         // 設定に保存された表示状態を初期反映する（field 直接代入なので OnVisibleChanged＝永続化は走らない）。
         _visible = settings?.TrailVisible ?? true;
+        _expanded = settings?.TrailExpanded ?? false;
     }
 
     public ObservableCollection<TrailEntryViewModel> Entries { get; } = new();
@@ -71,6 +72,25 @@ public sealed partial class TrailViewModel : ObservableObject
 
     [RelayCommand]
     private void Hide() => Visible = false;
+
+    /// <summary>展開ビュー（§27.14）を開いているか。バーと同じく設定へ永続化する。</summary>
+    [ObservableProperty]
+    private bool _expanded;
+
+    partial void OnExpandedChanged(bool value)
+    {
+        if (_settings is null)
+            return;
+        _settings.TrailExpanded = value;
+        try { _settingsStore?.Save(_settings); }
+        catch { /* 永続化失敗でも開閉自体は効かせる */ }
+    }
+
+    [RelayCommand]
+    private void ToggleExpanded() => Expanded = !Expanded;
+
+    /// <summary>このワークスペースのコマンド実行が1回分記録された（展開ビューが読み直す合図）。</summary>
+    public event EventHandler? CommandRunRecorded;
 
     /// <summary>表示中の日。記録は常に今日へ追加される。</summary>
     [ObservableProperty]
@@ -449,7 +469,9 @@ public sealed partial class TrailViewModel : ObservableObject
         if (string.IsNullOrWhiteSpace(run.Command))
             return;
         try { _store.AppendCommandRunDeferred(workspaceKey, run.FinishedUtc.ToLocalTime(), run.Command.Trim(), run.ExitCode); }
-        catch { /* 記録は補助。失敗しても実行そのものには関係しない */ }
+        catch { /* 記録は補助。失敗しても実行そのものには関係しない */ return; }
+        if (string.Equals(workspaceKey, _workspaceKey, StringComparison.Ordinal))
+            CommandRunRecorded?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>このワークスペースのその日のコマンド実行（古い順）。読めなければ空。</summary>
@@ -494,6 +516,17 @@ public sealed partial class TrailViewModel : ObservableObject
         if (DisplayDate != bookmark.Day)
             return false;
         var entry = Entries.FirstOrDefault(e => e.Id == bookmark.Id);
+        if (entry is null)
+            return false;
+        Jump(entry);
+        return true;
+    }
+
+    /// <summary>その時刻にいた地点（その時刻以前で最も新しい点。無ければその日の最初の点）へ戻る。
+    /// 展開ビューでコマンドや軸の空きを押したとき用。表示中の日に点が無ければ何もしない。</summary>
+    public bool JumpToTime(DateTime time)
+    {
+        var entry = TrailTimelineLayout.EntryAt(Entries, time);
         if (entry is null)
             return false;
         Jump(entry);

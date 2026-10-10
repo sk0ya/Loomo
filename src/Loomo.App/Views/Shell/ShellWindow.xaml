@@ -2913,6 +2913,8 @@
                 <Border.ContextMenu>
                     <ContextMenu Opened="OnTrailContextMenuOpened">
                         <MenuItem Header="最新に戻る" Click="OnTrailBackToLatest" />
+                        <MenuItem Header="展開ビュー（時刻の軸で見る）" IsCheckable="True"
+                                  IsChecked="{Binding PlacementTarget.DataContext.Trail.Expanded, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
                         <Separator />
                         <MenuItem x:Name="TrailBookmarkMenuItem" Header="この地点にしおりを付ける…" Click="OnTrailBookmarkEntry" />
                         <MenuItem Header="しおり一覧…" Click="OnTrailShowBookmarks" />
@@ -2924,6 +2926,13 @@
                                   Command="{Binding PlacementTarget.DataContext.Trail.HideCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
                     </ContextMenu>
                 </Border.ContextMenu>
+                <StackPanel>
+                <!-- 展開ビュー（§27.14）：表示中の日を時刻の軸に並べ直す（移動・コマンドの成否・しおり）。
+                     開閉は右クリック「展開ビュー」／パレット。見えている間だけ組み立てる。 -->
+                <views:TrailTimelineView DataContext="{Binding Trail}"
+                                         Visibility="{Binding Expanded, Converter={StaticResource BoolToVis}}" />
+                <Rectangle Height="1" Fill="{DynamicResource Border}"
+                           Visibility="{Binding Trail.Expanded, Converter={StaticResource BoolToVis}}" />
                 <DockPanel LastChildFill="True" Height="26">
                     <!-- 日付＋時刻を1つにまとめたボタン：ライブ地点なら「M/d (ddd) HH:mm」、過去地点へ
                          スクラブ中／過去日表示中はその時間帯を HH:00 で表す。クリックで日付（カレンダー）と
@@ -3147,6 +3156,7 @@
                         </ItemsControl>
                     </ScrollViewer>
                 </DockPanel>
+                </StackPanel>
             </Border>
 
             <!-- ドラッグ中のゴースト：掴んでいるペインをカーソル追従のチップで示す。

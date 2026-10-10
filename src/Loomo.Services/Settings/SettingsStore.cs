@@ -110,6 +110,9 @@ public sealed class SettingsStore
         /// <summary>軌跡バーの表示ON/OFF。null=旧設定（未指定）→ 既定（表示）を維持。</summary>
         public bool? TrailVisible { get; set; }
 
+        /// <summary>軌跡の展開ビューを開いているか。null=旧設定（未指定）→ 既定（閉じる）を維持。</summary>
+        public bool? TrailExpanded { get; set; }
+
         /// <summary>Git ペインのコミット詳細の表示ON/OFF。null=旧設定（未指定）→ 既定（表示）を維持。</summary>
         public bool? GitCommitDetailVisible { get; set; }
 
@@ -151,6 +154,7 @@ public sealed class SettingsStore
             PaneSubDirection = s.PaneSubDirection,
             WarmupEnabled = s.WarmupEnabled,
             TrailVisible = s.TrailVisible,
+            TrailExpanded = s.TrailExpanded,
             GitCommitDetailVisible = s.GitCommitDetailVisible,
             GitBranchColumnVisible = s.GitBranchColumnVisible,
             GitReferenceTab = s.GitReferenceTab,
@@ -182,6 +186,7 @@ public sealed class SettingsStore
             if (PaneSubDirection is { } psd) s.PaneSubDirection = psd; // 旧設定（null）は既定（Horizontal＝右）を維持
             if (WarmupEnabled is { } warm) s.WarmupEnabled = warm; // 旧設定（null）は既定（有効）を維持
             if (TrailVisible is { } trail) s.TrailVisible = trail; // 旧設定（null）は既定（表示）を維持
+            if (TrailExpanded is { } trailExpanded) s.TrailExpanded = trailExpanded; // 同上（既定は閉じる）
             if (GitCommitDetailVisible is { } gitDetail) s.GitCommitDetailVisible = gitDetail; // 同上
             if (GitBranchColumnVisible is { } gitBranches) s.GitBranchColumnVisible = gitBranches; // 同上
             if (GitReferenceTab is { Length: > 0 } gitRefTab) s.GitReferenceTab = gitRefTab;      // 同上

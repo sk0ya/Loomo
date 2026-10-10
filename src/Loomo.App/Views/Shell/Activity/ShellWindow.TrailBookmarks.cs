@@ -32,6 +32,14 @@ public partial class ShellWindow {
 
     private void OnTrailShowBookmarks(object sender, RoutedEventArgs e) => OpenTrailBookmarks();
 
+    /// <summary>展開ビュー（§27.14）の開閉。バーを隠している間に開くなら、バーごと出す（展開ビューはバーの上に載る）。</summary>
+    private void ToggleTrailExpanded() {
+        var open = !_vm.Trail.Expanded || !_vm.Trail.Visible;
+        if (open)
+            _vm.Trail.Visible = true;
+        _vm.Trail.Expanded = open;
+    }
+
     /// <summary>Git の地点はログ専用で戻り先が無い（§27.6）ので、しおりを付けても戻れない。</summary>
     private static bool CanBookmark(TrailEntryViewModel? entry)
         => entry is not null && entry.Kind != TrailEntryKind.Git;
