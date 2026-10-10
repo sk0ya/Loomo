@@ -1,10 +1,10 @@
 using System.Linq;
-using sk0ya.Loomo.App.ViewModels;
+using sk0ya.Loomo.Services.Testing;
 using Xunit;
 
 namespace sk0ya.Loomo.Tests;
 
-/// <summary>vitest / jest の JSON 結果（jest 互換形式）のパース検証。とくに <c>duration</c> の抽出——
+/// <summary>vitest / jest の JSON 結果（jest 互換形式、<see cref="JestJsonResultParser"/>）のパース検証。とくに <c>duration</c> の抽出——
 /// エディタのガターのツールチップに出す所要時間の TS 側の出所。</summary>
 public class TsTestRunnerResultTests
 {
@@ -26,8 +26,8 @@ public class TsTestRunnerResultTests
     }
     """;
 
-    private static TsTestRunner.TsTestResult Find(string title)
-        => TsTestRunner.ParseJson(Json).Single(r => r.Title.EndsWith(title, System.StringComparison.Ordinal));
+    private static ScriptTestResult Find(string title)
+        => JestJsonResultParser.Parse(Json).Single(r => r.Title.EndsWith(title, System.StringComparison.Ordinal));
 
     [Fact]
     public void Reads_duration_in_milliseconds()
@@ -49,7 +49,7 @@ public class TsTestRunnerResultTests
     public void Failure_keeps_first_message_line_and_duration()
     {
         var r = Find("breaks");
-        Assert.Equal(TestStatus.Failed, r.Status);
+        Assert.Equal(ScriptTestOutcome.Failed, r.Outcome);
         Assert.Equal("AssertionError: expected 1", r.Message);
         Assert.Equal(1500, r.Duration!.Value.TotalMilliseconds, 3);
     }

@@ -1,5 +1,5 @@
 namespace sk0ya.Loomo.App.Views;
-/// <summary>ShellWindow: エディタのガターに出す「テスト実行 ▶ ／結果」グリフの配線（ブレークポイント列と同じ流儀）。 テストの正本はテストエクスプローラの VM（dotnet=<see cref="ViewModels.DebugTestsViewModel"/> / TypeScript=<see cref="ViewModels.TsDebugTestsViewModel"/>）が持ち、エディタは表示して押されたことを伝えるだけ。 ファイルの管轄は <see cref="ManagerForPath"/> と同じ拡張子で振り分ける。
+/// <summary>ShellWindow: エディタのガターに出す「テスト実行 ▶ ／結果」グリフの配線（ブレークポイント列と同じ流儀）。 テストの正本はテストエクスプローラの VM（dotnet=<see cref="ViewModels.DebugTestsViewModel"/> / TypeScript・Python=<see cref="ViewModels.ScriptTestsViewModel"/>）が持ち、エディタは表示して押されたことを伝えるだけ。 ファイルの管轄は <see cref="ManagerForPath"/> と同じ拡張子で振り分ける。
 /// <para><b>再送の契機は 3 つ。</b>(1) テスト一覧・状態が変わったとき（<c>TestsChanged</c>＝走査の再収集・実行の開始と完了）、 (2) 本文が変わったとき（<c>BufferChanged</c>＝編集。Background 優先度で1フレームぶんにまとめる）、 (3) <b>ファイルを読み込んだとき</b>（<see cref="LoadEditorFile"/>／セッション復元）。
 /// (3) が要るのは、<c>VimEditorControl.LoadFile</c> がグリフを捨てるのに <c>BufferChanged</c> を<b>発火しない</b>ため。 これを落とすと、外部変更の読み直し（<c>ReloadExistingTabIfChangedAsync</c>——ブランチ切替・一括置換・ 既存タブを開き直したとき）でガターが空のまま残る。<b><see cref="LoadEditorFile"/> が Loomo 側の唯一の漏斗</b>なので、 <c>control.LoadFile</c> を直に呼ぶ経路を増やさないこと（増やすならそこでも再送する）。 内容が同じなら Editor 側が no-op にするので、送りすぎる分には害がない。</para>
 /// <para><b>列の出し入れ。</b>テストソースでないファイルではガター列を無効化する（列幅 0＝本文左端を動かさない）。 いったんテストが見つかったファイルでは 0 件になっても畳まない——編集途中でパーサが拾えなくなるたびに 列が開閉して本文が左右に動くため（<see cref="EditorTestGlyphColumns"/>）。</para>
@@ -19,13 +19,16 @@ public partial class ShellWindow {
         _vm.Debug.Tests.TestsChanged += _testGlyphController.SyncAll;
         _vm.Debug.Tests.CoverageChanged += _testGlyphController.SyncAll;
         _vm.TsIde.Tests.TestsChanged += _testGlyphController.SyncAll;
+        _vm.Debug.PyTests.TestsChanged += _testGlyphController.SyncAll;
         // ワークスペースが変われば「どのファイルがテストソースか」の記憶も捨てる。
         _workspace.FoldersChanged += (_, _) => _testGlyphController.ResetColumns();
     }
-    /// <summary>そのファイルのテストを持つエクスプローラ（.ts/.js 系→TS IDE、それ以外→dotnet IDE）。
-    /// 振り分けはデバッグ（<see cref="ManagerForPath"/>）と同じ表を使う——同じファイルが両方に属することはない。</summary>
+    /// <summary>そのファイルのテストを持つエクスプローラ（.ts/.js 系→TS IDE、.py→IDE ペインの pytest 枠、それ以外→dotnet）。
+    /// ペインの振り分けはデバッグ（<see cref="ManagerForPath"/>）と同じ表を使う——同じファイルが両方に属することはない。</summary>
     private ITestExplorer TestExplorerForPath(string? path)
-        => ReferenceEquals(ManagerForPath(path), _vm.TsIde) ? _vm.TsIde.Tests : _vm.Debug.Tests;
+        => ReferenceEquals(ManagerForPath(path), _vm.TsIde) ? _vm.TsIde.Tests
+            : path is not null && path.EndsWith(".py", StringComparison.OrdinalIgnoreCase) ? _vm.Debug.PyTests
+            : _vm.Debug.Tests;
     private void WireEditorForTestGlyphs(VimEditorControl control) {
         _testGlyphController.WireEditor(control);
     }

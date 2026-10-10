@@ -1,5 +1,6 @@
 using System.Linq;
 using sk0ya.Loomo.App.ViewModels;
+using sk0ya.Loomo.Services.Testing;
 using Xunit;
 
 namespace sk0ya.Loomo.Tests;
@@ -154,7 +155,8 @@ public class TsTestDiscoveryTests
     }
 }
 
-/// <summary>vitest / jest の JSON 結果パースとコマンド組み立て（<see cref="TsTestRunner"/>）のテスト。</summary>
+/// <summary>vitest / jest の JSON 結果パースとコマンド組み立て・判定（<see cref="JestJsonResultParser"/> /
+/// <see cref="VitestRunner"/> / <see cref="JestRunner"/> / <see cref="JsTestRunnerDetection"/>）のテスト。</summary>
 public class TsTestRunnerTests
 {
     [Fact]
@@ -176,26 +178,29 @@ public class TsTestRunnerTests
             }
             """;
 
-        var results = TsTestRunner.ParseJson(json);
+        var results = JestJsonResultParser.Parse(json);
 
         Assert.Equal(3, results.Count);
         Assert.Equal("math > add > handles zero", results[0].Title);
-        Assert.Equal(TestStatus.Passed, results[0].Status);
-        Assert.Equal(TestStatus.Failed, results[1].Status);
+        Assert.Equal(ScriptTestOutcome.Passed, results[0].Outcome);
+        Assert.Equal(ScriptTestOutcome.Failed, results[1].Outcome);
         Assert.Equal("AssertionError: expected 1 to be 2", results[1].Message);   // 1 行目だけ
-        Assert.Equal(TestStatus.Skipped, results[2].Status);
+        Assert.Equal(ScriptTestOutcome.Skipped, results[2].Outcome);
     }
 
     [Fact]
     public void BuildCommand_quotes_and_scopes()
     {
-        var all = TsTestRunner.BuildCommand("vitest", @"C:\app", null, null);
+        // node_modules/.bin が無い（＝npx に任せる）環境として組み立てる。
+        var tools = new TestToolLocator([], fileExists: _ => false, resolveOnPath: _ => null);
+        var all = new VitestRunner().BuildCommand(new TestRunRequest(@"C:\app", @"C:\r.json"), tools);
         Assert.StartsWith("Set-Location 'C:\\app'; npx --no-install vitest run --reporter=json", all);
 
-        var single = TsTestRunner.BuildCommand("jest", @"C:\my app", @"src\a.test.ts", "it's title");
+        var single = new JestRunner().BuildCommand(
+            new TestRunRequest(@"C:\my app", @"C:\r.json", @"src\a.test.ts", "it's title"), tools);
         Assert.Contains("Set-Location 'C:\\my app'", single);
         Assert.Contains("npx --no-install jest --json", single);
-        Assert.Contains("'src/a.test.ts'", single);                // ファイルは / 区切り
+        Assert.Contains("--runTestsByPath 'src/a.test.ts'", single);   // ファイルは / 区切り・パスとして渡す
         Assert.Contains("-t 'it''s title'", single);               // ' は '' にエスケープ
     }
 
@@ -207,13 +212,13 @@ public class TsTestRunnerTests
         {
             var pkg = System.IO.Path.Combine(dir, "package.json");
             System.IO.File.WriteAllText(pkg, """{ "devDependencies": { "vitest": "^2.0.0" } }""");
-            Assert.Equal("vitest", TsTestRunner.DetectRunner(pkg));
+            Assert.Equal("vitest", JsTestRunnerDetection.Detect(dir));
 
             System.IO.File.WriteAllText(pkg, """{ "scripts": { "test": "jest --ci" } }""");
-            Assert.Equal("jest", TsTestRunner.DetectRunner(pkg));
+            Assert.Equal("jest", JsTestRunnerDetection.Detect(dir));
 
             System.IO.File.WriteAllText(pkg, """{ "name": "x" }""");
-            Assert.Null(TsTestRunner.DetectRunner(pkg));
+            Assert.Null(JsTestRunnerDetection.Detect(dir));
         }
         finally
         {
