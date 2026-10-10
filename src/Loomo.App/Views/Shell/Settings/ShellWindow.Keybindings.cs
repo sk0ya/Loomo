@@ -17,6 +17,8 @@ public partial class ShellWindow {
             ["terminal.openOutput"] = OpenTerminalOutputs,
             ["tasks.run"] = OpenWorkspaceTasks,
             ["tasks.runDefaultBuild"] = RunDefaultBuildTask,
+            ["terminal.pinOutput"] = OpenTerminalOutputsToPin,
+            ["terminal.pinSelection"] = PinActiveTerminalSelection,
             ["trail.bookmark"] = () => BookmarkTrailEntry(_vm.Trail.CurrentEntry),
             ["trail.bookmarks"] = OpenTrailBookmarks,
             ["trail.daySummary"] = ShowTrailDaySummary,

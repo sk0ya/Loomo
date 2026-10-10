@@ -9,12 +9,21 @@ public partial class ShellWindow {
 
     /// <summary>出力は D の少し後に届く（Terminal 1.0.38〜 <c>CommandOutputCaptured</c>）。ConPTY が OSC 133 の
     /// 印を本文より先に流すので、ライブラリは描画が落ち着いてから切り出す——D と同じ瞬間には揃わない。</summary>
-    private void HookTerminalCommandOutputs(TerminalTab tab)
-        => tab.View.CommandOutputCaptured += (_, e) => {
+    private void HookTerminalCommandOutputs(TerminalTab tab) {
+        // 実行した場所は C の時点で覚える——出力が届くのは D の後なので、`cd` のようなコマンドでは
+        // その頃にはもう移った先になっている（ペグボードの出典・§24.26）。
+        string? executedIn = null;
+        tab.View.ShellCommandActivity += (_, e) => {
+            if (e.Phase == ShellCommandPhase.CommandExecuted)
+                executedIn = tab.View.WorkingDirectory;
+        };
+        tab.View.CommandOutputCaptured += (_, e) => {
             if (RecentTerminalCommands.Normalize(e.CommandLine) is { } command)
                 RecordTerminalCommandOutput(tab.Id,
-                    new TerminalCommandOutput(command, e.Output, e.ExitCode, DateTime.UtcNow, e.HeadLost));
+                    new TerminalCommandOutput(command, e.Output, e.ExitCode, DateTime.UtcNow, e.HeadLost,
+                        tab.Id, executedIn ?? tab.View.WorkingDirectory));
         };
+    }
 
     private void RecordTerminalCommandOutput(Guid tabId, TerminalCommandOutput output) {
         var owner = _terminalWorkspaces.FirstOrDefault(pair => pair.Value.Tabs.Any(t => t.Id == tabId)).Key;

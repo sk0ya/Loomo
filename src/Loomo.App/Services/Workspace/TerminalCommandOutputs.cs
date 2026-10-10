@@ -8,9 +8,12 @@ namespace sk0ya.Loomo.App.Services;
 
 /// <summary>可視ターミナルで実行し終えたコマンド1回分の出力（OSC 133 の C〜D）。§24.21。
 /// <paramref name="HeadOmitted"/> は先頭が欠けていること——スクロールバックの上限から押し出されたか、
-/// <see cref="TerminalCommandOutputs.MaxChars"/> を超えて頭を落としたか。</summary>
+/// <see cref="TerminalCommandOutputs.MaxChars"/> を超えて頭を落としたか。
+/// <paramref name="TabId"/>／<paramref name="WorkingDirectory"/> は出どころ（どのタブで・どこで実行したか）——
+/// ペグボードへ出典付きで残すときに使う（§24.26）。</summary>
 public sealed record TerminalCommandOutput(
-    string Command, string Text, int? ExitCode, DateTime FinishedUtc, bool HeadOmitted);
+    string Command, string Text, int? ExitCode, DateTime FinishedUtc, bool HeadOmitted,
+    Guid TabId = default, string? WorkingDirectory = null);
 
 /// <summary>
 /// コマンドごとに「前回」と「今回」の出力を持つ置き場（純ロジック・テスト対象）。§24.21。
@@ -60,6 +63,10 @@ public sealed class TerminalCommandOutputs
         => _entries.Where(e => e.Previous is not null).Select(e => (e.Previous!, e.Latest)).ToList();
 
     public bool IsEmpty => _entries.Count == 0;
+
+    /// <summary>持っているすべての回（新しいコマンドから、各コマンドは今回→前回の順）。</summary>
+    public IReadOnlyList<TerminalCommandOutput> All
+        => _entries.SelectMany(e => e.Previous is null ? new[] { e.Latest } : new[] { e.Latest, e.Previous }).ToList();
 
     private static TerminalCommandOutput Clip(TerminalCommandOutput output)
     {
