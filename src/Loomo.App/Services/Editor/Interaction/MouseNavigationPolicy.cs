@@ -9,6 +9,8 @@ public enum MouseNavigationTarget
     Files,
     /// <summary>EditorSupport のプレビュー履歴（既定）。</summary>
     EditorSupport,
+    /// <summary>エディタの場所の履歴（ファイル＋行。<see cref="EditorLocationHistory"/>）。</summary>
+    Editor,
 }
 
 /// <summary>マウスの戻る/進むボタン一回分の宛先と向き。</summary>
@@ -35,13 +37,14 @@ public static class MouseNavigationPolicy
         };
         if (back is not { } goBack)
             return null;
-        // ブラウザ／ファイル一覧の上では、それぞれのペイン自身の履歴へ。
-        // それ以外（エディタ・ターミナル・ペイン外の余白）は従来どおり
-        // EditorSupport のプレビュー履歴へ。
+        // ブラウザ／ファイル一覧の上では、それぞれのペイン自身の履歴へ。エディタの上では
+        // キーボードの「戻る／進む」と同じ場所の履歴へ（ファイル単位ではなく行まで戻る）。
+        // それ以外（ターミナル・EditorSupport・ペイン外の余白）は従来どおり EditorSupport のプレビュー履歴へ。
         var target = paneUnderPointer switch
         {
             PaneKind.Browser => MouseNavigationTarget.Browser,
             PaneKind.Files => MouseNavigationTarget.Files,
+            PaneKind.Editor => MouseNavigationTarget.Editor,
             _ => MouseNavigationTarget.EditorSupport,
         };
         return new MouseNavigationCommand(target, goBack);

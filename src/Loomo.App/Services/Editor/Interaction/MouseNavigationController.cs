@@ -8,7 +8,8 @@ internal sealed class MouseNavigationController(
     IReadOnlyDictionary<PaneKind, FrameworkElement> paneElements,
     Action<bool> navigateBrowser,
     Action<DependencyObject?, bool> navigateFiles,
-    Action<bool> navigateEditorSupport)
+    Action<bool> navigateEditorSupport,
+    Action<bool> navigateEditor)
 {
     public bool Handle(MouseButtonEventArgs e)
     {
@@ -26,6 +27,9 @@ internal sealed class MouseNavigationController(
                 break;
             case MouseNavigationTarget.Files:
                 navigateFiles(e.OriginalSource as DependencyObject, command.Back);
+                break;
+            case MouseNavigationTarget.Editor:
+                navigateEditor(command.Back);
                 break;
             default:
                 navigateEditorSupport(command.Back);

@@ -34,11 +34,19 @@ public class MouseNavigationPolicyTests
     }
 
     [Theory]
-    [InlineData(PaneKind.Editor)]
+    [InlineData(MouseButton.XButton1, true)]
+    [InlineData(MouseButton.XButton2, false)]
+    public void Resolve_エディタの上は場所の履歴へ(MouseButton button, bool back)
+    {
+        var command = MouseNavigationPolicy.Resolve(button, PaneKind.Editor);
+        Assert.Equal(new MouseNavigationCommand(MouseNavigationTarget.Editor, back), command);
+    }
+
+    [Theory]
     [InlineData(PaneKind.EditorSupport)]
     [InlineData(PaneKind.Terminal)]
     [InlineData(null)]
-    public void Resolve_ブラウザ以外はEditorSupportのプレビュー履歴へ(PaneKind? pane)
+    public void Resolve_ブラウザとファイル一覧とエディタ以外はEditorSupportのプレビュー履歴へ(PaneKind? pane)
     {
         var command = MouseNavigationPolicy.Resolve(MouseButton.XButton1, pane);
         Assert.Equal(new MouseNavigationCommand(MouseNavigationTarget.EditorSupport, Back: true), command);

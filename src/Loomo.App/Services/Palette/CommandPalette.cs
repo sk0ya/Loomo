@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 
 namespace sk0ya.Loomo.App.Services;
 
@@ -29,6 +30,16 @@ public sealed record PaletteCommand(string Category, string Title, Action Execut
 
     /// <summary>行の右端の文字（状態があればそれ、無ければショートカット）。</summary>
     public string? RightText => Badge ?? Shortcut;
+
+    /// <summary>
+    /// 等価性は<b>参照</b>で判定する（record の既定の値比較を使わない）。一覧の行はそれ自体が1つの選択肢で、
+    /// 値が同じでも別の行は別物——しかも <see cref="TitleMatch"/> は打鍵のたびに書き換わる。値比較のままだと
+    /// ハッシュが打鍵ごとに変わり、ListBox の選択管理（ハッシュで引く辞書）が選んでいた行を見失って
+    /// 「同じキーが既にある」で落ちた（ファイル構造の一覧を絞り込んで Enter したときに発生）。
+    /// </summary>
+    public bool Equals(PaletteCommand? other) => ReferenceEquals(this, other);
+
+    public override int GetHashCode() => RuntimeHelpers.GetHashCode(this);
 }
 
 /// <summary>ナビゲーション項目が指す場所。プレビュー（開かずに中身を見る）と確定ジャンプの

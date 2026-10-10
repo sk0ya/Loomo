@@ -141,6 +141,7 @@ public partial class ShellWindow {
             SyncEditorCodeActionBulb(tab.Control);
         }
         _editorLspNotices.ShowForFile(filePath);
+        SeedEditorLocationHistory(tab);
     }
     private void CloseEditorTab(Guid id) {
         var index = _editorTabs.FindIndex(t => t.Id == id);

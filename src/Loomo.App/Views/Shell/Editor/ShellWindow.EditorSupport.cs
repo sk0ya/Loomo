@@ -54,7 +54,8 @@ public partial class ShellWindow : IEditorSupportRenderHost {
         => _editorSupportMouseNavigation ??= new MouseNavigationController(
             _paneElements, BrowserNavigateHistory,
             (source, back) => PaneContent<FilesPaneView>(FilesPaneHost).NavigateHistory(source, back),
-            back => { _ = EditorSupportNavigateHistoryAsync(back); });
+            back => { _ = EditorSupportNavigateHistoryAsync(back); },
+            back => { _ = NavigateEditorLocationAsync(back); });
     /// <summary>次の描画でページ全体を組み直す（本文差し替えを使わない）。ナビゲーション失敗・
     /// 応答なし・差し替え先ページ喪失からの復帰で立てる一度きりのフラグ。</summary>
     private bool _editorSupportForceFullPage;

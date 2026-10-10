@@ -161,7 +161,10 @@ public partial class ShellWindow {
     }
     private async Task LoadPalettePreviewAsync(PaletteTarget target) {
         var content = await _paletteSearch.PreviewAsync(target, _workspace.ToDisplayPath(target.FullPath));
-        if (content is null || !IsPaletteOpen || !_paletteView.IsNavigation)
+        // 「探して飛ぶ」側でなくても、場所を持つ行（最近の場所・ファイル構造など）は中身を見せる。
+        // 待っている間に選択が動いていたら捨てる（追い越された読み込みで右の欄を戻さない）。
+        if (content is null || !IsPaletteOpen || PaletteList.SelectedItem is not PaletteCommand { Target: { } selected }
+            || selected != target)
             return;
         _paletteView.ShowPreview(content);
     }
@@ -262,6 +265,17 @@ public partial class ShellWindow {
         AddSearchScopeCommand(list, "ターミナル", SearchScope.Terminal);
         AddSearchScopeCommand(list, "クラス", SearchScope.Class);
         AddSearchScopeCommand(list, "シンボル", SearchScope.Symbol);
+        list.Add(new("ナビゲーション", "前にいた場所へ戻る", () => { _ = NavigateEditorLocationAsync(back: true); },
+            Sc("nav.back"), "nav.back"));
+        list.Add(new("ナビゲーション", "戻る前の場所へ進む", () => { _ = NavigateEditorLocationAsync(back: false); },
+            Sc("nav.forward"), "nav.forward"));
+        list.Add(new("ナビゲーション", "最後に編集した場所へ", GoToLastEditLocation,
+            Sc("nav.lastEditLocation"), "nav.lastEditLocation"));
+        list.Add(new("ナビゲーション", "最近のファイル", OpenRecentFilesOrToggle, Sc("nav.recentFiles"), "nav.recentFiles"));
+        list.Add(new("ナビゲーション", "最近の場所", () => { _ = OpenRecentLocationsAsync(); },
+            Sc("nav.recentLocations"), "nav.recentLocations"));
+        list.Add(new("ナビゲーション", "ファイル構造（宣言の一覧）", () => { _ = OpenFileStructureAsync(); },
+            Sc("nav.fileStructure"), "nav.fileStructure"));
         list.Add(new("問題", "表示中の問題を抜粋タブで開く",
             () => CurrentProblems().OpenDisplayedAsExcerptsCommand.Execute(null),
             Sc("problems.openAsExcerpts"), "problems.openAsExcerpts"));

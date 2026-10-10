@@ -253,8 +253,15 @@ public partial class ShellWindow {
         }) {
             VimEnabled = _settings.Vim.Enabled, Visibility = Visibility.Collapsed
         };
+        // Editor はホスト提供を先に訊き、0件のときだけ LSP へ問う。C# の quickfix をそのまま
+        // ホスト（StyleCop→Roslyn コンパイル）へ流すと、言語サーバーが答えを持っていても先にホストの
+        // 計算（実測 ~0.3秒）を待ち、そのうえで LSP（~0.4秒）を待つ直列になり、Alt+Enter と電球だけが遅かった。
+        // 右クリックの Quick Fix と同じ「LSP を先に、無ければホスト」の経路（QuickFixRequestController）へ揃える。
+        // source.fixAll は Editor 側が LSP を先に訊いてから来るので、従来どおりホストへ直接。
         control.HostCodeActionProvider = (range, only) =>
-            QuickFixCoordinator.RequestAsync(control, range, only);
+            IsCSharpQuickFixRequest(control, only)
+                ? RequestQuickFixesAsync(control, range)
+                : QuickFixCoordinator.RequestAsync(control, range, only);
         _appearance.ApplyEditorOptions(control);
         _appearance.ApplyEditorAppearance(control);
         control.SetSharedStatusBar(EditorSharedStatusBar);
@@ -302,6 +309,7 @@ public partial class ShellWindow {
         control.WindowCloseRequested += (_, _) => CloseEditorView();
         WireEditorForDebug(control);
         WireEditorForTestGlyphs(control);
+        WireEditorForLocationHistory(control);
         return control;
     }
     private void OnEditorWorkspaceEditRequested(object? sender, WorkspaceEditRequestedEventArgs e) {

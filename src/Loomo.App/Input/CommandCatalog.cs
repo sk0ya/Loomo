@@ -43,6 +43,7 @@ public static class CommandCatalog
     private const string CatTerminal = "ターミナル";
     private const string CatTrail = "軌跡";
     private const string CatTask = "タスク";
+    private const string CatNavigate = "ナビゲーション";
 
     public static IReadOnlyList<CommandDescriptor> All { get; } = new CommandDescriptor[]
     {
@@ -122,6 +123,16 @@ public static class CommandCatalog
         new CommandDescriptor("problems.previous", CatProblems, "前の問題へ移動", "Shift+F8"),
         // 表示中の問題の箇所を1枚の抜粋タブに並べる（§35.3）。既定キーは与えない——同じことが問題一覧の
         // 「▤ 抜粋タブ」と右クリックから届くので、毎回の起点にしたい人だけが付ければよい。
+        // ===== ナビゲーション（Rider の Navigate Back/Forward・Last Edit Location・Recent Files・File Structure）=====
+        // キーは Rider の既定に揃える。ただし Rider の Ctrl+E（最近のファイル）は Vim のスクロールと取り合うので
+        // 採らず、Rider で「最近の場所」に当たる Ctrl+Shift+E を「最近のファイル」に充て、開いている最中に
+        // もう一度押すと最近の場所へ切り替える（パレットを開くキーと同じ流儀で、覚えるキーを1本に保つ）。
+        new CommandDescriptor("nav.back", CatNavigate, "前にいた場所へ戻る", "Ctrl+Alt+Left"),
+        new CommandDescriptor("nav.forward", CatNavigate, "戻る前の場所へ進む", "Ctrl+Alt+Right"),
+        new CommandDescriptor("nav.lastEditLocation", CatNavigate, "最後に編集した場所へ（続けて押すと遡る）", "Ctrl+Shift+Backspace"),
+        new CommandDescriptor("nav.recentFiles", CatNavigate, "最近のファイル（もう一度押すと最近の場所）", "Ctrl+Shift+E"),
+        new CommandDescriptor("nav.recentLocations", CatNavigate, "最近の場所", null),
+        new CommandDescriptor("nav.fileStructure", CatNavigate, "ファイル構造（宣言の一覧）へ移動", "Ctrl+F12"),
         new CommandDescriptor("problems.openAsExcerpts", CatProblems, "表示中の問題を抜粋タブで開く", null),
 
         // ===== エディタ（意味的な選択・§24.9） =====

@@ -95,6 +95,13 @@ public partial class ShellWindow
         }
     }
 
+    /// <summary>Editor から来たホスト Code Action の要求が、C# の（fixAll でない）quickfix か。</summary>
+    private static bool IsCSharpQuickFixRequest(VimEditorControl control, IReadOnlyList<string>? only)
+        => string.Equals(Path.GetExtension(control.FilePath), ".cs", StringComparison.OrdinalIgnoreCase)
+           && CSharpEditorResultMapper.AllowsQuickFixKinds(only)
+           && only?.Any(kind => LspCodeActionKinds.Matches(kind, LspCodeActionKinds.SourceFixAll)
+                                || LspCodeActionKinds.Matches(LspCodeActionKinds.SourceFixAll, kind)) != true;
+
     /// <summary>Alt+Enter と同じ診断スナップショットを使い、文書版が一致する候補だけ返す。</summary>
     private Task<IReadOnlyList<LspCodeAction>> RequestQuickFixesAsync(
         VimEditorControl control, LspRange range)
