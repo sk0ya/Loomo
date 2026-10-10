@@ -51,6 +51,9 @@ public partial class ShellWindow
         tab.VirtualTitle = title;
         _editorTabs.Add(tab);
         _vm.Tabs.AddEditorTab(tab.Id, title, false, false);
+        // 問題一覧（IDE ペイン）など、エディタが見えていない所からも開くので、ファイルを開くときと同じく
+        // Editor ペインを出す（出さないと、タブだけ増えて何も起きなかったように見える）。
+        EnsureEditorPaneForOpenedFile(null);
         ActivateEditorTab(tab.Id);
         var document = AttachExcerptDocument(tab, tab.Control, spans, source, _editorTabs);
         UpdateEditorTab(tab);
