@@ -49,6 +49,11 @@ public static class CSharpCompilerCodeFixService
         if (!string.Equals(Path.GetExtension(filePath), ".cs", StringComparison.OrdinalIgnoreCase) ||
             !AllowsQuickFix(only))
             return [];
+        // 修正は「表示中の診断のうち範囲にかかるもの」にしか出さない（下の Get の絞り込み）。範囲に1つも
+        // 無ければ、コンパイルを組み立てる前に答えは0件と決まっている——ここで返さないと、診断の無い行の
+        // Alt+Enter がプロジェクトのコンパイル（初回 ~20秒、温まっても ~0.5秒）を待ってから「候補なし」になっていた。
+        if (!diagnostics.Any(diagnostic => IsInRange(diagnostic.Range, range)))
+            return [];
 
         return await Task.Run(() => Get(
             solution, filePath, source, range, openTexts, diagnostics, cancellationToken), cancellationToken);
@@ -188,7 +193,10 @@ public static class CSharpCompilerCodeFixService
 
         var text = tree.GetText(cancellationToken);
         var root = tree.GetCompilationUnitRoot(cancellationToken);
-        var fileDiagnostics = compilation.GetDiagnostics(cancellationToken)
+        // このファイルの診断だけを計算する。compilation.GetDiagnostics() はプロジェクトの全ファイルを
+        // 意味解析してから捨てていた（ここが Quick Fix の待ち時間の大半）。全体（span なし）で問うので
+        // 未使用 using（CS8019）も含まれる。
+        var fileDiagnostics = compilation.GetSemanticModel(tree).GetDiagnostics(null, cancellationToken)
             .Where(diagnostic => diagnostic.Location.IsInSource &&
                 ReferenceEquals(diagnostic.Location.SourceTree, tree))
             .OrderBy(diagnostic => diagnostic.Location.SourceSpan.Start)
@@ -299,7 +307,10 @@ public static class CSharpCompilerCodeFixService
             var shiftedStart = diagnostic.Location.SourceSpan.Start >= insertAt
                 ? diagnostic.Location.SourceSpan.Start + usingText.Length
                 : diagnostic.Location.SourceSpan.Start;
-            var remains = updatedCompilation.GetDiagnostics(cancellationToken).Any(candidate =>
+            // 足した using で直るかは、このファイルの診断だけで判定できる（候補ごとにプロジェクト全体を
+            // 意味解析し直さない）。
+            var remains = updatedCompilation.GetSemanticModel(updatedTree)
+                .GetDiagnostics(null, cancellationToken).Any(candidate =>
                 candidate.Id == diagnostic.Id && candidate.Location.IsInSource &&
                 ReferenceEquals(candidate.Location.SourceTree, updatedTree) &&
                 candidate.Location.SourceSpan.Start <= shiftedStart &&

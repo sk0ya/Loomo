@@ -256,12 +256,15 @@ public partial class ShellWindow {
         // Editor はホスト提供を先に訊き、0件のときだけ LSP へ問う。C# の quickfix をそのまま
         // ホスト（StyleCop→Roslyn コンパイル）へ流すと、言語サーバーが答えを持っていても先にホストの
         // 計算（実測 ~0.3秒）を待ち、そのうえで LSP（~0.4秒）を待つ直列になり、Alt+Enter と電球だけが遅かった。
-        // 右クリックの Quick Fix と同じ「LSP を先に、無ければホスト」の経路（QuickFixRequestController）へ揃える。
-        // source.fixAll は Editor 側が LSP を先に訊いてから来るので、従来どおりホストへ直接。
+        // quickfix だけの要求（Alt+Enter・電球）は、どの言語でも右クリックの Quick Fix と同じ
+        // 「LSP を先に、無ければホスト」の経路（QuickFixRequestController）で答え、LSP は訊き済みだと
+        // Editor へ宣言する（HostCodeActionProviderQueriesLsp）——宣言しないと候補0件のたびに同じ要求が2回飛ぶ。
+        // Code Action 全般と source.fixAll は Editor が LSP を先に訊いてから来るので、従来どおりホストへ直接。
         control.HostCodeActionProvider = (range, only) =>
-            IsCSharpQuickFixRequest(control, only)
-                ? RequestQuickFixesAsync(control, range)
+            IsQuickFixOnlyRequest(only)
+                ? RequestQuickFixesAsync(control, range, askLspWithoutSnapshot: true)
                 : QuickFixCoordinator.RequestAsync(control, range, only);
+        control.HostCodeActionProviderQueriesLsp = true;
         _appearance.ApplyEditorOptions(control);
         _appearance.ApplyEditorAppearance(control);
         control.SetSharedStatusBar(EditorSharedStatusBar);

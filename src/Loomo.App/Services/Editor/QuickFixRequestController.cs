@@ -13,7 +13,8 @@ internal static class QuickFixRequestController
         TimeSpan timeout,
         Func<VimEditorControl, string, string, EditorDiagnosticSession> ensureSession,
         Func<VimEditorControl, LspRange, IReadOnlyList<string>?, Task<IReadOnlyList<LspCodeAction>>> requestCSharp,
-        Action<string> log)
+        Action<string> log,
+        bool askLspWithoutSnapshot = false)
     {
         var totalClock = Stopwatch.StartNew();
         var filePath = control.FilePath ?? "(unknown)";
@@ -53,12 +54,14 @@ internal static class QuickFixRequestController
         var snapshot = session is not null && session.TryGetCurrent(filePath, source, out var current)
             ? current
             : null;
+        var askedLsp = false;
         if (snapshot is not null &&
             control.LspDocument is { IsReady: true, IsConnected: true } document &&
             document.Version is { } documentVersion &&
             snapshot.LanguageServerVersion == documentVersion &&
             string.Equals(document.Text, source, StringComparison.Ordinal))
         {
+            askedLsp = true;
             // 表示に使っている診断を返した文書版へだけ要求する。版の無い／古いLSP診断は使わない。
             using var cts = new CancellationTokenSource(timeout);
             var lspClock = Stopwatch.StartNew();
@@ -76,6 +79,37 @@ internal static class QuickFixRequestController
             if (session!.Version != version || session.SnapshotId != snapshot.SnapshotId ||
                 !string.Equals(control.Text, source, StringComparison.Ordinal) ||
                 document.Version != documentVersion)
+                return [];
+            if (actions.Count > 0)
+            {
+                log($"quickfix done file={filePath} source=lsp total={totalClock.ElapsedMilliseconds}ms");
+                return actions;
+            }
+        }
+
+        // Alt+Enter／電球の経路では Editor が LSP を投げ直さない（HostCodeActionProviderQueriesLsp）。
+        // 診断スナップショットがまだ無い／版がずれているときも、版の縛り無しで一度は LSP に訊く——
+        // ここで訊かないと、解析が追いつく前の Alt+Enter が言語サーバーの修正を一切出さなくなる。
+        if (!askedLsp && askLspWithoutSnapshot &&
+            control.LspDocument is { IsReady: true, IsConnected: true } looseDocument &&
+            string.Equals(looseDocument.Text, source, StringComparison.Ordinal))
+        {
+            var looseVersion = looseDocument.Version;
+            using var cts = new CancellationTokenSource(timeout);
+            var lspClock = Stopwatch.StartNew();
+            try
+            {
+                actions = await looseDocument.RequestCodeActionsAsync(
+                    range, [LspCodeActionKinds.QuickFix], cts.Token);
+            }
+            catch (OperationCanceledException) { }
+            catch (Exception ex) { log($"quickfix lsp error file={filePath} message={ex.Message}"); }
+            finally
+            {
+                log($"quickfix lsp(unsnapshotted) file={filePath} elapsed={lspClock.ElapsedMilliseconds}ms actions={actions.Count}");
+            }
+            if (!string.Equals(control.Text, source, StringComparison.Ordinal) ||
+                looseDocument.Version != looseVersion || !ReferenceEquals(control.LspDocument, looseDocument))
                 return [];
             if (actions.Count > 0)
             {

@@ -95,21 +95,22 @@ public partial class ShellWindow
         }
     }
 
-    /// <summary>Editor から来たホスト Code Action の要求が、C# の（fixAll でない）quickfix か。</summary>
-    private static bool IsCSharpQuickFixRequest(VimEditorControl control, IReadOnlyList<string>? only)
-        => string.Equals(Path.GetExtension(control.FilePath), ".cs", StringComparison.OrdinalIgnoreCase)
-           && CSharpEditorResultMapper.AllowsQuickFixKinds(only)
-           && only?.Any(kind => LspCodeActionKinds.Matches(kind, LspCodeActionKinds.SourceFixAll)
-                                || LspCodeActionKinds.Matches(LspCodeActionKinds.SourceFixAll, kind)) != true;
+    /// <summary>Editor から来たホスト Code Action の要求が、quickfix だけを求めるもの（Alt+Enter・電球）か。
+    /// Code Action 全般（only なし）と Fix all（source.fixAll）は Editor が LSP を先に訊いてから来るので含めない。</summary>
+    private static bool IsQuickFixOnlyRequest(IReadOnlyList<string>? only)
+        => only is { Count: > 0 } && only.All(kind => LspCodeActionKinds.Matches(kind, LspCodeActionKinds.QuickFix));
 
-    /// <summary>Alt+Enter と同じ診断スナップショットを使い、文書版が一致する候補だけ返す。</summary>
+    /// <summary>Alt+Enter と同じ診断スナップショットを使い、文書版が一致する候補だけ返す。
+    /// <paramref name="askLspWithoutSnapshot"/>：Editor 経由（Alt+Enter・電球）は Editor が LSP を投げ直さないので、
+    /// スナップショットが揃っていなくても一度は LSP へ訊く。</summary>
     private Task<IReadOnlyList<LspCodeAction>> RequestQuickFixesAsync(
-        VimEditorControl control, LspRange range)
+        VimEditorControl control, LspRange range, bool askLspWithoutSnapshot = false)
         => QuickFixRequestController.RequestAsync(
             control, range, RefactoringRequestController.RequestTimeout,
             EnsureCSharpDiagnosticAnalysisScheduled,
             QuickFixCoordinator.RequestAsync,
-            RefactorDebugLog.Write);
+            RefactorDebugLog.Write,
+            askLspWithoutSnapshot);
 
     /// <summary>候補 0 件の理由を、分かる範囲で言い分ける。C# の修正は<b>ソリューションの読み込み</b>が
     /// 終わるまで必ず 0 件になるので、そこで「ありません」と言い切ると嘘になる。</summary>

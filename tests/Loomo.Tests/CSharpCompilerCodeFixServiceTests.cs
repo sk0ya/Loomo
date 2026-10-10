@@ -71,6 +71,26 @@ public sealed class CSharpCompilerCodeFixServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Snapshot_scoped_fixes_return_nothing_when_no_shown_diagnostic_is_in_range()
+    {
+        // 診断の無い行の Alt+Enter が、プロジェクトのコンパイルを待ってから「候補なし」になっていた。
+        // 範囲にかかる表示中の診断が無ければ、組み立てる前に0件で返る（結果は従来と同じ）。
+        var path = Write("SnapshotOutOfRange.cs",
+            "using System.Text;\nclass Sample { }\n");
+        var source = await File.ReadAllTextAsync(path);
+        var unusedUsing = new LspDiagnostic(
+            new LspRange(new(0, 0), new(0, "using System.Text;".Length)),
+            "Using directive is unnecessary.", DiagnosticSeverity.Warning, "Compiler", "CS8019");
+
+        var actions = await CSharpCompilerCodeFixService.GetForDiagnosticsAsync(
+            CreateSolution(path), path, source,
+            new LspRange(new(1, 3), new(1, 3)),
+            [unusedUsing]);
+
+        Assert.Empty(actions);
+    }
+
+    [Fact]
     public async Task Removes_only_a_single_plain_unused_local_declaration()
     {
         var path = Write("UnusedLocal.cs",
