@@ -5,7 +5,9 @@ public partial class ShellWindow {
         _vm.Pegboard.Changed += (_, _) => SaveActiveWorkspaceSnapshot();
         _vm.Pegboard.OpenRequested += async (_, item) => await OpenPegboardItemAsync(item);
         _vm.Pegboard.OpenSourceRequested += async (_, item) => {
-            if (item.SourceLink is { } link)
+            if (item.HasTerminalSource)
+                await ReturnToTerminalSourceAsync(item);   // ターミナルの出典（§24.26）
+            else if (item.SourceLink is { } link)
                 await OpenUrlInNewBrowserTabAsync(link);
         };
         _vm.Pegboard.BrowserPinRequested += (_, _) => PinBrowserUrlToPegboard();
@@ -51,12 +53,19 @@ public partial class ShellWindow {
                 FocusPane(PaneKind.Terminal);
                 break;
             default:
-                EnsurePaneVisibleOrSwapTopLeft(PaneKind.Editor);
-                await _editor.OpenDocumentAsync(new EditorDocument {
-                    FileName = $"pegboard-{item.Snapshot.Id.ToString("N")[..8]}.txt", Content = item.Content,
-                    OnSaved = _ => { }, // 閲覧用：保存しても永続化はしない
-                });
+                await OpenPegboardTextInEditorAsync(item);
                 break;
         }
+    }
+    private async Task OpenPegboardTextInEditorAsync(PegboardItemVm item) {
+        EnsurePaneVisibleOrSwapTopLeft(PaneKind.Editor);
+        await _editor.OpenDocumentAsync(new EditorDocument {
+            // ターミナルから残したものは §24.21 の「出力-先頭語-時刻.log」に揃える（どのコマンドのものか分かる）。
+            FileName = item.HasTerminalSource
+                ? TerminalPegboardMaterial.DocumentName(item.Snapshot.TerminalSource!)
+                : $"pegboard-{item.Snapshot.Id.ToString("N")[..8]}.txt",
+            Content = item.Content,
+            OnSaved = _ => { }, // 閲覧用：保存しても永続化はしない
+        });
     }
 }

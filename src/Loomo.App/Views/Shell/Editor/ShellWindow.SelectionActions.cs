@@ -189,9 +189,15 @@ public partial class ShellWindow {
         if (input is null) return;  // キャンセル
         bps.EnsureBreakpoint(path, line0).Condition = input.Trim();
     }
-    private void OnTerminalContextMenuBuilding(object? sender, TerminalContextMenuBuildingEventArgs e)
+    private void OnTerminalContextMenuBuilding(object? sender, TerminalContextMenuBuildingEventArgs e) {
         // ターミナル側はエディタと違いホスト項目の区切り線を整理しないので、ここも束として足す
         // （中身が入ったときだけ、ネイティブ項目との間に区切り線が1本入る）。
+        AddTerminalSelectionMenuItems(sender, e);
+        // 素材として残す・送る束（ペグボードへは出典付き・§24.26）。
+        AddMenuGroup(e.Menu, menu => AddTerminalMaterialMenuItems(
+            menu, sender as TerminalTabView, e.SelectedText, e.HasSelection));
+    }
+    private void AddTerminalSelectionMenuItems(object? sender, TerminalContextMenuBuildingEventArgs e)
         => AddMenuGroup(e.Menu, menu => SelectionActionMenuBuilder.AddSelectionMenuItems(
             menu, e.SelectedText, e.HasSelection,
             SelectionActionMenuBuilder.BuildEditorSendMenuItem(

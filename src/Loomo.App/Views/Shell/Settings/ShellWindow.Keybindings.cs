@@ -15,6 +15,8 @@ public partial class ShellWindow {
             ["terminal.recentCommands"] = OpenRecentTerminalCommands,
             ["terminal.compareOutput"] = OpenTerminalOutputComparisons,
             ["terminal.openOutput"] = OpenTerminalOutputs,
+            ["terminal.pinOutput"] = OpenTerminalOutputsToPin,
+            ["terminal.pinSelection"] = PinActiveTerminalSelection,
             ["trail.bookmark"] = () => BookmarkTrailEntry(_vm.Trail.CurrentEntry),
             ["trail.bookmarks"] = OpenTrailBookmarks,
             ["trail.daySummary"] = ShowTrailDaySummary,

@@ -172,7 +172,7 @@
                                                   Command="{Binding PlacementTarget.Tag.OpenCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                                   CommandParameter="{Binding}" />
                                         <MenuItem Header="出典を開く"
-                                                  ToolTip="残した一節を強調した状態でブラウザに開く"
+                                                  ToolTip="{Binding SourceOpenToolTip}"
                                                   Command="{Binding PlacementTarget.Tag.OpenSourceCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                                   CommandParameter="{Binding}">
                                             <MenuItem.Visibility>
@@ -241,7 +241,7 @@
                                             <Button Style="{StaticResource CardButton}" Tag="{StaticResource PegIcon.Copy}" ToolTip="コピー"
                                                     Command="{Binding DataContext.CopyCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                                     CommandParameter="{Binding}" />
-                                            <Button Style="{StaticResource CardButton}" Tag="{StaticResource PegIcon.Url}" ToolTip="出典を開く"
+                                            <Button Style="{StaticResource CardButton}" Tag="{StaticResource PegIcon.Url}" ToolTip="{Binding SourceOpenToolTip}"
                                                     Command="{Binding DataContext.OpenSourceCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                                     CommandParameter="{Binding}"
                                                     Visibility="{Binding HasSource, Converter={StaticResource PegVisibility}}" />
@@ -254,9 +254,9 @@
                                         </StackPanel>
                                     </Grid>
 
-                                    <!-- 所在（url のアドレス／file の親フォルダー／ブラウザから残した text の出典） -->
+                                    <!-- 所在（url のアドレス／file の親フォルダー／ブラウザ・ターミナルから残した text の出典） -->
                                     <TextBlock Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Text="{Binding Subtitle}"
-                                               ToolTip="{Binding Snapshot.SourceUrl}"
+                                               ToolTip="{Binding SourceToolTip}"
                                                Style="{StaticResource CollapseWhenEmpty}" Margin="0,1,4,0"
                                                FontSize="{DynamicResource Fs10}" Foreground="{DynamicResource FgDim}"
                                                TextTrimming="CharacterEllipsis" />

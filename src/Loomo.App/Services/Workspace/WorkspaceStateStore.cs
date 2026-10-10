@@ -639,6 +639,29 @@ public sealed class PegboardItemSnapshot
     public string? SourceUrl { get; set; }
     /// <summary>出典のページ題名（残した時点のもの）。</summary>
     public string? SourceTitle { get; set; }
+    /// <summary>出典のターミナル（可視ターミナルの出力・選択から残した text だけが持つ・§24.26）。null なら出典なし。
+    /// <see cref="SourceUrl"/> とは排他（どちらか一方だけ）。</summary>
+    public PegboardTerminalSource? TerminalSource { get; set; }
+}
+
+/// <summary>ペグボードの text がターミナルから来たときの出典（§24.26）。どれも残した時点の値で、
+/// 後から書き換えない（タブ名やフォルダーがその後変わっても、出典は「そのとき」を指す）。</summary>
+public sealed class PegboardTerminalSource
+{
+    /// <summary>出どころのターミナルタブ（常駐セッションの鍵でもあるので、再起動しても同じタブへ戻れる・§34）。</summary>
+    public Guid TabId { get; set; }
+    /// <summary>残した時点のタブの見出し。</summary>
+    public string? TabTitle { get; set; }
+    /// <summary>出力を生んだコマンド行。選択がどのコマンドの出力か分からなかったときは null。</summary>
+    public string? Command { get; set; }
+    /// <summary>コマンドを実行した場所（コマンドが分からないときは残した時点のタブの場所）。</summary>
+    public string? WorkingDirectory { get; set; }
+    /// <summary>コマンドの終了コード（不明・コマンドが分からないときは null）。</summary>
+    public int? ExitCode { get; set; }
+    /// <summary>コマンドが終わった時刻（コマンドが分からないときは残した時刻）。</summary>
+    public DateTime CapturedUtc { get; set; } = DateTime.UtcNow;
+    /// <summary>本文の先頭を省いている（出力が上限を超えて頭を落とした・スクロールバックから押し出されていた）。</summary>
+    public bool HeadOmitted { get; set; }
 }
 
 /// <summary>検索ペインのタブに残した検索結果1枚ぶん（<see cref="WorkspaceSnapshot.SearchTabs"/>）。</summary>

@@ -102,6 +102,9 @@ public static class CommandCatalog
         new CommandDescriptor("terminal.recentCommands", CatTerminal, "最近のコマンドを選び直す", null),
         new CommandDescriptor("terminal.compareOutput", CatTerminal, "コマンドの出力を前回と比較", null),
         new CommandDescriptor("terminal.openOutput", CatTerminal, "コマンドの出力をエディタで開く", null),
+        // 出典付きでペグボードへ残す（§24.26）。右クリック（選択時）と同じ実装へ入る。
+        new CommandDescriptor("terminal.pinOutput", CatTerminal, "コマンドの出力をペグボードへ残す", null),
+        new CommandDescriptor("terminal.pinSelection", CatTerminal, "ターミナルの選択をペグボードへ残す", null),
         new CommandDescriptor("trail.bookmark", CatTrail, "いまの地点にしおりを付ける", null),
         new CommandDescriptor("trail.bookmarks", CatTrail, "しおり一覧", null),
         new CommandDescriptor("trail.daySummary", CatTrail, "この日のまとめ", null),

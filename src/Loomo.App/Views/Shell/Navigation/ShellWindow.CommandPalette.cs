@@ -268,6 +268,10 @@ public partial class ShellWindow {
             Sc("terminal.compareOutput"), "terminal.compareOutput"));
         list.Add(new("ターミナル", "コマンドの出力をエディタで開く", OpenTerminalOutputs,
             Sc("terminal.openOutput"), "terminal.openOutput"));
+        list.Add(new("ターミナル", "コマンドの出力をペグボードへ残す", OpenTerminalOutputsToPin,
+            Sc("terminal.pinOutput"), "terminal.pinOutput"));
+        list.Add(new("ターミナル", "ターミナルの選択をペグボードへ残す", PinActiveTerminalSelection,
+            Sc("terminal.pinSelection"), "terminal.pinSelection"));
         list.Add(new("軌跡", "いまの地点にしおりを付ける", () => BookmarkTrailEntry(_vm.Trail.CurrentEntry),
             Sc("trail.bookmark"), "trail.bookmark"));
         list.Add(new("軌跡", "しおり一覧", OpenTrailBookmarks, Sc("trail.bookmarks"), "trail.bookmarks"));

@@ -63,16 +63,35 @@ public sealed partial class PegboardItemVm : ObservableObject
     }
 
     /// <summary>出典のページを持つ（ブラウザの選択から残した text・§24.24）。</summary>
-    public bool HasSource => Type == "text" && !string.IsNullOrWhiteSpace(Snapshot.SourceUrl);
+    public bool HasWebSource => Type == "text" && !string.IsNullOrWhiteSpace(Snapshot.SourceUrl);
 
-    /// <summary>出典の呼び名（題名、無ければスキームを除いたアドレス）。出典が無ければ空。</summary>
+    /// <summary>出典のターミナルを持つ（ターミナルの出力・選択から残した text・§24.26）。</summary>
+    public bool HasTerminalSource => Type == "text" && !HasWebSource && Snapshot.TerminalSource is not null;
+
+    /// <summary>出典を持つ（ページかターミナルのどちらか）。「出典を開く」の出し分けに使う。</summary>
+    public bool HasSource => HasWebSource || HasTerminalSource;
+
+    /// <summary>出典の呼び名（ページ＝題名、無ければスキームを除いたアドレス／ターミナル＝コマンドと成否・タブ名）。
+    /// 出典が無ければ空。</summary>
     public string SourceLabel
-        => !HasSource ? ""
+        => HasTerminalSource ? TerminalPegboardMaterial.Label(Snapshot.TerminalSource!)
+         : !HasWebSource ? ""
          : !string.IsNullOrWhiteSpace(Snapshot.SourceTitle) ? Snapshot.SourceTitle!
          : StripScheme(Snapshot.SourceUrl!);
 
-    /// <summary>出典へ戻る URL。引用した一節へスクロールして強調する Text Fragment 付き。</summary>
-    public string? SourceLink => HasSource ? BrowserTextFragment.Build(Snapshot.SourceUrl!, Content) : null;
+    /// <summary>出典行のツールチップ（ページ＝URL／ターミナル＝タブ・コマンド・場所・終了コード・時刻）。</summary>
+    public string? SourceToolTip
+        => HasTerminalSource ? TerminalPegboardMaterial.ToolTip(Snapshot.TerminalSource!)
+         : HasWebSource ? Snapshot.SourceUrl
+         : null;
+
+    /// <summary>「出典を開く」の説明（行き先がブラウザかターミナルかで言い分ける）。</summary>
+    public string SourceOpenToolTip
+        => HasTerminalSource ? "出典のターミナルタブへ戻り、残した箇所を選択する（タブが閉じていればエディタで開く）"
+         : "残した一節を強調した状態でブラウザに開く";
+
+    /// <summary>出典へ戻る URL。引用した一節へスクロールして強調する Text Fragment 付き（ページの出典だけ）。</summary>
+    public string? SourceLink => HasWebSource ? BrowserTextFragment.Build(Snapshot.SourceUrl!, Content) : null;
 
     /// <summary>見出しの下に薄く出す所在（url＝アドレス、file＝親フォルダー、出典付き text＝出典）。見出しと同じなら空。</summary>
     public string Subtitle
@@ -97,11 +116,26 @@ public sealed partial class PegboardItemVm : ObservableObject
         get
         {
             if (Type is "url" or "file") return "";
-            if (!string.IsNullOrWhiteSpace(Snapshot.Title)) return Content == Snapshot.Title ? "" : Content;
+            if (!string.IsNullOrWhiteSpace(Snapshot.Title)) return Content == Snapshot.Title ? "" : HeadLines(Content);
             var text = Content.TrimStart();
             var newline = text.IndexOf('\n');
-            return newline < 0 ? "" : Dedent(text[(newline + 1)..].Trim('\r', '\n'));
+            return newline < 0 ? "" : Dedent(HeadLines(text[(newline + 1)..].Trim('\r', '\n')));
         }
+    }
+
+    /// <summary>プレビューに渡す行数の上限。カードは数行しか見せない（MaxHeight）のに TextBlock は渡した全行を
+    /// 測る——ターミナルの出力（数百行・§24.26）を丸ごと渡すとカード1枚の計測が重くなる。</summary>
+    internal const int PreviewMaxLines = 8;
+
+    private static string HeadLines(string text)
+    {
+        var index = -1;
+        for (var i = 0; i < PreviewMaxLines; i++)
+        {
+            index = text.IndexOf('\n', index + 1);
+            if (index < 0) return text;
+        }
+        return text[..index].TrimEnd('\r');
     }
 
     /// <summary>作成時刻の相対表記（「3分前」「昨日」…）。<see cref="RefreshTime"/> で更新する。</summary>
@@ -178,7 +212,7 @@ public sealed partial class PegboardItemVm : ObservableObject
         => terms.All(t => DisplayTitle.Contains(t, StringComparison.OrdinalIgnoreCase)
                        || Content.Contains(t, StringComparison.OrdinalIgnoreCase)
                        || (HasSource && (SourceLabel.Contains(t, StringComparison.OrdinalIgnoreCase)
-                                         || Snapshot.SourceUrl!.Contains(t, StringComparison.OrdinalIgnoreCase))));
+                                         || (SourceToolTip?.Contains(t, StringComparison.OrdinalIgnoreCase) ?? false))));
 }
 
 /// <summary>
@@ -196,7 +230,7 @@ public sealed partial class PegboardViewModel : ObservableObject
     /// <summary>「開く」要求。url→ブラウザ / file→エディタ等の振り分けは ShellWindow が担う。</summary>
     public event EventHandler<PegboardItemVm>? OpenRequested;
 
-    /// <summary>「出典を開く」要求（出典付き text・§24.24）。ブラウザで開くのは ShellWindow が担う。</summary>
+    /// <summary>「出典を開く」要求（出典付き text・§24.24／§24.26）。ブラウザで開く・ターミナルへ戻るのは ShellWindow が担う。</summary>
     public event EventHandler<PegboardItemVm>? OpenSourceRequested;
 
     /// <summary>「ブラウザのURLを残す」要求。表示中 URL の取得は ShellWindow が担う。</summary>
@@ -281,9 +315,11 @@ public sealed partial class PegboardViewModel : ObservableObject
     }
 
     /// <summary>内容から種別（text/url/file）を判定して追加する。明示指定があればそれを使う。
-    /// <paramref name="sourceUrl"/> はブラウザの選択から残すときの出典（text のときだけ持たせる・§24.24）。</summary>
+    /// <paramref name="sourceUrl"/> はブラウザの選択から残すときの出典（text のときだけ持たせる・§24.24）。
+    /// <paramref name="terminalSource"/> はターミナルの出力・選択から残すときの出典（同じく text だけ・§24.26）。</summary>
     public void AddContent(string content, string? type = null, string? title = null,
-                           string? sourceUrl = null, string? sourceTitle = null)
+                           string? sourceUrl = null, string? sourceTitle = null,
+                           PegboardTerminalSource? terminalSource = null)
     {
         var trimmed = content.Trim();
         if (trimmed.Length == 0) return;
@@ -298,6 +334,10 @@ public sealed partial class PegboardViewModel : ObservableObject
         {
             snapshot.SourceUrl = sourceUrl;
             snapshot.SourceTitle = string.IsNullOrWhiteSpace(sourceTitle) ? null : sourceTitle;
+        }
+        else if (snapshot.Type == "text" && terminalSource is not null)
+        {
+            snapshot.TerminalSource = terminalSource;
         }
         // 新規は「ピン留め群の直後」（未ピンの先頭）に置く。
         var vm = ToVm(snapshot);
@@ -346,7 +386,7 @@ public sealed partial class PegboardViewModel : ObservableObject
     [RelayCommand]
     private void Open(PegboardItemVm item) => OpenRequested?.Invoke(this, item);
 
-    /// <summary>出典のページを、引用した一節を強調した状態でブラウザに開く。</summary>
+    /// <summary>出典へ戻る：ページは引用した一節を強調した状態でブラウザに、ターミナルはそのタブの該当箇所へ（§24.26）。</summary>
     [RelayCommand]
     private void OpenSource(PegboardItemVm item)
     {
