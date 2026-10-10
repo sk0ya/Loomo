@@ -373,6 +373,10 @@ public sealed class WorkspaceSnapshot
 
     public EditorSnapshot Editor { get; set; } = new();
     public List<EditorTabSnapshot> EditorTabs { get; set; } = new();
+
+    /// <summary>抜粋タブ（§35.3）。中身は持たず、元ファイルと行の範囲だけを残して開くときに組み直す。
+    /// <see cref="EditorTabs"/> とは別の列にするのは、古い本体がこれを空の Untitled タブとして開かないため。</summary>
+    public List<ExcerptTabSnapshot> ExcerptTabs { get; set; } = new();
     public List<BrowserTabSnapshot> BrowserTabs { get; set; } = new();
 
     /// <summary>ターミナルタブ（§34）。シェル自体は常駐ホストが生かしているので、ここに残すのは
@@ -872,6 +876,27 @@ public sealed class EditorTabSnapshot
 
     /// <summary>縦スクロール位置（0..1）。レイアウト前は取れないため null あり・復元はベストエフォート。</summary>
     public double? ScrollRatio { get; set; }
+}
+
+/// <summary>抜粋タブ1枚（§35.3）。<see cref="TabIndex"/> はエディタタブの並びの中の位置。</summary>
+public sealed class ExcerptTabSnapshot
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string? Title { get; set; }
+    public int TabIndex { get; set; }
+    public bool IsActive { get; set; }
+    public List<ExcerptSpanSnapshot> Spans { get; set; } = new();
+    public int CaretLine { get; set; }
+    public int CaretColumn { get; set; }
+    public double? ScrollRatio { get; set; }
+}
+
+/// <summary>抜粋1つの範囲（0 始まり、<see cref="EndLine"/> を含む）。保存した時点のアンカーの位置。</summary>
+public sealed class ExcerptSpanSnapshot
+{
+    public string Path { get; set; } = "";
+    public int StartLine { get; set; }
+    public int EndLine { get; set; }
 }
 
 /// <summary>ターミナルタブ1枚（§34）。<see cref="Id"/> がそのまま常駐ホストのセッション ID。</summary>

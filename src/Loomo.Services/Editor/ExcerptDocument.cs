@@ -139,6 +139,14 @@ public sealed class ExcerptDocument
 
     public IEnumerable<string> Paths => _excerpts.Select(e => e.Path).Distinct(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>いまの各抜粋の範囲（元ファイルの座標）。編集で動いたアンカーの位置なので、これで
+    /// 作り直せば同じ抜粋に戻る（タブの復元用、§35.3）。本文を消し切った抜粋は先頭の1行に縮める。</summary>
+    public IReadOnlyList<ExcerptSpan> CurrentSpans()
+        => _excerpts
+            .Select(e => new ExcerptSpan(e.Path, e.Source.Start.Line,
+                e.Source.Start.Line + Math.Max(0, e.Lines.Count - 1)))
+            .ToList();
+
     /// <summary>抜粋タブに出す本文（見出し行＋本文の行。"\n" 区切り）。</summary>
     public string Text => string.Join("\n", AllLines());
 

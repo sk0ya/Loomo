@@ -218,7 +218,7 @@ public partial class ShellWindow {
     private void CaptureInto(WorkspaceSnapshot snapshot) {
         snapshot.LastUsedUtc = DateTime.UtcNow;
         snapshot.Name = WorkspaceListViewModel.DisplayName(snapshot.RootPath);
-        WorkspaceSessionCoordinator.CaptureEditorTabs(snapshot, _editorTabs, _activeEditorTab?.Id);
+        WorkspaceSessionCoordinator.CaptureEditorTabs(snapshot, _editorTabs, _activeEditorTab?.Id, CaptureExcerptTab);
         snapshot.BrowserTabs = WorkspaceSessionCoordinator.CaptureBrowserTabs(
             _browserTabs, _activeBrowserTab?.Id);
         CaptureTerminalTabs(snapshot);

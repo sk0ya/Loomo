@@ -72,6 +72,71 @@ public sealed class EditorTabCaptureTests
         });
     }
 
+    /// <summary>抜粋タブ（§35.3）は本文のタブの列に入れず、並びの位置ごと抜粋の列へ残す。復元待ちのまま
+    /// 開かれなかった抜粋タブも、空の Untitled として保存されて消えてしまわないこと。</summary>
+    [Fact]
+    public void A_pending_excerpt_tab_is_kept_in_the_excerpt_list_at_its_position()
+    {
+        _host.Run(() =>
+        {
+            var file = RealizedTab(WriteTemp("a.cs", "class A {}\n"));
+            var excerpt = new EditorTab(Guid.NewGuid())
+            {
+                VirtualTitle = "参照: A",
+                PendingExcerpt = new ExcerptTabSnapshot
+                {
+                    Title = "参照: A",
+                    Spans = [new ExcerptSpanSnapshot { Path = file.PeekFilePath!, StartLine = 0, EndLine = 0 }],
+                },
+            };
+            Assert.True(excerpt.PeekIsVirtual);
+            Assert.Equal("参照: A", excerpt.PeekTitleSource);
+
+            var snapshot = new WorkspaceSnapshot();
+            WorkspaceSessionCoordinator.CaptureEditorTabs(snapshot, [file, excerpt], excerpt.Id,
+                (tab, index, isActive) => tab.PendingExcerpt is { } p ? Stamp(p, index, isActive) : null);
+
+            Assert.Equal([file.Id], snapshot.EditorTabs.Select(t => t.Id));
+            var saved = Assert.Single(snapshot.ExcerptTabs);
+            Assert.Equal(1, saved.TabIndex);
+            Assert.True(saved.IsActive);
+        });
+
+        static ExcerptTabSnapshot Stamp(ExcerptTabSnapshot snapshot, int index, bool isActive)
+        {
+            snapshot.TabIndex = index;
+            snapshot.IsActive = isActive;
+            return snapshot;
+        }
+    }
+
+    [Fact]
+    public void Excerpt_tabs_survive_the_workspace_json_round_trip()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), $"loomo-capture-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        var workspace = new WorkspaceSnapshot
+        {
+            RootPath = dir,
+            ExcerptTabs =
+            [
+                new ExcerptTabSnapshot
+                {
+                    Title = "参照: A", TabIndex = 2, IsActive = true, CaretLine = 3, CaretColumn = 4, ScrollRatio = 0.5,
+                    Spans = [new ExcerptSpanSnapshot { Path = @"C:\w\A.cs", StartLine = 10, EndLine = 14 }],
+                },
+            ],
+        };
+        using var store = new WorkspaceStateStore(Path.Combine(dir, "workspaces.json"));
+
+        store.Save(new WorkspaceState { ActiveWorkspaceId = workspace.Id, Workspaces = [workspace] });
+
+        var restored = Assert.Single(store.LoadWorkspace(workspace.Id)!.ExcerptTabs);
+        Assert.Equal(("参照: A", 2, true, 3, 4), (restored.Title, restored.TabIndex, restored.IsActive, restored.CaretLine, restored.CaretColumn));
+        var span = Assert.Single(restored.Spans);
+        Assert.Equal((@"C:\w\A.cs", 10, 14), (span.Path, span.StartLine, span.EndLine));
+    }
+
     private static EditorTab RealizedTab(string path)
     {
         var control = new VimEditorControl();

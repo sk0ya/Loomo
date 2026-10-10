@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.ComponentModel;
 using System.IO;
 using System.Reflection;
@@ -58,6 +58,9 @@ internal sealed record EditorTab(Guid Id)
 
         public string? VirtualTitle { get; set; }
 
+        /// <summary>復元待ちの抜粋タブ（§35.3）。実体化で抜粋を組み直して消費する。</summary>
+        public ExcerptTabSnapshot? PendingExcerpt { get; set; }
+
         /// <summary>コントロールが既に実体化済みか（実体化せずに判定）。</summary>
         public bool IsRealized => _control is not null;
 
@@ -80,8 +83,11 @@ internal sealed record EditorTab(Guid Id)
         public string? PeekFilePath => _control?.FilePath ?? Pending?.FilePath;
         /// <summary>実体化せずに読める変更フラグ。</summary>
         public bool PeekIsModified => _control?.IsModified ?? Pending?.IsModified ?? false;
-        /// <summary>実体化せずに読める仮想ドキュメント判定（未実体化タブは常に実ファイル＝false）。</summary>
-        public bool PeekIsVirtual => _control?.IsVirtualDocument ?? false;
+        /// <summary>実体化せずに読める仮想ドキュメント判定（未実体化タブは復元待ちの抜粋タブだけが true）。</summary>
+        public bool PeekIsVirtual => _control?.IsVirtualDocument ?? PendingExcerpt is not null;
+
+        /// <summary>タブの帯に出す名前の元（仮想ドキュメントは表示名、それ以外はファイルパス）。</summary>
+        public string? PeekTitleSource => PeekIsVirtual && !string.IsNullOrEmpty(VirtualTitle) ? VirtualTitle : PeekFilePath;
     }
 internal sealed record BrowserTab(Guid Id, WebView2CompositionControl InitialView)
     {

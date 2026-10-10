@@ -1,4 +1,4 @@
-namespace sk0ya.Loomo.App.Views;
+﻿namespace sk0ya.Loomo.App.Views;
 /// <summary>ShellWindow: ワークスペース復元時のタブ実体の付け替え（端末／エディタ／ブラウザの Restore・Attach・Detach・GetOrCreate）。切替の入口とスナップショット保存は ShellWindow.Workspaces.cs。</summary>
 public partial class ShellWindow {
     private void RestoreTerminalTabs(
@@ -45,12 +45,19 @@ public partial class ShellWindow {
         }
         editorWorkspace.IsInitialized = true;
         var restore = WorkspaceSessionCoordinator.ResolveEditorTabRestorePlan(workspace);
-        foreach (var snapshot in restore.Snapshots) {
-            var tab = CreatePendingEditorTab(snapshot);
-            _editorTabs.Add(tab);
-            _vm.Tabs.AddEditorTab(tab.Id, snapshot.FilePath, snapshot.IsModified, false);
+        foreach (var snapshot in restore.Snapshots)
+            _editorTabs.Add(CreatePendingEditorTab(snapshot));
+        var activeId = _editorTabs[restore.ActiveIndex].Id;
+        // 抜粋タブは中身を持たないので、保存した並びの位置へ復元待ちのタブとして差し込む（開いたときに組み直す）。
+        foreach (var excerpt in workspace.ExcerptTabs.Where(e => e.Spans.Count > 0).OrderBy(e => e.TabIndex)) {
+            var tab = CreatePendingExcerptTab(excerpt);
+            _editorTabs.Insert(Math.Clamp(excerpt.TabIndex, 0, _editorTabs.Count), tab);
+            if (excerpt.IsActive)
+                activeId = tab.Id;
         }
-        ActivateEditorTab(_editorTabs[restore.ActiveIndex].Id, focusView: false);
+        foreach (var tab in _editorTabs)
+            _vm.Tabs.AddEditorTab(tab.Id, tab.PeekTitleSource, tab.PeekIsModified, false);
+        ActivateEditorTab(activeId, focusView: false);
         _editorViews?.Restore(workspace.EditorViewLayout, _editorTabs.Select(t => t.Id));
     }
     private void DetachTerminalTabs() {
@@ -79,7 +86,7 @@ public partial class ShellWindow {
         _editorViews?.Reset();
         _vm.Tabs.EditorTabs.Clear();
         foreach (var tab in _editorTabs)
-            _vm.Tabs.AddEditorTab(tab.Id, tab.PeekFilePath, tab.PeekIsModified, false);
+            _vm.Tabs.AddEditorTab(tab.Id, tab.PeekTitleSource, tab.PeekIsModified, false);
     }
     private async Task RestoreBrowserTabsAsync(WorkspaceSnapshot workspace) {
         var browserWorkspace = WorkspaceSessionCoordinator.GetOrCreateWorkspace(

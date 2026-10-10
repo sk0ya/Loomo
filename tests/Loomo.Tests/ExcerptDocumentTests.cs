@@ -103,6 +103,27 @@ public sealed class ExcerptDocumentTests
             spans);
     }
 
+    /// <summary>復元（§35.3）：いまの範囲で作り直すと、編集で動いた後の同じ抜粋に戻る。</summary>
+    [Fact]
+    public void いまの範囲で作り直すと編集後の同じ抜粋になる()
+    {
+        var room = new Room(new ExcerptSpan(PathA, 3, 4), new ExcerptSpan(PathA, 10, 11), new ExcerptSpan(PathB, 2, 3));
+
+        room.View.BreakLine(2, 2);            // 1つ目の抜粋の末尾に行を足す → 後ろの抜粋は1行下へ
+        room.View.InsertText(3, 0, "new");
+        room.EditSource(PathA, s => s.InsertText(0, 0, "top\n"));   // 抜粋の外で元ファイルに行を足す
+        room.View.DeleteLines(8, 9);          // B の本文を全部消す
+
+        var spans = room.Document.CurrentSpans();
+        Assert.Equal(
+            [new ExcerptSpan(PathA, 4, 6), new ExcerptSpan(PathA, 12, 13), new ExcerptSpan(PathB, 2, 2)],
+            spans);
+
+        var rebuilt = new ExcerptDocument(spans, p => room.Sources[p].GetText().Split('\n'), Header);
+        Assert.Equal(room.Document.Excerpts[0].Lines, rebuilt.Excerpts[0].Lines);
+        Assert.Equal(room.Document.Excerpts[1].Lines, rebuilt.Excerpts[1].Lines);
+    }
+
     /// <summary>元ファイルへ入れられなかった編集はモデルに残さない（確定しなければ本文もアンカーも動かない）。</summary>
     [Fact]
     public void 確定しなかった編集はモデルを変えない()

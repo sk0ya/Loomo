@@ -95,12 +95,20 @@ public static class WorkspaceSessionCoordinator
         }, snapshot => snapshot.IsActive);
 
     /// <summary>仮想ドキュメントを除いたエディタタブと旧 single-editor 鏡を永続化形式へ写す。</summary>
+    /// <param name="captureExcerpt">抜粋タブ（§35.3）を写す（タブ, 並びの位置, アクティブか）。抜粋タブは
+    /// 仮想ドキュメントだが、中身ではなく範囲から組み直せるので別の列へ残す。抜粋タブでなければ null を返す。</param>
     internal static void CaptureEditorTabs(WorkspaceSnapshot snapshot,
-        IEnumerable<EditorTab> tabs, Guid? activeTabId)
+        IReadOnlyList<EditorTab> tabs, Guid? activeTabId,
+        Func<EditorTab, int, bool, ExcerptTabSnapshot?>? captureExcerpt = null)
     {
         snapshot.EditorTabs = tabs.Where(tab => !tab.PeekIsVirtual)
             .Select(tab => CaptureEditorTab(tab, activeTabId))
             .ToList();
+        snapshot.ExcerptTabs = captureExcerpt is null
+            ? new()
+            : tabs.Select((tab, index) => tab.PeekIsVirtual ? captureExcerpt(tab, index, tab.Id == activeTabId) : null)
+                .OfType<ExcerptTabSnapshot>()
+                .ToList();
 
         // 鏡は保存済みタブから引き、本文の複製を余分に作らない。
         var active = SelectActiveEditorSnapshot(snapshot.EditorTabs, activeTabId);
