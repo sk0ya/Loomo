@@ -307,7 +307,7 @@ public sealed partial class WorkItemsViewModel : ObservableObject
     private async Task SaveSettingsAsync()
     {
         var a = _settings.AzureDevOps;
-        a.OrganizationUrl = (OrganizationUrlInput ?? "").Trim().TrimEnd('/');
+        a.OrganizationUrl = AzureDevOpsWorkItemClient.NormalizeOrganizationUrl(OrganizationUrlInput ?? "");
         a.Project = (ProjectInput ?? "").Trim();
         a.PrTargets.Clear();
         foreach (var line in (PrTargetsInput ?? "").Split('\n'))
@@ -331,13 +331,14 @@ public sealed partial class WorkItemsViewModel : ObservableObject
         _loading?.Cancel();
         var cts = _loading = new CancellationTokenSource();
         var token = cts.Token;
+        string? patSource = null;
         IsLoading = true;
         ErrorText = "";
         StatusText = "読み込み中…";
         try
         {
             var settings = _settings.AzureDevOps;
-            var organizationUrl = settings.OrganizationUrl.Trim().TrimEnd('/');
+            var organizationUrl = AzureDevOpsWorkItemClient.NormalizeOrganizationUrl(settings.OrganizationUrl);
             var project = settings.Project.Trim();
             if (organizationUrl.Length == 0 || project.Length == 0)
             {
@@ -351,8 +352,9 @@ public sealed partial class WorkItemsViewModel : ObservableObject
             }
             OrganizationName = project;
 
-            var pat = _pats.Get();
-            if (pat is null)
+            var found = _pats.Find();
+            patSource = found?.Source;
+            if (found is not { Pat: var pat })
             {
                 StatusText = "";
                 ErrorText = $"PAT が取得できませんでした。環境変数 {AzureDevOpsPatStore.EnvironmentVariable} または"
@@ -393,7 +395,13 @@ public sealed partial class WorkItemsViewModel : ObservableObject
         {
             // どんな失敗でもアプリは落とさない（⟳・F5 の非同期コマンドから例外が漏れると落ちる）。
             StatusText = "";
-            ErrorText = ex is TaskCanceledException ? "Azure DevOps への接続がタイムアウトしました。" : ex.Message;
+            ErrorText = ex switch
+            {
+                TaskCanceledException => "Azure DevOps への接続がタイムアウトしました。",
+                AzureDevOpsException { IsAuthentication: true } when patSource is not null
+                    => $"{ex.Message}\n使った PAT の取得元: {patSource}",
+                _ => ex.Message,
+            };
         }
         finally
         {

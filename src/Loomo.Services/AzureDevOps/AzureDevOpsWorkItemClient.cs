@@ -1,10 +1,12 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -35,8 +37,11 @@ public sealed record AzureDevOpsPullRequest(
 /// <summary>PR を照会する先（TaskAzure の PrTarget と同じ：プロジェクトとリポジトリの組）。</summary>
 public sealed record AzureDevOpsPrTarget(string Project, string Repository);
 
-/// <summary>取得の失敗。</summary>
-public sealed class AzureDevOpsException(string message) : Exception(message);
+/// <summary>取得の失敗。PAT が受け付けられていない失敗は <see cref="IsAuthentication"/> で見分ける（PAT の取得元を添える）。</summary>
+public sealed class AzureDevOpsException(string message, bool isAuthentication = false) : Exception(message)
+{
+    public bool IsAuthentication { get; } = isAuthentication;
+}
 
 /// <summary>
 /// Azure DevOps の REST。<b>TaskAzure の <c>AzureDevOpsService</c> と同じリクエストを送る</b>——
@@ -134,7 +139,7 @@ public sealed class AzureDevOpsWorkItemClient
         if (!response.IsSuccessStatusCode) return [];   // リポジトリ名誤りなどは無視
 
         var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-        using var doc = JsonDocument.Parse(json);
+        using var doc = ParseJson(response, json, url);
         return ParsePullRequests(doc.RootElement, organizationUrl, target);
     }
 
@@ -269,17 +274,84 @@ public sealed class AzureDevOpsWorkItemClient
         var text = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
         if (!response.IsSuccessStatusCode)
             throw new AzureDevOpsException(
-                $"Azure DevOps が HTTP {(int)response.StatusCode} {response.ReasonPhrase} を返しました: {Shorten(text)}");
-        try
+                $"Azure DevOps が HTTP {(int)response.StatusCode} {response.ReasonPhrase} を返しました: {Shorten(text)}",
+                response.StatusCode is HttpStatusCode.Unauthorized);
+        return ParseJson(response, text, url);
+    }
+
+    /// <summary>
+    /// 応答を JSON として読む。読めなければ、何が返ってきたか（状態コード・種類・ページ名・転送先）と
+    /// 考えられる原因を文言にして投げる——「JSON ではない」だけでは、PAT・組織 URL・転送のどれが悪いか分からない。
+    /// <para>Azure DevOps は PAT を受け付けないとき 401 ではなく <b>203 とサインイン画面の HTML</b> を返すことがある。
+    /// 203 は成功扱いの状態コードなので、ここで JSON として読もうとして初めて失敗に気づく。</para>
+    /// </summary>
+    internal static JsonDocument ParseJson(HttpResponseMessage response, string text, string requestedUrl)
+    {
+        if (response.StatusCode != HttpStatusCode.NonAuthoritativeInformation)
         {
-            return JsonDocument.Parse(text);
+            try { return JsonDocument.Parse(text); }
+            catch (JsonException) { }
         }
-        catch (JsonException)
+        var finalUrl = response.RequestMessage?.RequestUri?.AbsoluteUri;
+        var (message, isAuthentication) = DescribeNonJson((int)response.StatusCode,
+            response.Content.Headers.ContentType?.MediaType, requestedUrl, finalUrl, text);
+        throw new AzureDevOpsException(message, isAuthentication);
+    }
+
+    internal static (string Message, bool IsAuthentication) DescribeNonJson(
+        int statusCode, string? mediaType, string requestedUrl, string? finalUrl, string text)
+    {
+        var redirected = finalUrl is not null
+            && !string.Equals(finalUrl, new Uri(requestedUrl).AbsoluteUri, StringComparison.OrdinalIgnoreCase);
+        var title = HtmlTitle(text);
+        var signIn = statusCode == 203
+            || (finalUrl ?? "").Contains("signin", StringComparison.OrdinalIgnoreCase)
+            || (finalUrl ?? "").Contains("login.", StringComparison.OrdinalIgnoreCase)
+            || title.Contains("Sign In", StringComparison.OrdinalIgnoreCase)
+            || title.Contains("サインイン", StringComparison.Ordinal);
+
+        var cause = signIn
+            ? "PAT が受け付けられず、サインイン画面が返ってきました。PAT の期限切れ・別の組織の PAT・スコープ不足（Work Items の読み取り／Code の読み取り）のどれかです。"
+            : redirected
+                ? "別の場所へ転送されました（転送先には PAT が送られません）。組織 URL を確かめてください。"
+                : "組織 URL かプロジェクトが API の場所を指していない可能性があります。";
+
+        var details = new List<string> { $"HTTP {statusCode}" };
+        if (!string.IsNullOrEmpty(mediaType)) details.Add(mediaType);
+        if (title.Length > 0) details.Add($"ページ「{title}」");
+        else if (text.Trim().Length == 0) details.Add("本文なし");
+        details.Add(redirected ? $"転送先 {finalUrl}" : $"URL {requestedUrl}");
+        return ($"Azure DevOps の応答が JSON ではありませんでした。{cause}（{string.Join(" ・ ", details)}）", signIn);
+    }
+
+    private static string HtmlTitle(string text)
+    {
+        var match = Regex.Match(text, "<title[^>]*>(.*?)</title>", RegexOptions.IgnoreCase | RegexOptions.Singleline);
+        return match.Success
+            ? Regex.Replace(WebUtility.HtmlDecode(match.Groups[1].Value), @"\s+", " ").Trim()
+            : "";
+    }
+
+    /// <summary>
+    /// 組織 URL を API の根元にそろえる。ブラウザのアドレス欄からそのまま貼ると、
+    /// <c>https://dev.azure.com/org/Project/_workitems/…</c> のようにプロジェクトや画面のパスまで付いてきて、
+    /// その下に <c>/_apis/…</c> を足しても API に届かない（Web 画面の HTML が返る）。
+    /// クラウド（dev.azure.com・*.visualstudio.com）は根元の形が決まっているので切り詰める。
+    /// Azure DevOps Server はコレクションまでのパスが環境ごとに違うので触らない。
+    /// </summary>
+    public static string NormalizeOrganizationUrl(string url)
+    {
+        var trimmed = (url ?? "").Trim().TrimEnd('/');
+        if (!Uri.TryCreate(trimmed, UriKind.Absolute, out var uri)) return trimmed;
+        var root = $"{uri.Scheme}://{uri.Authority}";
+        if (uri.Host.Equals("dev.azure.com", StringComparison.OrdinalIgnoreCase))
         {
-            // サインイン画面の HTML などが返ってきた（PAT が通っていない）。
-            throw new AzureDevOpsException($"Azure DevOps の応答が JSON ではありませんでした（HTTP {(int)response.StatusCode}）。"
-                + "PAT と組織 URL を確かめてください。");
+            var organization = uri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+            return organization is null ? root : $"{root}/{organization}";
         }
+        if (uri.Host.EndsWith(".visualstudio.com", StringComparison.OrdinalIgnoreCase))
+            return root;
+        return trimmed;
     }
 
     private static string Shorten(string text) => text.Length > 240 ? text[..240] + "…" : text;

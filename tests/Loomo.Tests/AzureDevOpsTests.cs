@@ -31,6 +31,51 @@ public sealed class AzureDevOpsTests
         Assert.Equal("https://tfs.example.net/tfs/Products/Web%20App/_workitems/edit/12", item.WebUrl);
     }
 
+    [Fact]
+    public void 応答が203のサインイン画面なら_PATが受け付けられていないと言う()
+    {
+        using var response = new System.Net.Http.HttpResponseMessage(System.Net.HttpStatusCode.NonAuthoritativeInformation)
+        {
+            Content = new System.Net.Http.StringContent(
+                "<html><head><title>Azure DevOps Services | Sign In</title></head></html>",
+                System.Text.Encoding.UTF8, "text/html"),
+        };
+        var ex = Assert.Throws<AzureDevOpsException>(() =>
+            AzureDevOpsWorkItemClient.ParseJson(response, "<html><head><title>Azure DevOps Services | Sign In</title></head></html>",
+                "https://dev.azure.com/org/_apis/connectionData"));
+        Assert.True(ex.IsAuthentication);
+        Assert.Contains("PAT が受け付けられず", ex.Message);
+        Assert.Contains("HTTP 203", ex.Message);
+        Assert.Contains("Sign In", ex.Message);
+    }
+
+    [Fact]
+    public void 転送されてHTMLが返ったら転送先を示す()
+    {
+        var (message, isAuth) = AzureDevOpsWorkItemClient.DescribeNonJson(200, "text/html",
+            "http://tfs.example.net/tfs/Products/_apis/connectionData",
+            "https://tfs.example.net/tfs/Products/_apis/connectionData", "<html><body>x</body></html>");
+        Assert.False(isAuth);
+        Assert.Contains("転送", message);
+        Assert.Contains("https://tfs.example.net/tfs/Products/_apis/connectionData", message);
+    }
+
+    [Fact]
+    public void 正しいJSONは読める()
+    {
+        using var response = new System.Net.Http.HttpResponseMessage(System.Net.HttpStatusCode.OK);
+        using var doc = AzureDevOpsWorkItemClient.ParseJson(response, """{"value":[]}""", "https://dev.azure.com/org/_apis/x");
+        Assert.Equal(JsonValueKind.Array, doc.RootElement.GetProperty("value").ValueKind);
+    }
+
+    [Theory]
+    [InlineData("https://dev.azure.com/org/Web%20App/_workitems/edit/1", "https://dev.azure.com/org")]
+    [InlineData(" https://dev.azure.com/org/ ", "https://dev.azure.com/org")]
+    [InlineData("https://org.visualstudio.com/Web App/_boards", "https://org.visualstudio.com")]
+    [InlineData("https://tfs.example.net/tfs/Products/", "https://tfs.example.net/tfs/Products")]
+    public void 組織URLはAPIの根元にそろえる(string input, string expected)
+        => Assert.Equal(expected, AzureDevOpsWorkItemClient.NormalizeOrganizationUrl(input));
+
     private static AzureDevOpsWorkItem Item(int id, int parent = 0, string type = "Task")
         => new(id, $"item {id}", type, "Active", "P", "P\\Sprint", parent, null, $"u/{id}");
 

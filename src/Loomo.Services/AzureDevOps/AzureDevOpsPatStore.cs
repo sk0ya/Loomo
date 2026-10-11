@@ -25,10 +25,20 @@ public sealed class AzureDevOpsPatStore
     public const string CredentialTarget = "ADO_PAT";
 
     /// <summary>PAT。どこにも無ければ null。</summary>
-    public string? Get()
+    public string? Get() => Find()?.Pat;
+
+    /// <summary>
+    /// PAT と、どこから取ったか（人に見せる一言）。PAT が受け付けられなかったときに取得元を添える——
+    /// 環境変数は起動した時点の値なので、資格情報マネージャー側を更新しても古い <c>ADO_PAT</c> が勝っていることがある。
+    /// </summary>
+    public (string Pat, string Source)? Find()
     {
         var env = Environment.GetEnvironmentVariable(EnvironmentVariable);
-        return !string.IsNullOrWhiteSpace(env) ? env.Trim() : ReadFromCredentialManager();
+        if (!string.IsNullOrWhiteSpace(env))
+            return (env.Trim(), $"環境変数 {EnvironmentVariable}");
+        return ReadFromCredentialManager() is { } pat
+            ? (pat, $"Windows 資格情報マネージャーの {CredentialTarget}")
+            : null;
     }
 
     /// <summary>PAT を送るヘッダー（Basic、ユーザー名は空）。</summary>
