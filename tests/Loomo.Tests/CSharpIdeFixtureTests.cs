@@ -1146,6 +1146,9 @@ public sealed class CSharpIdeFixtureTests : IClassFixture<SharedCSharpFixtureCop
             },
         };
         foreach (var argument in arguments) process.StartInfo.ArgumentList.Add(argument);
+        // 常駐ノードを作らせない。nodeReuse のノードは出力パイプを継承して生き残るので、下の ReadToEnd が
+        // 永遠に EOF を待つ（外で起動済みのノードが再利用されたときだけ通っていた）。
+        process.StartInfo.Environment["MSBUILDDISABLENODEREUSE"] = "1";
         process.Start();
         var stdout = process.StandardOutput.ReadToEndAsync();
         var stderr = process.StandardError.ReadToEndAsync();
