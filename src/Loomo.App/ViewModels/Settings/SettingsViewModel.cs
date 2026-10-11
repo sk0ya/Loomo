@@ -54,6 +54,8 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _showIndentGuides;
     [ObservableProperty] private bool _collapseUsingsOnOpen;
     [ObservableProperty] private bool _cleanCSharpOnSave;
+    [ObservableProperty] private bool _cleanCSharpOnSaveReformatOnly;
+    [ObservableProperty] private bool _cleanCSharpOnSaveChangedLinesOnly;
 
     /// <summary>全言語の保存時整形（整形カテゴリ）。</summary>
     [ObservableProperty] private bool _formatOnSave;
@@ -148,6 +150,8 @@ public sealed partial class SettingsViewModel : ObservableObject
         WordWrap = form.WordWrap; ShowMinimap = form.ShowMinimap; ShowIndentGuides = form.ShowIndentGuides;
         CollapseUsingsOnOpen = form.CollapseUsingsOnOpen;
         CleanCSharpOnSave = form.CleanCSharpOnSave;
+        CleanCSharpOnSaveReformatOnly = form.CleanCSharpOnSaveReformatOnly;
+        CleanCSharpOnSaveChangedLinesOnly = form.CleanCSharpOnSaveChangedLinesOnly;
         FormatOnSave = form.FormatOnSave;
         FormatOnSaveExcludedExtensions = form.FormatOnSaveExcludedExtensions;
         ApplyEditorConfigOnSave = form.ApplyEditorConfigOnSave;
@@ -209,6 +213,8 @@ public sealed partial class SettingsViewModel : ObservableObject
     partial void OnShowIndentGuidesChanged(bool value) => Persist();
     partial void OnCollapseUsingsOnOpenChanged(bool value) => Persist();
     partial void OnCleanCSharpOnSaveChanged(bool value) => Persist();
+    partial void OnCleanCSharpOnSaveReformatOnlyChanged(bool value) => Persist();
+    partial void OnCleanCSharpOnSaveChangedLinesOnlyChanged(bool value) => Persist();
     partial void OnFormatOnSaveChanged(bool value) => Persist();
     partial void OnFormatOnSaveExcludedExtensionsChanged(string value) => Persist();
     partial void OnApplyEditorConfigOnSaveChanged(bool value) => Persist();
@@ -246,6 +252,8 @@ public sealed partial class SettingsViewModel : ObservableObject
             WordWrap = WordWrap, ShowMinimap = ShowMinimap, ShowIndentGuides = ShowIndentGuides,
             CollapseUsingsOnOpen = CollapseUsingsOnOpen,
             CleanCSharpOnSave = CleanCSharpOnSave,
+            CleanCSharpOnSaveReformatOnly = CleanCSharpOnSaveReformatOnly,
+            CleanCSharpOnSaveChangedLinesOnly = CleanCSharpOnSaveChangedLinesOnly,
             FormatOnSave = FormatOnSave,
             FormatOnSaveExcludedExtensions = FormatOnSaveExcludedExtensions,
             ApplyEditorConfigOnSave = ApplyEditorConfigOnSave,

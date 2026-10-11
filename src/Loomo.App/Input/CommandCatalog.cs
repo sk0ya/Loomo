@@ -158,6 +158,7 @@ public static class CommandCatalog
         // ガターの ▶ はマウス専用なので、キーボードからの実行経路をコマンドとして持たせる（§28.10）。
         // 既定キーは与えない——テストを書く人だけが使う操作で、既定の1打鍵を占有する理由が無い。
         new CommandDescriptor("editor.test.runAtCaret", CatEditor, "カーソル行のテストを実行", null),
+        new CommandDescriptor("editor.test.debugAtCaret", CatEditor, "カーソル行のテストをデバッグ", null),
 
         // ===== セッション（ソロ／レイアウト） =====
         new CommandDescriptor("stage.cycle", CatStage, "次へ切り替え（ソロ＝舞台／レイアウト＝保存レイアウト）", "Ctrl+T"),

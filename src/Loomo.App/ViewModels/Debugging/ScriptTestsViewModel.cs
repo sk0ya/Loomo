@@ -182,6 +182,14 @@ public sealed partial class ScriptTestsViewModel : ObservableObject, ITestExplor
         return true;
     }
 
+    /// <summary>キャレット行のテストをデバッグ（テストペインの 🐞 と同じコマンドを通す）。</summary>
+    async Task<bool> ITestExplorer.DebugTestAsync(TestItemViewModel test)
+    {
+        if (!DebugSingleTestCommand.CanExecute(test)) return false;
+        await DebugSingleTestCommand.ExecuteAsync(test);
+        return true;
+    }
+
     /// <summary>テストタブが表示されたときの保険的な収集。</summary>
     public void EnsureTestsDiscovered()
     {

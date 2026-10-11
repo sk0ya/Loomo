@@ -519,6 +519,8 @@ public sealed class SettingsStore
         public bool ShowIndentGuides { get; set; }
         public bool CollapseUsingsOnOpen { get; set; }
         public bool CleanCSharpOnSave { get; set; }
+        public bool CleanCSharpOnSaveReformatOnly { get; set; }
+        public bool CleanCSharpOnSaveChangedLinesOnly { get; set; }
         public bool FormatOnSave { get; set; }
         public List<string>? FormatOnSaveExcludedExtensions { get; set; }
         public bool ApplyEditorConfigOnSave { get; set; } = true;
@@ -541,6 +543,8 @@ public sealed class SettingsStore
             ShowIndentGuides = e.ShowIndentGuides,
             CollapseUsingsOnOpen = e.CollapseUsingsOnOpen,
             CleanCSharpOnSave = e.CleanCSharpOnSave,
+            CleanCSharpOnSaveReformatOnly = e.CleanCSharpOnSaveReformatOnly,
+            CleanCSharpOnSaveChangedLinesOnly = e.CleanCSharpOnSaveChangedLinesOnly,
             FormatOnSave = e.FormatOnSave,
             FormatOnSaveExcludedExtensions = [.. e.FormatOnSaveExcludedExtensions],
             ApplyEditorConfigOnSave = e.ApplyEditorConfigOnSave,
@@ -564,6 +568,8 @@ public sealed class SettingsStore
             e.ShowIndentGuides = ShowIndentGuides;
             e.CollapseUsingsOnOpen = CollapseUsingsOnOpen;
             e.CleanCSharpOnSave = CleanCSharpOnSave;
+            e.CleanCSharpOnSaveReformatOnly = CleanCSharpOnSaveReformatOnly;
+            e.CleanCSharpOnSaveChangedLinesOnly = CleanCSharpOnSaveChangedLinesOnly;
             e.FormatOnSave = FormatOnSave;
             e.FormatOnSaveExcludedExtensions = FormatOnSaveExcludedExtensions is { } excluded ? [.. excluded] : new();
             e.ApplyEditorConfigOnSave = ApplyEditorConfigOnSave;

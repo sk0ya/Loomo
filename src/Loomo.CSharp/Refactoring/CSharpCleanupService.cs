@@ -117,6 +117,36 @@ public static class CSharpCleanupService
             edit, $"{detail}（{changedLines}行変更）", null, changedLines, false);
     }
 
+    /// <summary>cleanup の結果を <paramref name="lines"/>（<paramref name="sourceText"/> 側の 0 始まり）に掛かる
+    /// 変更だけへ絞る（選択範囲・変更行だけの整理）。絞った結果が元と同じなら「変更なし」を返す。</summary>
+    public static CSharpCleanupResult RestrictToLines(
+        CSharpCleanupResult result, string filePath, string sourceText, IReadOnlySet<int> lines)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        if (result.Edit is not { } edit || edit.Changes.Count != 1 ||
+            edit.Changes.Values.Single() is not [{ } whole])
+            return result;
+
+        var restricted = CSharpCleanupScope.Restrict(sourceText, whole.NewText, lines);
+        if (string.Equals(restricted, sourceText, StringComparison.Ordinal))
+            return Failed("cleanup対象の変更はありません。");
+
+        var original = SourceText.From(sourceText);
+        var uri = LspUri.FromPath(Path.GetFullPath(filePath));
+        var changedLines = CountChangedLines(sourceText, restricted);
+        return result with
+        {
+            Edit = new LspWorkspaceEdit(
+                new Dictionary<string, IReadOnlyList<LspTextEdit>>(StringComparer.OrdinalIgnoreCase)
+                {
+                    [uri] = [new LspTextEdit(ToRange(original), restricted)],
+                }),
+            Summary = Regex.Replace(
+                result.Summary, @"（\d+行変更）$", $"（{changedLines}行変更）"),
+            ChangedLines = changedLines,
+        };
+    }
+
     private static SourceText ApplyLspEdits(SourceText source, IEnumerable<LspTextEdit> edits)
     {
         var changes = edits.Select(edit => new TextChange(

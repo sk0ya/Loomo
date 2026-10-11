@@ -1267,7 +1267,7 @@ LoomoのC#編集ループに対する効果と保守コストで順番を決め�
 ### 実施順序
 
 1. **保存時C# cleanup（今回実装）** — 設定で任意に有効化し、Ctrl+SとVim `:w`の共通保存経路から、開いているC#ファイルのcleanupを保存前に適用する。既定OFF、`.editorconfig`準拠、生成コード除外、単一ファイルWorkspaceEdit限定、プレビューなし、Undo可能とする。cleanup失敗時も保存そのものは続ける。Roslyn意味解析が使える場合だけ未使用usingを削除し、利用できない場合は安全な整形・using整理に留める。
-2. **cleanup範囲とprofile** — 手動cleanupのファイル／選択範囲／変更行を区別できるようにし、整形のみ／using整理／full cleanupの選択と`.editorconfig`との優先順位を定義する。保存時にどの処理を行うかも同じprofileから選ぶ。solution一括はpreview・原子的rollback・Undoの既存契約を維持する。
+2. **cleanup範囲とprofile（2026-10-11 実装、§36.5）** — 手動cleanupのファイル／選択範囲／変更行を区別できるようにし、整形のみ／using整理／full cleanupの選択と`.editorconfig`との優先順位を定義する。保存時にどの処理を行うかも同じprofileから選ぶ。solution一括はpreview・原子的rollback・Undoの既存契約を維持する。
 3. **C# Live Template** — まず`prop`、`ctor`、`foreach`、`try`など頻用テンプレートを追加し、選択文字列、型名、ファイル名、namespaceなど安全に決められる変数とtab stopを扱う。LSP由来snippetのchoice／variable解釈は既存snippet機能と分けて仕様化し、値が不明な変数を無言で削除しない。
 4. **診断の実効範囲を拡張** — Roslyn LSP／StyleCop／compilerで既に報告される問題をfixtureで一覧化し、重複・未対応・設定反映漏れを分ける。その後、Loomo内でしか出せない高価値inspectionを少数ずつ加え、severity／抑制／Quick FixをProblemsの既存契約へ接続する。Riderのinspection数を数値目標にしない。
 5. **Refactoringの適用範囲を実測で広げる** — rename、extract／inline、safe delete、move type、signature changeを対象に、multi-project／multi-TFM／partial／generic／overload／未保存Editor／外部変更のシナリオ表を作る。各機能の不足ケースを一つずつ追加し、危険な曖昧ケースでは候補を出さず理由を説明する。

@@ -38,6 +38,10 @@ public partial class ShellWindow {
     private void RunTestAtCaret() {
         _testGlyphController.RunTestAtCaret(ActiveTestEditor());
     }
+    /// <summary>キャレット行のテストをデバッガの下で実行する（Rider の「Debug Unit Tests」）。</summary>
+    private void DebugTestAtCaret() {
+        _testGlyphController.DebugTestAtCaret(ActiveTestEditor());
+    }
     /// <summary>キャレット行のテスト（コマンドパレットの出し分け用。無ければ null＝項目を出さない）。
     /// 対象エディタの決め方は意味的な選択（§24.9）と同じ <see cref="FocusedEditorControl"/> に揃える
     /// ——分割・切り離しでも「いま打っているエディタ」に効かせるため。</summary>

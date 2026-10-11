@@ -87,6 +87,29 @@ internal sealed class EditorTestGlyphController
             _showInfo("カーソル行にテストがありません。");
     }
 
+    internal void DebugTestAtCaret(VimEditorControl? control)
+    {
+        if (TestAtCaret(control) is not { } target)
+        {
+            _showInfo("カーソル行にテストがありません。");
+            return;
+        }
+        _ = DebugTestAsync(target.Explorer, target.Test);
+    }
+
+    private async Task DebugTestAsync(ITestExplorer explorer, TestItemViewModel test)
+    {
+        try
+        {
+            if (!await explorer.DebugTestAsync(test))
+                _showInfo($"実行中のため、テストのデバッグを開始できません: {test.DisplayName}");
+        }
+        catch (Exception exception)
+        {
+            _showError($"テストをデバッグできませんでした: {exception.Message}");
+        }
+    }
+
     private void ScheduleSync(VimEditorControl control)
     {
         if (!_syncPending.Add(control)) return;

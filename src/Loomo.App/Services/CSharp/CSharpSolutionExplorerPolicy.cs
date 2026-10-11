@@ -32,7 +32,10 @@ internal static class CSharpSolutionExplorerPolicy
         var fix = kind == CSharpSolutionNodeKind.Project
             ? new CSharpSolutionMenuAction(CSharpSolutionAction.FixAllProject, "Fix All（プロジェクト）")
             : new CSharpSolutionMenuAction(CSharpSolutionAction.FixAllSolution, "Fix All（ソリューション）");
-        var groups = new List<IReadOnlyList<CSharpSolutionMenuAction>> { primary, new[] { fix } };
+        var cleanup = kind == CSharpSolutionNodeKind.Project
+            ? new CSharpSolutionMenuAction(CSharpSolutionAction.CleanupProject, "コードスタイルを一括適用（プロジェクト）")
+            : new CSharpSolutionMenuAction(CSharpSolutionAction.CleanupSolution, "コードスタイルを一括適用（ソリューション）");
+        var groups = new List<IReadOnlyList<CSharpSolutionMenuAction>> { primary, new[] { fix, cleanup } };
         if (kind == CSharpSolutionNodeKind.Project)
             groups.Add(new CSharpSolutionMenuAction[]
             {

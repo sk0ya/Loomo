@@ -34,15 +34,18 @@ public static class CSharpSemanticOperations
         CSharpCleanupOptions options,
         CSharpEditorConfigService? editorConfig = null,
         IReadOnlyDictionary<string, string>? openTexts = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        IReadOnlySet<int>? lines = null)
     {
         var context = await CreateAsync(solution, filePath, sourceText,
             CSharpWorkspaceSourceScope.ProjectGraph, includeSemanticCompilation: true,
             editorConfig, openTexts, cancellationToken);
-        return AttachExpectedTexts(
-            CSharpCleanupService.Clean(
-                filePath, sourceText, options, context.SemanticCompilation),
-            filePath, sourceText, context.Snapshot);
+        var result = CSharpCleanupService.Clean(
+            filePath, sourceText, options, context.SemanticCompilation);
+        // 選択範囲・変更行だけの整理。整理そのものはファイル全体で行い、結果を対象の行へ絞る。
+        if (lines is not null)
+            result = CSharpCleanupService.RestrictToLines(result, filePath, sourceText, lines);
+        return AttachExpectedTexts(result, filePath, sourceText, context.Snapshot);
     }
 
     public static async Task<CSharpCodeGenerationResult> ExtractClassAsync(

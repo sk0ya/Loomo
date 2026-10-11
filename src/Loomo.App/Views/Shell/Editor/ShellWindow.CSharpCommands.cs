@@ -1,4 +1,4 @@
-using sk0ya.Loomo.CSharp.Editor;
+﻿using sk0ya.Loomo.CSharp.Editor;
 using Editor.Core.Lsp;
 
 namespace sk0ya.Loomo.App.Views;
@@ -65,6 +65,14 @@ public partial class ShellWindow
                 break;
             case CSharpEditorCommandCatalog.Cleanup:
                 RunCSharpOperation(id, () => RunCSharpCleanupAsync(control));
+                break;
+            case CSharpEditorCommandCatalog.CleanupReformat:
+                RunCSharpOperation(id, () => CSharpRefactoring.RunCSharpCleanupAsync(
+                    control, profile: sk0ya.Loomo.CSharp.Refactoring.CSharpCleanupProfile.Reformat));
+                break;
+            case CSharpEditorCommandCatalog.CleanupChangedLines:
+                RunCSharpOperation(id, () => CSharpRefactoring.RunCSharpCleanupAsync(
+                    control, changedLinesOnly: true));
                 break;
             case CSharpEditorCommandCatalog.ExtractMethod:
                 RunCSharpOperation(id, () => RunCSharpExtractMethodAsync(control));

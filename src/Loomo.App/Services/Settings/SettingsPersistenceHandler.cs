@@ -19,6 +19,8 @@ public sealed record SettingsFormState
     public bool ShowIndentGuides { get; init; }
     public bool CollapseUsingsOnOpen { get; init; }
     public bool CleanCSharpOnSave { get; init; }
+    public bool CleanCSharpOnSaveReformatOnly { get; init; }
+    public bool CleanCSharpOnSaveChangedLinesOnly { get; init; }
 
     /// <summary>全言語の保存時整形（:Format と同じ経路）。</summary>
     public bool FormatOnSave { get; init; }
@@ -78,6 +80,8 @@ public sealed class SettingsPersistenceHandler
         ShowIndentGuides = _settings.Editor.ShowIndentGuides,
         CollapseUsingsOnOpen = _settings.Editor.CollapseUsingsOnOpen,
         CleanCSharpOnSave = _settings.Editor.CleanCSharpOnSave,
+        CleanCSharpOnSaveReformatOnly = _settings.Editor.CleanCSharpOnSaveReformatOnly,
+        CleanCSharpOnSaveChangedLinesOnly = _settings.Editor.CleanCSharpOnSaveChangedLinesOnly,
         FormatOnSave = _settings.Editor.FormatOnSave,
         FormatOnSaveExcludedExtensions = FormatOnSavePolicy.FormatExtensions(
             _settings.Editor.FormatOnSaveExcludedExtensions),
@@ -117,6 +121,8 @@ public sealed class SettingsPersistenceHandler
         _settings.Editor.ShowIndentGuides = form.ShowIndentGuides;
         _settings.Editor.CollapseUsingsOnOpen = form.CollapseUsingsOnOpen;
         _settings.Editor.CleanCSharpOnSave = form.CleanCSharpOnSave;
+        _settings.Editor.CleanCSharpOnSaveReformatOnly = form.CleanCSharpOnSaveReformatOnly;
+        _settings.Editor.CleanCSharpOnSaveChangedLinesOnly = form.CleanCSharpOnSaveChangedLinesOnly;
         _settings.Editor.FormatOnSave = form.FormatOnSave;
         _settings.Editor.FormatOnSaveExcludedExtensions =
             FormatOnSavePolicy.ParseExtensions(form.FormatOnSaveExcludedExtensions);

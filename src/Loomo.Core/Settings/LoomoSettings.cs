@@ -320,6 +320,13 @@ public sealed class EditorSettings
     /// 末尾改行まで .editorconfig に沿って済ませるため、二重に整えない）。</summary>
     public bool CleanCSharpOnSave { get; set; }
 
+    /// <summary>保存時のコード整理を「整形とレイアウトだけ」にする（using には触らない）。既定 OFF＝フル整理。</summary>
+    public bool CleanCSharpOnSaveReformatOnly { get; set; }
+
+    /// <summary>保存時のコード整理を HEAD から変更した行だけに当てる（Rider の「VCS で変更したテキストだけ」）。
+    /// Git 管理外・未追跡のファイルはファイル全体。既定 OFF。</summary>
+    public bool CleanCSharpOnSaveChangedLinesOnly { get; set; }
+
     /// <summary>保存時に <c>:Format</c> と同じ経路（設定済み CLI 整形 → 言語サーバーの整形 →
     /// PATH 上の既知整形ツール）で全言語を整形する（VS Code の <c>editor.formatOnSave</c> 相当）。既定 OFF。
     /// 整形に失敗・タイムアウトしても保存そのものは必ず行う。</summary>

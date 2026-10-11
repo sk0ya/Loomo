@@ -24,6 +24,14 @@ public partial class ShellWindow
 
         target = Path.GetFullPath(target);
 
+        if (e.Action is CSharpSolutionAction.CleanupProject or CSharpSolutionAction.CleanupSolution)
+        {
+            await RunCSharpBulkCleanupAsync(target,
+                e.Action == CSharpSolutionAction.CleanupProject
+                    ? CSharpFixAllScope.Project : CSharpFixAllScope.Solution);
+            return;
+        }
+
         if (e.Action is CSharpSolutionAction.FixAllProject or CSharpSolutionAction.FixAllSolution)
         {
             var model = _solutionModel?.Current;

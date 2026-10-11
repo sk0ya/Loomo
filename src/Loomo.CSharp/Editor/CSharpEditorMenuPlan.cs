@@ -1,4 +1,4 @@
-namespace sk0ya.Loomo.CSharp.Editor;
+﻿namespace sk0ya.Loomo.CSharp.Editor;
 
 /// <summary>右クリックメニューに出す C# 操作 1 項目。見出しとキー表記の正本は
 /// <see cref="CSharpEditorCommandCatalog"/>——メニュー側で文字列を持ち直すと必ずズレる。</summary>
@@ -132,7 +132,12 @@ public static class CSharpEditorMenu
     ];
 
     /// <summary>「まとめて整える」入れ子のコマンド由来ぶん。</summary>
-    private static readonly string[] TidyIds = [CSharpEditorCommandCatalog.Cleanup];
+    private static readonly string[] TidyIds =
+    [
+        CSharpEditorCommandCatalog.Cleanup,
+        CSharpEditorCommandCatalog.CleanupReformat,
+        CSharpEditorCommandCatalog.CleanupChangedLines,
+    ];
 
     /// <summary>「構造」入れ子。キャレット位置の構文要素が対象なので選択は要らない。</summary>
     private static readonly string[] StructureIds =

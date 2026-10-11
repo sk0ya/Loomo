@@ -22,6 +22,8 @@ public static class CSharpEditorCommandCatalog
     public const string QuickFix = "editor.csharp.quickFix";
     public const string OrganizeUsings = "editor.csharp.organizeUsings";
     public const string Cleanup = "editor.csharp.cleanup";
+    public const string CleanupReformat = "editor.csharp.cleanupReformat";
+    public const string CleanupChangedLines = "editor.csharp.cleanupChangedLines";
     public const string ExtractMethod = "editor.csharp.extractMethod";
     public const string ExtractInterface = "editor.csharp.extractInterface";
     public const string ExtractClass = "editor.csharp.extractClass";
@@ -71,6 +73,8 @@ public static class CSharpEditorCommandCatalog
         new(QuickFix, "Quick Fixを表示", "Alt+Enter"),
         new(OrganizeUsings, "usingディレクティブを整理", "Ctrl+Alt+O"),
         new(Cleanup, "コードスタイルを一括適用"),
+        new(CleanupReformat, "整形とレイアウトだけ適用（usingは触らない）"),
+        new(CleanupChangedLines, "変更行だけコードスタイルを適用（Git）"),
         new(ExtractMethod, "選択範囲からメソッドを抽出", "Ctrl+Alt+M"),
         new(ExtractInterface, "クラスからinterfaceを抽出"),
         new(ExtractClass, "メンバーをクラスへ抽出"),

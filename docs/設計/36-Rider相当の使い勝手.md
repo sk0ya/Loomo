@@ -1,6 +1,6 @@
 # §36 Rider相当の使い勝手（2026-10-11）
 
-> 状態: 実装済み（Editor 側は未公開。公開版へのピン更新は別途の明示指示で行う）
+> 状態: 実装済み（Editor 側は sk0ya.Editor.Controls 1.0.100 として公開し、Loomo のピンも更新済み）
 > 関連: §31（体感品質）、§33（C#編集）、§19.9（VS Codeとの機能差の台帳）
 
 ## §36.1 目的と範囲
@@ -117,7 +117,34 @@
   固まる・プール枯渇の既知の罠）。複数プロジェクトへの操作は Directory.Packages.props／obj を共有するので直列。
 - テスト：`RiderUsabilityTests`（36）。
 
-## §36.5 非目標
+## §36.5 追補：コード整理の対象とプロファイル・テストのデバッグをキーから（2026-10-11）
+
+§36 の後に残った差のうち、毎日の編集ループで先に引っかかる 2 つを埋めた（§33.17 の実施順序 2 を兼ねる）。
+
+- **コード整理のプロファイル**（`CSharpCleanupProfile`）：`Full`（using 整理＋整形＋レイアウト）と `Reformat`（整形と
+  行末空白・改行・末尾改行だけ、using には触らない）。コマンドは「コードスタイルを一括適用」（Full）、
+  「整形とレイアウトだけ適用」（`editor.csharp.cleanupReformat`）、「変更行だけコードスタイルを適用（Git）」
+  （`editor.csharp.cleanupChangedLines`）。右クリックの「まとめて整える」とパレットに出る。
+- **対象の絞り込み**（`CSharpCleanupScope`）：選択があれば選択した行だけ、「変更行だけ」は HEAD との差分で追加・変更された
+  行だけ。整理そのものは**常にファイル全体**で行い（Roslyn の整形も using 整理もファイル単位でしか正しく判定できない）、
+  元の本文との行差分のうち元の行が対象に入るかたまりだけを採る。削除と追加が同数のかたまりは行ごとに判定する
+  （まとめると選択外の行まで書き換わる）。触らなかった行の改行コードは元のまま。
+  HEAD の本文は `GitHeadText`（`git -C <ファイルのフォルダー> show HEAD:./<名前>`）で**ファイルを含むリポジトリへ直接**訊く
+  ——`GitService` の対象リポジトリに依らないので、マルチルートの追加フォルダーでも正しい相手と比べる。
+  未追跡・Git 管理外はファイル全体（Rider と同じ）。
+- **保存時**：設定に「整形とレイアウトだけ」（`CleanCSharpOnSaveReformatOnly`）と「変更した行だけ（Git）」
+  （`CleanCSharpOnSaveChangedLinesOnly`）を足した（どちらも既定 OFF＝従来どおりファイル全体のフル整理）。
+- **プロジェクト／ソリューション一括**（`CSharpBulkCleanup`）：Solution Explorer の右クリックと、エディタの「C#」サブメニューの
+  Fix All の隣。対象は Fix All と同じ `CSharpFixAllPlanner`（選択中 TFM の Compile 項目）、開いているタブは未保存の本文が正本。
+  全ファイルを 1 つの WorkspaceEdit にまとめて既存のトランザクションへ渡す（全件検証→適用・失敗で巻き戻し・Undo 1 回）。
+  プレビュー画面は無いので、書き換えるファイル数・行数を確認ダイアログで先に見せる。**意味解析は使わない**——ファイルごとに
+  Compilation を作るとソリューション全体では時間に収まらないので、未使用 using の一括削除は Fix All（IDE0005）に任せる。
+- **テストのデバッグをキーから**：`editor.test.debugAtCaret`「カーソル行のテストをデバッグ」（既定キーなし・パレット）。
+  `ITestExplorer.DebugTestAsync` がテストペインの 🐞 と同じコマンドを通す（dotnet＝testhost を待たせて attach、
+  vitest / jest＝js-debug で起動）。テストのデバッグ自体は既にあり、無かったのはキーボードの入口だけ。
+- テスト：`CSharpCleanupScopeTests`（12。`GitHeadText` は一時リポジトリで実 git を叩く）。UI からの実機操作は未実施。
+
+## §36.6 非目標
 
 - Rider の全キーマップの再現（Ctrl+E 等、Vim・部屋の操作と衝突するものは採らない。§31.18 の判断を踏襲）。
 - 認証付き NuGet フィードの資格情報管理、`packages.config` 形式の管理。

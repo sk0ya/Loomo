@@ -4,6 +4,7 @@ using sk0ya.Loomo.CSharp.Configuration;
 using sk0ya.Loomo.CSharp.Editor;
 using sk0ya.Loomo.CSharp.Projects;
 using sk0ya.Loomo.CSharp.Refactoring;
+using sk0ya.Loomo.Services;
 
 namespace sk0ya.Loomo.App.Services;
 
@@ -59,17 +60,43 @@ internal sealed class CSharpEditorRefactoringCoordinator
         _showStatus(outcome.Describe(result.Summary) ?? $"「{result.Summary}」を適用しました。");
     }
 
+    /// <summary>C# のコード整理。<paramref name="profile"/> で何をするか、対象の行は
+    /// 「変更行だけ」（<paramref name="changedLinesOnly"/>：HEAD との差分）＞選択範囲（保存時以外）＞ファイル全体の順で決める。</summary>
     public async Task RunCSharpCleanupAsync(
         VimEditorControl control,
-        bool onSave = false)
+        bool onSave = false,
+        CSharpCleanupProfile profile = CSharpCleanupProfile.Full,
+        bool changedLinesOnly = false)
     {
         if (control.FilePath is not { Length: > 0 } path) return;
         var text = control.Text;
+        IReadOnlySet<int>? lines = null;
+        var scopeLabel = "";
+        if (changedLinesOnly)
+        {
+            lines = CSharpCleanupScope.ChangedLines(await GitHeadText.ReadAsync(path), text);
+            scopeLabel = "変更行";
+            if (lines.Count == 0)
+            {
+                if (!onSave) _showStatus("C# cleanup: HEAD から変更した行がありません。");
+                return;
+            }
+        }
+        else if (!onSave && control.HasSelection && control.SelectionAsLspRange() is { } selection)
+        {
+            lines = CSharpCleanupScope.LinesOfSelection(
+                selection.Start.Line, selection.End.Line, selection.End.Character);
+            scopeLabel = "選択範囲";
+        }
+
+        var options = CSharpCleanupScope.OptionsFor(profile,
+            CSharpCleanupOptionsFactory.CreateForFile(path,
+                removeUnusedUsings: true, editorConfigService: _editorConfig));
         var result = await CSharpSemanticOperations.CleanAsync(
-            _currentSolution(), path, text,
-            CSharpCleanupOptionsFactory.CreateForFile(path, format: true,
-                removeUnusedUsings: true, editorConfigService: _editorConfig),
-            _editorConfig, _findOpenEditorTexts());
+            _currentSolution(), path, text, options,
+            _editorConfig, _findOpenEditorTexts(), lines: lines);
+        if (scopeLabel.Length > 0 && result.Edit is not null)
+            result = result with { Summary = $"{scopeLabel}: {result.Summary}" };
         if (result.IsGeneratedCode)
         {
             if (!onSave)

@@ -753,6 +753,18 @@
                                           ToolTip="C#ファイルを保存するとき、.editorconfigに沿って整形します。Roslynの意味解析が使える場合は未使用usingも整理します。ONの間は .cs の保存時処理はこれだけになり、「整形」の保存時整形・.editorconfig空白規則は .cs には重ねません。Undoで元に戻せます。">
                                     <TextBlock Text="C#ファイルを保存時に整形し、usingを整理する" TextWrapping="Wrap" />
                                 </CheckBox>
+                                <CheckBox Margin="20,6,0,0"
+                                          IsChecked="{Binding Settings.CleanCSharpOnSaveReformatOnly}"
+                                          IsEnabled="{Binding Settings.CleanCSharpOnSave}"
+                                          ToolTip="保存時は整形と行末空白・改行・末尾改行だけを行い、usingの並べ替え・削除はしません。">
+                                    <TextBlock Text="整形とレイアウトだけ（usingは触らない）" TextWrapping="Wrap" />
+                                </CheckBox>
+                                <CheckBox Margin="20,6,0,0"
+                                          IsChecked="{Binding Settings.CleanCSharpOnSaveChangedLinesOnly}"
+                                          IsEnabled="{Binding Settings.CleanCSharpOnSave}"
+                                          ToolTip="Gitの HEAD から変更した行だけを整えます。人の書いた既存コードの差分を増やしません。Git管理外・未追跡のファイルはファイル全体が対象です。">
+                                    <TextBlock Text="変更した行だけ（Git）" TextWrapping="Wrap" />
+                                </CheckBox>
 
                                 <Separator Margin="0,16,0,10" />
                                 <TextBlock Style="{StaticResource FieldLabel}" Text="タブ幅（インデント幅）" Margin="0,0,0,3" />

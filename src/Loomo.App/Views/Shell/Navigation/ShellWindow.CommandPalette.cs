@@ -352,6 +352,9 @@ public partial class ShellWindow {
         if (ActiveEditorTestAtCaret() is { } caretTest)
             list.Add(new("エディタ", $"カーソル行のテストを実行: {caretTest.Test.DisplayName}",
                 RunTestAtCaret, Sc("editor.test.runAtCaret"), "editor.test.runAtCaret"));
+        if (ActiveEditorTestAtCaret() is { } caretDebugTest)
+            list.Add(new("エディタ", $"カーソル行のテストをデバッグ: {caretDebugTest.Test.DisplayName}",
+                DebugTestAtCaret, Sc("editor.test.debugAtCaret"), "editor.test.debugAtCaret"));
         // 失敗の再実行もテストビューのボタンだけにしない。失敗が残っているランナーの分だけ出す。
         foreach (var (label, command) in new (string, ICommand)[]
                  {

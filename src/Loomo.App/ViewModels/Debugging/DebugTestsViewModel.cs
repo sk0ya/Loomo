@@ -165,6 +165,14 @@ public sealed partial class DebugTestsViewModel : ObservableObject, ITestExplore
         return true;
     }
 
+    /// <summary>キャレット行のテストをデバッグ（テストペインの 🐞 と同じコマンドを通す）。</summary>
+    async Task<bool> ITestExplorer.DebugTestAsync(TestItemViewModel test)
+    {
+        if (!DebugSingleTestCommand.CanExecute(test)) return false;
+        await DebugSingleTestCommand.ExecuteAsync(test);
+        return true;
+    }
+
     /// <summary>テストタブが表示されたときの保険的な収集（まだ一覧が無ければバックグラウンド収集を起動する）。</summary>
     public void EnsureTestsDiscovered()
     {

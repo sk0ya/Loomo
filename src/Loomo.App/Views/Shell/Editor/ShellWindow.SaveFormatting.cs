@@ -31,7 +31,11 @@ public partial class ShellWindow
         {
             // 保存時cleanup。単一の開いている文書だけを整え、WorkspaceEditとして記録する。
             if (sameDocument)
-                await CSharpRefactoring.RunCSharpCleanupAsync(control, onSave: true);
+                await CSharpRefactoring.RunCSharpCleanupAsync(control, onSave: true,
+                    profile: settings.CleanCSharpOnSaveReformatOnly
+                        ? sk0ya.Loomo.CSharp.Refactoring.CSharpCleanupProfile.Reformat
+                        : sk0ya.Loomo.CSharp.Refactoring.CSharpCleanupProfile.Full,
+                    changedLinesOnly: settings.CleanCSharpOnSaveChangedLinesOnly);
             return;
         }
 

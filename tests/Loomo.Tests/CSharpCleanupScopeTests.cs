@@ -1,0 +1,204 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using sk0ya.Loomo.CSharp.Editor;
+using sk0ya.Loomo.CSharp.Refactoring;
+
+namespace sk0ya.Loomo.Tests;
+
+/// <summary>コード整理のプロファイルと対象の絞り込み（選択範囲・変更行・プロジェクト一括）。</summary>
+public sealed class CSharpCleanupScopeTests
+{
+    private const string Messy =
+        "using System.Text;\n" +
+        "using System;\n" +
+        "\n" +
+        "class A\n" +
+        "{\n" +
+        "    void M()   \n" +
+        "    {\n" +
+        "        int x=1;\n" +
+        "        int y=2;\n" +
+        "    }\n" +
+        "}\n";
+
+    [Fact]
+    public void Reformat_profile_leaves_using_order_alone()
+    {
+        var options = CSharpCleanupScope.OptionsFor(CSharpCleanupProfile.Reformat, CSharpCleanupOptions.Default);
+        var result = CSharpCleanupService.Clean("A.cs", Messy, options);
+
+        var text = Single(result);
+        Assert.StartsWith("using System.Text;\nusing System;\n", text.Replace("\r\n", "\n"));
+        Assert.Contains("int x = 1;", text);
+    }
+
+    [Fact]
+    public void Full_profile_sorts_usings_and_formats()
+    {
+        var options = CSharpCleanupScope.OptionsFor(CSharpCleanupProfile.Full, CSharpCleanupOptions.Default);
+        var text = Single(CSharpCleanupService.Clean("A.cs", Messy, options)).Replace("\r\n", "\n");
+
+        Assert.StartsWith("using System;\nusing System.Text;\n", text);
+        Assert.Contains("int y = 2;", text);
+    }
+
+    [Fact]
+    public void Restricting_to_one_line_changes_only_that_line()
+    {
+        var options = CSharpCleanupScope.OptionsFor(CSharpCleanupProfile.Full, CSharpCleanupOptions.Default);
+        var full = CSharpCleanupService.Clean("A.cs", Messy, options);
+
+        // 0 始まりの 7 行目＝「int x=1;」だけ。
+        var restricted = CSharpCleanupService.RestrictToLines(full, "A.cs", Messy, new HashSet<int> { 7 });
+
+        var text = Single(restricted);
+        Assert.Contains("int x = 1;", text);
+        Assert.Contains("int y=2;", text);                       // 対象外の行は元のまま
+        Assert.StartsWith("using System.Text;\nusing System;\n", text); // using 整理も対象外
+        Assert.Contains("void M()   \n", text);                   // 行末空白も対象外
+        Assert.Equal(1, restricted.ChangedLines);
+    }
+
+    [Fact]
+    public void Restricting_to_untouched_lines_reports_no_change()
+    {
+        var full = CSharpCleanupService.Clean("A.cs", Messy,
+            CSharpCleanupScope.OptionsFor(CSharpCleanupProfile.Full, CSharpCleanupOptions.Default));
+
+        var restricted = CSharpCleanupService.RestrictToLines(full, "A.cs", Messy, new HashSet<int> { 3 });
+
+        Assert.Null(restricted.Edit);
+        Assert.Equal("cleanup対象の変更はありません。", restricted.Error);
+    }
+
+    [Fact]
+    public void Restrict_keeps_the_original_line_endings_of_untouched_lines()
+    {
+        var original = "a\r\nb  \r\nc  \r\n";
+        var cleaned = "a\nb\nc\n";
+
+        var result = CSharpCleanupScope.Restrict(original, cleaned, new HashSet<int> { 1 });
+
+        Assert.Equal("a\r\nb\r\nc  \r\n", result);
+    }
+
+    [Fact]
+    public void Restrict_decides_line_count_changing_hunks_as_a_whole()
+    {
+        var original = "x\n{ a; b; }\ny\n";
+        var cleaned = "x\n{\n    a;\n    b;\n}\ny\n";
+
+        Assert.Equal(cleaned, CSharpCleanupScope.Restrict(original, cleaned, new HashSet<int> { 1 }));
+        Assert.Equal(original, CSharpCleanupScope.Restrict(original, cleaned, new HashSet<int> { 0, 2 }));
+    }
+
+    [Fact]
+    public void Selection_lines_exclude_a_trailing_line_selected_at_column_zero()
+    {
+        Assert.Equal(new[] { 2, 3 }, CSharpCleanupScope.LinesOfSelection(2, 4, 0).Order());
+        Assert.Equal(new[] { 2, 3, 4 }, CSharpCleanupScope.LinesOfSelection(2, 4, 1).Order());
+        Assert.Equal(new[] { 5 }, CSharpCleanupScope.LinesOfSelection(5, 5, 0).Order());
+    }
+
+    [Fact]
+    public void Changed_lines_are_the_added_lines_against_the_baseline()
+    {
+        var baseline = "a\nb\nc\n";
+        var current = "a\nB\nc\nd\n";
+
+        Assert.Equal(new[] { 1, 3 }, CSharpCleanupScope.ChangedLines(baseline, current).Order());
+    }
+
+    [Fact]
+    public void Changed_lines_without_a_baseline_cover_the_whole_file()
+    {
+        Assert.Equal(new[] { 0, 1, 2 }, CSharpCleanupScope.ChangedLines(null, "a\nb\nc").Order());
+    }
+
+    [Fact]
+    public void Bulk_cleanup_collects_only_changed_files_and_skips_generated_code()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "LoomoBulkCleanup_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            var messy = Path.Combine(root, "Messy.cs");
+            var clean = Path.Combine(root, "Clean.cs");
+            var generated = Path.Combine(root, "Gen.cs");
+            File.WriteAllText(messy, Messy);
+            File.WriteAllText(clean, "class C\n{\n}\n");
+            File.WriteAllText(generated, "// <auto-generated/>\nclass G{int x=1;}\n");
+
+            var result = CSharpBulkCleanup.Run([messy, clean, generated], File.ReadAllText,
+                CSharpCleanupProfile.Full);
+
+            Assert.Equal(3, result.FilesScanned);
+            Assert.Equal(1, result.FilesChanged);
+            Assert.Equal(1, result.GeneratedSkipped);
+            Assert.NotNull(result.Edit);
+            Assert.Single(result.Edit!.Changes);
+            Assert.Equal(Messy, result.ExpectedTexts[Path.GetFullPath(messy)]);
+            Assert.Same(result.ExpectedTexts, result.Edit.ExpectedTexts);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async System.Threading.Tasks.Task Head_text_is_read_from_the_repository_that_owns_the_file()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "LoomoGitHead_" + Guid.NewGuid().ToString("N"));
+        var sub = Path.Combine(root, "src");
+        Directory.CreateDirectory(sub);
+        try
+        {
+            var file = Path.Combine(sub, "A b.cs");
+            File.WriteAllText(file, "committed\n");
+            Git(root, "init", "-q");
+            Git(root, "-c", "user.email=t@example.com", "-c", "user.name=t", "add", ".");
+            Git(root, "-c", "user.email=t@example.com", "-c", "user.name=t", "commit", "-q", "-m", "init");
+            File.WriteAllText(file, "edited\n");
+            var untracked = Path.Combine(sub, "New.cs");
+            File.WriteAllText(untracked, "new\n");
+
+            Assert.Equal("committed\n", await sk0ya.Loomo.Services.GitHeadText.ReadAsync(file));
+            Assert.Null(await sk0ya.Loomo.Services.GitHeadText.ReadAsync(untracked));
+        }
+        finally
+        {
+            foreach (var path in Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories))
+                File.SetAttributes(path, FileAttributes.Normal);   // .git の読み取り専用オブジェクト
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    private static void Git(string directory, params string[] args)
+    {
+        var info = new System.Diagnostics.ProcessStartInfo("git") { WorkingDirectory = directory, UseShellExecute = false };
+        foreach (var arg in args) info.ArgumentList.Add(arg);
+        using var process = System.Diagnostics.Process.Start(info)!;
+        process.WaitForExit();
+        Assert.Equal(0, process.ExitCode);
+    }
+
+    [Fact]
+    public void Cleanup_variants_are_in_the_tidy_menu()
+    {
+        var plan = CSharpEditorMenu.Build(hasSelection: false);
+        var ids = plan.Tidy.Select(entry => entry.CommandId).ToArray();
+
+        Assert.Contains(CSharpEditorCommandCatalog.Cleanup, ids);
+        Assert.Contains(CSharpEditorCommandCatalog.CleanupReformat, ids);
+        Assert.Contains(CSharpEditorCommandCatalog.CleanupChangedLines, ids);
+    }
+
+    private static string Single(CSharpCleanupResult result)
+    {
+        Assert.Null(result.Error);
+        return Assert.Single(Assert.Single(result.Edit!.Changes).Value).NewText;
+    }
+}

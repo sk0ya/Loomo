@@ -23,6 +23,19 @@ public partial class ShellWindow
         AddScopeItem(root, "プロジェクト全体をまとめて修正", project.FullPath, CSharpFixAllScope.Project);
         if (model.Projects.Count > 1)
             AddScopeItem(root, "ソリューション全体をまとめて修正", project.FullPath, CSharpFixAllScope.Solution);
+        AddCleanupScopeItem(root, "プロジェクト全体にコードスタイルを適用", project.FullPath, CSharpFixAllScope.Project);
+        if (model.Projects.Count > 1)
+            AddCleanupScopeItem(root, "ソリューション全体にコードスタイルを適用", project.FullPath, CSharpFixAllScope.Solution);
+    }
+
+    private void AddCleanupScopeItem(System.Windows.Controls.MenuItem root, string title,
+        string projectPath, CSharpFixAllScope scope)
+    {
+        var item = new System.Windows.Controls.MenuItem { Header = title };
+        System.Windows.Automation.AutomationProperties.SetAutomationId(item, $"CSharpCleanup.{scope}");
+        System.Windows.Automation.AutomationProperties.SetName(item, title);
+        item.Click += (_, _) => _ = RunCSharpBulkCleanupAsync(Path.GetFullPath(projectPath), scope);
+        root.Items.Add(item);
     }
 
     private void AddScopeItem(System.Windows.Controls.MenuItem root, string title,

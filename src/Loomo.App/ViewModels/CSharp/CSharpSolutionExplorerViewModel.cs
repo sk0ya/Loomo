@@ -17,6 +17,8 @@ public enum CSharpSolutionAction
     DebugTests,
     FixAllProject,
     FixAllSolution,
+    CleanupProject,
+    CleanupSolution,
 }
 
 public sealed record CSharpSolutionActionEventArgs(
@@ -140,6 +142,10 @@ public sealed partial class CSharpSolutionExplorerViewModel : ObservableObject, 
         if (action == CSharpSolutionAction.FixAllProject &&
             node.Kind != CSharpSolutionNodeKind.Project) return;
         if (action == CSharpSolutionAction.FixAllSolution &&
+            node.Kind != CSharpSolutionNodeKind.Solution) return;
+        if (action == CSharpSolutionAction.CleanupProject &&
+            node.Kind != CSharpSolutionNodeKind.Project) return;
+        if (action == CSharpSolutionAction.CleanupSolution &&
             node.Kind != CSharpSolutionNodeKind.Solution) return;
         ActionRequested?.Invoke(this, new CSharpSolutionActionEventArgs(node, action));
     }

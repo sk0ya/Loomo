@@ -26,4 +26,7 @@ internal interface ITestExplorer
     /// <summary>1 件だけ実行する（ガターの ▶／コマンドパレットから）。ビルド中・デバッグ中などで
     /// 実行を始められなかったときは <c>false</c>——押したのに無反応にしないよう、呼び出し側が理由を返す。</summary>
     Task<bool> RunTestAsync(TestItemViewModel test);
+
+    /// <summary>1 件だけデバッガの下で実行する（コマンドパレット／キーから）。始められなかったときは <c>false</c>。</summary>
+    Task<bool> DebugTestAsync(TestItemViewModel test);
 }

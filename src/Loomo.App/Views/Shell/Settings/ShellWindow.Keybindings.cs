@@ -46,7 +46,7 @@ public partial class ShellWindow {
             ["localHistory.recent"] = ShowRecentLocalHistory, ["localHistory.restoreDeleted"] = RestoreDeletedFileFromLocalHistory,
             ["nuget.manage"] = () => OpenNuGetPackageManager(),
             ["editor.save"] = SaveActiveEditor,
-            ["editor.selection.expand"] = ExpandSemanticSelection, ["editor.selection.shrink"] = ShrinkSemanticSelection, ["editor.test.runAtCaret"] = RunTestAtCaret,
+            ["editor.selection.expand"] = ExpandSemanticSelection, ["editor.selection.shrink"] = ShrinkSemanticSelection, ["editor.test.debugAtCaret"] = DebugTestAtCaret, ["editor.test.runAtCaret"] = RunTestAtCaret,
             ["stage.cycle"] = () => CycleInActiveMode(1), ["mode.toggle"] = ToggleDisplayMode,
             ["tab.newTerminal"] = () => OnTerminalNewTab(this, new RoutedEventArgs()), ["tab.newEditor"] = () => OnEditorNewTab(this, new RoutedEventArgs()), ["tab.newBrowser"] = () => OnBrowserNewTab(this, new RoutedEventArgs()),
             ["sidebar.explorer"] = () => _vm.ShowExplorerCommand.Execute(null), ["sidebar.tabs"] = () => _vm.ShowTabsCommand.Execute(null), ["sidebar.sessions"] = () => _vm.Sessions.ToggleOpenCommand.Execute(null), ["sidebar.git"] = () => _vm.ShowGitCommand.Execute(null), ["sidebar.pegboard"] = () => _vm.ShowPegboardCommand.Execute(null), ["sidebar.solution"] = () => _vm.ShowSolutionCommand.Execute(null), ["sidebar.settings"] = () => _vm.ShowSettingsCommand.Execute(null), ["sidebar.appearance"] = () => _vm.ShowAppearanceCommand.Execute(null), ["explorer.revealActiveFile"] = RevealActiveFileInFolderTree, };
