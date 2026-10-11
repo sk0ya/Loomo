@@ -125,6 +125,9 @@ public sealed partial class WorkItemsViewModel : ObservableObject
     private CancellationTokenSource? _loading;
     private DateTime _loadedAt = DateTime.MinValue;
 
+    /// <summary>前回受け付けられた PAT の取得元。</summary>
+    private string? _workingPatSource;
+
     /// <summary>畳んでいる行の鍵（<see cref="WorkItemList.CollapseKey"/>）。更新で一覧を作り直しても畳んだままにする。</summary>
     private readonly HashSet<string> _collapsed = new(StringComparer.Ordinal);
 
@@ -331,12 +334,15 @@ public sealed partial class WorkItemsViewModel : ObservableObject
         _loading?.Cancel();
         var cts = _loading = new CancellationTokenSource();
         var token = cts.Token;
-        string? patSource = null;
+        IReadOnlyList<PatCandidate> triedPats = [];
+        string? settingsHint = null;
         IsLoading = true;
         ErrorText = "";
         StatusText = "読み込み中…";
         try
         {
+            var taskAzure = TaskAzureSettings.TryLoad();
+            ImportFromTaskAzureIfEmpty(taskAzure);
             var settings = _settings.AzureDevOps;
             var organizationUrl = AzureDevOpsWorkItemClient.NormalizeOrganizationUrl(settings.OrganizationUrl);
             var project = settings.Project.Trim();
@@ -351,31 +357,49 @@ public sealed partial class WorkItemsViewModel : ObservableObject
                 return;
             }
             OrganizationName = project;
+            settingsHint = DifferenceFromTaskAzure(taskAzure, organizationUrl, project);
 
-            var found = _pats.Find();
-            patSource = found?.Source;
-            if (found is not { Pat: var pat })
+            var candidates = OrderCandidates(_pats.FindCandidates(taskAzure?.PatEnvVarName));
+            if (candidates.Count == 0)
             {
                 StatusText = "";
-                ErrorText = $"PAT が取得できませんでした。環境変数 {AzureDevOpsPatStore.EnvironmentVariable} または"
-                    + $" Windows 資格情報マネージャー（{AzureDevOpsPatStore.CredentialTarget}）に PAT を設定してください。";
+                var name = taskAzure?.PatEnvVarName ?? AzureDevOpsPatStore.EnvironmentVariable;
+                ErrorText = $"PAT が取得できませんでした。環境変数 {name} または"
+                    + $" Windows 資格情報マネージャー（{name}）に PAT を設定してください。";
                 return;
             }
-            var auth = AzureDevOpsPatStore.CreateHeader(pat);
-            var targets = settings.PrTargets.Select(t => new AzureDevOpsPrTarget(t.Project, t.Repository)).ToList();
 
-            // TaskAzure と同じく Work Item と PR を並べて引く。PR が取れなくても Work Item は出す。
-            var itemsTask = _client.GetMyWorkItemsAsync(organizationUrl, project, auth, token);
-            var prsTask = LoadPullRequestsAsync(organizationUrl, targets, auth, token);
-            var items = await itemsTask;
+            // PAT の候補を順に試す：受け付けられなかった（203 のサインイン画面・401）ときだけ次へ。
+            // 起動時に握った古い環境変数が、TaskAzure の使っている今の PAT を隠していることがある。
+            IReadOnlyList<AzureDevOpsWorkItem>? items = null;
+            System.Net.Http.Headers.AuthenticationHeaderValue? auth = null;
+            var tried = new List<PatCandidate>();
+            triedPats = tried;
+            foreach (var candidate in candidates)
+            {
+                tried.Add(candidate);
+                auth = AzureDevOpsPatStore.CreateHeader(candidate.Pat);
+                try
+                {
+                    items = await _client.GetMyWorkItemsAsync(organizationUrl, project, auth, token);
+                    _workingPatSource = candidate.Source;
+                    break;
+                }
+                catch (AzureDevOpsException ex) when (ex.IsAuthentication && candidate != candidates[^1])
+                {
+                }
+            }
+            triedPats = [];
+            var targets = settings.PrTargets.Select(t => new AzureDevOpsPrTarget(t.Project, t.Repository)).ToList();
+            var prsTask = LoadPullRequestsAsync(organizationUrl, targets, auth!, token);
             // 自分の Task の親（Story など）が自分の担当でなくても、見出しとして取ってくる。
-            var itemIds = items.Select(i => i.Id).ToHashSet();
-            var missingParents = items.Select(i => i.ParentId)
+            var itemIds = items!.Select(i => i.Id).ToHashSet();
+            var missingParents = items!.Select(i => i.ParentId)
                 .Where(id => id != 0 && !itemIds.Contains(id)).Distinct().ToList();
             IReadOnlyList<AzureDevOpsWorkItem> parents = [];
             if (missingParents.Count > 0)
             {
-                try { parents = await _client.GetWorkItemsByIdsAsync(organizationUrl, project, missingParents, auth, token); }
+                try { parents = await _client.GetWorkItemsByIdsAsync(organizationUrl, project, missingParents, auth!, token); }
                 catch (Exception ex) when (ex is not OperationCanceledException) { /* 親が取れなくても一覧は出す */ }
             }
             var (prs, prError) = await prsTask;
@@ -395,19 +419,52 @@ public sealed partial class WorkItemsViewModel : ObservableObject
         {
             // どんな失敗でもアプリは落とさない（⟳・F5 の非同期コマンドから例外が漏れると落ちる）。
             StatusText = "";
-            ErrorText = ex switch
+            var message = ex switch
             {
                 TaskCanceledException => "Azure DevOps への接続がタイムアウトしました。",
-                AzureDevOpsException { IsAuthentication: true } when patSource is not null
-                    => $"{ex.Message}\n使った PAT の取得元: {patSource}",
+                AzureDevOpsException { IsAuthentication: true } when triedPats.Count > 0
+                    => $"{ex.Message}\n試した PAT: {string.Join("、", triedPats.Select(c => c.Source))}",
                 _ => ex.Message,
             };
+            ErrorText = settingsHint is null ? message : $"{message}\n{settingsHint}";
         }
         finally
         {
             if (ReferenceEquals(_loading, cts))
                 IsLoading = false;
         }
+    }
+
+    /// <summary>前回受け付けられた PAT の取得元を先に試す（毎回だめな候補から叩かない）。</summary>
+    private IReadOnlyList<PatCandidate> OrderCandidates(IReadOnlyList<PatCandidate> candidates)
+        => candidates.OrderBy(c => c.Source == _workingPatSource ? 0 : 1).ToList();
+
+    /// <summary>Loomo 側が未設定なら、TaskAzure の設定（組織 URL・プロジェクト・PR 対象）をそのまま取り込む。</summary>
+    private void ImportFromTaskAzureIfEmpty(TaskAzureSettings? taskAzure)
+    {
+        var a = _settings.AzureDevOps;
+        if (taskAzure is null || (a.OrganizationUrl.Trim().Length > 0 && a.Project.Trim().Length > 0)) return;
+        a.OrganizationUrl = taskAzure.OrganizationUrl;
+        a.Project = taskAzure.Project;
+        if (a.PrTargets.Count == 0)
+            foreach (var t in taskAzure.PrTargets)
+                a.PrTargets.Add(new AzureDevOpsPrTargetSettings { Project = t.Project, Repository = t.Repository });
+        try { _settingsStore.Save(_settings); }
+        catch { /* 保存に失敗しても、この起動中は効かせる */ }
+        LoadSettingsInputs();
+    }
+
+    /// <summary>失敗したとき、TaskAzure（動いている方）と値が違えばそれを言う。写し間違いがいちばん見つけにくい。</summary>
+    private static string? DifferenceFromTaskAzure(TaskAzureSettings? taskAzure, string organizationUrl, string project)
+    {
+        if (taskAzure is null) return null;
+        var differences = new List<string>();
+        var theirs = AzureDevOpsWorkItemClient.NormalizeOrganizationUrl(taskAzure.OrganizationUrl);
+        if (!string.Equals(theirs, organizationUrl, StringComparison.OrdinalIgnoreCase))
+            differences.Add($"組織 URL（TaskAzure: {theirs}）");
+        if (!string.Equals(taskAzure.Project, project, StringComparison.Ordinal))
+            differences.Add($"プロジェクト（TaskAzure: {taskAzure.Project}）");
+        return differences.Count == 0 ? null : $"TaskAzure の設定と違います: {string.Join("、", differences)}";
     }
 
     /// <summary>PR を引く（TaskAzure と同じ：設定した PR 対象ごと）。失敗しても Work Item は出したいので、例外にせず一言にして返す。</summary>

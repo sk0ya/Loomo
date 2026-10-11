@@ -76,6 +76,27 @@ public sealed class AzureDevOpsTests
     public void 組織URLはAPIの根元にそろえる(string input, string expected)
         => Assert.Equal(expected, AzureDevOpsWorkItemClient.NormalizeOrganizationUrl(input));
 
+    [Fact]
+    public void TaskAzureの設定を読む_PAT環境変数名と_PR対象()
+    {
+        var settings = TaskAzureSettings.Parse("""
+            {"OrganizationUrl":"https://tfs.example.net/tfs/Products/","Project":"Web App","PatEnvVarName":"MY_PAT",
+             "RefreshIntervalMinutes":5,"PrTargets":[{"Project":"Web App","Repository":"web"},{"Project":"","Repository":"x"}]}
+            """);
+        Assert.NotNull(settings);
+        Assert.Equal("https://tfs.example.net/tfs/Products", settings.OrganizationUrl);
+        Assert.Equal("Web App", settings.Project);
+        Assert.Equal("MY_PAT", settings.PatEnvVarName);
+        Assert.Equal([new AzureDevOpsPrTarget("Web App", "web")], settings.PrTargets);
+    }
+
+    [Fact]
+    public void TaskAzureの設定でPAT環境変数名が空ならADO_PAT_組織URLが空なら無いのと同じ()
+    {
+        Assert.Equal("ADO_PAT", TaskAzureSettings.Parse("""{"OrganizationUrl":"https://dev.azure.com/o","PatEnvVarName":""}""")!.PatEnvVarName);
+        Assert.Null(TaskAzureSettings.Parse("""{"OrganizationUrl":""}"""));
+    }
+
     private static AzureDevOpsWorkItem Item(int id, int parent = 0, string type = "Task")
         => new(id, $"item {id}", type, "Active", "P", "P\\Sprint", parent, null, $"u/{id}");
 
