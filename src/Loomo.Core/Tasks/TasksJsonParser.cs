@@ -259,7 +259,43 @@ public static class TasksJsonParser
             matcher = matcher with { DefaultSeverity = parsed };
         if (element.TryGetProperty("fileLocation", out var location))
             matcher = ApplyFileLocation(matcher, location);
+        if (TryGetObject(element, "background", out var background))
+        {
+            if (ReadBackground(background, label, warnings) is not { } bg) return null;
+            matcher = matcher with { Background = bg };
+        }
         return matcher;
+    }
+
+    /// <summary><c>background: { activeOnStart, beginsPattern, endsPattern }</c>。パターンは文字列か
+    /// <c>{ "regexp": … }</c>。読めない正規表現はこの matcher ごと捨てる（区切れない watch で問題が積み上がり続けるより良い）。</summary>
+    private static ProblemMatcherBackground? ReadBackground(JsonElement element, string label, List<string> warnings)
+    {
+        Regex? Read(string name)
+        {
+            if (!element.TryGetProperty(name, out var value)) return null;
+            var text = value.ValueKind == JsonValueKind.String ? value.GetString()
+                : value.ValueKind == JsonValueKind.Object ? GetString(value, "regexp") : null;
+            if (string.IsNullOrEmpty(text)) return null;
+            try { return new Regex(text, RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1)); }
+            catch (ArgumentException ex)
+            {
+                warnings.Add($"「{label}」: background.{name} を読めません: {ex.Message}");
+                throw new FormatException();
+            }
+        }
+
+        try
+        {
+            var begins = Read("beginsPattern");
+            var ends = Read("endsPattern");
+            var activeOnStart = element.TryGetProperty("activeOnStart", out var active) && active.ValueKind == JsonValueKind.True;
+            return new ProblemMatcherBackground(begins, ends, activeOnStart);
+        }
+        catch (FormatException)
+        {
+            return null;
+        }
     }
 
     private static ProblemMatcher ApplyFileLocation(ProblemMatcher matcher, JsonElement element)

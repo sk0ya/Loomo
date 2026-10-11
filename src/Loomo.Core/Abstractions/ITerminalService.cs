@@ -15,6 +15,13 @@ public interface ITerminalService
     void SetWorkingDirectory(string path);
     /// <summary>コマンドを可視ターミナルへ送って実行する。未接続なら false。</summary>
     bool TryRunInVisibleTerminal(string command);
+    /// <summary>終わらないコマンド（watch）を可視ターミナルへ打ち込み、その出力を論理行ごとに追う。
+    /// <paramref name="lineReceived"/> は確定した行ごと、<paramref name="commandFinished"/> はそのコマンドが終わったとき
+    /// （終了コード。セッションが消えたら null）に1度だけ、どちらも UI スレッドで呼ばれる。Dispose で追うのをやめる
+    /// （コマンドは止めない）。未接続なら null。<see cref="RunCommandInVisibleTerminalAsync"/> と違って
+    /// 終わりを待つ列を占有しないので、watch が走っている間も他の呼び出しは詰まらない。</summary>
+    IDisposable? StartWatchedInVisibleTerminal(string command, Action<string> lineReceived, Action<int?> commandFinished)
+        => null;
     string CurrentDirectory { get; }
     bool IsExecuting { get; }
     /// <summary>実行された全コマンド結果（人間・AI問わず）の通知。</summary>

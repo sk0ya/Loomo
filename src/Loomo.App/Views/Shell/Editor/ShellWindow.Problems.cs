@@ -40,7 +40,9 @@ public partial class ShellWindow
         => Dispatcher.BeginInvoke(new Action(() => {
             _vm.Debug.Problems.ClearLspDiagnostics();
             _vm.TsIde.Problems.ClearLspDiagnostics();
-            // タスクの結果（§31.17）は前のワークスペースのファイルを指しているので捨てる。
+            // タスクの結果（§31.17）は前のワークスペースのファイルを指しているので捨てる。走り続けている watch の
+            // 出力も前のワークスペースのものなので、追うのをやめる（コマンドそのものは人間の端末に残す）。
+            _taskRunner?.StopWatching();
             _vm.Debug.Problems.ClearTaskProblems();
             _vm.TsIde.Problems.ClearTaskProblems();
             // 開いたままのエディタぶんも一度消して、今のスナップショットから出し直す。

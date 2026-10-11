@@ -52,6 +52,21 @@ public sealed class TerminalService : ITerminalService
                 () => view.RunCommandAsync($"cd \"{path}\"", CancellationToken.None));
     }
 
+    public IDisposable? StartWatchedInVisibleTerminal(string command, Action<string> lineReceived,
+        Action<int?> commandFinished)
+    {
+        if (_view is not { } view) return null;
+        return view.Dispatcher.Invoke(() =>
+        {
+            // 購読してから打ち込む（打ち込んだ直後の出力を取りこぼさない）。RunCommandAsync で送ると、終わるまで
+            // （既定 10 分）その列を握り、型チェックやテストの実行がその後ろに並んでしまう。
+            var subscription = view.SubscribeOutputLines(lineReceived, code => commandFinished(code));
+            if (view.SendTerminalInput(command + "\r")) return subscription;
+            subscription.Dispose();
+            return null;
+        });
+    }
+
     /// <summary>可視ターミナルへコマンドを送って人間と同じ経路で実行する（インストール等、出力を見せたい操作用）。
     /// 端末が未接続なら false。<see cref="RunCommandAsync"/>（裏の非対話プロセス）とは別経路。</summary>
     public bool TryRunInVisibleTerminal(string command)

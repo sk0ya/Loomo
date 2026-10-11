@@ -110,19 +110,47 @@ public sealed record TaskRunResult(WorkspaceTask Root, IReadOnlyList<TaskRunStep
 /// ものでもあるので、見える場所で走らせて、同じ出力を機械も読む。</para>
 ///
 /// <para>1回に走らせるのは1つだけ（<see cref="IsRunning"/>）。可視ターミナルは1本で、続けて打ち込むと
-/// 前のタスクの標準入力に入ってしまう。</para>
+/// 前のタスクの標準入力に入ってしまう。同じ理由で、watch（<c>isBackground</c>）が可視ターミナルを占有している間
+/// （<see cref="ActiveWatch"/>）も次のタスクは打ち込まない。</para>
+///
+/// <para><b>watch の問題（§31.17.5）。</b>watch は終わらないので出力の全文は来ない。可視ターミナルの出力を論理行ごとに
+/// 購読し（<see cref="ITerminalService.StartWatchedInVisibleTerminal"/>）、matcher の区切り（begins〜ends）で1回の
+/// コンパイルが閉じるたびに、そのタスクの問題を差し替える（<see cref="BackgroundProblemCollector"/>）。watch が
+/// 終わったら（Ctrl+C）購読を外し、最後のサイクルの問題は残す。</para>
 /// </summary>
 public sealed class WorkspaceTaskRunner(ITerminalService terminal)
 {
     private int _running;
+    private Watch? _watch;
+
+    private sealed record Watch(WorkspaceTask Task, IDisposable Subscription);
 
     public bool IsRunning => Volatile.Read(ref _running) != 0;
 
+    /// <summary>可視ターミナルで走っていて、出力を追っている watch タスク（無ければ null）。</summary>
+    public WorkspaceTask? ActiveWatch => _watch?.Task;
+
+    /// <summary>watch の出力を追うのをやめる（コマンドは止めない）。ワークスペースの切替や、シェル統合が無くて
+    /// 終わりを検知できない端末で、次のタスクを打ち込めるようにするため。</summary>
+    public void StopWatching()
+    {
+        var watch = _watch;
+        _watch = null;
+        watch?.Subscription.Dispose();
+    }
+
     /// <param name="onStep">各タスクが終わるたびに呼ぶ（Problems をタスクごとに差し替えるため）。</param>
+    /// <param name="onWatchProblems">watch の1サイクルが閉じるたびに、そのタスクの問題で呼ぶ（UI スレッド）。</param>
+    /// <param name="onWatchFinished">watch が終わったとき（終了コード／不明なら null）に呼ぶ（UI スレッド）。</param>
     public async Task<TaskRunResult> RunAsync(
         WorkspaceTask task, IReadOnlyList<WorkspaceTask> all, string? activeFile,
-        Action<TaskRunStep>? onStep = null, CancellationToken ct = default)
+        Action<TaskRunStep>? onStep = null, CancellationToken ct = default,
+        Action<WorkspaceTask, IReadOnlyList<TaskProblem>>? onWatchProblems = null,
+        Action<WorkspaceTask, int?>? onWatchFinished = null)
     {
+        if (_watch is { } running)
+            return new TaskRunResult(task, [],
+                $"watch タスク「{running.Task.Label}」が可視ターミナルで実行中です。Ctrl+C で止めてから実行してください。");
         if (Interlocked.Exchange(ref _running, 1) != 0)
             return new TaskRunResult(task, [], "別のタスクを実行中です。終わってから実行してください。");
         try
@@ -149,8 +177,9 @@ public sealed class WorkspaceTaskRunner(ITerminalService terminal)
 
                 if (invocation.Task.IsBackground)
                 {
-                    if (!terminal.TryRunInVisibleTerminal(invocation.TerminalLine))
+                    if (StartWatch(invocation, onWatchProblems, onWatchFinished) is not { } subscription)
                         return new TaskRunResult(task, steps, "可視ターミナルが接続されていません。ターミナルを開いてから実行してください。");
+                    _watch = new Watch(invocation.Task, subscription);
                     var detached = new TaskRunStep(invocation, 0, true, [], Detached: true);
                     steps.Add(detached);
                     onStep?.Invoke(detached);
@@ -174,5 +203,26 @@ public sealed class WorkspaceTaskRunner(ITerminalService terminal)
         {
             Volatile.Write(ref _running, 0);
         }
+    }
+
+    private IDisposable? StartWatch(TaskInvocation invocation,
+        Action<WorkspaceTask, IReadOnlyList<TaskProblem>>? onProblems, Action<WorkspaceTask, int?>? onFinished)
+    {
+        var watched = invocation.Task;
+        var collector = watched.Matchers.Count == 0 ? null
+            : new BackgroundProblemCollector(watched.Matchers,
+                new ProblemMatchContext(watched.WorkspaceFolder, invocation.Cwd),
+                problems => onProblems?.Invoke(watched, problems));
+        IDisposable? subscription = null;
+        subscription = terminal.StartWatchedInVisibleTerminal(invocation.TerminalLine!,
+            line => collector?.OnLine(line),
+            exitCode =>
+            {
+                collector?.Complete();
+                if (_watch is { } current && ReferenceEquals(current.Subscription, subscription)) _watch = null;
+                subscription?.Dispose();
+                onFinished?.Invoke(watched, exitCode);
+            });
+        return subscription;
     }
 }

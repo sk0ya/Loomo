@@ -572,6 +572,131 @@ public class TaskRunnerTests
         Assert.Equal(0, terminal.Calls);
     }
 
+    // ===== watch（§31.17.5）：サイクルごとに問題を差し替える =====
+
+    /// <summary>実物の <c>tsc --watch --pretty</c>（TypeScript 5.6）を端末で走らせたときの出力（色を落としたもの）。
+    /// 2エラー → 1つ直して1エラー → 全部直して0エラーの3サイクル。</summary>
+    private static readonly string[] TscWatchOutput =
+    [
+        "[10:51:09] Starting compilation in watch mode...", "",
+        "src/a.ts:1:7 - error TS2322: Type 'string' is not assignable to type 'number'.", "",
+        "1 const a: number = \"x\";", "        ~", "",
+        "src/a.ts:2:7 - error TS2322: Type 'number' is not assignable to type 'string'.", "",
+        "2 const b: string = 1;", "        ~", "",
+        "[10:51:10] Found 2 errors. Watching for file changes.", "",
+        "[10:51:15] File change detected. Starting incremental compilation...", "",
+        "src/a.ts:2:7 - error TS2322: Type 'number' is not assignable to type 'string'.", "",
+        "2 const b: string = 1;", "        ~", "",
+        "[10:51:16] Found 1 error. Watching for file changes.", "",
+        "[10:51:19] File change detected. Starting incremental compilation...", "",
+        "[10:51:19] Found 0 errors. Watching for file changes.",
+    ];
+
+    [Fact]
+    public void Tsc_watch_problems_are_replaced_per_compilation_cycle()
+    {
+        var published = new List<IReadOnlyList<TaskProblem>>();
+        var collector = new BackgroundProblemCollector([BuiltInProblemMatchers.Find("$tsc-watch")!],
+            Context(cwd: @"C:\work\app\web"), published.Add);
+
+        foreach (var line in TscWatchOutput) collector.OnLine(line);
+
+        Assert.Equal([2, 1, 0], published.Select(p => p.Count));
+        var first = published[0][0];
+        Assert.Equal(@"C:\work\app\web\src\a.ts", first.FilePath);   // $tsc はタスクの作業フォルダー相対
+        Assert.Equal((1, 7, "TS2322"), (first.Line, first.Column, first.Code));
+        Assert.Equal("Type 'number' is not assignable to type 'string'.", published[1][0].Message);
+    }
+
+    [Fact]
+    public void Unfinished_cycle_is_not_published_when_the_watch_stops()
+    {
+        var published = new List<IReadOnlyList<TaskProblem>>();
+        var collector = new BackgroundProblemCollector([BuiltInProblemMatchers.Find("$tsc-watch")!],
+            Context(), published.Add);
+        foreach (var line in TscWatchOutput.Take(14)) collector.OnLine(line);   // 1サイクル目まで
+        collector.OnLine("[10:51:15] File change detected. Starting incremental compilation...");
+        collector.Complete();   // Ctrl+C：2サイクル目は途中
+
+        Assert.Single(published);   // 途中までの出力で問題を減らさない（前のサイクルの結果を残す）
+    }
+
+    [Fact]
+    public void Matcher_without_background_is_applied_once_when_the_watch_ends()
+    {
+        var published = new List<IReadOnlyList<TaskProblem>>();
+        var collector = new BackgroundProblemCollector([BuiltInProblemMatchers.Tsc], Context(), published.Add);
+        foreach (var line in TscWatchOutput) collector.OnLine(line);
+        Assert.Empty(published);
+
+        collector.Complete();
+        Assert.Equal(2, Assert.Single(published).Count);   // 同じ診断の再掲は1件にまとまる
+    }
+
+    [Fact]
+    public void Parses_inline_background_patterns_and_rejects_broken_ones()
+    {
+        var task = OnlyTask("""
+            { "tasks": [ { "label": "dev", "command": "vite", "isBackground": true,
+              "problemMatcher": { "owner": "vite", "pattern": { "regexp": "^(.*):(\\d+):(\\d+) (.*)$", "file": 1, "line": 2, "column": 3, "message": 4 },
+                "background": { "activeOnStart": true, "beginsPattern": "rebuilding", "endsPattern": { "regexp": "built in \\d+ms" } } } } ] }
+            """);
+        var background = Assert.Single(task.Matchers).Background;
+        Assert.NotNull(background);
+        Assert.True(background.ActiveOnStart);
+        Assert.Matches(background.EndsPattern!, "built in 120ms");
+
+        var broken = TasksJsonParser.Parse("""
+            { "tasks": [ { "label": "dev", "command": "vite", "isBackground": true,
+              "problemMatcher": { "base": "$tsc", "background": { "beginsPattern": "(" } } } ] }
+            """, Ws);
+        Assert.Empty(Assert.Single(broken.Tasks).Matchers);
+        Assert.Contains(broken.Warnings, w => w.Contains("beginsPattern"));
+    }
+
+    [Fact]
+    public async Task Runner_follows_a_watch_and_holds_the_terminal_until_it_ends()
+    {
+        var terminal = new ScriptedTerminal();
+        var runner = new WorkspaceTaskRunner(terminal);
+        var watch = T("watch") with { IsBackground = true, Matchers = [BuiltInProblemMatchers.Find("$tsc-watch")!] };
+        var build = T("build");
+        var problems = new List<IReadOnlyList<TaskProblem>>();
+        int? finished = -1;
+
+        var result = await runner.RunAsync(watch, [watch, build], null,
+            onWatchProblems: (_, p) => problems.Add(p), onWatchFinished: (_, code) => finished = code);
+        Assert.True(Assert.Single(result.Steps).Detached);
+        Assert.Same(watch, runner.ActiveWatch);
+
+        foreach (var line in TscWatchOutput.Take(14)) terminal.WatchLine!(line);
+        Assert.Equal(2, Assert.Single(problems).Count);
+
+        // watch が端末を握っている間は、次のタスクを打ち込まない（watch の標準入力に入ってしまう）。
+        var refused = await runner.RunAsync(build, [watch, build], null);
+        Assert.Contains("Ctrl+C", refused.Error);
+        Assert.Equal(0, terminal.Calls);
+
+        terminal.WatchFinished!(130);
+        Assert.Equal(130, finished);
+        Assert.True(terminal.WatchDisposed);
+        Assert.Null(runner.ActiveWatch);
+    }
+
+    [Fact]
+    public async Task Stop_watching_releases_the_terminal_without_stopping_the_command()
+    {
+        var terminal = new ScriptedTerminal();
+        var runner = new WorkspaceTaskRunner(terminal);
+        var watch = T("watch") with { IsBackground = true };
+        await runner.RunAsync(watch, [watch], null);
+
+        runner.StopWatching();
+
+        Assert.Null(runner.ActiveWatch);
+        Assert.True(terminal.WatchDisposed);
+    }
+
     [Fact]
     public async Task Runner_allows_one_run_at_a_time()
     {
@@ -688,6 +813,26 @@ public class TaskRunnerTests
 
         public void SetWorkingDirectory(string path) { }
         public bool TryRunInVisibleTerminal(string command) { Fired.Add(command); return true; }
+
+        // watch の購読（Terminal の SubscribeOutputLines の代役）。テストが行と終了を手で流す。
+        public Action<string>? WatchLine { get; private set; }
+        public Action<int?>? WatchFinished { get; private set; }
+        public bool WatchDisposed { get; private set; }
+
+        public IDisposable? StartWatchedInVisibleTerminal(string command, Action<string> lineReceived,
+            Action<int?> commandFinished)
+        {
+            Fired.Add(command);
+            WatchLine = lineReceived;
+            WatchFinished = commandFinished;
+            WatchDisposed = false;
+            return new Subscription(() => WatchDisposed = true);
+        }
+
+        private sealed class Subscription(Action dispose) : IDisposable
+        {
+            public void Dispose() => dispose();
+        }
 #pragma warning disable CS0067
         public event EventHandler<CommandResult>? CommandExecuted;
 #pragma warning restore CS0067

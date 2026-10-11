@@ -84,7 +84,10 @@ public partial class ShellWindow
         lines.Add(task.Matchers.Count > 0
             ? "問題への変換: " + string.Join("、", task.Matchers.Select(m => m.Owner))
             : "問題への変換: なし（problemMatcher 未指定）");
-        if (task.IsBackground) lines.Add("バックグラウンド（watch）：起動だけして終わりを待たず、問題へは変換しません。");
+        if (task.IsBackground)
+            lines.Add(task.Matchers.Any(m => m.Background is not null)
+                ? "バックグラウンド（watch）：コンパイルが1回終わるたびに問題を差し替えます。Ctrl+C で止めるまで他のタスクは打ち込みません。"
+                : "バックグラウンド（watch）：problemMatcher に background（beginsPattern / endsPattern）が無いので、問題へは止めたときに1回だけ変換します。");
         lines.Add("Enter で可視ターミナルで実行");
         return string.Join(Environment.NewLine, lines);
     }
@@ -101,6 +104,12 @@ public partial class ShellWindow
             ShowRefactorStatus("別のタスクを実行中です。終わってから実行してください。");
             return;
         }
+        if (TaskRunner.ActiveWatch is { } watch)
+        {
+            ShowRefactorStatus($"watch タスク「{watch.Label}」が可視ターミナルで実行中です。Ctrl+C で止めるか、"
+                + "パレットの「追跡をやめる」を選んでから実行してください。");
+            return;
+        }
         var workspaceId = _activeWorkspace?.Id;
         SetPaneVisible(PaneKind.Terminal, true);
         ShowRefactorStatus($"タスク「{task.Label}」を実行中…");
@@ -110,6 +119,23 @@ public partial class ShellWindow
             {
                 if (_activeWorkspace?.Id == workspaceId)
                     PublishTaskProblems(step);
+            },
+            onWatchProblems: (watched, problems) =>
+            {
+                if (_activeWorkspace?.Id != workspaceId) return;
+                PublishTaskProblems(watched, problems);
+                var errors = problems.Count(p => p.Severity == TaskProblemSeverity.Error);
+                var warnings = problems.Count(p => p.Severity == TaskProblemSeverity.Warning);
+                ShowRefactorStatus(problems.Count == 0
+                    ? $"watch「{watched.Label}」: 問題なし"
+                    : $"watch「{watched.Label}」: エラー {errors} / 警告 {warnings}（「問題」タブ）");
+            },
+            onWatchFinished: (watched, exitCode) =>
+            {
+                if (_activeWorkspace?.Id != workspaceId) return;
+                ShowRefactorStatus(exitCode is { } code
+                    ? $"watch タスク「{watched.Label}」が終わりました（終了コード {code}）"
+                    : $"watch タスク「{watched.Label}」の出力を追えなくなりました（ターミナルが閉じられました）");
             });
             ShowRefactorStatus(result.Summary());
         }
@@ -124,8 +150,22 @@ public partial class ShellWindow
     private void PublishTaskProblems(TaskRunStep step)
     {
         if (step.Detached || step.Task.Matchers.Count == 0) return;
-        var key = $"{step.Task.WorkspaceFolder}|{step.Task.Label}";
-        _vm.Debug.Problems.SetTaskProblems(key, step.Problems);
-        _vm.TsIde.Problems.SetTaskProblems(key, step.Problems);
+        PublishTaskProblems(step.Task, step.Problems);
+    }
+
+    private void PublishTaskProblems(WorkspaceTask task, IReadOnlyList<TaskProblem> problems)
+    {
+        var key = $"{task.WorkspaceFolder}|{task.Label}";
+        _vm.Debug.Problems.SetTaskProblems(key, problems);
+        _vm.TsIde.Problems.SetTaskProblems(key, problems);
+    }
+
+    /// <summary>watch の出力を追うのをやめる（コマンドは人間の端末で走り続ける）。シェル統合の無い端末では
+    /// 終わりを検知できないので、次のタスクを打ち込めるようにする出口。</summary>
+    private void StopWatchingTask()
+    {
+        if (_taskRunner?.ActiveWatch is not { } watch) return;
+        _taskRunner.StopWatching();
+        ShowRefactorStatus($"watch タスク「{watch.Label}」の追跡をやめました（ターミナルでは走り続けています）。");
     }
 }

@@ -34,6 +34,15 @@ public sealed record ProblemPattern(Regex Regex)
 }
 
 /// <summary>
+/// 終わらないタスク（watch）の1サイクルの区切り（tasks.json の <c>problemMatcher.background</c>）。
+/// <see cref="BeginsPattern"/> に当たる行で新しいサイクルが始まり、<see cref="EndsPattern"/> に当たる行で
+/// そのサイクルの問題が出そろう（設計書 §31.17.5）。
+/// </summary>
+/// <param name="ActiveOnStart">起動直後が既にサイクルの途中か（begins を待たずに集め始める）。VS Code の既定は false
+/// だが、tsc の「Starting compilation」のように最初のサイクルも begins で始まるものが大半なので、どちらでも動く。</param>
+public sealed record ProblemMatcherBackground(Regex? BeginsPattern, Regex? EndsPattern, bool ActiveOnStart = false);
+
+/// <summary>
 /// problem matcher 1つ（設計書 §31.17）。<see cref="Patterns"/> が2つ以上なら複数行パターンで、
 /// 連続する行に順に当たったときだけ1件になる（最後の行が <see cref="ProblemPattern.Loop"/> なら繰り返す）。
 /// </summary>
@@ -45,6 +54,8 @@ public sealed record ProblemMatcher(string Owner, IReadOnlyList<ProblemPattern> 
     public string FileLocationBase { get; init; } = "${workspaceFolder}";
     /// <summary>重要度を取れない（グループ無し・読めない語）ときの既定。</summary>
     public TaskProblemSeverity? DefaultSeverity { get; init; }
+    /// <summary>watch のサイクルの区切り。null なら区切りの無い matcher（watch に付けた場合はタスク終了時に1回だけ当てる）。</summary>
+    public ProblemMatcherBackground? Background { get; init; }
 }
 
 /// <summary>
@@ -111,12 +122,22 @@ public static class BuiltInProblemMatchers
     ])
     { FileLocation = ProblemFileLocation.AutoDetect };
 
+    /// <summary>tsc の watch（<c>tsc --watch</c>）。行の書式は <see cref="Tsc"/> と同じで、1回のコンパイルを
+    /// 「Starting compilation…／File change detected…」から「Found N errors. Watching for file changes.」までで区切る。
+    /// 行頭の時刻（<c>[10:21:03 AM]</c> や <c>10:21:03 - </c>）は書式が地域で変わるので見ない。</summary>
+    public static ProblemMatcher TscWatch { get; } = Tsc with
+    {
+        Background = new ProblemMatcherBackground(
+            new Regex(@"(?:Starting compilation in watch mode|File change detected\. Starting incremental compilation)\.\.\.", Options),
+            new Regex(@"(?:Compilation complete\.|Found \d+ errors?\b.*?) Watching for file changes\.", Options)),
+    };
+
     private static readonly Dictionary<string, ProblemMatcher> ByName = new(StringComparer.OrdinalIgnoreCase)
     {
         ["$msCompile"] = MsCompile,
         ["$tsc"] = Tsc,
-        // watch 版は終わらないタスク用（Loomo では問題へ変換しない）。名前だけ受け付けて同じ行書式で読む。
-        ["$tsc-watch"] = Tsc,
+        // watch 版は終わらないタスク用。行の書式は同じで、コンパイル1回ごとの区切りを持つ。
+        ["$tsc-watch"] = TscWatch,
         ["$eslint-stylish"] = EslintStylish,
         ["$eslint-compact"] = EslintCompact,
         ["$gcc"] = Gcc,

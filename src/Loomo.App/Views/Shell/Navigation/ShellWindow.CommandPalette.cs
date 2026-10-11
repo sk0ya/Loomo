@@ -290,6 +290,8 @@ public partial class ShellWindow {
         list.Add(new("タスク", "タスクを実行…", OpenWorkspaceTasks, Sc("tasks.run"), "tasks.run"));
         list.Add(new("タスク", "既定のビルドタスクを実行", RunDefaultBuildTask,
             Sc("tasks.runDefaultBuild"), "tasks.runDefaultBuild"));
+        if (_taskRunner?.ActiveWatch is { } watch)
+            list.Add(new("タスク", $"watch タスク「{watch.Label}」の追跡をやめる", StopWatchingTask));
         list.Add(new("ターミナル", "コマンドの出力をペグボードへ残す", OpenTerminalOutputsToPin,
             Sc("terminal.pinOutput"), "terminal.pinOutput"));
         list.Add(new("ターミナル", "ターミナルの選択をペグボードへ残す", PinActiveTerminalSelection,

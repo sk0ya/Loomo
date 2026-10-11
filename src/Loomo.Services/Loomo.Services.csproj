@@ -104,6 +104,8 @@
     <!-- 1.0.41: セッション生成の差し替え口（TerminalTabView.SessionFactory）、UI 無しの画面モデル
          （HeadlessTerminal）と、その状態を VT 列へ組み直すスナップショット（再生中の印は過去として扱う）。§34
          （1.0.40 は欠番：公開前に再生枠の偽装対策・代替画面中リサイズの印ずれ・復元印の時刻なし等を入れて番号を上げた） -->
+    <!-- 1.0.42: 出力を論理行ごとに購読する SubscribeOutputLines（RunCommandAsync を占有しない・折り返しは継ぐ・
+         購読後に始まったコマンドの終了を終了コード付きで通知）。watch タスクの問題の逐次更新（§31.17.5）に使う -->
     <!-- 版は Directory.Build.props の TerminalPackageVersion（常駐ホストと共有するため一か所） -->
     <PackageReference Include="sk0ya.Terminal.Controls" Version="$(TerminalPackageVersion)" />
   </ItemGroup>

@@ -644,8 +644,8 @@ Loomo 独自の書式は**作らない**。既存のリポジトリにはすで�
   （失敗が成功に見える）。人間が `cd` したのと同じ結果を受け入れる——どこにいるかは画面に出ている。
 - `dependsOn` は依存を先に1つずつ順に流し、失敗したら後続を止める。`dependsOrder: "parallel"` も順に流す
   （可視ターミナルは1本で、同時に打ち込むと前のタスクの標準入力に入る）。同じ理由で同時実行は1つだけ。
-- `isBackground`（watch）は打ち込むだけで終わりを待たず、問題へは変換しない（VS Code の背景 matcher の
-  begins/ends は未実装）。依存に使うと後続が打ち込めないので、実行前に断る。
+- `isBackground`（watch）は終わりを待たず、出力を行ごとに追って1回のコンパイルごとに問題を差し替える（§31.17.5）。
+  依存に使うと後続が打ち込めないので、実行前に断る。
 
 **可視ターミナルの折り返し（既知の制約と緩和）。** ターミナルが返す本文は画面の1行ごとで、画面幅で
 折り返された1行は2行に割れて届く（Terminal の `ShellCommandOutputEventArgs.Output` の仕様。画面幅も公開
@@ -679,6 +679,36 @@ matcher に当たる場合は継がない。行末がちょうど空白で割れ
   流し込みは `ShellWindow.Tasks.cs`。結果はエディタのステータスバーに1行（成否・エラー/警告件数）。
 - 検証：`TaskRunnerTests` 38 件（JSONC・各組み込み matcher のフィクスチャ出力・折り返しの継ぎ直し・パス解決・
   引用・変数・dependsOn・実行の直列化・Problems の差し替え・三点同期）。実機は未確認。
+
+### §31.17.5 watch タスクの問題——出力を行ごとに追い、コンパイル1回ごとに差し替える（2026-10-11）
+
+`isBackground` のタスク（`tsc --watch`・`vite`・`dotnet watch`）は終わらないので、OSC 133 の C〜D で全文を受け取る
+従来の経路では問題にできなかった（打ち込むだけだった）。VS Code の背景 matcher と同じく、**begins〜ends の1サイクル
+ごとに、そのタスクの問題を丸ごと差し替える**——watch の価値は「直したら次のコンパイルで消える」ことなので、行ごとに
+足していくと直した問題がいつまでも残る。
+
+- **出力の受け取り（Terminal 1.0.42 `TerminalTabView.SubscribeOutputLines`）。** 確定した行（カーソルが通り過ぎた行）を
+  1行ずつ受け取り、購読後に始まったコマンドの D（終了コード）を1度だけ受け取る。`RunCommandAsync` で送ると終わるまで
+  （既定 10 分）直列化の列を握り、型チェックやテストの実行がその後ろに並ぶので、watch は `SendTerminalInput` で
+  打ち込んで購読だけする（`ITerminalService.StartWatchedInVisibleTerminal`）。行は**論理行**（画面幅の折り返しを
+  Terminal 側で継いだもの）なので、§31.17.2 の「最長行＝画面幅」の推定は使わない。行は Terminal の行の印で追うので、
+  watch がスクロールバックの上限を超えて出力し続けても途切れない。D は ConPTY が本文より先に流すので、出力が落ち着く
+  （200ms）のを待ってから残りの行と一緒に渡る。
+- **区切り（`problemMatcher.background`）。** `beginsPattern` で集め直しを始め、`endsPattern` で出そろった分を当てて
+  差し替える（0件なら空＝きれい）。`activeOnStart` も読む。組み込み `$tsc-watch` は「Starting compilation in watch mode…
+  ／File change detected…」〜「Found N errors. Watching for file changes.」で区切る（行頭の時刻は地域で書式が変わるので
+  見ない）。実物の `tsc --watch --pretty`（5.6）の出力をそのままテストの入力にした。区切りの無い matcher を watch に
+  付けた場合は、止めたときに1回だけ当てる。止めた時点で**閉じていないサイクルは捨てる**——途中までの出力で問題を
+  減らすと、直っていないものまで消えて見えるため（前のサイクルの結果を残す）。
+- **端末の占有。** watch が可視ターミナルを握っている間は、次のタスクを打ち込まない（watch の標準入力に入ってしまう。
+  以前はそのまま打ち込んでいた）。終わり（Ctrl+C・タブを閉じた）を受け取ったら解放する。シェル統合が無く終わりを
+  検知できない端末のために、パレットに「watch タスク「…」の追跡をやめる」を出す（コマンドは止めない）。
+  ワークスペースを切り替えたら追跡をやめる（出力は前のワークスペースのもの）。
+- 部品：`BackgroundProblemCollector`（Core、純粋）・`ProblemMatcherBackground`・`WorkspaceTaskRunner.ActiveWatch` /
+  `StopWatching`。検証：`TaskRunnerTests` に 6 件（実物の tsc 出力で 2→1→0 件の差し替え・途中で止めたサイクルを捨てる・
+  区切り無し matcher・インライン background の読み取りと壊れた正規表現・端末の占有と解放・追跡の解除）、Terminal 側に
+  `TerminalOutputLineTapTests` 8 件と実 pwsh を ConPTY 越しに流す `TerminalOutputLineTapRealPwshTests`（折り返された
+  150 桁の行が1行で届く・終了コード 4 が D から渡る）。Loomo の画面からの実機確認は未実施。
 
 ## §31.18 場所のナビゲーション——戻る／進む・最後の編集箇所・最近のファイル／場所・ファイル構造（2026-10-10）
 
