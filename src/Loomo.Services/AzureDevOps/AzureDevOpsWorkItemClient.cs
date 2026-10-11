@@ -318,7 +318,7 @@ public sealed class AzureDevOpsWorkItemClient
             || title.Contains("サインイン", StringComparison.Ordinal);
 
         var cause = signIn
-            ? "PAT が受け付けられず、サインイン画面が返ってきました。PAT の期限切れ・別の組織の PAT・スコープ不足（Work Items の読み取り／Code の読み取り）のどれかです。"
+            ? "PAT が受け付けられず、サインイン画面が返ってきました。PAT の期限切れ・別の組織の PAT・PAT に付けた権限の不足（PAT 作成時の Scopes で Work Items と Code に Read が要る）のどれかです。"
             : redirected
                 ? "別の場所へ転送されました（転送先には PAT が送られません）。組織 URL を確かめてください。"
                 : "組織 URL かプロジェクトが API の場所を指していない可能性があります。";
