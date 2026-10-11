@@ -79,7 +79,8 @@ public sealed class LocalHistoryStore : IDisposable
         });
     }
 
-    /// <summary>中身を 1 版として残す。<paramref name="text"/> は呼び出し側が取った写し。</summary>
+    /// <summary>中身を 1 版として残す。<paramref name="text"/> は呼び出し側が取った写し。
+    /// 改行は LF に揃えて残す——ディスク（CRLF）とエディタの本文（LF で結合）で同じ中身が別の版に見えないように。</summary>
     public void RecordContent(string? path, string? text, LocalHistoryKind kind)
     {
         if (!ShouldTrack(path) || text is null) return;
@@ -155,6 +156,7 @@ public sealed class LocalHistoryStore : IDisposable
 
     private void Write(string fullPath, string text, LocalHistoryKind kind, DateTime atUtc)
     {
+        text = text.Replace("\r\n", "\n");
         try
         {
             var folder = FolderFor(fullPath);
@@ -164,7 +166,8 @@ public sealed class LocalHistoryStore : IDisposable
                 File.WriteAllText(pathFile, fullPath);
 
             var existing = ReadEntries(folder, fullPath);
-            if (existing.Count > 0 && Decompress(existing[0].StoragePath) == text)
+            if (existing.Count > 0 && TryDecompress(existing[0].StoragePath) is { } latest &&
+                latest.Replace("\r\n", "\n") == text)
                 return;   // 直前の版と同じ中身は積まない（保存を連打しても版が増えない）
 
             var name = UniqueName(folder, atUtc, kind);
@@ -176,8 +179,22 @@ public sealed class LocalHistoryStore : IDisposable
             }
             Prune(folder, fullPath);
         }
-        catch (IOException) { /* 履歴は補助。書けなくても編集・保存は止めない */ }
-        catch (UnauthorizedAccessException) { }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException)
+        {
+            /* 履歴は補助。書けなくても編集・保存は止めない */
+        }
+    }
+
+    /// <summary>版の中身。壊れた版（書き込み途中で落ちた gzip）は消して null——残すと最新の版として
+    /// 毎回の比較で例外になり、そのファイルの履歴が以後ずっと残らなくなる。</summary>
+    private static string? TryDecompress(string storagePath)
+    {
+        try { return Decompress(storagePath); }
+        catch (Exception ex) when (ex is InvalidDataException or EndOfStreamException)
+        {
+            try { File.Delete(storagePath); } catch (IOException) { }
+            return null;
+        }
     }
 
     private static string UniqueName(string folder, DateTime atUtc, LocalHistoryKind kind)

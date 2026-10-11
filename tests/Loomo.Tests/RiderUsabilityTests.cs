@@ -121,6 +121,30 @@ public class RiderUsabilityTests
     }
 
     [Fact]
+    public void Postfix_StatementTemplatesWhenTheNextLineIsAnotherStatement()
+    {
+        // `.foreach` を外しただけだと `items` が次行と繋がって「items 型の変数宣言」と読まれていた。
+        var items = Templates("class C\n{\n    void M(int[] items)\n    {\n        items.|\n        Console.WriteLine();\n    }\n}\n");
+        Assert.Contains(items, i => i.Label == "foreach");
+        Assert.Contains(items, i => i.Label == "if");
+    }
+
+    [Fact]
+    public void Live_CtrlSpaceOnBlankLineAboveAStatementOffersStatementTemplates()
+    {
+        var items = Templates("class C\n{\n    void M()\n    {\n        |\n        Console.WriteLine();\n    }\n}\n");
+        Assert.Contains(items, i => i.Label == "foreach");
+    }
+
+    [Fact]
+    public void Live_AfterAMethodBodyOffersMemberTemplates()
+    {
+        var items = Templates("class C\n{\n    void M()\n    {\n    }\n|\n}\n");
+        Assert.Contains(items, i => i.Label == "prop");
+        Assert.DoesNotContain(items, i => i.Label == "foreach");
+    }
+
+    [Fact]
     public void Postfix_DoesNotSwallowTheAssignmentTarget()
     {
         var items = Templates("class C { void M(int[] xs) { int n; n = xs.Length.|; } }");
@@ -231,6 +255,34 @@ public class RiderUsabilityTests
         var deleted = Assert.Single(store.GetDeletedFiles());
         Assert.Equal(Path.GetFullPath(gone), deleted.FilePath);
         Assert.DoesNotContain(store.GetRecent(), e => e.FilePath.Contains("MetadataAsSource"));
+    }
+
+    [Fact]
+    public void LocalHistory_TreatsCrlfAndLfAsTheSameContent()
+    {
+        var root = TempDir();
+        var file = Path.Combine(TempDir(), "crlf.cs");
+        File.WriteAllText(file, "a\r\nb\r\n");
+        var store = new LocalHistoryStore(root, synchronous: true);
+        store.RecordOpened(file);
+        store.RecordContent(file, "a\nb\n", LocalHistoryKind.Saved);   // エディタの本文は LF
+        Assert.Single(store.GetEntries(file));
+    }
+
+    [Fact]
+    public void LocalHistory_KeepsRecordingAfterACorruptNewestVersion()
+    {
+        var root = TempDir();
+        var file = Path.Combine(TempDir(), "corrupt.cs");
+        var now = new DateTime(2026, 10, 11, 0, 0, 0, DateTimeKind.Utc);
+        var store = new LocalHistoryStore(root, () => now, synchronous: true);
+        store.RecordContent(file, "v1", LocalHistoryKind.Saved);
+        File.WriteAllBytes(store.GetEntries(file)[0].StoragePath, [1, 2, 3]);   // 書き込み途中で落ちた gzip
+
+        now = now.AddMinutes(1);
+        store.RecordContent(file, "v2", LocalHistoryKind.Saved);
+
+        Assert.Equal("v2", store.ReadContent(Assert.Single(store.GetEntries(file))));
     }
 
     [Fact]

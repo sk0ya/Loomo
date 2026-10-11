@@ -38,6 +38,10 @@ msbuild.wrn
 *.snupkg
 **/packages/*
 !**/packages/build/
+# Windows の Git は大文字小文字を区別しないので、上の packages/ がソースの Packages/ フォルダーまで飲み込む
+# （src/Loomo.CSharp/Packages/ が未コミットのまま他 PC で CS0246 になった・§36。Debug/ と同じ罠）。
+!src/**/Packages/
+!src/**/Packages/*
 !packages/
 *.nuget.props
 *.nuget.targets

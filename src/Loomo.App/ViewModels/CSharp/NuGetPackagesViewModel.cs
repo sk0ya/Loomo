@@ -169,10 +169,14 @@ public sealed partial class NuGetPackagesViewModel : ObservableObject
                     Status = "更新を確認中…";
                     var rows = InstalledRows().ToList();
                     var updates = new List<NuGetPackageRow>();
-                    foreach (var row in rows)
+                    // 版の一覧はパッケージごとに並行して取る（1 件ずつ待つと数十件で数十秒になる）。
+                    var allVersions = await Task.WhenAll(rows.Select(row =>
+                        _service.GetVersionsAsync(_sources, row.Id, IncludePrerelease, cts.Token)));
+                    if (cts.IsCancellationRequested) return;
+                    for (var index = 0; index < rows.Count; index++)
                     {
-                        var versions = await _service.GetVersionsAsync(_sources, row.Id, IncludePrerelease, cts.Token);
-                        if (cts.IsCancellationRequested) return;
+                        var row = rows[index];
+                        var versions = allVersions[index];
                         if (versions.Count == 0) continue;
                         row.KnownVersions.AddRange(versions);
                         var latest = versions[^1];
@@ -234,8 +238,12 @@ public sealed partial class NuGetPackagesViewModel : ObservableObject
 
     // ── 選択中のパッケージ ──────────────────────────────────────────────────
 
+    /// <summary>選択が変わるたびに増やす。古い読み込みが後から終わって版の一覧を上書き・重複させないため。</summary>
+    private int _selectionGeneration;
+
     private async Task LoadSelectedAsync(NuGetPackageRow? row)
     {
+        var generation = ++_selectionGeneration;
         foreach (var project in Projects)
             project.InstalledVersion = row is null ? null
                 : InstallsOf(row.Id).Where(i => string.Equals(i.ProjectPath, project.Path, StringComparison.OrdinalIgnoreCase))
@@ -247,11 +255,17 @@ public sealed partial class NuGetPackagesViewModel : ObservableObject
 
         if (row.KnownVersions.Count == 0)
         {
-            try { row.KnownVersions.AddRange(await _service.GetVersionsAsync(_sources, row.Id, IncludePrerelease)); }
+            try
+            {
+                var fetched = await _service.GetVersionsAsync(_sources, row.Id, IncludePrerelease);
+                if (row.KnownVersions.Count == 0) row.KnownVersions.AddRange(fetched);
+            }
             catch (Exception ex) { Status = $"版の一覧を取得できません: {ex.Message}"; }
         }
-        if (!ReferenceEquals(SelectedPackage, row)) return;
-        foreach (var version in row.KnownVersions.Where(v => IncludePrerelease || !NuGetPackageService.IsPrerelease(v)).Reverse())
+        if (generation != _selectionGeneration || !ReferenceEquals(SelectedPackage, row)) return;
+        Versions.Clear();
+        foreach (var version in row.KnownVersions.Distinct(StringComparer.OrdinalIgnoreCase)
+                     .Where(v => IncludePrerelease || !NuGetPackageService.IsPrerelease(v)).Reverse())
             Versions.Add(version);
         SelectedVersion = Versions.FirstOrDefault();
     }
@@ -316,8 +330,8 @@ public sealed partial class NuGetPackagesViewModel : ObservableObject
             // プロジェクトの意味モデル（参照・Analyzer）を読み直す。言語サーバーは csproj の変更を自分で拾う。
             if (_solutionModel is not null) _ = _solutionModel.ReloadAsync();
         });
+        // 一覧を作り直すと選択も新しい行へ付け直され、その変更通知で版の一覧も読み直される。
         await RefreshListAsync();
-        if (SelectedPackage is { } row) await LoadSelectedAsync(row);
     }
 
     private async Task RunBusyAsync(string status, Func<Task> work)

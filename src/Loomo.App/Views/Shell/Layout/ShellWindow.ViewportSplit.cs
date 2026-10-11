@@ -220,6 +220,9 @@ public partial class ShellWindow {
             // Live Template／Postfix Template（§36）。LSP の結果に常に足す。構文解析は背景で。
             HostSupplementalCompletionProvider = (path, source, line, character, ct) =>
                 Task.Run(() => sk0ya.Loomo.CSharp.Editor.CSharpTemplateCompletion.Get(path, source, line, character), ct),
+            // .cs 以外では本文を写させない（補完要求は打鍵ごとに走る・§31.15）。
+            HostSupplementalCompletionAppliesTo = path =>
+                string.Equals(Path.GetExtension(path), ".cs", StringComparison.OrdinalIgnoreCase),
             HostSemanticTokensProvider = (path, source, ct) =>
                 sk0ya.Loomo.CSharp.Editor.CSharpSemanticTokenService.GetAsync(
                     _solutionModel?.Current, path, source, ct, FindOpenCSharpEditorTexts()),
@@ -407,12 +410,12 @@ public partial class ShellWindow {
     }
     /// <summary>ここで読み取り専用にしたエディタ。同じエディタへ普通のファイルを読み直したら戻す
     /// （差分ビュー等、別の理由で読み取り専用にしている相手には触らない）。</summary>
-    private readonly HashSet<VimEditorControl> _metadataReadOnlyEditors = new();
+    private readonly ConditionalWeakTable<VimEditorControl, object> _metadataReadOnlyEditors = new();
     /// <summary>ライブラリの定義（逆コンパイル結果）は読み取り専用で開く（§36）。</summary>
     private void ApplyMetadataSourceReadOnly(VimEditorControl control) {
         if (MetadataSourceFiles.IsMetadataAsSource(control.FilePath)) {
             control.IsReadOnly = true;
-            _metadataReadOnlyEditors.Add(control);
+            _metadataReadOnlyEditors.AddOrUpdate(control, control);
             control.ShowStatusMessage(MetadataSourceFiles.Describe(control.FilePath!));
         }
         else if (_metadataReadOnlyEditors.Remove(control)) {

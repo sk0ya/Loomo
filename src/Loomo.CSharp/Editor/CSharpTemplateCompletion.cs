@@ -131,18 +131,12 @@ public static class CSharpTemplateCompletion
         var startsHere = token.SpanStart == wordStart && token.Span.Length > 0;
         if (!startsHere)
         {
+            // 空白の上では FindToken が「その空白を前置トリビアに持つ<b>次の</b>トークン」を返すことがある。
+            // 欲しいのは手前の実トークンなので、キャレットより後ろから始まるなら 1 つ戻る。
             var previous = root.FindToken(Math.Max(0, wordStart - 1));
-            if (previous.IsKind(SyntaxKind.OpenBraceToken) || previous.IsKind(SyntaxKind.CloseBraceToken) ||
-                previous.IsKind(SyntaxKind.SemicolonToken))
-                return previous.Parent switch
-                {
-                    BlockSyntax => Place.Statement,
-                    BaseTypeDeclarationSyntax => Place.Member,
-                    _ when previous.Parent?.AncestorsAndSelf().Any(a => a is BlockSyntax) == true => Place.Statement,
-                    _ when previous.Parent?.AncestorsAndSelf().Any(a => a is BaseTypeDeclarationSyntax) == true => Place.Member,
-                    _ => Place.Type,
-                };
-            return null;
+            if (previous.SpanStart >= wordStart)
+                previous = previous.GetPreviousToken();
+            return PlaceAfter(previous);
         }
 
         var node = token.Parent;
@@ -158,6 +152,43 @@ public static class CSharpTemplateCompletion
         return null;
     }
 
+    /// <summary>トークン <paramref name="previous"/> の直後から書き始めるものが、文・メンバー・型のどれか。</summary>
+    private static Place? PlaceAfter(SyntaxToken previous)
+    {
+        if (previous.IsKind(SyntaxKind.None))
+            return Place.Type;   // 文書の先頭
+        if (previous.IsKind(SyntaxKind.OpenBraceToken))
+            return previous.Parent switch
+            {
+                BlockSyntax or SwitchStatementSyntax => Place.Statement,
+                BaseTypeDeclarationSyntax => Place.Member,
+                _ => Place.Type,   // namespace { の直後
+            };
+        if (previous.IsKind(SyntaxKind.CloseBraceToken) || previous.IsKind(SyntaxKind.SemicolonToken))
+        {
+            // 閉じた構文が何の中に置かれていたかで決める：メソッド本体の `}` の後はメンバーの頭、
+            // if 文のブロックの `}` の後は文の頭。
+            var closed = previous.Parent is BlockSyntax block && block.Parent is not (StatementSyntax or null) &&
+                         block.Parent is not SwitchSectionSyntax
+                ? block.Parent!
+                : previous.Parent;
+            for (var node = closed; node is not null; node = node.Parent)
+            {
+                switch (node)
+                {
+                    case StatementSyntax when node.Parent is BlockSyntax or SwitchSectionSyntax or GlobalStatementSyntax:
+                        return Place.Statement;
+                    case MemberDeclarationSyntax member:
+                        return member.Parent is TypeDeclarationSyntax ? Place.Member : Place.Type;
+                    case UsingDirectiveSyntax:
+                        return Place.Type;
+                }
+            }
+            return Place.Type;
+        }
+        return null;
+    }
+
     // ── Postfix ─────────────────────────────────────────────────────────────
 
     private static IReadOnlyList<LspCompletionItem> PostfixItems(
@@ -165,10 +196,36 @@ public static class CSharpTemplateCompletion
     {
         // `.foreach` を外した本文で式を読む。外さないと `items.foreach` が「items のメンバー foreach」として
         // 壊れた構文木になり、式の切れ目を構文で決められない。
+        // 文として読めるかは、式の後ろへ `;` を置いて読み直して決める。置かないと `items` だけの行が
+        // 次の行と繋がって「items 型の変数宣言」と読まれ、`.foreach` `.if` が出なくなる。
+        // `;` を置くと壊れる位置（引数の中など）では、置かない読みで式の範囲だけを決める。
+        var asStatement = ExpressionBefore(source[..dotOffset] + ";" + source[offset..], dotOffset);
+        // `Use(ok;)` のように `;` で壊れた位置でも、構文エラーの回復で式文ができてしまう。診断の無い式文だけを文とみなす。
+        var isStatement = asStatement is { } s && s.Parent is ExpressionStatementSyntax statement &&
+                          statement.Expression == s && !statement.ContainsDiagnostics;
         var stripped = source[..dotOffset] + source[offset..];
-        var root = CSharpSyntaxTree.ParseText(stripped).GetRoot();
+        var expression = isStatement ? asStatement : ExpressionBefore(stripped, dotOffset);
+        if (expression is null) return [];
+
+        var text = source[expression.SpanStart..dotOffset];
+        var range = RangeOf(source, expression.SpanStart, offset);
+
+        var items = new List<LspCompletionItem>();
+        foreach (var postfix in PostfixTemplates)
+        {
+            if (postfix.StatementOnly && !isStatement) continue;
+            var body = postfix.Body(text, expression);
+            items.Add(Item(postfix.Name, postfix.Description, Indent(body, indent, unit), range, "Postfix Template"));
+        }
+        return items;
+    }
+
+    /// <summary><paramref name="text"/> の中で、<paramref name="dotOffset"/> の直前で終わる最も外側の式。</summary>
+    private static ExpressionSyntax? ExpressionBefore(string text, int dotOffset)
+    {
+        var root = CSharpSyntaxTree.ParseText(text).GetRoot();
         var token = root.FindToken(Math.Max(0, dotOffset - 1));
-        if (token.Span.End != dotOffset) return [];
+        if (token.Span.End != dotOffset) return null;
 
         // 末尾のトークンから上へ、ドットの直前で終わるノードを辿り、その中で最も外側の式を採る。
         // `Compute()` の `)` の親は引数リスト（式ではない）なので、式でないノードも通り抜ける。
@@ -180,21 +237,7 @@ public static class CSharpTemplateCompletion
             if (node is ExpressionSyntax candidate)
                 expression = candidate;
         }
-        if (expression is null || expression.SpanStart >= dotOffset) return [];
-
-        var text = stripped[expression.SpanStart..dotOffset];
-        var isStatement = expression.Parent is ExpressionStatementSyntax statement &&
-                          statement.Expression == expression;
-        var range = RangeOf(source, expression.SpanStart, offset);
-
-        var items = new List<LspCompletionItem>();
-        foreach (var postfix in PostfixTemplates)
-        {
-            if (postfix.StatementOnly && !isStatement) continue;
-            var body = postfix.Body(text, expression);
-            items.Add(Item(postfix.Name, postfix.Description, Indent(body, indent, unit), range, "Postfix Template"));
-        }
-        return items;
+        return expression is null || expression.SpanStart >= dotOffset ? null : expression;
     }
 
     private static bool NeedsParentheses(ExpressionSyntax expression)

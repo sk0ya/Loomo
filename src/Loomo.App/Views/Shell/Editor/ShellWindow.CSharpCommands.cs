@@ -53,22 +53,12 @@ public partial class ShellWindow
                 RunCSharpOperation(id, () => RunCSharpChangeSignatureCommandAsync(control));
                 break;
             case CSharpEditorCommandCatalog.GoToDefinition:
-                _ = control.GoToDefinitionAsync();
-                break;
             case CSharpEditorCommandCatalog.PeekDefinition:
-                _ = control.PeekDefinitionAsync();
-                break;
             case CSharpEditorCommandCatalog.GoToImplementation:
-                _ = control.GoToImplementationAsync();
-                break;
             case CSharpEditorCommandCatalog.GoToTypeDefinition:
-                _ = control.GoToTypeDefinitionAsync();
-                break;
             case CSharpEditorCommandCatalog.GoToDeclaration:
-                _ = control.GoToDeclarationAsync();
-                break;
             case CSharpEditorCommandCatalog.FindReferences:
-                _ = control.FindReferencesAsync();
+                RunLanguageNeutralEditorCommand(id, control);
                 break;
             case CSharpEditorCommandCatalog.OrganizeUsings:
                 RunCSharpOperation(id, () => RunCSharpOrganizeUsingsAsync(control));
@@ -130,7 +120,7 @@ public partial class ShellWindow
         }
     }
 
-    /// <summary>C# 以外のエディタでの、言語サーバー汎用の操作。</summary>
+    /// <summary>言語サーバー汎用の操作（定義・参照・名前変更・整形・Quick Fix）。C# でもそれ以外でも同じ入口。</summary>
     private static void RunLanguageNeutralEditorCommand(string id, VimEditorControl control)
     {
         if (CSharpEditorCommandDispatchPolicy.NativeEditorCommandFor(id) is { } nativeCommand)
