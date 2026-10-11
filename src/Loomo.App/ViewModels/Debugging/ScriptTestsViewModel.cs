@@ -68,7 +68,7 @@ public sealed partial class ScriptTestsViewModel : ObservableObject, ITestExplor
     /// <summary>共有テストビューのデバッグ列は、スクリプト系の testhost 経路が未実装のため隠す。</summary>
     public bool IsTestDebugSupported => false;
 
-    /// <summary>共有テストビューの dotnet 専用の操作（失敗の再実行・公式検出・カバレッジ）を隠す。</summary>
+    /// <summary>共有テストビューの dotnet 専用の操作（公式検出・カバレッジ）を隠す。失敗の再実行はこちらにもある。</summary>
     public bool IsDotnetToolsVisible => false;
 
     private readonly IWorkspaceService _workspace;
@@ -84,6 +84,8 @@ public sealed partial class ScriptTestsViewModel : ObservableObject, ITestExplor
 
     [ObservableProperty] private string _testSummary = "";
     [ObservableProperty] private bool _hasTestResults;
+    /// <summary>直近の一覧にある失敗テスト数。失敗再実行コマンドの有効状態にも使う。</summary>
+    [ObservableProperty] private int _failedCount;
     [ObservableProperty] private bool _isDiscoveringTests;
 
     public string TestEmptyHint => IsDiscoveringTests ? "テストを収集しています…" : _profile.EmptyHint;
@@ -127,6 +129,7 @@ public sealed partial class ScriptTestsViewModel : ObservableObject, ITestExplor
         _session.SessionStateChanged += () =>
         {
             TestCommand.NotifyCanExecuteChanged();
+            RerunFailedCommand.NotifyCanExecuteChanged();
             RunSingleTestCommand.NotifyCanExecuteChanged();
             RunGroupCommand.NotifyCanExecuteChanged();
             DebugSingleTestCommand.NotifyCanExecuteChanged();
@@ -332,7 +335,7 @@ public sealed partial class ScriptTestsViewModel : ObservableObject, ITestExplor
 
             var hadResults = false;
             foreach (var (dir, runner) in projects)
-                hadResults |= await RunProjectAsync(dir, runner, fileScope: null, selector: null,
+                hadResults |= await RunProjectAsync(dir, runner, [],
                     $"テスト（{runner.Id}）: {Path.GetFileName(dir)}");
             _session.StatusMessage = CountStatus(hadResults, Tests);
         }
@@ -345,6 +348,70 @@ public sealed partial class ScriptTestsViewModel : ObservableObject, ITestExplor
             TestsChanged?.Invoke();
             _session.IsTaskRunning = false;
         }
+    }
+
+    /// <summary>失敗したテストだけを再実行する。プロジェクトごとに 1 回、失敗したテストを並べて走らせる
+    /// （pytest＝ノード ID の列、vitest / jest＝ファイルの列＋<c>-t</c> の選択。§28.14）。</summary>
+    [RelayCommand(CanExecute = nameof(CanRerunFailed))]
+    private async Task RerunFailed()
+    {
+        var failed = Tests.Where(t => t.Status == TestStatus.Failed).ToList();
+        if (failed.Count == 0) return;
+        _session.RequestOutput();
+        _session.IsTaskRunning = true;
+        try
+        {
+            _session.StatusMessage = "失敗テストを再実行中…";
+            foreach (var t in failed) t.SetRunning();
+            UpdateAggregates();
+            TestsChanged?.Invoke();   // 実行中グリフ（…）をガターへすぐ出す
+
+            var hadResults = false;
+            var plans = PlanRerun(failed, _workspace.Folders.ToArray(), _profile.Runners, out var missing);
+            foreach (var plan in plans)
+                hadResults |= await RunProjectAsync(plan.ProjectDir, plan.Runner, plan.Targets,
+                    $"失敗テストの再実行（{plan.Runner.Id}）: {Path.GetFileName(plan.ProjectDir)}");
+            if (missing.Count > 0)
+                _session.Append(DebugOutputCategory.Important, $"{_profile.MissingRunnerMessage}: {missing[0]}"
+                    + (missing.Count > 1 ? $" ほか {missing.Count - 1} ファイル" : ""));
+            _session.StatusMessage = CountStatus(hadResults, failed);
+        }
+        finally
+        {
+            foreach (var t in failed) if (t.Status == TestStatus.Running) t.ResetStatus();
+            SyncTree();
+            RecomputeSummary();
+            TestsChanged?.Invoke();
+            _session.IsTaskRunning = false;
+        }
+    }
+
+    /// <summary>失敗の再実行の段取り（純関数。単体テストから直接呼ぶ）：テストをプロジェクトごとに束ね、
+    /// プロジェクト相対のファイル＋1 件指定の列にする。ランナーを特定できないファイルは <paramref name="missing"/> へ。</summary>
+    internal static IReadOnlyList<(string ProjectDir, ITestRunner Runner, IReadOnlyList<TestTarget> Targets)> PlanRerun(
+        IEnumerable<TestItemViewModel> tests, IReadOnlyList<string> folders, IReadOnlyList<ITestRunner> runners,
+        out List<string> missing)
+    {
+        missing = new List<string>();
+        var plans = new List<(string ProjectDir, ITestRunner Runner, IReadOnlyList<TestTarget> Targets)>();
+        var byDir = new Dictionary<string, List<TestTarget>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var t in tests)
+        {
+            if (TestProjectLocator.Find(t.ClassName, folders, runners) is not { } project)
+            {
+                if (!missing.Contains(t.ClassName, StringComparer.OrdinalIgnoreCase)) missing.Add(t.ClassName);
+                continue;
+            }
+            if (!byDir.TryGetValue(project.ProjectDir, out var targets))
+            {
+                byDir[project.ProjectDir] = targets = new List<TestTarget>();
+                plans.Add((project.ProjectDir, project.Runner, targets));
+            }
+            var target = new TestTarget(Path.GetRelativePath(project.ProjectDir, t.ClassName),
+                string.IsNullOrEmpty(t.FilterExpression) ? null : t.FilterExpression);
+            if (!targets.Contains(target)) targets.Add(target);
+        }
+        return plans;
     }
 
     /// <summary>1 件のテストだけ実行する（ファイル限定＋1 件指定。JS の <c>-t</c> は同名タイトルが同ファイルに
@@ -413,7 +480,7 @@ public sealed partial class ScriptTestsViewModel : ObservableObject, ITestExplor
             UpdateAggregates();
             TestsChanged?.Invoke();   // 実行中グリフ（…）をガターへすぐ出す
             var rel = Path.GetRelativePath(project.ProjectDir, filePath);
-            var had = await RunProjectAsync(project.ProjectDir, project.Runner, rel, selector, label);
+            var had = await RunProjectAsync(project.ProjectDir, project.Runner, [new TestTarget(rel, selector)], label);
             _session.StatusMessage = finalStatus(had);
         }
         finally
@@ -428,12 +495,12 @@ public sealed partial class ScriptTestsViewModel : ObservableObject, ITestExplor
     }
 
     /// <summary>1 プロジェクト分の実行（コマンド組み立て → 可視ターミナル → レポート反映）。結果が得られたら true。</summary>
-    private async Task<bool> RunProjectAsync(string projectDir, ITestRunner runner, string? fileScope,
-        string? selector, string label)
+    private async Task<bool> RunProjectAsync(string projectDir, ITestRunner runner, IReadOnlyList<TestTarget> targets,
+        string label)
     {
         var tools = new TestToolLocator(_workspace.Folders.ToArray());
-        var report = await ScriptTestRunner.RunAsync(_terminal, _session, runner, projectDir, fileScope, selector,
-            tools, label);
+        var report = await ScriptTestRunner.RunAsync(_terminal, _session, runner, projectDir, targets, tools,
+            label);
         if (report is null) return false;
         try { return ScriptTestRunner.ApplyResults(runner, report, projectDir, _session, Tests, CreateItem); }
         finally { ScriptTestRunner.DeleteResults(report); }   // 実行ごとに一意名なので、読んだら消す
@@ -448,9 +515,13 @@ public sealed partial class ScriptTestsViewModel : ObservableObject, ITestExplor
 
     private bool CanRunTask() => !_session.IsBusy && !_session.IsTaskRunning;
 
+    private bool CanRerunFailed() => CanRunTask() && FailedCount > 0;
+
     private void RecomputeSummary()
     {
         HasTestResults = Tests.Count > 0;
+        FailedCount = Tests.Count(t => t.Status == TestStatus.Failed);
+        RerunFailedCommand.NotifyCanExecuteChanged();
         if (!HasTestResults) { TestSummary = ""; return; }
 
         var passed = Tests.Count(t => t.Status == TestStatus.Passed);

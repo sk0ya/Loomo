@@ -55,11 +55,11 @@ public sealed class PytestRunner : ITestRunner
             : tools.ResolveOnPath("py") is { } py ? $"& {Q(py)} -m pytest"
             : "python -m pytest";
         var args = $"--junitxml={Q(request.ResultFile)} -o junit_family=xunit1 --rootdir={Q(request.ProjectDir)}";
-        if (request.FileScope is { } file)
+        foreach (var target in request.EffectiveTargets)
         {
             // ノード ID（rootdir 相対・/ 区切り）。パラメータ化の 1 件は引数を落とした名前で全ケースを走らせる。
-            var nodeId = file.Replace('\\', '/');
-            if (request.TestSelector is { Length: > 0 } selector) nodeId += "::" + selector;
+            var nodeId = target.File.Replace('\\', '/');
+            if (target.Selector is { Length: > 0 } selector) nodeId += "::" + selector;
             args += $" {Q(nodeId)}";
         }
         return $"Set-Location {Q(request.ProjectDir)}; {exe} {args}";

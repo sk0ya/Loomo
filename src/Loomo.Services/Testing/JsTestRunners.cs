@@ -76,6 +76,18 @@ public static class JsTestRunnerDetection
         }
         return sb.ToString();
     }
+
+    /// <summary>実行対象を vitest / jest の引数の形へ分ける：ファイル（/ 区切り・重複なし）と <c>-t</c> の名前パターン。
+    /// <c>-t</c> はファイルを問わず全体に効くので、ファイル全体を走らせる対象が 1 つでもあれば付けない（そのファイルの
+    /// テストが削られないように）。複数の名前は選択（<c>(a|b)</c>）でまとめる——別ファイルの同名テストも走るが、
+    /// 走りすぎは結果を突き合わせるだけで害が無く、走らなさすぎ（失敗のまま残って見える）よりよい。</summary>
+    public static (IReadOnlyList<string> Files, string? NamePattern) SplitTargets(IReadOnlyList<TestTarget> targets)
+    {
+        var files = targets.Select(t => t.File.Replace('\\', '/')).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        if (targets.Count == 0 || targets.Any(t => t.Selector is null)) return (files, null);
+        var names = targets.Select(t => EscapeNamePattern(t.Selector!)).Distinct(StringComparer.Ordinal).ToList();
+        return (files, names.Count == 1 ? names[0] : "(" + string.Join('|', names) + ")");
+    }
 }
 
 /// <summary>vitest / jest の共通部：node_modules/.bin を優先し、無ければ <c>npx --no-install</c>。</summary>
@@ -112,8 +124,9 @@ public sealed class VitestRunner : JsTestRunnerBase
     protected override string BuildArguments(TestRunRequest request)
     {
         var args = $"run --reporter=json --outputFile={Q(request.ResultFile)}";
-        if (request.FileScope is { } file) args += $" {Q(file.Replace('\\', '/'))}";
-        if (request.TestSelector is { } name) args += $" -t {Q(JsTestRunnerDetection.EscapeNamePattern(name))}";
+        var (files, names) = JsTestRunnerDetection.SplitTargets(request.EffectiveTargets);
+        foreach (var file in files) args += $" {Q(file)}";
+        if (names is not null) args += $" -t {Q(names)}";
         return args;
     }
 }
@@ -127,8 +140,9 @@ public sealed class JestRunner : JsTestRunnerBase
     protected override string BuildArguments(TestRunRequest request)
     {
         var args = $"--json --outputFile={Q(request.ResultFile)}";
-        if (request.FileScope is { } file) args += $" --runTestsByPath {Q(file.Replace('\\', '/'))}";
-        if (request.TestSelector is { } name) args += $" -t {Q(JsTestRunnerDetection.EscapeNamePattern(name))}";
+        var (files, names) = JsTestRunnerDetection.SplitTargets(request.EffectiveTargets);
+        if (files.Count > 0) args += " --runTestsByPath " + string.Join(' ', files.Select(Q));
+        if (names is not null) args += $" -t {Q(names)}";
         return args;
     }
 }

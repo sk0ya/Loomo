@@ -321,4 +321,131 @@ public class ScriptTestRunnerApplyTests
         Assert.Equal(TestStatus.Passed, added.Status);
         Assert.Equal(20, added.DeclarationLine);
     }
+
+    [Fact]
+    public void Skips_reported_for_tests_outside_the_request_keep_their_previous_status()
+    {
+        // vitest / jest は -t で外れた同じファイルのテストを skipped で報告する。成功済みの行をスキップに化けさせない。
+        var file = Path.GetFullPath(@"C:\app\a.test.ts");
+        var passed = Item(file, "subs");
+        passed.Update(TestStatus.Passed, null, null, 0, null);
+        var target = Item(file, "adds");
+        target.SetRunning();
+        var reallySkipped = Item(file, "later");
+        reallySkipped.SetRunning();
+        var tests = new ObservableCollection<TestItemViewModel> { passed, target, reallySkipped };
+
+        ScriptTestRunner.Apply(
+        [
+            new ScriptTestResult(file, "subs", ScriptTestOutcome.Skipped, null),
+            new ScriptTestResult(file, "adds", ScriptTestOutcome.Passed, null),
+            new ScriptTestResult(file, "later", ScriptTestOutcome.Skipped, null),
+            new ScriptTestResult(file, "new", ScriptTestOutcome.Skipped, null),
+        ], tests, Item);
+
+        Assert.Equal(TestStatus.Passed, passed.Status);
+        Assert.Equal(TestStatus.Passed, target.Status);
+        Assert.Equal(TestStatus.Skipped, reallySkipped.Status);   // 依頼した行のスキップはそのまま当てる
+        Assert.Equal(TestStatus.Skipped, Assert.Single(tests, t => t.MethodName == "new").Status);
+    }
+}
+
+/// <summary>失敗だけの再実行（§28.14）：複数の対象を 1 回のコマンドへ並べる組み立てと、プロジェクトごとの段取り。</summary>
+public sealed class ScriptTestRerunFailedTests : IDisposable
+{
+    private static readonly TestToolLocator NoTools = new([], fileExists: _ => false, resolveOnPath: _ => null);
+    private readonly string _root = Directory.CreateTempSubdirectory("loomo-rerun-").FullName;
+
+    public void Dispose()
+    {
+        try { Directory.Delete(_root, recursive: true); } catch { }
+    }
+
+    private string Write(string relative, string content = "")
+    {
+        var path = Path.Combine(_root, relative);
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllText(path, content);
+        return path;
+    }
+
+    private static TestItemViewModel Item(string file, string title, string selector)
+        => new(ScriptTestRunner.MakeFqn(file, title), file, title, title, selector);
+
+    [Fact]
+    public void Pytest_passes_every_target_as_a_node_id()
+    {
+        var cmd = new PytestRunner().BuildCommand(new TestRunRequest(@"C:\proj", @"C:\r.xml", Targets:
+        [
+            new TestTarget(@"tests\test_a.py", "test_x"),
+            new TestTarget(@"tests\test_b.py", "TestB::test_y"),
+        ]), NoTools);
+
+        Assert.EndsWith("'tests/test_a.py::test_x' 'tests/test_b.py::TestB::test_y'", cmd);
+    }
+
+    [Fact]
+    public void Vitest_lists_files_and_joins_names_into_one_escaped_pattern()
+    {
+        var cmd = new VitestRunner().BuildCommand(new TestRunRequest(@"C:\app", @"C:\r.json", Targets:
+        [
+            new TestTarget(@"src\a.test.ts", "adds (x)"),
+            new TestTarget(@"src\a.test.ts", "subs"),
+            new TestTarget(@"src\b.test.ts", "adds (x)"),
+        ]), NoTools);
+
+        Assert.Contains("'src/a.test.ts' 'src/b.test.ts' -t", cmd);   // ファイルは重複なし
+        Assert.EndsWith(@"-t '(adds \(x\)|subs)'", cmd);              // 名前も重複なし・各名前はエスケープ済み
+    }
+
+    [Fact]
+    public void Jest_passes_all_files_by_path_and_drops_names_when_a_whole_file_is_requested()
+    {
+        var cmd = new JestRunner().BuildCommand(new TestRunRequest(@"C:\app", @"C:\r.json", Targets:
+        [
+            new TestTarget(@"src\a.test.ts", "adds"),
+            new TestTarget(@"src\b.test.ts"),
+        ]), NoTools);
+
+        Assert.Contains("--runTestsByPath 'src/a.test.ts' 'src/b.test.ts'", cmd);
+        Assert.DoesNotContain(" -t ", cmd);   // b を丸ごと走らせるので、-t で削らない
+    }
+
+    [Fact]
+    public void Single_scope_arguments_still_build_the_same_command()
+    {
+        var single = new TestRunRequest(@"C:\app", @"C:\r.json", @"src\a.test.ts", "adds");
+        var viaTargets = new TestRunRequest(@"C:\app", @"C:\r.json", Targets: [new TestTarget(@"src\a.test.ts", "adds")]);
+        Assert.Equal(new VitestRunner().BuildCommand(single, NoTools), new VitestRunner().BuildCommand(viaTargets, NoTools));
+        Assert.Empty(new TestRunRequest(@"C:\app", @"C:\r.json").EffectiveTargets);   // 全体
+    }
+
+    [Fact]
+    public void Plan_groups_failed_tests_by_project_with_project_relative_targets()
+    {
+        Write(@"py\pytest.ini");
+        Write(@"web\package.json", """{ "devDependencies": { "vitest": "2" } }""");
+        var pyTest = Write(@"py\tests\test_a.py");
+        var webTest = Write(@"web\src\a.test.ts");
+        var stray = Write(@"loose\test_c.py");
+        var runners = new ITestRunner[] { new VitestRunner(), new JestRunner(), new PytestRunner() };
+
+        var plans = ScriptTestsViewModel.PlanRerun(
+            [
+                Item(pyTest, "test_x", "test_x"),
+                Item(webTest, "suite > adds", "adds"),
+                Item(pyTest, "TestA::test_y", "TestA::test_y"),
+                Item(stray, "test_z", "test_z"),
+            ],
+            [_root], runners, out var missing);
+
+        Assert.Equal(2, plans.Count);
+        var py = plans.Single(p => p.Runner is PytestRunner);
+        Assert.Equal(Path.Combine(_root, "py"), py.ProjectDir);
+        Assert.Equal([new TestTarget(@"tests\test_a.py", "test_x"), new TestTarget(@"tests\test_a.py", "TestA::test_y")],
+            py.Targets);
+        var web = plans.Single(p => p.Runner is VitestRunner);
+        Assert.Equal([new TestTarget(@"src\a.test.ts", "adds")], web.Targets);
+        Assert.Equal([stray], missing);   // ランナーを特定できないファイルは理由を出すために返す
+    }
 }

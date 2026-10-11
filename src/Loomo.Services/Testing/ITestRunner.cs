@@ -33,11 +33,21 @@ public sealed record ScriptTestResult(
 /// <summary>ソース走査で見つけたテスト 1 件（ビルド・ランナー起動を伴わない）。<see cref="Line1"/> は 1 始まりの宣言行。</summary>
 public sealed record ScriptDiscoveredTest(string FilePath, string Title, int Line1, bool IsParameterized);
 
+/// <summary>実行対象 1 つ。<see cref="File"/> はプロジェクト相対のファイル、<see cref="Selector"/> はそのファイル内の
+/// 1 件の指定（JS＝葉タイトル、pytest＝ノード ID 後半。null＝ファイル全体）。</summary>
+public sealed record TestTarget(string File, string? Selector = null);
+
 /// <summary>1 回の実行の依頼。<see cref="FileScope"/> はプロジェクト相対のファイル（null＝プロジェクト全体）、
 /// <see cref="TestSelector"/> はそのファイル内の 1 件の指定（JS＝葉タイトル、pytest＝ノード ID 後半）。
+/// <see cref="Targets"/> は複数ファイル・複数件をまとめて走らせるとき（失敗だけの再実行）で、指定すると前の 2 つより優先する。
 /// <see cref="ResultFile"/> はランナーにレポートを書かせる先（実行ごとに一意名）。</summary>
 public sealed record TestRunRequest(string ProjectDir, string ResultFile, string? FileScope = null,
-    string? TestSelector = null);
+    string? TestSelector = null, IReadOnlyList<TestTarget>? Targets = null)
+{
+    /// <summary>実際に走らせる対象。空＝プロジェクト全体。</summary>
+    public IReadOnlyList<TestTarget> EffectiveTargets
+        => Targets ?? (FileScope is { } file ? [new TestTarget(file, TestSelector)] : []);
+}
 
 /// <summary>
 /// テストランナー 1 種（vitest / jest / pytest）の口。<b>検出・コマンド組み立て・レポートの読み取り</b>の 3 つだけを持ち、

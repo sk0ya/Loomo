@@ -24,7 +24,7 @@ internal static class ScriptTestRunner
 
     /// <summary>テストを実行し、生成されたレポートのパスを返す（生成されなければ null）。</summary>
     public static async Task<string?> RunAsync(ITerminalService terminal, IDebugSession session, ITestRunner runner,
-        string projectDir, string? fileScope, string? testSelector, TestToolLocator tools, string label)
+        string projectDir, IReadOnlyList<TestTarget> targets, TestToolLocator tools, string label)
     {
         var resultFile = Path.Combine(ResultsDir, $"loomo-test-{Guid.NewGuid():N}{runner.ResultFileExtension}");
         try
@@ -38,7 +38,7 @@ internal static class ScriptTestRunner
             return null;
         }
 
-        var command = runner.BuildCommand(new TestRunRequest(projectDir, resultFile, fileScope, testSelector), tools);
+        var command = runner.BuildCommand(new TestRunRequest(projectDir, resultFile, Targets: targets), tools);
         session.Append(DebugOutputCategory.Important, label);
         var result = await terminal.RunCommandInVisibleTerminalAsync(command, CancellationToken.None);
         session.WriteConsole(result.Output);
@@ -102,6 +102,12 @@ internal static class ScriptTestRunner
         var byFqn = new Dictionary<string, TestItemViewModel>(StringComparer.OrdinalIgnoreCase);
         foreach (var t in tests) byFqn.TryAdd(t.FullyQualifiedName, t);
 
+        // 今回走らせるよう依頼した行（呼び出し側が実行中にしたもの）。vitest / jest は -t で外れた同じファイルの
+        // テストも skipped / pending として報告するので、それをそのまま当てると 1 件実行・失敗の再実行のたびに
+        // 成功済みの行が「スキップ」に化ける。スキップは依頼した行と新しく現れた行にだけ当てる
+        // （成功・失敗は実際に走った結果なので、-t の選択で余分に走った行にもそのまま当てる）。
+        var requested = new HashSet<TestItemViewModel>(tests.Where(t => t.Status == TestStatus.Running));
+
         foreach (var r in results)
         {
             var fqn = MakeFqn(r.FilePath, r.Title);
@@ -118,6 +124,7 @@ internal static class ScriptTestRunner
                 if (r.CaseName is not null) item.IsParameterized = true;
                 tests.Add(item);
                 byFqn[fqn] = item;
+                requested.Add(item);
             }
 
             var status = r.Outcome switch
@@ -126,6 +133,7 @@ internal static class ScriptTestRunner
                 ScriptTestOutcome.Failed => TestStatus.Failed,
                 _ => TestStatus.Skipped,
             };
+            if (status == TestStatus.Skipped && !requested.Contains(item)) continue;
             // 位置は失敗のトレースバックから取れたときだけ更新し、それ以外は探索側の値（宣言行）を保持する。
             if (r.CaseName is not null)
                 item.ApplyCaseResult(status, r.Message, r.FailurePath, r.FailureLine, r.Duration);

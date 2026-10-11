@@ -321,6 +321,17 @@ public partial class ShellWindow {
         if (ActiveEditorTestAtCaret() is { } caretTest)
             list.Add(new("エディタ", $"カーソル行のテストを実行: {caretTest.Test.DisplayName}",
                 RunTestAtCaret, Sc("editor.test.runAtCaret"), "editor.test.runAtCaret"));
+        // 失敗の再実行もテストビューのボタンだけにしない。失敗が残っているランナーの分だけ出す。
+        foreach (var (label, command) in new (string, ICommand)[]
+                 {
+                     (".NET", _vm.Debug.Tests.RerunFailedCommand),
+                     ("TypeScript", _vm.TsIde.Tests.RerunFailedCommand),
+                     ("pytest", _vm.Debug.PyTests.RerunFailedCommand),
+                 })
+        {
+            if (command.CanExecute(null))
+                list.Add(new("テスト", $"失敗したテストを再実行（{label}）", () => command.Execute(null)));
+        }
         list.Add(new("コンポーザ", IsComposerVisible ? "コンポーザを閉じる" : "コンポーザを開く", () => SetComposerVisible(!IsComposerVisible)));
         list.Add(new("コンポーザ", "本文をターミナルで実行", RunComposer, Sc("composer.run"), "composer.run"));
         list.Add(new("コンポーザ", "本文をペグボードへ残す", () => OnComposerPinToPegboard(this, new RoutedEventArgs())));
