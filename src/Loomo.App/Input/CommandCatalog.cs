@@ -44,6 +44,8 @@ public static class CommandCatalog
     private const string CatTrail = "軌跡";
     private const string CatTask = "タスク";
     private const string CatNavigate = "ナビゲーション";
+    private const string CatHistory = "ローカル履歴";
+    private const string CatPackages = "NuGet";
 
     public static IReadOnlyList<CommandDescriptor> All { get; } = new CommandDescriptor[]
     {
@@ -136,6 +138,16 @@ public static class CommandCatalog
         new CommandDescriptor("nav.relatedTest", CatNavigate, "テスト⇔実装を行き来する", "Ctrl+Alt+T"),
         new CommandDescriptor("nav.fileStructure", CatNavigate, "ファイル構造（宣言の一覧）へ移動", "Ctrl+F12"),
         new CommandDescriptor("problems.openAsExcerpts", CatProblems, "表示中の問題を抜粋タブで開く", null),
+
+        // ===== ローカル履歴（Rider の Local History・§36）=====
+        // 既定キーは与えない（Rider も Local History に既定キーを持たない）。パレットから引く。
+        new CommandDescriptor("localHistory.show", CatHistory, "ローカル履歴を表示（版 ↔ いまの差分）", null),
+        new CommandDescriptor("localHistory.restore", CatHistory, "ローカル履歴から戻す…", null),
+        new CommandDescriptor("localHistory.recent", CatHistory, "最近の変更（ローカル履歴・全ファイル）", null),
+        new CommandDescriptor("localHistory.restoreDeleted", CatHistory, "削除したファイルを復元（ローカル履歴）", null),
+
+        // ===== NuGet（§36）=====
+        new CommandDescriptor("nuget.manage", CatPackages, "NuGet パッケージを管理…", null),
 
         // ===== エディタ（意味的な選択・§24.9） =====
         // 既定キーは VS Code 準拠。Ctrl+W 系は<b>使わない</b>——Loomo ではペイン操作の vim 風

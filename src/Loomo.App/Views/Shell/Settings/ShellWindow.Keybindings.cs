@@ -42,6 +42,9 @@ public partial class ShellWindow {
             ["nav.recentFiles"] = OpenRecentFilesOrToggle, ["nav.recentLocations"] = () => { _ = OpenRecentLocationsAsync(); },
             ["nav.fileStructure"] = () => { _ = OpenFileStructureAsync(); },
             ["nav.relatedTest"] = () => { _ = GoToRelatedTestAsync(); },
+            ["localHistory.show"] = ShowLocalHistory, ["localHistory.restore"] = RestoreFromLocalHistory,
+            ["localHistory.recent"] = ShowRecentLocalHistory, ["localHistory.restoreDeleted"] = RestoreDeletedFileFromLocalHistory,
+            ["nuget.manage"] = () => OpenNuGetPackageManager(),
             ["editor.save"] = SaveActiveEditor,
             ["editor.selection.expand"] = ExpandSemanticSelection, ["editor.selection.shrink"] = ShrinkSemanticSelection, ["editor.test.runAtCaret"] = RunTestAtCaret,
             ["stage.cycle"] = () => CycleInActiveMode(1), ["mode.toggle"] = ToggleDisplayMode,
@@ -78,6 +81,12 @@ public partial class ShellWindow {
         // Ctrl+Shift+↑ が、裏のC#タブの文を黙って動かす事故を防ぐ（キーは内側のペインへ届く）。
         _ when id.StartsWith("editor.csharp.structure.", StringComparison.Ordinal)
             => IsEditorFocused() && ActiveCSharpEditor() is not null,
+        // 定義・参照・名前変更などは C# 以外でも（§36）。ただしエディタにフォーカスがあるときだけ——
+        // ターミナルで押した F12 を裏の TS タブが拾わないように。
+        _ when CSharpEditorCommandDispatchPolicy.IsLanguageNeutral(id) && ActiveCSharpEditor() is null
+            => IsEditorFocused() && _activeEditorTab is { IsRealized: true } tab &&
+               tab.Control.FilePath is { Length: > 0 } &&
+               CSharpEditorCommandDispatchPolicy.AcceptsInNonCSharpEditor(id, tab.Control.VimEnabled),
         _ => !id.StartsWith("editor.csharp.", StringComparison.Ordinal) ||
             ActiveCSharpEditor() is not null,
     };

@@ -26,7 +26,13 @@ public partial class ShellWindow
     private void ExecuteCSharpEditorCommand(string id, VimEditorControl? requested = null)
     {
         if (ActiveCSharpEditor(requested) is not { } control)
+        {
+            // 言語共通の操作は C# 以外のエディタでもそのまま Editor の LSP 操作へ（§36）。
+            if (CSharpEditorCommandDispatchPolicy.IsLanguageNeutral(id) &&
+                (requested ?? _activeEditorTab?.Control) is { FilePath.Length: > 0 } other)
+                RunLanguageNeutralEditorCommand(id, other);
             return;
+        }
 
         if (CSharpEditorCommandDispatchPolicy.TryGetCodeGenerationKind(id, out var generationKind))
         {
@@ -122,6 +128,26 @@ public partial class ShellWindow
                 RunCSharpJsonGeneration(control);
                 break;
         }
+    }
+
+    /// <summary>C# 以外のエディタでの、言語サーバー汎用の操作。</summary>
+    private static void RunLanguageNeutralEditorCommand(string id, VimEditorControl control)
+    {
+        if (CSharpEditorCommandDispatchPolicy.NativeEditorCommandFor(id) is { } nativeCommand)
+        {
+            control.ExecuteCommand(nativeCommand);
+            return;
+        }
+        _ = id switch
+        {
+            CSharpEditorCommandCatalog.GoToDefinition => control.GoToDefinitionAsync(),
+            CSharpEditorCommandCatalog.PeekDefinition => control.PeekDefinitionAsync(),
+            CSharpEditorCommandCatalog.GoToImplementation => control.GoToImplementationAsync(),
+            CSharpEditorCommandCatalog.GoToTypeDefinition => control.GoToTypeDefinitionAsync(),
+            CSharpEditorCommandCatalog.GoToDeclaration => control.GoToDeclarationAsync(),
+            CSharpEditorCommandCatalog.FindReferences => control.FindReferencesAsync(),
+            _ => Task.CompletedTask,
+        };
     }
 
     private async Task RunCSharpChangeSignatureCommandAsync(VimEditorControl control)

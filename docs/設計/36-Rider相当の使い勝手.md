@@ -1,0 +1,124 @@
+# §36 Rider相当の使い勝手（2026-10-11）
+
+> 状態: 実装済み（Editor 側は未公開。公開版へのピン更新は別途の明示指示で行う）
+> 関連: §31（体感品質）、§33（C#編集）、§19.9（VS Codeとの機能差の台帳）
+
+## §36.1 目的と範囲
+
+§33 で C# の機能数は Rider にかなり近づいた。残る差は**機能の有無ではなく入口**——Rider の手癖のまま
+触ったときに「キーが効かない」「Ctrl+クリックで飛ばない」「パッケージを足す画面が無い」「壊したファイルを
+時点で戻せない」で止まる箇所である。2026-10-11 にコードと実サーバーで棚卸しした結果を、ここで一度に埋める。
+マイナーな機能（データベース、HTTP クライアント、設定同期など）は対象外。
+
+## §36.2 棚卸しの結果（実測）
+
+| # | 差 | 実測・根拠 |
+|---|---|---|
+| 1 | Vim を切ると、エディタが Ctrl+Z/Y/C/X/V しか効かない素のテキストボックスになる | `VimEngineRuntime` の plain モードは「Any other Ctrl combo is inert」。Ctrl+A／Ctrl+←→／Ctrl+Home/End／Ctrl+Backspace／Ctrl+D／Ctrl+/／Alt+Shift+↑↓ が無反応 |
+| 2 | 定義・参照・名前変更の Rider キー（F12／Ctrl+B／Alt+F7／Shift+F6…）が **C# だけ** | `CSharpEditorCommandCatalog` に Rider 既定キーがあるが、`CanExecuteKeyboardCommand` が `.cs` 以外を素通しする。TS／Python 等では `gd`／`gr` と右クリックしか無い |
+| 3 | Ctrl+クリックがシンボルの定義へ飛ばない | `EditorCanvas.OnMouseLeftButtonDown` の Ctrl 分岐は URL・パス・documentLink だけ |
+| 4 | Roslyn の設定を一切渡していない | `LspProcess.CreateServerRequestResult` が `workspace/configuration` に全項目 null。実サーバーは 158 項目を問い合わせてくる（`csharp\|inlay_hints.…`、`csharp\|completion.dotnet_show_completion_items_from_unimported_namespaces`、`navigation.dotnet_navigate_to_decompiled_sources` 等）。値を返すと、型のインレイヒント・未 using 型の補完（2 回目の要求で `StringBuilder (System.Text)` が出る）が効くことを実サーバーで確認 |
+| 5 | BCL／NuGet の定義へ飛んだ先が、編集できる素のタブになる | Roslyn は `%TEMP%\MetadataAsSource\…\Console.cs` の file URI を返す（実測）。開けるが、逆コンパイル結果を書き換え・保存できてしまい、出所も分からない |
+| 6 | NuGet パッケージの管理画面が無い | 検索・追加・更新・削除・統合の UI が皆無（コード上ゼロ件） |
+| 7 | ローカル履歴が無い | 軌跡（§27）は「どこへ行ったか」で、ファイルの中身の時系列ではない |
+| 8 | Live Template／Postfix Template が無い | §33.17 の計画のみ。Editor のスニペットは拡張子別の素朴な展開だけ |
+
+## §36.3 実施計画
+
+### Phase 1 — Editor（`C:\Projects\Editor`）
+
+1. **plain モードの IDE 標準キー**：Ctrl+A、Ctrl+←→（Shift で選択）、Ctrl+Home/End、Ctrl+Backspace/Delete
+   （単語削除）、Ctrl+D（行／選択の複製）、Ctrl+/（行コメント切替）、Alt+Shift+↑↓（行の移動）、
+   Ctrl+Shift+Z（やり直し）、選択なし Ctrl+X（行の切り取り）、Shift+Enter／Ctrl+Alt+Enter（下／上へ新しい行）、
+   Home（行頭の非空白とのトグル）、PageUp/PageDown。Vim 有効時の挙動は一切変えない。
+2. **Ctrl+クリックで定義へ**：リンクが無い位置ならキャレットを移して定義へ移動する。
+3. **`workspace/configuration` をホストが答えられるようにする**：`LspClient.ConfigurationProvider`
+   （section→値）と、設定変更を知らせる `NotifyConfigurationChanged()`（`workspace/didChangeConfiguration`）。
+   capability `workspace.configuration` を宣言する。
+4. **補完へのホスト追加候補**：`HostSupplementalCompletionProvider`。LSP の結果があっても**常に**合流する
+   （既存の `HostCompletionProvider` は「LSP が 0 件のとき」の代替で、意味が違う）。あわせて、補完要求後に
+   打ち足した文字を TextEdit の置換範囲へ含める（VS Code と同じ。範囲がキャレット手前で止まっていると、
+   打ち足した分が残って二重になる）。
+
+### Phase 2 — Loomo
+
+5. **Roslyn 設定**（`RoslynClientConfiguration`）：インレイヒント（引数名・var の型・ラムダ引数型）を
+   `EditorSettings.ShowInlayHints` に連動、未 using 型の補完、逆コンパイル／SourceLink での定義移動を ON。
+   設定変更時は `didChangeConfiguration` で即時反映する。
+6. **言語共通のナビゲーションキー**：定義／Peek／実装／型定義／宣言／参照／名前変更／整形／Quick Fix を、
+   C# 以外でも LSP が付いたエディタにフォーカスがあれば実行する。ただし Ctrl+B（宣言）は Vim 有効時の
+   非 C# ファイルでは Vim のページ送りへ素通しする（C# は従来どおり）。
+7. **メタデータ（逆コンパイル）タブ**：`MetadataAsSource` 配下のファイルは読み取り専用で開き、状態行で出所を示す。
+8. **Live Template／Postfix**（`Loomo.CSharp/Editor/CSharpTemplateCompletion`）：
+   - Live：`prop` `propg` `ctor` `cw` `foreach` `for` `forr` `if` `else` `while` `do` `try` `tryf` `using`
+     `lock` `switch` `class` `interface` `record` `enum` `svm` `sim` `test`。`ctor` はキャレットを囲む型名を使う。
+   - Postfix：`.if` `.not` `.null` `.notnull` `.foreach` `.for` `.forr` `.var` `.return` `.await` `.throw`
+     `.par` `.while` `.using` `.cw` `.nameof`。式の範囲は Roslyn 構文木で決める（`.xxx` を外した本文を
+     パースし、ドットの直前で終わる最大の式）。
+   - どちらも「文を書ける位置」だけで出す（式の途中・文字列・コメント内では出さない）。
+9. **ローカル履歴**（`LocalHistoryStore`）：`%APPDATA%/Loomo/history/` にファイルごと gzip で保存。
+   記録点は「エディタで開いた時点」「保存」「履歴から戻す直前」。同一内容は積まない。14 日・1 ファイル
+   200 版で刈る。書き込みは `DeferredWriteQueue`（UI スレッドで行わない、§31.15）。
+   入口はコマンド「ローカル履歴を表示」（差分ペインで版↔現在）と「ローカル履歴から戻す」（1 回の Undo で
+   戻る編集として適用）、「最近の変更（ローカル履歴）」（ファイル横断・削除済みファイルの復元）。
+10. **NuGet パッケージ管理**（`NuGetPackageService` ＋ `NuGetPackagesWindow`）：導入済み一覧は
+    `dotnet list package --format json`（中央管理 CPM も SDK が解決する）、検索とバージョン一覧は
+    構成済みの v3 フィード（`dotnet nuget list source`）。追加／更新／削除は `dotnet add|remove package`、
+    プロジェクト間でバージョンが違うものは「統合」で揃える。入口はソリューションパネルの右クリックと
+    コマンドパレット。`packages.config` の旧形式は対象外と明示する。
+
+### Phase 3 — 検証
+
+- 各ロジック（plain キー、Roslyn 設定値、テンプレート、ローカル履歴の刈り込み・重複排除、NuGet の JSON 解析）
+  は単体テスト。Roslyn 設定は実サーバーへの問い合わせ（`workspace/configuration` の section 名）で確認済み。
+- Editor の変更は `UseLocalEditor=true` で Loomo から通しで確認する。公開パッケージ化は別途の明示指示で行う。
+
+## §36.4 実装記録（2026-10-11）
+
+### Editor（`C:\Projects\Editor`）
+
+- **plain モードの IDE キー**は `VimEngineRuntime.PlainIdeKeys.cs`（`TryProcessPlainIdeKey`）。Vim 有効時の経路からは
+  呼ばれない。本文を変える操作はどれも単独の Undo（`BeginPlainCommand`）——連続入力の塊へ混ぜると、Ctrl+D を
+  戻したつもりが直前の入力まで消える。単語の切れ目（`PlainWordNavigation`）は「語・記号・空白」の 3 種。
+  コントロール側は Vim 無効時だけ Enter／Backspace／Delete に修飾キーを渡し（`PlainModifiers`）、Ctrl+/ は
+  配列に依らず「その配列で '/' を打つキー」で判定する。Alt+Enter（Quick Fix）は Ctrl を伴うときは取らない
+  （Ctrl+Alt+Enter＝上に行を作る）。
+- **Ctrl+クリック**：`EditorCanvas.SymbolCtrlClicked`。リンク（URL・パス・documentLink）が優先、識別子の上だけ定義へ。
+- **`workspace/configuration`**：`ILspClient.ConfigurationProvider`（既定実装は null＝従来どおり）と
+  `NotifyConfigurationChanged`。`LspClient.AnswerConfiguration` は item と同数・同順の配列を返し、provider の例外は null。
+  capability `workspace.configuration` を宣言（宣言しないと Roslyn は引きに来ない）。
+- **補完への追加候補**：`VimEditorControlOptions.HostSupplementalCompletionProvider`。LSP と並行に作り
+  （`CompletionMerge.Start`）、ラベル＋種類が同じものだけ重複とみなす（キーワード `foreach` と雛形 `foreach` は両方出す）。
+  受け入れ時、置換範囲の終わりがキャレット手前ならキャレットまで伸ばす（`CompletionMerge.ExtendToCaret`）。
+  既存の Ctrl+A の回帰テスト（「plain の Ctrl+A は何もしない」）は、「Visual に入らない」という本来の意図を残して
+  「全選択になる」へ更新した。
+- テスト：`PlainIdeKeyTests`（21）、`CompletionMergeTests`（6）。Editor.Core 1621・Editor.Controls 324 全件合格。
+
+### Loomo
+
+- **Roslyn 設定**：`Loomo.CSharp/LanguageServer/RoslynClientConfiguration`。section の言語接頭辞とグループを外した
+  オプション名で引く。インレイヒントは常に有効で返し、表示の ON/OFF は従来どおり設定の「インレイヒント」が決める
+  （Editor は LSP が 0 件のときだけホストの引数名ヒントへ落ちるので、二重にはならない）。列挙型のオプションへ
+  `"true"` を返すと Roslyn が解析警告を出すので、知らない名前は null。`LspClientPool` の既定接続で全サーバーに付ける
+  （Roslyn 以外が問う section はここに無いので従来どおり null）。
+- **言語共通キー**：`CSharpEditorCommandDispatchPolicy.IsLanguageNeutral`。Id は互換のため `editor.csharp.*` のまま。
+  非 C# ではエディタにフォーカスがあるときだけ実行し、Vim 有効時の Ctrl+B（宣言）は Vim へ譲る。パレットにも出す。
+- **逆コンパイルタブ**：`MetadataSourceFiles`。`AfterEditorFileLoaded` で読み取り専用にし、同じエディタへ普通の
+  ファイルを読み直したら戻す（他の理由で読み取り専用にしている相手には触らない）。
+- **Live／Postfix**：`Loomo.CSharp/Editor/CSharpTemplateCompletion`。Postfix の式は、`.xxx` を外した本文の構文木で
+  ドットの直前に終わるノードを上へ辿った最も外側の式。`)` の親は引数リストなので式でないノードも通り抜け、
+  代入とラムダは越えない（`n = xs.Length.par` は右辺だけ）。
+- **ローカル履歴**：`Services/History/LocalHistoryStore`（＋`LocalHistoryPresentation`）、`ShellWindow.LocalHistory`。
+  コマンド `localHistory.show` / `.restore` / `.recent` / `.restoreDeleted`（既定キーなし・パレットから）。
+  戻すときは戻す前の本文を `BeforeRestore` として残してから、文書全体を 1 つの編集で置き換える（Undo 1 回で戻る・保存はしない）。
+- **NuGet**：`Loomo.CSharp/Packages/NuGetPackageService`、`NuGetPackagesViewModel`、`NuGetPackagesWindow`。
+  入口はソリューションパネルの右クリック「NuGet パッケージを管理…」とコマンド `nuget.manage`。`dotnet` は
+  `MSBUILDDISABLENODEREUSE=1` で起動し、出力は `ChildProcessIo` の専用スレッドで読む（常駐ノードがパイプを握って
+  固まる・プール枯渇の既知の罠）。複数プロジェクトへの操作は Directory.Packages.props／obj を共有するので直列。
+- テスト：`RiderUsabilityTests`（36）。
+
+## §36.5 非目標
+
+- Rider の全キーマップの再現（Ctrl+E 等、Vim・部屋の操作と衝突するものは採らない。§31.18 の判断を踏襲）。
+- 認証付き NuGet フィードの資格情報管理、`packages.config` 形式の管理。
+- ローカル履歴のディレクトリ単位の差分表示、ラベル付け（「Put Label」）。

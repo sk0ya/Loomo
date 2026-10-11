@@ -250,6 +250,7 @@ public partial class ShellWindow {
     private void OnClosing(object? sender, CancelEventArgs e)
         => SaveActiveWorkspaceSnapshot(immediate: true);
     private void OnClosed(object? sender, EventArgs e) {
+        _localHistory.Dispose();   // 積んである版を書き切る（§36）
         CancelFileDropOperations();
         CancelFileAiPreparation();
         DisposeCSharpDiagnosticsWiring();

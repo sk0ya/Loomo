@@ -147,6 +147,10 @@ public partial class ShellWindow {
             // セッション復元だけは LoadEditorFile を通らず editor.LoadFile を直に呼ぶ（未保存本文の復元があるため）。
             // そちらもグリフを捨てるので、ここで送り直す。
             WorkspaceSessionCoordinator.RestoreEditor(control, snapshot);
+            // 逆コンパイルタブの読み取り専用とローカル履歴の起点も、こちらの経路で付け直す（§36）。
+            // 未保存本文を復元したタブでも、起点はディスクの中身（RecordOpened はディスクを読む）。
+            ApplyMetadataSourceReadOnly(control);
+            _localHistory.RecordOpened(control.FilePath);
             _appearance.ApplyUsingFoldingOnOpen(control);
             SyncEditorTestGlyphs(control);
             ScheduleStyleCopAnalysis(control);
@@ -213,6 +217,9 @@ public partial class ShellWindow {
                 return sk0ya.Loomo.CSharp.Editor.CSharpCompletionService.GetAsync(
                     _solutionModel?.Current, path, source, line, character, ct, openTexts);
             },
+            // Live Template／Postfix Template（§36）。LSP の結果に常に足す。構文解析は背景で。
+            HostSupplementalCompletionProvider = (path, source, line, character, ct) =>
+                Task.Run(() => sk0ya.Loomo.CSharp.Editor.CSharpTemplateCompletion.Get(path, source, line, character), ct),
             HostSemanticTokensProvider = (path, source, ct) =>
                 sk0ya.Loomo.CSharp.Editor.CSharpSemanticTokenService.GetAsync(
                     _solutionModel?.Current, path, source, ct, FindOpenCSharpEditorTexts()),
@@ -388,6 +395,8 @@ public partial class ShellWindow {
         AfterEditorFileLoaded(control);
     }
     private void AfterEditorFileLoaded(VimEditorControl control) {
+        ApplyMetadataSourceReadOnly(control);
+        _localHistory.RecordOpened(control.FilePath);
         _appearance.ApplyUsingFoldingOnOpen(control);
         SyncEditorTestGlyphs(control);   // LoadFile はグリフを捨てるが BufferChanged を出さない
         _debugEditorController?.OnEditorFileLoaded(control);   // 行末の値も同じ（停止と同時に開いたタブへ出す）
@@ -395,6 +404,20 @@ public partial class ShellWindow {
         ScheduleStyleCopAnalysis(control);
         // 同じく BufferChanged が出ないので、この文書を別のエディタに映している側へ知らせる。
         _editorDocumentEvents.RaiseLoaded(control);
+    }
+    /// <summary>ここで読み取り専用にしたエディタ。同じエディタへ普通のファイルを読み直したら戻す
+    /// （差分ビュー等、別の理由で読み取り専用にしている相手には触らない）。</summary>
+    private readonly HashSet<VimEditorControl> _metadataReadOnlyEditors = new();
+    /// <summary>ライブラリの定義（逆コンパイル結果）は読み取り専用で開く（§36）。</summary>
+    private void ApplyMetadataSourceReadOnly(VimEditorControl control) {
+        if (MetadataSourceFiles.IsMetadataAsSource(control.FilePath)) {
+            control.IsReadOnly = true;
+            _metadataReadOnlyEditors.Add(control);
+            control.ShowStatusMessage(MetadataSourceFiles.Describe(control.FilePath!));
+        }
+        else if (_metadataReadOnlyEditors.Remove(control)) {
+            control.IsReadOnly = false;
+        }
     }
     private void ApplyVimEnabledToOpenEditorTabs() {
         foreach (var tab in _editorTabs)

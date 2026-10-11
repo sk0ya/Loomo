@@ -309,6 +309,24 @@ Other `RootPath`s in the tree are **different concepts, deliberately left alone*
 is the Git target repo, `DebugLaunchProfileStore`'s is a JSON key. Being able to tell `_workspace.PrimaryFolder`
 from `_activeWorkspace?.RootPath` at a glance is the win.
 
+### Rider-parity entry points — `docs/設計/36-Rider相当の使い勝手.md` (§36) is the authority
+
+The gap to Rider was entry points, not features. Things that are easy to break without knowing they exist:
+- **Roslyn gets real `workspace/configuration` answers** (`RoslynClientConfiguration`, wired on every client in
+  `LspClientPool`'s default connect). Before, every item came back null; Roslyn asks ~158 sections like
+  `csharp|inlay_hints.dotnet_enable_inlay_hints_for_parameters`. Unknown names must stay null — answering `"true"`
+  to an enum option makes Roslyn log a parse failure.
+- **The Rider keys in `CSharpEditorCommandCatalog` (F12/Ctrl+B/Alt+F7/Shift+F6/Ctrl+Alt+L/Alt+Enter…) also run in
+  non-C# editors** for the LSP-generic subset (`CSharpEditorCommandDispatchPolicy.IsLanguageNeutral`), only when an
+  editor has focus, and Ctrl+B yields to Vim's page-up there. Ids stay `editor.csharp.*` (user overrides are keyed by id).
+- **Library definitions open read-only** (`MetadataSourceFiles`: Roslyn returns `%TEMP%\MetadataAsSource\…` files).
+- **Live/Postfix templates** come from `CSharpTemplateCompletion` through the Editor's
+  `HostSupplementalCompletionProvider` (always merged with LSP results — unlike `HostCompletionProvider`, the
+  zero-result fallback).
+- **Local history** (`LocalHistoryStore`, `%APPDATA%/Loomo/history/`) records on open and save via
+  `DeferredWriteQueue`; **NuGet** (`NuGetPackageService`) never edits project files itself — it shells out to
+  `dotnet list|add|remove package` with `MSBUILDDISABLENODEREUSE=1` and reads output through `ChildProcessIo`.
+
 ### Persistence
 
 **Editor operations stay off the UI thread** (`docs/設計/31-IDE体感品質ロードマップ.md` §31.15 is the authority).

@@ -74,6 +74,11 @@ public sealed partial class CSharpSolutionExplorerViewModel : ObservableObject, 
 
     public event EventHandler<string>? FileOpenRequested;
     public event EventHandler<CSharpSolutionActionEventArgs>? ActionRequested;
+    /// <summary>NuGet 管理を開く（§36）。引数はチェックを付けて開くプロジェクトのパス（ソリューション全体なら null）。</summary>
+    public event EventHandler<string?>? NuGetManagerRequested;
+
+    public void RequestNuGetManager(CSharpSolutionNodeViewModel node)
+        => NuGetManagerRequested?.Invoke(this, node.Kind == CSharpSolutionNodeKind.Project ? node.FullPath : null);
 
     public CSharpSolutionExplorerViewModel(ISolutionModelService solution)
     {

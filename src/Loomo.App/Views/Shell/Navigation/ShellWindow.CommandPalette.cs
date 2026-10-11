@@ -300,6 +300,12 @@ public partial class ShellWindow {
         list.Add(new("ターミナル", "コマンドの出力をエディタで開く", OpenTerminalOutputs,
             Sc("terminal.openOutput"), "terminal.openOutput"));
         list.Add(new("タスク", "タスクを実行…", OpenWorkspaceTasks, Sc("tasks.run"), "tasks.run"));
+        // ローカル履歴と NuGet（§36）。
+        list.Add(new("ローカル履歴", "ローカル履歴を表示（版 ↔ いまの差分）", ShowLocalHistory, Sc("localHistory.show"), "localHistory.show"));
+        list.Add(new("ローカル履歴", "ローカル履歴から戻す…", RestoreFromLocalHistory, Sc("localHistory.restore"), "localHistory.restore"));
+        list.Add(new("ローカル履歴", "最近の変更（全ファイル）", ShowRecentLocalHistory, Sc("localHistory.recent"), "localHistory.recent"));
+        list.Add(new("ローカル履歴", "削除したファイルを復元", RestoreDeletedFileFromLocalHistory, Sc("localHistory.restoreDeleted"), "localHistory.restoreDeleted"));
+        list.Add(new("NuGet", "NuGet パッケージを管理…", () => OpenNuGetPackageManager(), Sc("nuget.manage"), "nuget.manage"));
         list.Add(new("タスク", "既定のビルドタスクを実行", RunDefaultBuildTask,
             Sc("tasks.runDefaultBuild"), "tasks.runDefaultBuild"));
         if (_taskRunner?.ActiveWatch is { } watch)
@@ -328,6 +334,17 @@ public partial class ShellWindow {
                 var id = descriptor.Id;
                 list.Add(new("C# エディタ", descriptor.Title,
                     () => ExecuteCSharpEditorCommand(id), Sc(id), id));
+            }
+        }
+        else if (_activeEditorTab is { IsRealized: true } neutralTab && neutralTab.Control.FilePath is { Length: > 0 })
+        {
+            // C# 以外でも、定義・参照・名前変更などの言語サーバー操作はパレットから引ける（§36）。
+            foreach (var descriptor in CSharpEditorCommandCatalog.All)
+            {
+                if (!CSharpEditorCommandDispatchPolicy.IsLanguageNeutral(descriptor.Id))
+                    continue;
+                var id = descriptor.Id;
+                list.Add(new("エディタ", descriptor.Title, () => ExecuteCSharpEditorCommand(id), Sc(id), id));
             }
         }
         // ガターの ▶ はマウス専用なので、キーボードからの実行経路はここが受け持つ（§24）。

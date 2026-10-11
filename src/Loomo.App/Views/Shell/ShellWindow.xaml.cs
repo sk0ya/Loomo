@@ -135,6 +135,7 @@ public partial class ShellWindow : Window {
         _browser.ShowAndNavigateRequested = url => ShowBrowserPaneAndNavigateAsync(url);
         _editor.NewVirtualDocumentTabRequested += OpenVirtualDocumentTab;
         _editor.FileSaved += _editorDocumentEvents.RaiseSaved;
+        _editor.FileSaved += RecordSavedToLocalHistory;
         _editor.FileOpenRequested += async path => await OpenFileInNewEditorTabAsync(path);
         _workspace = workspace;
         _solutionModel = solutionModel;
@@ -313,6 +314,7 @@ public partial class ShellWindow : Window {
         {
             csharpExplorer.FileOpenRequested += async (_, path) => await OpenFileInNewEditorTabAsync(path);
             csharpExplorer.ActionRequested += OnCSharpSolutionActionRequested;
+            csharpExplorer.NuGetManagerRequested += (_, projectPath) => OpenNuGetPackageManager(projectPath);
         }
         vm.FolderTree.OpenInBrowserRequested += async (_, path) => await OpenFileInBrowserAsync(path);
         vm.FolderTree.EntryRenamed += (_, e) => OnFolderTreeEntryRenamed(e);

@@ -91,7 +91,13 @@ internal sealed class LspClientPool : IDisposable
         // 起動できず、UI は「接続待ち」のまま永久に進まない（ExecutableResolver.Resolve 参照）。
         _connect = connect ?? ((def, root) =>
             new Editor.Controls.Lsp.LspClient(
-                ExecutableResolver.Resolve(def.Executable) ?? def.Executable, def.Args, root));
+                ExecutableResolver.Resolve(def.Executable) ?? def.Executable, def.Args, root)
+            {
+                // workspace/configuration に答える（§36）。Roslyn 以外のサーバーが問う section は
+                // ここに無い名前なので null（＝従来どおりサーバー既定）になる。
+                ConfigurationProvider = (section, _) =>
+                    sk0ya.Loomo.CSharp.LanguageServer.RoslynClientConfiguration.Resolve(section),
+            });
         _log = log;
         _idleSweep = new Timer(_ => SweepIdle(), null, SweepInterval, SweepInterval);
     }

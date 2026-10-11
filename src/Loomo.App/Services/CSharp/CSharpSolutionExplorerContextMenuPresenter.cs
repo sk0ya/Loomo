@@ -40,6 +40,8 @@ internal static class CSharpSolutionExplorerContextMenuPresenter
                 AddAction(menu, vm, node, action.Action, action.Header);
         }
         menu.Items.Add(new Separator());
+        AddCommand(menu, "ManageNuGet", "NuGet パッケージを管理…", () => vm.RequestNuGetManager(node));
+        menu.Items.Add(new Separator());
         // フォルダーだけの C# ワークスペースには .sln の実体が無い（FullPath が null）。
         // 押しても何も起きない項目を出さないよう、下の AddPathCommands と同じ条件で守る。
         if (!string.IsNullOrWhiteSpace(node.FullPath))
