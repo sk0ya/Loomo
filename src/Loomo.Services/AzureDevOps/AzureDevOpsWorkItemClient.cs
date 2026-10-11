@@ -291,14 +291,14 @@ public sealed class AzureDevOpsWorkItemClient
     /// 考えられる原因を文言にして投げる——「JSON ではない」だけでは、PAT・組織 URL・転送のどれが悪いか分からない。
     /// <para>Azure DevOps は PAT を受け付けないとき 401 ではなく <b>203 とサインイン画面の HTML</b> を返すことがある。
     /// 203 は成功扱いの状態コードなので、ここで JSON として読もうとして初めて失敗に気づく。</para>
+    /// <para><b>203 でも本文が JSON なら読む</b>（TaskAzure と同じ：EnsureSuccessStatusCode は 203 を通し、本文をそのまま読む）。
+    /// 社内のプロキシ・中継は、中身を素通しした正常な応答でも 200 を 203 に書き換えることがある（HTTP の仕様で許されている）。
+    /// 203 を本文を見ずにサインイン画面と決めつけていたため、TaskAzure は読めるのに Loomo だけ失敗していた。</para>
     /// </summary>
     internal static JsonDocument ParseJson(HttpResponseMessage response, string text, string requestedUrl)
     {
-        if (response.StatusCode != HttpStatusCode.NonAuthoritativeInformation)
-        {
-            try { return JsonDocument.Parse(text); }
-            catch (JsonException) { }
-        }
+        try { return JsonDocument.Parse(text); }
+        catch (JsonException) { }
         var finalUrl = response.RequestMessage?.RequestUri?.AbsoluteUri;
         var (message, isAuthentication) = DescribeNonJson((int)response.StatusCode,
             response.Content.Headers.ContentType?.MediaType, requestedUrl, finalUrl, text);

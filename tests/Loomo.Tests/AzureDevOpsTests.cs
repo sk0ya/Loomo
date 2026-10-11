@@ -61,6 +61,14 @@ public sealed class AzureDevOpsTests
     }
 
     [Fact]
+    public void 中継が203に書き換えても本文がJSONなら読む_TaskAzureと同じ()
+    {
+        using var response = new System.Net.Http.HttpResponseMessage(System.Net.HttpStatusCode.NonAuthoritativeInformation);
+        using var doc = AzureDevOpsWorkItemClient.ParseJson(response, """{"workItems":[{"id":1}]}""", "https://dev.azure.com/org/p/_apis/wit/wiql");
+        Assert.Equal(1, doc.RootElement.GetProperty("workItems")[0].GetProperty("id").GetInt32());
+    }
+
+    [Fact]
     public void 正しいJSONは読める()
     {
         using var response = new System.Net.Http.HttpResponseMessage(System.Net.HttpStatusCode.OK);
