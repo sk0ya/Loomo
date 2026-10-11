@@ -142,11 +142,14 @@ public sealed class WorkspaceTaskRunner(ITerminalService terminal)
     /// <param name="onStep">各タスクが終わるたびに呼ぶ（Problems をタスクごとに差し替えるため）。</param>
     /// <param name="onWatchProblems">watch の1サイクルが閉じるたびに、そのタスクの問題で呼ぶ（UI スレッド）。</param>
     /// <param name="onWatchFinished">watch が終わったとき（終了コード／不明なら null）に呼ぶ（UI スレッド）。</param>
+    /// <param name="askInput"><c>${input:…}</c> の値を人間に訊く（§31.17.6）。null を返したら取り消し＝何も打ち込まない。
+    /// 訊くのは依存も含めて1つも打ち込む前——1つ目のビルドが走った後で2つ目の問いを取り消されると、半端に終わる。</param>
     public async Task<TaskRunResult> RunAsync(
         WorkspaceTask task, IReadOnlyList<WorkspaceTask> all, string? activeFile,
         Action<TaskRunStep>? onStep = null, CancellationToken ct = default,
         Action<WorkspaceTask, IReadOnlyList<TaskProblem>>? onWatchProblems = null,
-        Action<WorkspaceTask, int?>? onWatchFinished = null)
+        Action<WorkspaceTask, int?>? onWatchFinished = null,
+        Func<TaskInput, CancellationToken, Task<string?>>? askInput = null)
     {
         if (_watch is { } running)
             return new TaskRunResult(task, [],
@@ -162,7 +165,17 @@ public sealed class WorkspaceTaskRunner(ITerminalService terminal)
                 if (order.Take(order.Count - 1).FirstOrDefault(t => t.IsBackground) is { } background)
                     throw new TaskConfigurationException(
                         $"バックグラウンドのタスク「{background.Label}」は dependsOn に使えません（終わらないので後のタスクが打ち込めません）。");
-                plan = order.Select(t => TaskCommandBuilder.Build(t, activeFile)).ToList();
+                var required = TaskInputs.Required(order);
+                var inputs = new TaskInputValues();
+                foreach (var input in required)
+                {
+                    if (askInput is null)
+                        throw new TaskConfigurationException($"入力「{input.Id}」を訊く手段がありません。");
+                    if (await askInput(input, ct) is not { } value)
+                        return new TaskRunResult(task, [], $"入力「{input.Prompt}」を取り消したので実行しませんでした。");
+                    inputs.Set(input, value);
+                }
+                plan = order.Select(t => TaskCommandBuilder.Build(t, activeFile, inputs)).ToList();
             }
             catch (TaskConfigurationException ex)
             {

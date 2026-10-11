@@ -420,11 +420,128 @@ public class TaskRunnerTests
     }
 
     [Fact]
-    public void Input_variables_are_refused_instead_of_blanked()
+    public void Input_variables_without_an_answer_are_refused_instead_of_blanked()
     {
         var task = OnlyTask("""{ "tasks": [ { "label": "i", "command": "deploy ${input:target}" } ] }""");
 
         Assert.Throws<TaskConfigurationException>(() => TaskCommandBuilder.Build(task, null));
+        var ex = Assert.Throws<TaskConfigurationException>(() => TaskInputs.Required([task]));
+        Assert.Contains("inputs にありません", ex.Message);
+    }
+
+    // ===== inputs（§31.17.6） =====
+
+    private const string InputsJson = """
+        {
+          "inputs": [
+            { "id": "env", "type": "pickString", "description": "デプロイ先", "default": "stg",
+              "options": [ "dev", { "label": "ステージング", "value": "stg" }, "prod" ] },
+            { "id": "msg", "type": "promptString", "description": "メッセージ", "default": "hi" },
+            { "id": "token", "type": "promptString", "password": true },
+            { "id": "ext", "type": "command", "command": "extension.pick" },
+            { "type": "promptString" },
+            { "id": "bad", "type": "pickString" },
+            { "id": "odd", "type": "quickPick" },
+          ],
+          "tasks": [
+            { "label": "deploy", "command": "deploy", "args": ["--env", "${input:env}", "--msg", "${input:msg}"],
+              "options": { "cwd": "${workspaceFolder}/${input:env}" }, "dependsOn": "build" },
+            { "label": "build", "command": "build ${input:env}" },
+            { "label": "ext", "command": "x ${input:ext}" },
+          ]
+        }
+        """;
+
+    [Fact]
+    public void Inputs_are_read_per_file_with_options_defaults_and_warnings()
+    {
+        var file = TasksJsonParser.Parse(InputsJson, Ws);
+        var inputs = file.Tasks[0].Inputs;
+
+        Assert.Equal(new[] { "env", "msg", "token", "ext" }, inputs.Keys);
+        var env = inputs["env"];
+        Assert.Equal(TaskInputKind.PickString, env.Kind);
+        Assert.Equal("デプロイ先", env.Prompt);
+        Assert.Equal(new[] { ("dev", "dev"), ("ステージング", "stg"), ("prod", "prod") },
+            env.Options.Select(o => (o.Label, o.Value)));
+        Assert.True(inputs["token"].Password);
+        Assert.Equal("token", inputs["token"].Prompt);   // description が無ければ id で訊く
+        Assert.Equal(TaskInputKind.Command, inputs["ext"].Kind);
+        Assert.Same(inputs, file.Tasks[1].Inputs);       // 同じ tasks.json のタスクは同じ定義を見る
+        Assert.Equal(3, file.Warnings.Count(w => w.Contains("id の無い") || w.Contains("options がありません") || w.Contains("quickPick")));
+    }
+
+    [Fact]
+    public void Pick_options_put_the_default_first()
+    {
+        var env = TasksJsonParser.Parse(InputsJson, Ws).Tasks[0].Inputs["env"];
+
+        Assert.Equal(new[] { "stg", "dev", "prod" }, TaskInputs.OrderedOptions(env).Select(o => o.Value));
+    }
+
+    [Fact]
+    public void Required_inputs_are_unique_in_first_use_order_across_dependencies_and_refuse_command_type()
+    {
+        var all = TasksJsonParser.Parse(InputsJson, Ws).Tasks;
+        var deploy = all.Single(t => t.Label == "deploy");
+
+        var required = TaskInputs.Required(TaskPlanner.Order(deploy, all));
+        Assert.Equal(new[] { "env", "msg" }, required.Select(i => i.Id));   // build の env と deploy の env は1回だけ訊く
+
+        var ex = Assert.Throws<TaskConfigurationException>(() => TaskInputs.Required([all.Single(t => t.Label == "ext")]));
+        Assert.Contains("command", ex.Message);
+    }
+
+    [Fact]
+    public void Answers_expand_in_command_args_and_cwd()
+    {
+        var all = TasksJsonParser.Parse(InputsJson, Ws).Tasks;
+        var deploy = all.Single(t => t.Label == "deploy");
+        var values = new TaskInputValues();
+        values.Set(deploy.Inputs["env"], "stg");
+        values.Set(deploy.Inputs["msg"], "hello world");
+
+        var invocation = TaskCommandBuilder.Build(deploy, null, values);
+
+        Assert.Equal(@"C:\work\app\stg", invocation.Cwd);
+        Assert.Equal("deploy --env stg --msg 'hello world'", invocation.CommandLine);   // 答えは引数として引用される
+    }
+
+    [Fact]
+    public async Task Runner_asks_each_input_once_before_typing_anything()
+    {
+        var terminal = new ScriptedTerminal(
+            ("Set-Location -LiteralPath 'C:\\work\\app'; build prod", "", 0),
+            ("Set-Location -LiteralPath 'C:\\work\\app\\prod'; deploy --env prod --msg ok", "", 0));
+        var all = TasksJsonParser.Parse(InputsJson, Ws).Tasks;
+        var asked = new List<string>();
+
+        var result = await new WorkspaceTaskRunner(terminal).RunAsync(all.Single(t => t.Label == "deploy"), all, null,
+            askInput: (input, _) =>
+            {
+                Assert.Equal(0, terminal.Calls);   // 1つも打ち込む前に全部訊く
+                asked.Add(input.Id);
+                return Task.FromResult<string?>(input.Id == "env" ? "prod" : "ok");
+            });
+
+        Assert.True(result.Success, result.Error);
+        Assert.Equal(new[] { "env", "msg" }, asked);
+        Assert.Equal(2, terminal.Calls);
+    }
+
+    [Fact]
+    public async Task Cancelling_an_input_runs_nothing()
+    {
+        var terminal = new ScriptedTerminal();
+        var all = TasksJsonParser.Parse(InputsJson, Ws).Tasks;
+        var runner = new WorkspaceTaskRunner(terminal);
+
+        var result = await runner.RunAsync(all.Single(t => t.Label == "deploy"), all, null,
+            askInput: (_, _) => Task.FromResult<string?>(null));
+
+        Assert.Contains("取り消した", result.Error);
+        Assert.Equal(0, terminal.Calls);
+        Assert.False(runner.IsRunning);   // 取り消しても次のタスクを走らせられる
     }
 
     // ===== dependsOn =====

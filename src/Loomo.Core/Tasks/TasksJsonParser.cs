@@ -9,7 +9,8 @@ namespace sk0ya.Loomo.Core.Tasks;
 /// <c>label</c>・<c>type</c>（shell / process / npm）・<c>command</c>・<c>args</c>・<c>options.cwd</c>・
 /// <c>group</c>（文字列 / <c>{kind,isDefault}</c>）・<c>isBackground</c>・<c>problemMatcher</c>
 /// （組み込み名 / インライン定義 / <c>base</c> 付きの上書き / その配列）・<c>dependsOn</c>・<c>detail</c>、
-/// それに Windows 上書き（<c>windows: {command,args,options}</c>）と最上位の <c>options.cwd</c>。
+/// それに Windows 上書き（<c>windows: {command,args,options}</c>）と最上位の <c>options.cwd</c>・<c>inputs</c>
+/// （promptString / pickString。§31.17.6）。
 ///
 /// <para>tasks.json は JSONC（コメント・末尾カンマ可）なので、その2つを許して読む。
 /// 読めない項目・未対応の指定は捨てて <see cref="WorkspaceTasksFile.Warnings"/> に理由を積む。</para>
@@ -47,6 +48,7 @@ public static class TasksJsonParser
 
             if (!root.TryGetProperty("tasks", out var tasksElement) || tasksElement.ValueKind != JsonValueKind.Array)
                 return new WorkspaceTasksFile([], warnings);
+            var inputs = ReadInputs(root, warnings);
 
             var tasks = new List<WorkspaceTask>();
             var labels = new HashSet<string>(StringComparer.Ordinal);
@@ -55,7 +57,8 @@ public static class TasksJsonParser
             {
                 index++;
                 if (element.ValueKind != JsonValueKind.Object) continue;
-                if (ReadTask(element, workspaceFolder, globalCwd, index, warnings) is not { } task) continue;
+                if (ReadTask(element, workspaceFolder, globalCwd, index, warnings) is not { } read) continue;
+                var task = read with { Inputs = inputs };
                 if (!labels.Add(task.Label))
                 {
                     warnings.Add($"ラベル「{task.Label}」が重複しています（後の定義は無視します）。");
@@ -154,6 +157,66 @@ public static class TasksJsonParser
             DependsOn = dependsOn,
             Detail = GetString(element, "detail"),
         };
+    }
+
+    /// <summary>最上位の <c>inputs</c>。id の無い項目・未知の type・選択肢の無い pickString は捨てて警告する。
+    /// <c>command</c> 型は読んでおき、参照したタスクを実行するときに理由を添えて断る（「見つからない」より直しやすい）。</summary>
+    private static IReadOnlyDictionary<string, TaskInput> ReadInputs(JsonElement root, List<string> warnings)
+    {
+        var inputs = new Dictionary<string, TaskInput>(StringComparer.Ordinal);
+        if (!root.TryGetProperty("inputs", out var array) || array.ValueKind != JsonValueKind.Array) return inputs;
+        foreach (var element in array.EnumerateArray())
+        {
+            if (element.ValueKind != JsonValueKind.Object) continue;
+            var id = GetString(element, "id");
+            if (string.IsNullOrWhiteSpace(id))
+            {
+                warnings.Add("inputs に id の無い項目があります（無視します）。");
+                continue;
+            }
+            var type = GetString(element, "type");
+            TaskInputKind kind;
+            switch (type)
+            {
+                case "promptString": kind = TaskInputKind.PromptString; break;
+                case "pickString": kind = TaskInputKind.PickString; break;
+                case "command": kind = TaskInputKind.Command; break;
+                default:
+                    warnings.Add($"入力「{id}」: type \"{type}\" は未対応です（promptString / pickString）。");
+                    continue;
+            }
+            var options = kind == TaskInputKind.PickString ? ReadInputOptions(element) : [];
+            if (kind == TaskInputKind.PickString && options.Count == 0)
+            {
+                warnings.Add($"入力「{id}」: pickString に options がありません。");
+                continue;
+            }
+            if (!inputs.TryAdd(id, new TaskInput
+                {
+                    Id = id,
+                    Kind = kind,
+                    Description = GetString(element, "description"),
+                    Default = GetString(element, "default"),
+                    Options = options,
+                    Password = element.TryGetProperty("password", out var password) && password.ValueKind == JsonValueKind.True,
+                }))
+                warnings.Add($"入力「{id}」が重複しています（後の定義は無視します）。");
+        }
+        return inputs;
+    }
+
+    /// <summary>pickString の <c>options</c>：文字列、または <c>{label, value}</c>（label が無ければ value を出す）。</summary>
+    private static IReadOnlyList<TaskInputOption> ReadInputOptions(JsonElement element)
+    {
+        if (!element.TryGetProperty("options", out var options) || options.ValueKind != JsonValueKind.Array) return [];
+        var list = new List<TaskInputOption>();
+        foreach (var option in options.EnumerateArray())
+        {
+            if (option.ValueKind == JsonValueKind.String) list.Add(new TaskInputOption(option.GetString()!, option.GetString()!));
+            else if (option.ValueKind == JsonValueKind.Object && GetString(option, "value") is { } value)
+                list.Add(new TaskInputOption(GetString(option, "label") is { Length: > 0 } label ? label : value, value));
+        }
+        return list;
     }
 
     private static string Describe(string? label, int index)

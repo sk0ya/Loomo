@@ -30,7 +30,7 @@ public partial class ShellWindow
             items.Add(new PaletteCommand(TaskCategory, "実行できるタスクはありません", () => { })
             {
                 Detail = "ワークスペースのフォルダーに .vscode/tasks.json を置くと、ここから実行できます。"
-                    + Environment.NewLine + "（label・command・args・options.cwd・group・problemMatcher・dependsOn に対応）"
+                    + Environment.NewLine + "（label・command・args・options.cwd・group・problemMatcher・dependsOn・inputs に対応）"
                     + WarningsDetail(file.Warnings),
             });
         }
@@ -136,13 +136,39 @@ public partial class ShellWindow
                 ShowRefactorStatus(exitCode is { } code
                     ? $"watch タスク「{watched.Label}」が終わりました（終了コード {code}）"
                     : $"watch タスク「{watched.Label}」の出力を追えなくなりました（ターミナルが閉じられました）");
-            });
+            },
+            askInput: AskTaskInputAsync);
             ShowRefactorStatus(result.Summary());
         }
         catch (Exception ex)
         {
             ShowRefactorStatus($"タスク「{task.Label}」を実行できませんでした: {ex.Message}");
         }
+    }
+
+    /// <summary><c>${input:…}</c> の値を訊く（§31.17.6）。promptString は入力ダイアログ（<c>password</c> なら伏せ字）、
+    /// pickString はパレット——タスクを選んだのと同じ場所で、同じキー操作のまま続けて選べる。
+    /// 取り消し（キャンセル・Escape）は null。</summary>
+    private Task<string?> AskTaskInputAsync(TaskInput input, CancellationToken ct)
+    {
+        if (input.Kind != TaskInputKind.PickString)
+            return Task.FromResult(InputDialog.Prompt(this, "タスクの入力", input.Prompt, input.Default ?? "",
+                allowEmpty: true, password: input.Password));
+
+        var answer = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var items = TaskInputs.OrderedOptions(input)
+            .Select(option => new PaletteCommand(input.Prompt, option.Label, () => answer.TrySetResult(option.Value))
+            {
+                Badge = option.Value == input.Default ? "既定" : null,
+                Detail = input.Prompt + Environment.NewLine
+                    + (option.Label == option.Value ? "" : "値: " + option.Value + Environment.NewLine)
+                    + "Enter で決定・Escape で取り消し（タスクは実行しません）",
+            })
+            .ToList();
+        OpenCommandPalette(PaletteMode.Command, items);
+        _paletteDismissed = () => answer.TrySetResult(null);
+        ct.Register(() => answer.TrySetCanceled(ct));
+        return answer.Task;
     }
 
     /// <summary>matcher を持つタスクだけが問題を書き換える（matcher の無いタスクを走らせても、

@@ -621,13 +621,13 @@ Loomo 独自の書式は**作らない**。既存のリポジトリにはすで�
 - JSONC（コメント・末尾カンマ）を許す。部分集合：`label`・`type`（shell / process / npm）・`command`・`args`・
   `options.cwd`（最上位も）・`windows` 上書き・`group`（文字列 / `{kind,isDefault}`）・`isBackground`・
   `dependsOn`・`detail`・`problemMatcher`（組み込み名 / インライン `pattern` / `base` 付き上書き / 配列。
-  `fileLocation`・`severity`・`owner`・複数行パターンと `loop`）。
+  `fileLocation`・`severity`・`owner`・複数行パターンと `loop`）・最上位の `inputs`（promptString / pickString、§31.17.6）。
 - 組み込み matcher：`$msCompile`・`$tsc`（`$tsc-watch`）・`$eslint-stylish`・`$eslint-compact`・`$gcc`。
   VS Code の定義を下敷きに、行頭の空白（.NET の Terminal Logger の字下げ）を許し、MSBuild の末尾
   `[proj.csproj]` をメッセージから落とした（Build ソースの既存パーサーと同じ扱い＝重複排除が効く）。
 - 読めない項目・未対応の指定（`options.env`、未知の type / matcher、壊れた正規表現、重複ラベル）は捨てて
   **警告に理由を積む**。1項目の誤りで全部消えると直す場所が見えない。警告はパレットの末尾に出る。
-- `${input:…}` / `${command:…}` / `${config:…}` は実行を断る。空に展開すると別のコマンドが走るため。
+- `${command:…}` / `${config:…}` は実行を断る。空に展開すると別のコマンドが走るため。`${input:…}` は実行前に訊く（§31.17.6）。
   `${file}` 系はエディタで開いているファイルから展開し、無ければ断る。
 - `options.env` は未対応：可視ターミナルのシェルへ `$env:` を残してしまう（後の人間のコマンドに効く）。
 
@@ -709,6 +709,33 @@ matcher に当たる場合は継がない。行末がちょうど空白で割れ
   区切り無し matcher・インライン background の読み取りと壊れた正規表現・端末の占有と解放・追跡の解除）、Terminal 側に
   `TerminalOutputLineTapTests` 8 件と実 pwsh を ConPTY 越しに流す `TerminalOutputLineTapRealPwshTests`（折り返された
   150 桁の行が1行で届く・終了コード 4 が D から渡る）。Loomo の画面からの実機確認は未実施。
+
+### §31.17.6 `${input:…}`——実行の直前に人間に訊く（2026-10-11）
+
+「デプロイ先」「テスト名」「マイグレーション名」のように実行のたびに変わる値は、VS Code では tasks.json の最上位
+`inputs` に定義して `${input:id}` で参照する。これまでは「空に展開すると別のコマンドが走る」ので実行を断っていた
+（§31.17.1）が、そのせいで inputs を使うリポジトリの tasks.json は一部が動かなかった。
+
+- **読む部分集合**：`promptString`（`description`・`default`・`password`）と `pickString`（`options` は文字列か
+  `{label, value}`・`default`）。`command` 型は拡張機能のコマンドの戻り値なので読んでおいて、参照したタスクを
+  実行するときに理由付きで断る。id の無い項目・未知の type・選択肢の無い pickString は捨てて警告に積む。
+  定義は tasks.json ごと——タスクは自分の定義元ファイルの inputs だけを引く（マルチルートで別フォルダーの同名 id を拾わない）。
+- **訊くのは1つも打ち込む前。** dependsOn を含めた実行順を決めたら、参照される入力を最初に現れた順に重複なく洗い出し
+  （`TaskInputs.Required`）、未定義の id はそこで断る。そのうえで全部訊いてから打ち込む——ビルドが走った後で
+  デプロイ側の問いを取り消されると半端に終わるため。取り消したら何も打ち込まない。
+- **同じ入力は1回の実行で1回だけ。** build と deploy の両方が `${input:env}` を使っていても1回訊く（VS Code と同じ）。
+  別々に訊くと、ビルドとデプロイで違う環境名を答える余地が生まれる。
+- **答えの展開。** command・args・`options.cwd` の中で展開する。args の中の答えは他の引数と同じく必要なら引用される
+  （`hello world` → `'hello world'`）。shell タスクの command に入った答えは書かれたとおり打ち込まれる（VS Code と同じ）。
+- **訊き方。** pickString は**パレット**——タスクを選んだのと同じ場所で、同じキー操作のまま続けて選べる。`default` の
+  項目を先頭に置いて「既定」と添える（Enter 1回で既定）。パレットを項目を選ばずに閉じた（Escape・外側クリック・
+  一覧の差し替え）ことを知るため、パレットに `_paletteDismissed` を足した。promptString は `InputDialog`
+  （空も許す。`password` なら `PasswordBox` で伏せる——値は可視ターミナルに打ち込まれるので、画面からは隠れない）。
+- 部品：`TaskInput` / `TaskInputValues` / `TaskInputs`（Core、純粋）・`TaskCommandBuilder.Build(…, inputs)`・
+  `WorkspaceTaskRunner.RunAsync(…, askInput)`・`ShellWindow.AskTaskInputAsync`。検証：`TaskRunnerTests` に 6 件
+  （inputs の読み取りと警告・既定を先頭へ・依存をまたいだ重複排除と command 型の拒否・command/args/cwd への展開と引用・
+  打ち込む前に全部訊く・取り消したら何も打ち込まず次を走らせられる）。全体 4,255 件合格、ビルド警告 0。
+  Loomo の画面からの実機確認は未実施。
 
 ## §31.18 場所のナビゲーション——戻る／進む・最後の編集箇所・最近のファイル／場所・ファイル構造（2026-10-10）
 

@@ -9,6 +9,9 @@ namespace sk0ya.Loomo.App.Views;
 /// 設計書 §24.2。</summary>
 public partial class ShellWindow {
     private IReadOnlyList<PaletteCommand> _paletteCommands = Array.Empty<PaletteCommand>();
+    /// <summary>項目を選ばずに閉じられた（Escape・外側クリック・一覧の差し替え）ときに1回だけ呼ぶ。
+    /// パレットを「選んでもらう問い」として使う側（タスクの pickString 入力）が、取り消しを知るため。</summary>
+    private Action? _paletteDismissed;
     private CommandPaletteSearchPresenter? _paletteSearchPresenter;
     private CommandPaletteSearchPresenter PaletteSearchPresentation
         => _paletteSearchPresenter ??= new CommandPaletteSearchPresenter(
@@ -34,6 +37,7 @@ public partial class ShellWindow {
     private void OpenCommandPalette(PaletteMode mode, IReadOnlyList<PaletteCommand>? commands = null) {
         if (IsPaletteOpen) {
             if (commands is not null) {
+                TakePaletteDismissed()?.Invoke();
                 _paletteCommands = commands;
                 PaletteInput.Text = PaletteQuery.PrefixOf(mode);
                 PaletteInput.CaretIndex = PaletteInput.Text.Length;
@@ -112,6 +116,7 @@ public partial class ShellWindow {
         if (!IsPaletteOpen)
             return;
         CommandPaletteOverlay.Visibility = Visibility.Collapsed;
+        TakePaletteDismissed()?.Invoke();
         _paletteSearch.Cancel();
         _paletteView.SetNavigation(false);
         if (refocus && _focusedRegion?.Pane is { } pane)
@@ -172,9 +177,15 @@ public partial class ShellWindow {
         _paletteSearch.CancelPreview();
         _paletteView.ClearPreview();
     }
+    private Action? TakePaletteDismissed() {
+        var dismissed = _paletteDismissed;
+        _paletteDismissed = null;
+        return dismissed;
+    }
     private void ExecutePaletteSelection() {
         if (PaletteList.SelectedItem is not PaletteCommand command)
             return;
+        _paletteDismissed = null;
         CloseCommandPalette(refocus: false);
         command.Execute();
     }
@@ -209,6 +220,7 @@ public partial class ShellWindow {
     private void OnPaletteItemClick(object sender, MouseButtonEventArgs e) {
         if (sender is ListBoxItem { DataContext: PaletteCommand command }) {
             e.Handled = true;
+            _paletteDismissed = null;
             CloseCommandPalette(refocus: false);
             command.Execute();
         }

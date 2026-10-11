@@ -20,9 +20,10 @@ public partial class InputDialog : Window
     /// <param name="selectNameOnly">true なら拡張子を除いた部分だけを選択（ファイル名のリネーム向け）。</param>
     /// <param name="allowEmpty">true なら空入力でも OK を許す（空文字列を返す）。既定は非空必須。</param>
     /// <param name="multiline">true なら複数行入力欄として表示する。</param>
+    /// <param name="password">true なら入力を伏せる（tasks.json の <c>password</c> 入力）。前後の空白も削らずに返す。</param>
     public static string? Prompt(
         Window? owner, string title, string prompt, string initial = "",
-        bool selectNameOnly = false, bool allowEmpty = false, bool multiline = false)
+        bool selectNameOnly = false, bool allowEmpty = false, bool multiline = false, bool password = false)
     {
         var dialog = new InputDialog
         {
@@ -41,18 +42,35 @@ public partial class InputDialog : Window
             dialog.InputBox.MinHeight = 140;
         }
 
+        if (password)
+        {
+            dialog._password = true;
+            dialog.InputBox.Visibility = Visibility.Collapsed;
+            dialog.PasswordInput.Visibility = Visibility.Visible;
+            dialog.PasswordInput.Password = initial;
+        }
+
         dialog.Loaded += (_, _) =>
         {
+            if (password)
+            {
+                dialog.PasswordInput.Focus();
+                dialog.PasswordInput.SelectAll();
+                return;
+            }
             dialog.InputBox.Focus();
             dialog.InputBox.Select(0, DialogTextPolicy.NameSelectionLength(initial, selectNameOnly));
         };
 
-        return dialog.ShowDialog() == true ? DialogTextPolicy.Trim(dialog.InputBox.Text) : null;
+        if (dialog.ShowDialog() != true) return null;
+        return password ? dialog.PasswordInput.Password : DialogTextPolicy.Trim(dialog.InputBox.Text);
     }
+
+    private bool _password;
 
     private void OnOk(object sender, RoutedEventArgs e)
     {
-        if (!_allowEmpty && DialogTextPolicy.IsMissingRequiredText(InputBox.Text))
+        if (!_allowEmpty && DialogTextPolicy.IsMissingRequiredText(_password ? PasswordInput.Password : InputBox.Text))
         {
             ErrorText.Text = "名前を入力してください。";
             ErrorText.Visibility = Visibility.Visible;

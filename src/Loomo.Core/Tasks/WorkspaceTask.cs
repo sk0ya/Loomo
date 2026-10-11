@@ -37,6 +37,10 @@ public sealed record WorkspaceTask
     public IReadOnlyList<string> DependsOn { get; init; } = [];
     /// <summary><c>detail</c>（一覧の補足）。</summary>
     public string? Detail { get; init; }
+    /// <summary>定義元の tasks.json の <c>inputs</c>（id → 定義）。<c>${input:id}</c> はここだけを引く。</summary>
+    public IReadOnlyDictionary<string, TaskInput> Inputs { get; init; } = EmptyInputs;
+
+    private static readonly IReadOnlyDictionary<string, TaskInput> EmptyInputs = new Dictionary<string, TaskInput>();
 
     public bool IsBuild => string.Equals(Group, "build", StringComparison.OrdinalIgnoreCase);
     public bool IsDefaultBuild => IsBuild && IsDefault;

@@ -26,6 +26,10 @@
         <TextBox x:Name="InputBox" Grid.Row="1"
                  FontSize="{DynamicResource Fs13}" />
 
+        <PasswordBox x:Name="PasswordInput" Grid.Row="1"
+                     FontSize="{DynamicResource Fs13}"
+                     Visibility="Collapsed" />
+
         <TextBlock x:Name="ErrorText" Grid.Row="2"
                    Foreground="#FFE4676B"
                    FontSize="{DynamicResource Fs11}"
