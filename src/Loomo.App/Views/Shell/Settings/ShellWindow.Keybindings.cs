@@ -29,6 +29,7 @@ public partial class ShellWindow {
             ["pane.zoom"] = ToggleZoom, ["pane.fullscreen"] = TogglePaneFullscreen, ["pane.close"] = () => { if (!CloseFocusedViewport()) HideFocusedRegion(); }, ["pane.split.vertical"] = () => HandleViewportSplitKey(Key.V), ["pane.split.horizontal"] = () => HandleViewportSplitKey(Key.S), ["pane.split.closeView"] = () => HandleViewportSplitKey(Key.Q),
             ["pane.search"] = OpenOrCycleSearch,
             ["pane.files"] = () => { EnsurePaneVisibleOrSwapTopLeft(PaneKind.Files); FocusPane(PaneKind.Files); },
+            ["pane.harness"] = () => { EnsurePaneVisibleOrSwapTopLeft(PaneKind.Harness); FocusPane(PaneKind.Harness); },
             ["search.nextScope"] = () => CycleSearchScope(+1),
             ["search.previousScope"] = () => CycleSearchScope(-1),
             ["search.scope.text"] = () => OpenSearch(SearchScope.Text),

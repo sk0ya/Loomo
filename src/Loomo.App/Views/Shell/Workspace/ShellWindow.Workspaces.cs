@@ -135,6 +135,8 @@ public partial class ShellWindow {
             // 決めるので、それが確定する LoadRoot のあとで復元する。
             _vm.Files.Restore(workspace.Files?.Migrate(), workspace.RootPath);
             RestoreGitCompareBase(workspace);
+            // ハーネスペインは記録の出どころがフォルダー集合で決まるので、これも LoadRoot のあと（§37.7）。
+            _vm.Harness.Restore(workspace.Harness);
             StartupProfiler.Mark("  復元:FolderTree.LoadRoot");
         }
         profile?.Lap("folderTree");
@@ -165,6 +167,7 @@ public partial class ShellWindow {
             _vm.FolderTree.RestoreAdditionalFolders(workspace.AdditionalFolders);
             _vm.Files.Restore(workspace.Files?.Migrate(), workspace.RootPath);
             RestoreGitCompareBase(workspace);
+            _vm.Harness.Restore(workspace.Harness);
             StartupProfiler.Mark("  復元:FolderTree.LoadRoot（遅延）");
             profile?.Lap("deferredFolderTree");
         }
@@ -229,6 +232,7 @@ public partial class ShellWindow {
         snapshot.TreeSelectedPath = _vm.FolderTree.CaptureSelectedPath();
         snapshot.AdditionalFolders = _vm.FolderTree.CaptureAdditionalFolders().ToList();
         snapshot.Files = _vm.Files.Capture();
+        snapshot.Harness = _vm.Harness.Capture();
         snapshot.GitCompare = _vm.GitPanel.CompareBase.Capture();
         snapshot.ComposerText = CaptureComposerText();
         snapshot.ComposerVisible = IsComposerVisible;

@@ -487,6 +487,17 @@ public sealed class WorkspaceSnapshot
     /// <summary>Git の比較基準（作業ツリー／ブランチ／分岐点）。null の旧データは作業ツリー基準。
     /// 「このブランチで入れた変更を見ている」という現在地はワークスペースごとに違うのでここに持つ。</summary>
     public GitCompareSnapshot? GitCompare { get; set; }
+
+    /// <summary>ハーネスペイン（§37.7）の選んでいたタブと期間。候補の選択は持ち越さない（記録が変われば意味が変わる）。</summary>
+    public HarnessPaneSnapshot? Harness { get; set; }
+}
+
+/// <summary>ハーネスペインの復元状態。</summary>
+public sealed class HarnessPaneSnapshot
+{
+    public int SelectedTab { get; set; }
+    public int PeriodDays { get; set; } = 30;
+    public bool HideSingleRunCandidates { get; set; }
 }
 
 /// <summary>最近のコマンド（§24.20）の永続化形。<see cref="ExitCode"/> は最後に実行したときの値で、
@@ -728,7 +739,9 @@ public enum PaneKind
     TsIde,
     /// <summary>ファイル一覧（エクスプローラ）ペイン。サイドバーのツリーとは別物で、
     /// 1フォルダーぶんを平らに並べて並べ替え・絞り込み・一括操作をする面（§26.10）。</summary>
-    Files
+    Files,
+    /// <summary>ハーネスペイン。AI 開発ハーネスの改善箇所を記録から見つけ、根拠を辿り、版を比べる作業台（§37）。</summary>
+    Harness
 }
 
 /// <summary>

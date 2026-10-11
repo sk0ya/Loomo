@@ -25,6 +25,7 @@ internal static class PaneVisibilityPresentation
         PaneKind.Search => "検索",
         PaneKind.TsIde => "TS IDE",
         PaneKind.Files => "ファイル一覧",
+        PaneKind.Harness => "ハーネス",
         _ => kind.ToString(),
     };
 

@@ -244,6 +244,9 @@ public partial class ShellWindow {
             case PaneKind.Files:
                 PaneContent<FilesPaneView>(FilesPaneHost).FocusList();
                 break;
+            case PaneKind.Harness:
+                PaneContent<HarnessPaneView>(HarnessPaneHost).FocusList();
+                break;
         }
         RecordTrailPane(kind);
     }

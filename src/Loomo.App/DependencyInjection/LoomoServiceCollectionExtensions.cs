@@ -205,6 +205,9 @@ internal static class LoomoServiceCollectionExtensions
         // ファイル一覧ペイン。操作の実体はツリーと同じ FolderTreeCommandHandler だが、
         // こちらは「ワークスペース外でも操作できる版」を渡す——外のフォルダーも開けるファイラなので、
         // エージェント用の限定（§10）を人間に被せない。
+        // ハーネスペイン（§37）。解析結果のキャッシュは HarnessAnalyzer が持つので、両方とも1つきり。
+        services.AddSingleton(sp => new HarnessAnalyzer(sp.GetRequiredService<IWorkspaceService>()));
+        services.AddSingleton<HarnessPaneViewModel>();
         services.AddSingleton(sp => new FilesPaneViewModel(
             sp.GetRequiredService<IWorkspaceService>(),
             FolderTreeCommandHandler.Unconfined(sp.GetRequiredService<IWorkspaceService>(),

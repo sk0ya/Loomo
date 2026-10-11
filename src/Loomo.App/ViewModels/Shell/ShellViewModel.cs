@@ -43,6 +43,8 @@ public sealed partial class ShellViewModel : ObservableObject
     /// <summary>ファイル一覧ペイン（<see cref="Services.PaneKind.Files"/>）。サイドバーのツリーと
     /// 同居する別の面——階層の把握はツリー、集合の処理はこちら（§26.10）。</summary>
     public FilesPaneViewModel Files { get; }
+    /// <summary>ハーネスペイン（<see cref="Services.PaneKind.Harness"/>、§37）。</summary>
+    public HarnessPaneViewModel Harness { get; }
     public WorkspaceListViewModel Workspaces { get; }
     public AiBarViewModel AiBar { get; }
     public TabsViewModel Tabs { get; }
@@ -147,6 +149,7 @@ public sealed partial class ShellViewModel : ObservableObject
     public ShellViewModel(
         FolderTreeViewModel folderTree,
         FilesPaneViewModel files,
+        HarnessPaneViewModel harness,
         WorkspaceListViewModel workspaces,
         AiBarViewModel aiBar,
         TabsViewModel tabs,
@@ -177,6 +180,7 @@ public sealed partial class ShellViewModel : ObservableObject
     {
         FolderTree = folderTree;
         Files = files;
+        Harness = harness;
         Workspaces = workspaces;
         AiBar = aiBar;
         Tabs = tabs;

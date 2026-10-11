@@ -179,6 +179,7 @@ public partial class ShellWindow : Window {
         DeferPaneContent(GitSessionHost, () => new GitSessionView());
         DeferPaneContent(SearchPaneHost, () => new SearchPanelView());
         DeferPaneContent(FilesPaneHost, () => new FilesPaneView());
+        DeferPaneContent(HarnessPaneHost, () => new HarnessPaneView());
         DeferPaneContent(TraceSessionHost, () => new TraceSessionView());
         DeferPaneContent(DebugPaneHost, () => new DebugView());
         DeferPaneContent(TsIdePaneHost, () => new TsDebugView());
@@ -404,6 +405,13 @@ public partial class ShellWindow : Window {
         };
         vm.Files.FileAiRequested += (_, request) => _ = RunFileAiAsync(request);
         vm.Files.StateChanged += (_, _) => SaveActiveWorkspaceSnapshot();
+        // ハーネスペイン（§37）：根拠の記録・読まれたファイル・書き出したタスクはエディタで開く（素材の流れ）。
+        vm.Harness.OpenRequested += async (_, request) => {
+            await OpenFileInNewEditorTabAsync(request.Path);
+            if (request.Line > 0)
+                _activeEditorTab?.Control.NavigateTo(request.Line - 1, 0);
+        };
+        vm.Harness.StateChanged += (_, _) => SaveActiveWorkspaceSnapshot();
         vm.FolderTree.RevealInFilesPaneRequested += (_, path) => {
             vm.Files.Reveal(path);
             EnsurePaneVisibleOrSwapTopLeft(PaneKind.Files);

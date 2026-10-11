@@ -166,7 +166,11 @@ public class ShellViewModelTests
         var filesVm = new FilesPaneViewModel(
             workspace, new FolderTreeCommandHandler(workspace, new FileOperationHistory()), folderTree, new FakeFilePlacesProvider());
 
-        return new ShellViewModel(folderTree, filesVm, workspacesVm, aiBar, new TabsViewModel(), sessionsVm, settingsVm,
+        var harnessVm = new HarnessPaneViewModel(
+            new sk0ya.Loomo.Services.HarnessAnalyzer(workspace, Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-loomo-claude-projects")),
+            workspace);
+
+        return new ShellViewModel(folderTree, filesVm, harnessVm, workspacesVm, aiBar, new TabsViewModel(), sessionsVm, settingsVm,
             appearanceVm, lspVm, lspPromptVm, formatterVm, new Lazy<KeybindingsViewModel>(() => keyboardVm), gitPanelVm, gitSessionVm, diffSessionVm, traceSessionVm,
             new PegboardViewModel(),
             new BrowserViewModel(new BrowserLibraryStore(

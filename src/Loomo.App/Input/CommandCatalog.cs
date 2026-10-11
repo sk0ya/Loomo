@@ -88,6 +88,8 @@ public static class CommandCatalog
         // ファイル一覧は既定キーを与えない（サイドバーのツリーと役割が違うだけで、
         // 毎回使う起点ではない。割り当てたい人は設定画面から付けられる）。
         new CommandDescriptor("pane.files", CatPane, "ファイル一覧を開く", null),
+        // ハーネスも既定キーなし（毎回の起点ではない。§37）。
+        new CommandDescriptor("pane.harness", CatPane, "ハーネスを開く", null),
 
         // ===== 検索 =====
         // pane.search は検索ペインの外では開く、検索ペイン内では次の対象へ切り替える。
