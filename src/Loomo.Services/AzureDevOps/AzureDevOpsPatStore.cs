@@ -29,13 +29,6 @@ public sealed class AzureDevOpsPatStore
     public const string EnvironmentVariable = "ADO_PAT";
     public const string CredentialTarget = "ADO_PAT";
 
-    /// <summary>
-    /// 初期の TaskAzure が使っていた資格情報の名前（のちに <c>ADO_PAT</c> へ改名）。改名前の TaskAzure を使い続けていると、
-    /// 生きている PAT はこちらにあり、<c>ADO_PAT</c> には古い PAT が残っている——TaskAzure は動くのに Loomo は
-    /// 203（サインイン画面）になる。
-    /// </summary>
-    public const string LegacyTaskAzureCredentialTarget = "TaskAzure_ADO_PAT";
-
     /// <summary>PAT。どこにも無ければ null。</summary>
     public string? Get() => FindCandidates().FirstOrDefault()?.Pat;
 
@@ -59,8 +52,6 @@ public sealed class AzureDevOpsPatStore
             Add(Environment.GetEnvironmentVariable(name, EnvironmentVariableTarget.Machine), $"環境変数 {name}（システム）");
             Add(ReadFromCredentialManager(name), $"Windows 資格情報マネージャーの {name}");
         }
-        Add(ReadFromCredentialManager(LegacyTaskAzureCredentialTarget),
-            $"Windows 資格情報マネージャーの {LegacyTaskAzureCredentialTarget}（初期の TaskAzure）");
         return result;
 
         void Add(string? pat, string source)
