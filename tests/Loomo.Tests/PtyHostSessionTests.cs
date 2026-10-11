@@ -19,17 +19,21 @@ public sealed class PtyHostSessionTests : IDisposable
     private readonly string _pipeName = "loomo-pty-test-" + Guid.NewGuid().ToString("N");
     private readonly string _root = Path.Combine(Path.GetTempPath(), "loomo-pty-test-" + Guid.NewGuid().ToString("N"));
     private readonly PtyHostClient _client;
+    /// <summary>本番のホストが握るミューテックスの代役。クライアントはこれでホストの在否を見る。</summary>
+    private readonly Mutex _hostMutex;
 
     public PtyHostSessionTests()
     {
         Directory.CreateDirectory(_root);
         var server = new PtyHostServer(_pipeName, idleExit: null);
         new Thread(server.Run) { IsBackground = true, Name = "PtyHostServerUnderTest" }.Start();
+        _hostMutex = new Mutex(initiallyOwned: false, sk0ya.Loomo.Core.Pty.PtyProtocol.HostMutexName(_pipeName));
         _client = new PtyHostClient(_pipeName, Path.Combine(_root, "bundled"), Path.Combine(_root, "installed"));
     }
 
     public void Dispose()
     {
+        _hostMutex.Dispose();
         try { Directory.Delete(_root, recursive: true); } catch { }
     }
 
@@ -229,6 +233,72 @@ public sealed class PtyHostSessionTests : IDisposable
         await WaitUntilAsync(async () => (await _client.ListAsync()).All(s => s.WorkspaceId != doomedWorkspace), "削除");
         Assert.Contains(await _client.ListAsync(), s => s.WorkspaceId == keptWorkspace);
         await _client.KillWorkspaceAsync(keptWorkspace);
+    }
+
+    [Fact]
+    public async Task LeavingAsTheLastLoomoKillsEveryShell()
+    {
+        var attached = _client.OpenSession(Guid.NewGuid(), Guid.NewGuid(), Request());
+        var detached = _client.OpenSession(Guid.NewGuid(), Guid.NewGuid(), Request());
+        attached.Start();
+        detached.Start();
+        detached.Abandon();
+        Assert.Equal(2, (await _client.ListAsync()).Count);
+
+        // このテストのプロセスが唯一の Loomo。正常終了を伝えたら、繋いでいるシェルも切り離したシェルも残さない。
+        _client.Leave();
+
+        await WaitUntilAsync(async () => (await _client.ListAsync()).Count == 0, "全セッションの終了");
+        attached.Dispose();
+    }
+
+    [Fact]
+    public async Task LeavingSparesTheShellsWhileAnotherLoomoIsAlive()
+    {
+        var session = _client.OpenSession(Guid.NewGuid(), Guid.NewGuid(), Request());
+        session.Start();
+        session.Abandon();
+
+        // もう1つの Loomo（の代役）が生きていて、ホストに一度は話しかけている。
+        using var other = Process.Start(new ProcessStartInfo("cmd.exe", "/d /c ping -n 60 127.0.0.1 >nul")
+        {
+            CreateNoWindow = true, UseShellExecute = false,
+        })!;
+        AskAs(other.Id, new sk0ya.Loomo.Core.Pty.PtyProtocol.Request(sk0ya.Loomo.Core.Pty.PtyProtocol.Operation.List));
+
+        _client.Leave();
+        await Task.Delay(300);
+        Assert.Single(await _client.ListAsync());
+
+        // その Loomo が落ちた（Leave を言わずに消えた）なら、もう数えない：次の正常終了が最後になる。
+        other.Kill();
+        other.WaitForExit();
+        _client.Leave();
+        await WaitUntilAsync(async () => (await _client.ListAsync()).Count == 0, "全セッションの終了");
+    }
+
+    [Fact]
+    public async Task TryListTellsANotRunningHostFromAnUnansweredOne()
+    {
+        var absent = new PtyHostClient("loomo-pty-test-absent-" + Guid.NewGuid().ToString("N"),
+            Path.Combine(_root, "bundled"), Path.Combine(_root, "installed"));
+        Assert.Empty((await absent.TryListAsync())!);
+
+        var id = Guid.NewGuid();
+        var session = _client.OpenSession(id, Guid.NewGuid(), Request());
+        session.Start();
+        Assert.Contains((await _client.TryListAsync())!, s => s.SessionId == id);
+        session.Dispose();
+    }
+
+    private void AskAs(int processId, sk0ya.Loomo.Core.Pty.PtyProtocol.Request request)
+    {
+        using var pipe = new System.IO.Pipes.NamedPipeClientStream(".", _pipeName, System.IO.Pipes.PipeDirection.InOut,
+            System.IO.Pipes.PipeOptions.Asynchronous | System.IO.Pipes.PipeOptions.CurrentUserOnly);
+        pipe.Connect(5000);
+        sk0ya.Loomo.Core.Pty.PtyProtocol.WriteJson(pipe, sk0ya.Loomo.Core.Pty.PtyProtocol.FrameType.Request,
+            request with { ClientProcessId = processId });
+        Assert.NotNull(sk0ya.Loomo.Core.Pty.PtyProtocol.ReadFrame(pipe));
     }
 
     [Fact]

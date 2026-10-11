@@ -373,8 +373,11 @@ resident **`sk0ya.Loomo.Pty.Host`** process (ConPTY + Terminal's `HeadlessTermin
 The **tab id is the session key**; tab id/name/cwd/split layout go into `WorkspaceSnapshot.TerminalTabs`, and on
 restore the same ids re-attach — the host replays the screen as a VT snapshot (bracketed by a private replay
 OSC so OSC 133 marks inside it are treated as history, not new activity). Rules that matter when editing:
-`RemotePtySession.Dispose` **kills** (tab closed / restarted); Loomo exiting or crashing never disposes, so the
-pipe just drops and the shell survives. The host is copied to `%LOCALAPPDATA%\Loomo\ptyhost\<content-hash>\`
+`RemotePtySession.Dispose` **kills** (tab closed / restarted); a Loomo *crash* never disposes, so the pipe just
+drops and the shell survives. A **clean exit** sends `Leave` (`App.OnExit`): if no other Loomo process that has
+talked to the host is still alive, the host kills every session and exits. On restore, saved tabs whose session
+the host no longer has are **dropped**, not re-created as empty shells (`ResolveRestorableTerminalTabs`; an
+unanswered host keeps them all). The host is copied to `%LOCALAPPDATA%\Loomo\ptyhost\<content-hash>\`
 before launch (never run from `bin` — a resident process would lock the build). Both pipe ends **must** be
 `PipeOptions.Asynchronous`: a synchronous handle serializes read and write and deadlocks both sides.
 

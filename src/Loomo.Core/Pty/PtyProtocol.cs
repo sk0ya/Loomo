@@ -56,6 +56,8 @@ public static class PtyProtocol
         Kill,
         KillWorkspace,
         List,
+        /// <summary>Loomo が正常に終わる。ほかに生きている Loomo がいなければ、ホストは全セッションを殺して終わる。</summary>
+        Leave,
     }
 
     /// <param name="Op">要求の種類。</param>
@@ -67,6 +69,7 @@ public static class PtyProtocol
     /// <param name="Rows">行数。</param>
     /// <param name="ScrollbackLimit">ホストの画面モデルが持つスクロールバックの行数。</param>
     /// <param name="Environment">起動時に足す環境変数。</param>
+    /// <param name="ClientProcessId">要求した Loomo のプロセス ID。ホストは「まだ生きている Loomo」を数えるのに使う。</param>
     public sealed record Request(
         Operation Op,
         Guid SessionId = default,
@@ -76,7 +79,8 @@ public static class PtyProtocol
         short Columns = 0,
         short Rows = 0,
         int ScrollbackLimit = 0,
-        Dictionary<string, string?>? Environment = null);
+        Dictionary<string, string?>? Environment = null,
+        int ClientProcessId = 0);
 
     /// <param name="Created">新しく作ったなら true、生きていたものに繋いだなら false。</param>
     /// <param name="Sessions">一覧の要求への答え。</param>
@@ -104,6 +108,9 @@ public static class PtyProtocol
         byte[] user = SHA256.HashData(Encoding.UTF8.GetBytes(System.Environment.UserDomainName + "\\" + System.Environment.UserName));
         return $"loomo-pty-v{Version}-{sessionId}-{Convert.ToHexString(user, 0, 6).ToLowerInvariant()}";
     }
+
+    /// <summary>ホストが生きている間握っている名前付きミューテックス。在否を待たずに確かめるのに使う。</summary>
+    public static string HostMutexName(string pipeName) => $@"Local\{pipeName}-host";
 
     public static void WriteFrame(Stream stream, FrameType type, ReadOnlySpan<byte> payload)
     {

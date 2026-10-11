@@ -169,6 +169,9 @@ public partial class App : Application
         // 上書き貼り付けの退避先（.loomo-conflict-*）は Undo のためだけに残している隠しコピーなので、
         // 履歴と一緒にここで捨てる。落ちて通らなかったぶんは次回起動の Sweep が拾う。
         try { _services?.GetService<FileOperationHistory>()?.Clear(); } catch { }
+        // 端末の常駐ホスト（§34.6）：最後の Loomo が正常に終わるならシェルを残さない。落ちたときはここを通らないので、
+        // シェルは生き残って次の起動で戻る。
+        try { _services?.GetService<sk0ya.Loomo.Services.Terminal.PtyHostClient>()?.Leave(); } catch { }
         _relay?.Dispose();
         _services?.Dispose();
         base.OnExit(e);

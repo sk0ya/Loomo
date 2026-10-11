@@ -64,7 +64,8 @@ public sealed class PtyHostClient
                 pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase);
             PtyProtocol.WriteJson(pipe, PtyProtocol.FrameType.Request, new PtyProtocol.Request(
                 PtyProtocol.Operation.Open, sessionId, workspaceId, request.LaunchCommandLine,
-                request.WorkingDirectory, request.Columns, request.Rows, request.ScrollbackLimit, environment));
+                request.WorkingDirectory, request.Columns, request.Rows, request.ScrollbackLimit, environment,
+                Environment.ProcessId));
             var response = ReadResponse(pipe);
             if (response.InUse)
                 throw new PtySessionInUseException(sessionId);
@@ -81,6 +82,36 @@ public sealed class PtyHostClient
     public Task<IReadOnlyList<PtyProtocol.SessionInfo>> ListAsync() => Task.Run<IReadOnlyList<PtyProtocol.SessionInfo>>(() =>
         Ask(new PtyProtocol.Request(PtyProtocol.Operation.List))?.Sessions ?? new List<PtyProtocol.SessionInfo>());
 
+    /// <summary>
+    /// ホストが抱えているセッション。ホストが動いていなければ空、動いているのに答えなければ null（分からない）。
+    /// 復元できるタブを決めるのに使う——「分からない」を「無い」と取り違えるとタブを全部消してしまう。
+    /// </summary>
+    public Task<IReadOnlyList<PtyProtocol.SessionInfo>?> TryListAsync() => Task.Run<IReadOnlyList<PtyProtocol.SessionInfo>?>(() =>
+    {
+        if (!IsHostRunning())
+            return new List<PtyProtocol.SessionInfo>();
+        return Ask(new PtyProtocol.Request(PtyProtocol.Operation.List))?.Sessions;
+    });
+
+    /// <summary>
+    /// この Loomo が正常に終わることをホストへ伝える。ほかに生きている Loomo がいなければ、ホストはシェルを全部殺して
+    /// 終わる（落ちたときは伝わらないので、シェルは残って次の起動で戻る）。終了処理から呼ぶので同期で、長く待たない。
+    /// </summary>
+    public void Leave()
+    {
+        if (IsHostRunning())
+            Ask(new PtyProtocol.Request(PtyProtocol.Operation.Leave), TimeSpan.FromSeconds(3));
+    }
+
+    /// <summary>ホストが握っているミューテックスで在否を見る。パイプへの接続と違って待たない。</summary>
+    private bool IsHostRunning()
+    {
+        if (!Mutex.TryOpenExisting(PtyProtocol.HostMutexName(_pipeName), out var mutex))
+            return false;
+        mutex.Dispose();
+        return true;
+    }
+
     public Task KillAsync(Guid sessionId) =>
         Task.Run(() => Ask(new PtyProtocol.Request(PtyProtocol.Operation.Kill, sessionId)));
 
@@ -88,17 +119,24 @@ public sealed class PtyHostClient
     public Task KillWorkspaceAsync(Guid workspaceId) =>
         Task.Run(() => Ask(new PtyProtocol.Request(PtyProtocol.Operation.KillWorkspace, WorkspaceId: workspaceId)));
 
-    private PtyProtocol.Response? Ask(PtyProtocol.Request request)
+    private PtyProtocol.Response? Ask(PtyProtocol.Request request, TimeSpan? responseTimeout = null)
     {
         try
         {
             using var pipe = Connect(launchIfMissing: false, TimeSpan.FromMilliseconds(500));
             if (pipe is null)
                 return null;
-            PtyProtocol.WriteJson(pipe, PtyProtocol.FrameType.Request, request);
-            return ReadResponse(pipe);
+            PtyProtocol.WriteJson(pipe, PtyProtocol.FrameType.Request, request with { ClientProcessId = Environment.ProcessId });
+            if (responseTimeout is not { } timeout)
+                return ReadResponse(pipe);
+            var read = Task.Run(() => ReadResponse(pipe));
+            return read.Wait(timeout) ? read.Result : null;
         }
         catch (Exception ex) when (ex is IOException or InvalidOperationException or InvalidDataException or TimeoutException)
+        {
+            return null;
+        }
+        catch (AggregateException ex) when (ex.InnerException is IOException or InvalidOperationException or InvalidDataException)
         {
             return null;
         }

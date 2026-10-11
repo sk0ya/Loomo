@@ -10,10 +10,13 @@ namespace sk0ya.Loomo.Pty.Host;
 /// </summary>
 /// <param name="pipeName">待ち受けるパイプ名。</param>
 /// <param name="idleExit">セッションが無く、誰も繋がっていない状態がこれだけ続いたら終わる。null なら終わらない（テスト用）。</param>
-internal sealed class PtyHostServer(string pipeName, TimeSpan? idleExit)
+/// <param name="lastClientLeft">最後の Loomo が終わり、全セッションを殺したあとに呼ぶ（本番はプロセスを終える）。</param>
+internal sealed class PtyHostServer(string pipeName, TimeSpan? idleExit, Action? lastClientLeft = null)
 {
     private readonly object _gate = new();
     private readonly Dictionary<Guid, HostSession> _sessions = new();
+    /// <summary>要求をくれた Loomo のプロセス。正常終了の <c>Leave</c> で外し、落ちたものは生死で数えない。</summary>
+    private readonly Dictionary<int, System.Diagnostics.Process> _clients = new();
     private int _connections;
     private DateTime _idleSinceUtc = DateTime.UtcNow;
 
@@ -56,8 +59,24 @@ internal sealed class PtyHostServer(string pipeName, TimeSpan? idleExit)
                 return;
             var request = PtyProtocol.ReadJson<PtyProtocol.Request>(frame.Payload);
             client = new ClientConnection(pipe);
+            if (request.Op != PtyProtocol.Operation.Leave)
+                RememberClient(request.ClientProcessId);
             switch (request.Op)
             {
+                case PtyProtocol.Operation.Leave:
+                    bool last = ForgetClient(request.ClientProcessId);
+                    if (last)
+                        KillAll();
+                    client.Send(PtyProtocol.FrameType.Response, Json(new PtyProtocol.Response()));
+                    if (last && lastClientLeft is { } leave)
+                    {
+                        HostLog.Write("最後の Loomo が終わったので終了");
+                        // 返事を書き切ってから終わる（Loomo は返事を待ってから自分の終了を進める）。
+                        client.Close();
+                        Thread.Sleep(200);
+                        leave();
+                    }
+                    return;
                 case PtyProtocol.Operation.List:
                     client.Send(PtyProtocol.FrameType.Response, Json(new PtyProtocol.Response(Sessions: List())));
                     return;
@@ -180,6 +199,77 @@ internal sealed class PtyHostServer(string pipeName, TimeSpan? idleExit)
         }
 
         HostLog.Write($"セッション終了 {session.Id:N}");
+    }
+
+    private void RememberClient(int processId)
+    {
+        if (processId <= 0)
+            return;
+        lock (_gate)
+        {
+            if (_clients.ContainsKey(processId))
+                return;
+        }
+
+        System.Diagnostics.Process process;
+        try
+        {
+            process = System.Diagnostics.Process.GetProcessById(processId);
+        }
+        catch (ArgumentException)
+        {
+            return; // もういない。
+        }
+
+        lock (_gate)
+        {
+            if (!_clients.TryAdd(processId, process))
+                process.Dispose();
+        }
+    }
+
+    /// <summary><paramref name="processId"/> を外し、ほかに生きている Loomo が残っていなければ true。</summary>
+    private bool ForgetClient(int processId)
+    {
+        lock (_gate)
+        {
+            if (_clients.Remove(processId, out var leaving))
+                leaving.Dispose();
+            foreach (var (id, process) in _clients.ToList())
+            {
+                bool exited;
+                try { exited = process.HasExited; }
+                catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception) { exited = true; }
+                if (!exited)
+                    continue;
+                _clients.Remove(id);
+                process.Dispose();
+            }
+            return _clients.Count == 0;
+        }
+    }
+
+    /// <summary>
+    /// 全セッションを殺し、表から消えるまで（最大2秒）待つ。シェルは ConPTY の kill-on-close ジョブに入っているので、
+    /// 待ち切れずにホストが終わっても道連れになる。
+    /// </summary>
+    private void KillAll()
+    {
+        List<HostSession> doomed;
+        lock (_gate)
+            doomed = _sessions.Values.ToList();
+        foreach (var session in doomed)
+            session.Kill();
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(2);
+        while (DateTime.UtcNow < deadline)
+        {
+            lock (_gate)
+            {
+                if (_sessions.Count == 0)
+                    return;
+            }
+            Thread.Sleep(20);
+        }
     }
 
     private HostSession? Find(Guid id)

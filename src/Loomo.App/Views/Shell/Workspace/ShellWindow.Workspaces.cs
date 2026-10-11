@@ -171,7 +171,8 @@ public partial class ShellWindow {
             StartupProfiler.Mark("  復元:FolderTree.LoadRoot（遅延）");
             profile?.Lap("deferredFolderTree");
         }
-        RestoreTerminalTabs(workspace, profile);
+        var terminalHostSessions = await QueryRestorableTerminalSessionsAsync(workspace);
+        RestoreTerminalTabs(workspace, terminalHostSessions, profile);
         ApplyPendingTerminalCommands(workspace);
         StartupProfiler.Mark("  復元:RestoreTerminalTabs");
         profile?.Lap("terminal");

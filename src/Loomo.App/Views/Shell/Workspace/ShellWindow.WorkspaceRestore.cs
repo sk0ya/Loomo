@@ -1,8 +1,9 @@
 ﻿namespace sk0ya.Loomo.App.Views;
 /// <summary>ShellWindow: ワークスペース復元時のタブ実体の付け替え（端末／エディタ／ブラウザの Restore・Attach・Detach・GetOrCreate）。切替の入口とスナップショット保存は ShellWindow.Workspaces.cs。</summary>
 public partial class ShellWindow {
+    /// <param name="hostSessions">常駐ホストに残っているシェルの ID（<see cref="QueryRestorableTerminalSessionsAsync"/>）。</param>
     private void RestoreTerminalTabs(
-        WorkspaceSnapshot workspace, WorkspaceSwitchProfiler? profile = null) {
+        WorkspaceSnapshot workspace, IReadOnlyCollection<Guid>? hostSessions, WorkspaceSwitchProfiler? profile = null) {
         var terminalWorkspace = WorkspaceSessionCoordinator.GetOrCreateWorkspace(
             _terminalWorkspaces, workspace.Id, () => new TerminalWorkspaceTabs { WorkspaceId = workspace.Id });
         _activeTerminalWorkspace = terminalWorkspace;
@@ -20,7 +21,7 @@ public partial class ShellWindow {
             workspace.RootPath, _terminal.CurrentDirectory) ?? _terminal.CurrentDirectory;
         // 常駐させているなら、前回のタブを同じ ID で立て直す——ID が常駐ホストのセッションの鍵なので、
         // 表示された時点で生きているシェルへ繋ぎ直る（§34）。
-        if (RestorePersistentTerminalTabs(workspace, terminalWorkspace, cwd))
+        if (RestorePersistentTerminalTabs(workspace, terminalWorkspace, cwd, hostSessions))
             return;
         // 常駐させないなら端末は戻らない（前回の画面も実行中のコマンドも戻らない）ので、
         // 初回はワークスペースのルートに素のタブを1枚だけ立てる。

@@ -45,10 +45,28 @@ public partial class ShellWindow {
         snapshot.TerminalViewLayout = _terminalViews?.Capture();
     }
 
+    /// <summary>
+    /// 復元の前に、常駐ホストに残っているシェルの ID を聞いておく。聞く必要が無い（このワークスペースのタブを
+    /// もう立ててある・常駐が切ってある・前回のタブが無い）か、ホストが答えなければ null。
+    /// </summary>
+    private async Task<IReadOnlyCollection<Guid>?> QueryRestorableTerminalSessionsAsync(WorkspaceSnapshot workspace) {
+        if (!PersistentTerminalsEnabled || workspace.TerminalTabs.Count == 0 ||
+            _terminalWorkspaces.TryGetValue(workspace.Id, out var existing) && existing.IsInitialized)
+            return null;
+        try {
+            var sessions = await _ptyHost.TryListAsync();
+            return sessions?.Select(s => s.SessionId).ToHashSet();
+        } catch (Exception) {
+            return null;
+        }
+    }
+
     /// <summary>前回のタブを同じ ID で立て直す。立てたら true。シェルへの接続はタブが表示されたとき
-    /// （端末ビューの Loaded）に起きるので、ここで待つものは無い。</summary>
+    /// （端末ビューの Loaded）に起きるので、ここで待つものは無い。常駐ホストにシェルが残っていないタブは
+    /// 戻せないので立て直さず、スナップショットからも消える（次の保存で）。</summary>
     private bool RestorePersistentTerminalTabs(
-        WorkspaceSnapshot workspace, TerminalWorkspaceTabs terminalWorkspace, string fallbackDirectory) {
+        WorkspaceSnapshot workspace, TerminalWorkspaceTabs terminalWorkspace, string fallbackDirectory,
+        IReadOnlyCollection<Guid>? hostSessions) {
         if (!PersistentTerminalsEnabled) {
             // 常駐を切ったなら、前に常駐させたシェルはもうどのタブにも戻らない。残すと見えないまま生き続ける。
             if (_ptyHost.IsAvailable && terminalWorkspace.WorkspaceId is { } owner)
@@ -56,9 +74,10 @@ public partial class ShellWindow {
             return false;
         }
         _ = AdoptOrphanTerminalSessionsAsync(terminalWorkspace);
-        if (workspace.TerminalTabs.Count == 0)
+        var restorable = WorkspaceSessionCoordinator.ResolveRestorableTerminalTabs(workspace.TerminalTabs, hostSessions);
+        if (restorable.Count == 0)
             return false;
-        foreach (var saved in workspace.TerminalTabs) {
+        foreach (var saved in restorable) {
             var cwd = Directory.Exists(saved.WorkingDirectory) ? saved.WorkingDirectory! : fallbackDirectory;
             AddRestoredTerminalTab(cwd, saved.Id, saved.CustomName);
         }
