@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <RootNamespace>sk0ya.Loomo.Services</RootNamespace>
@@ -76,6 +76,8 @@
          ガターの行番号の差し替え（SetLineNumberLabels）。抜粋タブ（§35.3）が使う。 -->
     <!-- 1.0.99: VimEditorControl.HostCodeActionProviderQueriesLsp。ホストが quickfix の LSP 問い合わせを
          済ませると宣言すれば、候補0件のとき Alt+Enter・電球が同じ codeAction 要求を投げ直さない（§31.19）。 -->
+    <!-- 1.0.100: Vim 無効時の IDE 標準キー（plain モード）・Ctrl+クリックで定義へ・workspace/configuration の受け口・
+         LSP 結果に常に合流するホスト補完候補（HostSupplementalCompletionProvider）。§36 が使う。 -->
     <ProjectReference Include="..\..\..\Editor\src\Editor.Controls.Defaults\Editor.Controls.Defaults.csproj"
                       Condition="'$(UseLocalEditor)' != 'false'" />
     <!-- Defaults はパッケージ化時に Core/Controls を同梱する構成で、プロジェクト参照では
