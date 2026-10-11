@@ -94,6 +94,18 @@ public sealed class TestToolLocator
         return null;
     }
 
+    /// <summary><c>node_modules/&lt;relative&gt;</c>（例：<c>vitest/vitest.mjs</c>）のフルパス。<see cref="FindNodeBin"/> と
+    /// 同じく上って探す（無ければ null）。デバッグではシムでなくランナー本体の JS を node で直に起動するため。</summary>
+    public string? FindNodeModuleFile(string projectDir, string relative)
+    {
+        foreach (var dir in TestProjectLocator.Ancestors(projectDir, _folders))
+        {
+            var candidate = Path.Combine(dir, "node_modules", relative.Replace('/', Path.DirectorySeparatorChar));
+            if (_fileExists(candidate)) return candidate;
+        }
+        return null;
+    }
+
     /// <summary>プロジェクトの仮想環境の python.exe（無ければ null）。</summary>
     public string? FindVenvPython(string projectDir)
     {

@@ -91,7 +91,7 @@ public static class JsTestRunnerDetection
 }
 
 /// <summary>vitest / jest の共通部：node_modules/.bin を優先し、無ければ <c>npx --no-install</c>。</summary>
-public abstract class JsTestRunnerBase : ITestRunner
+public abstract class JsTestRunnerBase : ITestRunner, ITestDebugLauncher
 {
     public abstract string Id { get; }
     public string ResultFileExtension => ".json";
@@ -112,6 +112,21 @@ public abstract class JsTestRunnerBase : ITestRunner
     /// <summary>ランナー固有の引数（実行ファイルの後ろ）。</summary>
     protected abstract string BuildArguments(TestRunRequest request);
 
+    /// <summary>デバッグで node に直に渡すランナー本体（<c>node_modules</c> からの相対）。</summary>
+    protected abstract string DebugEntry { get; }
+
+    /// <summary>デバッグ用の引数。通常実行との違いは 2 つ：ブレークポイントで止まっている間にテストがタイムアウトで
+    /// 落ちないよう時間制限を外すことと、テストを 1 プロセスで順に走らせること（ワーカーへ散らすと止める先が増える）。</summary>
+    protected abstract IEnumerable<string> BuildDebugArguments(TestRunRequest request, IReadOnlyList<string> files,
+        string? names);
+
+    public TestDebugLaunch? BuildDebugLaunch(TestRunRequest request, TestToolLocator tools)
+    {
+        if (tools.FindNodeModuleFile(request.ProjectDir, DebugEntry) is not { } entry) return null;
+        var (files, names) = JsTestRunnerDetection.SplitTargets(request.EffectiveTargets);
+        return new TestDebugLaunch(entry, BuildDebugArguments(request, files, names).ToList(), request.ProjectDir);
+    }
+
     public IReadOnlyList<ScriptTestResult> ParseResults(string content, string projectDir)
         => JestJsonResultParser.Parse(content);
 }
@@ -120,6 +135,22 @@ public abstract class JsTestRunnerBase : ITestRunner
 public sealed class VitestRunner : JsTestRunnerBase
 {
     public override string Id => "vitest";
+
+    protected override string DebugEntry => "vitest/vitest.mjs";
+
+    protected override IEnumerable<string> BuildDebugArguments(TestRunRequest request, IReadOnlyList<string> files,
+        string? names)
+    {
+        // 既定の表示はデバッグコンソールで読み、json は結果の反映用にファイルへ（--outputFile.json は json だけの出力先）。
+        yield return "run";
+        yield return "--reporter=default";
+        yield return "--reporter=json";
+        yield return "--outputFile.json=" + request.ResultFile;
+        yield return "--no-file-parallelism";
+        yield return "--testTimeout=0";
+        foreach (var file in files) yield return file;
+        if (names is not null) { yield return "-t"; yield return names; }
+    }
 
     protected override string BuildArguments(TestRunRequest request)
     {
@@ -136,6 +167,23 @@ public sealed class VitestRunner : JsTestRunnerBase
 public sealed class JestRunner : JsTestRunnerBase
 {
     public override string Id => "jest";
+
+    protected override string DebugEntry => "jest/bin/jest.js";
+
+    protected override IEnumerable<string> BuildDebugArguments(TestRunRequest request, IReadOnlyList<string> files,
+        string? names)
+    {
+        yield return "--runInBand";
+        yield return "--testTimeout=2147483647";   // setTimeout の上限。これを超えると Node が 1ms に丸める
+        yield return "--json";
+        yield return "--outputFile=" + request.ResultFile;
+        if (files.Count > 0)
+        {
+            yield return "--runTestsByPath";
+            foreach (var file in files) yield return file;
+        }
+        if (names is not null) { yield return "-t"; yield return names; }
+    }
 
     protected override string BuildArguments(TestRunRequest request)
     {

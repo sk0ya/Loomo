@@ -77,6 +77,18 @@ public interface ITestRunner
     IReadOnlyList<ScriptTestResult> ParseResults(string content, string projectDir);
 }
 
+/// <summary>デバッガ（js-debug の pwa-node launch）で走らせるときの起動内容。<see cref="Program"/> は node で直に起動する
+/// ランナー本体の JS、<see cref="Args"/> はシェルを通さずそのまま渡す引数（クォート不要）。</summary>
+public sealed record TestDebugLaunch(string Program, IReadOnlyList<string> Args, string WorkingDirectory);
+
+/// <summary>デバッガの下でも走らせられるランナー（vitest / jest）。pytest は debugpy 経路が未実装なので持たない。</summary>
+public interface ITestDebugLauncher
+{
+    /// <summary>デバッグ起動の内容を組み立てる。ランナー本体が node_modules に見つからなければ null
+    /// （npx 頼みの環境ではデバッガに渡す実体が無い）。レポートは通常実行と同じく <see cref="TestRunRequest.ResultFile"/> へ。</summary>
+    TestDebugLaunch? BuildDebugLaunch(TestRunRequest request, TestToolLocator tools);
+}
+
 /// <summary>検出の確度。強い一致は最寄りのものが勝ち、弱い一致だけのときは最も外側のものを採る
 /// （<see cref="TestProjectLocator"/>）。</summary>
 public enum TestRunnerMatch

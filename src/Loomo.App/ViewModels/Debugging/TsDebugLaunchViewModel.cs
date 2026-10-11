@@ -497,6 +497,43 @@ public sealed partial class TsDebugLaunchViewModel : ObservableObject, ILaunchCo
         return path;
     }
 
+    /// <summary>テストエクスプローラからのテストデバッグ（vitest / jest の本体を node で直に起動）。起動構成の
+    /// 引数・環境変数・作業フォルダーは使わず（それはアプリの起動構成なので）、自分のコードのみ／例外停止の設定だけ
+    /// 引き継ぐ。始められなかったら null（理由はコンソールへ）。</summary>
+    internal async Task<IDebugService?> LaunchTestDebugAsync(sk0ya.Loomo.Services.Testing.TestDebugLaunch launch,
+        string label)
+    {
+        _manager.RequestOutput();
+        _manager.Refresh();
+        if (_manager.IsAdapterMissing)
+        {
+            _manager.StatusMessage = "アダプタ未導入";
+            _manager.Append(DebugOutputCategory.Important, IsNodeInstalled
+                ? "デバッグアダプタ（vscode-js-debug）が未導入です。下のバーから導入できます。"
+                : "Node.js（node）が PATH 上に見つかりません。Node.js をインストールしてください。");
+            return null;
+        }
+
+        var session = _manager.CreateSession(label, DebugSessionKind.Launch);
+        _manager.Append(DebugOutputCategory.Important, $"実行対象: {label}");
+        var iSession = (IDebugSession)session;
+        var token = iSession.BeginSession();
+        try
+        {
+            await session.DebugService.SetExceptionBreakpointsAsync(CurrentExceptionFilterIds(), CancellationToken.None);
+            await session.DebugService.StartAsync(
+                new DebugLaunchConfig(launch.Program, launch.WorkingDirectory, Args: launch.Args, JustMyCode: JustMyCode),
+                token);
+            return session.DebugService;
+        }
+        catch (OperationCanceledException) { return null; }
+        catch (Exception ex)
+        {
+            iSession.Append(DebugOutputCategory.Important, $"テストデバッグの起動でエラー: {ex.Message}");
+            return null;
+        }
+    }
+
     private async Task LaunchIntoAsync(DebugSessionViewModel session, string program, int? browserDebugPort = null)
     {
         var iSession = (IDebugSession)session;

@@ -31,7 +31,8 @@ public sealed class TsDebugViewModel : DebugManagerViewModelBase
         Launch = new TsDebugLaunchViewModel(this, workspace, terminal, browser, Attach, Profiles);
         Profiles.AttachLaunch(Launch);
         Launch.ApplyDefaultTargetIfEmpty();  // 起動時点でワークスペースが開いていれば既定ターゲット（種別で振り分け）を適用
-        Tests = new ScriptTestsViewModel(workspace, terminal, this, ScriptTestProfile.TypeScript);
+        Tests = new ScriptTestsViewModel(workspace, terminal, this, ScriptTestProfile.TypeScript,
+            Launch.LaunchTestDebugAsync);
     }
 
     /// <summary>型チェック対象＝tsconfig.json のあるディレクトリを解決する。無ければ null（理由はコンソールへ）。</summary>

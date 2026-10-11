@@ -26,17 +26,7 @@ internal static class ScriptTestRunner
     public static async Task<string?> RunAsync(ITerminalService terminal, IDebugSession session, ITestRunner runner,
         string projectDir, IReadOnlyList<TestTarget> targets, TestToolLocator tools, string label)
     {
-        var resultFile = Path.Combine(ResultsDir, $"loomo-test-{Guid.NewGuid():N}{runner.ResultFileExtension}");
-        try
-        {
-            Directory.CreateDirectory(ResultsDir);
-            SweepStaleResults();
-        }
-        catch (Exception ex)
-        {
-            session.Append(DebugOutputCategory.Important, $"テスト結果フォルダを準備できません: {ex.Message}");
-            return null;
-        }
+        if (NewResultFile(runner, session) is not { } resultFile) return null;
 
         var command = runner.BuildCommand(new TestRunRequest(projectDir, resultFile, Targets: targets), tools);
         session.Append(DebugOutputCategory.Important, label);
@@ -49,6 +39,22 @@ internal static class ScriptTestRunner
             return null;
         }
         return resultFile;
+    }
+
+    /// <summary>今回の実行のレポートの書き先（一意名）。フォルダーを用意できなければ null（理由はコンソールへ）。</summary>
+    public static string? NewResultFile(ITestRunner runner, IDebugSession session)
+    {
+        try
+        {
+            Directory.CreateDirectory(ResultsDir);
+            SweepStaleResults();
+        }
+        catch (Exception ex)
+        {
+            session.Append(DebugOutputCategory.Important, $"テスト結果フォルダを準備できません: {ex.Message}");
+            return null;
+        }
+        return Path.Combine(ResultsDir, $"loomo-test-{Guid.NewGuid():N}{runner.ResultFileExtension}");
     }
 
     /// <summary>読み終えたレポートを消す（実行ごとに一意名で作るので、消さないと溜まり続ける）。</summary>

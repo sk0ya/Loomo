@@ -449,3 +449,41 @@ public sealed class ScriptTestRerunFailedTests : IDisposable
         Assert.Equal([stray], missing);   // ランナーを特定できないファイルは理由を出すために返す
     }
 }
+
+/// <summary>テストのデバッグ起動（vitest / jest の本体を node で直に起動する引数）。</summary>
+public class ScriptTestDebugLaunchTests
+{
+    private static TestToolLocator ToolsWith(params string[] existing)
+        => new([@"C:\ws"], fileExists: p => existing.Contains(p, StringComparer.OrdinalIgnoreCase), resolveOnPath: _ => null);
+
+    [Fact]
+    public void Vitest_launches_the_hoisted_entry_without_timeouts_or_file_parallelism()
+    {
+        var launch = new VitestRunner().BuildDebugLaunch(new TestRunRequest(@"C:\ws\pkg", @"C:\r.json", Targets:
+            [new TestTarget(@"src\a.test.ts", "adds (x)")]), ToolsWith(@"C:\ws\node_modules\vitest\vitest.mjs"));
+
+        Assert.NotNull(launch);
+        Assert.Equal(@"C:\ws\node_modules\vitest\vitest.mjs", launch.Program);
+        Assert.Equal(@"C:\ws\pkg", launch.WorkingDirectory);
+        Assert.Equal(["run", "--reporter=default", "--reporter=json", @"--outputFile.json=C:\r.json",
+            "--no-file-parallelism", "--testTimeout=0", "src/a.test.ts", "-t", @"adds \(x\)"], launch.Args);
+    }
+
+    [Fact]
+    public void Jest_runs_in_band_and_whole_files_are_not_narrowed()
+    {
+        var launch = new JestRunner().BuildDebugLaunch(new TestRunRequest(@"C:\ws", @"C:\r.json", Targets:
+            [new TestTarget(@"a.test.js")]), ToolsWith(@"C:\ws\node_modules\jest\bin\jest.js"));
+
+        Assert.NotNull(launch);
+        Assert.Equal(["--runInBand", "--testTimeout=2147483647", "--json", @"--outputFile=C:\r.json",
+            "--runTestsByPath", "a.test.js"], launch.Args);
+    }
+
+    [Fact]
+    public void Missing_runner_package_yields_no_launch()
+    {
+        // npx 頼み（node_modules に本体が無い）ではデバッガへ渡す実体が無い。
+        Assert.Null(new VitestRunner().BuildDebugLaunch(new TestRunRequest(@"C:\ws", @"C:\r.json"), ToolsWith()));
+    }
+}

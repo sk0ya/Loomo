@@ -65,8 +65,9 @@ internal sealed record ScriptTestProfile(
 /// マルチルート対応）。全実行はプロジェクトごとに 1 回ずつ走らせて結果をまとめる。</para></summary>
 public sealed partial class ScriptTestsViewModel : ObservableObject, ITestExplorer, IDisposable
 {
-    /// <summary>共有テストビューのデバッグ列は、スクリプト系の testhost 経路が未実装のため隠す。</summary>
-    public bool IsTestDebugSupported => false;
+    /// <summary>共有テストビューのデバッグ列。デバッガで起動する口（TS IDE ペインの js-debug）を渡されたときだけ出す
+    /// ——vitest / jest。pytest は debugpy 経路が未実装なので隠す。</summary>
+    public bool IsTestDebugSupported => _debugLauncher is not null;
 
     /// <summary>共有テストビューの dotnet 専用の操作（公式検出・カバレッジ）を隠す。失敗の再実行はこちらにもある。</summary>
     public bool IsDotnetToolsVisible => false;
@@ -75,6 +76,7 @@ public sealed partial class ScriptTestsViewModel : ObservableObject, ITestExplor
     private readonly ITerminalService _terminal;
     private readonly IDebugSession _session;
     private readonly ScriptTestProfile _profile;
+    private readonly Func<TestDebugLaunch, string, Task<IDebugService?>>? _debugLauncher;
     private readonly Dispatcher _dispatcher;
     private readonly List<TestSourceWatcher> _watchers = new();
 
@@ -118,8 +120,9 @@ public sealed partial class ScriptTestsViewModel : ObservableObject, ITestExplor
     public ObservableCollection<TestGroupViewModel> TestTree { get; } = new();
 
     internal ScriptTestsViewModel(IWorkspaceService workspace, ITerminalService terminal, IDebugSession session,
-        ScriptTestProfile profile)
+        ScriptTestProfile profile, Func<TestDebugLaunch, string, Task<IDebugService?>>? debugLauncher = null)
     {
+        _debugLauncher = debugLauncher;
         _workspace = workspace;
         _terminal = terminal;
         _session = session;
@@ -445,20 +448,106 @@ public sealed partial class ScriptTestsViewModel : ObservableObject, ITestExplor
     private Task RunFile(TestGroupViewModel? group) => RunGroup(group);
 
     // DebugTestsView は C# とスクリプト系で共有するため、こちらにも同名 Command を用意する。
-    // Node／Python テストの DAP 起動（vitest／jest の inspect、debugpy）は別実装であり、C# の testhost へ誤接続しない。
+    // vitest / jest はランナー本体を js-debug の pwa-node launch で起動する（C# の testhost attach とは別経路）。
     [RelayCommand(CanExecute = nameof(CanRunTask))]
-    private Task DebugSingleTest(TestItemViewModel? item) => DebugNotSupported();
+    private Task DebugSingleTest(TestItemViewModel? item)
+        => item is null ? Task.CompletedTask : DebugTestsAsync([item], $"テストデバッグ: {item.DisplayName}");
 
     [RelayCommand(CanExecute = nameof(CanRunTask))]
-    private Task DebugGroup(TestGroupViewModel? group) => DebugNotSupported();
+    private Task DebugGroup(TestGroupViewModel? group)
+        => group is null ? Task.CompletedTask
+            : DebugTestsAsync(Tests.Where(t => string.Equals(t.ClassName, group.Key, StringComparison.OrdinalIgnoreCase))
+                .ToList(), $"テストデバッグ: {group.Name}", wholeFile: true);   // 絞り込みで隠れた行も同じファイルなら走る
 
     [RelayCommand(CanExecute = nameof(CanRunTask))]
-    private Task DebugFile(TestGroupViewModel? group) => DebugNotSupported();
+    private Task DebugFile(TestGroupViewModel? group) => DebugGroup(group);
 
-    private Task DebugNotSupported()
+    /// <summary>テストをデバッガの下で走らせる。1 プロジェクトに限る（デバッガで起動するプロセスは 1 つ）。
+    /// 終わったらレポートを通常実行と同じく一覧へ反映する。</summary>
+    private async Task DebugTestsAsync(IReadOnlyList<TestItemViewModel> tests, string label, bool wholeFile = false)
     {
-        _session.StatusMessage = $"{_profile.LanguageLabel}テストのデバッグは未対応です";
-        return Task.CompletedTask;
+        if (tests.Count == 0) return;
+        if (_debugLauncher is null)
+        {
+            _session.StatusMessage = $"{_profile.LanguageLabel}テストのデバッグは未対応です";
+            return;
+        }
+
+        var plans = PlanRerun(tests, _workspace.Folders.ToArray(), _profile.Runners, out var missing);
+        if (missing.Count > 0 || plans.Count == 0)
+        {
+            _session.Append(DebugOutputCategory.Important,
+                $"{_profile.MissingRunnerMessage}: {(missing.Count > 0 ? missing[0] : tests[0].ClassName)}");
+            return;
+        }
+        if (plans.Count > 1)
+        {
+            _session.StatusMessage = "テストデバッグは 1 つのパッケージ内のテストに限ります";
+            _session.Append(DebugOutputCategory.Important,
+                $"選んだテストが {plans.Count} つのパッケージにまたがっています。パッケージごとに分けてデバッグしてください。");
+            return;
+        }
+
+        var (projectDir, runner, targets) = plans[0];
+        if (runner is not ITestDebugLauncher debuggable)
+        {
+            _session.StatusMessage = $"{runner.Id} のテストデバッグは未対応です";
+            return;
+        }
+        // ファイル単位のデバッグは -t で削らない（行の一覧に無い動的テストも走らせる）。
+        if (wholeFile) targets = targets.Select(t => t.File).Distinct(StringComparer.OrdinalIgnoreCase)
+            .Select(f => new TestTarget(f)).ToList();
+        if (ScriptTestRunner.NewResultFile(runner, _session) is not { } resultFile) return;
+        var tools = new TestToolLocator(_workspace.Folders.ToArray());
+        if (debuggable.BuildDebugLaunch(new TestRunRequest(projectDir, resultFile, Targets: targets), tools) is not { } launch)
+        {
+            _session.StatusMessage = "テストデバッグを始められません";
+            _session.Append(DebugOutputCategory.Important,
+                $"node_modules に {runner.Id} が見つかりません（デバッグはランナー本体を node で直接起動します）。"
+                + "パッケージの依存を導入してください（npm install）。");
+            return;
+        }
+
+        foreach (var t in tests) t.SetRunning();
+        UpdateAggregates();
+        TestsChanged?.Invoke();
+        IDebugService? service = null;
+        try { service = await _debugLauncher(launch, label); }
+        finally
+        {
+            if (service is null) FinishDebugRun(tests, runner, projectDir, resultFile);
+        }
+        if (service is null) return;
+
+        void OnExited(object? sender, DebugExited e)
+        {
+            service.Exited -= OnExited;
+            _dispatcher.BeginInvoke(new Action(() => FinishDebugRun(tests, runner, projectDir, resultFile)));
+        }
+        service.Exited += OnExited;
+        // 起動が瞬時に失敗／終了した場合、購読より先に Exited が来ている（DebugTestsViewModel と同じ競合対策）。
+        if (service.State is DebugSessionState.Idle or DebugSessionState.Terminated or DebugSessionState.Failed)
+            OnExited(service, new DebugExited(null, "test debug ended"));
+    }
+
+    /// <summary>デバッグ実行の後始末：レポートがあれば反映し、無ければ（途中で止めた）実行中の表示だけ戻す。</summary>
+    private void FinishDebugRun(IReadOnlyList<TestItemViewModel> tests, ITestRunner runner, string projectDir,
+        string resultFile)
+    {
+        if (!tests.Any(t => t.Status == TestStatus.Running)) return;   // 二重の後始末（Exited と即時判定の両方）
+        try
+        {
+            if (File.Exists(resultFile))
+                ScriptTestRunner.ApplyResults(runner, resultFile, projectDir, _session, Tests, CreateItem);
+        }
+        finally
+        {
+            ScriptTestRunner.DeleteResults(resultFile);
+            foreach (var t in tests) if (t.Status == TestStatus.Running) t.ResetStatus();
+            SyncTree();
+            RecomputeSummary();
+            TestsChanged?.Invoke();
+        }
     }
 
     /// <summary>ファイル限定実行の共通処理（1 件/グループ）。</summary>

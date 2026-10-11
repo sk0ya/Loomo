@@ -117,4 +117,58 @@ public sealed class JsDebugServiceIntegrationTests
             try { Directory.Delete(dir, recursive: true); } catch { }
         }
     }
+
+    /// <summary>テストのデバッグ（§28.14）：vitest 本体をデバッガで起動し、テストファイル内のブレークポイントで
+    /// 止まり、続行後に json レポートが書かれること。vitest を導入済みのパッケージを <c>LOOMO_VITEST_FIXTURE</c> で
+    /// 渡したときだけ走る（<c>src/a.test.js</c> の 2 行目がテスト本体であること）。</summary>
+    [Fact]
+    public async Task Vitest_test_debug_stops_in_test_and_writes_report()
+    {
+        if (!JsDebugAdapterLocator.IsInstalled) return;
+        if (Environment.GetEnvironmentVariable("LOOMO_VITEST_FIXTURE") is not { Length: > 0 } pkg) return;
+
+        var report = Path.Combine(Path.GetTempPath(), $"loomo-vitest-debug-{Guid.NewGuid():N}.json");
+        var testFile = Path.Combine(pkg, "src", "a.test.js");
+        var launch = new sk0ya.Loomo.Services.Testing.VitestRunner().BuildDebugLaunch(
+            new sk0ya.Loomo.Services.Testing.TestRunRequest(pkg, report,
+                Targets: [new sk0ya.Loomo.Services.Testing.TestTarget(Path.Combine("src", "a.test.js"), "adds (x)")]),
+            new sk0ya.Loomo.Services.Testing.TestToolLocator([pkg]));
+        Assert.NotNull(launch);
+
+        var service = new JsDebugService();
+        var stopped = new TaskCompletionSource<DebugStopped>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var exited = new TaskCompletionSource<DebugExited>(TaskCreationOptions.RunContinuationsAsynchronously);
+        service.Stopped += (_, e) => stopped.TrySetResult(e);
+        service.Exited += (_, e) => exited.TrySetResult(e);
+        var output = new List<string>();
+        service.Output += (_, e) => { lock (output) output.Add(e.Text.TrimEnd()); };
+        string Log() { lock (output) return string.Join(Environment.NewLine, output); }
+        try
+        {
+            await service.SetBreakpointsAsync(testFile, new[] { new DebugBreakpoint(2) }, CancellationToken.None);
+            await service.StartAsync(new DebugLaunchConfig(launch.Program, launch.WorkingDirectory, launch.Args),
+                CancellationToken.None);
+
+            var first = await Task.WhenAny(stopped.Task, exited.Task, Task.Delay(TimeSpan.FromSeconds(90)));
+            Assert.True(first == stopped.Task, $"止まらなかった（{(first == exited.Task ? "終了" : "時間切れ")}）: {Log()}");
+            var stop = await stopped.Task;
+            Assert.Equal(2, stop.Line);
+            Assert.Equal("a.test.js", Path.GetFileName(stop.SourcePath!));
+
+            await Task.Delay(TimeSpan.FromSeconds(6));   // 既定の 5 秒を超えて止めても、タイムアウトで落ちない
+            await service.ContinueAsync();
+            await exited.Task.WaitAsync(TimeSpan.FromSeconds(60));
+
+            var json = await File.ReadAllTextAsync(report);
+            var results = sk0ya.Loomo.Services.Testing.JestJsonResultParser.Parse(json);
+            var adds = Assert.Single(results, r => r.Title.EndsWith("adds (x)"));
+            Assert.Equal(sk0ya.Loomo.Services.Testing.ScriptTestOutcome.Failed, adds.Outcome);
+            Assert.Contains("expected 1 to be 2", adds.Message);   // タイムアウトではなく本来の失敗
+        }
+        finally
+        {
+            await service.StopAsync();   // 途中で落ちてもアダプタ（dapDebugServer）を残さない
+            try { File.Delete(report); } catch { }
+        }
+    }
 }
