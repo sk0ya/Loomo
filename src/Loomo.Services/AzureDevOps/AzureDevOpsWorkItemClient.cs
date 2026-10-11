@@ -58,8 +58,15 @@ public sealed class AzureDevOpsWorkItemClient
 
     public AzureDevOpsWorkItemClient(HttpClient? http = null)
     {
-        _http = http ?? new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
+        _http = http ?? new HttpClient(CreateHandler()) { Timeout = TimeSpan.FromSeconds(30) };
     }
+
+    /// <summary>
+    /// Cookie を持たない。この client はアプリ起動中ずっと1つ（DI のシングルトン）なので、Cookie を溜めると
+    /// 古い PAT で失敗したときのサインイン関連の Cookie が、PAT を更新した後の問い合わせにも付いて回る。
+    /// PAT は毎回 Authorization ヘッダーで送るので Cookie は要らない（TaskAzure は設定を読むたびに作り直していた）。
+    /// </summary>
+    internal static HttpClientHandler CreateHandler() => new() { UseCookies = false };
 
     /// <summary>自分に割り当たっている未完了の Work Item（更新の新しい順、最大 200 件）。</summary>
     public async Task<IReadOnlyList<AzureDevOpsWorkItem>> GetMyWorkItemsAsync(

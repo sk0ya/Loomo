@@ -97,6 +97,13 @@ public sealed class AzureDevOpsTests
         Assert.Null(TaskAzureSettings.Parse("""{"OrganizationUrl":""}"""));
     }
 
+    [Fact]
+    public void 起動中ずっと使うHTTPクライアントはCookieを溜めない()
+    {
+        using var handler = AzureDevOpsWorkItemClient.CreateHandler();
+        Assert.False(handler.UseCookies);
+    }
+
     private static AzureDevOpsWorkItem Item(int id, int parent = 0, string type = "Task")
         => new(id, $"item {id}", type, "Active", "P", "P\\Sprint", parent, null, $"u/{id}");
 
