@@ -183,3 +183,32 @@ public sealed class HarnessVersionRowViewModel(HarnessVersionRow row)
 
 /// <summary>期間の選択肢。</summary>
 public sealed record HarnessPeriodOption(int Days, string Label);
+
+/// <summary>点検タブの1行（§37.10）。<see cref="Folder"/> は雛形を書き出す先のワークスペースフォルダー。</summary>
+public sealed class HarnessCheckRow(HarnessCheckItem item, string folder, string? folderLabel)
+{
+    public HarnessCheckItem Item => item;
+    public string Folder => folder;
+    public string Title => folderLabel is null ? item.Title : $"{item.Title} — {folderLabel}";
+    public string StatusLabel => item.Status switch
+    {
+        HarnessCheckStatus.Present => "✓ あり",
+        HarnessCheckStatus.Incomplete => "△ 不足",
+        _ => "✕ 無い",
+    };
+    public string LevelLabel => item.Level switch
+    {
+        HarnessCheckLevel.Required => "必須",
+        HarnessCheckLevel.Recommended => "推奨",
+        _ => "任意",
+    };
+    public string Finding => item.Finding;
+    /// <summary>根拠があることを一覧で示す（なぜ今それが要るかを観測が裏づけている）。</summary>
+    public string EvidenceMark => item.Evidence is not null && item.NeedsWork ? "根拠あり" : "";
+    public bool IsPresent => item.Status == HarnessCheckStatus.Present;
+    public bool IsMissing => item.Status == HarnessCheckStatus.Missing;
+    public bool CanScaffold => item.Scaffold.Count > 0;
+    public bool CanOpen => item.ExistingPath is not null;
+    /// <summary>判定は雛形ではなく実行タブで Run に付けるもの。</summary>
+    public bool IsVerdicts => item.Id == HarnessStructureCheck.ItemVerdicts;
+}

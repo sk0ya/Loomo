@@ -435,4 +435,88 @@ public sealed class HarnessTests : IDisposable
         var again = await analyzer.AnalyzeAsync(TimeSpan.FromDays(30), null, CancellationToken.None);
         Assert.Same(run, Assert.Single(again.Runs)); // 長さ・更新時刻が同じなら読み直さない
     }
+
+    // ===== 点検（§37.10） =====
+
+    private static HarnessCheckItem CheckOf(IReadOnlyList<HarnessCheckItem> items, string id) => Assert.Single(items, i => i.Id == id);
+
+    [Fact]
+    public void Check_on_empty_folder_reports_everything_missing_and_creates_nothing()
+    {
+        var items = HarnessStructureCheck.Inspect(_base, [], [], 0);
+
+        Assert.All(items, i => Assert.Equal(HarnessCheckStatus.Missing, i.Status));
+        Assert.Equal(".harness/ が無い。", CheckOf(items, HarnessStructureCheck.ItemManifest).Finding);
+        // 点検するだけでリポジトリにフォルダーを生やさない（§37.3）。
+        Assert.False(Directory.Exists(Path.Combine(_base, ".harness")));
+        // 判定は Run に付けるもので、雛形は無い。
+        Assert.Empty(CheckOf(items, HarnessStructureCheck.ItemVerdicts).Scaffold);
+    }
+
+    [Fact]
+    public void Scaffold_uses_observed_successful_build_command_and_never_overwrites()
+    {
+        var run = RunOf("r1",
+            Call("Edit", @"C:\ws\a.cs"),
+            Call("Bash", command: "cd C:/ws && dotnet build x.sln 2>&1 | tail -5"),
+            Call("Bash", command: "dotnet test", error: true));
+        var candidates = HarnessDetectors.Detect([run]);
+        var workflows = CheckOf(HarnessStructureCheck.Inspect(_base, [run], candidates, 1), HarnessStructureCheck.ItemWorkflows);
+
+        var content = Assert.Single(workflows.Scaffold).Content;
+        Assert.Contains("`dotnet build x.sln`（観測: 1 Run で成功）", content);
+        Assert.DoesNotContain("dotnet test", content); // 失敗したコマンドは「検証のコマンド」にしない
+
+        var path = Path.Combine(_base, ".harness", "workflows", "verify-before-done.md");
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllText(path, "人間が書いた");
+        Assert.Empty(HarnessStructureCheck.WriteScaffold(_base, workflows));
+        Assert.Equal("人間が書いた", File.ReadAllText(path));
+    }
+
+    [Fact]
+    public void Written_scaffold_makes_the_item_present_and_manifest_is_readable()
+    {
+        var folder = Path.Combine(_base, "My App");
+        Directory.CreateDirectory(folder);
+        var manifest = CheckOf(HarnessStructureCheck.Inspect(folder, [], [], 0), HarnessStructureCheck.ItemManifest);
+        var written = Assert.Single(HarnessStructureCheck.WriteScaffold(folder, manifest));
+
+        Assert.Equal(("my-app", "0.1.0"), HarnessDefinitionReader.ReadManifest(written));
+        var again = CheckOf(HarnessStructureCheck.Inspect(folder, [], [], 0), HarnessStructureCheck.ItemManifest);
+        Assert.Equal(HarnessCheckStatus.Present, again.Status);
+    }
+
+    [Fact]
+    public void Tasks_without_acceptance_section_are_incomplete()
+    {
+        var tasks = Path.Combine(_base, ".harness", "tasks");
+        Directory.CreateDirectory(tasks);
+        File.WriteAllText(Path.Combine(tasks, "good.md"), "# 良い\n\n## 受け入れ条件\n\n- [ ] 通る\n");
+        File.WriteAllText(Path.Combine(tasks, "bad.md"), "# 悪い\n\n## 目的\n");
+        var linked = RunOf("r1") with { Prompts = ["task:good をやって"] };
+
+        var item = CheckOf(HarnessStructureCheck.Inspect(_base, [linked, RunOf("r2")], [], 1), HarnessStructureCheck.ItemTasks);
+
+        Assert.Equal(HarnessCheckStatus.Incomplete, item.Status);
+        Assert.Contains("bad", item.Finding);
+        Assert.DoesNotContain("good", item.Finding);
+        Assert.Equal("期間内の Run 2 件のうち、タスクに結び付いたのは 1 件。", item.Evidence);
+    }
+
+    [Fact]
+    public void Rules_evidence_and_scaffold_come_from_repeated_failures_of_this_folder_only()
+    {
+        var fail = Call("Bash", command: "npm run lint", error: true, errorHead: "boom");
+        var mine = RunOf("r1", fail, fail);
+        var other = RunOf("r9", Call("Bash", command: "cargo fmt", error: true), Call("Bash", command: "cargo fmt", error: true));
+        var candidates = HarnessDetectors.Detect([mine, other]);
+
+        var rules = CheckOf(HarnessStructureCheck.Inspect(_base, [mine], candidates, 1), HarnessStructureCheck.ItemRules);
+
+        Assert.Equal("同じコマンドの失敗反復 1 種（1 Run）（改善候補）。", rules.Evidence);
+        var content = Assert.Single(rules.Scaffold).Content;
+        Assert.Contains("npm run", content);
+        Assert.DoesNotContain("cargo", content); // 別フォルダーの Run の候補は混ぜない
+    }
 }

@@ -32,6 +32,8 @@ public sealed partial class HarnessPaneViewModel : ObservableObject
     public const int TabRuns = 1;
     public const int TabConfig = 2;
     public const int TabVersions = 3;
+    /// <summary>点検（§37.10）。タブの番号は永続化されるので末尾に足す。</summary>
+    public const int TabCheck = 4;
 
     private const int DetailMaxChars = 20_000;
 
@@ -105,6 +107,12 @@ public sealed partial class HarnessPaneViewModel : ObservableObject
     [ObservableProperty] private HarnessConfigRow? _selectedConfig;
     [ObservableProperty] private string _configNote = "";
 
+    // ===== 点検 =====
+    public ObservableCollection<HarnessCheckRow> CheckRows { get; } = new();
+    [ObservableProperty] private HarnessCheckRow? _selectedCheck;
+    [ObservableProperty] private string _checkSummary = "";
+    [ObservableProperty] private string _checkPreview = "";
+
     /// <summary>エディタで開く（ShellWindow が受ける）。</summary>
     public event EventHandler<HarnessOpenRequest>? OpenRequested;
     /// <summary>タブ・期間が変わった（ワークスペースへ保存する合図）。</summary>
@@ -112,6 +120,7 @@ public sealed partial class HarnessPaneViewModel : ObservableObject
 
     public bool HasSelectedCandidate => SelectedCandidate is not null;
     public bool HasSelectedRun => SelectedRun is not null;
+    public bool HasSelectedCheck => SelectedCheck is not null;
 
     /// <summary>ペインが初めて見えたとき（またはワークスペースが変わってから最初に見えたとき）に読む。</summary>
     public void EnsureLoaded()
@@ -133,7 +142,7 @@ public sealed partial class HarnessPaneViewModel : ObservableObject
         _restoring = true;
         try
         {
-            SelectedTab = snapshot is { SelectedTab: >= TabCandidates and <= TabVersions } s ? s.SelectedTab : TabCandidates;
+            SelectedTab = snapshot is { SelectedTab: >= TabCandidates and <= TabCheck } s ? s.SelectedTab : TabCandidates;
             SelectedPeriod = PeriodOptions.FirstOrDefault(p => p.Days == snapshot?.PeriodDays) ?? DefaultPeriod;
             HideSingleRunCandidates = snapshot?.HideSingleRunCandidates ?? false;
         }
@@ -227,6 +236,7 @@ public sealed partial class HarnessPaneViewModel : ObservableObject
         ApplyComponents(snapshot, runsById);
         ApplyRuns(snapshot);
         ApplyVersions(snapshot);
+        ApplyChecks(snapshot);
     }
 
     // ===== 改善候補タブ =====
@@ -468,6 +478,86 @@ public sealed partial class HarnessPaneViewModel : ObservableObject
         foreach (var row in HarnessMetrics.CompareVersions(snapshot.Runs, snapshot.Verdicts, snapshot.VersionOf, snapshot.Candidates))
             Versions.Add(new HarnessVersionRowViewModel(row));
     }
+
+    // ===== 点検タブ（§37.10） =====
+
+    private void ApplyChecks(HarnessSnapshot snapshot)
+    {
+        var previous = SelectedCheck is { } p ? (p.Folder, p.Item.Id) : default;
+        CheckRows.Clear();
+        var folders = _workspace.Folders.ToList();
+        foreach (var folder in folders)
+        {
+            // 根拠はそのフォルダーで起動した Run だけから取る（マルチルートで別フォルダーの記録を混ぜない）。
+            var runs = snapshot.Runs
+                .Where(r => string.Equals(_workspace.FolderForOrPrimary(r.Cwd), folder, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+            var versionCount = runs.Select(r => snapshot.VersionOf(r)?.Commit ?? "").Distinct(StringComparer.Ordinal).Count();
+            var label = folders.Count > 1 ? Path.GetFileName(Path.TrimEndingDirectorySeparator(folder)) : null;
+            foreach (var item in HarnessStructureCheck.Inspect(folder, runs, snapshot.Candidates, versionCount))
+                CheckRows.Add(new HarnessCheckRow(item, folder, label));
+        }
+        var required = CheckRows.Count(r => r.Item.NeedsWork && r.Item.Level == HarnessCheckLevel.Required);
+        var recommended = CheckRows.Count(r => r.Item.NeedsWork && r.Item.Level == HarnessCheckLevel.Recommended);
+        CheckSummary = required + recommended == 0
+            ? "§37.3 の最小構造は揃っている。"
+            : $"足りないもの：必須 {required} 件・推奨 {recommended} 件。「作る」は無いファイルだけを書き出し、既にあるファイルは上書きしない。";
+        SelectedCheck = CheckRows.FirstOrDefault(r => (r.Folder, r.Item.Id) == previous)
+            ?? CheckRows.FirstOrDefault(r => r.Item.NeedsWork) ?? CheckRows.FirstOrDefault();
+    }
+
+    partial void OnSelectedCheckChanged(HarnessCheckRow? value)
+    {
+        OnPropertyChanged(nameof(HasSelectedCheck));
+        CheckPreview = value?.Item.Scaffold is { Count: > 0 } files
+            ? string.Join("\n", files.Select(f => $"── .harness/{f.RelativePath.Replace('\\', '/')} ──\n{f.Content}"))
+            : "";
+    }
+
+    /// <summary>選んだ項目の雛形を書き出して開く。</summary>
+    [RelayCommand]
+    private void CreateScaffold()
+    {
+        if (SelectedCheck is { CanScaffold: true } row)
+            WriteScaffolds([row]);
+    }
+
+    /// <summary>足りない必須・推奨の雛形をまとめて書き出す（任意は人間が選んだときだけ）。</summary>
+    [RelayCommand]
+    private void CreateAllMissing()
+        => WriteScaffolds(CheckRows.Where(r => r.Item.NeedsWork && r.CanScaffold && r.Item.Level != HarnessCheckLevel.Optional).ToList());
+
+    private void WriteScaffolds(IReadOnlyList<HarnessCheckRow> rows)
+    {
+        if (rows.Count == 0 || _snapshot is null)
+            return;
+        var written = new List<string>();
+        try
+        {
+            foreach (var row in rows)
+                written.AddRange(HarnessStructureCheck.WriteScaffold(row.Folder, row.Item));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            StatusText = $"書き出せませんでした: {ex.Message}";
+        }
+        if (written.Count == 0)
+            return;
+        StatusText = written.Count == 1 ? $"作りました: {DisplayPath(written[0])}" : $"{written.Count} ファイルを作りました。";
+        // 定義だけ読み直す（記録は変わっていない）。構成タブ・点検タブがそのまま追従する。
+        Apply(_snapshot with { Definition = HarnessDefinitionReader.Read(_workspace.Folders.ToList()) });
+        OpenRequested?.Invoke(this, new HarnessOpenRequest(written[0], 0));
+    }
+
+    [RelayCommand]
+    private void OpenCheck(HarnessCheckRow? row)
+    {
+        if ((row ?? SelectedCheck)?.Item.ExistingPath is { } path && File.Exists(path))
+            OpenRequested?.Invoke(this, new HarnessOpenRequest(path, 0));
+    }
+
+    [RelayCommand]
+    private void GoToRuns() => SelectedTab = TabRuns;
 
     // ===== 共通 =====
 

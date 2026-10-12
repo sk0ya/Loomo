@@ -39,4 +39,10 @@ public partial class HarnessPaneView : UserControl
         if (DataContext is HarnessPaneViewModel vm && vm.SelectedConfig is { } row)
             vm.OpenConfigCommand.Execute(row);
     }
+
+    private void OnCheckDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (DataContext is HarnessPaneViewModel vm && vm.SelectedCheck is { } row)
+            vm.OpenCheckCommand.Execute(row);
+    }
 }
