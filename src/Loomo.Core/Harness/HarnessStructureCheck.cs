@@ -76,13 +76,20 @@ public static class HarnessStructureCheck
     /// <param name="folder">ワークスペースフォルダー（<c>.harness/</c> の親）。</param>
     /// <param name="runs">このフォルダーで起動した Run（期間内）。</param>
     /// <param name="candidates">改善候補（根拠がこのフォルダーの Run にあるものだけを見る）。</param>
-    /// <param name="versionCount">期間内の Run に現れた版の数（版の比較が成り立つか）。</param>
+    /// <param name="versionCount">期間内の Run に現れた版（コミット）の数。版の無い Run は数えない。</param>
     public static IReadOnlyList<HarnessCheckItem> Inspect(
         string folder, IReadOnlyList<HarnessRun> runs, IReadOnlyList<HarnessCandidate> candidates, int versionCount)
     {
         var harness = Path.Combine(folder, HarnessDefinitionReader.HarnessFolderName);
         var runIds = runs.Select(r => r.Id).ToHashSet(StringComparer.Ordinal);
-        var mine = candidates.Where(c => c.Evidence.Any(e => runIds.Contains(e.RunId))).ToList();
+        // 候補は全フォルダーの Run から束ねてあるので、このフォルダーの Run の根拠だけに絞って数え直す
+        // （そのままの RunCount では別フォルダーの分まで「ここで起きた」と言ってしまう）。
+        var mine = candidates
+            .Select(c => c.Evidence.Where(e => runIds.Contains(e.RunId)).ToList() is { Count: > 0 } evidence
+                ? c with { Evidence = evidence, RunCount = evidence.Select(e => e.RunId).Distinct(StringComparer.Ordinal).Count() }
+                : null)
+            .OfType<HarnessCandidate>()
+            .ToList();
         var tasks = TaskFiles(harness);
         var buildCommands = ObservedBuildCommands(runs);
 

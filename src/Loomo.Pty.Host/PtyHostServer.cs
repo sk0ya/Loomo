@@ -231,6 +231,10 @@ internal sealed class PtyHostServer(string pipeName, TimeSpan? idleExit, Action?
     /// <summary><paramref name="processId"/> を外し、ほかに生きている Loomo が残っていなければ true。</summary>
     private bool ForgetClient(int processId)
     {
+        // 抜けるのは最後の「話したことのある」Loomo でも、まだホストと話していない Loomo（端末を出していない・
+        // 保存タブの無いワークスペース）が生きているかもしれない。その Loomo も後で常駐セッションへ戻るので、
+        // 同じ実行ファイル名のプロセスがほかに生きていれば最後とは見なさない（殺さない側に倒す）。
+        var processName = ProcessNameOf(processId);
         lock (_gate)
         {
             if (_clients.Remove(processId, out var leaving))
@@ -245,7 +249,37 @@ internal sealed class PtyHostServer(string pipeName, TimeSpan? idleExit, Action?
                 _clients.Remove(id);
                 process.Dispose();
             }
-            return _clients.Count == 0;
+            if (_clients.Count > 0)
+                return false;
+        }
+        return !OtherProcessAlive(processName, processId);
+    }
+
+    private static string? ProcessNameOf(int processId)
+    {
+        if (processId <= 0)
+            return null;
+        try
+        {
+            using var process = System.Diagnostics.Process.GetProcessById(processId);
+            return process.ProcessName;
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException) { return null; }
+    }
+
+    private static bool OtherProcessAlive(string? processName, int exceptId)
+    {
+        if (string.IsNullOrEmpty(processName))
+            return false;
+        var others = System.Diagnostics.Process.GetProcessesByName(processName);
+        try
+        {
+            return others.Any(p => p.Id != exceptId);
+        }
+        finally
+        {
+            foreach (var p in others)
+                p.Dispose();
         }
     }
 

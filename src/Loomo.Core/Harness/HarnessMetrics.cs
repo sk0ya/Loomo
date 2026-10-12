@@ -145,9 +145,10 @@ public static class HarnessTaskLinks
             foreach (var prompt in run.Prompts)
             {
                 var normalized = prompt.Replace('\\', '/');
-                if (normalized.Contains($".harness/tasks/{file}", StringComparison.OrdinalIgnoreCase)
-                    || normalized.Contains($".harness/tasks/{task.Id}", StringComparison.OrdinalIgnoreCase)
-                    || ContainsTaskMark(prompt, task.Id))
+                // パスも印も語として現れるときだけ（tasks/fix が tasks/fix-login.md に当たらないように）。
+                if (ContainsWord(normalized, $".harness/tasks/{file}")
+                    || ContainsWord(normalized, $".harness/tasks/{task.Id}")
+                    || ContainsWord(prompt, "task:" + task.Id))
                 {
                     result.Add(task);
                     break;
@@ -157,10 +158,9 @@ public static class HarnessTaskLinks
         return result;
     }
 
-    /// <summary><c>task:&lt;id&gt;</c> が語として現れるか（<c>task:fix</c> が <c>task:fix-login</c> に当たらないように）。</summary>
-    private static bool ContainsTaskMark(string prompt, string id)
+    /// <summary><paramref name="mark"/> が語として現れるか（<c>task:fix</c> が <c>task:fix-login</c> に当たらないように）。</summary>
+    private static bool ContainsWord(string prompt, string mark)
     {
-        var mark = "task:" + id;
         for (var at = prompt.IndexOf(mark, StringComparison.OrdinalIgnoreCase); at >= 0;
              at = prompt.IndexOf(mark, at + 1, StringComparison.OrdinalIgnoreCase))
         {

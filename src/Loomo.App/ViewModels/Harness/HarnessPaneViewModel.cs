@@ -40,7 +40,9 @@ public sealed partial class HarnessPaneViewModel : ObservableObject
     private readonly HarnessAnalyzer _analyzer;
     private readonly IWorkspaceService _workspace;
     private CancellationTokenSource? _loadCts;
-    private CancellationTokenSource? _detailCts;
+    // 根拠の詳細とツール呼び出しの詳細は別々に取り消す（共有すると、片方の選択が外れただけで他方の読込が止まる）。
+    private readonly DetailSlot _evidenceDetailLoad = new();
+    private readonly DetailSlot _callDetailLoad = new();
     private HarnessSnapshot? _snapshot;
     private bool _loaded;
     private bool _stale = true;
@@ -50,10 +52,25 @@ public sealed partial class HarnessPaneViewModel : ObservableObject
         _analyzer = analyzer;
         _workspace = workspace;
         // ワークスペースが変われば記録の出どころも変わる。見えていれば読み直し、見えていなければ次に見えたとき。
-        _workspace.FoldersChanged += (_, _) => Application.Current?.Dispatcher.BeginInvoke(() =>
+        _workspace.FoldersChanged += (_, _) => QueueRefresh();
+    }
+
+    private bool _refreshQueued;
+
+    /// <summary>
+    /// 読み直しを1回にまとめて予約する。ワークスペースの切替では LoadRoot・追加フォルダーごとの FoldersChanged と
+    /// <see cref="Restore"/> が同じ流れで続けて来るので、その都度読むと記録の走査と git log が重ねて走る。
+    /// </summary>
+    private void QueueRefresh()
+    {
+        _stale = true;
+        if (_refreshQueued || Application.Current?.Dispatcher is not { } dispatcher)
+            return;
+        _refreshQueued = true;
+        dispatcher.BeginInvoke(() =>
         {
-            _stale = true;
-            if (_loaded)
+            _refreshQueued = false;
+            if (_loaded && _stale)
                 _ = RefreshAsync();
         });
     }
@@ -150,9 +167,7 @@ public sealed partial class HarnessPaneViewModel : ObservableObject
         {
             _restoring = false;
         }
-        _stale = true;
-        if (_loaded)
-            _ = RefreshAsync();
+        QueueRefresh();
     }
 
     private bool _restoring;
@@ -333,7 +348,7 @@ public sealed partial class HarnessPaneViewModel : ObservableObject
     }
 
     partial void OnSelectedEvidenceChanged(HarnessEvidenceRow? value)
-        => _ = LoadRecordAsync(value?.Evidence.TranscriptPath, value?.Evidence.LineNumber ?? 0, text => EvidenceDetail = text);
+        => _ = LoadRecordAsync(_evidenceDetailLoad, value?.Evidence.TranscriptPath, value?.Evidence.LineNumber ?? 0, text => EvidenceDetail = text);
 
     [RelayCommand]
     private void OpenEvidenceRecord(HarnessEvidenceRow? row)
@@ -407,17 +422,19 @@ public sealed partial class HarnessPaneViewModel : ObservableObject
     partial void OnSelectedRunChanged(HarnessRunRow? value)
     {
         OnPropertyChanged(nameof(HasSelectedRun));
+        // 前の Run の呼び出しを選んだままにしない（「記録を開く」が別の Run の行を開いてしまう）。
+        SelectedCall = null;
+        CallDetail = "";
         RunCalls.Clear();
         RunDetail = value?.Detail ?? "";
         if (value is null)
             return;
         foreach (var call in value.Run.ToolCalls)
             RunCalls.Add(new HarnessCallRow(call));
-        CallDetail = "";
     }
 
     partial void OnSelectedCallChanged(HarnessCallRow? value)
-        => _ = LoadRecordAsync(value?.Call.TranscriptPath, value?.Call.LineNumber ?? 0, text => CallDetail = text);
+        => _ = LoadRecordAsync(_callDetailLoad, value?.Call.TranscriptPath, value?.Call.LineNumber ?? 0, text => CallDetail = text);
 
     [RelayCommand]
     private void OpenRunRecord()
@@ -451,7 +468,7 @@ public sealed partial class HarnessPaneViewModel : ObservableObject
         {
             HarnessVerdictStore.Set(HarnessVerdictStore.PathFor(folder), run.Id, verdict);
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException)
         {
             StatusText = $"判定を保存できませんでした: {ex.Message}";
             return;
@@ -492,7 +509,8 @@ public sealed partial class HarnessPaneViewModel : ObservableObject
             var runs = snapshot.Runs
                 .Where(r => string.Equals(_workspace.FolderForOrPrimary(r.Cwd), folder, StringComparison.OrdinalIgnoreCase))
                 .ToList();
-            var versionCount = runs.Select(r => snapshot.VersionOf(r)?.Commit ?? "").Distinct(StringComparer.Ordinal).Count();
+            // 版の無い Run（最初のハーネスのコミットより前・git 外）は「別の版」として数えない。
+            var versionCount = runs.Select(r => snapshot.VersionOf(r)?.Commit).OfType<string>().Distinct(StringComparer.Ordinal).Count();
             var label = folders.Count > 1 ? Path.GetFileName(Path.TrimEndingDirectorySeparator(folder)) : null;
             foreach (var item in HarnessStructureCheck.Inspect(folder, runs, snapshot.Candidates, versionCount))
                 CheckRows.Add(new HarnessCheckRow(item, folder, label));
@@ -564,15 +582,15 @@ public sealed partial class HarnessPaneViewModel : ObservableObject
     private string DisplayPath(string path) => _workspace.Contains(path) ? _workspace.ToDisplayPath(path) : path;
 
     /// <summary>記録の1行を整形して出す（数 MB の記録をエディタで開かなくても中身が見えるように）。</summary>
-    private async Task LoadRecordAsync(string? path, int line, Action<string> apply)
+    private async Task LoadRecordAsync(DetailSlot slot, string? path, int line, Action<string> apply)
     {
-        _detailCts?.Cancel();
+        slot.Cts?.Cancel();
         if (path is null || line <= 0)
         {
             apply("");
             return;
         }
-        var cts = _detailCts = new CancellationTokenSource();
+        var cts = slot.Cts = new CancellationTokenSource();
         string text;
         try
         {
@@ -616,4 +634,9 @@ public sealed partial class HarnessPaneViewModel : ObservableObject
         WriteIndented = true,
         Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
     };
+
+    private sealed class DetailSlot
+    {
+        public CancellationTokenSource? Cts;
+    }
 }

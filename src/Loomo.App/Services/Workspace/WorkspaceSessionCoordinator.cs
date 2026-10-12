@@ -54,7 +54,6 @@ public static class WorkspaceSessionCoordinator
     public static string? ResolveWorkingDirectory(string? workingDirectory, string? fallbackDirectory)
         => Directory.Exists(workingDirectory) ? workingDirectory : fallbackDirectory;
 
-    /// <summary>旧 single-editor 鏡へ使うタブ。アクティブ ID が無ければ先頭のタブを使う。</summary>
     /// <summary>
     /// 前回のターミナルタブのうち、常駐ホストにシェルが残っていて戻せるもの（§34.6）。シェルが無いタブは
     /// 前の画面も実行中のコマンドも戻らないので立て直さない（消す）。<paramref name="hostSessions"/> が null
@@ -69,6 +68,7 @@ public static class WorkspaceSessionCoordinator
         return saved.Where(tab => hostSessions.Contains(tab.Id)).ToList();
     }
 
+    /// <summary>旧 single-editor 鏡へ使うタブ。アクティブ ID が無ければ先頭のタブを使う。</summary>
     public static EditorTabSnapshot? SelectActiveEditorSnapshot(
         IReadOnlyList<EditorTabSnapshot> snapshots, Guid? activeTabId)
         => snapshots.FirstOrDefault(snapshot => snapshot.Id == activeTabId)

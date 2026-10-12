@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 
 namespace sk0ya.Loomo.Core.Harness;
@@ -20,6 +21,14 @@ public static class HarnessVerdictStore
         WriteIndented = true,
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+        ReadCommentHandling = JsonCommentHandling.Skip,
+        AllowTrailingCommas = true,
+    };
+
+    private static readonly JsonDocumentOptions DocumentOptions = new()
+    {
+        CommentHandling = JsonCommentHandling.Skip,
+        AllowTrailingCommas = true,
     };
 
     public static Dictionary<string, HarnessVerdict> Load(string path)
@@ -48,25 +57,47 @@ public static class HarnessVerdictStore
         return result;
     }
 
-    /// <summary>1件を付ける（<paramref name="verdict"/> が null なら外す）。他の Run の判定はそのまま残す。</summary>
+    /// <summary>
+    /// 1件を付ける（<paramref name="verdict"/> が null なら外す）。他の Run の判定はそのまま残す。
+    /// <para>ファイルは<b>ここで1件だけ書き換え</b>、読めなかった中身から作り直さない：人間が手で直して壊した
+    /// ファイルや、知らない判定（<c>"pending"</c> 等）の行を黙って捨てると、受け入れの唯一の出どころ（構想§6）が消える。
+    /// 読めないときは <see cref="InvalidDataException"/> で止め、ファイルには触らない。</para>
+    /// </summary>
     public static void Set(string path, string runId, HarnessVerdict? verdict)
     {
-        var all = Load(path);
+        JsonObject root;
+        if (File.Exists(path))
+        {
+            JsonNode? parsed;
+            try
+            {
+                parsed = JsonNode.Parse(File.ReadAllText(path), documentOptions: DocumentOptions);
+            }
+            catch (JsonException ex)
+            {
+                throw new InvalidDataException($"{path} が JSON として読めないので書き換えない（{ex.Message}）", ex);
+            }
+            root = parsed as JsonObject
+                ?? throw new InvalidDataException($"{path} の中身がオブジェクトではないので書き換えない");
+        }
+        else
+        {
+            root = new JsonObject();
+        }
+
         if (verdict is null)
         {
-            if (!all.Remove(runId))
+            if (!root.Remove(runId))
                 return;
         }
         else
         {
-            all[runId] = verdict;
+            var entry = new Entry(verdict.Verdict == HarnessVerdictKind.Accepted ? "accepted" : "rejected", verdict.At, verdict.Note);
+            root[runId] = JsonSerializer.SerializeToNode(entry, JsonOptions);
         }
-        var raw = new SortedDictionary<string, Entry>(StringComparer.Ordinal);
-        foreach (var (id, v) in all)
-            raw[id] = new Entry(v.Verdict == HarnessVerdictKind.Accepted ? "accepted" : "rejected", v.At, v.Note);
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         var temp = path + ".tmp";
-        File.WriteAllText(temp, JsonSerializer.Serialize(raw, JsonOptions));
+        File.WriteAllText(temp, root.ToJsonString(JsonOptions));
         File.Move(temp, path, overwrite: true);
     }
 

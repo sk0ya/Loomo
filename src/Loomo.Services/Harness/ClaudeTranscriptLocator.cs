@@ -55,9 +55,9 @@ public static class ClaudeTranscriptLocator
                     continue;
                 if (result.Contains(dir, StringComparer.OrdinalIgnoreCase))
                     continue;
-                var cwd = NewestCwd(dir);
-                // cwd が読めない（空のフォルダー等）ときは名前が完全一致したものだけ採る。
-                if (cwd is null ? exact : workspace.Contains(cwd))
+                // 名前が完全一致なら採る（slug の衝突で別フォルダーの記録が混ざり得るが、それは HarnessAnalyzer が
+                // Run ごとに cwd で弾く）。前方一致（サブフォルダー起動）は最新の記録の cwd で当たりを付ける。
+                if (exact || NewestCwd(dir) is { } cwd && workspace.Contains(cwd))
                     result.Add(dir);
             }
         }

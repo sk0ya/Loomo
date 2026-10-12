@@ -519,4 +519,71 @@ public sealed class HarnessTests : IDisposable
         Assert.Contains("npm run", content);
         Assert.DoesNotContain("cargo", content); // 別フォルダーの Run の候補は混ぜない
     }
+
+    // ===== レビュー指摘の再発防止 =====
+
+    [Fact]
+    public void Task_path_mention_links_only_the_exact_task()
+    {
+        var fix = new HarnessTask("fix", "直す", @"C:\ws\.harness\tasks\fix.md");
+        var fixLogin = new HarnessTask("fix-login", "ログイン", @"C:\ws\.harness\tasks\fix-login.md");
+        var run = RunOf("r1") with { Prompts = [@"C:\ws\.harness\tasks\fix-login.md をやって"] };
+
+        Assert.Equal([fixLogin], HarnessTaskLinks.For(run, [fix, fixLogin]));
+    }
+
+    [Fact]
+    public void Unreadable_verdicts_file_is_not_overwritten_and_unknown_entries_survive()
+    {
+        var path = Path.Combine(_base, "verdicts.json");
+        const string broken = "{ \"a\": { \"verdict\": \"accepted\" }, oops }";
+        File.WriteAllText(path, broken);
+        Assert.Throws<InvalidDataException>(() =>
+            HarnessVerdictStore.Set(path, "b", new HarnessVerdict(HarnessVerdictKind.Accepted, DateTimeOffset.Now, null)));
+        Assert.Equal(broken, File.ReadAllText(path));
+
+        // 手で書いた知らない判定・コメント・末尾のカンマは読み飛ばしても、書き換えで消さない。
+        File.WriteAllText(path, "{\n  // 手書き\n  \"a\": { \"verdict\": \"pending\", \"note\": \"保留\" },\n}");
+        HarnessVerdictStore.Set(path, "b", new HarnessVerdict(HarnessVerdictKind.Rejected, DateTimeOffset.Now, null));
+
+        var text = File.ReadAllText(path);
+        Assert.Contains("pending", text);
+        Assert.Equal(HarnessVerdictKind.Rejected, Assert.Single(HarnessVerdictStore.Load(path)).Value.Verdict);
+    }
+
+    [Fact]
+    public void Check_counts_only_runs_of_its_own_folder()
+    {
+        var edit = Call("Edit", @"C:\ws\a.cs");
+        var mine = RunOf("r1", edit);
+        var others = Enumerable.Range(2, 4).Select(i => RunOf($"r{i}", edit)).ToList();
+        var candidates = HarnessDetectors.Detect([mine, .. others]);
+        Assert.Equal(5, Assert.Single(candidates, c => c.RuleId == HarnessDetectors.RuleUnverified).RunCount);
+
+        var workflows = CheckOf(HarnessStructureCheck.Inspect(_base, [mine], candidates, 0), HarnessStructureCheck.ItemWorkflows);
+
+        Assert.Equal("検証なしの変更が 1 Run で起きている（改善候補）。", workflows.Evidence);
+    }
+
+    [Fact]
+    public async Task Analyzer_drops_sessions_of_another_folder_sharing_the_slug()
+    {
+        // C:\…\a_b と C:\…\a-b は同じ slug に潰れ、同じ記録フォルダーを使う。
+        var ws = Path.Combine(_base, "a-b");
+        var other = Path.Combine(_base, "a_b");
+        Directory.CreateDirectory(ws);
+        var projects = Path.Combine(_base, "claude-projects");
+        var dir = Path.Combine(projects, ClaudeTranscriptLocator.Slug(ws));
+        Directory.CreateDirectory(dir);
+        var now = DateTimeOffset.UtcNow.ToString("o");
+        File.WriteAllLines(Path.Combine(dir, "other.jsonl"),
+            [JsonSerializer.Serialize(new { type = "user", timestamp = now, cwd = other, message = new { content = "別" } })]);
+        File.WriteAllLines(Path.Combine(dir, "mine.jsonl"),
+            [JsonSerializer.Serialize(new { type = "user", timestamp = now, cwd = ws, message = new { content = "こっち" } })]);
+
+        var snapshot = await new HarnessAnalyzer(new FakeWorkspaceService(ws), projects)
+            .AnalyzeAsync(TimeSpan.FromDays(30), null, CancellationToken.None);
+
+        Assert.Equal("mine", Assert.Single(snapshot.Runs).Id);
+    }
 }

@@ -64,12 +64,15 @@ public sealed class HarnessAnalyzer
             var definition = HarnessDefinitionReader.Read(folders);
             var directories = ClaudeTranscriptLocator.FindProjectDirectories(_projectsRoot, _workspace);
             var files = directories.SelectMany(d => ClaudeTranscriptLocator.ListSessions(d, since.UtcDateTime)).ToList();
+            EvictOutside(directories);
             var runs = new List<HarnessRun>(files.Count);
             for (var i = 0; i < files.Count; i++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 progress?.Report((i, files.Count));
+                // 記録フォルダーは slug で選んでいるので、同じ slug に潰れた別フォルダーのセッションを Run ごとに cwd で弾く。
                 if (ParseCached(files[i]) is { } run && (run.Prompts.Count > 0 || run.ToolCalls.Count > 0)
+                    && (run.Cwd is null || _workspace.Contains(run.Cwd))
                     && (run.EndedAt ?? run.StartedAt ?? DateTimeOffset.MaxValue) >= since)
                     runs.Add(run);
             }
@@ -100,6 +103,20 @@ public sealed class HarnessAnalyzer
 
         var candidates = await Task.Run(() => HarnessDetectors.Detect(runs), cancellationToken).ConfigureAwait(false);
         return new HarnessSnapshot(definition, runs, candidates, verdicts, versionByRun, directories, since);
+    }
+
+    /// <summary>
+    /// 今のワークスペースの記録フォルダーに無いセッションをキャッシュから捨てる。Run はツール呼び出しを全部持つので、
+    /// ワークスペースを渡り歩くたびに積むとプロセスの寿命ぶん膨らむ。期間の外のものは残す（期間を戻したとき読み直さない）。
+    /// </summary>
+    private void EvictOutside(IReadOnlyList<string> directories)
+    {
+        foreach (var path in _cache.Keys)
+        {
+            var dir = Path.GetDirectoryName(path);
+            if (!directories.Any(d => string.Equals(d, dir, StringComparison.OrdinalIgnoreCase)))
+                _cache.TryRemove(path, out _);
+        }
     }
 
     private HarnessRun? ParseCached(ClaudeTranscriptFile file)
