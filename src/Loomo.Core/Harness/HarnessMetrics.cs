@@ -129,18 +129,22 @@ public sealed class HarnessVersionTimeline
 }
 
 /// <summary>
-/// Run とタスクの対応（§37.3.1）。人間の入力が <c>.harness/tasks/&lt;id&gt;</c> へのパスか <c>task:&lt;id&gt;</c> を
-/// 含むときだけ結び付ける——題の似ている・同じファイルを触った等の推測では結ばない。
+/// Run とタスクの対応（§37.3.1・§37.3.2）。人間の入力が <c>.harness/tasks/&lt;id&gt;</c> へのパスか <c>task:&lt;id&gt;</c>、
+/// またはチケット（<see cref="HarnessTickets"/>）を含むときだけ結び付ける——題の似ている・同じファイルを触った等の
+/// 推測では結ばない。チケットは <c>ticket:</c> でそれを宣言したタスクファイルがあればそのタスクに、無ければ
+/// チケットそのものをタスクとして結ぶ（タスクファイルを書かずにチケットで仕事を回していても Run が束ねられる）。
 /// </summary>
 public static class HarnessTaskLinks
 {
     public static IReadOnlyList<HarnessTask> For(HarnessRun run, IReadOnlyList<HarnessTask> tasks)
     {
-        if (tasks.Count == 0 || run.Prompts.Count == 0)
+        if (run.Prompts.Count == 0)
             return [];
         var result = new List<HarnessTask>();
         foreach (var task in tasks)
         {
+            if (task.Path is null)
+                continue;
             var file = System.IO.Path.GetFileName(task.Path);
             foreach (var prompt in run.Prompts)
             {
@@ -153,6 +157,20 @@ public static class HarnessTaskLinks
                     result.Add(task);
                     break;
                 }
+            }
+        }
+
+        foreach (var ticket in run.Prompts.SelectMany(HarnessTickets.Find))
+        {
+            // 同じチケットを宣言したファイルが複数あれば（画面側と API 側で分けた等）すべてに結ぶ。
+            var declared = tasks.Where(t => t.Path is not null && HarnessTickets.SameKey(t.Ticket?.Key, ticket.Key)).ToList();
+            if (declared.Count > 0)
+            {
+                result.AddRange(declared.Where(t => !result.Contains(t)));
+            }
+            else if (!result.Any(t => HarnessTickets.SameKey(t.Ticket?.Key, ticket.Key)))
+            {
+                result.Add(HarnessTask.FromTicket(ticket));
             }
         }
         return result;

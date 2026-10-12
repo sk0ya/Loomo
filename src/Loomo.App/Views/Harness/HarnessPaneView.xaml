@@ -322,6 +322,9 @@
                                                 <TextBlock DockPanel.Dock="Right" Text="{Binding TokensLabel}" Style="{StaticResource Dim}" Margin="8,0,0,0" />
                                                 <TextBlock DockPanel.Dock="Right" Text="{Binding VersionLabel}" Style="{StaticResource Dim}" Margin="8,0,0,0"
                                                            FontFamily="Cascadia Mono, Consolas" />
+                                                <TextBlock DockPanel.Dock="Right" Text="{Binding TasksLabel}" Foreground="{DynamicResource Accent}"
+                                                           FontSize="{DynamicResource Fs11}" VerticalAlignment="Center" Margin="8,0,0,0"
+                                                           MaxWidth="160" TextTrimming="CharacterEllipsis" ToolTip="{Binding TasksLabel}" />
                                                 <TextBlock DockPanel.Dock="Left" Text="{Binding Started}" Width="84" Style="{StaticResource Dim}" />
                                                 <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
                                             </DockPanel>
@@ -359,6 +362,9 @@
                                     <Button Style="{StaticResource SmallButton}" Content="判定を外す" Command="{Binding ClearVerdictCommand}" />
                                     <Button Style="{StaticResource SmallButton}" Content="記録を開く" Command="{Binding OpenRunRecordCommand}"
                                             ToolTip="選んだツール呼び出し（無ければ Run の先頭）の記録をエディタで開く" />
+                                    <Button Style="{StaticResource SmallButton}" Content="チケットを開く" Command="{Binding OpenRunTicketCommand}"
+                                            Visibility="{Binding SelectedRun.HasTicket, Converter={StaticResource BoolToVis}, FallbackValue=Collapsed}"
+                                            ToolTip="この Run の指示に書かれたチケットをブラウザペインで開く" />
                                 </WrapPanel>
                                 <TextBlock Style="{StaticResource ColumnTitle}" Margin="0,8,0,0" Text="ツール呼び出し（↳＝サブエージェント）" />
                             </StackPanel>

@@ -66,6 +66,7 @@ public static class HarnessStructureCheck
     public const string ItemAgents = "agents";
 
     private const int MaxListedCommands = 5;
+    private const int MaxListedTickets = 5;
 
     private static readonly Regex AcceptanceHeading = new(
         @"^\s*#{1,6}\s*(受け入れ条件|受入条件|完了条件|acceptance)",
@@ -155,16 +156,30 @@ public static class HarnessStructureCheck
     private static HarnessCheckItem CheckTasks(string harness, IReadOnlyList<HarnessTask> tasks, IReadOnlyList<HarnessRun> runs)
     {
         const string title = "tasks/（タスク定義）";
-        const string purpose = "1ファイル1タスク（目的・受け入れ条件）。指示に task:<id> かファイルのパスを含めた Run がそのタスクに結び付く（§37.3.1）。";
-        var linked = runs.Count(r => HarnessTaskLinks.For(r, tasks).Count > 0);
-        var evidence = runs.Count == 0 ? null : $"期間内の Run {runs.Count} 件のうち、タスクに結び付いたのは {linked} 件。";
+        const string purpose = "1ファイル1タスク（目的・受け入れ条件）。指示に task:<id> かファイルのパスを含めた Run がそのタスクに結び付く（§37.3.1）。"
+            + "チケット（AB#1234・Work Item / Issue の URL）を書いた Run はチケットに結び付く（§37.3.2）。";
+        var links = runs.Select(r => HarnessTaskLinks.For(r, tasks)).ToList();
+        var linked = links.Count(l => l.Count > 0);
+        var tickets = links.SelectMany(l => l).Where(t => t.IsTicketOnly).Select(t => t.Id)
+            .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        var evidence = runs.Count == 0 ? null
+            : $"期間内の Run {runs.Count} 件のうち、タスクに結び付いたのは {linked} 件"
+              + (tickets.Count > 0 ? $"（タスクファイルの無いチケット {tickets.Count} 件: {string.Join(", ", tickets.Take(MaxListedTickets))}{(tickets.Count > MaxListedTickets ? " …" : "")}）。" : "。");
+        if (tasks.Count == 0 && tickets.Count > 0)
+        {
+            // チケットで仕事を回している：Run は束ねられているので「無い」とは言わない。受け入れ条件はチケット側にある前提。
+            return new(ItemTasks, title, purpose, HarnessCheckLevel.Required, HarnessCheckStatus.Present,
+                "タスクファイルは無いが、Run はチケットに結び付いている（チケットをタスクとして扱う）。"
+                + "ハーネス側で受け入れ条件を持ちたいチケットだけ、ticket: を書いたタスクファイルを作る。",
+                evidence, [], null);
+        }
         if (tasks.Count == 0)
         {
             return new(ItemTasks, title, purpose, HarnessCheckLevel.Required, HarnessCheckStatus.Missing,
                 "タスクが1つも無い。Run が何の仕事の試行なのかを記録できない。", evidence,
                 [new(Path.Combine("tasks", "new-task.md"), TaskTemplate("new-task"))], null);
         }
-        var withoutAcceptance = tasks.Where(t => !HasAcceptance(t.Path)).ToList();
+        var withoutAcceptance = tasks.Where(t => t.Path is { } path && !HasAcceptance(path)).ToList();
         if (withoutAcceptance.Count > 0)
         {
             return new(ItemTasks, title, purpose, HarnessCheckLevel.Required, HarnessCheckStatus.Incomplete,
@@ -174,7 +189,7 @@ public static class HarnessStructureCheck
         }
         return new(ItemTasks, title, purpose, HarnessCheckLevel.Required, HarnessCheckStatus.Present,
             $"タスク {tasks.Count} 件（すべて受け入れ条件あり）。"
-            + (runs.Count > 0 && linked == 0 ? " ただし期間内に結び付いた Run が無い——指示に task:<id> を含める。" : ""),
+            + (runs.Count > 0 && linked == 0 ? " ただし期間内に結び付いた Run が無い——指示に task:<id> かチケット（AB#1234）を含める。" : ""),
             evidence, [], null);
     }
 
@@ -349,10 +364,13 @@ public static class HarnessStructureCheck
 
     private static string TaskTemplate(string id) =>
         "# （タスクの題）\n\n"
+        + "ticket: \n\n"
         + "## 目的\n\n- \n\n"
         + "## 受け入れ条件\n\n- [ ] \n\n"
-        + "## 参照\n\n- 外部 Work Item / Issue: \n\n"
-        + $"<!-- 実行するときは指示に task:{id} かこのファイルのパスを含める（Run と結び付く、§37.3.1）。ID＝ファイル名。 -->\n";
+        + "## 参照\n\n- \n\n"
+        + $"<!-- 実行するときは指示に task:{id} かこのファイルのパスを含める（Run と結び付く、§37.3.1）。ID＝ファイル名。\n"
+        + "     上の ticket: の行にチケット（AB#1234・Work Item / Issue の URL・番号だけ）を書くと、指示にそのチケットを\n"
+        + "     書いた Run もこのタスクに結び付く（§37.3.2）。使わなければ行ごと消してよい。 -->\n";
 
     private static void AppendCommands(StringBuilder sb, IReadOnlyList<(string Command, int Runs)> commands, string fallback)
     {
@@ -404,7 +422,7 @@ public static class HarnessStructureCheck
 
     private static IReadOnlyList<HarnessTask> TaskFiles(string harness)
         => SafeFiles(Path.Combine(harness, "tasks"))
-            .Select(f => new HarnessTask(Path.GetFileNameWithoutExtension(f), HarnessDefinitionReader.ReadTitle(f), f))
+            .Select(HarnessDefinitionReader.ReadTask)
             .ToList();
 
     private static bool HasAcceptance(string path)

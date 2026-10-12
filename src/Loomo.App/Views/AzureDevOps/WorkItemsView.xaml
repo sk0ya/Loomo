@@ -229,6 +229,10 @@
                                             <MenuItem Header="ID をコピー"
                                                       Command="{Binding CopyIdCommand}"
                                                       CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                                            <MenuItem Header="指示用にコピー（AB#番号 タイトル）"
+                                                      ToolTip="エージェントへの指示に貼ると、ハーネスペインがその Run をこの Work Item に結び付ける"
+                                                      Command="{Binding CopyMentionCommand}"
+                                                      CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
                                             <MenuItem Header="タイトルをコピー"
                                                       Command="{Binding CopyTitleCommand}"
                                                       CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />

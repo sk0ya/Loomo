@@ -586,4 +586,86 @@ public sealed class HarnessTests : IDisposable
 
         Assert.Equal("mine", Assert.Single(snapshot.Runs).Id);
     }
+    // ===== チケットをタスクとして扱う（§37.3.2） =====
+
+    [Fact]
+    public void Ticket_references_are_found_only_when_written_explicitly()
+    {
+        var refs = HarnessTickets.Find(
+            "ab#12 と https://dev.azure.com/org/Proj/_workitems/edit/34 と https://github.com/o/r/issues/5です、"
+            + "AB#12 の再掲、素の #99、xAB#7、PR 1234、対応AB#8です");
+
+        Assert.Equal(["AB#12", "AB#34", "o/r#5", "AB#8"], refs.Select(r => r.Key));
+        Assert.Equal("https://dev.azure.com/org/Proj/_workitems/edit/34", refs[1].Url);
+        Assert.Equal(34, refs[1].WorkItemId);
+        Assert.Null(refs[2].WorkItemId);
+    }
+
+    [Fact]
+    public void Url_is_kept_when_the_same_ticket_is_also_mentioned_by_number()
+    {
+        var r = Assert.Single(HarnessTickets.Find("AB#34 → https://x.visualstudio.com/P/_workitems/edit/34"));
+        Assert.Equal("https://x.visualstudio.com/P/_workitems/edit/34", r.Url);
+    }
+
+    [Fact]
+    public void Run_mentioning_a_ticket_links_to_the_task_file_that_declares_it_or_to_the_ticket_itself()
+    {
+        var tasks = Path.Combine(_base, ".harness", "tasks");
+        Directory.CreateDirectory(tasks);
+        var file = Path.Combine(tasks, "fix-login.md");
+        File.WriteAllText(file, "# ログインを直す\n\n- ticket: 1234\n\n## 受け入れ条件\n");
+        var declared = HarnessDefinitionReader.ReadTask(file);
+        Assert.Equal("AB#1234", declared.Ticket?.Key);
+
+        var run = RunOf("r1") with { Prompts = ["AB#1234 ログインを直す", "ついでに AB#77 も"] };
+        var links = HarnessTaskLinks.For(run, [declared]);
+
+        Assert.Equal(2, links.Count);
+        Assert.Same(declared, links[0]);
+        Assert.True(links[1].IsTicketOnly);
+        Assert.Equal("AB#77", links[1].Id);
+    }
+
+    [Fact]
+    public void Ticket_linked_runs_satisfy_the_tasks_check_without_task_files()
+    {
+        Directory.CreateDirectory(Path.Combine(_base, ".harness"));
+        var linked = RunOf("r1") with { Prompts = ["AB#1234 をやって"] };
+
+        var item = CheckOf(HarnessStructureCheck.Inspect(_base, [linked, RunOf("r2")], [], 1), HarnessStructureCheck.ItemTasks);
+
+        Assert.Equal(HarnessCheckStatus.Present, item.Status);
+        Assert.Empty(item.Scaffold);
+        Assert.Contains("AB#1234", item.Evidence);
+    }
+    [Fact]
+    public void Scaffold_comment_is_not_read_as_a_ticket_declaration()
+    {
+        var file = Path.Combine(_base, "t.md");
+        // 雛形から ticket: の行だけ消したもの。コメントの説明に「ticket:」と AB#1234 が残る。
+        var template = HarnessStructureCheck.Inspect(_base, [], [], 0)
+            .Single(i => i.Id == HarnessStructureCheck.ItemTasks).Scaffold.Single().Content;
+        File.WriteAllText(file, string.Join("\n", template.Split('\n').Where(l => l.Trim() != "ticket:")));
+
+        Assert.Null(HarnessDefinitionReader.ReadTicket(file));
+    }
+
+    [Theory]
+    [InlineData("0012", "AB#12")]
+    [InlineData("AB#0012", "AB#12")]
+    [InlineData("o/r#05", "o/r#5")]
+    [InlineData("https://github.com/o/r/issues/5", "o/r#5")]
+    public void Declared_ticket_keys_match_what_the_pane_shows(string declared, string key)
+        => Assert.Equal(key, HarnessTickets.ParseDeclared(declared)?.Key);
+
+    [Fact]
+    public void All_task_files_declaring_the_same_ticket_are_linked()
+    {
+        var a = new HarnessTask("a", "A", @"C:\ws\.harness\tasks\a.md", new HarnessTicketRef("AB#1", null));
+        var b = new HarnessTask("b", "B", @"C:\ws\.harness\tasks\b.md", new HarnessTicketRef("AB#1", null));
+        var run = RunOf("r1") with { Prompts = ["AB#1 をやって"] };
+
+        Assert.Equal([a, b], HarnessTaskLinks.For(run, [a, b]));
+    }
 }

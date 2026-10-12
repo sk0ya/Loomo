@@ -111,7 +111,16 @@ public sealed class HarnessRunRow(HarnessRun run, HarnessVersion? version, Harne
     };
     public bool IsAccepted => verdict?.Verdict == HarnessVerdictKind.Accepted;
     public bool IsRejected => verdict?.Verdict == HarnessVerdictKind.Rejected;
-    public string TasksLabel => tasks.Count == 0 ? "" : string.Join(", ", tasks.Select(t => t.Id));
+    /// <summary>一覧に出すタスクの短い名前。タスクファイルにチケットがあればチケットの鍵を添える。</summary>
+    public string TasksLabel => tasks.Count == 0 ? "" : string.Join(", ", tasks.Select(t => t.Ticket is { } ticket && !t.IsTicketOnly
+        ? $"{t.Id}（{ticket.Key}）"
+        : t.Id));
+
+    /// <summary>この Run に結び付いたチケット（タスクファイル経由のものも含む）。</summary>
+    public IReadOnlyList<HarnessTicketRef> Tickets { get; } = tasks.Select(t => t.Ticket).OfType<HarnessTicketRef>()
+        .DistinctBy(t => t.Key, StringComparer.OrdinalIgnoreCase).ToList();
+
+    public bool HasTicket => Tickets.Count > 0;
 
     public string Detail
     {
@@ -132,7 +141,7 @@ public sealed class HarnessRunRow(HarnessRun run, HarnessVersion? version, Harne
             if (run.SkillsUsed.Count > 0)
                 lines.Add($"Skill: {string.Join(", ", run.SkillsUsed.Distinct())}");
             if (tasks.Count > 0)
-                lines.Add($"タスク: {string.Join(", ", tasks.Select(t => $"{t.Id}（{t.Title}）"))}");
+                lines.Add($"タスク: {string.Join(", ", tasks.Select(DescribeTask))}");
             if (verdict is not null)
                 lines.Add($"判定: {VerdictLabel}（{HarnessFormat.Time(verdict.At)}）");
             if (run.Prompts.Count > 0)
@@ -140,6 +149,11 @@ public sealed class HarnessRunRow(HarnessRun run, HarnessVersion? version, Harne
             return string.Join(Environment.NewLine, lines);
         }
     }
+
+    /// <summary>チケットだけ：「AB#1234（題）」／題が引けなければ鍵だけ。ファイル：「id（題・チケット）」。</summary>
+    private static string DescribeTask(HarnessTask t) => t.IsTicketOnly
+        ? (t.Title == t.Id ? $"{t.Id}（チケット）" : $"{t.Id}（{t.Title}）")
+        : t.Ticket is { } ticket ? $"{t.Id}（{t.Title}・{ticket.Key}）" : $"{t.Id}（{t.Title}）";
 }
 
 public sealed class HarnessCallRow(RunToolCall call)

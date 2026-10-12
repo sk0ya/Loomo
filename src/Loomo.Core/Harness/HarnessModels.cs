@@ -23,8 +23,18 @@ public enum HarnessComponentKind
 /// <summary>構成要素1つ。<see cref="Id"/> は種類つきで一意（例 <c>skill:review</c>）。</summary>
 public sealed record HarnessComponent(string Id, HarnessComponentKind Kind, string Name, string Path);
 
-/// <summary><c>.harness/tasks/</c> の1タスク。ID は拡張子を除いたファイル名（§37.3）。</summary>
-public sealed record HarnessTask(string Id, string Title, string Path);
+/// <summary>
+/// タスク1つ（§37.3・§37.3.2）。<c>.harness/tasks/</c> のファイルなら ID は拡張子を除いたファイル名で、
+/// <c>ticket:</c> を書いていれば <see cref="Ticket"/> を持つ。指示に書かれたチケットに対応するファイルが無いときは
+/// <b>チケットそのものがタスク</b>になる（<see cref="Path"/> が null、ID・題ともチケットの鍵）。
+/// </summary>
+public sealed record HarnessTask(string Id, string Title, string? Path, HarnessTicketRef? Ticket = null)
+{
+    /// <summary>タスクファイルを持たない、チケットだけのタスク。</summary>
+    public bool IsTicketOnly => Path is null;
+
+    public static HarnessTask FromTicket(HarnessTicketRef ticket) => new(ticket.Key, ticket.Key, null, ticket);
+}
 
 /// <summary>ワークスペースのハーネス定義（フォルダーごとに読んだものを束ねたもの）。</summary>
 public sealed record HarnessDefinition(

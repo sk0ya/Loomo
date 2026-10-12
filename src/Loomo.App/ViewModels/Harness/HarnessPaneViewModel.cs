@@ -19,6 +19,22 @@ namespace sk0ya.Loomo.App.ViewModels;
 /// <summary>エディタで開いてほしいファイルと行（1始まり、0 なら先頭）。</summary>
 public sealed record HarnessOpenRequest(string Path, int Line);
 
+/// <summary>ブラウザペインで開いてほしいチケット。</summary>
+public sealed record HarnessTicketOpenRequest(string Url, string Title);
+
+/// <summary>
+/// チケットの題と画面 URL を引く口（§37.3.2）。ハーネスは記録だけから決まる（問い合わせない）ので、題は
+/// 既に読み込んである一覧から引けたときだけ添える。実装は Work Items（Azure DevOps）。
+/// </summary>
+public interface IHarnessTicketDirectory
+{
+    string? TitleOf(HarnessTicketRef ticket);
+    string? UrlOf(HarnessTicketRef ticket);
+
+    /// <summary>引ける題が変わった（一覧を読み込んだ）。UI スレッドで上がる。</summary>
+    event EventHandler? TicketsChanged;
+}
+
 /// <summary>
 /// ハーネスペイン（<see cref="PaneKind.Harness"/>、§37）。ハーネスの改善箇所を見つけ、根拠を辿り、版を比べる作業台。
 /// <para><b>観測事実と推測を混ぜない</b>：数値は記録にあるものだけ（料金が無ければ「不明」）、推定トークンと
@@ -39,6 +55,7 @@ public sealed partial class HarnessPaneViewModel : ObservableObject
 
     private readonly HarnessAnalyzer _analyzer;
     private readonly IWorkspaceService _workspace;
+    private readonly IHarnessTicketDirectory? _tickets;
     private CancellationTokenSource? _loadCts;
     // 根拠の詳細とツール呼び出しの詳細は別々に取り消す（共有すると、片方の選択が外れただけで他方の読込が止まる）。
     private readonly DetailSlot _evidenceDetailLoad = new();
@@ -47,10 +64,18 @@ public sealed partial class HarnessPaneViewModel : ObservableObject
     private bool _loaded;
     private bool _stale = true;
 
-    public HarnessPaneViewModel(HarnessAnalyzer analyzer, IWorkspaceService workspace)
+    public HarnessPaneViewModel(HarnessAnalyzer analyzer, IWorkspaceService workspace, IHarnessTicketDirectory? tickets = null)
     {
         _analyzer = analyzer;
         _workspace = workspace;
+        _tickets = tickets;
+        // 一覧が後から読み込まれたら題を添え直す（記録は読み直さない）。
+        if (_tickets is not null)
+            _tickets.TicketsChanged += (_, _) =>
+            {
+                if (_snapshot is { } snapshot)
+                    ApplyRuns(snapshot);
+            };
         // ワークスペースが変われば記録の出どころも変わる。見えていれば読み直し、見えていなければ次に見えたとき。
         _workspace.FoldersChanged += (_, _) => QueueRefresh();
     }
@@ -132,6 +157,9 @@ public sealed partial class HarnessPaneViewModel : ObservableObject
 
     /// <summary>エディタで開く（ShellWindow が受ける）。</summary>
     public event EventHandler<HarnessOpenRequest>? OpenRequested;
+
+    /// <summary>チケットをブラウザペインで開く（ホストが購読する）。</summary>
+    public event EventHandler<HarnessTicketOpenRequest>? TicketOpenRequested;
     /// <summary>タブ・期間が変わった（ワークスペースへ保存する合図）。</summary>
     public event EventHandler? StateChanged;
 
@@ -414,9 +442,31 @@ public sealed partial class HarnessPaneViewModel : ObservableObject
         foreach (var run in snapshot.Runs)
         {
             snapshot.Verdicts.TryGetValue(run.Id, out var verdict);
-            Runs.Add(new HarnessRunRow(run, snapshot.VersionOf(run), verdict, HarnessTaskLinks.For(run, snapshot.Definition.Tasks)));
+            Runs.Add(new HarnessRunRow(run, snapshot.VersionOf(run), verdict,
+                WithTicketTitles(HarnessTaskLinks.For(run, snapshot.Definition.Tasks))));
         }
         SelectedRun = Runs.FirstOrDefault(r => r.Run.Id == previous) ?? Runs.FirstOrDefault();
+    }
+
+    /// <summary>チケットだけのタスクに、読み込み済みの一覧から引けた題を添える（引けなければチケットの鍵のまま）。</summary>
+    private IReadOnlyList<HarnessTask> WithTicketTitles(IReadOnlyList<HarnessTask> tasks)
+        => _tickets is null
+            ? tasks
+            : tasks.Select(t => t is { IsTicketOnly: true, Ticket: { } ticket } && _tickets.TitleOf(ticket) is { Length: > 0 } title
+                ? t with { Title = title }
+                : t).ToList();
+
+    /// <summary>選んだ Run に書かれたチケットをブラウザペインで開く（複数あれば最初のもの）。</summary>
+    [RelayCommand]
+    private void OpenRunTicket()
+    {
+        if (SelectedRun?.Tickets.FirstOrDefault() is not { } ticket)
+            return;
+        if ((_tickets?.UrlOf(ticket) ?? ticket.Url) is { } url)
+            TicketOpenRequested?.Invoke(this, new HarnessTicketOpenRequest(url,
+                _tickets?.TitleOf(ticket) is { Length: > 0 } title ? $"{ticket.Key}: {title}" : ticket.Key));
+        else
+            ToastService.Warning($"{ticket.Key} の開き先が分からない（Work Items の組織 URL が未設定）。");
     }
 
     partial void OnSelectedRunChanged(HarnessRunRow? value)

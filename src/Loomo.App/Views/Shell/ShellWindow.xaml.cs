@@ -408,6 +408,7 @@ public partial class ShellWindow : Window {
         // ハーネスペイン（§37）：根拠の記録・読まれたファイル・書き出したタスクはエディタで開く（素材の流れ）。
         // 行へ飛ぶのは開いたタブがそのファイルのときだけ（記録が消えていて開けなかったとき、無関係なタブのカーソルを動かさない）。
         vm.Harness.OpenRequested += async (_, request) => await OpenPathInEditorAsync(request.Path, request.Line, 0);
+        vm.Harness.TicketOpenRequested += (_, request) => _ = OpenUrlInBrowserAsync(request.Url, request.Title);
         vm.Harness.StateChanged += (_, _) => SaveActiveWorkspaceSnapshot();
         vm.FolderTree.RevealInFilesPaneRequested += (_, path) => {
             vm.Files.Reveal(path);

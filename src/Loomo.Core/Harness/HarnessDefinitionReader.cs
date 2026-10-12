@@ -49,7 +49,7 @@ public static class HarnessDefinitionReader
                     components.Add(new HarnessComponent(Key(kind, file), kind, Path.GetFileNameWithoutExtension(file), file));
             }
             foreach (var file in Files(Path.Combine(harness, "tasks")))
-                tasks.Add(new HarnessTask(Path.GetFileNameWithoutExtension(file), ReadTitle(file), file));
+                tasks.Add(ReadTask(file));
         }
 
         return new HarnessDefinition(harnessFolders, harnessId, version, components, tasks);
@@ -134,6 +134,36 @@ public static class HarnessDefinitionReader
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
         return (id, version);
+    }
+
+    /// <summary>タスクファイル1つ（ID・題・<c>ticket:</c>）。</summary>
+    public static HarnessTask ReadTask(string path)
+        => new(Path.GetFileNameWithoutExtension(path), ReadTitle(path), path, ReadTicket(path));
+
+    /// <summary>
+    /// タスクが対応するチケット：先頭近くの <c>ticket:</c> の行（<c>AB#1234</c>・URL・番号だけ）。
+    /// 指示にそのチケットが書かれた Run は、このタスクに結び付く（§37.3.2）。無ければ null。
+    /// </summary>
+    public static HarnessTicketRef? ReadTicket(string path)
+    {
+        try
+        {
+            var inComment = false;
+            foreach (var raw in File.ReadLines(path).Take(40))
+            {
+                var line = raw.Trim().TrimStart('-', '*').Trim();
+                // コメントの中の説明（雛形の「ticket: に AB#1234 を書くと…」）を宣言と読まない。
+                if (inComment || line.StartsWith("<!--", StringComparison.Ordinal))
+                {
+                    inComment = !raw.Contains("-->", StringComparison.Ordinal);
+                    continue;
+                }
+                if (line.StartsWith("ticket:", StringComparison.OrdinalIgnoreCase))
+                    return HarnessTickets.ParseDeclared(line[7..]);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+        return null;
     }
 
     /// <summary>タスクの題：最初の Markdown 見出し、または <c>title:</c> の行。無ければファイル名。</summary>

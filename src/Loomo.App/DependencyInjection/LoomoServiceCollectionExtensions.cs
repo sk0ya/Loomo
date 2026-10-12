@@ -236,6 +236,8 @@ internal static class LoomoServiceCollectionExtensions
         services.AddSingleton<AzureDevOpsPatStore>();
         services.AddSingleton(_ => new AzureDevOpsWorkItemClient());
         services.AddSingleton<WorkItemsViewModel>();
+        // ハーネスペインがチケット（AB#…）の題と開き先を引く（§37.3.2）。同じインスタンス＝読み込み済みの一覧を使う。
+        services.AddSingleton<IHarnessTicketDirectory>(sp => sp.GetRequiredService<WorkItemsViewModel>());
         services.AddSingleton<SettingsViewModel>();
         services.AddSingleton<AppearanceViewModel>();
         services.AddSingleton<LspSettingsViewModel>();

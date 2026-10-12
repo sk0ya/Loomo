@@ -5,6 +5,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.Core.Abstractions;
+using sk0ya.Loomo.Core.Harness;
 using sk0ya.Loomo.Core.Settings;
 using sk0ya.Loomo.Services;
 using sk0ya.Loomo.Services.Settings;
@@ -112,7 +113,7 @@ public sealed partial class WorkItemFilterOption(string value, bool isChecked, A
 /// 自分に割り当たっている未完了の Work Item を引き、設定した PR 対象（プロジェクト/リポジトリ）から自分の進行中の PR を引いて
 /// 紐づく Work Item の下に添える。PAT は環境変数 ADO_PAT → 資格情報マネージャー ADO_PAT を読むだけ（<see cref="AzureDevOpsPatStore"/>）。
 /// </summary>
-public sealed partial class WorkItemsViewModel : ObservableObject
+public sealed partial class WorkItemsViewModel : ObservableObject, IHarnessTicketDirectory
 {
     /// <summary>開き直したときに取り直すまでの間隔。開くたびに取りに行くと、ちらっと覗くだけでも待たされる。</summary>
     private static readonly TimeSpan StaleAfter = TimeSpan.FromMinutes(2);
@@ -199,6 +200,43 @@ public sealed partial class WorkItemsViewModel : ObservableObject
     /// <summary>取れたが絞り込みで1件も残らない／そもそも0件のときの一言。</summary>
     [ObservableProperty] private string _emptyText = "";
 
+    // ===== IHarnessTicketDirectory（ハーネスペインがチケットの題と開き先を引く） =====
+
+    /// <summary>一覧を読み直した（ハーネスペインが題を引き直す）。UI スレッドで上がる。</summary>
+    public event EventHandler? TicketsChanged;
+
+    /// <summary>読み込み済みの一覧にある Work Item の題。一覧をまだ開いていなければ null（そのために問い合わせはしない）。</summary>
+    public string? TitleOf(HarnessTicketRef ticket)
+        => ticket.WorkItemId is { } id
+            ? _entries.FirstOrDefault(e => e.WorkItem?.Id == id)?.WorkItem?.Title
+            : null;
+
+    /// <summary>チケットの画面 URL。指示に URL で書かれていればそれ、<c>AB#</c> なら Work Items の設定（未設定なら
+    /// TaskAzure の設定）の組織とプロジェクトから組む（一覧の WebUrl と同じ形）。組めなければ null。</summary>
+    public string? UrlOf(HarnessTicketRef ticket)
+    {
+        if (ticket.Url is { } url)
+            return url;
+        if (ticket.WorkItemId is not { } id)
+            return null;
+        var loaded = _entries.FirstOrDefault(e => e.WorkItem?.Id == id)?.WorkItem;
+        if (loaded is not null)
+            return loaded.WebUrl;
+        var a = _settings.AzureDevOps;
+        var organizationUrl = a.OrganizationUrl;
+        var project = a.Project;
+        // 一覧の読み込み（ImportFromTaskAzureIfEmpty）と同じ条件で TaskAzure に倒す——片方だけ違うと開く URL がずれる。
+        if ((organizationUrl.Trim().Length == 0 || project.Trim().Length == 0) && TaskAzureSettings.TryLoad() is { } taskAzure)
+            (organizationUrl, project) = (taskAzure.OrganizationUrl, taskAzure.Project);
+        organizationUrl = AzureDevOpsWorkItemClient.NormalizeOrganizationUrl(organizationUrl);
+        if (organizationUrl.Length == 0)
+            return null;
+        project = project.Trim();
+        return project.Length == 0
+            ? $"{organizationUrl}/_workitems/edit/{id}"
+            : $"{organizationUrl}/{Uri.EscapeDataString(project)}/_workitems/edit/{id}";
+    }
+
     /// <summary>行が選ばれた（ブラウザペインで開く）。ホストが購読する。</summary>
     public event Action<string, string>? OpenRequested;
 
@@ -278,6 +316,19 @@ public sealed partial class WorkItemsViewModel : ObservableObject
 
     [RelayCommand]
     private void CopyTitle(WorkItemListRowViewModel? row) => ClipboardText.Set(row?.Title);
+
+    /// <summary>
+    /// 指示用にコピー（<c>AB#1234 タイトル</c>）。エージェントへの指示にこれを貼ると、ハーネスペインがその Run を
+    /// この Work Item に結び付ける（§37.3.2）——番号だけでは PR か Issue か決まらないので結び付かない。
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(IsWorkItemRow))]
+    private void CopyMention(WorkItemListRowViewModel? row)
+    {
+        if (row?.Entry.WorkItem is { } item)
+            ClipboardText.Set($"{HarnessTickets.AzureBoardsPrefix}{item.Id} {item.Title}");
+    }
+
+    private static bool IsWorkItemRow(WorkItemListRowViewModel? row) => row?.IsWorkItem == true;
 
     [RelayCommand]
     private void CopyUrl(WorkItemListRowViewModel? row) => ClipboardText.Set(row?.WebUrl);
@@ -485,6 +536,7 @@ public sealed partial class WorkItemsViewModel : ObservableObject
     private void SetEntries(IReadOnlyList<WorkItemListEntry> entries)
     {
         _entries = entries;
+        TicketsChanged?.Invoke(this, EventArgs.Empty);
         var items = entries.Where(e => e.WorkItem is not null).Select(e => e.WorkItem!).ToList();
         ResetOptions(StateOptions, items.Select(i => i.State));
         ResetOptions(TypeOptions, items.Select(i => i.WorkItemType));
