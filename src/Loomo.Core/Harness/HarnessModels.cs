@@ -27,8 +27,10 @@ public sealed record HarnessComponent(string Id, HarnessComponentKind Kind, stri
 /// タスク1つ（§37.3・§37.3.2）。<c>.harness/tasks/</c> のファイルなら ID は拡張子を除いたファイル名で、
 /// <c>ticket:</c> を書いていれば <see cref="Ticket"/> を持つ。指示に書かれたチケットに対応するファイルが無いときは
 /// <b>チケットそのものがタスク</b>になる（<see cref="Path"/> が null、ID・題ともチケットの鍵）。
+/// <c>tickets/&lt;群&gt;/&lt;ID&gt;/&lt;ID&gt;-detail.md</c> のチケット型タスク（§37.11）は <see cref="LocalTicket"/> を持ち、
+/// <see cref="Path"/> は detail を指す。
 /// </summary>
-public sealed record HarnessTask(string Id, string Title, string? Path, HarnessTicketRef? Ticket = null)
+public sealed record HarnessTask(string Id, string Title, string? Path, HarnessTicketRef? Ticket = null, HarnessLocalTicket? LocalTicket = null)
 {
     /// <summary>タスクファイルを持たない、チケットだけのタスク。</summary>
     public bool IsTicketOnly => Path is null;
@@ -87,6 +89,10 @@ public sealed record RunToolCall
     public long? ReadOffset { get; init; }
     /// <summary>Bash/PowerShell のコマンド全文。</summary>
     public string? Command { get; init; }
+    /// <summary>Edit／MultiEdit の置換前の文字列（上限つき）。それ以外は null。</summary>
+    public string? EditOld { get; init; }
+    /// <summary>Edit／MultiEdit の置換後の文字列（上限つき）。それ以外は null。</summary>
+    public string? EditNew { get; init; }
     /// <summary>入力（arguments）の JSON の文字数。</summary>
     public int InputChars { get; init; }
     public bool HasResult { get; init; }
@@ -119,6 +125,8 @@ public sealed record HarnessRun
     public IReadOnlyList<RunToolCall> ToolCalls { get; init; } = [];
     /// <summary>人間の入力（本体のみ・メタ行は除く）。</summary>
     public IReadOnlyList<string> Prompts { get; init; } = [];
+    /// <summary>人間が打ったスラッシュコマンド（<c>/ticket-run VCI-001</c> 等。本体のみ）。指示とは別に持つ。</summary>
+    public IReadOnlyList<HarnessCommandInvocation> Commands { get; init; } = [];
     /// <summary>呼ばれた Skill の名前（観測）。</summary>
     public IReadOnlyList<string> SkillsUsed { get; init; } = [];
     /// <summary>呼ばれたサブエージェントの種類（観測）。</summary>
@@ -128,6 +136,12 @@ public sealed record HarnessRun
     public TimeSpan? Duration => StartedAt is { } s && EndedAt is { } e && e >= s ? e - s : null;
     public int ToolErrorCount { get; init; }
     public int ToolCallCountExcludingRejected { get; init; }
+}
+
+/// <summary>スラッシュコマンド1回（<c>Name</c> は <c>/</c> 付き、<c>Args</c> は打たれた引数のまま）。</summary>
+public sealed record HarnessCommandInvocation(string Name, string Args)
+{
+    public override string ToString() => Args.Length == 0 ? Name : $"{Name} {Args}";
 }
 
 /// <summary>人間の判定（§37.3 <c>verdicts.json</c>）。</summary>

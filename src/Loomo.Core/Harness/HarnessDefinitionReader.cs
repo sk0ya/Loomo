@@ -35,6 +35,11 @@ public static class HarnessDefinitionReader
             if (string.IsNullOrEmpty(folder) || !Directory.Exists(folder))
                 continue;
             ReadClaudeCode(folder, components);
+            // チケット駆動のワークスペース（§37.11）：.harness/ が無くても形で検出して読む。archive/ はここでは読まない。
+            tasks.AddRange(HarnessLocalTickets.ReadActive(folder));
+            foreach (var file in HarnessLocalTickets.WorkflowSpecFiles(folder))
+                components.Add(new HarnessComponent(Key(HarnessComponentKind.Workflow, file),
+                    HarnessComponentKind.Workflow, Path.GetFileNameWithoutExtension(file), file));
 
             var harness = Path.Combine(folder, HarnessFolderName);
             if (!Directory.Exists(harness))

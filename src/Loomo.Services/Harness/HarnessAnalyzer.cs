@@ -78,6 +78,8 @@ public sealed class HarnessAnalyzer
             }
             progress?.Report((files.Count, files.Count));
             runs.Sort((a, b) => Nullable.Compare(b.StartedAt, a.StartedAt));
+            // archive/ のチケットは一覧にせず、期間内の Run が言及した ID だけ読む（§37.11）。
+            definition = HarnessLocalTickets.WithArchived(definition, folders, runs);
             var verdicts = new Dictionary<string, HarnessVerdict>(StringComparer.Ordinal);
             foreach (var folder in folders)
             {

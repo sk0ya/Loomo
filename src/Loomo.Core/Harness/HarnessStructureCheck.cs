@@ -92,16 +92,18 @@ public static class HarnessStructureCheck
             .OfType<HarnessCandidate>()
             .ToList();
         var tasks = TaskFiles(harness);
+        // チケット型タスク（§37.11）：.harness/ が無くても tickets/・meta/ のチケットはタスクとして数える（archive は数えない）。
+        var tickets = HarnessLocalTickets.ReadActive(folder);
         var buildCommands = ObservedBuildCommands(runs);
 
         return
         [
             CheckManifest(folder, harness),
-            CheckTasks(harness, tasks, runs),
+            CheckTasks(tasks, tickets, runs),
             CheckVerdicts(harness, runs),
-            CheckWorkflows(harness, mine, buildCommands),
+            CheckWorkflows(folder, harness, mine, buildCommands),
             CheckRules(harness, mine),
-            CheckEvaluations(harness, tasks, versionCount, buildCommands),
+            CheckEvaluations(harness, [.. tasks, .. tickets], versionCount, buildCommands),
             CheckAgents(harness, runs),
         ];
     }
@@ -153,19 +155,25 @@ public static class HarnessStructureCheck
                 $"{string.Join(" と ", lacks)} の行が無い（行頭に書く）。", null, [], path);
     }
 
-    private static HarnessCheckItem CheckTasks(string harness, IReadOnlyList<HarnessTask> tasks, IReadOnlyList<HarnessRun> runs)
+    private static HarnessCheckItem CheckTasks(
+        IReadOnlyList<HarnessTask> tasks, IReadOnlyList<HarnessTask> tickets, IReadOnlyList<HarnessRun> runs)
     {
         const string title = "tasks/（タスク定義）";
         const string purpose = "1ファイル1タスク（目的・受け入れ条件）。指示に task:<id> かファイルのパスを含めた Run がそのタスクに結び付く（§37.3.1）。"
-            + "チケット（AB#1234・Work Item / Issue の URL）を書いた Run はチケットに結び付く（§37.3.2）。";
-        var links = runs.Select(r => HarnessTaskLinks.For(r, tasks)).ToList();
+            + "チケット（AB#1234・Work Item / Issue の URL）を書いた Run はチケットに結び付く（§37.3.2）。"
+            + "tickets/<群>/<ID>/<ID>-detail.md のチケット型タスクは、指示に ID（VCI-001）かそのパスを書いた Run が結び付く（§37.11）。";
+        var all = tasks.Concat(tickets).ToList();
+        var links = runs.Select(r => HarnessTaskLinks.Links(r, all)).ToList();
         var linked = links.Count(l => l.Count > 0);
-        var tickets = links.SelectMany(l => l).Where(t => t.IsTicketOnly).Select(t => t.Id)
+        // 指示には無く、チケットの書き換え（作業の跡）だけで結んだ Run。指示に ID を書く習慣の有無が分かる。
+        var traceOnly = links.Count(l => l.Count > 0 && l.All(x => x.Basis == HarnessTaskLinkBasis.Observed));
+        var ticketOnly = links.SelectMany(l => l).Select(l => l.Task).Where(t => t.IsTicketOnly).Select(t => t.Id)
             .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         var evidence = runs.Count == 0 ? null
             : $"期間内の Run {runs.Count} 件のうち、タスクに結び付いたのは {linked} 件"
-              + (tickets.Count > 0 ? $"（タスクファイルの無いチケット {tickets.Count} 件: {string.Join(", ", tickets.Take(MaxListedTickets))}{(tickets.Count > MaxListedTickets ? " …" : "")}）。" : "。");
-        if (tasks.Count == 0 && tickets.Count > 0)
+              + (traceOnly > 0 ? $"（うち指示に ID が無く作業の跡で結んだもの {traceOnly} 件）" : "")
+              + (ticketOnly.Count > 0 ? $"（タスクファイルの無いチケット {ticketOnly.Count} 件: {ListIds(ticketOnly)}）。" : "。");
+        if (all.Count == 0 && ticketOnly.Count > 0)
         {
             // チケットで仕事を回している：Run は束ねられているので「無い」とは言わない。受け入れ条件はチケット側にある前提。
             return new(ItemTasks, title, purpose, HarnessCheckLevel.Required, HarnessCheckStatus.Present,
@@ -173,25 +181,38 @@ public static class HarnessStructureCheck
                 + "ハーネス側で受け入れ条件を持ちたいチケットだけ、ticket: を書いたタスクファイルを作る。",
                 evidence, [], null);
         }
-        if (tasks.Count == 0)
+        if (all.Count == 0)
         {
             return new(ItemTasks, title, purpose, HarnessCheckLevel.Required, HarnessCheckStatus.Missing,
                 "タスクが1つも無い。Run が何の仕事の試行なのかを記録できない。", evidence,
                 [new(Path.Combine("tasks", "new-task.md"), TaskTemplate("new-task"))], null);
         }
-        var withoutAcceptance = tasks.Where(t => t.Path is { } path && !HasAcceptance(path)).ToList();
+        var counts = tickets.Count == 0
+            ? $"タスク {tasks.Count} 件"
+            : $"{(tasks.Count > 0 ? $"タスク {tasks.Count} 件・" : "")}チケット型タスク {tickets.Count} 件"
+              + $"（tickets/ {tickets.Count(t => t.LocalTicket?.Origin == HarnessTicketOrigin.Tickets)}・meta/ {tickets.Count(t => t.LocalTicket?.Origin == HarnessTicketOrigin.Meta)}）";
+        // チケット型は detail の「要件・受け入れ条件」、タスクファイルは「受け入れ条件」の見出しを見る。
+        var withoutAcceptance = all.Where(t => t.LocalTicket is { } local ? !local.HasAcceptanceSection : t.Path is { } path && !HasAcceptance(path)).ToList();
         if (withoutAcceptance.Count > 0)
         {
+            var heading = withoutAcceptance.All(t => t.LocalTicket is not null) ? "「## 要件・受け入れ条件」" : "「## 受け入れ条件」";
             return new(ItemTasks, title, purpose, HarnessCheckLevel.Required, HarnessCheckStatus.Incomplete,
-                $"タスク {tasks.Count} 件のうち、受け入れ条件の節が無い: {string.Join(", ", withoutAcceptance.Select(t => t.Id))}"
-                + "（「## 受け入れ条件」を足す。エージェントの自己申告だけで完了にしないため）",
+                $"{counts}のうち、受け入れ条件の節が無い: {ListIds(withoutAcceptance.Select(t => t.Id).ToList())}"
+                + $"（{heading}を足す。エージェントの自己申告だけで完了にしないため）",
                 evidence, [], withoutAcceptance[0].Path);
         }
         return new(ItemTasks, title, purpose, HarnessCheckLevel.Required, HarnessCheckStatus.Present,
-            $"タスク {tasks.Count} 件（すべて受け入れ条件あり）。"
-            + (runs.Count > 0 && linked == 0 ? " ただし期間内に結び付いた Run が無い——指示に task:<id> かチケット（AB#1234）を含める。" : ""),
+            $"{counts}（すべて受け入れ条件あり）。"
+            + (runs.Count > 0 && linked == 0
+                ? tickets.Count > 0
+                    ? " ただし期間内に結び付いた Run が無い——指示にチケットの ID（例 " + tickets[0].Id + "）を含める。"
+                    : " ただし期間内に結び付いた Run が無い——指示に task:<id> かチケット（AB#1234）を含める。"
+                : ""),
             evidence, [], null);
     }
+
+    private static string ListIds(IReadOnlyList<string> ids)
+        => string.Join(", ", ids.Take(MaxListedTickets)) + (ids.Count > MaxListedTickets ? $" ほか {ids.Count - MaxListedTickets} 件" : "");
 
     private static HarnessCheckItem CheckVerdicts(string harness, IReadOnlyList<HarnessRun> runs)
     {
@@ -210,7 +231,7 @@ public static class HarnessStructureCheck
     }
 
     private static HarnessCheckItem CheckWorkflows(
-        string harness, IReadOnlyList<HarnessCandidate> candidates, IReadOnlyList<(string Command, int Runs)> buildCommands)
+        string folder, string harness, IReadOnlyList<HarnessCandidate> candidates, IReadOnlyList<(string Command, int Runs)> buildCommands)
     {
         const string title = "workflows/（工程・検証フロー）";
         const string purpose = "完了までの工程。特に「変更したらビルド／テストで確かめてから終える」を書いておく場所。";
@@ -218,6 +239,12 @@ public static class HarnessStructureCheck
         var evidence = unverified > 0 ? $"検証なしの変更が {unverified} Run で起きている（改善候補）。" : null;
         if (HasFiles(Path.Combine(harness, "workflows")))
             return Present(ItemWorkflows, title, purpose, HarnessCheckLevel.Recommended, harness, "workflows", evidence);
+        // チケット駆動のワークスペースの工程定義（§37.11）。同じ役割なので workflows/ があるのと同じに扱う。
+        if (HarnessLocalTickets.WorkflowSpecFiles(folder) is { Count: > 0 } specs)
+            return new(ItemWorkflows, title, purpose, HarnessCheckLevel.Recommended, HarnessCheckStatus.Present,
+                $"{specs.Count} 件（{HarnessLocalTickets.WorkflowSpecFolder.Replace('\\', '/')}）: "
+                + $"{string.Join(", ", specs.Take(MaxListedCommands).Select(Path.GetFileName))}{(specs.Count > MaxListedCommands ? " …" : "")}",
+                evidence, [], specs[0]);
 
         var sb = new StringBuilder();
         sb.AppendLine("# 変更したら確かめてから終える");
@@ -298,7 +325,7 @@ public static class HarnessStructureCheck
         sb.AppendLine();
         if (tasks.Count > 0)
             foreach (var t in tasks.Take(MaxListedCommands))
-                sb.AppendLine($"- task:{t.Id}（{t.Title}）");
+                sb.AppendLine(t.LocalTicket is null ? $"- task:{t.Id}（{t.Title}）" : $"- {t.Id}（{t.Title}）");
         else
             sb.AppendLine("- task:<id>");
         sb.AppendLine();

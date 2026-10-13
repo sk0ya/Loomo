@@ -60,6 +60,7 @@ public static class ClaudeTranscriptParser
             CostUsd = state.Cost,
             ToolCalls = calls,
             Prompts = state.Prompts,
+            Commands = state.Commands,
             SkillsUsed = state.Skills,
             AgentsUsed = state.Agents,
             SubagentCount = subagentCount,
@@ -219,11 +220,25 @@ public static class ClaudeTranscriptParser
             AddPrompt(state, text.ToString());
     }
 
+    private static readonly Regex CommandName =
+        new(@"<command-name>(.*?)</command-name>", RegexOptions.Singleline);
+
+    private static readonly Regex CommandArgs =
+        new(@"<command-args>(.*?)</command-args>", RegexOptions.Singleline);
+
     private static void AddPrompt(ParseState state, string? text)
     {
         if (string.IsNullOrWhiteSpace(text))
             return;
         var trimmed = text.TrimStart();
+        // スラッシュコマンドは指示（題）にはしないが、打たれた名前と引数は持っておく
+        // （/ticket-run VCI-001 の引数で Run をチケットに結ぶ、§37.11）。
+        if (trimmed.StartsWith("<command-", StringComparison.Ordinal)
+            && CommandName.Match(trimmed) is { Success: true } name)
+        {
+            var args = CommandArgs.Match(trimmed) is { Success: true } a ? a.Groups[1].Value.Trim() : "";
+            state.Commands.Add(new HarnessCommandInvocation(name.Groups[1].Value.Trim(), args));
+        }
         // スラッシュコマンドの記録・ローカルコマンドの出力・中断の印は人間の指示ではない。
         if (trimmed.StartsWith("<local-command", StringComparison.Ordinal)
             || trimmed.StartsWith("<command-", StringComparison.Ordinal)
@@ -296,6 +311,7 @@ public static class ClaudeTranscriptParser
         {
             call.FilePath = file;
             call.Summary = file;
+            ReadEditText(call, tool, input);
             if (tool == "Read" && input.TryGetProperty("offset", out var offset)
                 && offset.ValueKind == JsonValueKind.Number && offset.TryGetInt64(out var o) && o > 0)
             {
@@ -309,6 +325,30 @@ public static class ClaudeTranscriptParser
             ?? Str(input, "url") ?? Str(input, "prompt") ?? tool,
             SummaryMax);
     }
+
+    /// <summary>
+    /// Edit／MultiEdit の置換前後の文字列（上限つき）。表の行の書き換え（<c>tickets.tsv</c> の Status 等）を読むため。
+    /// MultiEdit は各置換を改行でつなぐ。
+    /// </summary>
+    private static void ReadEditText(CallBuilder call, string tool, JsonElement input)
+    {
+        if (tool == "Edit")
+        {
+            call.EditOld = Cap(Str(input, "old_string"));
+            call.EditNew = Cap(Str(input, "new_string"));
+        }
+        else if (tool == "MultiEdit" && input.TryGetProperty("edits", out var edits) && edits.ValueKind == JsonValueKind.Array)
+        {
+            var items = edits.EnumerateArray().Where(e => e.ValueKind == JsonValueKind.Object).ToList();
+            call.EditOld = Cap(string.Join('\n', items.Select(e => Str(e, "old_string") ?? "")));
+            call.EditNew = Cap(string.Join('\n', items.Select(e => Str(e, "new_string") ?? "")));
+        }
+
+        static string? Cap(string? text) => text is null ? null : text.Length <= MaxEditTextChars ? text : text[..MaxEditTextChars];
+    }
+
+    /// <summary>置換文字列を持つ上限。Run はキャッシュに積まれるので、大きな置換を丸ごと抱えない。</summary>
+    private const int MaxEditTextChars = 4000;
 
     /// <summary>空白（改行含む）を1つに畳んで <paramref name="max"/> 字で切る。</summary>
     public static string Shorten(string text, int max)
@@ -341,6 +381,7 @@ public static class ClaudeTranscriptParser
         public readonly SortedSet<string> Models = new(StringComparer.Ordinal);
         public readonly List<CallBuilder> Calls = new();
         public readonly List<string> Prompts = new();
+        public readonly List<HarnessCommandInvocation> Commands = new();
         public readonly List<string> Skills = new();
         public readonly List<string> Agents = new();
     }
@@ -355,6 +396,8 @@ public static class ClaudeTranscriptParser
         public string? FilePath;
         public long? ReadOffset;
         public string? Command;
+        public string? EditOld;
+        public string? EditNew;
         public int InputChars;
         public bool HasResult;
         public bool IsError;
@@ -375,6 +418,8 @@ public static class ClaudeTranscriptParser
             FilePath = FilePath,
             ReadOffset = ReadOffset,
             Command = Command,
+            EditOld = EditOld,
+            EditNew = EditNew,
             InputChars = InputChars,
             HasResult = HasResult,
             IsError = IsError,

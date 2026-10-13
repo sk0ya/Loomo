@@ -128,25 +128,88 @@ public sealed class HarnessVersionTimeline
     }
 }
 
+/// <summary>Run をタスクに結んだ根拠。</summary>
+public enum HarnessTaskLinkBasis
+{
+    /// <summary>人間の指示（スラッシュコマンドの引数を含む）に書かれていた。</summary>
+    Declared,
+    /// <summary>指示には無いが、エージェントがそのチケットを書き換えた（観測した作業の跡、§37.11.3）。</summary>
+    Observed,
+}
+
+/// <summary>Run とタスクの結び付き1件。<see cref="Evidence"/> は作業の跡で結んだときの根拠の要約。</summary>
+public sealed record HarnessTaskLink(HarnessTask Task, HarnessTaskLinkBasis Basis, string? Evidence = null);
+
 /// <summary>
 /// Run とタスクの対応（§37.3.1・§37.3.2）。人間の入力が <c>.harness/tasks/&lt;id&gt;</c> へのパスか <c>task:&lt;id&gt;</c>、
 /// またはチケット（<see cref="HarnessTickets"/>）を含むときだけ結び付ける——題の似ている・同じファイルを触った等の
 /// 推測では結ばない。チケットは <c>ticket:</c> でそれを宣言したタスクファイルがあればそのタスクに、無ければ
 /// チケットそのものをタスクとして結ぶ（タスクファイルを書かずにチケットで仕事を回していても Run が束ねられる）。
+/// チケット型タスク（<c>tickets/&lt;群&gt;/&lt;ID&gt;/</c>、§37.11）は、指示かスラッシュコマンドの引数に書かれた ID・パスが
+/// 定義にある ID と一致したとき（指示）か、エージェントがそのチケットを実際に書き換えたとき（作業の跡、
+/// <see cref="HarnessLocalTickets.FindTraces"/>）に結ぶ。どちらで結んだかは <see cref="HarnessTaskLink.Basis"/> で分ける。
 /// </summary>
 public static class HarnessTaskLinks
 {
-    public static IReadOnlyList<HarnessTask> For(HarnessRun run, IReadOnlyList<HarnessTask> tasks)
+    /// <summary>
+    /// Run とタスクの結び付き（根拠つき）。指示による結び付きが先、作業の跡だけで結んだものが後。
+    /// 指示にも書かれ跡もあるタスクは指示の側に入れる（跡で上書きしない）。
+    /// </summary>
+    public static IReadOnlyList<HarnessTaskLink> Links(HarnessRun run, IReadOnlyList<HarnessTask> tasks)
     {
-        if (run.Prompts.Count == 0)
+        var result = Declared(run, tasks).Select(t => new HarnessTaskLink(t, HarnessTaskLinkBasis.Declared)).ToList();
+        var traces = HarnessLocalTickets.FindTraces(run);
+        if (traces.Count == 0)
+            return result;
+        foreach (var task in tasks)
+        {
+            if (task.LocalTicket is null || result.Any(l => l.Task == task))
+                continue;
+            var mine = traces.Where(t => HarnessLocalTickets.Matches(task, t.Ticket)).ToList();
+            if (mine.Count > 0)
+                result.Add(new HarnessTaskLink(task, HarnessTaskLinkBasis.Observed, DescribeTraces(mine)));
+        }
+        return result;
+    }
+
+    /// <summary>結び付いたタスク（根拠を問わない）。</summary>
+    public static IReadOnlyList<HarnessTask> For(HarnessRun run, IReadOnlyList<HarnessTask> tasks)
+        => Links(run, tasks).Select(l => l.Task).ToList();
+
+    /// <summary>「VCI-001-detail.md ほか1件を編集 3回・状態 working→done」。</summary>
+    private static string DescribeTraces(IReadOnlyList<HarnessTicketTrace> traces)
+    {
+        var parts = new List<string>();
+        var edits = traces.Where(t => t.Kind == HarnessTicketTraceKind.Edited).ToList();
+        if (edits.Count > 0)
+        {
+            var files = edits.Select(t => t.Detail).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            parts.Add($"{files[0]}{(files.Count > 1 ? $" ほか{files.Count - 1}件" : "")}を編集 {edits.Count}回");
+        }
+        parts.AddRange(traces.Where(t => t.Kind == HarnessTicketTraceKind.StatusChanged).Select(t => "状態 " + t.Detail));
+        return string.Join("・", parts);
+    }
+
+    /// <summary>
+    /// 結び付けに使う人間の文：指示と、打たれたスラッシュコマンド（<c>/ticket-run VCI-001</c>）。
+    /// コマンドの引数も人間が書いたものなので、指示と同じ規則で読む。
+    /// </summary>
+    public static IEnumerable<string> TextsOf(HarnessRun run)
+        => run.Prompts.Concat(run.Commands.Select(c => c.ToString()));
+
+    /// <summary>人間が書いたもの（指示・スラッシュコマンドの引数）だけで結んだタスク。</summary>
+    private static List<HarnessTask> Declared(HarnessRun run, IReadOnlyList<HarnessTask> tasks)
+    {
+        var texts = TextsOf(run).ToList();
+        if (texts.Count == 0)
             return [];
         var result = new List<HarnessTask>();
         foreach (var task in tasks)
         {
-            if (task.Path is null)
+            if (task.Path is null || task.LocalTicket is not null)
                 continue;
             var file = System.IO.Path.GetFileName(task.Path);
-            foreach (var prompt in run.Prompts)
+            foreach (var prompt in texts)
             {
                 var normalized = prompt.Replace('\\', '/');
                 // パスも印も語として現れるときだけ（tasks/fix が tasks/fix-login.md に当たらないように）。
@@ -160,7 +223,12 @@ public static class HarnessTaskLinks
             }
         }
 
-        foreach (var ticket in run.Prompts.SelectMany(HarnessTickets.Find))
+        // チケット型タスク（§37.11）：定義にある ID と一致した言及だけ。一致しない ID の形の語（ABC-123）は拾わない。
+        // 複数の ID が書かれていればすべてに、同じ ID が複数の群にあれば（群がパスで書かれていない限り）すべてに結ぶ。
+        foreach (var mention in texts.SelectMany(HarnessLocalTickets.FindMentions).Distinct())
+            result.AddRange(tasks.Where(t => HarnessLocalTickets.Matches(t, mention) && !result.Contains(t)));
+
+        foreach (var ticket in texts.SelectMany(HarnessTickets.Find))
         {
             // 同じチケットを宣言したファイルが複数あれば（画面側と API 側で分けた等）すべてに結ぶ。
             var declared = tasks.Where(t => t.Path is not null && HarnessTickets.SameKey(t.Ticket?.Key, ticket.Key)).ToList();

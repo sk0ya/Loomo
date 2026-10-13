@@ -443,18 +443,18 @@ public sealed partial class HarnessPaneViewModel : ObservableObject
         {
             snapshot.Verdicts.TryGetValue(run.Id, out var verdict);
             Runs.Add(new HarnessRunRow(run, snapshot.VersionOf(run), verdict,
-                WithTicketTitles(HarnessTaskLinks.For(run, snapshot.Definition.Tasks))));
+                WithTicketTitles(HarnessTaskLinks.Links(run, snapshot.Definition.Tasks))));
         }
         SelectedRun = Runs.FirstOrDefault(r => r.Run.Id == previous) ?? Runs.FirstOrDefault();
     }
 
     /// <summary>チケットだけのタスクに、読み込み済みの一覧から引けた題を添える（引けなければチケットの鍵のまま）。</summary>
-    private IReadOnlyList<HarnessTask> WithTicketTitles(IReadOnlyList<HarnessTask> tasks)
+    private IReadOnlyList<HarnessTaskLink> WithTicketTitles(IReadOnlyList<HarnessTaskLink> links)
         => _tickets is null
-            ? tasks
-            : tasks.Select(t => t is { IsTicketOnly: true, Ticket: { } ticket } && _tickets.TitleOf(ticket) is { Length: > 0 } title
-                ? t with { Title = title }
-                : t).ToList();
+            ? links
+            : links.Select(l => l.Task is { IsTicketOnly: true, Ticket: { } ticket } && _tickets.TitleOf(ticket) is { Length: > 0 } title
+                ? l with { Task = l.Task with { Title = title } }
+                : l).ToList();
 
     /// <summary>選んだ Run に書かれたチケットをブラウザペインで開く（複数あれば最初のもの）。</summary>
     [RelayCommand]
@@ -613,7 +613,8 @@ public sealed partial class HarnessPaneViewModel : ObservableObject
             return;
         StatusText = written.Count == 1 ? $"作りました: {DisplayPath(written[0])}" : $"{written.Count} ファイルを作りました。";
         // 定義だけ読み直す（記録は変わっていない）。構成タブ・点検タブがそのまま追従する。
-        Apply(_snapshot with { Definition = HarnessDefinitionReader.Read(_workspace.Folders.ToList()) });
+        var folders = _workspace.Folders.ToList();
+        Apply(_snapshot with { Definition = HarnessLocalTickets.WithArchived(HarnessDefinitionReader.Read(folders), folders, _snapshot.Runs) });
         OpenRequested?.Invoke(this, new HarnessOpenRequest(written[0], 0));
     }
 

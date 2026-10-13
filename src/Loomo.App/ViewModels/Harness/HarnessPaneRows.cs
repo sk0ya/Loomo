@@ -94,8 +94,10 @@ public sealed class HarnessEvidenceRow(HarnessEvidence evidence, string? fileDis
     public string ToolTip => $"{evidence.RunTitle}\n{evidence.Summary}\n記録: {Path.GetFileName(evidence.TranscriptPath)}:{evidence.LineNumber}";
 }
 
-public sealed class HarnessRunRow(HarnessRun run, HarnessVersion? version, HarnessVerdict? verdict, IReadOnlyList<HarnessTask> tasks)
+public sealed class HarnessRunRow(HarnessRun run, HarnessVersion? version, HarnessVerdict? verdict, IReadOnlyList<HarnessTaskLink> links)
 {
+    private readonly IReadOnlyList<HarnessTask> tasks = links.Select(l => l.Task).ToList();
+
     public HarnessRun Run => run;
     public string Title => run.Title;
     public string Started => HarnessFormat.Time(run.StartedAt);
@@ -112,12 +114,20 @@ public sealed class HarnessRunRow(HarnessRun run, HarnessVersion? version, Harne
     public bool IsAccepted => verdict?.Verdict == HarnessVerdictKind.Accepted;
     public bool IsRejected => verdict?.Verdict == HarnessVerdictKind.Rejected;
     /// <summary>一覧に出すタスクの短い名前。タスクファイルにチケットがあればチケットの鍵を添える。</summary>
-    public string TasksLabel => tasks.Count == 0 ? "" : string.Join(", ", tasks.Select(t => t.Ticket is { } ticket && !t.IsTicketOnly
-        ? $"{t.Id}（{ticket.Key}）"
-        : t.Id));
+    public string TasksLabel => links.Count == 0 ? "" : string.Join(", ", links.Select(l => l.Task switch
+    {
+        // チケット型タスクは tickets.tsv の Status（定義の今の値）を併記する（§37.11）。作業の跡だけで結んだものは
+        // 「跡」と添えて、指示に書かれたものと見分ける（§37.11.3）。
+        { LocalTicket: { } local } t => WithNotes(t.Id, local.Status, l.Basis == HarnessTaskLinkBasis.Observed ? "跡" : null),
+        { Ticket: { } ticket, IsTicketOnly: false } t => $"{t.Id}（{ticket.Key}）",
+        var t => t.Id,
+    }));
+
+    private static string WithNotes(string id, params string?[] notes)
+        => notes.OfType<string>().ToList() is { Count: > 0 } n ? $"{id}（{string.Join("・", n)}）" : id;
 
     /// <summary>この Run に結び付いたチケット（タスクファイル経由のものも含む）。</summary>
-    public IReadOnlyList<HarnessTicketRef> Tickets { get; } = tasks.Select(t => t.Ticket).OfType<HarnessTicketRef>()
+    public IReadOnlyList<HarnessTicketRef> Tickets { get; } = links.Select(l => l.Task.Ticket).OfType<HarnessTicketRef>()
         .DistinctBy(t => t.Key, StringComparer.OrdinalIgnoreCase).ToList();
 
     public bool HasTicket => Tickets.Count > 0;
@@ -140,8 +150,10 @@ public sealed class HarnessRunRow(HarnessRun run, HarnessVersion? version, Harne
             };
             if (run.SkillsUsed.Count > 0)
                 lines.Add($"Skill: {string.Join(", ", run.SkillsUsed.Distinct())}");
-            if (tasks.Count > 0)
-                lines.Add($"タスク: {string.Join(", ", tasks.Select(DescribeTask))}");
+            if (links.Any(l => l.Basis == HarnessTaskLinkBasis.Declared))
+                lines.Add($"タスク（指示に記載）: {string.Join(", ", links.Where(l => l.Basis == HarnessTaskLinkBasis.Declared).Select(l => DescribeTask(l.Task)))}");
+            foreach (var l in links.Where(l => l.Basis == HarnessTaskLinkBasis.Observed))
+                lines.Add($"タスク（作業の跡・指示には無い）: {DescribeTask(l.Task)} ― {l.Evidence}");
             if (verdict is not null)
                 lines.Add($"判定: {VerdictLabel}（{HarnessFormat.Time(verdict.At)}）");
             if (run.Prompts.Count > 0)
@@ -151,9 +163,34 @@ public sealed class HarnessRunRow(HarnessRun run, HarnessVersion? version, Harne
     }
 
     /// <summary>チケットだけ：「AB#1234（題）」／題が引けなければ鍵だけ。ファイル：「id（題・チケット）」。</summary>
-    private static string DescribeTask(HarnessTask t) => t.IsTicketOnly
-        ? (t.Title == t.Id ? $"{t.Id}（チケット）" : $"{t.Id}（{t.Title}）")
-        : t.Ticket is { } ticket ? $"{t.Id}（{t.Title}・{ticket.Key}）" : $"{t.Id}（{t.Title}）";
+    private static string DescribeTask(HarnessTask t) => t switch
+    {
+        { LocalTicket: { } local } => $"{t.Id}（{t.Title}・{DescribeLocal(local)}）",
+        { IsTicketOnly: true } => t.Title == t.Id ? $"{t.Id}（チケット）" : $"{t.Id}（{t.Title}）",
+        { Ticket: { } ticket } => $"{t.Id}（{t.Title}・{ticket.Key}）",
+        _ => $"{t.Id}（{t.Title}）",
+    };
+
+    /// <summary>チケット型タスクの定義側の値（tickets.tsv の今の値と detail のチェックリスト。推定は混ぜない）。</summary>
+    private static string DescribeLocal(HarnessLocalTicket local)
+    {
+        var parts = new List<string>
+        {
+            local.Origin switch
+            {
+                HarnessTicketOrigin.Meta => $"meta/{local.Group}",
+                HarnessTicketOrigin.Archive => $"archive/…/{local.Group}",
+                _ => $"tickets/{local.Group}",
+            },
+            $"状態 {local.Status ?? "不明"}（tickets.tsv の現在値）",
+        };
+        if (local.Type is { } type)
+            parts.Add($"種類 {type}");
+        parts.Add(local.AcceptanceTotal is { } total ? $"受け入れ条件 {local.AcceptanceDone}/{total}" : "受け入れ条件の節なし");
+        if (local.DependIds.Count > 0)
+            parts.Add($"依存 {string.Join(", ", local.DependIds)}");
+        return string.Join("・", parts);
+    }
 }
 
 public sealed class HarnessCallRow(RunToolCall call)
