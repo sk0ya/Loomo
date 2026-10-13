@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Net;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -440,26 +440,29 @@ public sealed partial class WorkItemsViewModel : ObservableObject, IHarnessTicke
                 {
                 }
             }
+            // ループは成功して抜けるか、最後の候補の失敗を投げるかのどちらか。ここでは必ず取れている。
+            var workItems = items!;
+            var header = auth!;
             triedPats = [];
             var targets = settings.PrTargets.Select(t => new AzureDevOpsPrTarget(t.Project, t.Repository)).ToList();
-            var prsTask = LoadPullRequestsAsync(organizationUrl, targets, auth!, token);
+            var prsTask = LoadPullRequestsAsync(organizationUrl, targets, header, token);
             // 自分の Task の親（Story など）が自分の担当でなくても、見出しとして取ってくる。
-            var itemIds = items!.Select(i => i.Id).ToHashSet();
-            var missingParents = items!.Select(i => i.ParentId)
+            var itemIds = workItems.Select(i => i.Id).ToHashSet();
+            var missingParents = workItems.Select(i => i.ParentId)
                 .Where(id => id != 0 && !itemIds.Contains(id)).Distinct().ToList();
             IReadOnlyList<AzureDevOpsWorkItem> parents = [];
             if (missingParents.Count > 0)
             {
-                try { parents = await _client.GetWorkItemsByIdsAsync(organizationUrl, project, missingParents, auth!, token); }
+                try { parents = await _client.GetWorkItemsByIdsAsync(organizationUrl, project, missingParents, header, token); }
                 catch (Exception ex) when (ex is not OperationCanceledException) { /* 親が取れなくても一覧は出す */ }
             }
             var (prs, prError) = await prsTask;
             if (token.IsCancellationRequested) return;
 
             _loadedAt = DateTime.UtcNow;
-            SetEntries(WorkItemList.Build(WorkItemTree.Arrange(items, parents), prs));
+            SetEntries(WorkItemList.Build(WorkItemTree.Arrange(workItems, parents), prs));
             var prPart = targets.Count > 0 ? $" ・ PR {prs.Count} 件" : "";
-            StatusText = $"{items.Count} 件{prPart} ・ 更新 {DateTime.Now:HH:mm}";
+            StatusText = $"{workItems.Count} 件{prPart} ・ 更新 {DateTime.Now:HH:mm}";
             if (prError is not null)
                 ErrorText = prError;
         }
