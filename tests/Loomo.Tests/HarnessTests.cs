@@ -379,6 +379,95 @@ public sealed class HarnessTests : IDisposable
         Assert.Contains("推定", text);
     }
 
+    // ===== 候補の扱い（§37.5.1） =====
+
+    private static RunToolCall At(RunToolCall call, string at) => call with { At = DateTimeOffset.Parse(at) };
+
+    [Fact]
+    public void Resolved_candidate_counts_only_evidence_after_resolution()
+    {
+        var before = At(Call("Bash", command: "git log", chars: 30_000), "2026-10-10T00:00:00Z");
+        var after = At(Call("Bash", command: "git log", chars: 40_000), "2026-10-12T00:00:00Z");
+        var runs = new[] { RunOf("r1", before), RunOf("r2", before), RunOf("r3", after) };
+        var candidate = Assert.Single(HarnessDetectors.Detect(runs), c => c.RuleId == HarnessDetectors.RuleLargeOutput);
+        var resolvedAt = DateTimeOffset.Parse("2026-10-11T00:00:00Z");
+
+        var recurred = Assert.Single(HarnessCandidateStore.Triage([candidate],
+            new Dictionary<string, HarnessCandidateStatus> { [candidate.Id] = new(HarnessCandidateState.Resolved, resolvedAt, null) }));
+        Assert.Equal(HarnessCandidateStanding.Recurred, recurred.Standing);
+        Assert.True(recurred.NeedsWork);
+        Assert.Equal(1, recurred.Candidate.RunCount);
+        Assert.Equal(40_000 / HarnessDetectors.CharsPerToken, recurred.Candidate.EstimatedTokens);
+        Assert.All(recurred.Candidate.Evidence, e => Assert.Equal("r3", e.RunId));
+
+        // 対処後に起きていなければ、直す対象から外れる。
+        var quiet = Assert.Single(HarnessCandidateStore.Triage([candidate],
+            new Dictionary<string, HarnessCandidateStatus> { [candidate.Id] = new(HarnessCandidateState.Resolved, DateTimeOffset.Parse("2026-10-13T00:00:00Z"), null) }));
+        Assert.Equal(HarnessCandidateStanding.Resolved, quiet.Standing);
+        Assert.False(quiet.NeedsWork);
+    }
+
+    [Fact]
+    public void Addressing_and_dismissed_candidates_never_come_back_as_recurrences()
+    {
+        var call = At(Call("Bash", command: "git log", chars: 30_000), "2026-10-12T00:00:00Z");
+        var candidate = Assert.Single(HarnessDetectors.Detect([RunOf("r1", call)]), c => c.RuleId == HarnessDetectors.RuleLargeOutput);
+        var earlier = DateTimeOffset.Parse("2026-10-11T00:00:00Z");
+
+        // 対処中：直している最中のセッションが根拠を生んでも再発にしない。
+        var addressing = Assert.Single(HarnessCandidateStore.Triage([candidate],
+            new Dictionary<string, HarnessCandidateStatus> { [candidate.Id] = new(HarnessCandidateState.Addressing, earlier, null) }));
+        Assert.Equal(HarnessCandidateStanding.Addressing, addressing.Standing);
+        var dismissed = Assert.Single(HarnessCandidateStore.Triage([candidate],
+            new Dictionary<string, HarnessCandidateStatus> { [candidate.Id] = new(HarnessCandidateState.Dismissed, earlier, null) }));
+        Assert.Equal(HarnessCandidateStanding.Dismissed, dismissed.Standing);
+        Assert.False(dismissed.NeedsWork);
+    }
+
+    [Fact]
+    public void Candidate_statuses_round_trip_and_unreadable_file_is_left_alone()
+    {
+        var path = HarnessCandidateStore.PathFor(Path.Combine(_base, "ws"));
+        var at = DateTimeOffset.Parse("2026-10-11T00:00:00Z");
+        HarnessCandidateStore.SetMany(path, new Dictionary<string, HarnessCandidateStatus?>
+        {
+            ["large-output:cmd:git log"] = new(HarnessCandidateState.Addressing, at, null),
+            ["reread:c:\\ws\\a.cs"] = new(HarnessCandidateState.Dismissed, at, "偶然"),
+        });
+        HarnessCandidateStore.SetMany(path, new Dictionary<string, HarnessCandidateStatus?>
+        {
+            ["large-output:cmd:git log"] = new(HarnessCandidateState.Resolved, at.AddDays(1), null),
+            ["reread:c:\\ws\\a.cs"] = null,
+        });
+        var loaded = HarnessCandidateStore.Load(path);
+        Assert.Equal(HarnessCandidateState.Resolved, Assert.Single(loaded).Value.State);
+        Assert.Equal(at.AddDays(1), loaded["large-output:cmd:git log"].At);
+
+        File.WriteAllText(path, "{ 壊れた");
+        Assert.Throws<InvalidDataException>(() => HarnessCandidateStore.SetMany(path,
+            new Dictionary<string, HarnessCandidateStatus?> { ["x"] = new(HarnessCandidateState.Resolved, at, null) }));
+        Assert.Equal("{ 壊れた", File.ReadAllText(path));
+    }
+
+    [Fact]
+    public void Bulk_prompt_lists_every_candidate_with_its_id_and_asks_for_a_report()
+    {
+        var runs = new[]
+        {
+            RunOf("r1", Call("Bash", command: "dotnet build", chars: 50_000)),
+            RunOf("r2", Call("Edit", @"C:\ws\a.cs", error: true, errorHead: "String to replace not found in file")),
+        };
+        var candidates = HarnessDetectors.Detect(runs).Where(c => c.RuleId is HarnessDetectors.RuleLargeOutput or HarnessDetectors.RuleEditMismatch).ToList();
+        Assert.Equal(2, candidates.Count);
+
+        var text = HarnessTaskWriter.ToBulkPrompt(candidates, DateTimeOffset.Parse("2026-10-11T03:00:00Z"), p => p);
+
+        foreach (var c in candidates)
+            Assert.Contains($"`{c.Id}`", text);
+        Assert.Contains("| 候補 ID |", text);
+        Assert.Contains("改善の方向（推測）", text);
+    }
+
     // ===== 記録フォルダーの探し方 =====
 
     [Fact]

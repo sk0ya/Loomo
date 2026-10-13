@@ -18,7 +18,8 @@ public sealed record HarnessSnapshot(
     IReadOnlyDictionary<string, HarnessVerdict> Verdicts,
     IReadOnlyDictionary<string, HarnessVersion?> VersionByRun,
     IReadOnlyList<string> TranscriptDirectories,
-    DateTimeOffset Since)
+    DateTimeOffset Since,
+    IReadOnlyDictionary<string, HarnessCandidateStatus> CandidateStatuses)
 {
     public HarnessVersion? VersionOf(HarnessRun run) => VersionByRun.TryGetValue(run.Id, out var v) ? v : null;
 }
@@ -59,7 +60,7 @@ public sealed class HarnessAnalyzer
         var folders = _workspace.Folders.ToList();
         var since = DateTimeOffset.UtcNow - period;
 
-        var (definition, directories, runs, verdicts) = await Task.Run(() =>
+        var (definition, directories, runs, verdicts, statuses) = await Task.Run(() =>
         {
             var definition = HarnessDefinitionReader.Read(folders);
             var directories = ClaudeTranscriptLocator.FindProjectDirectories(_projectsRoot, _workspace);
@@ -86,7 +87,17 @@ public sealed class HarnessAnalyzer
                 foreach (var (id, v) in HarnessVerdictStore.Load(HarnessVerdictStore.PathFor(folder)))
                     verdicts[id] = v;
             }
-            return (definition, directories, runs, verdicts);
+            // 候補の扱い（§37.5.1）。同じ候補が複数フォルダーにあれば新しく付けたほうを採る。
+            var statuses = new Dictionary<string, HarnessCandidateStatus>(StringComparer.Ordinal);
+            foreach (var folder in folders)
+            {
+                foreach (var (id, st) in HarnessCandidateStore.Load(HarnessCandidateStore.PathFor(folder)))
+                {
+                    if (!statuses.TryGetValue(id, out var existing) || existing.At < st.At)
+                        statuses[id] = st;
+                }
+            }
+            return (definition, directories, runs, verdicts, statuses);
         }, cancellationToken).ConfigureAwait(false);
 
         var timelines = new Dictionary<string, HarnessVersionTimeline>(StringComparer.OrdinalIgnoreCase);
@@ -104,7 +115,7 @@ public sealed class HarnessAnalyzer
         }
 
         var candidates = await Task.Run(() => HarnessDetectors.Detect(runs), cancellationToken).ConfigureAwait(false);
-        return new HarnessSnapshot(definition, runs, candidates, verdicts, versionByRun, directories, since);
+        return new HarnessSnapshot(definition, runs, candidates, verdicts, versionByRun, directories, since, statuses);
     }
 
     /// <summary>

@@ -498,6 +498,8 @@ public sealed class HarnessPaneSnapshot
     public int SelectedTab { get; set; }
     public int PeriodDays { get; set; } = 30;
     public bool HideSingleRunCandidates { get; set; }
+    /// <summary>対処中・対処済み・見送りの改善候補も並べる（§37.5.1）。</summary>
+    public bool ShowHandledCandidates { get; set; }
 }
 
 /// <summary>最近のコマンド（§24.20）の永続化形。<see cref="ExitCode"/> は最後に実行したときの値で、

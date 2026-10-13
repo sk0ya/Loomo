@@ -71,12 +71,37 @@ public sealed class HarnessComponentRow
     public string ToolTip => Component is null ? "すべての改善候補" : $"{Component.Path}\n使用（観測）: {Usage}";
 }
 
-public sealed class HarnessCandidateRow(HarnessCandidate candidate)
+public sealed class HarnessCandidateRow(HarnessTriagedCandidate triaged)
 {
+    private readonly HarnessCandidate candidate = triaged.Candidate;
+
     public HarnessCandidate Candidate => candidate;
+    public HarnessCandidateStanding Standing => triaged.Standing;
+    public bool NeedsWork => triaged.NeedsWork;
+    public bool IsHandled => !triaged.NeedsWork;
+    public bool IsRecurred => triaged.Standing == HarnessCandidateStanding.Recurred;
     public string Title => candidate.Title;
     public string CategoryLabel => HarnessFormat.Category(candidate.Category);
-    public string RunCountLabel => $"{candidate.RunCount} Run";
+    public string RunCountLabel => IsRecurred ? $"対処後 {candidate.RunCount} Run" : $"{candidate.RunCount} Run";
+
+    public string StandingLabel => triaged.Standing switch
+    {
+        HarnessCandidateStanding.Addressing => "対処中",
+        HarnessCandidateStanding.Resolved => "対処済み",
+        HarnessCandidateStanding.Recurred => "再発",
+        HarnessCandidateStanding.Dismissed => "見送り",
+        _ => "",
+    };
+
+    /// <summary>詳細に出す扱いの説明（いつ付けたか）。</summary>
+    public string StatusDetail => triaged.Status is { } s
+        ? $"{StandingLabel}（{HarnessFormat.Time(s.At)} に{(s.State switch
+        {
+            HarnessCandidateState.Addressing => "エージェントへ渡した",
+            HarnessCandidateState.Resolved => "対処済みにした",
+            _ => "見送った",
+        })}）" + (IsRecurred ? "——それより後の根拠だけを出しています" : "")
+        : "";
     public string EstimateLabel => candidate.EstimatedTokens > 0 ? $"推定 {HarnessFormat.Tokens(candidate.EstimatedTokens)}" : "";
     public bool IsQuality => candidate.Category == HarnessCandidateCategory.Quality;
     public bool IsRework => candidate.Category == HarnessCandidateCategory.Rework;

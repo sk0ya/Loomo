@@ -204,9 +204,21 @@
                                 <CheckBox DockPanel.Dock="Right" Margin="0,3,8,0" VerticalAlignment="Center"
                                           FontSize="{DynamicResource Fs11}" Foreground="{DynamicResource FgDim}"
                                           Content="1 Run だけの候補を隠す" IsChecked="{Binding HideSingleRunCandidates}"
-                                          ToolTip="1回きりの出来事は、ハーネスの直し所というより偶然であることが多い" />
+                                          ToolTip="1回きりの出来事は、ハーネスの直し所というより偶然であることが多い（再発は隠さない）" />
+                                <CheckBox DockPanel.Dock="Right" Margin="0,3,8,0" VerticalAlignment="Center"
+                                          FontSize="{DynamicResource Fs11}" Foreground="{DynamicResource FgDim}"
+                                          Content="対処済みも表示" IsChecked="{Binding ShowHandledCandidates}"
+                                          ToolTip="対処中・対処済み・見送りの候補も並べる（既定は未対処と再発だけ）" />
                                 <TextBlock Style="{StaticResource ColumnTitle}" Text="改善候補（頻度順・推定トークンは文字数÷4）" />
                             </DockPanel>
+                            <WrapPanel DockPanel.Dock="Top" Margin="8,0,8,4">
+                                <Button Style="{StaticResource SmallButton}" Content="まとめて改善プロンプトをコピー"
+                                        ToolTip="一覧に出ている未対処・再発の候補を1つのプロンプトにしてコピーし「対処中」にする。Claude Code に貼って直させる"
+                                        Command="{Binding CopyBulkPromptCommand}" />
+                                <Button Style="{StaticResource SmallButton}" Content="対処中を対処済みに"
+                                        ToolTip="エージェントが直し終えたら押す。これより後に起きたものだけが「再発」として戻る"
+                                        Command="{Binding ResolveAddressingCommand}" />
+                            </WrapPanel>
                             <Grid>
                                 <ListBox x:Name="CandidateList" Style="{StaticResource HarnessList}"
                                          ItemsSource="{Binding Candidates}" SelectedItem="{Binding SelectedCandidate}">
@@ -221,9 +233,17 @@
                                                            Style="{StaticResource Dim}" Margin="8,0,0,0" />
                                                 <TextBlock DockPanel.Dock="Right" Text="{Binding CategoryLabel}"
                                                            Style="{StaticResource Dim}" Margin="8,0,0,0" />
-                                                <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
+                                                <TextBlock x:Name="standing" DockPanel.Dock="Right" Text="{Binding StandingLabel}"
+                                                           Style="{StaticResource Dim}" Margin="8,0,0,0" />
+                                                <TextBlock x:Name="title" Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
                                             </DockPanel>
                                             <DataTemplate.Triggers>
+                                                <DataTrigger Binding="{Binding IsHandled}" Value="True">
+                                                    <Setter TargetName="title" Property="Foreground" Value="{DynamicResource FgDim}" />
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding IsRecurred}" Value="True">
+                                                    <Setter TargetName="standing" Property="Foreground" Value="{DynamicResource Error}" />
+                                                </DataTrigger>
                                                 <DataTrigger Binding="{Binding IsRework}" Value="True">
                                                     <Setter TargetName="mark" Property="Background" Value="{DynamicResource Error}" />
                                                 </DataTrigger>
@@ -259,6 +279,8 @@
                                 <TextBlock Style="{StaticResource Dim}" Text="関連しそうな構成要素（推測）" FontWeight="SemiBold" />
                                 <TextBlock Text="{Binding CandidateRelated}" TextWrapping="Wrap" Margin="0,1,0,6"
                                            Foreground="{DynamicResource Fg}" FontSize="{DynamicResource Fs12}" />
+                                <TextBlock Text="{Binding CandidateStatusText}" TextWrapping="Wrap" Margin="0,0,0,6"
+                                           Style="{StaticResource Dim}" />
                                 <WrapPanel>
                                     <Button Style="{StaticResource SmallButton}" Content="タスクにする"
                                             ToolTip=".harness/tasks/ に観測事実・根拠・方向を書き出してエディタで開く"
@@ -272,6 +294,14 @@
                                     <Button Style="{StaticResource SmallButton}" Content="ファイルを開く"
                                             ToolTip="選んだ根拠で読まれた／変更されたファイルを開く"
                                             Command="{Binding OpenEvidenceFileCommand}" />
+                                    <Button Style="{StaticResource SmallButton}" Content="対処済み"
+                                            ToolTip="直した。これより後に起きたものだけが「再発」として戻る"
+                                            Command="{Binding ResolveCandidateCommand}" />
+                                    <Button Style="{StaticResource SmallButton}" Content="見送り"
+                                            ToolTip="直さない（偶然・誤検出）。再発しても上げない"
+                                            Command="{Binding DismissCandidateCommand}" />
+                                    <Button Style="{StaticResource SmallButton}" Content="扱いを外す"
+                                            Command="{Binding ClearCandidateStateCommand}" />
                                 </WrapPanel>
                                 <TextBlock Style="{StaticResource ColumnTitle}" Margin="0,8,0,0" Text="根拠（新しい順・ダブルクリックで記録を開く）" />
                             </StackPanel>
