@@ -8,7 +8,7 @@ namespace sk0ya.Loomo.App.ViewModels;
 
 public sealed partial class ToastEntryViewModel : ObservableObject
 {
-    public ToastEntryViewModel(Guid id, string message, ToastKind kind)
+    public ToastEntryViewModel(Guid id, string message, NotificationKind kind)
     {
         Id = id;
         Message = message;
@@ -17,11 +17,12 @@ public sealed partial class ToastEntryViewModel : ObservableObject
 
     public Guid Id { get; }
     public string Message { get; }
-    public ToastKind Kind { get; }
+    public NotificationKind Kind { get; }
 }
 
-/// <summary>右下に積み上げて表示する非モーダルなトースト通知の一覧。<see cref="ToastService"/> の
-/// イベントを購読し、一定時間で自動的に消える（手動で閉じることもできる）。</summary>
+/// <summary>右下に積み上げて表示する非モーダルなトースト通知の一覧。<see cref="NotificationService"/> の
+/// 知らせのうち <see cref="Notification.ShowToast"/> のものを出し、一定時間で自動的に消える（手動で閉じることもできる）。
+/// 消えたあとも軌跡バー右端の通知欄（<see cref="NotificationCenterViewModel"/>）の履歴には残る。</summary>
 public sealed partial class ToastHostViewModel : ObservableObject
 {
     private static readonly TimeSpan DisplayDuration = TimeSpan.FromSeconds(5);
@@ -30,12 +31,14 @@ public sealed partial class ToastHostViewModel : ObservableObject
 
     public ToastHostViewModel()
     {
-        ToastService.Requested += OnRequested;
+        NotificationService.Posted += OnPosted;
     }
 
-    private void OnRequested(object? sender, ToastRequestedEventArgs e)
+    private void OnPosted(object? sender, NotificationPostedEventArgs e)
     {
-        var entry = new ToastEntryViewModel(Guid.NewGuid(), e.Message, e.Kind);
+        if (!e.Notification.ShowToast)
+            return;
+        var entry = new ToastEntryViewModel(e.Notification.Id, e.Notification.Message, e.Notification.Kind);
         Items.Add(entry);
 
         var timer = new DispatcherTimer { Interval = DisplayDuration };

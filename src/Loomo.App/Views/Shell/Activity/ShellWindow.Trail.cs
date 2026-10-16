@@ -33,7 +33,10 @@ public partial class ShellWindow {
             }), DispatcherPriority.Loaded);
         TrailScroll.SizeChanged += (_, _) => _trailBar.UpdateTrailingMargin();
         TrailDateTimePopup.Closed += (_, _) => _trailBar.PopupClosed();
-        Deactivated += (_, _) => { if (TrailDateTimePopup.IsOpen) TrailDateTimePopup.IsOpen = false; };
+        Deactivated += (_, _) => {
+            if (TrailDateTimePopup.IsOpen) TrailDateTimePopup.IsOpen = false;
+            _vm.Notifications.IsOpen = false;
+        };
         _trailHourTicker = new DispatcherTimer { Interval = TimeSpan.FromSeconds(30) };
         _trailHourTicker.Tick += (_, _) => _vm.Trail.RefreshHourLabel();
         _trailHourTicker.Start();

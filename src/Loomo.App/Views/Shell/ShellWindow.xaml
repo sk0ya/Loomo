@@ -2908,11 +2908,12 @@
                  点（ドット）で並べる（Semantic Depth 構想の Thread Rail の種）。ホバーで詳細、クリックで
                  その地点へ戻り、バー上のホイールで現在地を前後に移動する。左端の日付クリック→カレンダーで
                  過去の日の軌跡を表示（×で今日へ戻る）。記録は SQLite（TrailStore）へ日別・無制限に永続化。
-                 配線は ShellWindow.Trail.cs、データは TrailViewModel。記録が無ければ非表示で高さを取らない。 -->
+                 配線は ShellWindow.Trail.cs、データは TrailViewModel。記録も通知も無ければ非表示で高さを取らない。
+                 右端は通知欄（NotificationCenterViewModel、§21.5c）。 -->
             <Border Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2"
                     Background="{DynamicResource ActivityBarBg}"
                     BorderBrush="{DynamicResource Border}" BorderThickness="0,1,0,0"
-                    Visibility="{Binding Trail.BarVisible, Converter={StaticResource BoolToVis}}">
+                    Visibility="{Binding BottomBarVisible, Converter={StaticResource BoolToVis}}">
                 <!-- バー全体（日付・時刻ボタンを含む）で共通の右クリックメニュー。日付／時刻で分けず、
                      どこを右クリックしても「最新に戻る」（過去日・過去地点から今日の最新へ）と
                      「軌跡を非表示にする」（設定「外観」の軌跡トグルから再表示）を出す。子ボタンは自前の
@@ -3052,6 +3053,144 @@
                             </StackPanel>
                         </Border>
                     </Popup>
+                    <!-- 通知欄（§21.5c）：帯の右端の固定幅。畳んだ状態は「ベル＋未読件数＋最新1行」、押すと上へ履歴が開く。
+                         固定幅なのは中身の長さでドット列が左右に揺れないように（幅は NotificationAreaW トークン＝文字サイズに追随）。
+                         ポップアップを開いている間はトグルを押せなくする——StaysOpen=False は外側クリックで閉じるので、
+                         トグル自身を押すと「閉じる→その押下で開き直す」になる。
+                         通知が1件も無いときは欄ごと畳む（Collapsed）——空の欄で軌跡の幅を削らない。 -->
+                    <Grid x:Name="NotificationArea" DockPanel.Dock="Right" Width="{DynamicResource NotificationAreaW}"
+                          Visibility="{Binding Notifications.HasItems, Converter={StaticResource BoolToVis}}">
+                        <ToggleButton x:Name="NotificationToggle" Cursor="Hand"
+                                      IsChecked="{Binding Notifications.IsOpen}"
+                                      IsHitTestVisible="{Binding IsOpen, ElementName=NotificationPopup, Converter={StaticResource InverseBool}}"
+                                      ToolTip="{Binding Notifications.Summary}"
+                                      AutomationProperties.Name="通知">
+                            <ToggleButton.Template>
+                                <ControlTemplate TargetType="ToggleButton">
+                                    <Border x:Name="bg" Background="Transparent" BorderBrush="{DynamicResource Border}"
+                                            BorderThickness="1,0,0,0" Padding="8,0">
+                                        <DockPanel LastChildFill="True">
+                                            <Path x:Name="Bell" DockPanel.Dock="Left" VerticalAlignment="Center" Stretch="None"
+                                                  Data="M4,11 C4,6.5 5.6,3.5 8,3.5 C10.4,3.5 12,6.5 12,11 L13.2,12.5 L2.8,12.5 Z M6.6,14.2 C7.2,15 8.8,15 9.4,14.2"
+                                                  Stroke="{DynamicResource FgDim}" StrokeThickness="1.2" StrokeLineJoin="Round"
+                                                  StrokeStartLineCap="Round" StrokeEndLineCap="Round" SnapsToDevicePixels="True" />
+                                            <Border DockPanel.Dock="Left" Margin="5,0,0,0" Padding="5,0" MinWidth="16" Height="15"
+                                                    CornerRadius="7.5" VerticalAlignment="Center" Background="{DynamicResource Accent}"
+                                                    Visibility="{Binding Notifications.HasUnread, Converter={StaticResource BoolToVis}}">
+                                                <TextBlock Text="{Binding Notifications.UnreadBadge}" FontSize="{DynamicResource Fs10}"
+                                                           Foreground="{DynamicResource AccentFg}" HorizontalAlignment="Center"
+                                                           VerticalAlignment="Center" />
+                                            </Border>
+                                            <TextBlock x:Name="SummaryText" Text="{Binding Notifications.Summary}" Margin="6,0,0,0"
+                                                       VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                                       FontSize="{DynamicResource Fs11}" Foreground="{DynamicResource FgDim}" />
+                                        </DockPanel>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="bg" Property="Background" Value="{DynamicResource BgAlt}" />
+                                        </Trigger>
+                                        <Trigger Property="IsChecked" Value="True">
+                                            <Setter TargetName="bg" Property="Background" Value="{DynamicResource SelectionBg}" />
+                                        </Trigger>
+                                        <DataTrigger Binding="{Binding Notifications.HasUnread}" Value="True">
+                                            <Setter TargetName="SummaryText" Property="Foreground" Value="{DynamicResource Fg}" />
+                                            <Setter TargetName="Bell" Property="Stroke" Value="{DynamicResource Accent}" />
+                                        </DataTrigger>
+                                        <!-- 未読の最新が警告・失敗なら、ベルを警告色にする（見逃したら困る知らせを目の端で拾える） -->
+                                        <MultiDataTrigger>
+                                            <MultiDataTrigger.Conditions>
+                                                <Condition Binding="{Binding Notifications.HasUnread}" Value="True" />
+                                                <Condition Binding="{Binding Notifications.Latest.Kind}" Value="Error" />
+                                            </MultiDataTrigger.Conditions>
+                                            <Setter TargetName="Bell" Property="Stroke" Value="{DynamicResource Error}" />
+                                        </MultiDataTrigger>
+                                        <MultiDataTrigger>
+                                            <MultiDataTrigger.Conditions>
+                                                <Condition Binding="{Binding Notifications.HasUnread}" Value="True" />
+                                                <Condition Binding="{Binding Notifications.Latest.Kind}" Value="Warning" />
+                                            </MultiDataTrigger.Conditions>
+                                            <Setter TargetName="Bell" Property="Stroke" Value="{DynamicResource Error}" />
+                                        </MultiDataTrigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </ToggleButton.Template>
+                        </ToggleButton>
+                        <Popup x:Name="NotificationPopup" PlacementTarget="{Binding ElementName=NotificationToggle}"
+                               Placement="Top" HorizontalOffset="-8" StaysOpen="False" AllowsTransparency="True"
+                               IsOpen="{Binding Notifications.IsOpen}">
+                            <Border Width="{Binding ActualWidth, ElementName=NotificationArea}"
+                                    Background="{DynamicResource Panel}" BorderBrush="{DynamicResource Border}"
+                                    BorderThickness="1" CornerRadius="4" Margin="8">
+                                <Border.Effect>
+                                    <DropShadowEffect BlurRadius="8" ShadowDepth="2" Opacity="0.3" />
+                                </Border.Effect>
+                                <DockPanel>
+                                    <DockPanel DockPanel.Dock="Top" Margin="10,6,6,4" LastChildFill="True">
+                                        <Button DockPanel.Dock="Right" Style="{StaticResource PaneHeaderGhostButton}"
+                                                Content="すべて消去" Command="{Binding Notifications.ClearCommand}" />
+                                        <TextBlock Text="通知" FontWeight="SemiBold" FontSize="{DynamicResource Fs12}"
+                                                   Foreground="{DynamicResource Fg}" VerticalAlignment="Center" />
+                                    </DockPanel>
+                                    <Rectangle DockPanel.Dock="Top" Height="1" Fill="{DynamicResource Border}" />
+                                    <ScrollViewer MaxHeight="380" VerticalScrollBarVisibility="Auto"
+                                                  HorizontalScrollBarVisibility="Disabled">
+                                        <ItemsControl ItemsSource="{Binding Notifications.Items}" Margin="0,2">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Grid Margin="8,4,4,4">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="3" />
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <Border x:Name="KindBar" Grid.Column="0" CornerRadius="1.5"
+                                                                Background="{DynamicResource FgDim}" />
+                                                        <StackPanel Grid.Column="1" Margin="8,0,4,0">
+                                                            <StackPanel Orientation="Horizontal">
+                                                                <TextBlock Text="{Binding TimeLabel}" FontSize="{DynamicResource Fs10}"
+                                                                           Foreground="{DynamicResource FgDim}" />
+                                                                <TextBlock Text="{Binding Source}" Margin="6,0,0,0" FontSize="{DynamicResource Fs10}"
+                                                                           Foreground="{DynamicResource FgDim}"
+                                                                           Visibility="{Binding HasSource, Converter={StaticResource BoolToVis}}" />
+                                                            </StackPanel>
+                                                            <TextBlock Text="{Binding Message}" TextWrapping="Wrap"
+                                                                       FontSize="{DynamicResource Fs12}" Foreground="{DynamicResource Fg}" />
+                                                            <Button HorizontalAlignment="Left" Margin="0,3,0,0" Padding="8,1"
+                                                                    Style="{StaticResource SecondaryButton}" FontSize="{DynamicResource Fs11}"
+                                                                    Content="{Binding ActionLabel}"
+                                                                    Visibility="{Binding HasAction, Converter={StaticResource BoolToVis}}"
+                                                                    Command="{Binding DataContext.Notifications.RunActionCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                                    CommandParameter="{Binding}" />
+                                                        </StackPanel>
+                                                        <Button Grid.Column="2" Style="{StaticResource CaptionButton}" Width="20" Height="20"
+                                                                VerticalAlignment="Top" Content="×" Foreground="{DynamicResource FgDim}"
+                                                                ToolTip="この通知を消す"
+                                                                Command="{Binding DataContext.Notifications.RemoveCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                                CommandParameter="{Binding}" />
+                                                    </Grid>
+                                                    <DataTemplate.Triggers>
+                                                        <DataTrigger Binding="{Binding Kind}" Value="Info">
+                                                            <Setter TargetName="KindBar" Property="Background" Value="{DynamicResource Accent}" />
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding Kind}" Value="Success">
+                                                            <Setter TargetName="KindBar" Property="Background" Value="{DynamicResource Success}" />
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding Kind}" Value="Warning">
+                                                            <Setter TargetName="KindBar" Property="Background" Value="{DynamicResource Error}" />
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding Kind}" Value="Error">
+                                                            <Setter TargetName="KindBar" Property="Background" Value="{DynamicResource Error}" />
+                                                        </DataTrigger>
+                                                    </DataTemplate.Triggers>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </ScrollViewer>
+                                </DockPanel>
+                            </Border>
+                        </Popup>
+                    </Grid>
                     <!-- ×：過去の日を表示中のみ出す（今日の軌跡へ戻る） -->
                     <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="24" Height="22"
                             Content="×" FontSize="{DynamicResource Fs11}" ToolTip="今日の軌跡へ戻る"
@@ -3172,9 +3311,10 @@
                     Panel.ZIndex="200" IsHitTestVisible="False" Visibility="Collapsed" />
 
             <!-- 右下の知らせの束：上に「留守中に起きたこと」（§24.22・閉じるまで残る）、下にトースト（自動で消える）。
-                 同じ束に入れて、両方出ても重ならないようにする。 -->
+                 同じ束に入れて、両方出ても重ならないようにする。下端は軌跡バー（高さ26＋境界線）の上に浮かせる——
+                 バーの右端が通知欄なので、かぶせると「今届いた知らせ」がその受け皿を隠してしまう（§21.5c）。 -->
             <StackPanel Grid.ColumnSpan="4" Grid.RowSpan="3" Panel.ZIndex="250"
-                        HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,16,16">
+                        HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,8,32">
             <views:AwaySummaryCard DataContext="{Binding AwaySummary}" />
 
             <!-- トースト通知：右下に積み上げ表示。MessageBox.Show と違い非モーダルで自動的に消える

@@ -88,6 +88,13 @@ public sealed partial class ShellViewModel : ObservableObject
     /// <summary>右下に積み上げて表示する非モーダルなトースト通知（<see cref="Services.ToastService"/>）。</summary>
     public ToastHostViewModel Toasts { get; } = new();
 
+    /// <summary>軌跡バー右端の通知欄（<see cref="Services.NotificationService"/> の履歴と未読件数、§21.5c）。</summary>
+    public NotificationCenterViewModel Notifications { get; } = new();
+
+    /// <summary>最下部の帯（軌跡＋通知欄）を出すか。軌跡の記録が無くても、知らせがあれば帯を出して通知欄を見せる。
+    /// ただし「軌跡を非表示にする」を選んだ人には出さない——帯ごと隠すという選択を通知が覆さない（トーストは出る）。</summary>
+    public bool BottomBarVisible => Trail.Visible && (Trail.HasEntries || Notifications.HasItems);
+
     /// <summary>留守中に起きたことのカード（§24.22）。</summary>
     public AwaySummaryViewModel AwaySummary { get; } = new();
 
@@ -208,6 +215,12 @@ public sealed partial class ShellViewModel : ObservableObject
         Debug = debug;
         TsIde = tsIde;
         Trail = trail;
+        Trail.PropertyChanged += (_, e) => {
+            if (e.PropertyName == nameof(TrailViewModel.BarVisible)) OnPropertyChanged(nameof(BottomBarVisible));
+        };
+        Notifications.PropertyChanged += (_, e) => {
+            if (e.PropertyName == nameof(NotificationCenterViewModel.HasItems)) OnPropertyChanged(nameof(BottomBarVisible));
+        };
         CSharpSolutionExplorer = csharpSolutionExplorer;
         ActivityBar = activityBar ?? new ActivityBarViewModel();
         WorkItems = workItems;

@@ -26,6 +26,8 @@
          フォントサイズではないが、中の文字（HH:00 等）が収まるよう同じ倍率で
          スケールする必要がある固定幅。UiFontManager.Apply が Fs* と同様に上書きする。 -->
     <sys:Double x:Key="TrailHourLabelW">38</sys:Double>
+    <!-- 軌跡バー右端の通知欄の幅（§21.5c）。最新1行を省略付きで入れる固定幅。 -->
+    <sys:Double x:Key="NotificationAreaW">320</sys:Double>
 
     <!-- ペイン見出し帯の高さ（PaneHeaderBar の MinHeight）。中に何を置いたかで帯の高さが変わると
          ペインごとに見出しの高さがズレる（GIT はトグル、EDITOR はタブ帯…と一番背の高い要素で決まっていた）。
