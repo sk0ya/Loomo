@@ -19,7 +19,9 @@ public enum SidebarPanel
     /// （ActivityBar のアイコンごと出入りする）。フォルダーツリーとは別の面。</summary>
     Solution,
     /// <summary>ワークスペースの TODO タグ一覧。</summary>
-    Todo
+    Todo,
+    /// <summary>Azure DevOps の自分の Work Items。既定では上段バーのソリューションの下に住む。</summary>
+    WorkItems
 }
 
 /// <summary>中央オーバーレイ設定画面のカテゴリ（左ナビ）。</summary>
@@ -93,7 +95,7 @@ public sealed partial class ShellViewModel : ObservableObject
     /// ドラッグ＆ドロップの結果を settings.json へ持ち越す。</summary>
     public ActivityBarViewModel ActivityBar { get; }
 
-    /// <summary>Azure DevOps の Work Items（ActivityBar の ⌨ の上のアイコン）。テストの組み立てでは無いことがある。</summary>
+    /// <summary>Azure DevOps の Work Items（サイドバーの面 <see cref="SidebarPanel.WorkItems"/>）。テストの組み立てでは無いことがある。</summary>
     public WorkItemsViewModel? WorkItems { get; }
 
     /// <summary>Terminal ペインのヘッダーに出す Claude Code の使用量（5時間枠）。テストの組み立てでは無いことがある。</summary>
@@ -211,6 +213,7 @@ public sealed partial class ShellViewModel : ObservableObject
         WorkItems = workItems;
         ClaudeUsage = claudeUsage;
         ActivityBar.SetAvailable(SidebarPanel.Solution, IsCSharpSolutionAvailable);
+        ActivityBar.SetAvailable(SidebarPanel.WorkItems, WorkItems is not null);
         // 段を移した項目は移した先で開いて見せる（同じ段での並べ替えでは開き直さない——
         // 人間がしていないナビゲーションになる）。取り残された区画は既定のパネルへ寄せ直す。
         ActivityBar.ItemMoved += (_, moved) => {

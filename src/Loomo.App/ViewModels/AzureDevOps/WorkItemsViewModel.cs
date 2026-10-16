@@ -109,7 +109,7 @@ public sealed partial class WorkItemFilterOption(string value, bool isChecked, A
 }
 
 /// <summary>
-/// ActivityBar の Work Items（⌨ の上のアイコン）。<b>TaskAzure と同じ方式</b>：設定の組織 URL・プロジェクトで
+/// サイドバーの Work Items（ActivityBar の 📋）。<b>TaskAzure と同じ方式</b>：設定の組織 URL・プロジェクトで
 /// 自分に割り当たっている未完了の Work Item を引き、設定した PR 対象（プロジェクト/リポジトリ）から自分の進行中の PR を引いて
 /// 紐づく Work Item の下に添える。PAT は環境変数 ADO_PAT → 資格情報マネージャー ADO_PAT を読むだけ（<see cref="AzureDevOpsPatStore"/>）。
 /// </summary>
@@ -170,8 +170,8 @@ public sealed partial class WorkItemsViewModel : ObservableObject, IHarnessTicke
 
     [ObservableProperty] private bool _isTypeFilterOpen;
 
-    /// <summary>一覧（ポップアップ）を開いているか。</summary>
-    [ObservableProperty] private bool _isOpen;
+    /// <summary>サイドバーで一覧が見えているか（ホストが面の表示に合わせて立てる）。見えたときに古ければ取り直す。</summary>
+    [ObservableProperty] private bool _isShown;
 
     [ObservableProperty] private bool _isLoading;
 
@@ -240,16 +240,13 @@ public sealed partial class WorkItemsViewModel : ObservableObject, IHarnessTicke
     /// <summary>行が選ばれた（ブラウザペインで開く）。ホストが購読する。</summary>
     public event Action<string, string>? OpenRequested;
 
-    partial void OnIsOpenChanged(bool value)
+    partial void OnIsShownChanged(bool value)
     {
         if (value && !IsLoading && DateTime.UtcNow - _loadedAt > StaleAfter)
             _ = RefreshAsync();
     }
 
     partial void OnFilterTextChanged(string value) => ApplyFilter();
-
-    [RelayCommand]
-    private void ToggleOpen() => IsOpen = !IsOpen;
 
     /// <summary>絞り込みを外す。</summary>
     [RelayCommand]
@@ -298,7 +295,6 @@ public sealed partial class WorkItemsViewModel : ObservableObject, IHarnessTicke
     private void Open(WorkItemListRowViewModel? row)
     {
         if (row is not { CanOpen: true }) return;
-        IsOpen = false;
         OpenRequested?.Invoke(row.WebUrl, row.Label);
     }
 

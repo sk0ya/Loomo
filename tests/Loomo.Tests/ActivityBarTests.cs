@@ -15,7 +15,7 @@ public sealed class ActivityBarTests
     {
         var sut = new ActivityBarViewModel();
 
-        Assert.Equal(["explorer", "git", "solution"], sut.PrimaryItems.Select(i => i.Id));
+        Assert.Equal(["explorer", "git", "solution", "workitems"], sut.PrimaryItems.Select(i => i.Id));
         Assert.Equal(["tabs", "todo", "pegboard"], sut.SecondaryItems.Select(i => i.Id));
         Assert.Equal(ActivityBarSlot.Secondary, sut.SlotOf(SidebarPanel.Tabs));
         Assert.Equal(ActivityBarSlot.Primary, sut.SlotOf(SidebarPanel.Explorer));
@@ -57,13 +57,13 @@ public sealed class ActivityBarTests
         var git = sut.ItemFor(SidebarPanel.Git)!;
 
         Assert.True(sut.Move(tabs, ActivityBarSlot.Primary, 0));
-        Assert.Equal(["tabs", "explorer", "git", "solution"], sut.PrimaryItems.Select(i => i.Id));
+        Assert.Equal(["tabs", "explorer", "git", "solution", "workitems"], sut.PrimaryItems.Select(i => i.Id));
         Assert.Equal(["todo", "pegboard"], sut.SecondaryItems.Select(i => i.Id));
         Assert.Equal(ActivityBarSlot.Primary, tabs.Slot);
 
         // 同じ段の中での並べ替え（下へ動かすと抜けたぶん詰まる）。
         Assert.True(sut.Move(git, ActivityBarSlot.Primary, 4));
-        Assert.Equal(["tabs", "explorer", "solution", "git"], sut.PrimaryItems.Select(i => i.Id));
+        Assert.Equal(["tabs", "explorer", "solution", "git", "workitems"], sut.PrimaryItems.Select(i => i.Id));
         // 自分の前（3）も自分の直後（4＝末尾）も「いまと同じ場所」なので動かさない。
         Assert.False(sut.Move(git, ActivityBarSlot.Primary, 3));
         Assert.False(sut.Move(git, ActivityBarSlot.Primary, 4));
@@ -79,7 +79,7 @@ public sealed class ActivityBarTests
 
         Assert.True(sut.Move(explorer, ActivityBarSlot.Primary, sut.PrimaryItems.Count));
 
-        Assert.Equal(["git", "solution", "explorer"], sut.PrimaryItems.Select(i => i.Id));
+        Assert.Equal(["git", "solution", "workitems", "explorer"], sut.PrimaryItems.Select(i => i.Id));
     }
 
     /// <summary>段をまたいだのか並べ替えただけなのかを通知で区別すること
@@ -106,7 +106,7 @@ public sealed class ActivityBarTests
 
         sut.Move(sut.ItemFor(SidebarPanel.Git)!, ActivityBarSlot.Secondary, 0);
 
-        Assert.Equal(["explorer", "solution"], settings.ActivityBar.Primary);
+        Assert.Equal(["explorer", "solution", "workitems"], settings.ActivityBar.Primary);
         Assert.Equal(["git", "tabs", "todo", "pegboard"], settings.ActivityBar.Secondary);
 
         // 保存した並びで起動し直すとそのまま戻る。

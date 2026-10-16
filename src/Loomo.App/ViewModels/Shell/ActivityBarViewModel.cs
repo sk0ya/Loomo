@@ -73,7 +73,7 @@ public sealed partial class ActivityBarViewModel : ObservableObject
     private readonly List<ActivityBarItemViewModel> _items;
 
     /// <summary>既定で上段に並ぶ項目 Id（上から順）。</summary>
-    public static readonly string[] DefaultPrimaryIds = ["explorer", "git", "solution"];
+    public static readonly string[] DefaultPrimaryIds = ["explorer", "git", "solution", "workitems"];
 
     /// <summary>既定で中段に並ぶ項目 Id。タブ一覧の下に TODO Tree、その下にペグボードを並べる。</summary>
     public static readonly string[] DefaultSecondaryIds = ["tabs", "todo", "pegboard"];
@@ -91,6 +91,7 @@ public sealed partial class ActivityBarViewModel : ObservableObject
                 "PegboardPanelButton"),
             new("tabs", SidebarPanel.Tabs, "▤", "タブ一覧", "TabsPanelButton"),
             new("todo", SidebarPanel.Todo, "☑", "TODO Tree", "TodoPanelButton"),
+            new("workitems", SidebarPanel.WorkItems, "📋", "自分の Work Items（Azure DevOps）", "WorkItemsPanelButton"),
         ];
 
         var layout = Arrange(
