@@ -155,10 +155,21 @@ public sealed partial class ShellViewModel : ObservableObject
     private bool _isSettingsOverlayOpen;
 
     /// <summary>キーボードショートカットのウィンドウを開いているか。設定とは別の独立した画面で、
-    /// 設定ウィンドウと同時に開いていてもよい。</summary>
+    /// 設定ウィンドウとは排他（どちらか一方だけを出す）。</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsKeyboardSettingsSelected))]
     private bool _isKeybindingsWindowOpen;
+
+    // 設定とキーボードショートカットは同時に出さない。片方を開いたら、もう片方は閉じる。
+    partial void OnIsSettingsOverlayOpenChanged(bool value)
+    {
+        if (value) IsKeybindingsWindowOpen = false;
+    }
+
+    partial void OnIsKeybindingsWindowOpenChanged(bool value)
+    {
+        if (value) IsSettingsOverlayOpen = false;
+    }
 
     /// <summary>設定ウィンドウで選択中のカテゴリ（左ナビ）。</summary>
     [ObservableProperty]

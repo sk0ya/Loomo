@@ -97,7 +97,7 @@ internal sealed class ShellWindowStateController
             () => _viewModel.IsKeybindingsWindowOpen = false);
 
     /// <summary>独立ウィンドウを開く／閉じる。フォーカスの戻り先は、最初の 1 枚を開く前に覚え、
-    /// 最後の 1 枚が閉じたときに戻す（両方開いていて片方を閉じただけなら、残った方に居させる）。</summary>
+    /// 最後の 1 枚が閉じたときに戻す（設定とショートカットは排他なので、切り替えでは閉じた側の戻しと開いた側の記録が続けて走る）。</summary>
     private void ApplyToolWindowState(bool open, ref SettingsWindow? window,
         Func<SettingsWindow> create, Action markClosed)
     {

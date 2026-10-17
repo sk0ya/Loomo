@@ -221,6 +221,24 @@ public class ShellViewModelTests
         Assert.Equal(SettingsCategory.Appearance, sut.SettingsCategory);
     }
 
+    /// <summary>設定とキーボードショートカットのウィンドウは排他：片方を開くともう片方は閉じる。</summary>
+    [Fact]
+    public void Settings_and_keyboard_windows_are_mutually_exclusive()
+    {
+        var sut = CreateSut();
+
+        sut.ShowSettingsCommand.Execute(null);
+        sut.ShowKeyboardSettingsCommand.Execute(null);
+        Assert.True(sut.IsKeybindingsWindowOpen);
+        Assert.False(sut.IsSettingsOverlayOpen);
+        Assert.True(sut.IsKeyboardSettingsSelected);
+        Assert.False(sut.IsSettingsSelected);
+
+        sut.ShowSettingsCommand.Execute(null);
+        Assert.True(sut.IsSettingsOverlayOpen);
+        Assert.False(sut.IsKeybindingsWindowOpen);
+    }
+
     /// <summary>タブ一覧は独立した面で、既定では中段バーに住む。押しても上段の面（エクスプローラ）は
     /// 閉じない——2本のバーが別々の区画を持つのが要点。</summary>
     [Fact]

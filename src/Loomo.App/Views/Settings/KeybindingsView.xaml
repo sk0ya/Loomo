@@ -214,9 +214,29 @@
                         Command="{Binding ResetAllCommand}" />
             </Border>
 
-            <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="22,0,20,12">
-                <StackPanel>
-                    <ItemsControl ItemsSource="{Binding RowsView}">
+            <!-- 一覧は仮想化する（見えている行だけ作る）。全 130 行超を一度に作ると、行ごとの KeyCaptureBox
+                 （自前のスタイルを持つ UserControl）が積み上がって開くのに 1 秒近くかかっていた。
+                 仮想化には ItemsControl 自身が ScrollViewer を持つ必要があるので、外側に ScrollViewer を置かない。 -->
+            <Grid>
+                    <ItemsControl ItemsSource="{Binding RowsView}"
+                                  VirtualizingPanel.IsVirtualizing="True"
+                                  VirtualizingPanel.IsVirtualizingWhenGrouping="True"
+                                  VirtualizingPanel.VirtualizationMode="Recycling"
+                                  VirtualizingPanel.ScrollUnit="Pixel"
+                                  ScrollViewer.CanContentScroll="True">
+                        <ItemsControl.Template>
+                            <ControlTemplate TargetType="ItemsControl">
+                                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="22,0,20,12"
+                                              CanContentScroll="True" Focusable="False">
+                                    <ItemsPresenter />
+                                </ScrollViewer>
+                            </ControlTemplate>
+                        </ItemsControl.Template>
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <VirtualizingStackPanel />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
                         <ItemsControl.GroupStyle>
                             <GroupStyle>
                                 <GroupStyle.HeaderTemplate>
@@ -302,7 +322,7 @@
                     </ItemsControl>
 
                     <!-- 空状態：絞りすぎたときに、戻る手段まで出す。 -->
-                    <StackPanel Margin="0,20,0,0"
+                    <StackPanel Margin="0,20,0,0" VerticalAlignment="Top"
                                 Visibility="{Binding HasNoMatch, Converter={StaticResource BoolToVis}}">
                         <TextBlock Text="条件に合うコマンドがありません。" HorizontalAlignment="Center"
                                    Foreground="{DynamicResource FgDim}" />
@@ -310,8 +330,7 @@
                                 HorizontalAlignment="Center" Content="絞り込みを解除"
                                 Command="{Binding ClearFiltersCommand}" />
                     </StackPanel>
-                </StackPanel>
-            </ScrollViewer>
+            </Grid>
         </DockPanel>
     </Grid>
 </UserControl>
