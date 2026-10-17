@@ -334,6 +334,7 @@ public partial class ShellWindow : Window {
             RevealSearchHit(h);
         };
         vm.SearchPanel.ClearHighlightRequested += (_, _) => _activeEditorTab?.Control.HighlightSearch("");
+        WireEditorFooterEncodingEntry();
         vm.SearchPanel.PropertyChanged += (_, e) => {
             if (e.PropertyName == nameof(SearchPanelViewModel.CurrentSearchRootPath)
                 && vm.SearchPanel.CurrentSearchRootPath is { } searchRoot)

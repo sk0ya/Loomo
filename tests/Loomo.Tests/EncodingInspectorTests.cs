@@ -82,61 +82,17 @@ public class EncodingInspectorTests
         Assert.True(report.Truncated);
     }
 
-    // ===== 変換 =====
-
-    [Fact]
-    public void Converting_shift_jis_to_utf8_keeps_text()
-    {
-        var decoded = TextFileEncoding.Decode(TextFileEncoding.ShiftJis.GetBytes("設定\r\n"))!;
-
-        var (format, text) = TextFileEncoding.Apply(decoded, TextConversion.ToUtf8);
-        Assert.Equal("UTF-8", format.Name);
-        Assert.False(format.HasBom);
-        Assert.Equal("設定\r\n", text);   // 本文（改行も）は変えない
-
-        var (bom, _) = TextFileEncoding.Apply(decoded, TextConversion.ToUtf8WithBom);
-        Assert.Equal("UTF-8 (BOM)", bom.Name);
-        Assert.True(bom.HasBom);
-    }
-
-    [Theory]
-    [InlineData(TextConversion.ToLf, "あ\nい\nう\nえ")]
-    [InlineData(TextConversion.ToCrLf, "あ\r\nい\r\nう\r\nえ")]
-    public void Normalizing_line_endings_keeps_encoding(TextConversion conversion, string expected)
-    {
-        var decoded = TextFileEncoding.Decode(TextFileEncoding.ShiftJis.GetBytes("あ\r\nい\nう\rえ"))!;
-        var (format, text) = TextFileEncoding.Apply(decoded, conversion);
-        Assert.Equal("Shift_JIS", format.Name);
-        Assert.Equal(expected, text);
-    }
-
-    [Fact]
-    public void Converted_file_round_trips_through_disk()
-    {
-        var path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "LoomoConvert_" + Guid.NewGuid().ToString("N") + ".txt");
-        try
-        {
-            System.IO.File.WriteAllBytes(path, TextFileEncoding.ShiftJis.GetBytes("設定\r\n値\n"));
-            var decoded = TextFileEncoding.ReadFile(path)!;
-            var (format, text) = TextFileEncoding.Apply(decoded, TextConversion.ToUtf8);
-            Assert.True(TextFileEncoding.TryWriteFile(path, format, text));
-
-            var report = EncodingInspector.Inspect(System.IO.File.ReadAllBytes(path));
-            Assert.Equal("UTF-8", report.EncodingName);
-            Assert.Equal("設定\r\n値\n", TextFileEncoding.ReadFile(path)!.Text);
-        }
-        finally { System.IO.File.Delete(path); }
-    }
+    // ===== 変換（保存するときの形をエディタに変えてもらう）=====
 
     [Fact]
     public void Palette_offers_only_conversions_that_change_something()
     {
         static string[] Titles(byte[] bytes) => EncodingInspectionPalette
             .Build(EncodingInspector.Inspect(bytes), "a.txt", false, _ => () => { }, _ => () => { })
-            .Where(i => i.Category == "変換").Select(i => i.Title).ToArray();
+            .Where(i => i.Category.EndsWith("の変換", StringComparison.Ordinal)).Select(i => i.Title).ToArray();
 
         // UTF-8・LF だけ：BOM 付きと CRLF への変換だけを出す
-        Assert.Equal(new[] { "UTF-8（BOM 付き）に変換して保存", "改行を CRLF にそろえて保存" },
+        Assert.Equal(new[] { "UTF-8（BOM 付き）で保存する", "改行を CRLF にそろえて保存する" },
             Titles(Utf8NoBom.GetBytes("a\nb\n")));
         // Shift_JIS・混在：全部出す
         Assert.Equal(4, Titles(TextFileEncoding.ShiftJis.GetBytes("設定\r\n値\n")).Length);
@@ -151,9 +107,44 @@ public class EncodingInspectorTests
         var items = EncodingInspectionPalette.Build(EncodingInspector.Inspect(Utf8NoBom.GetBytes("a\r\n")), "a.txt", false,
             _ => () => { }, conversion => () => requested = conversion);
 
-        items.Single(i => i.Title == "改行を LF にそろえて保存").Execute();
+        items.Single(i => i.Title == "改行を LF にそろえて保存する").Execute();
         Assert.Equal(TextConversion.ToLf, requested);
     }
+
+    // ===== フッターから：エディタの保存形式を選ぶ =====
+
+    [Fact]
+    public void Footer_line_endings_mark_the_current_one()
+    {
+        string? selected = null;
+        var items = EditorFileFormatPalette.BuildLineEndings("dos", name => () => selected = name);
+
+        Assert.Equal(new[] { "LF", "CRLF", "CR" }, items.Select(i => i.Title));
+        Assert.Equal("いま", items[1].Badge);
+        items[1].Execute();                 // いまの形を選んでも何もしない
+        Assert.Null(selected);
+        items[0].Execute();
+        Assert.Equal("unix", selected);     // エディタの名前（SetFileFormat に渡す値）で返す
+    }
+
+    [Fact]
+    public void Footer_encodings_use_editor_names()
+    {
+        string? selected = null;
+        var items = EditorFileFormatPalette.BuildEncodings("shift-jis", name => () => selected = name);
+
+        Assert.Equal("いま", items.Single(i => i.Title == "Shift_JIS").Badge);
+        items.Single(i => i.Title == "UTF-8（BOM 付き）").Execute();
+        Assert.Equal("utf-8-bom", selected);
+    }
+
+    [Theory]
+    [InlineData("設定ファイル", "shift-jis", null)]
+    [InlineData("emoji 😀", "shift-jis", "😀")]          // Shift_JIS に無い文字：エディタは「?」にして黙って書くので止める
+    [InlineData("café", "ascii", "é")]
+    [InlineData("何でも 😀", "utf-8", null)]             // UTF-8 はどの文字も表せる
+    public void Unrepresentable_characters_are_found_before_switching(string text, string encoding, string? lost)
+        => Assert.Equal(lost, EditorFileFormatPalette.FirstUnrepresentable(text, encoding));
 
     // ===== パレット =====
 

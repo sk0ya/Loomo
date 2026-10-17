@@ -13,7 +13,8 @@ public enum LocalHistoryKind
     Saved,
     /// <summary>履歴から戻す直前のエディタの中身（戻すこと自体を取り消せるように）。</summary>
     BeforeRestore,
-    /// <summary>文字コード・改行を変換する直前のディスクの中身（§23.3.4）。</summary>
+    /// <summary>文字コード・改行をディスク上で変換する直前の中身。いまは書かない（変換はエディタが保存時に行う・§23.3.4）が、
+    /// その方式だった間に残った版を読めるよう残す——値を消すと、その版はファイル名を読めず一覧から黙って消える。</summary>
     BeforeConvert,
 }
 

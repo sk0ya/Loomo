@@ -11,12 +11,15 @@ namespace sk0ya.Loomo.App.Services;
 public static class EncodingInspectionPalette
 {
     public const string Category = "文字コード";
+    public const string EncodingConversionCategory = "文字コードの変換";
+    public const string LineEndingCategory = "改行";
+    public const string LineEndingConversionCategory = "改行の変換";
 
     /// <param name="report">調査結果。</param>
     /// <param name="filePath">調べたファイル。</param>
     /// <param name="hasUnsavedChanges">エディタに未保存の変更があるか（調べたのはディスク上の内容だと断る）。</param>
     /// <param name="jump">場所へ飛ぶ動作を作る（ShellWindow のパレットの確定と同じもの）。</param>
-    /// <param name="convert">文字コード・改行を変換する動作を作る（null なら変換の項目を出さない）。</param>
+    /// <param name="convert">保存するときの文字コード・改行を変える動作を作る（null なら変換の項目を出さない）。</param>
     public static List<PaletteCommand> Build(EncodingReport report, string filePath, bool hasUnsavedChanges,
         Func<PaletteTarget, Action> jump, Func<TextConversion, Action>? convert = null)
     {
@@ -43,7 +46,7 @@ public static class EncodingInspectionPalette
 
         var lineEndings = report.LineEndingSummary + (report.EndsWithNewline || report.LineEndingSummary == "改行なし"
             ? "" : " ・ 最後の行に改行なし");
-        items.Add(new PaletteCommand("改行", lineEndings, () => { })
+        items.Add(new PaletteCommand(LineEndingCategory, lineEndings, () => { })
         {
             Badge = report.HasMixedLineEndings ? "混在" : null,
             Detail = report.HasMixedLineEndings
@@ -52,7 +55,7 @@ public static class EncodingInspectionPalette
         });
 
         if (convert is not null)
-            items.AddRange(ConversionItems(report, convert, hasUnsavedChanges));
+            items.AddRange(ConversionItems(report, convert));
 
         if (report.Findings.Count == 0)
         {
@@ -80,31 +83,30 @@ public static class EncodingInspectionPalette
     }
 
     /// <summary>
-    /// 変換の項目。いまの形と同じになる変換は出さない（押しても何も変わらない項目を並べない）。
-    /// 変換はディスク上のファイルを書き換え、変換前の本文をローカル履歴に残す。
+    /// 変換の項目。いまのファイルと同じになる変換は出さない（押しても何も変わらない項目を並べない）。
+    /// 変換はエディタに「保存するときの形」を変えてもらうだけで、本文は変えず未保存になる（保存で反映）。
     /// </summary>
-    private static IEnumerable<PaletteCommand> ConversionItems(EncodingReport report, Func<TextConversion, Action> convert,
-        bool hasUnsavedChanges)
+    private static IEnumerable<PaletteCommand> ConversionItems(EncodingReport report, Func<TextConversion, Action> convert)
     {
-        var note = "変換前の本文はローカル履歴に「変換する前」として残ります。"
-            + (hasUnsavedChanges ? Environment.NewLine + "※ 未保存の変更があるので、保存してから変換してください。" : "");
+        const string note = "本文は変えず、未保存になります。保存したときにこの形で書き出します。";
 
         if (report.EncodingName != "UTF-8")
-            yield return Conversion(TextConversion.ToUtf8, "UTF-8（BOM なし）に変換して保存",
+            yield return Conversion(TextConversion.ToUtf8, "UTF-8（BOM なし）で保存する",
                 "いまの文字コードで読んだ本文を、BOM なしの UTF-8 で書き直します。" + Environment.NewLine + note);
         if (report.EncodingName != "UTF-8 (BOM)")
-            yield return Conversion(TextConversion.ToUtf8WithBom, "UTF-8（BOM 付き）に変換して保存",
+            yield return Conversion(TextConversion.ToUtf8WithBom, "UTF-8（BOM 付き）で保存する",
                 "いまの文字コードで読んだ本文を、BOM 付きの UTF-8 で書き直します（古い Windows のツール向け）。"
                 + Environment.NewLine + note);
         if (report.CrLf > 0 || report.Cr > 0)
-            yield return Conversion(TextConversion.ToLf, "改行を LF にそろえて保存",
+            yield return Conversion(TextConversion.ToLf, "改行を LF にそろえて保存する",
                 "CRLF・CR をすべて LF にします（文字コードはそのまま）。" + Environment.NewLine + note);
         if (report.Lf > 0 || report.Cr > 0)
-            yield return Conversion(TextConversion.ToCrLf, "改行を CRLF にそろえて保存",
+            yield return Conversion(TextConversion.ToCrLf, "改行を CRLF にそろえて保存する",
                 "LF・CR をすべて CRLF にします（文字コードはそのまま）。" + Environment.NewLine + note);
 
         PaletteCommand Conversion(TextConversion kind, string title, string detail)
-            => new("変換", title, convert(kind)) { Detail = detail };
+            => new(kind is TextConversion.ToLf or TextConversion.ToCrLf ? LineEndingConversionCategory : EncodingConversionCategory,
+                title, convert(kind)) { Detail = detail };
     }
 
     private static string DescribeEncoding(EncodingReport report) => report.EncodingName switch

@@ -12,7 +12,8 @@ public sealed record DecodedText(string Text, Encoding Encoding, byte[] Preamble
     public bool HasBom => Preamble.Length > 0;
 }
 
-/// <summary>ファイルの文字コード・改行をそろえる変換（§23.3.4）。</summary>
+/// <summary>保存するときの文字コード・改行の変換（§23.3.4）。変換そのものはエディタが保存時に行う
+/// （<c>VimEditorControl.SetFileFormat</c>／<c>SetFileEncoding</c>）。</summary>
 public enum TextConversion
 {
     /// <summary>UTF-8（BOM なし）にする。</summary>
@@ -91,42 +92,6 @@ public static class TextFileEncoding
         try { return new DecodedText(encoding.GetString(bytes, offset, bytes.Length - offset), encoding, preamble, name); }
         catch (DecoderFallbackException) { return null; }
         catch (ArgumentException) { return null; }
-    }
-
-    /// <summary>
-    /// 変換後の書き方（文字コード・BOM）と本文を返す。文字コードの変換は本文を変えず、改行の変換は文字コードを変えない。
-    /// 書き込みは <see cref="TryWriteFile"/> に渡す（UTF-8 はどの文字も表せるので、文字コードの変換が失敗することはない）。
-    /// </summary>
-    public static (DecodedText Format, string Text) Apply(DecodedText decoded, TextConversion conversion)
-        => conversion switch
-        {
-            TextConversion.ToUtf8 => (decoded with { Encoding = StrictUtf8, Preamble = [], Name = "UTF-8" }, decoded.Text),
-            TextConversion.ToUtf8WithBom =>
-                (decoded with { Encoding = StrictUtf8, Preamble = Utf8Bom, Name = "UTF-8 (BOM)" }, decoded.Text),
-            TextConversion.ToLf => (decoded, NormalizeLineEndings(decoded.Text, "\n")),
-            TextConversion.ToCrLf => (decoded, NormalizeLineEndings(decoded.Text, "\r\n")),
-            _ => throw new ArgumentOutOfRangeException(nameof(conversion)),
-        };
-
-    /// <summary>CRLF・LF・CR（単独）をすべて <paramref name="newline"/> にする。</summary>
-    public static string NormalizeLineEndings(string text, string newline)
-    {
-        var sb = new StringBuilder(text.Length + text.Length / 32);
-        for (var i = 0; i < text.Length; i++)
-        {
-            var c = text[i];
-            if (c == '\r')
-            {
-                if (i + 1 < text.Length && text[i + 1] == '\n')
-                    i++;
-                sb.Append(newline);
-            }
-            else if (c == '\n')
-                sb.Append(newline);
-            else
-                sb.Append(c);
-        }
-        return sb.ToString();
     }
 
     /// <summary>
