@@ -1,7 +1,8 @@
 namespace sk0ya.Loomo.App.Views;
 /// <summary>ShellWindow: ペイン活動インジケータ（袖＝周辺視野）。Terminal / IDE / TS IDE / AI の長い処理を
 /// 袖・俯瞰カードのバッジで知らせ、ペインを見ていない間も実行中／承認待ち／完了／失敗を
-/// 目の端で追えるようにする。未確認結果は対象ペインが舞台に立つと消える。</summary>
+/// 目の端で追えるようにする。ターミナルで動く Claude Code の作業中／入力待ちもここに出す（§24.1.1）。
+/// 未確認結果は対象ペインが舞台に立つと消える。</summary>
 public partial class ShellWindow {
     private readonly PaneActivityTracker _paneActivity = new();
     private readonly Dictionary<PaneKind, (Border Chip, TextBlock Label)> _stageActivityBadges = new();
@@ -43,8 +44,43 @@ public partial class ShellWindow {
             _vm.AiBar.Workflow.IsRunning, _vm.AiBar.Workflow.RunStatus, IsAiPaneWatched());
         UpdatePaneActivityBadge(PaneKind.Ai);
     }
-    private void HookTerminalActivity(TerminalTab tab)
-        => tab.View.ShellCommandActivity += (_, e) => OnTerminalShellActivity(tab.Id, e);
+    private void HookTerminalActivity(TerminalTab tab) {
+        tab.View.ShellCommandActivity += (_, e) => OnTerminalShellActivity(tab.Id, e);
+        tab.View.HeaderTitleChanged += (_, title) => OnTerminalTitleChanged(tab.Id, title);
+    }
+    /// <summary>タイトルの印から Claude Code の作業中／入力待ちを拾う（§24.1.1）。ターンが終わったとき
+    /// Loomo が裏に回っていれば、タスクバーを点滅させて呼び戻す（前面に出たら止まる）。</summary>
+    private void OnTerminalTitleChanged(Guid tabId, string title) {
+        var transition = _paneActivity.TerminalTitleChanged(tabId, title, IsTerminalPaneWatched());
+        if (transition.ShouldRefresh)
+            UpdatePaneActivityBadge(PaneKind.Terminal);
+        if (transition.TurnEnded && !IsActive)
+            FlashTaskbarUntilForeground();
+    }
+    private void FlashTaskbarUntilForeground() {
+        var handle = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+        if (handle == IntPtr.Zero)
+            return;
+        var info = new FlashWindowInfo {
+            cbSize = (uint)System.Runtime.InteropServices.Marshal.SizeOf<FlashWindowInfo>(),
+            hwnd = handle,
+            dwFlags = FlashwTray | FlashwTimerNoFg,
+        };
+        FlashWindowEx(ref info);
+    }
+    private const uint FlashwTray = 0x2;
+    private const uint FlashwTimerNoFg = 0xC;
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    private struct FlashWindowInfo {
+        public uint cbSize;
+        public IntPtr hwnd;
+        public uint dwFlags;
+        public uint uCount;
+        public uint dwTimeout;
+    }
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    private static extern bool FlashWindowEx(ref FlashWindowInfo info);
     private void ForgetTerminalActivity(Guid tabId) {
         if (_paneActivity.ForgetTerminal(tabId))
             UpdatePaneActivityBadge(PaneKind.Terminal);

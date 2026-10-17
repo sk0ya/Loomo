@@ -7,6 +7,8 @@ internal sealed class PaneActivityTracker
     {
         public bool Running;
         public int? UnseenExitCode;
+        public ClaudeCodeStatus? Agent;
+        public bool AgentUnseenTurn;
     }
 
     private sealed class IdeState
@@ -59,7 +61,36 @@ internal sealed class PaneActivityTracker
             return false;
         state.Running = next.Running;
         state.UnseenExitCode = next.UnseenExitCode;
+        if (commandDone)
+        {
+            // claude が終わればシェルのプロンプトに戻る。タイトルが戻るのを待たずに捨てる。
+            state.Agent = null;
+            state.AgentUnseenTurn = false;
+        }
         return true;
+    }
+
+    /// <summary>タイトル変化を Claude Code の状態として取り込む。戻り値の <c>TurnEnded</c> は
+    /// 作業中→待機の遷移（ウィンドウが裏にあるときの呼び戻しに使う）。</summary>
+    public ClaudeCodeTitleTransition TerminalTitleChanged(Guid tabId, string? title, bool paneWatched)
+    {
+        var status = ClaudeCodeTitle.Parse(title);
+        if (!_terminals.TryGetValue(tabId, out var state))
+        {
+            if (status is null)
+                return default;
+            _terminals[tabId] = state = new TerminalState();
+        }
+        // Terminal のタブ見出しはパスらしい部分（/ や \ を含む）を捨ててプロファイル名に戻すので、
+        // 「◐ Fix src/foo.cs」は読めない見出しとして届く。claude がまだ実行中（OSC133 の C を見て D を
+        // 見ていない）なら終了ではないので、今の状態を保つ。終了は D で捨てる（TerminalCommandChanged）。
+        if (status is null && state.Running)
+            return default;
+        var next = PaneActivityPresentation.ClaudeTitleChanged(
+            state.Agent, state.AgentUnseenTurn, status, paneWatched);
+        state.Agent = next.Agent;
+        state.AgentUnseenTurn = next.AgentUnseenTurn;
+        return next;
     }
 
     public bool ForgetTerminal(Guid tabId) => _terminals.Remove(tabId);
@@ -69,7 +100,10 @@ internal sealed class PaneActivityTracker
         if (kind == PaneKind.Terminal)
         {
             foreach (var state in _terminals.Values)
+            {
                 state.UnseenExitCode = null;
+                state.AgentUnseenTurn = false;
+            }
             return true;
         }
         if (kind == PaneKind.Ai)
@@ -85,7 +119,8 @@ internal sealed class PaneActivityTracker
 
     public PaneActivityKind AggregateTerminal(out int exitCode)
         => PaneActivityPresentation.AggregateTerminal(
-            _terminals.Values.Select(state => (state.Running, state.UnseenExitCode)), out exitCode);
+            _terminals.Values.Select(state =>
+                (state.Running, state.UnseenExitCode, state.Agent, state.AgentUnseenTurn)), out exitCode);
 
     public PaneActivityKind AggregateIde(
         PaneKind kind, bool taskRunning, bool sessionBusy, bool sessionStopped)
