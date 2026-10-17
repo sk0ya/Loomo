@@ -99,6 +99,11 @@ internal sealed class PaneActivityTracker
 
     public bool ForgetTerminal(Guid tabId) => _terminals.Remove(tabId);
 
+    /// <summary>そのタブの前面でシェル以外が動いているか（OSC133 の C を見て D 未着、または Claude Code）。
+    /// 動いている間に打ち込んだ行はシェルでなくそのプログラムに届く。</summary>
+    public bool IsTerminalBusy(Guid tabId)
+        => _terminals.TryGetValue(tabId, out var state) && (state.Running || state.Agent is not null);
+
     /// <summary>素材を Claude Code へ送るときの宛先タブ。いま前に出ているタブが Claude なら
     /// それ、でなければ最後に Claude の印が動いたタブ。Claude が居なければ null。</summary>
     public Guid? AgentTabFor(Guid? activeTabId)

@@ -96,6 +96,22 @@ public sealed class ClaudeCodeTerminalActivityTests
     }
 
     [Fact]
+    public void 前面でコマンドかClaudeが動いている間は打ち込み不可()
+    {
+        var shell = Guid.NewGuid();
+        var sut = new PaneActivityTracker();
+        Assert.False(sut.IsTerminalBusy(shell)); // 一度も動いていないタブは空いている
+        sut.TerminalCommandChanged(shell, commandExecuted: true, commandDone: false, null, paneWatched: true);
+        Assert.True(sut.IsTerminalBusy(shell));
+        sut.TerminalCommandChanged(shell, commandExecuted: false, commandDone: true, 0, paneWatched: true);
+        Assert.False(sut.IsTerminalBusy(shell));
+
+        // シェル統合の無いところで起動した claude（C を見ていない）でも、印があれば埋まっている。
+        sut.TerminalTitleChanged(Tab, "✳ Claude Code", paneWatched: true);
+        Assert.True(sut.IsTerminalBusy(Tab));
+    }
+
+    [Fact]
     public void 入力待ちは他タブの実行中や失敗より先に出る()
     {
         var other = Guid.NewGuid();

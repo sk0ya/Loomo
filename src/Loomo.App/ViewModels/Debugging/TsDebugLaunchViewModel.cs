@@ -603,7 +603,7 @@ public sealed partial class TsDebugLaunchViewModel : ObservableObject, ILaunchCo
         if (!_terminal.TryRunInVisibleTerminal(command))
         {
             _manager.Append(DebugOutputCategory.Important,
-                "可視ターミナルが接続されていないため開発サーバーを起動できません。ターミナルを開いてから再試行してください。");
+                "可視ターミナルが無いか、前面で別のコマンド（Claude Code など）が動いているため開発サーバーを起動できません。空いたターミナルを前に出してから再試行してください。");
             return null;
         }
 

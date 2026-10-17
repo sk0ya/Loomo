@@ -254,6 +254,7 @@ public partial class ShellWindow : Window {
         InitializeActivityBar();
         InitializeWorkItems();
         HookAiActivity();
+        WireTerminalForegroundBusy();
         vm.Settings.Saved += ApplyVimEnabledToOpenEditorTabs;
         vm.Settings.Saved += ApplyEditorSettingsToOpenEditorTabs;
         vm.Appearance.AppearanceChanged += ApplyAppearanceToOpenTabs;

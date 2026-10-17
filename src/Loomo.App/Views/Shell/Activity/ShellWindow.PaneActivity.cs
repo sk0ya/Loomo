@@ -44,6 +44,12 @@ public partial class ShellWindow {
             _vm.AiBar.Workflow.IsRunning, _vm.AiBar.Workflow.RunStatus, IsAiPaneWatched());
         UpdatePaneActivityBadge(PaneKind.Ai);
     }
+    /// <summary>可視ターミナルへ cd やインストールを打ち込む経路（TerminalService）に、前面が埋まっているかを
+    /// 教える。Claude Code が居るタブへ cd を打てば、それが Claude への頼みごととして送信される。</summary>
+    private void WireTerminalForegroundBusy()
+        => _terminal.IsForegroundBusy = view =>
+            _terminalTabs.FirstOrDefault(t => ReferenceEquals(t.View, view)) is { } tab
+            && _paneActivity.IsTerminalBusy(tab.Id);
     private void HookTerminalActivity(TerminalTab tab) {
         tab.View.ShellCommandActivity += (_, e) => OnTerminalShellActivity(tab.Id, e);
         tab.View.HeaderTitleChanged += (_, title) => OnTerminalTitleChanged(tab.Id, title);

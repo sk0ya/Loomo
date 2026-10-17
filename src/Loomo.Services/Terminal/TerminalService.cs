@@ -29,6 +29,13 @@ public sealed class TerminalService : ITerminalService
     public event EventHandler<CommandResult>? CommandExecuted;
 
     public string CurrentDirectory => _cwd;
+
+    /// <summary>可視ターミナルの前面で何か動いているか（ホストが OSC133 と Claude Code の印から答える）。
+    /// 動いている間は、打ち込んだ行がシェルではなくその中のプログラム——Claude Code なら頼みごととして送信
+    /// される——に届くので、cd もインストールも打ち込まない（§24.1.1）。未設定なら常に空いている扱い。</summary>
+    public Func<TerminalTabView, bool>? IsForegroundBusy { get; set; }
+
+    private bool IsBusy(TerminalTabView view) => IsForegroundBusy?.Invoke(view) == true;
     public bool IsExecuting { get; private set; }
 
     /// <summary>可視ターミナルを結びつける（コマンド実行・フォーカス等の操作用）。</summary>
@@ -47,7 +54,8 @@ public sealed class TerminalService : ITerminalService
 
         // 可視ターミナルにも追従させる（人間が cd するのと同じ操作）。
         // 起動直後の同一ディレクトリ設定では余計な cd を打たない。
-        if (changed && _view is { } view)
+        // 前面で何か動いていれば打たない（作業場所の記録だけ更新する。AI の実行はこの _cwd で走る）。
+        if (changed && _view is { } view && !IsBusy(view))
             _ = view.Dispatcher.InvokeAsync(
                 () => view.RunCommandAsync($"cd \"{path}\"", CancellationToken.None));
     }
@@ -55,7 +63,7 @@ public sealed class TerminalService : ITerminalService
     public IDisposable? StartWatchedInVisibleTerminal(string command, Action<string> lineReceived,
         Action<int?> commandFinished)
     {
-        if (_view is not { } view) return null;
+        if (_view is not { } view || IsBusy(view)) return null;
         return view.Dispatcher.Invoke(() =>
         {
             // 購読してから打ち込む（打ち込んだ直後の出力を取りこぼさない）。RunCommandAsync で送ると、終わるまで
@@ -71,7 +79,7 @@ public sealed class TerminalService : ITerminalService
     /// 端末が未接続なら false。<see cref="RunCommandAsync"/>（裏の非対話プロセス）とは別経路。</summary>
     public bool TryRunInVisibleTerminal(string command)
     {
-        if (_view is not { } view) return false;
+        if (_view is not { } view || IsBusy(view)) return false;
         view.Dispatcher.InvokeAsync(() => view.RunCommandAsync(command, CancellationToken.None));
         return true;
     }
@@ -97,7 +105,8 @@ public sealed class TerminalService : ITerminalService
     /// <see cref="RunCommandAsync"/> の非表示プロセス経路を使う。</summary>
     public async Task<CommandResult> RunCommandInVisibleTerminalAsync(string command, CancellationToken ct)
     {
-        if (_view is not { } view)
+        // 未接続、または前面で何か動いている（打ち込めない）なら、非表示プロセスで実行する。
+        if (_view is not { } view || IsBusy(view))
             return await RunCommandAsync(command, ct);
 
         IsExecuting = true;

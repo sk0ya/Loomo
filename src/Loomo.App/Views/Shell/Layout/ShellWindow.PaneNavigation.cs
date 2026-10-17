@@ -102,6 +102,14 @@ public partial class ShellWindow {
     }
     private void OnSetInTerminalRequested(object? sender, TerminalSetRequest request) {
         SetPaneVisible(PaneKind.Terminal, true);
+        // 前に出ているタブで Claude Code が動いているなら、シェルではなく Claude のプロンプトが受け手。
+        // cd を打ち込めば Claude への頼みごとになってしまうので、フォルダーもファイルも @参照で渡す（§24.3.1）。
+        if (_activeTerminalTab is { } active && _paneActivity.AgentTabFor(active.Id) == active.Id) {
+            active.View.SendTerminalInput(
+                ClaudeCodeReference.Format(request.FullPath, active.View.WorkingDirectory, null, null));
+            FocusPane(PaneKind.Terminal);
+            return;
+        }
         if (request.IsDirectory) {
             _terminal.SetWorkingDirectory(request.FullPath);
         } else {

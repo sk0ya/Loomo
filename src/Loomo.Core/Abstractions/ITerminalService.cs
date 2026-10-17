@@ -13,7 +13,8 @@ public interface ITerminalService
         => RunCommandAsync(command, ct);
     /// <summary>作業ディレクトリを設定。</summary>
     void SetWorkingDirectory(string path);
-    /// <summary>コマンドを可視ターミナルへ送って実行する。未接続なら false。</summary>
+    /// <summary>コマンドを可視ターミナルへ送って実行する。未接続、または前面で別のプログラム
+    /// （実行中のコマンドや Claude Code）が動いていて打ち込めないなら false。</summary>
     bool TryRunInVisibleTerminal(string command);
     /// <summary>終わらないコマンド（watch）を可視ターミナルへ打ち込み、その出力を論理行ごとに追う。
     /// <paramref name="lineReceived"/> は確定した行ごと、<paramref name="commandFinished"/> はそのコマンドが終わったとき
