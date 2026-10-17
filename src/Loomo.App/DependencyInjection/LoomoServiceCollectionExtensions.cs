@@ -116,6 +116,8 @@ internal static class LoomoServiceCollectionExtensions
         services.AddSingleton<GitRootSwitchViewModel>();
         // 比較基準は Git パネルと Diff ペインで共有する一つの状態なので Singleton。
         services.AddSingleton<GitCompareBaseViewModel>();
+        // エディタのガターも同じ基準で比べる（§24.11.1）。
+        services.AddSingleton<EditorGutterBaseTracker>();
         services.AddSingleton<GitPanelViewModel>();
         services.AddSingleton<GitSessionQuery>();
         services.AddSingleton<GitSessionCommandHandler>();

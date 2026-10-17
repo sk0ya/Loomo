@@ -104,7 +104,7 @@ public partial class ShellWindow : Window {
     private Popup? _resizeHintPopup;
     private PaneSplitView? _editorViews;
     private PaneSplitView? _terminalViews;
-    public ShellWindow( ShellViewModel vm, TerminalService terminal, EditorService editor, BrowserService browser, IWorkspaceService workspace, TabIconService tabIcons, LoomoSettings settings, TaskbarWorkspaceRecentService taskbarWorkspaceRecent, EditorSupportRegistry editorSupports, EditorSupportResolver editorSupportResolver, CodeEditorSupport codeSupport, IEditorSupportViewFactory editorSupportViewFactory, sk0ya.Loomo.Services.Lsp.LspManagementService lspManagement, sk0ya.Loomo.Services.Lsp.LspWorkspaceService lspWorkspace, ILspServerAdmin lspServerAdmin, Editor.Core.Engine.VimEngineServices editorEngineServices, sk0ya.Loomo.Services.GitService git, KeybindingService keybindings, DiffSessionFactory diffSessions, sk0ya.Loomo.CSharp.Configuration.StyleCopDiagnosticService styleCopDiagnostics, sk0ya.Loomo.CSharp.Configuration.StyleCopCodeFixService styleCopCodeFix, sk0ya.Loomo.CSharp.Configuration.CSharpCompilerDiagnosticService compilerDiagnostics, sk0ya.Loomo.CSharp.Configuration.CSharpEditorConfigService csharpEditorConfig, sk0ya.Loomo.CSharp.Configuration.CSharpDiagnosticExplanationService diagnosticExplanations, IWorkspaceSearchService search, sk0ya.Loomo.Ai.Completion.FimCompletionClient fimCompletion, sk0ya.Loomo.Services.Terminal.PtyHostClient ptyHost, sk0ya.Loomo.CSharp.Projects.ISolutionModelService? solutionModel = null) {
+    public ShellWindow( ShellViewModel vm, TerminalService terminal, EditorService editor, BrowserService browser, IWorkspaceService workspace, TabIconService tabIcons, LoomoSettings settings, TaskbarWorkspaceRecentService taskbarWorkspaceRecent, EditorSupportRegistry editorSupports, EditorSupportResolver editorSupportResolver, CodeEditorSupport codeSupport, IEditorSupportViewFactory editorSupportViewFactory, sk0ya.Loomo.Services.Lsp.LspManagementService lspManagement, sk0ya.Loomo.Services.Lsp.LspWorkspaceService lspWorkspace, ILspServerAdmin lspServerAdmin, Editor.Core.Engine.VimEngineServices editorEngineServices, sk0ya.Loomo.Services.GitService git, KeybindingService keybindings, DiffSessionFactory diffSessions, sk0ya.Loomo.CSharp.Configuration.StyleCopDiagnosticService styleCopDiagnostics, sk0ya.Loomo.CSharp.Configuration.StyleCopCodeFixService styleCopCodeFix, sk0ya.Loomo.CSharp.Configuration.CSharpCompilerDiagnosticService compilerDiagnostics, sk0ya.Loomo.CSharp.Configuration.CSharpEditorConfigService csharpEditorConfig, sk0ya.Loomo.CSharp.Configuration.CSharpDiagnosticExplanationService diagnosticExplanations, IWorkspaceSearchService search, sk0ya.Loomo.Ai.Completion.FimCompletionClient fimCompletion, sk0ya.Loomo.Services.Terminal.PtyHostClient ptyHost, EditorGutterBaseTracker gutterBase, sk0ya.Loomo.CSharp.Projects.ISolutionModelService? solutionModel = null) {
         StartupProfiler.Mark("ShellWindow ctor 開始");
         InitializeComponent();
         StartupProfiler.Mark("InitializeComponent 完了");
@@ -207,6 +207,8 @@ public partial class ShellWindow : Window {
         _fimCompletion = fimCompletion;
         _ptyHost = ptyHost;
         _git = git;
+        _gutterBase = gutterBase;
+        _gutterBase.Changed += (_, _) => Dispatcher.BeginInvoke(RefreshRealizedEditorGutters);
         _keybindings = keybindings;
         _fileAiSelection = new FileAiSelectionContextBuilder(workspace);
         _keyboard = BuildKeyboardDispatcher();

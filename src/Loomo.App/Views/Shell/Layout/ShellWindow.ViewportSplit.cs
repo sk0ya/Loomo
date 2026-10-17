@@ -184,7 +184,8 @@ public partial class ShellWindow {
 
     private VimEditorControl BuildEditorControl(EditorTab tab) {
         var control = new VimEditorControl(new VimEditorControlOptions {
-            GitServiceFactory = () => new GitDiffProvider(),
+            // ガターの変更マークは共有の比較基準に合わせる（§24.11.1）。それ以外はエディタ既定の git 実装。
+            GitServiceFactory = () => new sk0ya.Loomo.Services.EditorGutterGitService(_git, () => _gutterBase.Current),
             // キャレットの先に薄く出す提案のうち、ローカル LLM（FIM）が作る方。
             // エディタ内蔵の予測（既出行からの補完）はこれが無くても動き、先に出る。
             InlineSuggestionProvider = RequestInlineSuggestionAsync,

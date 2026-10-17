@@ -237,6 +237,13 @@ public sealed class GitService
         GitCompareEndpoint from, GitCompareEndpoint to, bool fromMergeBase) =>
         _compare.ResolveRangeAsync(from, to, fromMergeBase, _compareProgress, CompareToken);
 
+    /// <summary>エディタのガター用：ディスク上のファイル1つを <paramref name="baseRef"/> と比べた unified diff
+    /// （二点記法＝未コミットの編集も含む。§24.11 と同じ）。<paramref name="repositoryFolder"/> で git を動かす——
+    /// 対象フォルダーの切替を待たずに、基準を解決したときのリポジトリで引くため。</summary>
+    public Task<GitCommandResult> GetFileDiffAgainstAsync(string repositoryFolder, string baseRef, string filePath) =>
+        _runner.RunInAsync(repositoryFolder, null, null, CancellationToken.None,
+            GitCompareArgs.LiteralPathspecs, "diff", "--no-ext-diff", "--no-color", baseRef, "--", filePath);
+
     /// <summary>ワークツリーの「ブランチ元」（覚えていたもの → reflog → 既定ブランチ）。</summary>
     public Task<GitBranchOrigin?> ResolveBranchOriginAsync(GitWorktreeInfo worktree) =>
         _compare.ResolveBranchOriginAsync(worktree);
