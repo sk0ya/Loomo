@@ -31,6 +31,11 @@ internal static class LoomoServiceCollectionExtensions
         services.AddSingleton<ISafetyPolicy, SafetyPolicy>();
 
         AddAliasedSingleton<WorkspaceService, IWorkspaceService>(services);
+        // 文書の本文検索の取り出し（§23.3.2）。本文を持たない PDF のページ（スキャン）は Windows の OCR で読む。
+        services.AddSingleton<sk0ya.Loomo.Services.Search.IPdfPageOcr, WindowsPdfPageOcr>();
+        services.AddSingleton(sp => new sk0ya.Loomo.Services.Search.DocumentTextCache(
+            sk0ya.Loomo.Services.Search.DocumentTextCache.DefaultDirectory,
+            sp.GetRequiredService<sk0ya.Loomo.Services.Search.IPdfPageOcr>()));
         AddAliasedSingleton<WorkspaceSearchService, IWorkspaceSearchService>(services);
         AddAliasedSingleton<TerminalService, ITerminalService>(services);
         services.AddSingleton<sk0ya.Loomo.Services.Terminal.PtyHostClient>();
