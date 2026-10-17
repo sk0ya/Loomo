@@ -95,6 +95,7 @@ public sealed partial class AppearanceViewModel : ObservableObject
     /// <summary>ターミナルのシェルを常駐ホストに持たせるか（§34）。外観ではないが、ターミナル設定の画面が
     /// この VM に載っているので同居させる。効くのは次に作るタブから（今のタブの持ち主は変えない）。</summary>
     [ObservableProperty] private bool _persistentTerminalSessions;
+    [ObservableProperty] private bool _claudeCodeIdeIntegration;
 
     /// <summary>アクセント上書きを反映中の再入を防ぐフラグ（コンボ選択 ⇄ AccentColor の往復ループ回避）。</summary>
     private bool _syncingAccent;
@@ -274,6 +275,7 @@ public sealed partial class AppearanceViewModel : ObservableObject
         _terminalFontSize = ap.TerminalFontSize > 0 ? ap.TerminalFontSize.ToString("0.#") : "";
         _terminalFontLigatures = ap.TerminalFontLigatures;
         _persistentTerminalSessions = _settings.PersistentTerminalSessions;
+        _claudeCodeIdeIntegration = _settings.ClaudeCodeIdeIntegration;
     }
 
     /// <summary>Key が保存値と一致する選択肢を返す。無ければ <paramref name="fallbackIndex"/> 番目（既定）。</summary>
@@ -428,6 +430,15 @@ public sealed partial class AppearanceViewModel : ObservableObject
         if (_settings.Appearance.TerminalFontLigatures == value) return;
         _settings.Appearance.TerminalFontLigatures = value;
         PersistAppearance(value ? "ターミナルの合字を有効にしました" : "ターミナルの合字を無効にしました");
+    }
+
+    partial void OnClaudeCodeIdeIntegrationChanged(bool value)
+    {
+        if (_settings.ClaudeCodeIdeIntegration == value) return;
+        _settings.ClaudeCodeIdeIntegration = value;
+        Persist(value
+            ? "Claude Code との IDE 連携を有効にしました（Loomo の再起動後に効きます）"
+            : "Claude Code との IDE 連携を無効にしました（Loomo の再起動後に効きます）");
     }
 
     partial void OnPersistentTerminalSessionsChanged(bool value)

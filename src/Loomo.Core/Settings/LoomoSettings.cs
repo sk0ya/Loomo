@@ -55,6 +55,11 @@ public sealed class LoomoSettings
     /// OFF にすると従来どおり Loomo の中で ConPTY を持ち、閉じればシェルも終わる（切替は新しいタブから効く）。</summary>
     public bool PersistentTerminalSessions { get; set; } = true;
 
+    /// <summary>Claude Code の IDE 連携（§38）。Loomo が VS Code 拡張と同じ口を開き、Loomo のターミナルで起動した
+    /// claude が自動で繋ぐ——エディタの選択・問題一覧の診断が Claude に届き、編集の提案を差分で受け入れられる。
+    /// 既定は ON。切り替えは Loomo の再起動後に効く（開いているターミナルの環境変数は変えられないため）。</summary>
+    public bool ClaudeCodeIdeIntegration { get; set; } = true;
+
     /// <summary>Git ペインの下段「コミット詳細」（選択コミットの <c>git show --stat</c>）を表示するか。
     /// 既定は表示。Git ペインのタイトル領域のトグルからここへ書き戻され、次回起動でも保たれる。</summary>
     public bool GitCommitDetailVisible { get; set; } = true;

@@ -152,6 +152,11 @@ public static class CommandCatalog
         // 既定キーは与えない（調べたいときにだけ引く）。パレットから。
         new CommandDescriptor("editor.inspectEncoding", CatEditor, "文字コードを調べる（BOM・改行・見えない文字・文字化け）", null),
 
+        // ===== Claude Code（§24.1.1・§38）=====
+        new CommandDescriptor("claude.resumeSession", CatTerminal, "Claude Code のセッションを再開…", null),
+        new CommandDescriptor("claude.installHooks", CatTerminal, "Claude Code のフックを設定（承認待ち・セッションを Loomo へ知らせる）", null),
+        new CommandDescriptor("claude.uninstallHooks", CatTerminal, "Claude Code のフックを外す", null),
+
         // ===== NuGet（§36）=====
         new CommandDescriptor("nuget.manage", CatPackages, "NuGet パッケージを管理…", null),
 

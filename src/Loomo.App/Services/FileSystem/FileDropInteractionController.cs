@@ -13,7 +13,7 @@ internal sealed class FileDropInteractionController
     private readonly object _gitPane;
     private readonly object _terminalPane;
     private readonly Func<string, Task> _openEditorFile;
-    private readonly Func<Action<string>?> _getTerminalInputSender;
+    private readonly Func<Action<IReadOnlyList<string>>?> _getTerminalInputSender;
     private readonly Action<string> _setSearchRoot;
     private readonly Func<string, Task> _showPathHistory;
     private readonly Action<FileCompareRequest> _compareFiles;
@@ -28,7 +28,7 @@ internal sealed class FileDropInteractionController
         object gitPane,
         object terminalPane,
         Func<string, Task> openEditorFile,
-        Func<Action<string>?> getTerminalInputSender,
+        Func<Action<IReadOnlyList<string>>?> getTerminalInputSender,
         Action<string> setSearchRoot,
         Func<string, Task> showPathHistory,
         Action<FileCompareRequest> compareFiles,
@@ -93,9 +93,9 @@ internal sealed class FileDropInteractionController
         var token = operation.Token;
         try
         {
-            var input = string.Join(" ", paths.Select(FileDragDrop.PowerShellQuote));
-            if (input.Length == 0 || token.IsCancellationRequested) return;
-            sendTerminalInput(input);
+            if (paths.Count == 0 || token.IsCancellationRequested) return;
+            // 書式（シェルなら引用、Claude Code なら @参照）は受け手のタブ次第なので送り手が決める。
+            sendTerminalInput(paths);
             _focusPane(PaneKind.Terminal);
         }
         finally { EndOperation(operation); }

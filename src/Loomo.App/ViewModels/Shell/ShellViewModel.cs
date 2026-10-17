@@ -57,6 +57,16 @@ public sealed partial class ShellViewModel : ObservableObject
     public AppearanceViewModel Appearance { get; }
     public LspSettingsViewModel Lsp { get; }
     public LspPromptViewModel LspPrompt { get; }
+    /// <summary>Claude Code が IDE 連携で出した編集の提案を受け入れる／却下するバー（§38）。</summary>
+    public ClaudeProposalViewModel ClaudeProposal { get; } = new();
+
+    /// <summary>前に出ているターミナルタブの Claude Code セッションのコンテキスト量（「⧉ 123k」、§38.4）。
+    /// Claude が居ないタブ・SessionStart フック未設定なら空。</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasClaudeContext))]
+    private string _claudeContext = "";
+    [ObservableProperty] private string _claudeContextToolTip = "";
+    public bool HasClaudeContext => ClaudeContext.Length > 0;
     public FormatterSettingsViewModel Formatter { get; }
     public StyleCopSettingsViewModel StyleCop { get; }
     /// <summary>Windows の既定のアプリとしての登録（設定オーバーレイの「既定のアプリ」）。</summary>

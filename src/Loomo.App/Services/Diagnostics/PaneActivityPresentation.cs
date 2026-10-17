@@ -1,6 +1,6 @@
 namespace sk0ya.Loomo.App.Services;
 
-internal enum PaneActivityKind { None, Running, Stopped, Approval, Succeeded, Failed, AgentWorking, AgentWaiting }
+internal enum PaneActivityKind { None, Running, Stopped, Approval, Succeeded, Failed, AgentWorking, AgentWaiting, AgentApproval }
 internal enum PaneActivityBadgeTone { Hidden, Accent, Failed, Succeeded }
 
 internal readonly record struct TerminalActivityTransition(
@@ -16,7 +16,7 @@ internal static class PaneActivityPresentation
         => activity switch
         {
             PaneActivityKind.Running or PaneActivityKind.Stopped or PaneActivityKind.Approval
-                or PaneActivityKind.AgentWorking or PaneActivityKind.AgentWaiting
+                or PaneActivityKind.AgentWorking or PaneActivityKind.AgentWaiting or PaneActivityKind.AgentApproval
                 => PaneActivityBadgeTone.Accent,
             PaneActivityKind.Failed => PaneActivityBadgeTone.Failed,
             PaneActivityKind.Succeeded => PaneActivityBadgeTone.Succeeded,
@@ -68,16 +68,18 @@ internal static class PaneActivityPresentation
         return unseenCompletion;
     }
 
-    /// <summary>タブを1つのバッジへ集約する。人間の番を待っている Claude Code ＞ 作業中の Claude Code ＞
+    /// <summary>タブを1つのバッジへ集約する。承認を待っている Claude Code ＞ 人間の番を待っている Claude Code ＞ 作業中の Claude Code ＞
     /// 実行中のコマンド ＞ 失敗 ＞ 成功。Claude Code が居るタブは OSC133 上は <c>claude</c> コマンドが
     /// ずっと実行中なので、そのタブの「実行中」は Claude 自身の状態で置き換える（開いているだけの
     /// セッションが「● 実行中」を出し続けるのは雑音でしかない）。</summary>
     public static PaneActivityKind AggregateTerminal(
-        IEnumerable<(bool Running, int? UnseenExitCode, ClaudeCodeStatus? Agent, bool AgentUnseenTurn)> sessions,
+        IEnumerable<(bool Running, int? UnseenExitCode, ClaudeCodeStatus? Agent, bool AgentUnseenTurn, bool AgentApproval)> sessions,
         out int exitCode)
     {
         exitCode = 0;
         var states = sessions.ToArray();
+        if (states.Any(state => state.AgentApproval))
+            return PaneActivityKind.AgentApproval;
         if (states.Any(state => state.AgentUnseenTurn))
             return PaneActivityKind.AgentWaiting;
         if (states.Any(state => state.Agent == ClaudeCodeStatus.Working))
@@ -139,6 +141,7 @@ internal static class PaneActivityPresentation
             PaneActivityKind.Approval => "● 承認待ち",
             PaneActivityKind.AgentWorking => "● Claude 作業中",
             PaneActivityKind.AgentWaiting => "✳ Claude 入力待ち",
+            PaneActivityKind.AgentApproval => "● Claude 承認待ち",
             PaneActivityKind.Failed when isTerminal => $"✗ 失敗 {exitCode}",
             PaneActivityKind.Failed => "✗ 失敗",
             PaneActivityKind.Succeeded => "✓ 完了",

@@ -986,6 +986,12 @@
                                 Tag="Terminal" Click="OnTabOverflowClick" />
                         <!-- Claude Code の使用量（5時間枠）。ターミナルで Claude Code を回しながら残りを周辺視野で見る。
                              詳細（週枠・リセット時刻）はツールチップ、クリックで今すぐ取り直す。未ログインなら出さない -->
+                        <!-- 前に出ているタブの Claude Code セッションのコンテキスト量（§38.4）。SessionStart フックで
+                             タブとセッションが結ばれたときだけ出る -->
+                        <TextBlock DockPanel.Dock="Right" VerticalAlignment="Center" Margin="0,0,8,0"
+                                   FontSize="{DynamicResource Fs11}" Foreground="{DynamicResource FgDim}"
+                                   Text="{Binding ClaudeContext}" ToolTip="{Binding ClaudeContextToolTip}"
+                                   Visibility="{Binding HasClaudeContext, Converter={StaticResource BoolToVis}}" />
                         <Button x:Name="ClaudeUsageButton" DockPanel.Dock="Right" DataContext="{Binding ClaudeUsage}"
                                 Style="{StaticResource CaptionButton}" Height="24" Padding="6,0" Margin="0,0,4,0"
                                 Visibility="{Binding IsVisible, Converter={StaticResource BoolToVis}, FallbackValue=Collapsed}"
@@ -1057,6 +1063,32 @@
                         </Grid>
                     </DockPanel>
                     <Border Style="{StaticResource PaneHeaderRule}" />
+                    <!-- Claude Code の編集の提案（IDE 連携の openDiff、§38）。差分は Diff で見て、ここで決める。
+                         ターミナルの Claude 側で答えても同じ提案は消える。 -->
+                    <Border DockPanel.Dock="Top" Background="{DynamicResource BgAlt}"
+                            BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1" Padding="10,6"
+                            Visibility="{Binding ClaudeProposal.IsVisible, Converter={StaticResource BoolToVis}}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" VerticalAlignment="Center" TextWrapping="Wrap"
+                                       Foreground="{DynamicResource Fg}" FontSize="{DynamicResource Fs12}"
+                                       Text="{Binding ClaudeProposal.Message}" />
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="8,0,0,0">
+                                <Button Content="受け入れる" Style="{StaticResource FlatButton}"
+                                        FontSize="{DynamicResource Fs11}" Padding="8,2" Margin="0,0,6,0"
+                                        Command="{Binding ClaudeProposal.AcceptCommand}" />
+                                <Button Content="却下" Style="{StaticResource SecondaryButton}"
+                                        FontSize="{DynamicResource Fs11}" Padding="8,2" Margin="0,0,6,0"
+                                        Command="{Binding ClaudeProposal.RejectCommand}" />
+                                <Button Content="差分を見る" Style="{StaticResource SecondaryButton}"
+                                        FontSize="{DynamicResource Fs11}" Padding="8,2"
+                                        Command="{Binding ClaudeProposal.ShowDiffCommand}" />
+                            </StackPanel>
+                        </Grid>
+                    </Border>
                     <Grid>
                         <Grid.RowDefinitions>
                             <RowDefinition Height="*" />

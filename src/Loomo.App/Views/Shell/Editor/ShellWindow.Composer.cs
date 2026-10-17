@@ -84,6 +84,24 @@ public partial class ShellWindow {
     {
         if (_composerEditor is not { } editor)
             return;
+        // 前に出ているタブで Claude Code が動いているなら、受け手はシェルではなく Claude（§38.5）。PowerShell の
+        // 1行コマンドに組み直さず、本文をそのまま頼みごととして送る。複数行は bracketed paste で包めば
+        // 1つの頼みごとのまま届く（行ごとに Enter が効いてばらばらに送信されない。Claude Code 2.1.302 で確認）。
+        if (_activeTerminalTab is { } claudeTab && _paneActivity.AgentTabFor(claudeTab.Id) == claudeTab.Id) {
+            if (string.IsNullOrWhiteSpace(editor.Text))
+                return;
+            var prompt = editor.Text.TrimEnd().Replace("\r\n", "\r").Replace('\n', '\r');
+            claudeTab.View.SendTerminalInput("\u001b[200~" + prompt + "\u001b[201~");
+            // 貼り付けを Claude が取り込み終えてから送信する（同じ書き込みに Enter を混ぜると貼り付けの一部になる）。
+            var submit = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
+            submit.Tick += (_, _) => {
+                submit.Stop();
+                claudeTab.View.SendTerminalInput("\r");
+            };
+            submit.Start();
+            SaveActiveWorkspaceSnapshot();
+            return;
+        }
         string? command;
         try {
             command = ComposerCommandBuilder.Build(editor.Text, ComposerCommandBuilder.DefaultScriptDirectory());

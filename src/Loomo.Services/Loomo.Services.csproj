@@ -117,6 +117,8 @@
     <!-- 1.0.44: 出力フラッシュのたびにスクロールバック全文をテキスト化していたのを、センチネル待ちのコマンドが
          あるときだけにした。Claude Code のように細かく出力し続ける TUI で、スクロールバック 1 万行時の
          UI スレッド占有が 43% → 2.5%（入力遅延 p99 161ms → 25ms） -->
+    <!-- 1.0.45: 整形前のウィンドウタイトル（TerminalTabView.WindowTitleChanged / WindowTitle）。タブ見出しは
+         / \ を含む部分を捨てるので、Claude Code の「◐ Fix src/foo.cs」が読めなかった（§38.6） -->
     <!-- 版は Directory.Build.props の TerminalPackageVersion（常駐ホストと共有するため一か所） -->
     <PackageReference Include="sk0ya.Terminal.Controls" Version="$(TerminalPackageVersion)" />
   </ItemGroup>

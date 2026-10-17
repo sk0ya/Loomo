@@ -327,6 +327,23 @@ The gap to Rider was entry points, not features. Things that are easy to break w
   `DeferredWriteQueue`; **NuGet** (`NuGetPackageService`) never edits project files itself — it shells out to
   `dotnet list|add|remove package` with `MSBUILDDISABLENODEREUSE=1` and reads output through `ChildProcessIo`.
 
+### Claude Code in the visible terminal — `docs/設計/38-ClaudeCode連携.md` (§38) is the authority
+
+The human runs Claude Code in Loomo's terminal; Loomo makes it a resident of the room, not something it drives.
+Things that are easy to break:
+- **Every terminal tab's environment is set in `ConfigureTerminalSession`** (persistent *and* local sessions):
+  `LOOMO_TERMINAL_TAB`, the IDE-integration pair `CLAUDE_CODE_SSE_PORT`/`ENABLE_IDE_INTEGRATION`, the hook pipe, and
+  `EDITOR`/`VISUAL` → `loomo-edit.cmd`. A tab started another way gets none of the integration.
+- **IDE integration** (`Loomo.Services/ClaudeCode/ClaudeIdeServer` + `ClaudeIdeTools`, host = `ShellWindow.ClaudeIde.cs`)
+  speaks Claude Code's private VS Code protocol (WebSocket + MCP, lock file in `~/.claude/ide/`). Tool names and result
+  strings (`FILE_SAVED`, `DIFF_REJECTED`, `TAB_CLOSED`) are Claude Code's, not ours — don't rename. The server thread
+  calls the host, so every answer goes through the Dispatcher; nothing is published while no client is connected.
+- **State comes from the raw window title** (`TerminalTabView.WindowTitleChanged`: `◐/◑` working, `✳` idle), not the
+  shaped header, plus the `Notification`/`SessionStart` hooks for approval and tab↔session. The hook script must stay a
+  no-op outside Loomo — it is installed into the user's global `~/.claude/settings.json`.
+- **Don't type into a terminal whose foreground is busy** (`TerminalService.IsForegroundBusy`): a `cd` typed into a tab
+  running Claude Code is submitted to Claude as a prompt.
+
 ### Persistence
 
 **Editor operations stay off the UI thread** (`docs/設計/31-IDE体感品質ロードマップ.md` §31.15 is the authority).

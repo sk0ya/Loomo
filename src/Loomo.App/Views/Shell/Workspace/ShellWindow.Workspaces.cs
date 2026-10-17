@@ -256,6 +256,9 @@ public partial class ShellWindow {
         => SaveActiveWorkspaceSnapshot(immediate: true);
     private void OnClosed(object? sender, EventArgs e) {
         _localHistory.Dispose();   // 積んである版を書き切る（§36）
+        DisposeClaudeIde();        // lock ファイルを消す（残すと claude が死んだポートへ繋ぎに来る）
+        DisposeClaudeHooks();
+        DisposeEditWait();
         CancelFileDropOperations();
         CancelFileAiPreparation();
         DisposeCSharpDiagnosticsWiring();

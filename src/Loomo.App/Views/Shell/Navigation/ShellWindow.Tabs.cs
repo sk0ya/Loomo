@@ -55,6 +55,7 @@ public partial class ShellWindow {
         profile?.Lap("terminal.tabVm");
         RecordTrailTerminalTab(tab);
         SaveActiveWorkspaceSnapshot();
+        RefreshClaudeContext();
         profile?.Lap("terminal.bookkeeping");
     }
     private void SetActiveTerminalTab(TerminalTab tab) {
@@ -65,6 +66,7 @@ public partial class ShellWindow {
             _terminal.SetWorkingDirectory(tab.View.WorkingDirectory);
         _vm.Tabs.ActivateTerminalTab(tab.Id);
         RecordTrailTerminalTab(tab);
+        RefreshClaudeContext();
     }
     private async Task CloseTerminalTabAsync(Guid id) {
         var index = _terminalTabs.FindIndex(t => t.Id == id);
@@ -169,6 +171,7 @@ public partial class ShellWindow {
         if (tab.PeekFilePath is { Length: > 0 } closedPath) {
             _editorSupport.History.Remove(closedPath);
             UpdateEditorSupportNavAffordances();
+            ReleaseEditWaiters(closedPath);   // EDITOR として開いたファイルなら呼び出し元へ返す（§38.5）
         }
         _editorTabs.RemoveAt(index);
         _vm.Tabs.RemoveEditorTab(id);

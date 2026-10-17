@@ -476,15 +476,24 @@ public sealed partial class ProblemsViewModel : ObservableObject
     /// <summary>全発生源を合わせ、フィルターを通して重複を除いた問題。<paramref name="applyScope"/> が false なら
     /// 範囲（現在のファイル）だけは見ない（同じコードの問題を全ファイルから集めるとき用）。</summary>
     private List<ProblemItemViewModel> CollectVisible(bool applyScope)
-    {
-        return _buildItems.Concat(_taskItems.Values.SelectMany(x => x))
+        // 発生源フィルターを重複排除より先に適用する。同じ診断が Build/LSP の双方にあるとき、
+        // Build を隠しただけで代表に選ばれた Build 項目と一緒に LSP 項目まで消してはならない。
+        => Deduplicate(AllSources().Where(i => IsVisible(i, applyScope)));
+
+    /// <summary>表示の絞り込み（重大度・発生源・範囲）を通さない全件。人間の見え方の好みとは関係なく
+    /// 問題を知りたい相手（Claude Code の <c>getDiagnostics</c>、§38）向け。</summary>
+    public IReadOnlyList<ProblemItemViewModel> AllProblems() => Deduplicate(AllSources());
+
+    private IEnumerable<ProblemItemViewModel> AllSources()
+        => _buildItems.Concat(_taskItems.Values.SelectMany(x => x))
             .Concat(_editorItems.Values.SelectMany(x => x.Items))
             .Concat(_compilerItems.Values.SelectMany(x => x))
             .Concat(_lspItems.Values.SelectMany(x => x))
-            .Concat(_styleCopItems.Values.SelectMany(x => x))
-            // 発生源フィルターを重複排除より先に適用する。同じ診断が Build/LSP の双方にあるとき、
-            // Build を隠しただけで代表に選ばれた Build 項目と一緒に LSP 項目まで消してはならない。
-            .Where(i => IsVisible(i, applyScope))
+            .Concat(_styleCopItems.Values.SelectMany(x => x));
+
+    private static List<ProblemItemViewModel> Deduplicate(IEnumerable<ProblemItemViewModel> items)
+    {
+        return items
             // severity／message は除外する。Analyzer の設定やローカライズが一時的に異なっても、
             // 同じ ID・位置の診断を二重表示せず、SourcePriorityの正本を残す。
             // Build出力は終端rangeを持たず開始位置だけなので、終端位置はキーに含めない。

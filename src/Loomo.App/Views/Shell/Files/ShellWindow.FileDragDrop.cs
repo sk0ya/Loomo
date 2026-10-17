@@ -15,11 +15,16 @@ public partial class ShellWindow
         EnsurePaneVisibleOrSwapTopLeft,
         FocusPane);
 
-    private Action<string>? GetTerminalFileDropSender()
+    /// <summary>ターミナルへ落としたファイルの入れ方。シェルには引用付きのパス、Claude Code が動いているタブには
+    /// <c>@参照</c>（§24.3.1）——シェルの引用は Claude には意味が無く、@ なら Claude がファイルとして読む。</summary>
+    private Action<IReadOnlyList<string>>? GetTerminalFileDropSender()
     {
-        if (_activeTerminalTab?.View is not { } view)
+        if (_activeTerminalTab is not { } tab)
             return null;
-        return input => { view.SendTerminalInput(input); };
+        var toClaude = _paneActivity.AgentTabFor(tab.Id) == tab.Id;
+        return paths => tab.View.SendTerminalInput(toClaude
+            ? string.Concat(paths.Select(path => ClaudeCodeReference.Format(path, tab.View.WorkingDirectory, null, null)))
+            : string.Join(" ", paths.Select(FileDragDrop.PowerShellQuote)));
     }
 
     private void CancelFileDropOperations() => _fileDropController?.CancelOperations();

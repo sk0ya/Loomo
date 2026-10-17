@@ -834,6 +834,14 @@
                                 <TextBlock Style="{StaticResource FieldHint}"
                                            Text="切り替えは次に開くタブから効きます。" />
 
+                                <CheckBox Margin="0,12,0,0"
+                                          IsChecked="{Binding Appearance.ClaudeCodeIdeIntegration}"
+                                          ToolTip="Loomo のターミナルで起動した claude が自動で Loomo に繋ぎます。エディタの選択と問題一覧の診断が Claude に届き、編集の提案を差分で受け入れ／却下できます（VS Code 拡張と同じ仕組み）。">
+                                    <TextBlock Text="Claude Code と IDE 連携する（選択・診断・編集の提案）" TextWrapping="Wrap" />
+                                </CheckBox>
+                                <TextBlock Style="{StaticResource FieldHint}"
+                                           Text="切り替えは Loomo の再起動後に効きます。" />
+
                                 <TextBlock Text="{Binding Appearance.Status}" Foreground="{DynamicResource FgDim}"
                                            Margin="0,14,0,0" TextWrapping="Wrap" FontSize="{DynamicResource Fs11}" />
                             </StackPanel>

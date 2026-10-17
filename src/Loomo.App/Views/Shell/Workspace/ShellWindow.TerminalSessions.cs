@@ -7,14 +7,19 @@ namespace sk0ya.Loomo.App.Views;
 public partial class ShellWindow {
     private bool PersistentTerminalsEnabled => _settings.PersistentTerminalSessions && _ptyHost.IsAvailable;
 
-    /// <summary>タブのシェルを常駐ホストで起こす（あれば繋ぎ直す）ようにする。ワークスペースを開く前の
+    /// <summary>タブのシェルの起こし方を決める。常駐させるなら常駐ホストで起こし（あれば繋ぎ直す）、どちらでも
+    /// Loomo の環境変数（タブ ID・Claude Code の IDE 連携とフックの宛先、§38）を足す。ワークスペースを開く前の
     /// 仮のタブは持ち主がおらず、次回どこにも戻らないので常駐させない。</summary>
-    private void ConfigurePersistentTerminal(TerminalTabView view, Guid tabId, Guid? workspaceId) {
-        if (workspaceId is not { } owner || !PersistentTerminalsEnabled)
-            return;
-        view.SessionFactory = request => {
+    private void ConfigureTerminalSession(TerminalTabView view, Guid tabId, Guid? workspaceId) {
+        var owner = workspaceId is { } id && PersistentTerminalsEnabled ? id : (Guid?)null;
+        var environment = TerminalEnvironmentFor(tabId);
+        view.SessionFactory = original => {
+            var request = WithEnvironment(original, environment);
+            if (owner is null)
+                return new ConPtySession(request.Columns, request.Rows, request.LaunchCommandLine,
+                    request.WorkingDirectory, request.EnvironmentVariables);
             try {
-                var session = _ptyHost.OpenSession(tabId, owner, request);
+                var session = _ptyHost.OpenSession(tabId, owner.Value, request);
                 _localTerminalTabs.TryRemove(tabId, out _);
                 return session;
             } catch (Exception ex) {

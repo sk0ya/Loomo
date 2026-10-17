@@ -10,6 +10,9 @@ internal sealed class PaneActivityTracker
         public ClaudeCodeStatus? Agent;
         public bool AgentUnseenTurn;
         public long AgentStamp;
+        public bool AgentApproval;
+        public string? SessionId;
+        public string? TranscriptPath;
     }
 
     private sealed class IdeState
@@ -68,6 +71,7 @@ internal sealed class PaneActivityTracker
             // claude が終わればシェルのプロンプトに戻る。タイトルが戻るのを待たずに捨てる。
             state.Agent = null;
             state.AgentUnseenTurn = false;
+            state.AgentApproval = false;
         }
         return true;
     }
@@ -83,9 +87,9 @@ internal sealed class PaneActivityTracker
                 return default;
             _terminals[tabId] = state = new TerminalState();
         }
-        // Terminal のタブ見出しはパスらしい部分（/ や \ を含む）を捨ててプロファイル名に戻すので、
-        // 「◐ Fix src/foo.cs」は読めない見出しとして届く。claude がまだ実行中（OSC133 の C を見て D を
-        // 見ていない）なら終了ではないので、今の状態を保つ。終了は D で捨てる（TerminalCommandChanged）。
+        // claude がまだ実行中（OSC133 の C を見て D を見ていない）なのに印の無いタイトルが来たら、終了ではない
+        // （claude の中で動いた別のプログラムがタイトルを書いた等）ので今の状態を保つ。終了は D で捨てる
+        // （TerminalCommandChanged）。
         if (status is null && state.Running)
             return default;
         var next = PaneActivityPresentation.ClaudeTitleChanged(
@@ -94,8 +98,41 @@ internal sealed class PaneActivityTracker
         state.AgentUnseenTurn = next.AgentUnseenTurn;
         if (next.Agent is not null)
             state.AgentStamp = ++_agentClock;
+        // 承認したら作業が再開する（印が回り出す）。終了したら当然いらない。
+        if (next.Agent is not ClaudeCodeStatus.Idle && state.AgentApproval)
+        {
+            state.AgentApproval = false;
+            return next with { ShouldRefresh = true };
+        }
         return next;
     }
+
+    /// <summary>Claude Code のフックが「承認を待っている」と知らせてきた（§24.1.1）。見ているなら残さない。
+    /// 状態が変わったら true。</summary>
+    public bool TerminalAgentNeedsApproval(Guid tabId, bool paneWatched)
+    {
+        if (paneWatched)
+            return false;
+        if (!_terminals.TryGetValue(tabId, out var state))
+            _terminals[tabId] = state = new TerminalState();
+        if (state.AgentApproval)
+            return false;
+        state.AgentApproval = true;
+        state.Agent ??= ClaudeCodeStatus.Idle;
+        return true;
+    }
+
+    /// <summary>そのタブで動いている Claude Code のセッション（SessionStart フックで分かる）。</summary>
+    public void TerminalAgentSessionStarted(Guid tabId, string sessionId, string? transcriptPath)
+    {
+        if (!_terminals.TryGetValue(tabId, out var state))
+            _terminals[tabId] = state = new TerminalState();
+        state.SessionId = sessionId;
+        state.TranscriptPath = transcriptPath;
+    }
+
+    public (string SessionId, string? TranscriptPath)? AgentSessionOf(Guid tabId)
+        => _terminals.TryGetValue(tabId, out var state) && state.SessionId is { } id ? (id, state.TranscriptPath) : null;
 
     public bool ForgetTerminal(Guid tabId) => _terminals.Remove(tabId);
 
@@ -128,6 +165,7 @@ internal sealed class PaneActivityTracker
             {
                 state.UnseenExitCode = null;
                 state.AgentUnseenTurn = false;
+                state.AgentApproval = false;
             }
             return true;
         }
@@ -145,7 +183,7 @@ internal sealed class PaneActivityTracker
     public PaneActivityKind AggregateTerminal(out int exitCode)
         => PaneActivityPresentation.AggregateTerminal(
             _terminals.Values.Select(state =>
-                (state.Running, state.UnseenExitCode, state.Agent, state.AgentUnseenTurn)), out exitCode);
+                (state.Running, state.UnseenExitCode, state.Agent, state.AgentUnseenTurn, state.AgentApproval)), out exitCode);
 
     public PaneActivityKind AggregateIde(
         PaneKind kind, bool taskRunning, bool sessionBusy, bool sessionStopped)

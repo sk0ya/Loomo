@@ -52,7 +52,9 @@ public partial class ShellWindow {
             && _paneActivity.IsTerminalBusy(tab.Id);
     private void HookTerminalActivity(TerminalTab tab) {
         tab.View.ShellCommandActivity += (_, e) => OnTerminalShellActivity(tab.Id, e);
-        tab.View.HeaderTitleChanged += (_, title) => OnTerminalTitleChanged(tab.Id, title);
+        // 見出し（HeaderTitleChanged）ではなく生のタイトル：見出しは / \ を含む部分を捨てるので
+        // 「◐ Fix src/foo.cs」が読めなくなる（§38.6）。
+        tab.View.WindowTitleChanged += (_, title) => OnTerminalTitleChanged(tab.Id, title);
     }
     /// <summary>タイトルの印から Claude Code の作業中／入力待ちを拾う（§24.1.1）。ターンが終わったとき
     /// Loomo が裏に回っていれば、タスクバーを点滅させて呼び戻す（前面に出たら止まる）。</summary>
@@ -66,6 +68,8 @@ public partial class ShellWindow {
         // 外部変更の読み直しは Git の変化（Git ペインが出ている間だけ）頼みなので、ターンの終わりにも読み直す。
         // 未保存の編集があるタブは読み直さない（ReloadExistingTabIfChangedAsync の約束）。
         _ = RefreshOpenEditorTabsFromDiskAsync();
+        if (_activeTerminalTab?.Id == tabId)
+            RefreshClaudeContext();
         if (!IsActive)
             FlashTaskbarUntilForeground();
     }

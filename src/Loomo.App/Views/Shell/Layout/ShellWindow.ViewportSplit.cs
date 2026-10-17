@@ -110,7 +110,7 @@ public partial class ShellWindow {
         var view = new TerminalTabView("pwsh.exe", startDirectory) {
             AutoFocusOnStart = focusOnStart, };
         var id = requestedId ?? Guid.NewGuid();
-        ConfigurePersistentTerminal(view, id, CurrentTerminalWorkspace.WorkspaceId);
+        ConfigureTerminalSession(view, id, CurrentTerminalWorkspace.WorkspaceId);
         // 端末のシェルは Loaded を合図に ConPTY を Task.Run で起こす。そこがプールの行列に嵌まると
         // 窓は出ているのにプロンプトだけ数秒遅れるので、待ち行列の深さごと起動プロファイルに残す
         // （§31.16／ChildProcessIo）。Loaded はペインの再ペアレントのたびに飛ぶので、記録するのは
@@ -323,6 +323,7 @@ public partial class ShellWindow {
         WireEditorForDebug(control);
         WireEditorForTestGlyphs(control);
         WireEditorForLocationHistory(control);
+        WireEditorForClaudeIde(control);
         return control;
     }
     private void OnEditorWorkspaceEditRequested(object? sender, WorkspaceEditRequestedEventArgs e) {

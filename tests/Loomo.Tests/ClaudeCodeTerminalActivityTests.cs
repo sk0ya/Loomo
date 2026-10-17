@@ -83,12 +83,12 @@ public sealed class ClaudeCodeTerminalActivityTests
     }
 
     [Fact]
-    public void claudeが実行中なら読めない見出しでは状態を捨てず終了で捨てる()
+    public void claudeが実行中なら印の無いタイトルでは状態を捨てず終了で捨てる()
     {
         var sut = new PaneActivityTracker();
         sut.TerminalCommandChanged(Tab, commandExecuted: true, commandDone: false, null, paneWatched: false);
         sut.TerminalTitleChanged(Tab, "◐ Fix tests", false);
-        sut.TerminalTitleChanged(Tab, "pwsh", false); // 「◐ Fix src/foo.cs」はパス扱いでプロファイル名に化ける
+        sut.TerminalTitleChanged(Tab, "vim", false); // claude の中で動いた別のプログラムがタイトルを書いた
         Assert.Equal(PaneActivityKind.AgentWorking, sut.AggregateTerminal(out _));
 
         sut.TerminalCommandChanged(Tab, commandExecuted: false, commandDone: true, 0, paneWatched: true);
