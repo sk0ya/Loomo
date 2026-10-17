@@ -1,4 +1,4 @@
-using sk0ya.Loomo.App.ViewModels;
+﻿using sk0ya.Loomo.App.ViewModels;
 
 namespace sk0ya.Loomo.App.Services;
 
@@ -6,6 +6,7 @@ internal readonly record struct ShellPropertyEffects(
     bool ApplySidebarVisibility = false,
     bool ApplySettingsWindowState = false,
     bool ActivateSettingsWindow = false,
+    bool ApplyKeybindingsWindowState = false,
     SidebarPanel? RecordPanelTrail = null,
     ActivityBarSlot? FocusSidebarSlot = null);
 
@@ -25,6 +26,7 @@ internal static class ShellPropertyTransitionPolicy
                 RecordPanelTrail: viewModel.IsSecondarySidebarVisible ? viewModel.SecondaryPanel : null,
                 FocusSidebarSlot: viewModel.IsSecondarySidebarVisible ? ActivityBarSlot.Secondary : null),
             nameof(ShellViewModel.IsSettingsOverlayOpen) => new(ApplySettingsWindowState: true),
+            nameof(ShellViewModel.IsKeybindingsWindowOpen) => new(ApplyKeybindingsWindowState: true),
             nameof(ShellViewModel.SettingsCategory) when viewModel.IsSettingsOverlayOpen =>
                 new(ActivateSettingsWindow: true),
             nameof(ShellViewModel.ActivePanel) when !viewModel.IsPanelChangeAutomatic => new(

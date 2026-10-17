@@ -1,8 +1,26 @@
-﻿namespace sk0ya.Loomo.CSharp.Editor;
+﻿using static sk0ya.Loomo.CSharp.Editor.CSharpEditorCommandGroup;
+
+namespace sk0ya.Loomo.CSharp.Editor;
 
 /// <summary>C#編集固有の操作を、UI実装から独立した安定したCommand IDとして定義する。
 /// 既定ジェスチャも同じカタログに置き、App側のキーバインド一覧へそのまま投影する。</summary>
-public sealed record CSharpEditorCommand(string Id, string Title, string? DefaultBinding = null);
+public sealed record CSharpEditorCommand(
+    string Id, string Title, CSharpEditorCommandGroup Group, string? DefaultBinding = null);
+
+/// <summary>C#編集操作の分類。キーボード設定・パレットで「エディタ」の中をさらに分けて見せるための語彙。</summary>
+public enum CSharpEditorCommandGroup
+{
+    /// <summary>定義・実装・参照への移動。</summary>
+    Navigation,
+    /// <summary>整形・Quick Fix・using 整理・コードスタイル適用。</summary>
+    Formatting,
+    /// <summary>名前変更・抽出・インライン化などの構造を変える書き換え。</summary>
+    Refactor,
+    /// <summary>メンバー・型の生成。</summary>
+    Generate,
+    /// <summary>構文木を単位にした移動・削除（§35.2）。</summary>
+    Structure,
+}
 
 /// <summary>
 /// C#の右クリック、コマンドパレット、キーバインドが共有する操作一覧。
@@ -61,55 +79,55 @@ public static class CSharpEditorCommandCatalog
 
     public static IReadOnlyList<CSharpEditorCommand> All { get; } =
     [
-        new(Rename, "名前を変更", "Shift+F6"),
-        new(ChangeSignature, "シグネチャを変更", "Ctrl+F6"),
-        new(GoToDefinition, "定義へ移動", "F12"),
-        new(PeekDefinition, "定義をPeek表示", "Ctrl+Shift+I"),
-        new(GoToImplementation, "実装へ移動", "Ctrl+Alt+B"),
-        new(GoToTypeDefinition, "型定義へ移動", "Ctrl+Shift+B"),
-        new(GoToDeclaration, "宣言へ移動", "Ctrl+B"),
-        new(FindReferences, "参照を検索", "Alt+F7"),
-        new(Format, "ドキュメントを整形", "Ctrl+Alt+L"),
-        new(QuickFix, "Quick Fixを表示", "Alt+Enter"),
-        new(OrganizeUsings, "usingディレクティブを整理", "Ctrl+Alt+O"),
-        new(Cleanup, "コードスタイルを一括適用"),
-        new(CleanupReformat, "整形とレイアウトだけ適用（usingは触らない）"),
-        new(CleanupChangedLines, "変更行だけコードスタイルを適用（Git）"),
-        new(ExtractMethod, "選択範囲からメソッドを抽出", "Ctrl+Alt+M"),
-        new(ExtractInterface, "クラスからinterfaceを抽出"),
-        new(ExtractClass, "メンバーをクラスへ抽出"),
-        new(PullUp, "メンバーを基底クラスへ移動"),
-        new(PushDown, "メンバーを派生クラスへ移動"),
-        new(IntroduceParameter, "パラメーターを導入"),
-        new(IntroduceVariable, "選択式をローカル変数に導入"),
-        new(IntroduceProperty, "選択式をプロパティに導入"),
-        new(ExtractConstant, "選択リテラルを定数に抽出"),
-        new(InlineVariable, "ローカル変数をインライン化"),
-        new(InlineMethod, "メソッドをインライン化"),
-        new(SafeDelete, "安全に削除"),
-        new(EncapsulateField, "フィールドをカプセル化"),
-        new(ExtractField, "選択式をフィールドに抽出"),
-        new(MoveTypeToFile, "型を別ファイルへ移動"),
-        new(GenerateConstructor, "コンストラクターを生成"),
-        new(GenerateField, "コンストラクターパラメーターからフィールドを生成"),
-        new(GenerateProperties, "プロパティを生成"),
-        new(GenerateEquality, "Equals／GetHashCodeを生成"),
-        new(GenerateToString, "ToStringを生成"),
-        new(GenerateDeconstruct, "Deconstructを生成"),
-        new(GenerateMethodFromUsage, "使用箇所からメソッドを生成"),
-        new(ImplementInterface, "インターフェースを実装"),
-        new(GenerateOverride, "overrideメンバーを生成"),
-        new(GenerateDelegatingMembers, "委譲メンバーを生成"),
-        new(GenerateDisposePattern, "Disposeパターンを生成"),
-        new(GenerateAsyncDisposePattern, "非同期Disposeパターンを生成"),
-        new(GenerateNullGuards, "引数のnull guardを生成"),
-        new(GenerateJsonTypes, "JSONからC#型を生成"),
+        new(Rename, "名前を変更", Refactor, "Shift+F6"),
+        new(ChangeSignature, "シグネチャを変更", Refactor, "Ctrl+F6"),
+        new(GoToDefinition, "定義へ移動", Navigation, "F12"),
+        new(PeekDefinition, "定義をPeek表示", Navigation, "Ctrl+Shift+I"),
+        new(GoToImplementation, "実装へ移動", Navigation, "Ctrl+Alt+B"),
+        new(GoToTypeDefinition, "型定義へ移動", Navigation, "Ctrl+Shift+B"),
+        new(GoToDeclaration, "宣言へ移動", Navigation, "Ctrl+B"),
+        new(FindReferences, "参照を検索", Navigation, "Alt+F7"),
+        new(Format, "ドキュメントを整形", Formatting, "Ctrl+Alt+L"),
+        new(QuickFix, "Quick Fixを表示", Formatting, "Alt+Enter"),
+        new(OrganizeUsings, "usingディレクティブを整理", Formatting, "Ctrl+Alt+O"),
+        new(Cleanup, "コードスタイルを一括適用", Formatting),
+        new(CleanupReformat, "整形とレイアウトだけ適用（usingは触らない）", Formatting),
+        new(CleanupChangedLines, "変更行だけコードスタイルを適用（Git）", Formatting),
+        new(ExtractMethod, "選択範囲からメソッドを抽出", Refactor, "Ctrl+Alt+M"),
+        new(ExtractInterface, "クラスからinterfaceを抽出", Refactor),
+        new(ExtractClass, "メンバーをクラスへ抽出", Refactor),
+        new(PullUp, "メンバーを基底クラスへ移動", Refactor),
+        new(PushDown, "メンバーを派生クラスへ移動", Refactor),
+        new(IntroduceParameter, "パラメーターを導入", Refactor),
+        new(IntroduceVariable, "選択式をローカル変数に導入", Refactor),
+        new(IntroduceProperty, "選択式をプロパティに導入", Refactor),
+        new(ExtractConstant, "選択リテラルを定数に抽出", Refactor),
+        new(InlineVariable, "ローカル変数をインライン化", Refactor),
+        new(InlineMethod, "メソッドをインライン化", Refactor),
+        new(SafeDelete, "安全に削除", Refactor),
+        new(EncapsulateField, "フィールドをカプセル化", Refactor),
+        new(ExtractField, "選択式をフィールドに抽出", Refactor),
+        new(MoveTypeToFile, "型を別ファイルへ移動", Refactor),
+        new(GenerateConstructor, "コンストラクターを生成", Generate),
+        new(GenerateField, "コンストラクターパラメーターからフィールドを生成", Generate),
+        new(GenerateProperties, "プロパティを生成", Generate),
+        new(GenerateEquality, "Equals／GetHashCodeを生成", Generate),
+        new(GenerateToString, "ToStringを生成", Generate),
+        new(GenerateDeconstruct, "Deconstructを生成", Generate),
+        new(GenerateMethodFromUsage, "使用箇所からメソッドを生成", Generate),
+        new(ImplementInterface, "インターフェースを実装", Generate),
+        new(GenerateOverride, "overrideメンバーを生成", Generate),
+        new(GenerateDelegatingMembers, "委譲メンバーを生成", Generate),
+        new(GenerateDisposePattern, "Disposeパターンを生成", Generate),
+        new(GenerateAsyncDisposePattern, "非同期Disposeパターンを生成", Generate),
+        new(GenerateNullGuards, "引数のnull guardを生成", Generate),
+        new(GenerateJsonTypes, "JSONからC#型を生成", Generate),
         // 構文木を単位にした編集（§35.2）。キーは Rider の Move Statement／Move Element に合わせる。
-        new(MoveStatementUp, "文・メンバーを上へ移動", "Ctrl+Shift+Up"),
-        new(MoveStatementDown, "文・メンバーを下へ移動", "Ctrl+Shift+Down"),
-        new(MoveElementLeft, "引数・要素を左へ移動", "Ctrl+Alt+Shift+Left"),
-        new(MoveElementRight, "引数・要素を右へ移動", "Ctrl+Alt+Shift+Right"),
-        new(DeleteSyntaxNode, "構文要素を区切りごと削除"),
+        new(MoveStatementUp, "文・メンバーを上へ移動", Structure, "Ctrl+Shift+Up"),
+        new(MoveStatementDown, "文・メンバーを下へ移動", Structure, "Ctrl+Shift+Down"),
+        new(MoveElementLeft, "引数・要素を左へ移動", Structure, "Ctrl+Alt+Shift+Left"),
+        new(MoveElementRight, "引数・要素を右へ移動", Structure, "Ctrl+Alt+Shift+Right"),
+        new(DeleteSyntaxNode, "構文要素を区切りごと削除", Structure),
     ];
 
     public static bool Contains(string id)

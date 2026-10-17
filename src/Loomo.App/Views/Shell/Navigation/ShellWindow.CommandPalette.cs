@@ -386,7 +386,7 @@ public partial class ShellWindow {
             list.Add(new("サイドバー", "ソリューション（C#）", () => _vm.ShowSolutionCommand.Execute(null), Sc("sidebar.solution"), "sidebar.solution"));
         list.Add(new("サイドバー", "設定", () => _vm.ShowSettingsCommand.Execute(null), Sc("sidebar.settings"), "sidebar.settings"));
         list.Add(new("サイドバー", "外観（テーマ）", () => _vm.ShowAppearanceCommand.Execute(null), Sc("sidebar.appearance"), "sidebar.appearance"));
-        list.Add(new("サイドバー", "キーボード設定", () => _vm.ShowKeyboardSettingsCommand.Execute(null)));
+        list.Add(new("サイドバー", "キーボードショートカット", () => _vm.ShowKeyboardSettingsCommand.Execute(null)));
         list.Add(new("サイドバー", "エクスプローラで現在のファイルを選択（同期）", RevealActiveFileInFolderTree, Sc("explorer.revealActiveFile"), "explorer.revealActiveFile"));
         list.Add(new("AI", "AIセッション一覧を開閉", () => _vm.Sessions.ToggleOpenCommand.Execute(null), Sc("sidebar.sessions"), "sidebar.sessions"));
         foreach (var workspace in _vm.Workspaces.Workspaces.Where(w => !w.IsActive)) {

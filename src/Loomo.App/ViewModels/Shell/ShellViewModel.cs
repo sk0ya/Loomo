@@ -34,8 +34,7 @@ public enum SettingsCategory
     Lsp,
     Formatter,
     StyleCop,
-    DefaultApps,
-    Keyboard
+    DefaultApps
 }
 
 /// <summary>ルートウィンドウの ViewModel。各ペインの VM を束ねる。</summary>
@@ -139,30 +138,30 @@ public sealed partial class ShellViewModel : ObservableObject
     /// <summary>サイドバーの列そのものを出すか。2つの区画のどちらかが見えていれば出す。</summary>
     public bool IsSidebarColumnVisible => IsSidebarVisible || IsSecondarySidebarVisible;
 
-    /// <summary>設定オーバーレイをキーボードカテゴリで開いているか（⌨ アイコンの強調用）。</summary>
-    public bool IsKeyboardSettingsSelected =>
-        IsSettingsOverlayOpen && SettingsCategory == SettingsCategory.Keyboard;
+    /// <summary>キーボードショートカットのウィンドウを開いているか（⌨ アイコンの強調用）。</summary>
+    public bool IsKeyboardSettingsSelected => IsKeybindingsWindowOpen;
 
-    /// <summary>設定オーバーレイを開いているか（⚙ アイコンの強調用）。キーボードは専用アイコンが
-    /// あるので、そのカテゴリのときは歯車を強調しない——強調は常に1つだけにする。</summary>
-    public bool IsSettingsSelected =>
-        IsSettingsOverlayOpen && SettingsCategory != SettingsCategory.Keyboard;
+    /// <summary>設定ウィンドウを開いているか（⚙ アイコンの強調用）。</summary>
+    public bool IsSettingsSelected => IsSettingsOverlayOpen;
 
     /// <summary>いま起きている <see cref="ActivePanel"/> の変更が自動退避（人間の操作ではない）か。
     /// 軌跡は「人間のナビゲーション」だけを記録する面（§27）なので、ホストはこれを見て記録と
     /// フォーカス移動を飛ばす。</summary>
     public bool IsPanelChangeAutomatic { get; private set; }
 
-    /// <summary>中央オーバーレイの設定画面を開いているか。</summary>
+    /// <summary>設定ウィンドウを開いているか。</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsSettingsSelected))]
-    [NotifyPropertyChangedFor(nameof(IsKeyboardSettingsSelected))]
     private bool _isSettingsOverlayOpen;
 
-    /// <summary>設定オーバーレイで選択中のカテゴリ（左ナビ）。</summary>
+    /// <summary>キーボードショートカットのウィンドウを開いているか。設定とは別の独立した画面で、
+    /// 設定ウィンドウと同時に開いていてもよい。</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsSettingsSelected))]
     [NotifyPropertyChangedFor(nameof(IsKeyboardSettingsSelected))]
+    private bool _isKeybindingsWindowOpen;
+
+    /// <summary>設定ウィンドウで選択中のカテゴリ（左ナビ）。</summary>
+    [ObservableProperty]
     private SettingsCategory _settingsCategory = SettingsCategory.Ai;
 
     public ShellViewModel(
@@ -323,9 +322,9 @@ public sealed partial class ShellViewModel : ObservableObject
     [RelayCommand]
     private void ShowTerminalSettings() => OpenSettingsOverlay(SettingsCategory.Terminal);
 
-    /// <summary>設定オーバーレイをキーボードカテゴリで開く。</summary>
+    /// <summary>キーボードショートカットのウィンドウを開く（開いていれば閉じる＝トグル）。</summary>
     [RelayCommand]
-    private void ShowKeyboardSettings() => OpenSettingsOverlay(SettingsCategory.Keyboard);
+    private void ShowKeyboardSettings() => IsKeybindingsWindowOpen = !IsKeybindingsWindowOpen;
 
     /// <summary>設定オーバーレイを指定カテゴリで開く。既に同じカテゴリで開いていればトグルで閉じる。</summary>
     private void OpenSettingsOverlay(SettingsCategory category)

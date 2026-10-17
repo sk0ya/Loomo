@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Linq;
 using sk0ya.Loomo.Ai;
@@ -185,5 +185,80 @@ public class KeybindingsViewModelTests : IDisposable
     {
         Row("pane.zoom").ApplyCapture(KeySequence.TryParse("Ctrl+W Z"));
         Assert.False(Row("pane.zoom").IsCustom);
+    }
+
+    // ===== 大分類（左ナビ） =====
+
+    private KeybindingAreaViewModel Area(string name) => _sut.Areas.Single(a => a.Name == name);
+
+    [Fact]
+    public void Starts_with_all_area_selected()
+    {
+        Assert.Null(_sut.SelectedArea.Area);
+        Assert.Equal(_sut.TotalCount, _sut.MatchCount);
+    }
+
+    [Fact]
+    public void Selecting_area_shows_only_its_commands()
+    {
+        _sut.SelectedArea = Area("エディタ");
+        var ids = VisibleIds();
+
+        Assert.Contains("editor.save", ids);
+        Assert.Contains("editor.csharp.rename", ids);
+        Assert.Contains("nav.back", ids);
+        Assert.DoesNotContain("pane.zoom", ids);
+        Assert.DoesNotContain("terminal.recentCommands", ids);
+    }
+
+    /// <summary>エディタの中は小分類で区切られ、C# 操作が「エディタ」1 塊に埋もれない。</summary>
+    [Fact]
+    public void Editor_commands_are_split_into_subcategories()
+    {
+        Assert.Equal("編集", Row("editor.save").Category);
+        Assert.Equal("定義・参照", Row("editor.csharp.goToDefinition").Category);
+        Assert.Equal("リファクタリング", Row("editor.csharp.extractMethod").Category);
+        Assert.Equal("コード生成", Row("editor.csharp.generateConstructor").Category);
+        Assert.Equal("構造編集", Row("editor.csharp.structure.moveUp").Category);
+        Assert.Equal("整形・コードスタイル", Row("editor.csharp.format").Category);
+        Assert.Equal("Claude Code", Row("claude.resumeSession").Category);
+        Assert.Equal("ターミナル", Row("claude.resumeSession").Area);
+    }
+
+    /// <summary>同じ大分類の行は、小分類ごとに連続して並ぶ（見出しが分裂しない）。</summary>
+    [Fact]
+    public void Rows_are_contiguous_by_area_and_category()
+    {
+        var keys = _sut.Rows.Select(r => r.AreaAndCategory).ToList();
+        var seen = new System.Collections.Generic.HashSet<string>();
+        for (var i = 0; i < keys.Count; i++)
+        {
+            if (i > 0 && keys[i] == keys[i - 1]) continue;
+            Assert.True(seen.Add(keys[i]), $"{keys[i]} が離れた 2 か所に出ている");
+        }
+    }
+
+    /// <summary>左ナビの件数は検索を反映する＝ヒットがどの分類にあるかが見える。</summary>
+    [Fact]
+    public void Area_counts_follow_query()
+    {
+        _sut.Query = "ズーム";
+        Assert.Equal(1, Area("画面・ペイン").Count);
+        Assert.Equal(0, Area("エディタ").Count);
+        Assert.Equal(1, _sut.Areas[0].Count);
+    }
+
+    [Fact]
+    public void Reveal_conflict_returns_to_all_areas()
+    {
+        _service.Rebind("editor.save", KeySequence.TryParse("Ctrl+W L"));
+        _sut.SelectedArea = Area("エディタ");
+
+        Row("editor.save").RevealConflictCommand.Execute(null);
+
+        Assert.Null(_sut.SelectedArea.Area);
+        var ids = VisibleIds();
+        Assert.Contains("editor.save", ids);
+        Assert.Contains("pane.focus.right", ids);
     }
 }

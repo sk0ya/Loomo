@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
@@ -24,30 +24,55 @@ public enum KeybindingScope
     Problem,
 }
 
-/// <summary>設定オーバーレイ「キーボード」カテゴリの ViewModel。
+/// <summary>キーボードショートカット画面（設定とは別の独立ウィンドウ）の ViewModel。
 /// <see cref="KeybindingService"/> の現在状態を行の一覧として公開し、再割り当て・リセットを仲介する。
 /// バインドが変わると（<see cref="KeybindingService.Changed"/>）一覧を組み直し、実効ジェスチャと
-/// 競合表示を更新する。XAML 側は <see cref="RowsView"/> をカテゴリでグループ化して表示する。
-/// コマンドは 40 件超あるので、素の一覧では目的の 1 行に辿り着けない——<see cref="Query"/>（名前・Id・
-/// キー表記の AND 検索）と <see cref="Scope"/>（変更済み／未割当／要対処）で絞り込めるようにしてある。</summary>
+/// 競合表示を更新する。コマンドは 100 件近くあるので、素の一覧では目的の 1 行に辿り着けない——
+/// まず大分類（<see cref="SelectedArea"/>：エディタ・ターミナル…）で分け、その中を小分類で区切って見せる。
+/// さらに <see cref="Query"/>（名前・Id・キー表記の AND 検索）と <see cref="Scope"/>（変更済み／未割当／要対処）
+/// で絞り込める。大分類ごとの件数は絞り込み後の数なので、検索のヒットがどの分類にあるかが左ナビで見える。</summary>
 public sealed partial class KeybindingsViewModel : ObservableObject
 {
     private readonly KeybindingService _service;
 
     public ObservableCollection<KeybindingRowViewModel> Rows { get; } = new();
 
-    /// <summary>カテゴリでグループ化し、<see cref="Query"/>／<see cref="Scope"/> で絞り込んだ表示用ビュー。</summary>
+    /// <summary>小分類でグループ化し、大分類・<see cref="Query"/>／<see cref="Scope"/> で絞り込んだ表示用ビュー。</summary>
     public ICollectionView RowsView { get; }
+
+    /// <summary>左ナビの大分類。先頭は「すべて」。</summary>
+    public IReadOnlyList<KeybindingAreaViewModel> Areas { get; }
 
     public KeybindingsViewModel(KeybindingService service)
     {
         _service = service;
+        Areas = new[] { new KeybindingAreaViewModel(null) }
+            .Concat(CommandCatalog.Areas.Select(area => new KeybindingAreaViewModel(area)))
+            .ToArray();
+        _selectedArea = Areas[0];
         RowsView = CollectionViewSource.GetDefaultView(Rows);
-        RowsView.GroupDescriptions.Add(
-            new PropertyGroupDescription(nameof(KeybindingRowViewModel.Category)));
         RowsView.Filter = item => item is KeybindingRowViewModel row && Matches(row);
+        ApplyGrouping();
         _service.Changed += Reload;
         Reload();
+    }
+
+    /// <summary>左ナビで選んでいる大分類（「すべて」は <see cref="KeybindingAreaViewModel.Area"/> が null）。</summary>
+    [ObservableProperty] private KeybindingAreaViewModel _selectedArea;
+
+    partial void OnSelectedAreaChanged(KeybindingAreaViewModel value)
+    {
+        ApplyGrouping();
+        RefreshView();
+    }
+
+    /// <summary>「すべて」では大分類をまたいで並ぶので見出しに大分類も添え、分類を選んでいるときは小分類だけにする。</summary>
+    private void ApplyGrouping()
+    {
+        RowsView.GroupDescriptions.Clear();
+        RowsView.GroupDescriptions.Add(new PropertyGroupDescription(SelectedArea.Area is null
+            ? nameof(KeybindingRowViewModel.AreaAndCategory)
+            : nameof(KeybindingRowViewModel.Category)));
     }
 
     /// <summary>絞り込み文字列。カテゴリ・表示名・コマンド Id・現在のキー表記に対する空白区切りの
@@ -110,6 +135,8 @@ public sealed partial class KeybindingsViewModel : ObservableObject
     /// 同時に見える状態にして直せるようにする。</summary>
     internal void RevealGesture(string gestureText)
     {
+        // 当事者は別の大分類にいることが多い（例: ペイン操作とエディタ）ので「すべて」へ戻す。
+        SelectedArea = Areas[0];
         Scope = KeybindingScope.All;
         Query = gestureText;
     }
@@ -117,7 +144,8 @@ public sealed partial class KeybindingsViewModel : ObservableObject
     private void Reload()
     {
         Rows.Clear();
-        foreach (var row in _service.Rows())
+        // 大分類 → 小分類の表示順で並べる（同じ小分類の中はカタログ順のまま＝OrderBy は安定）。
+        foreach (var row in _service.Rows().OrderBy(r => DisplayOrder(r.Descriptor)))
             Rows.Add(new KeybindingRowViewModel(this, _service, row));
         MarkShadowedRows();
 
@@ -147,8 +175,20 @@ public sealed partial class KeybindingsViewModel : ObservableObject
                 row.MarkShadowed();
     }
 
+    /// <summary>大分類と小分類の並び（<see cref="CommandCatalog.Areas"/> の順）を 1 つの整数にする。</summary>
+    private static int DisplayOrder(CommandDescriptor descriptor)
+    {
+        var area = descriptor.Area;
+        var areaIndex = CommandCatalog.Areas.ToList().IndexOf(area);
+        if (areaIndex < 0) areaIndex = CommandCatalog.Areas.Count;
+        var categoryIndex = area.Categories.ToList().IndexOf(descriptor.Category);
+        return areaIndex * 1000 + Math.Max(categoryIndex, 0);
+    }
+
     private void RefreshView()
     {
+        foreach (var area in Areas)
+            area.Count = Rows.Count(row => MatchesFilters(row) && area.Contains(row));
         RowsView.Refresh();
         OnPropertyChanged(nameof(MatchCount));
         OnPropertyChanged(nameof(CountText));
@@ -157,6 +197,10 @@ public sealed partial class KeybindingsViewModel : ObservableObject
 
     /// <summary>その行を現在の絞り込み条件で表示すべきか。</summary>
     private bool Matches(KeybindingRowViewModel row)
+        => SelectedArea.Contains(row) && MatchesFilters(row);
+
+    /// <summary>大分類を除いた絞り込み条件（観点チップと検索）に合うか。左ナビの件数はこちらで数える。</summary>
+    private bool MatchesFilters(KeybindingRowViewModel row)
     {
         if (!ScopeMatches(row)) return false;
         if (Query.Length == 0) return true;
@@ -184,6 +228,22 @@ public sealed partial class KeybindingsViewModel : ObservableObject
     }
 }
 
+/// <summary>左ナビの大分類 1 項目。件数は絞り込み（観点チップ・検索）を通した数。</summary>
+public sealed partial class KeybindingAreaViewModel : ObservableObject
+{
+    public KeybindingAreaViewModel(CommandArea? area) => Area = area;
+
+    /// <summary>大分類（null は「すべて」）。</summary>
+    public CommandArea? Area { get; }
+
+    public string Name => Area?.Name ?? "すべて";
+    public string Icon => Area?.Icon ?? "⌨";
+
+    [ObservableProperty] private int _count;
+
+    internal bool Contains(KeybindingRowViewModel row) => Area is null || row.Area == Area.Name;
+}
+
 /// <summary>キーボード設定の 1 行（1 コマンド）。表示と、再割り当て／リセット／未割当化の操作を持つ。</summary>
 public sealed partial class KeybindingRowViewModel : ObservableObject
 {
@@ -196,7 +256,7 @@ public sealed partial class KeybindingRowViewModel : ObservableObject
         _owner = owner;
         _service = service;
         _row = row;
-        SearchText = $"{Category} {Title} {Id} {GestureText}";
+        SearchText = $"{Area} {Category} {Title} {Id} {GestureText}";
     }
 
     /// <summary>絞り込み照合用に連結した検索対象（カテゴリ・表示名・Id・現在のキー表記）。</summary>
@@ -207,6 +267,12 @@ public sealed partial class KeybindingRowViewModel : ObservableObject
 
     public string Id => _row.Descriptor.Id;
     public string Category => _row.Descriptor.Category;
+
+    /// <summary>大分類の名前。</summary>
+    public string Area => _row.Descriptor.Area.Name;
+
+    /// <summary>「すべて」表示での見出し（大分類 › 小分類）。</summary>
+    public string AreaAndCategory => $"{Area} › {Category}";
     public string Title => _row.Descriptor.Title;
 
     /// <summary>実効ジェスチャの表示（未割当なら「未割当」）。</summary>

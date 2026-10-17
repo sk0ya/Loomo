@@ -7,7 +7,7 @@ using sk0ya.Loomo.App.Views;
 
 namespace sk0ya.Loomo.App.Services;
 
-/// <summary>Shell のサイドバーと独立設定ウィンドウの表示状態を同期する。</summary>
+/// <summary>Shell のサイドバーと独立ウィンドウ（設定・キーボードショートカット）の表示状態を同期する。</summary>
 internal sealed class ShellWindowStateController
 {
     private const double SplitterThickness = 6;
@@ -28,6 +28,7 @@ internal sealed class ShellWindowStateController
     /// 出たままの再入で書き戻すと、人がスプリッターで広げた今の幅を古い記録で潰してしまう。</summary>
     private bool _sidebarColumnShown;
     private SettingsWindow? _settingsWindow;
+    private SettingsWindow? _keybindingsWindow;
 
     public ShellWindowStateController(
         Window owner,
@@ -76,35 +77,56 @@ internal sealed class ShellWindowStateController
             ApplySettingsWindowState(_viewModel.IsSettingsOverlayOpen);
         if (effects.ActivateSettingsWindow)
             _settingsWindow?.Activate();
+        if (effects.ApplyKeybindingsWindowState)
+            ApplyKeybindingsWindowState(_viewModel.IsKeybindingsWindowOpen);
     }
 
     private void ApplySettingsWindowState(bool open)
+        => ApplyToolWindowState(open, ref _settingsWindow,
+            () => new SettingsWindow(new SettingsView(), "設定") { DataContext = _viewModel },
+            () => _viewModel.IsSettingsOverlayOpen = false);
+
+    private void ApplyKeybindingsWindowState(bool open)
+        => ApplyToolWindowState(open, ref _keybindingsWindow,
+            () => new SettingsWindow(new KeybindingsView(), "キーボードショートカット")
+            {
+                DataContext = _viewModel.Keyboard,
+                Width = 880,
+                Height = 680,
+            },
+            () => _viewModel.IsKeybindingsWindowOpen = false);
+
+    /// <summary>独立ウィンドウを開く／閉じる。フォーカスの戻り先は、最初の 1 枚を開く前に覚え、
+    /// 最後の 1 枚が閉じたときに戻す（両方開いていて片方を閉じただけなら、残った方に居させる）。</summary>
+    private void ApplyToolWindowState(bool open, ref SettingsWindow? window,
+        Func<SettingsWindow> create, Action markClosed)
     {
         if (!open)
         {
-            _settingsWindow?.Close();
+            window?.Close();
             return;
         }
 
-        if (_settingsWindow is null)
+        if (window is null)
         {
-            _captureFocusReturnOrigin();
-            _settingsWindow = new SettingsWindow
+            if (_settingsWindow is null && _keybindingsWindow is null)
+                _captureFocusReturnOrigin();
+            var created = create();
+            created.Owner = _owner;
+            created.WindowStartupLocation = WindowStartupLocation.CenterOwner;
+            created.Closed += (_, _) =>
             {
-                Owner = _owner,
-                DataContext = _viewModel,
-                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                if (ReferenceEquals(_settingsWindow, created)) _settingsWindow = null;
+                if (ReferenceEquals(_keybindingsWindow, created)) _keybindingsWindow = null;
+                markClosed();
+                if (_settingsWindow is null && _keybindingsWindow is null)
+                    _restoreFocusReturnOrigin();
             };
-            _settingsWindow.Closed += (_, _) =>
-            {
-                _settingsWindow = null;
-                _viewModel.IsSettingsOverlayOpen = false;
-                _restoreFocusReturnOrigin();
-            };
-            _settingsWindow.Show();
+            window = created;
+            created.Show();
         }
 
-        _settingsWindow.Activate();
+        window.Activate();
     }
 
     private void ApplySidebarVisibility(bool visible)
@@ -148,5 +170,6 @@ internal sealed class ShellWindowStateController
         _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
         _owner.Closed -= OnOwnerClosed;
         _settingsWindow = null;
+        _keybindingsWindow = null;
     }
 }

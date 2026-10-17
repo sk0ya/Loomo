@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -98,7 +98,8 @@ public class KeybindingModelTests
         var command = CommandCatalog.Find("editor.save");
 
         Assert.NotNull(command);
-        Assert.Equal("エディタ", command.Category);
+        Assert.Equal("エディタ", command.Area.Name);
+        Assert.Equal("編集", command.Category);
         Assert.Equal("現在のファイルを保存", command.Title);
         Assert.Equal(KeySequence.TryParse("Ctrl+S"), KeySequence.TryParse(command.DefaultBinding));
     }
@@ -239,5 +240,14 @@ public class KeybindingModelTests
             Assert.Empty(settings.Keybindings.Overrides); // 旧設定は上書き無し＝既定割り当て
         }
         finally { File.Delete(path); }
+    }
+
+    /// <summary>どのコマンドの小分類も、ちょうど 1 つの大分類に載っている（「その他」へ落ちない）。</summary>
+    [Fact]
+    public void Every_command_category_belongs_to_exactly_one_area()
+    {
+        foreach (var d in CommandCatalog.All)
+            Assert.True(CommandCatalog.Areas.Count(a => a.Categories.Contains(d.Category)) == 1,
+                $"{d.Id} の小分類「{d.Category}」が大分類にちょうど 1 回載っていない");
     }
 }

@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 using sk0ya.Loomo.CSharp.Editor;
 
@@ -11,7 +12,7 @@ namespace sk0ya.Loomo.App.Input;
 /// キーディスパッチが共有する＝VS Code 流の command + keybinding 統合モデル）。
 /// </summary>
 /// <param name="Id">安定した識別子（例: <c>pane.focus.left</c>）。設定ファイルの上書きキーにもなる。</param>
-/// <param name="Category">設定画面・パレットでのグルーピング名（日本語）。</param>
+/// <param name="Category">小分類（日本語）。どの大分類に属するかは <see cref="CommandCatalog.Areas"/> が決める。</param>
 /// <param name="Title">表示名。</param>
 /// <param name="DefaultBinding">既定ジェスチャ（<see cref="KeySequence"/> 表記）。null は既定未割当。</param>
 /// <param name="EntersMode">実行時に入るモーダル状態名（現状 <see cref="CommandCatalog.ResizeMode"/> のみ）。</param>
@@ -20,7 +21,18 @@ public sealed record CommandDescriptor(
     string Category,
     string Title,
     string? DefaultBinding,
-    string? EntersMode = null);
+    string? EntersMode = null)
+{
+    /// <summary>大分類（エディタ・ターミナルなど）。キーボード設定の左ナビの単位。</summary>
+    public CommandArea Area => CommandCatalog.AreaOf(Category);
+}
+
+/// <summary>コマンドの大分類。キーボード設定は「どこで使うキーか」で探すので、まずここで分け、
+/// 中を <see cref="Categories"/>（小分類）で区切る。並び順がそのまま表示順になる。</summary>
+/// <param name="Name">表示名。</param>
+/// <param name="Icon">左ナビの頭に付ける記号。</param>
+/// <param name="Categories">この大分類に属する小分類（表示順）。</param>
+public sealed record CommandArea(string Name, string Icon, IReadOnlyList<string> Categories);
 
 /// <summary>
 /// アプリの全コマンドのメタデータ一覧（唯一の真実）。新しいショートカットは、ここに 1 行追加し、
@@ -31,21 +43,61 @@ public static class CommandCatalog
     /// <summary>リサイズモード（連打で伸縮を続け、Esc/Enter で抜ける）の状態名。</summary>
     public const string ResizeMode = "resize";
 
+    // ===== 小分類 =====
     private const string CatPane = "ペイン操作";
-    private const string CatPalette = "パレット";
-    private const string CatComposer = "コンポーザ";
-    private const string CatSidebar = "サイドバー";
+    private const string CatMode = "表示モード";
     private const string CatTab = "タブ";
-    private const string CatStage = "セッション";
-    private const string CatProblems = "問題";
-    private const string CatEditor = "エディタ";
+    private const string CatSidebar = "サイドバー";
+    private const string CatPalette = "パレット";
     private const string CatSearch = "検索";
-    private const string CatTerminal = "ターミナル";
-    private const string CatTrail = "軌跡";
-    private const string CatTask = "タスク";
-    private const string CatNavigate = "ナビゲーション";
+    private const string CatEdit = "編集";
+    private const string CatNavigate = "移動";
+    private const string CatCodeNavigate = "定義・参照";
+    private const string CatProblems = "問題";
+    private const string CatTest = "テスト";
+    private const string CatFormat = "整形・コードスタイル";
+    private const string CatRefactor = "リファクタリング";
+    private const string CatGenerate = "コード生成";
+    private const string CatStructure = "構造編集";
     private const string CatHistory = "ローカル履歴";
     private const string CatPackages = "NuGet";
+    private const string CatTerminal = "ターミナル";
+    private const string CatClaude = "Claude Code";
+    private const string CatTask = "タスク";
+    private const string CatComposer = "コンポーザ";
+    private const string CatTrail = "軌跡";
+
+    /// <summary>大分類と、それぞれに属する小分類（表示順）。どのコマンドの小分類も、ちょうど 1 つの
+    /// 大分類に属する（テストで保証）。新しい小分類を足したら、ここにも載せる。</summary>
+    public static IReadOnlyList<CommandArea> Areas { get; } = new CommandArea[]
+    {
+        new("画面・ペイン", "▦", new[] { CatPane, CatMode, CatTab, CatSidebar }),
+        new("パレット・検索", "🔍", new[] { CatPalette, CatSearch }),
+        new("エディタ", "📝", new[]
+        {
+            CatEdit, CatNavigate, CatCodeNavigate, CatProblems, CatTest,
+            CatFormat, CatRefactor, CatGenerate, CatStructure, CatHistory, CatPackages,
+        }),
+        new("ターミナル", "🖥", new[] { CatTerminal, CatClaude, CatTask, CatComposer }),
+        new("軌跡", "🧭", new[] { CatTrail }),
+    };
+
+    /// <summary>載っていない小分類の受け皿（カタログの書き漏れでも一覧から消えないように）。</summary>
+    private static readonly CommandArea OtherArea = new("その他", "…", Array.Empty<string>());
+
+    /// <summary>小分類が属する大分類。</summary>
+    public static CommandArea AreaOf(string category)
+        => Areas.FirstOrDefault(area => area.Categories.Contains(category)) ?? OtherArea;
+
+    /// <summary>C# 編集操作の分類を小分類へ写す。</summary>
+    private static string CategoryOf(CSharpEditorCommandGroup group) => group switch
+    {
+        CSharpEditorCommandGroup.Navigation => CatCodeNavigate,
+        CSharpEditorCommandGroup.Formatting => CatFormat,
+        CSharpEditorCommandGroup.Generate => CatGenerate,
+        CSharpEditorCommandGroup.Structure => CatStructure,
+        _ => CatRefactor,
+    };
 
     public static IReadOnlyList<CommandDescriptor> All { get; } = new CommandDescriptor[]
     {
@@ -150,12 +202,12 @@ public static class CommandCatalog
 
         // ===== 文字コード（§23.3.4）=====
         // 既定キーは与えない（調べたいときにだけ引く）。パレットから。
-        new CommandDescriptor("editor.inspectEncoding", CatEditor, "文字コードを調べる（BOM・改行・見えない文字・文字化け）", null),
+        new CommandDescriptor("editor.inspectEncoding", CatEdit, "文字コードを調べる（BOM・改行・見えない文字・文字化け）", null),
 
         // ===== Claude Code（§24.1.1・§38）=====
-        new CommandDescriptor("claude.resumeSession", CatTerminal, "Claude Code のセッションを再開…", null),
-        new CommandDescriptor("claude.installHooks", CatTerminal, "Claude Code のフックを設定（承認待ち・セッションを Loomo へ知らせる）", null),
-        new CommandDescriptor("claude.uninstallHooks", CatTerminal, "Claude Code のフックを外す", null),
+        new CommandDescriptor("claude.resumeSession", CatClaude, "Claude Code のセッションを再開…", null),
+        new CommandDescriptor("claude.installHooks", CatClaude, "Claude Code のフックを設定（承認待ち・セッションを Loomo へ知らせる）", null),
+        new CommandDescriptor("claude.uninstallHooks", CatClaude, "Claude Code のフックを外す", null),
 
         // ===== NuGet（§36）=====
         new CommandDescriptor("nuget.manage", CatPackages, "NuGet パッケージを管理…", null),
@@ -163,17 +215,17 @@ public static class CommandCatalog
         // ===== エディタ（意味的な選択・§24.9） =====
         // 既定キーは VS Code 準拠。Ctrl+W 系は<b>使わない</b>——Loomo ではペイン操作の vim 風
         // プレフィックスで、部屋そのものの動線（JetBrains の Ctrl+W に引きずられない）。
-        new CommandDescriptor("editor.save", CatEditor, "現在のファイルを保存", "Ctrl+S"),
-        new CommandDescriptor("editor.selection.expand", CatEditor, "選択を意味的に広げる", "Shift+Alt+Right"),
-        new CommandDescriptor("editor.selection.shrink", CatEditor, "選択を1段戻す", "Shift+Alt+Left"),
+        new CommandDescriptor("editor.save", CatEdit, "現在のファイルを保存", "Ctrl+S"),
+        new CommandDescriptor("editor.selection.expand", CatEdit, "選択を意味的に広げる", "Shift+Alt+Right"),
+        new CommandDescriptor("editor.selection.shrink", CatEdit, "選択を1段戻す", "Shift+Alt+Left"),
         // ガターの ▶ はマウス専用なので、キーボードからの実行経路をコマンドとして持たせる（§28.10）。
         // 既定キーは与えない——テストを書く人だけが使う操作で、既定の1打鍵を占有する理由が無い。
-        new CommandDescriptor("editor.test.runAtCaret", CatEditor, "カーソル行のテストを実行", null),
-        new CommandDescriptor("editor.test.debugAtCaret", CatEditor, "カーソル行のテストをデバッグ", null),
+        new CommandDescriptor("editor.test.runAtCaret", CatTest, "カーソル行のテストを実行", null),
+        new CommandDescriptor("editor.test.debugAtCaret", CatTest, "カーソル行のテストをデバッグ", null),
 
-        // ===== セッション（ソロ／レイアウト） =====
-        new CommandDescriptor("stage.cycle", CatStage, "次へ切り替え（ソロ＝舞台／レイアウト＝保存レイアウト）", "Ctrl+T"),
-        new CommandDescriptor("mode.toggle", CatStage, "表示モードを切り替え（集中→分割→ドック）", "Ctrl+Shift+T"),
+        // ===== 表示モード（ソロ／レイアウト） =====
+        new CommandDescriptor("stage.cycle", CatMode, "次へ切り替え（ソロ＝舞台／レイアウト＝保存レイアウト）", "Ctrl+T"),
+        new CommandDescriptor("mode.toggle", CatMode, "表示モードを切り替え（集中→分割→ドック）", "Ctrl+Shift+T"),
 
         // ===== コンポーザ =====
         new CommandDescriptor("composer.run", CatComposer, "本文をターミナルで実行", "Ctrl+Enter"),
@@ -195,7 +247,7 @@ public static class CommandCatalog
         new CommandDescriptor("tab.newBrowser", CatTab, "新しいブラウザタブ", null),
     }
     .Concat(CSharpEditorCommandCatalog.All.Select(command =>
-        new CommandDescriptor(command.Id, CatEditor, command.Title, command.DefaultBinding)))
+        new CommandDescriptor(command.Id, CategoryOf(command.Group), command.Title, command.DefaultBinding)))
     .ToArray();
 
     private static readonly Dictionary<string, CommandDescriptor> ById =

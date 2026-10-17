@@ -1,4 +1,4 @@
-using System.Runtime.InteropServices;
+﻿using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
@@ -7,14 +7,18 @@ using sk0ya.Loomo.App.Services.Infrastructure;
 
 namespace sk0ya.Loomo.App.Views;
 
-/// <summary>設定の独立ウィンドウ。中身は <see cref="SettingsView"/>（DataContext は本体と同じ ShellViewModel）。
+/// <summary>設定系の独立ウィンドウの枠（自前キャプション＋Esc で閉じる）。中身は差し込みで、
+/// 設定（<see cref="SettingsView"/>）とキーボードショートカット（<see cref="KeybindingsView"/>）がそれぞれ
+/// 別のインスタンスとして開く——ショートカットは設定の 1 カテゴリではなく独立した画面。
 /// 中央オーバーレイをやめてウィンドウにしたので、移動・リサイズは OS のウィンドウ操作で行える。
 /// 本体を Owner にするため常に手前に出て、本体終了時に一緒に閉じる。位置・サイズは永続化しない。</summary>
 public partial class SettingsWindow : Window
 {
-    public SettingsWindow()
+    public SettingsWindow(FrameworkElement content, string title)
     {
         InitializeComponent();
+        Body.Content = content;
+        Title = $"{title} — Loomo";
         StateChanged += (_, _) => UpdateMaxRestoreGlyph();
     }
 
