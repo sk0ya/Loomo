@@ -2,6 +2,7 @@ using System.Text.RegularExpressions;
 using System.Windows.Input;
 using sk0ya.Loomo.App.ViewModels;
 using sk0ya.Loomo.Core.Abstractions;
+using sk0ya.Loomo.Core.Files;
 
 namespace sk0ya.Loomo.App.Services;
 
@@ -310,12 +311,13 @@ public sealed class SearchPanelQuery
     /// <summary>1ファイル内の <paramref name="query"/> の全一致を <paramref name="replacement"/> へ置換して
     /// 書き戻す。ディスク上の現在の内容を読み直してから置換する（検索実行時点の LineText はキャッシュなので、
     /// その後の編集を踏まえて安全に反映するため）。一致が0件ならファイルには触れない。実際に置換した件数を返す。
-    /// 不正な正規表現（<paramref name="useRegex"/> 時）は何もせず0を返す。</summary>
+    /// 不正な正規表現（<paramref name="useRegex"/> 時）は何もせず0を返す。
+    /// 読み書きは<b>元の文字コード・BOM のまま</b>（<see cref="TextFileEncoding"/>）。判定できないファイルや、
+    /// 置換後の文字がその文字コードで表せない（Shift_JIS に無い文字）ときは書かずに0。</summary>
     public int ReplaceInFile(string fullPath, string query, string replacement, bool caseSensitive, bool useRegex)
     {
-        string text;
-        try { text = File.ReadAllText(fullPath); }
-        catch { return 0; }
+        if (TextFileEncoding.ReadFile(fullPath) is not { } decoded) return 0;
+        var text = decoded.Text;
 
         var options = caseSensitive ? RegexOptions.None : RegexOptions.IgnoreCase;
         var pattern = useRegex ? query : Regex.Escape(query);
@@ -329,20 +331,18 @@ public sealed class SearchPanelQuery
         // 正規表現モードは置換文字列の $1 等の後方参照を活かす。リテラルモードは MatchEvaluator を使い、
         // 置換文字列に $ が含まれていても特殊解釈させない（そのまま挿入する）。
         var result = useRegex ? regex.Replace(text, replacement) : regex.Replace(text, _ => replacement);
-        File.WriteAllText(fullPath, result);
-        return count;
+        return TextFileEncoding.TryWriteFile(fullPath, decoded, result) ? count : 0;
     }
 
     /// <summary>1件（<paramref name="line"/>・<paramref name="column"/>で指定した一致、ともに1始まり）だけを
     /// 置換して書き戻す。ディスク上の現在の内容を読み直してから、その行の中でその列にある一致を探して
     /// 置換する（検索実行後に内容がずれて見つからなければ何もせず false を返す＝安全側）。
-    /// 不正な正規表現（<paramref name="useRegex"/> 時）も false。</summary>
+    /// 不正な正規表現（<paramref name="useRegex"/> 時）も false。文字コードの扱いは <see cref="ReplaceInFile"/> と同じ。</summary>
     public bool ReplaceOneInFile(string fullPath, string query, string replacement, bool caseSensitive, bool useRegex,
         int line, int column)
     {
-        string text;
-        try { text = File.ReadAllText(fullPath); }
-        catch { return false; }
+        if (TextFileEncoding.ReadFile(fullPath) is not { } decoded) return false;
+        var text = decoded.Text;
 
         var options = caseSensitive ? RegexOptions.None : RegexOptions.IgnoreCase;
         var pattern = useRegex ? query : Regex.Escape(query);
@@ -360,8 +360,7 @@ public sealed class SearchPanelQuery
         var absoluteIndex = found.Start + match.Index;
         var replacementText = useRegex ? match.Result(replacement) : replacement;
         var result = text.Remove(absoluteIndex, match.Length).Insert(absoluteIndex, replacementText);
-        File.WriteAllText(fullPath, result);
-        return true;
+        return TextFileEncoding.TryWriteFile(fullPath, decoded, result);
     }
 
     /// <summary>1始まりの行番号から、その行の開始オフセット（行末の改行文字は含まない範囲のテキスト）を返す。

@@ -592,10 +592,37 @@ public sealed class WorkspaceSearchService : IWorkspaceSearchService
 
     // ===== ripgrep =====
 
+    /// <summary>
+    /// rg で検索する。rg は文字コードを推測しない（BOM が無ければ UTF-8 として読む）ので、<b>Shift_JIS のファイルの
+    /// 日本語は既定では当たらない</b>。クエリに非 ASCII 文字があるときだけ <c>-E shift_jis</c> でもう一度走らせ、
+    /// 同じ行（UTF-8 の BOM 付きファイルは両方で当たる）を除いて足す。UTF-8 のファイルを Shift_JIS として読んだ
+    /// 行は化けるので、日本語のクエリがそこへ当たることは実質ない。ASCII だけのクエリはどちらの読み方でも同じ
+    /// バイト列なので1回で足りる。
+    /// </summary>
     private async Task<IReadOnlyList<ContentSearchHit>> GrepWithRgAsync(
         string query, GrepOptions options, string root, string? prefix, CancellationToken ct)
     {
+        var hits = await GrepWithRgAsync(query, options, root, prefix, encoding: null, ct).ConfigureAwait(false);
+        if (hits.Count >= options.MaxResults || query.All(c => c < 0x80))
+            return hits;
+
+        var seen = hits.Select(h => (h.RelativePath, h.Line)).ToHashSet();
+        var sjis = await GrepWithRgAsync(query, options with { MaxResults = options.MaxResults - hits.Count },
+            root, prefix, encoding: "shift_jis", ct).ConfigureAwait(false);
+        var merged = hits.ToList();
+        merged.AddRange(sjis.Where(h => seen.Add((h.RelativePath, h.Line))));
+        return merged;
+    }
+
+    private async Task<IReadOnlyList<ContentSearchHit>> GrepWithRgAsync(
+        string query, GrepOptions options, string root, string? prefix, string? encoding, CancellationToken ct)
+    {
         var args = new List<string> { "--vimgrep", "--color=never" };
+        if (encoding is not null)
+        {
+            args.Add("-E");
+            args.Add(encoding);
+        }
         args.Add(options.CaseSensitive ? "-s" : "-i");
         if (!options.UseRegex)
             args.Add("-F"); // 固定文字列（正規表現として解釈しない）
@@ -743,7 +770,9 @@ public sealed class WorkspaceSearchService : IWorkspaceSearchService
             {
                 var info = new FileInfo(full);
                 if (info.Length > 2_000_000) continue; // 大きすぎる/バイナリ想定はスキップ
-                fileLines = File.ReadAllLines(full);
+                // UTF-8 と決め打ちせず、Shift_JIS のファイルも読む（判定できない＝バイナリは飛ばす）。
+                if (TextFileEncoding.ReadFile(full) is not { } decoded) continue;
+                fileLines = decoded.Text.TrimEnd('\n').Split('\n').Select(l => l.TrimEnd('\r')).ToArray();
             }
             catch { continue; }
 
