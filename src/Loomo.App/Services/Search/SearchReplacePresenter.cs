@@ -24,7 +24,7 @@ internal static class SearchReplacePresenter
     {
         var group = (menu.PlacementTarget as FrameworkElement)?.DataContext as SearchFileGroup;
         SetTaggedVisibility(menu, "ReplaceFileMenu",
-            vm.IsReplaceVisible && group is { Count: > 0 } && !SearchPdf.IsPdf(group.FullPath));
+            vm.IsReplaceVisible && group is { Count: > 0 } && !SearchDocuments.IsDocument(group.FullPath));
     }
 
     public static void ReplaceFromContextMenu(object sender, SearchPanelViewModel? vm)
@@ -37,7 +37,7 @@ internal static class SearchReplacePresenter
     public static void PrepareMatchMenu(ContextMenu menu, SearchPanelViewModel vm)
     {
         var match = (menu.PlacementTarget as FrameworkElement)?.DataContext as SearchMatchItem;
-        SetTaggedVisibility(menu, "ReplaceOneMenu", vm.IsReplaceVisible && match is not { IsPdfPage: true });
+        SetTaggedVisibility(menu, "ReplaceOneMenu", vm.IsReplaceVisible && match is not { IsDocumentHit: true });
     }
 
     public static bool ReplaceOne(SearchPanelViewModel vm, SearchMatchItem match)

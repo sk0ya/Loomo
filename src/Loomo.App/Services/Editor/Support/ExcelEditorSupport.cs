@@ -43,7 +43,7 @@ public sealed class ExcelEditorSupport : IEditorSupportVisualProvider
 }
 
 /// <summary>Excel プレビューの表示インスタンス1つぶん（シートタブ帯＋1つのグリッド）。</summary>
-public sealed class ExcelVisual : IEditorSupportVisual
+public sealed class ExcelVisual : IEditorSupportVisual, IEditorSupportLocationTarget
 {
     private readonly LoomoSettings _settings;
 
@@ -57,6 +57,7 @@ public sealed class ExcelVisual : IEditorSupportVisual
     private IReadOnlyList<ExcelSheet> _sheets = Array.Empty<ExcelSheet>();
     private TsvDocument?[] _docs = Array.Empty<TsvDocument?>();
     private bool _suppressTabEvent;
+    private (string FilePath, int Sheet, string? Cell)? _pendingReveal;   // 読み込みを待っている位置合わせ
 
     // 読み取り専用なので書き戻しは無い（購読は受けるが発火しない）。
     public event EventHandler<EditorSupportContentEdited>? ContentEdited { add { } remove { } }
@@ -165,6 +166,58 @@ public sealed class ExcelVisual : IEditorSupportVisual
         HideMessage();
         PopulateTabs(sheets);
         ShowSheet(0);
+        ApplyPendingReveal();
+    }
+
+    /// <summary>検索結果のシート・セルへ移る（<paramref name="position"/>＝シート番号、<paramref name="location"/>＝
+    /// "シート名!B3"）。まだそのブックを読み込んでいなければ、読み込んだときに移る。</summary>
+    public void RevealLocation(string filePath, int position, string? location)
+    {
+        var bang = location?.LastIndexOf('!') ?? -1;
+        _pendingReveal = (filePath, position, bang >= 0 ? location![(bang + 1)..] : null);
+        ApplyPendingReveal();
+    }
+
+    private void ApplyPendingReveal()
+    {
+        if (_pendingReveal is not { } reveal || _sheets.Count == 0
+            || !string.Equals(reveal.FilePath, _lastPath, StringComparison.OrdinalIgnoreCase))
+            return;
+        _pendingReveal = null;
+
+        var index = reveal.Sheet - 1;
+        if (index < 0 || index >= _sheets.Count)
+            return;
+        if (_tabStrip.SelectedIndex != index)
+        {
+            _suppressTabEvent = true;
+            _tabStrip.SelectedIndex = index;
+            _suppressTabEvent = false;
+            ShowSheet(index);
+        }
+        if (ParseCell(reveal.Cell) is { } cell && _grid.Tab is { } tab)
+        {
+            // カーソルを動かすとグリッドがそのセルまでスクロールする。フォーカスは奪わない（検索ペインに残す）。
+            _grid.IsRestoringSession = true;
+            try { tab.VimState.CursorPosition = new GridPosition(cell.Row, cell.Column); }
+            finally { _grid.IsRestoringSession = false; }
+        }
+    }
+
+    /// <summary>"B3" → (行 2, 列 1)（0始まり）。読めなければ null。</summary>
+    internal static (int Row, int Column)? ParseCell(string? cell)
+    {
+        if (string.IsNullOrEmpty(cell))
+            return null;
+        var i = 0;
+        var column = 0;
+        while (i < cell.Length && char.IsAsciiLetter(cell[i]))
+            column = column * 26 + (char.ToUpperInvariant(cell[i++]) - 'A' + 1);
+        if (column == 0 || i == cell.Length
+            || !int.TryParse(cell.AsSpan(i), System.Globalization.NumberStyles.None,
+                System.Globalization.CultureInfo.InvariantCulture, out var row) || row < 1)
+            return null;
+        return (row - 1, column - 1);
     }
 
     public void Dispose() => _tabStrip.SelectionChanged -= OnTabSelectionChanged;

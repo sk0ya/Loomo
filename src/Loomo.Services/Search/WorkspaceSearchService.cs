@@ -30,7 +30,7 @@ namespace sk0ya.Loomo.Services.Search;
 public sealed class WorkspaceSearchService : IWorkspaceSearchService
 {
     private readonly IWorkspaceService _workspace;
-    private readonly PdfTextCache _pdfCache;
+    private readonly DocumentTextCache _documents;
 
     // UTF-8 を厳格に判定してから、Windows で一般的な旧来コードページへフォールバックする。
     // BOM 付き UTF-16/UTF-32 は StreamReader が BOM を優先して自動判定する。
@@ -46,10 +46,10 @@ public sealed class WorkspaceSearchService : IWorkspaceSearchService
 
     private static readonly Lazy<bool> HasRg = new(() => Probe("rg", "--version"));
 
-    public WorkspaceSearchService(IWorkspaceService workspace, PdfTextCache? pdfCache = null)
+    public WorkspaceSearchService(IWorkspaceService workspace, DocumentTextCache? documents = null)
     {
         _workspace = workspace;
-        _pdfCache = pdfCache ?? PdfTextCache.Default;
+        _documents = documents ?? new DocumentTextCache(DocumentTextCache.DefaultDirectory);
     }
 
     private static Encoding CreateJapaneseWindowsEncoding()
@@ -206,8 +206,8 @@ public sealed class WorkspaceSearchService : IWorkspaceSearchService
                 IReadOnlyList<ContentSearchHit> contentMatches = Array.Empty<ContentSearchHit>();
                 if (contentQuery.Length > 0)
                 {
-                    contentMatches = IsPdf(full)
-                        ? FindPdfMatches(_pdfCache.GetPages(full, ct), full, WithPrefix(rel, prefix),
+                    contentMatches = DocumentTextCache.IsDocument(full)
+                        ? FindDocumentMatches(_documents.GetLines(full, ct), full, WithPrefix(rel, prefix),
                             contentQuery, contentRegex, comparison, int.MaxValue)
                         : FindContentMatches(full, rel, prefix, contentQuery,
                             options, contentRegex, comparison, ct);
@@ -434,20 +434,23 @@ public sealed class WorkspaceSearchService : IWorkspaceSearchService
     private static string WithPrefix(string relativePath, string? prefix)
         => prefix is null ? relativePath : prefix + "/" + relativePath;
 
-    // ===== PDF 本文 =====
+    // ===== 文書（PDF・Word・Excel・PowerPoint）の本文 =====
 
     /// <summary>
-    /// PDF の本文を検索する。対象の列挙は <see cref="GrepAsync"/> と同じ絞り込み（rg があれば .gitignore 尊重）で、
-    /// 取り出しは数本ずつ並列に走らせ、読み終えた順に流す。取り出したテキストは <see cref="PdfTextCache"/> が覚える。
+    /// 文書の本文を検索する。対象の列挙は <see cref="GrepAsync"/> と同じ絞り込み（rg があれば .gitignore 尊重）で、
+    /// 取り出しは数本ずつ並列に走らせ、読み終えた順に流す。取り出したテキストは <see cref="DocumentTextCache"/> が覚える。
     /// 一致が <see cref="GrepOptions.MaxResults"/> に達したら残りは読まない。
     /// </summary>
-    public async IAsyncEnumerable<PdfGrepProgress> GrepPdfAsync(string query, GrepOptions options,
+    public async IAsyncEnumerable<DocumentGrepProgress> GrepDocumentsAsync(string query, GrepOptions options,
         [EnumeratorCancellation] CancellationToken ct, string? searchRoot = null)
     {
         if (string.IsNullOrEmpty(query) || options.MaxResults <= 0)
             yield break;
-        if (options.Extensions is { Count: > 0 } extensions
-            && !extensions.Any(e => string.Equals(e.TrimStart('.'), "pdf", StringComparison.OrdinalIgnoreCase)))
+        var kinds = DocumentTextCache.DocumentExtensions
+            .Where(ext => options.Extensions is not { Count: > 0 } extensions
+                || extensions.Any(e => string.Equals("." + e.TrimStart('.'), ext, StringComparison.OrdinalIgnoreCase)))
+            .ToList();
+        if (kinds.Count == 0)
             yield break;
 
         Regex? regex = null;
@@ -466,12 +469,12 @@ public sealed class WorkspaceSearchService : IWorkspaceSearchService
         foreach (var (root, prefix) in ResolveScopes(searchRoot))
         {
             var relPaths = HasRg.Value
-                ? await RunRgAsync(PdfListArgs(options), root, maxLines: 50_000, ct).ConfigureAwait(false)
-                : EnumeratePdfInProcess(root, options);
+                ? await RunRgAsync(DocumentListArgs(options, kinds), root, maxLines: 50_000, ct).ConfigureAwait(false)
+                : EnumerateDocumentsInProcess(root, options, kinds);
             foreach (var raw in relPaths)
             {
                 var rel = NormalizeRel(raw);
-                if (rel.Length > 0 && IsPdf(rel))
+                if (rel.Length > 0 && kinds.Contains(Path.GetExtension(rel), StringComparer.OrdinalIgnoreCase))
                     targets.Add((Path.GetFullPath(Path.Combine(root, rel)), WithPrefix(rel, prefix)));
             }
         }
@@ -494,8 +497,8 @@ public sealed class WorkspaceSearchService : IWorkspaceSearchService
                 };
                 await Parallel.ForEachAsync(targets, parallel, (target, token) =>
                 {
-                    var pages = _pdfCache.GetPages(target.Full, token);
-                    var hits = FindPdfMatches(pages, target.Full, target.Display, query, regex, comparison,
+                    var lines = _documents.GetLines(target.Full, token);
+                    var hits = FindDocumentMatches(lines, target.Full, target.Display, query, regex, comparison,
                         Math.Max(0, Volatile.Read(ref remaining)));
                     if (hits.Count > 0 && Interlocked.Add(ref remaining, -hits.Count) <= 0)
                         stop.Cancel();
@@ -516,7 +519,7 @@ public sealed class WorkspaceSearchService : IWorkspaceSearchService
                 done++;
                 var taken = hits.Count <= budget ? hits : hits.Take(budget).ToList();
                 budget -= taken.Count;
-                yield return new PdfGrepProgress(taken, done, targets.Count);
+                yield return new DocumentGrepProgress(taken, done, targets.Count);
                 if (budget <= 0)
                     break;
             }
@@ -529,10 +532,19 @@ public sealed class WorkspaceSearchService : IWorkspaceSearchService
         }
     }
 
-    private static List<string> PdfListArgs(GrepOptions options)
+    private static List<string> DocumentListArgs(GrepOptions options, IReadOnlyList<string> kinds)
     {
-        // -g の包含指定は .gitignore を上書きするため、種別（--type）で PDF に絞る（GrepWithRgAsync と同じ理由）。
-        var args = new List<string> { "--files", "--type-add", "loomopdf:*.[pP][dD][fF]", "--type", "loomopdf" };
+        // -g の包含指定は .gitignore を上書きするため、種別（--type）で文書に絞る（GrepWithRgAsync と同じ理由）。
+        var args = new List<string> { "--files" };
+        foreach (var ext in kinds)
+        {
+            var pattern = string.Concat(ext.TrimStart('.').Select(c => char.IsAsciiLetter(c)
+                ? $"[{char.ToLowerInvariant(c)}{char.ToUpperInvariant(c)}]" : c.ToString()));
+            args.Add("--type-add");
+            args.Add("loomodoc:*." + pattern);
+        }
+        args.Add("--type");
+        args.Add("loomodoc");
         if (!string.IsNullOrWhiteSpace(options.IncludeGlob))
         {
             args.Add("-g");
@@ -546,46 +558,40 @@ public sealed class WorkspaceSearchService : IWorkspaceSearchService
         return args;
     }
 
-    private static List<string> EnumeratePdfInProcess(string root, GrepOptions options)
+    private static List<string> EnumerateDocumentsInProcess(string root, GrepOptions options, IReadOnlyList<string> kinds)
     {
         var include = GlobToRegex(options.IncludeGlob);
         var exclude = GlobToRegex(options.ExcludeGlob);
         return EnumerateRelativeFiles(root)
-            .Where(rel => IsPdf(rel)
+            .Where(rel => kinds.Contains(Path.GetExtension(rel), StringComparer.OrdinalIgnoreCase)
                 && (include is null || include.IsMatch(rel))
                 && (exclude is null || !exclude.IsMatch(rel)))
             .ToList();
     }
 
-    private static bool IsPdf(string path)
-        => path.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase);
-
-    /// <summary>ページごとのテキストから一致行を探す。Line＝ページ番号、Column＝その行の中の位置（ともに1始まり）、
-    /// LineText＝一致した行。</summary>
-    internal static IReadOnlyList<ContentSearchHit> FindPdfMatches(IReadOnlyList<string> pages,
+    /// <summary>文書の行から一致を探す。Line＝開いたときに移る先の番号（<see cref="DocumentLine.Position"/>）、
+    /// Column＝行の中の位置（1始まり）、Location＝位置の表記（"p.3"・"Sheet1!B3" など）。</summary>
+    internal static IReadOnlyList<ContentSearchHit> FindDocumentMatches(IReadOnlyList<DocumentLine> lines,
         string fullPath, string displayPath, string query, Regex? regex, StringComparison comparison, int max)
     {
-        if (max <= 0 || pages.Count == 0)
+        if (max <= 0 || lines.Count == 0)
             return Array.Empty<ContentSearchHit>();
         var hits = new List<ContentSearchHit>();
-        for (var page = 0; page < pages.Count; page++)
+        foreach (var line in lines)
         {
-            foreach (var line in pages[page].Split('\n'))
+            int index;
+            try
             {
-                int index;
-                try
-                {
-                    index = regex is not null
-                        ? regex.Match(line) is { Success: true } m ? m.Index : -1
-                        : line.IndexOf(query, comparison);
-                }
-                catch (RegexMatchTimeoutException) { return hits; }
-                if (index < 0)
-                    continue;
-                hits.Add(new ContentSearchHit(fullPath, displayPath, page + 1, index + 1, line));
-                if (hits.Count >= max)
-                    return hits;
+                index = regex is not null
+                    ? regex.Match(line.Text) is { Success: true } m ? m.Index : -1
+                    : line.Text.IndexOf(query, comparison);
             }
+            catch (RegexMatchTimeoutException) { return hits; }
+            if (index < 0)
+                continue;
+            hits.Add(new ContentSearchHit(fullPath, displayPath, line.Position, index + 1, line.Text, line.Location));
+            if (hits.Count >= max)
+                return hits;
         }
         return hits;
     }

@@ -118,7 +118,7 @@ public class ShiftJisSearchTests
     {
         var ws = new FakeWorkspaceService();
         ws.OpenFolder(root);
-        return new WorkspaceSearchService(ws, new PdfTextCache(Path.Combine(root, ".pdf-cache")));
+        return new WorkspaceSearchService(ws, new DocumentTextCache(Path.Combine(root, ".doc-cache")));
     }
 
     private static SearchPanelQuery NewQuery(string root)

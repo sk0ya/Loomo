@@ -110,6 +110,7 @@ public sealed class SearchResultTab
                         Line = Math.Max(1, match.Line),
                         Column = Math.Max(1, match.Column),
                         Text = match.LineText,
+                        Location = match.Location,
                     }))
                 {
                     truncated = true;
@@ -179,7 +180,7 @@ public sealed class SearchResultTab
                 var path = g.First().Path;
                 var relative = DisplayPath(workspace, path);
                 var matches = g.Where(h => h.Line > 0)
-                    .Select(h => SearchMatchItem.ForSnapshot(path, relative, h.Line, h.Column, h.Text ?? ""));
+                    .Select(h => SearchMatchItem.ForSnapshot(path, relative, h.Line, h.Column, h.Text ?? "", h.Location));
                 return new SearchFileGroup(path, relative, matches);
             })
             .ToList();

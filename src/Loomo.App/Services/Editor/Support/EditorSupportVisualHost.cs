@@ -22,6 +22,7 @@ public sealed class EditorSupportVisualHost : IDisposable
     private string _searchTerm = "";
     private bool _searchCaseSensitive;
     private bool _searchUseRegex;
+    private (string FilePath, int Position, string? Location)? _pendingReveal;
 
     /// <param name="contentEdited">ビュー内編集の書き戻し通知の購読先（不要なら null）。</param>
     public EditorSupportVisualHost(EventHandler<EditorSupportContentEdited>? contentEdited = null)
@@ -43,7 +44,25 @@ public sealed class EditorSupportVisualHost : IDisposable
         // 作りたてにも今の検索条件を渡す（後から作られた実体だけ塗られない、を防ぐ）。
         if (visual is IEditorSupportSearchHighlightTarget target)
             target.ApplySearchHighlight(_searchTerm, _searchCaseSensitive, _searchUseRegex);
+        // 位置合わせの依頼が実体より先に届いていた（検索結果から初めて開いた）なら、作りたてに渡す。
+        if (_pendingReveal is { } reveal && visual is IEditorSupportLocationTarget locationTarget)
+        {
+            _pendingReveal = null;
+            locationTarget.RevealLocation(reveal.FilePath, reveal.Position, reveal.Location);
+        }
         return visual;
+    }
+
+    /// <summary>
+    /// 検索結果の位置へ表示を合わせる（<see cref="IEditorSupportLocationTarget"/> を持つ実体へ配る）。
+    /// まだ実体が無ければ覚えておき、作ったときに渡す。
+    /// </summary>
+    public void RevealLocation(string filePath, int position, string? location)
+    {
+        var targets = _visuals.Values.OfType<IEditorSupportLocationTarget>().ToList();
+        _pendingReveal = targets.Count == 0 ? (filePath, position, location) : null;
+        foreach (var target in targets)
+            target.RevealLocation(filePath, position, location);
     }
 
     /// <summary>検索ハイライトの条件を覚え、いま持っている実体すべてへ配る。</summary>

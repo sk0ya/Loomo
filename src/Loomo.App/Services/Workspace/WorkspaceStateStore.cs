@@ -722,6 +722,9 @@ public sealed class SearchTabHitSnapshot
 
     /// <summary>残した時点の行テキスト（以後ファイルが変わっても書き換えない＝スナップショット）。</summary>
     public string? Text { get; set; }
+
+    /// <summary>文書（PDF・Word・Excel・PowerPoint）の一致の位置の表記（"p.3"・"Sheet1!B3" など）。テキストは null。</summary>
+    public string? Location { get; set; }
 }
 
 /// <summary>メイン領域に並ぶペインの種別。値は JSON へ数値で永続化されるため末尾追加のみ可。</summary>

@@ -28,6 +28,7 @@ public sealed partial class SearchMatchItem : ObservableObject
         Line = hit.Line;
         Column = hit.Column;
         LineText = hit.LineText.TrimEnd();
+        Location = hit.Location;
     }
 
     private SearchMatchItem(TerminalSearchHit hit)
@@ -57,8 +58,9 @@ public sealed partial class SearchMatchItem : ObservableObject
         => new(fullPath, relativePath, line, column, preview);
 
     /// <summary>タブに残した検索結果（<see cref="SearchResultTab"/>）の1件。残した時点の行テキストをそのまま出す。</summary>
-    public static SearchMatchItem ForSnapshot(string fullPath, string relativePath, int line, int column, string lineText)
-        => new(fullPath, relativePath, line, column, lineText.TrimEnd());
+    public static SearchMatchItem ForSnapshot(string fullPath, string relativePath, int line, int column, string lineText,
+        string? location = null)
+        => new(fullPath, relativePath, line, column, lineText.TrimEnd()) { Location = location };
     public bool IsTerminal { get; }
     public TerminalSearchHit TerminalHit { get; }
     public string FullPath { get; }
@@ -68,11 +70,16 @@ public sealed partial class SearchMatchItem : ObservableObject
     public string LineText { get; }
     public string Preview => LineText.TrimStart();
 
-    /// <summary>PDF 本文の一致か（<see cref="Line"/> は行ではなくページ番号）。</summary>
-    public bool IsPdfPage => !IsTerminal && SearchPdf.IsPdf(FullPath);
+    /// <summary>文書（PDF・Word・Excel・PowerPoint）の本文の一致か（<see cref="Line"/> は行ではなく、開いたときに
+    /// 移る先の番号＝ページ・シート・スライド・段落）。</summary>
+    public bool IsDocumentHit => !IsTerminal && SearchDocuments.IsDocument(FullPath);
 
-    /// <summary>一致行の左に出す位置。PDF はページ（p.3）、それ以外は行番号。</summary>
-    public string LineLabel => IsPdfPage ? $"p.{Line}" : Line.ToString(System.Globalization.CultureInfo.InvariantCulture);
+    /// <summary>文書の一致の位置の表記（"p.3"・"Sheet1!B3"・"スライド 4"・"¶12"）。テキストファイルは null。</summary>
+    public string? Location { get; private init; }
+
+    /// <summary>一致行の左に出す位置。文書は位置の表記（古いタブの写しで表記が無い PDF はページ）、それ以外は行番号。</summary>
+    public string LineLabel => Location
+        ?? (IsDocumentHit && SearchDocuments.IsPdf(FullPath) ? $"p.{Line}" : Line.ToString(System.Globalization.CultureInfo.InvariantCulture));
     public bool IsExpanded { get; set; }
 
     /// <summary>この場でもう置換した（1件だけ置換・置換して次へ）。一覧からは消さず取り消し線で示す
@@ -163,14 +170,20 @@ public sealed partial class SearchFolderNode : ObservableObject
     }
 }
 
-public readonly record struct SearchHit(string FullPath, int Line, int Column, string Highlight = "");
+/// <summary>開く一致。文書（PDF・Excel 等）の一致は <paramref name="Line"/> が移る先の番号（ページ・シート等）で、
+/// <paramref name="Location"/> に位置の表記（"Sheet1!B3" など）が入る。</summary>
+public readonly record struct SearchHit(string FullPath, int Line, int Column, string Highlight = "", string? Location = null);
 
-/// <summary>検索結果の PDF の扱い。PDF の一致は Line がページ番号で、置換の対象にしない（本文はバイナリの中）。</summary>
-public static class SearchPdf
+/// <summary>検索結果の文書（PDF・Word・Excel・PowerPoint）の扱い。文書の一致は Line が移る先の番号（ページ等）で、
+/// 置換の対象にしない（本文はバイナリ・zip の中）。</summary>
+public static class SearchDocuments
 {
+    public static bool IsDocument(string? path)
+        => path is not null && sk0ya.Loomo.Services.Search.DocumentTextCache.IsDocument(path);
+
     public static bool IsPdf(string? path)
         => path is not null && path.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>PDF 本文の一致をまとめる見出し（結果ツリーの末尾に置く）。</summary>
-    public const string SectionName = "PDF の本文";
+    /// <summary>文書の本文の一致をまとめる見出し（結果ツリーの末尾に置く）。</summary>
+    public const string SectionName = "文書の本文";
 }

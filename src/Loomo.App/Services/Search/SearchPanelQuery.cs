@@ -259,23 +259,24 @@ public sealed class SearchPanelQuery
         return new SearchPanelResult(roots, status);
     }
 
-    /// <summary>PDF 本文の検索（<see cref="GrepAsync"/> の後追い）。読み終えた PDF から順に流れてくる。</summary>
-    public IAsyncEnumerable<PdfGrepProgress> GrepPdfAsync(string query, bool caseSensitive, bool useRegex,
+    /// <summary>文書（PDF・Word・Excel・PowerPoint）の本文の検索（<see cref="GrepAsync"/> の後追い）。
+    /// 読み終えた文書から順に流れてくる。</summary>
+    public IAsyncEnumerable<DocumentGrepProgress> GrepDocumentsAsync(string query, bool caseSensitive, bool useRegex,
         string? includeGlob, string? excludeGlob, string? searchRoot, CancellationToken cancellationToken)
-        => _search.GrepPdfAsync(query, new GrepOptions(caseSensitive, useRegex, includeGlob, excludeGlob, 1000),
+        => _search.GrepDocumentsAsync(query, new GrepOptions(caseSensitive, useRegex, includeGlob, excludeGlob, 1000),
             cancellationToken, searchRoot);
 
-    /// <summary>PDF 本文の一致を、結果ツリーの末尾に置く1つの見出し（<see cref="SearchPdf.SectionName"/>）へまとめる。
+    /// <summary>文書の本文の一致を、結果ツリーの末尾に置く1つの見出し（<see cref="SearchDocuments.SectionName"/>）へまとめる。
     /// テキストの結果とは別の見出しにするのは、後から届くたびに<b>この見出しの中だけ</b>を組み直せるようにするため
     /// （テキスト側の開閉・選択を崩さない）。</summary>
-    public SearchFolderNode BuildPdfSection(IReadOnlyList<ContentSearchHit> hits)
+    public SearchFolderNode BuildDocumentSection(IReadOnlyList<ContentSearchHit> hits)
     {
         var groups = hits
             .GroupBy(hit => hit.RelativePath, StringComparer.OrdinalIgnoreCase)
             .Select(group => new SearchFileGroup(group.First().FullPath, group.Key,
                 group.Select(hit => new SearchMatchItem(hit))))
             .ToList();
-        var section = new SearchFolderNode(SearchPdf.SectionName, "");
+        var section = new SearchFolderNode(SearchDocuments.SectionName, "");
         foreach (var child in _mapper.Map(groups))
             section.Children.Add(child);
         return section;

@@ -167,6 +167,19 @@ public interface IEditorSupportSearchHighlightTarget
     void ApplySearchHighlight(string term, bool caseSensitive, bool useRegex);
 }
 
+/// <summary>
+/// 検索結果の位置（シート・セルなど）へ表示を合わせられる表示インスタンス（Excel のグリッド等）。
+/// 頼まれたときにまだそのファイルを読み込んでいなければ覚えておき、読み込んだときに合わせること
+/// （検索結果を選ぶ＝ファイルを開くのと同時なので、たいてい読み込みより先に届く）。
+/// </summary>
+public interface IEditorSupportLocationTarget
+{
+    /// <param name="filePath">対象のファイル（違うファイルを出しているなら、読み込むまで待つ）。</param>
+    /// <param name="position">移る先の番号（Excel＝シート、1始まり）。</param>
+    /// <param name="location">位置の表記（Excel＝"シート名!セル"）。無ければ null。</param>
+    void RevealLocation(string filePath, int position, string? location);
+}
+
 /// <summary>登録された <see cref="IEditorSupportProvider"/> からファイルに対応するものを解決する。</summary>
 public sealed class EditorSupportRegistry
 {

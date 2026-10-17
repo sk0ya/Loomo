@@ -396,9 +396,9 @@ public sealed partial class SearchPanelViewModel : ObservableObject
         return list;
     }
 
-    /// <summary>置換の対象になるファイルグループ（PDF 本文の一致は除く——本文はバイナリの中で、書き換えると壊れる）。</summary>
+    /// <summary>置換の対象になるファイルグループ（文書の本文の一致は除く——本文はバイナリ・zip の中で、書き換えると壊れる）。</summary>
     public IReadOnlyList<SearchFileGroup> ReplaceableFileGroups()
-        => AllFileGroups().Where(group => !SearchPdf.IsPdf(group.FullPath)).ToList();
+        => AllFileGroups().Where(group => !SearchDocuments.IsDocument(group.FullPath)).ToList();
 
     /// <summary>置換でディスク上の内容を書き換えたファイル（複数可）。開いているエディタタブがあれば
     /// 読み直させ、検索ハイライトを新しい内容に合わせて更新させるため（置換した箇所の下線が消えたことを
@@ -409,7 +409,7 @@ public sealed partial class SearchPanelViewModel : ObservableObject
     /// 実際に置換できた件数を返す（クエリが空なら何もせず0）。</summary>
     public int ReplaceInFile(SearchFileGroup group)
     {
-        if (string.IsNullOrEmpty(Query) || ActiveTab is not null || SearchPdf.IsPdf(group.FullPath)) return 0;
+        if (string.IsNullOrEmpty(Query) || ActiveTab is not null || SearchDocuments.IsDocument(group.FullPath)) return 0;
         var count = _searchQuery.ReplaceInFile(group.FullPath, Query, ReplaceText, CaseSensitive, UseRegex);
         if (count > 0)
         {
@@ -426,7 +426,7 @@ public sealed partial class SearchPanelViewModel : ObservableObject
     public bool ReplaceOne(SearchMatchItem match)
     {
         // 残したタブの一致は残した時点の写し。いまのファイルとずれうるので置換の対象にしない。
-        if (string.IsNullOrEmpty(Query) || match.IsTerminal || match.IsPdfPage || ActiveTab is not null) return false;
+        if (string.IsNullOrEmpty(Query) || match.IsTerminal || match.IsDocumentHit || ActiveTab is not null) return false;
         var ok = _searchQuery.ReplaceOneInFile(match.FullPath, Query, ReplaceText, CaseSensitive, UseRegex,
             match.Line, match.Column);
         if (ok)
@@ -611,16 +611,16 @@ public sealed partial class SearchPanelViewModel : ObservableObject
         if (ct.IsCancellationRequested) return;
         ReplaceResults(result.Roots);
         StatusMessage = result.StatusMessage;
-        await AppendPdfMatchesAsync(result, include, exclude, root, ct);
+        await AppendDocumentMatchesAsync(result, include, exclude, root, ct);
     }
 
     /// <summary>
-    /// テキストの結果を出したあとで PDF の本文を検索し、読み終えた PDF の一致から順に結果ツリーの末尾
-    /// （<see cref="SearchPdf.SectionName"/> の見出し）へ足していく。PDF は取り出しに時間がかかるので、
-    /// テキストの結果を待たせない。足すたびに組み直すのはこの見出しの中だけで、間隔は
-    /// <see cref="PdfFlushInterval"/> 以上空ける（打鍵のような頻度で木を作り直さない）。
+    /// テキストの結果を出したあとで文書（PDF・Word・Excel・PowerPoint）の本文を検索し、読み終えた文書の一致から
+    /// 順に結果ツリーの末尾（<see cref="SearchDocuments.SectionName"/> の見出し）へ足していく。文書は取り出しに
+    /// 時間がかかるので、テキストの結果を待たせない。足すたびに組み直すのはこの見出しの中だけで、間隔は
+    /// <see cref="DocumentFlushInterval"/> 以上空ける（打鍵のような頻度で木を作り直さない）。
     /// </summary>
-    private async Task AppendPdfMatchesAsync(SearchPanelResult textResult,
+    private async Task AppendDocumentMatchesAsync(SearchPanelResult textResult,
         string? include, string? exclude, string? root, CancellationToken ct)
     {
         var hits = new List<ContentSearchHit>();
@@ -630,7 +630,7 @@ public sealed partial class SearchPanelViewModel : ObservableObject
 
         void Flush()
         {
-            var next = _searchQuery.BuildPdfSection(hits);
+            var next = _searchQuery.BuildDocumentSection(hits);
             if (section is not null && Results.IndexOf(section) is var index and >= 0)
             {
                 next.IsExpanded = section.IsExpanded;
@@ -643,7 +643,7 @@ public sealed partial class SearchPanelViewModel : ObservableObject
             lastFlush.Restart();
         }
 
-        await foreach (var progress in _searchQuery.GrepPdfAsync(Query, CaseSensitive, UseRegex,
+        await foreach (var progress in _searchQuery.GrepDocumentsAsync(Query, CaseSensitive, UseRegex,
                            include, exclude, root, ct).WithCancellation(ct))
         {
             if (ct.IsCancellationRequested) return;
@@ -652,25 +652,25 @@ public sealed partial class SearchPanelViewModel : ObservableObject
                 hits.AddRange(progress.Hits);
                 pending = true;
             }
-            if (pending && lastFlush.Elapsed >= PdfFlushInterval)
+            if (pending && lastFlush.Elapsed >= DocumentFlushInterval)
                 Flush();
-            StatusMessage = $"{textResult.StatusMessage} ・ PDF を検索中 {progress.Done}/{progress.Total}";
+            StatusMessage = $"{textResult.StatusMessage} ・ 文書を検索中 {progress.Done}/{progress.Total}";
         }
         if (ct.IsCancellationRequested) return;
         if (pending)
             Flush();
-        StatusMessage = FormatStatusWithPdf(textResult.StatusMessage, hits);
+        StatusMessage = FormatStatusWithDocuments(textResult.StatusMessage, hits);
     }
 
-    private static readonly TimeSpan PdfFlushInterval = TimeSpan.FromMilliseconds(300);
+    private static readonly TimeSpan DocumentFlushInterval = TimeSpan.FromMilliseconds(300);
 
-    private static string FormatStatusWithPdf(string textStatus, IReadOnlyList<ContentSearchHit> pdfHits)
+    private static string FormatStatusWithDocuments(string textStatus, IReadOnlyList<ContentSearchHit> documentHits)
     {
-        if (pdfHits.Count == 0)
+        if (documentHits.Count == 0)
             return textStatus;
-        var files = pdfHits.Select(hit => hit.FullPath).Distinct(StringComparer.OrdinalIgnoreCase).Count();
-        var pdf = $"PDF {pdfHits.Count} 件 / {files} ファイル";
-        return textStatus == "一致なし" ? pdf : $"{textStatus} ＋ {pdf}";
+        var files = documentHits.Select(hit => hit.FullPath).Distinct(StringComparer.OrdinalIgnoreCase).Count();
+        var documents = $"文書 {documentHits.Count} 件 / {files} ファイル";
+        return textStatus == "一致なし" ? documents : $"{textStatus} ＋ {documents}";
     }
 
     /// <summary>ファイル名を曖昧検索し、1ファイル1行（一致行なし）の結果として反映する。</summary>
@@ -912,7 +912,7 @@ public sealed partial class SearchPanelViewModel : ObservableObject
             TerminalRevealRequested?.Invoke(this, match.TerminalHit);
             return;
         }
-        PreviewRequested?.Invoke(this, new SearchHit(match.FullPath, match.Line, match.Column, HighlightTerm));
+        PreviewRequested?.Invoke(this, new SearchHit(match.FullPath, match.Line, match.Column, HighlightTerm, match.Location));
     }
 
     public void Activate(SearchMatchItem match)
@@ -922,7 +922,7 @@ public sealed partial class SearchPanelViewModel : ObservableObject
             TerminalRevealRequested?.Invoke(this, match.TerminalHit);
             return;
         }
-        ActivateRequested?.Invoke(this, new SearchHit(match.FullPath, match.Line, match.Column, HighlightTerm));
+        ActivateRequested?.Invoke(this, new SearchHit(match.FullPath, match.Line, match.Column, HighlightTerm, match.Location));
     }
 
     /// <summary>ファイル名ヒット（グループ見出し自体）を開く。先頭（1,1）へジャンプする。</summary>
