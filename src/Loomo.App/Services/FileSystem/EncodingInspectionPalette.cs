@@ -16,8 +16,9 @@ public static class EncodingInspectionPalette
     /// <param name="filePath">調べたファイル。</param>
     /// <param name="hasUnsavedChanges">エディタに未保存の変更があるか（調べたのはディスク上の内容だと断る）。</param>
     /// <param name="jump">場所へ飛ぶ動作を作る（ShellWindow のパレットの確定と同じもの）。</param>
+    /// <param name="convert">文字コード・改行を変換する動作を作る（null なら変換の項目を出さない）。</param>
     public static List<PaletteCommand> Build(EncodingReport report, string filePath, bool hasUnsavedChanges,
-        Func<PaletteTarget, Action> jump)
+        Func<PaletteTarget, Action> jump, Func<TextConversion, Action>? convert = null)
     {
         var items = new List<PaletteCommand>();
         var savedNote = hasUnsavedChanges
@@ -50,6 +51,9 @@ public static class EncodingInspectionPalette
                 : "改行の形式はそろっています。",
         });
 
+        if (convert is not null)
+            items.AddRange(ConversionItems(report, convert, hasUnsavedChanges));
+
         if (report.Findings.Count == 0)
         {
             items.Add(new PaletteCommand("見つけたもの", "見えない文字・文字化けの跡は見つかりませんでした", () => { })
@@ -73,6 +77,34 @@ public static class EncodingInspectionPalette
             items.Add(new PaletteCommand("見つけたもの",
                 string.Create(CultureInfo.InvariantCulture, $"先頭の {EncodingInspector.MaxFindings} 件だけを出しています"), () => { }));
         return items;
+    }
+
+    /// <summary>
+    /// 変換の項目。いまの形と同じになる変換は出さない（押しても何も変わらない項目を並べない）。
+    /// 変換はディスク上のファイルを書き換え、変換前の本文をローカル履歴に残す。
+    /// </summary>
+    private static IEnumerable<PaletteCommand> ConversionItems(EncodingReport report, Func<TextConversion, Action> convert,
+        bool hasUnsavedChanges)
+    {
+        var note = "変換前の本文はローカル履歴に「変換する前」として残ります。"
+            + (hasUnsavedChanges ? Environment.NewLine + "※ 未保存の変更があるので、保存してから変換してください。" : "");
+
+        if (report.EncodingName != "UTF-8")
+            yield return Conversion(TextConversion.ToUtf8, "UTF-8（BOM なし）に変換して保存",
+                "いまの文字コードで読んだ本文を、BOM なしの UTF-8 で書き直します。" + Environment.NewLine + note);
+        if (report.EncodingName != "UTF-8 (BOM)")
+            yield return Conversion(TextConversion.ToUtf8WithBom, "UTF-8（BOM 付き）に変換して保存",
+                "いまの文字コードで読んだ本文を、BOM 付きの UTF-8 で書き直します（古い Windows のツール向け）。"
+                + Environment.NewLine + note);
+        if (report.CrLf > 0 || report.Cr > 0)
+            yield return Conversion(TextConversion.ToLf, "改行を LF にそろえて保存",
+                "CRLF・CR をすべて LF にします（文字コードはそのまま）。" + Environment.NewLine + note);
+        if (report.Lf > 0 || report.Cr > 0)
+            yield return Conversion(TextConversion.ToCrLf, "改行を CRLF にそろえて保存",
+                "LF・CR をすべて CRLF にします（文字コードはそのまま）。" + Environment.NewLine + note);
+
+        PaletteCommand Conversion(TextConversion kind, string title, string detail)
+            => new("変換", title, convert(kind)) { Detail = detail };
     }
 
     private static string DescribeEncoding(EncodingReport report) => report.EncodingName switch

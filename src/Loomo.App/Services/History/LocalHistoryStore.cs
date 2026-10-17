@@ -13,6 +13,8 @@ public enum LocalHistoryKind
     Saved,
     /// <summary>履歴から戻す直前のエディタの中身（戻すこと自体を取り消せるように）。</summary>
     BeforeRestore,
+    /// <summary>文字コード・改行を変換する直前のディスクの中身（§23.3.4）。</summary>
+    BeforeConvert,
 }
 
 /// <summary>ローカル履歴の 1 版。<see cref="StoragePath"/> は圧縮した中身の置き場所。</summary>
@@ -23,6 +25,7 @@ public sealed record LocalHistoryEntry(string FilePath, DateTime TimestampUtc, L
         LocalHistoryKind.Opened => "開いた時点",
         LocalHistoryKind.Saved => "保存",
         LocalHistoryKind.BeforeRestore => "履歴から戻す前",
+        LocalHistoryKind.BeforeConvert => "変換する前",
         _ => Kind.ToString(),
     };
 }

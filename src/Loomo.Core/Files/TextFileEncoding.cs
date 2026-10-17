@@ -12,6 +12,19 @@ public sealed record DecodedText(string Text, Encoding Encoding, byte[] Preamble
     public bool HasBom => Preamble.Length > 0;
 }
 
+/// <summary>ファイルの文字コード・改行をそろえる変換（§23.3.4）。</summary>
+public enum TextConversion
+{
+    /// <summary>UTF-8（BOM なし）にする。</summary>
+    ToUtf8,
+    /// <summary>UTF-8（BOM 付き）にする。</summary>
+    ToUtf8WithBom,
+    /// <summary>改行を LF にそろえる（文字コードはそのまま）。</summary>
+    ToLf,
+    /// <summary>改行を CRLF にそろえる（文字コードはそのまま）。</summary>
+    ToCrLf,
+}
+
 /// <summary>
 /// テキストファイルの文字コードを判定して読み、<b>同じ文字コード・同じ BOM で</b>書き戻す。
 /// <para>
@@ -19,6 +32,12 @@ public sealed record DecodedText(string Text, Encoding Encoding, byte[] Preamble
 /// または NUL を含む（バイナリ）なら判定できない（null）——<b>分からないものは書き換えない</b>ための null で、
 /// 呼び元は読めない扱いにすること。<c>File.ReadAllText</c>／<c>WriteAllText</c> で読み書きすると Shift_JIS の
 /// ファイルは化けた文字（U+FFFD）のまま UTF-8 で保存され、元に戻せなくなる。
+/// </para>
+/// <para>
+/// 読んで書き戻すと<b>元のバイト列に戻る</b>ことを前提にしている。cp932 には同じ文字を表す別の符号位置
+/// （NEC 選定 IBM 拡張の「髙」EEE0・NEC 13 区の「≒」8790 など）があるが、.NET の cp932 はそれらを厳格な読み方では
+/// 読めない（例外）ので、そうしたファイルは判定できない＝書き換えない側に倒れる。厳格に読める符号位置は
+/// すべて往復で元に戻ることを確かめてある（全 2 バイト符号を総当たり、2026-10-17）。
 /// </para>
 /// </summary>
 public static class TextFileEncoding
@@ -72,6 +91,42 @@ public static class TextFileEncoding
         try { return new DecodedText(encoding.GetString(bytes, offset, bytes.Length - offset), encoding, preamble, name); }
         catch (DecoderFallbackException) { return null; }
         catch (ArgumentException) { return null; }
+    }
+
+    /// <summary>
+    /// 変換後の書き方（文字コード・BOM）と本文を返す。文字コードの変換は本文を変えず、改行の変換は文字コードを変えない。
+    /// 書き込みは <see cref="TryWriteFile"/> に渡す（UTF-8 はどの文字も表せるので、文字コードの変換が失敗することはない）。
+    /// </summary>
+    public static (DecodedText Format, string Text) Apply(DecodedText decoded, TextConversion conversion)
+        => conversion switch
+        {
+            TextConversion.ToUtf8 => (decoded with { Encoding = StrictUtf8, Preamble = [], Name = "UTF-8" }, decoded.Text),
+            TextConversion.ToUtf8WithBom =>
+                (decoded with { Encoding = StrictUtf8, Preamble = Utf8Bom, Name = "UTF-8 (BOM)" }, decoded.Text),
+            TextConversion.ToLf => (decoded, NormalizeLineEndings(decoded.Text, "\n")),
+            TextConversion.ToCrLf => (decoded, NormalizeLineEndings(decoded.Text, "\r\n")),
+            _ => throw new ArgumentOutOfRangeException(nameof(conversion)),
+        };
+
+    /// <summary>CRLF・LF・CR（単独）をすべて <paramref name="newline"/> にする。</summary>
+    public static string NormalizeLineEndings(string text, string newline)
+    {
+        var sb = new StringBuilder(text.Length + text.Length / 32);
+        for (var i = 0; i < text.Length; i++)
+        {
+            var c = text[i];
+            if (c == '\r')
+            {
+                if (i + 1 < text.Length && text[i + 1] == '\n')
+                    i++;
+                sb.Append(newline);
+            }
+            else if (c == '\n')
+                sb.Append(newline);
+            else
+                sb.Append(c);
+        }
+        return sb.ToString();
     }
 
     /// <summary>

@@ -42,6 +42,53 @@ public partial class ShellWindow
         }
 
         OpenCommandPalette(PaletteMode.Command,
-            EncodingInspectionPalette.Build(report, path, tab.Control.IsModified, JumpToPaletteTarget));
+            EncodingInspectionPalette.Build(report, path, tab.Control.IsModified, JumpToPaletteTarget,
+                conversion => () => _ = ConvertFileEncodingAsync(path, conversion)));
     }
+
+    /// <summary>
+    /// ディスク上のファイルの文字コード・改行を変換し、開いているタブを読み直す。未保存の変更があるタブがあれば
+    /// 変換しない（読み直しで編集を捨てることになるので、保存してからにしてもらう）。変換前の本文はローカル履歴へ。
+    /// エディタは読み込むたびに文字コードと改行の形式を判定し直すので、読み直した後の保存も変換後の形を保つ。
+    /// </summary>
+    private async Task ConvertFileEncodingAsync(string path, TextConversion conversion)
+    {
+        if (_editorTabs.Any(t => t.IsRealized && t.Control.IsModified
+                && FilePathRelations.AreEqual(t.PeekFilePath, path)))
+        {
+            ShowRefactorStatus("文字コード：未保存の変更があります。保存してから変換してください。");
+            return;
+        }
+
+        // 読み・書きは UI スレッドから外す。履歴への記録はほかの記録点（開いた・保存した）と同じく UI スレッドから。
+        if (await Task.Run(() => TextFileEncoding.ReadFile(path)) is not { } decoded)
+        {
+            ShowRefactorStatus("文字コード：変換できませんでした（文字コードを判定できません）。");
+            return;
+        }
+        _localHistory.RecordContent(path, decoded.Text, LocalHistoryKind.BeforeConvert);
+
+        var (format, text) = TextFileEncoding.Apply(decoded, conversion);
+        var error = await Task.Run(() =>
+        {
+            try { return TextFileEncoding.TryWriteFile(path, format, text) ? null : "その文字コードで表せない文字があります"; }
+            catch (Exception ex) { return ex.Message; }
+        });
+        if (error is not null)
+        {
+            ShowRefactorStatus($"文字コード：変換できませんでした（{error}）。");
+            return;
+        }
+
+        await ReloadEditorTabsFromDiskAsync([path]);
+        ShowRefactorStatus($"{ConversionDoneLabel(conversion)}（変換前の本文はローカル履歴に残しています）。");
+    }
+
+    private static string ConversionDoneLabel(TextConversion conversion) => conversion switch
+    {
+        TextConversion.ToUtf8 => "UTF-8（BOM なし）に変換しました",
+        TextConversion.ToUtf8WithBom => "UTF-8（BOM 付き）に変換しました",
+        TextConversion.ToLf => "改行を LF にそろえました",
+        _ => "改行を CRLF にそろえました",
+    };
 }

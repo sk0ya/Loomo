@@ -82,6 +82,79 @@ public class EncodingInspectorTests
         Assert.True(report.Truncated);
     }
 
+    // ===== 変換 =====
+
+    [Fact]
+    public void Converting_shift_jis_to_utf8_keeps_text()
+    {
+        var decoded = TextFileEncoding.Decode(TextFileEncoding.ShiftJis.GetBytes("設定\r\n"))!;
+
+        var (format, text) = TextFileEncoding.Apply(decoded, TextConversion.ToUtf8);
+        Assert.Equal("UTF-8", format.Name);
+        Assert.False(format.HasBom);
+        Assert.Equal("設定\r\n", text);   // 本文（改行も）は変えない
+
+        var (bom, _) = TextFileEncoding.Apply(decoded, TextConversion.ToUtf8WithBom);
+        Assert.Equal("UTF-8 (BOM)", bom.Name);
+        Assert.True(bom.HasBom);
+    }
+
+    [Theory]
+    [InlineData(TextConversion.ToLf, "あ\nい\nう\nえ")]
+    [InlineData(TextConversion.ToCrLf, "あ\r\nい\r\nう\r\nえ")]
+    public void Normalizing_line_endings_keeps_encoding(TextConversion conversion, string expected)
+    {
+        var decoded = TextFileEncoding.Decode(TextFileEncoding.ShiftJis.GetBytes("あ\r\nい\nう\rえ"))!;
+        var (format, text) = TextFileEncoding.Apply(decoded, conversion);
+        Assert.Equal("Shift_JIS", format.Name);
+        Assert.Equal(expected, text);
+    }
+
+    [Fact]
+    public void Converted_file_round_trips_through_disk()
+    {
+        var path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "LoomoConvert_" + Guid.NewGuid().ToString("N") + ".txt");
+        try
+        {
+            System.IO.File.WriteAllBytes(path, TextFileEncoding.ShiftJis.GetBytes("設定\r\n値\n"));
+            var decoded = TextFileEncoding.ReadFile(path)!;
+            var (format, text) = TextFileEncoding.Apply(decoded, TextConversion.ToUtf8);
+            Assert.True(TextFileEncoding.TryWriteFile(path, format, text));
+
+            var report = EncodingInspector.Inspect(System.IO.File.ReadAllBytes(path));
+            Assert.Equal("UTF-8", report.EncodingName);
+            Assert.Equal("設定\r\n値\n", TextFileEncoding.ReadFile(path)!.Text);
+        }
+        finally { System.IO.File.Delete(path); }
+    }
+
+    [Fact]
+    public void Palette_offers_only_conversions_that_change_something()
+    {
+        static string[] Titles(byte[] bytes) => EncodingInspectionPalette
+            .Build(EncodingInspector.Inspect(bytes), "a.txt", false, _ => () => { }, _ => () => { })
+            .Where(i => i.Category == "変換").Select(i => i.Title).ToArray();
+
+        // UTF-8・LF だけ：BOM 付きと CRLF への変換だけを出す
+        Assert.Equal(new[] { "UTF-8（BOM 付き）に変換して保存", "改行を CRLF にそろえて保存" },
+            Titles(Utf8NoBom.GetBytes("a\nb\n")));
+        // Shift_JIS・混在：全部出す
+        Assert.Equal(4, Titles(TextFileEncoding.ShiftJis.GetBytes("設定\r\n値\n")).Length);
+        // 判定できないファイルには変換を出さない
+        Assert.Empty(Titles([0x00, 0xFF]));
+    }
+
+    [Fact]
+    public void Palette_conversion_runs_the_requested_conversion()
+    {
+        TextConversion? requested = null;
+        var items = EncodingInspectionPalette.Build(EncodingInspector.Inspect(Utf8NoBom.GetBytes("a\r\n")), "a.txt", false,
+            _ => () => { }, conversion => () => requested = conversion);
+
+        items.Single(i => i.Title == "改行を LF にそろえて保存").Execute();
+        Assert.Equal(TextConversion.ToLf, requested);
+    }
+
     // ===== パレット =====
 
     [Fact]
