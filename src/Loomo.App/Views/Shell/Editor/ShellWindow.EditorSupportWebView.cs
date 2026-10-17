@@ -70,6 +70,9 @@ public partial class ShellWindow {
             } else {
                 _editorSupport.Visuals.RevealLocation(hit.FullPath, hit.Line, hit.Location);
             }
+            // 切り離した複製も、そのファイルを出していれば同じ位置へ合わせる。
+            foreach (var mirror in Detached.AllItems.Select(i => i.Content).OfType<DetachedEditorSupportView>())
+                mirror.RevealDocumentLocation(hit.FullPath, hit.Line, hit.Location);
             return;
         }
         _activeEditorTab?.Control.NavigateTo(hit.Line - 1, Math.Max(0, hit.Column - 1));

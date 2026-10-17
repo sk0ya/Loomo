@@ -33,9 +33,7 @@ public sealed class EditorSupportWebViewController : IDisposable
     private bool _searchUseRegex;
     private string? _markdownSource;
     private bool _markdownEditMode;
-    private readonly SemaphoreSlim _findGate = new(1, 1);
-    private string? _appliedFindTerm;          // 今の文書へ実際に適用済みの Find 条件（null＝不明・未適用）
-    private bool _appliedFindCaseSensitive;
+    private readonly PdfFindHighlighter _pdfFind = new();
     private (string Uri, int Page)? _pendingPdfPage;   // まだ載っていない PDF を開くときに飛ぶページ
     private int _pdfJumpCount;                         // 載せている PDF のページ移動を毎回別文書にするための通し番号
 
@@ -116,12 +114,12 @@ public sealed class EditorSupportWebViewController : IDisposable
     {
         if (!IsPdf(_page.CurrentUri))
         {
-            _ = ApplyFindAsync(core, "", false);   // PDF から離れた直後の塗り残しを消す
+            _ = _pdfFind.ApplyAsync(core, "", false);   // PDF から離れた直後の塗り残しを消す
             PostSearchHighlight(core);
             return;
         }
         // Find API はリテラル検索なので正規表現モードでは塗らない（誤った位置を塗るより塗らない方を選ぶ）。
-        _ = ApplyFindAsync(core, _searchUseRegex ? "" : _searchTerm, _searchCaseSensitive);
+        _ = _pdfFind.ApplyAsync(core, _searchUseRegex ? "" : _searchTerm, _searchCaseSensitive);
     }
 
     private void PostSearchHighlight(CoreWebView2 core)
@@ -132,44 +130,6 @@ public sealed class EditorSupportWebViewController : IDisposable
                 _searchTerm, _searchCaseSensitive, _searchUseRegex));
         }
         catch { /* ページ未ロード等：次の描画で送り直される */ }
-    }
-
-    /// <summary>
-    /// Find セッションを目的の条件へ合わせる。<see cref="CoreWebView2Find.StartAsync"/> は非同期なので、
-    /// 打鍵ごとの呼び出しが追い越し合うと「消したはずの語が塗られたまま」になる——<see cref="_findGate"/> で
-    /// 直列化し、適用済みの条件（<see cref="_appliedFindTerm"/>）と同じ要求は捨てて、最後の要求が必ず勝つようにする。
-    /// </summary>
-    private async Task ApplyFindAsync(CoreWebView2 core, string term, bool caseSensitive)
-    {
-        await _findGate.WaitAsync();
-        try
-        {
-            if (_appliedFindTerm == term && (term.Length == 0 || _appliedFindCaseSensitive == caseSensitive))
-                return;
-            if (term.Length == 0)
-            {
-                core.Find.Stop();   // セッションが無ければ何もしない（API 仕様）
-                _appliedFindTerm = "";
-                return;
-            }
-            var options = core.Environment.CreateFindOptions();
-            options.FindTerm = term;
-            options.IsCaseSensitive = caseSensitive;
-            options.ShouldHighlightAllMatches = true;
-            options.SuppressDefaultFindDialog = true;   // 自前の検索パネルがあるので既定の検索バーは出さない
-            await core.Find.StartAsync(options);
-            _appliedFindTerm = term;
-            _appliedFindCaseSensitive = caseSensitive;
-        }
-        catch
-        {
-            // Find API 非対応のランタイム等：塗られないだけ。適用済みは不明になるので次回やり直す。
-            _appliedFindTerm = null;
-        }
-        finally
-        {
-            _findGate.Release();
-        }
     }
 
     private static bool IsPdf(string? uri)
@@ -569,7 +529,7 @@ public sealed class EditorSupportWebViewController : IDisposable
         _initTask = null;
         _eventsAttached = false;
         _page.ResetFirstRenderHealing();   // 次に張り直すビューでも初回描画の取りこぼしを直す
-        _findGate.Dispose();
+        _pdfFind.Dispose();
     }
 
     private void DetachCoreHandlers(CoreWebView2? core)
@@ -589,7 +549,7 @@ public sealed class EditorSupportWebViewController : IDisposable
         // ページを組み直すとページ側の保持状態（と Find セッション）が消えるので、検索ハイライトを送り直す。
         if (e.IsSuccess && Core is { } loaded)
         {
-            _appliedFindTerm = null;
+            _pdfFind.Invalidate();
             PushSearchHighlight(loaded);
             PostMarkdownState(loaded);
             // 読み込み中に「このページへ」と頼まれていた（開いた直後に検索結果を選んだ）なら、いま移る。

@@ -57,6 +57,11 @@ internal sealed class DetachedEditorSupportView : Grid, IDisposable
     private string _searchTerm = "";
     private bool _searchCaseSensitive;
     private bool _searchUseRegex;
+    /// <summary>検索結果から頼まれた、この PDF で出すページ（同じ PDF を描き直す間は保つ）。</summary>
+    private (string FilePath, int Page)? _pdfPage;
+    private int _pdfJumpCount;
+    private string? _shownUri;   // いま載せている file:// の URI（PDF の語の塗り分けに使う）
+    private readonly PdfFindHighlighter _pdfFind = new();
 
     /// <summary>タブ見出しに使う現在のプレビュー題名の変化通知。</summary>
     public event EventHandler<string>? TitleChanged;
@@ -114,8 +119,40 @@ internal sealed class DetachedEditorSupportView : Grid, IDisposable
         _searchCaseSensitive = caseSensitive;
         _searchUseRegex = useRegex;
         if (_web.TryCore() is { } core)
-            EditorSupportSearchHighlightBridge.Post(core, _searchTerm, _searchCaseSensitive, _searchUseRegex);
+            PushSearchHighlight(core);
         _visuals.SetSearchHighlight(_searchTerm, _searchCaseSensitive, _searchUseRegex);
+    }
+
+    /// <summary>
+    /// 検索結果の位置へ合わせる（本体の <c>ShellWindow.RevealSearchHit</c> と同じ依頼）。この複製の追従元が
+    /// そのファイルを出しているときだけ効く。PDF はそのページで開き直し（本体と同じく、載せている PDF へ
+    /// <c>#page=N</c> だけ足しても動かないのでクエリに通し番号を付ける）、Excel 等のビジュアル表示はシート・セルへ。
+    /// </summary>
+    internal void RevealDocumentLocation(string filePath, int position, string? location)
+    {
+        if (!string.Equals(_source.FilePath, filePath, StringComparison.OrdinalIgnoreCase))
+            return;
+        if (SearchDocuments.IsPdf(filePath))
+        {
+            _pdfPage = (filePath, position);
+            Refresh();
+        }
+        else
+            _visuals.RevealLocation(filePath, position, location);
+    }
+
+    /// <summary>
+    /// 検索ハイライトを今のページへ送る。PDF は Chromium 内蔵ビューアの中身でスクリプトが届かないので、
+    /// 本体と同じく WebView2 の Find API で塗る（リテラル検索なので正規表現のときは塗らない）。
+    /// </summary>
+    private void PushSearchHighlight(CoreWebView2 core)
+    {
+        if (_shownUri is { } uri && SearchDocuments.IsPdf(uri))
+        {
+            _ = _pdfFind.ApplyAsync(core, _searchUseRegex ? "" : _searchTerm, _searchCaseSensitive);
+            return;
+        }
+        EditorSupportSearchHighlightBridge.Post(core, _searchTerm, _searchCaseSensitive, _searchUseRegex);
     }
 
     /// <summary>いまの設定で描き直す（プレビュー表示トグルの切替など、追従元の本文が変わらない更新）。
@@ -214,11 +251,21 @@ internal sealed class DetachedEditorSupportView : Grid, IDisposable
         TitleChanged?.Invoke(this, result.Title);
         if (result.Uri is { } uri)
         {
-            try { core.Navigate(uri); }
+            _shownUri = uri;
+            var target = uri;
+            if (_pdfPage is { } page)
+            {
+                if (string.Equals(page.FilePath, filePath, StringComparison.OrdinalIgnoreCase))
+                    target = $"{uri}?loomo-jump={++_pdfJumpCount}#page={page.Page}";
+                else
+                    _pdfPage = null;   // 別のファイルへ移った：頼まれたページは忘れる
+            }
+            try { core.Navigate(target); }
             catch { /* 無効 URI は無視 */ }
             return;
         }
 
+        _shownUri = null;
         UpdatePreviewHost(core, result.MapFolder);
         if (result.Html is { } html)
             Navigate(core, html);
@@ -305,8 +352,10 @@ internal sealed class DetachedEditorSupportView : Grid, IDisposable
         core.ContextMenuRequested += OnContextMenuRequested;
         core.NavigationCompleted += (_, e) =>
         {
-            if (e.IsSuccess)
-                EditorSupportSearchHighlightBridge.Post(core, _searchTerm, _searchCaseSensitive, _searchUseRegex);
+            if (!e.IsSuccess)
+                return;
+            _pdfFind.Invalidate();   // 読み直すと Find のセッションも消える
+            PushSearchHighlight(core);
         };
 
         // ページ側スクリプトからのメッセージ（リンククリック等）を受ける。WebView2 は再ペアレント時に
@@ -402,6 +451,7 @@ internal sealed class DetachedEditorSupportView : Grid, IDisposable
         _renderCts?.Dispose();
         _renderCts = null;
         _visuals.Dispose();
+        _pdfFind.Dispose();
         _mountedVisual = null;
         if (_web is not null)
         {
