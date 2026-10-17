@@ -626,14 +626,39 @@ internal static class MarkdownPage
                     lightboxEl.appendChild(lightboxImg);
                     document.body.appendChild(lightboxEl);
                 }
+                // mermaid 図（インライン SVG）も同じライトボックスで拡大する。SVG を画像として渡すので、
+                // 幅は viewBox の実寸に固定し（width="100%" のままだと画像の実寸が決まらない）、
+                // 図の背景は透明なのでページの地色を敷く（暗い幕の上で淡色テーマの文字が消えないように）。
+                function mermaidSvgToDataUrl(svg) {
+                    const clone = svg.cloneNode(true);
+                    const vb = svg.viewBox && svg.viewBox.baseVal;
+                    const rect = svg.getBoundingClientRect();
+                    clone.setAttribute('width', String((vb && vb.width) || rect.width));
+                    clone.setAttribute('height', String((vb && vb.height) || rect.height));
+                    clone.style.maxWidth = '';
+                    if (!clone.getAttribute('xmlns')) clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+                    return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(new XMLSerializer().serializeToString(clone));
+                }
                 document.addEventListener('click', e => {
                     if (isMarp || markdownEditMode) return;
-                    const img = e.target.closest && e.target.closest('img');
-                    if (!img || (img.closest && img.closest('a'))) return;
-                    if (img === lightboxImg) return;  // ライトボックス内の画像自体のクリック（ドラッグ後の click 含む）は無視
+                    const svg = e.target.closest && e.target.closest('pre.mermaid svg');
+                    const img = svg ? null : e.target.closest && e.target.closest('img');
+                    if (svg) {
+                        if (e.target.closest('a')) return;
+                    } else {
+                        if (!img || (img.closest && img.closest('a'))) return;
+                        if (img === lightboxImg) return;  // ライトボックス内の画像自体のクリック（ドラッグ後の click 含む）は無視
+                    }
                     ensureLightbox();
-                    lightboxImg.src = img.currentSrc || img.src;
-                    lightboxImg.alt = img.alt || '';
+                    if (svg) {
+                        lightboxImg.src = mermaidSvgToDataUrl(svg);
+                        lightboxImg.alt = '';
+                        lightboxImg.style.background = getComputedStyle(document.body).backgroundColor;
+                    } else {
+                        lightboxImg.src = img.currentSrc || img.src;
+                        lightboxImg.alt = img.alt || '';
+                        lightboxImg.style.background = '';
+                    }
                     resetLightboxTransform();
                     lightboxImg.style.cursor = 'grab';
                     lightboxEl.classList.add('open');
@@ -884,7 +909,7 @@ internal static class MarkdownPage
                 border: none;
                 text-align: center;
             }
-            pre.mermaid svg { max-width: 100%; }
+            pre.mermaid svg { max-width: 100%; cursor: zoom-in; }
             blockquote {
                 border-left: 4px solid {{muted}};
                 margin: 14px 0;
