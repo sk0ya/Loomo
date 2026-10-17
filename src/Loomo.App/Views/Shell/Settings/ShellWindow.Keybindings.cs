@@ -46,6 +46,7 @@ public partial class ShellWindow {
             ["localHistory.show"] = ShowLocalHistory, ["localHistory.restore"] = RestoreFromLocalHistory,
             ["localHistory.recent"] = ShowRecentLocalHistory, ["localHistory.restoreDeleted"] = RestoreDeletedFileFromLocalHistory,
             ["nuget.manage"] = () => OpenNuGetPackageManager(),
+            ["editor.inspectEncoding"] = InspectActiveFileEncoding,
             ["editor.save"] = SaveActiveEditor,
             ["editor.selection.expand"] = ExpandSemanticSelection, ["editor.selection.shrink"] = ShrinkSemanticSelection, ["editor.test.debugAtCaret"] = DebugTestAtCaret, ["editor.test.runAtCaret"] = RunTestAtCaret,
             ["stage.cycle"] = () => CycleInActiveMode(1), ["mode.toggle"] = ToggleDisplayMode,

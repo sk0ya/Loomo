@@ -148,6 +148,10 @@ public static class CommandCatalog
         new CommandDescriptor("localHistory.recent", CatHistory, "最近の変更（ローカル履歴・全ファイル）", null),
         new CommandDescriptor("localHistory.restoreDeleted", CatHistory, "削除したファイルを復元（ローカル履歴）", null),
 
+        // ===== 文字コード（§23.3.4）=====
+        // 既定キーは与えない（調べたいときにだけ引く）。パレットから。
+        new CommandDescriptor("editor.inspectEncoding", CatEditor, "文字コードを調べる（BOM・改行・見えない文字・文字化け）", null),
+
         // ===== NuGet（§36）=====
         new CommandDescriptor("nuget.manage", CatPackages, "NuGet パッケージを管理…", null),
 

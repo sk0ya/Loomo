@@ -306,6 +306,8 @@ public partial class ShellWindow {
         list.Add(new("ローカル履歴", "最近の変更（全ファイル）", ShowRecentLocalHistory, Sc("localHistory.recent"), "localHistory.recent"));
         list.Add(new("ローカル履歴", "削除したファイルを復元", RestoreDeletedFileFromLocalHistory, Sc("localHistory.restoreDeleted"), "localHistory.restoreDeleted"));
         list.Add(new("NuGet", "NuGet パッケージを管理…", () => OpenNuGetPackageManager(), Sc("nuget.manage"), "nuget.manage"));
+        list.Add(new("文字コード", "文字コードを調べる（BOM・改行・見えない文字・文字化け）", InspectActiveFileEncoding,
+            Sc("editor.inspectEncoding"), "editor.inspectEncoding"));
         list.Add(new("タスク", "既定のビルドタスクを実行", RunDefaultBuildTask,
             Sc("tasks.runDefaultBuild"), "tasks.runDefaultBuild"));
         if (_taskRunner?.ActiveWatch is { } watch)
