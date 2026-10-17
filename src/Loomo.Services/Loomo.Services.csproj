@@ -111,6 +111,9 @@
     <!-- 1.0.43: Alt+文字（Claude Code の画像貼り付け Alt+V、PSReadLine の Alt+B/F）と Alt+矢印・Alt+Enter・F10 が
          シェルへ届かなかったのを修正（入力プロキシが SystemText を捨て、Key.System を実キーへ読み替えていなかった）。
          Alt+F4 はウィンドウを閉じる操作として Windows に残す -->
+    <!-- 1.0.44: 出力フラッシュのたびにスクロールバック全文をテキスト化していたのを、センチネル待ちのコマンドが
+         あるときだけにした。Claude Code のように細かく出力し続ける TUI で、スクロールバック 1 万行時の
+         UI スレッド占有が 43% → 2.5%（入力遅延 p99 161ms → 25ms） -->
     <!-- 版は Directory.Build.props の TerminalPackageVersion（常駐ホストと共有するため一か所） -->
     <PackageReference Include="sk0ya.Terminal.Controls" Version="$(TerminalPackageVersion)" />
   </ItemGroup>
