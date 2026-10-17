@@ -183,6 +183,38 @@ public class DocumentSearchTests
     }
 
     [Fact]
+    public void Excel_chart_sheets_do_not_shift_sheet_numbers()
+    {
+        var dir = NewTempDir();
+        try
+        {
+            var xlsx = Path.Combine(dir, "chart.xlsx");
+            WriteZip(xlsx,
+                ("xl/workbook.xml", """
+                    <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+                              xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+                      <sheets><sheet name="Chart1" sheetId="1" r:id="rId1"/><sheet name="Data" sheetId="2" r:id="rId2"/></sheets></workbook>
+                    """),
+                ("xl/_rels/workbook.xml.rels", """
+                    <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+                      <Relationship Id="rId1" Type="chartsheet" Target="chartsheets/sheet1.xml"/>
+                      <Relationship Id="rId2" Type="worksheet" Target="worksheets/sheet1.xml"/></Relationships>
+                    """),
+                ("xl/chartsheets/sheet1.xml", "<chartsheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"/>"),
+                ("xl/worksheets/sheet1.xml", """
+                    <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>
+                      <row r="3"><c r="B3" t="inlineStr"><is><t>needle</t></is></c></row></sheetData></worksheet>
+                    """));
+
+            var line = Assert.Single(OfficeTextExtractor.ExtractExcel(xlsx, CancellationToken.None));
+
+            // プレビュー（ClosedXML の Worksheets）はグラフシートを並べないので、Data は1枚目として数える。
+            Assert.Equal((1, "Data!B3"), (line.Position, line.Location));
+        }
+        finally { TryDelete(dir); }
+    }
+
+    [Fact]
     public void PowerPoint_slides_follow_presentation_order()
     {
         var dir = NewTempDir();

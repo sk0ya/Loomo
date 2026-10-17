@@ -57,6 +57,31 @@ public class ShiftJisSearchTests
         finally { TryDelete(root); }
     }
 
+    [Fact]
+    public async Task Grep_keeps_every_match_on_the_same_shift_jis_line()
+    {
+        var root = NewTempDir();
+        try
+        {
+            File.WriteAllBytes(Path.Combine(root, "sjis.txt"), TextFileEncoding.ShiftJis.GetBytes("検索と検索\n"));
+            var svc = NewService(root);
+
+            var hits = await svc.GrepAsync("検索", new GrepOptions(), CancellationToken.None);
+
+            // 同じ行の2つ目の一致も残す（行で一意にすると「1件だけ置換」で2つ目を選べなくなる）。
+            // 列は文字位置（rg が返す UTF-8 のバイト位置 10 ではなく 4）。
+            Assert.Equal(new[] { 1, 4 }, hits.Select(h => h.Column).OrderBy(c => c));
+        }
+        finally { TryDelete(root); }
+    }
+
+    [Theory]
+    [InlineData("検索と検索", 10, 4)]     // rg は UTF-8 のバイト位置で返す
+    [InlineData("abc needle", 5, 5)]       // ASCII だけの行はそのまま
+    [InlineData("検索", 1, 1)]
+    public void Rg_byte_column_becomes_char_column(string line, int byteColumn, int charColumn)
+        => Assert.Equal(charColumn, WorkspaceSearchService.CharColumn(line, byteColumn));
+
     // ===== 置換 =====
 
     [Fact]
@@ -108,6 +133,42 @@ public class ShiftJisSearchTests
 
             Assert.Equal(0, query.ReplaceInFile(path, "設定", "😀", caseSensitive: false, useRegex: false));
             Assert.Equal(original, File.ReadAllBytes(path));   // 触っていない
+        }
+        finally { TryDelete(root); }
+    }
+
+    [Fact]
+    public void Replace_leaves_files_with_alternate_cp932_code_points_untouched()
+    {
+        var root = NewTempDir();
+        try
+        {
+            // EE E0 は NEC 選定 IBM 拡張の「髙」（IBM 拡張 FB FC と同じ文字の別の符号位置）。読んで書き戻すと
+            // 別のバイトになりうる文字なので、判定できない＝書き換えない側に倒れること。
+            var path = Path.Combine(root, "nec.txt");
+            byte[] original = [.. TextFileEncoding.ShiftJis.GetBytes("設定 "), 0xEE, 0xE0, .. TextFileEncoding.ShiftJis.GetBytes("\n")];
+            File.WriteAllBytes(path, original);
+            var query = NewQuery(root);
+
+            Assert.Equal(0, query.ReplaceInFile(path, "設定", "構成", caseSensitive: false, useRegex: false));
+            Assert.Equal(original, File.ReadAllBytes(path));
+        }
+        finally { TryDelete(root); }
+    }
+
+    [Fact]
+    public void Replace_one_of_several_matches_keeps_the_rest()
+    {
+        var root = NewTempDir();
+        try
+        {
+            var path = Path.Combine(root, "sjis.txt");
+            File.WriteAllBytes(path, TextFileEncoding.ShiftJis.GetBytes("検索と検索\n"));
+            var query = NewQuery(root);
+
+            Assert.True(query.ReplaceOneInFile(path, "検索", "探索", caseSensitive: false, useRegex: false, line: 1, column: 4));
+
+            Assert.Equal("検索と探索\n", TextFileEncoding.ShiftJis.GetString(File.ReadAllBytes(path)));
         }
         finally { TryDelete(root); }
     }

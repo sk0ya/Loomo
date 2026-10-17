@@ -612,11 +612,13 @@ public sealed class WorkspaceSearchService : IWorkspaceSearchService
         if (hits.Count >= options.MaxResults || query.All(c => c < 0x80))
             return hits;
 
-        var seen = hits.Select(h => (h.RelativePath, h.Line)).ToHashSet();
+        // 除くのは「1回目で出た行」だけ。--vimgrep は1つの一致ごとに1行出すので、行で一意にすると
+        // 同じ行の2つ目以降の一致（「検索と検索」の2つ目）まで捨ててしまう。
+        var firstPass = hits.Select(h => (h.RelativePath, h.Line)).ToHashSet();
         var sjis = await GrepWithRgAsync(query, options with { MaxResults = options.MaxResults - hits.Count },
             root, prefix, encoding: "shift_jis", ct).ConfigureAwait(false);
         var merged = hits.ToList();
-        merged.AddRange(sjis.Where(h => seen.Add((h.RelativePath, h.Line))));
+        merged.AddRange(sjis.Where(h => !firstPass.Contains((h.RelativePath, h.Line))));
         return merged;
     }
 
@@ -667,11 +669,26 @@ public sealed class WorkspaceSearchService : IWorkspaceSearchService
                 continue;
             var rel = NormalizeRel(p.Path);
             hits.Add(new ContentSearchHit(
-                Path.GetFullPath(Path.Combine(root, rel)), WithPrefix(rel, prefix), p.Line, p.Column, p.Text));
+                Path.GetFullPath(Path.Combine(root, rel)), WithPrefix(rel, prefix), p.Line,
+                CharColumn(p.Text, p.Column), p.Text));
             if (hits.Count >= options.MaxResults)
                 break;
         }
         return hits;
+    }
+
+    /// <summary>
+    /// rg の列（<b>UTF-8 のバイト位置</b>・1始まり）を、行テキストの文字位置（UTF-16・1始まり）へ直す。
+    /// ContentSearchHit.Column は文字位置として使われる（エディタの移動・「1件だけ置換」の一致の特定）ので、
+    /// 直さないと日本語を含む行で列がずれ、同じ行の2つ目以降の一致を1件だけ置換できなかった。
+    /// <c>-E shift_jis</c> のときも rg は UTF-8 へ変換した行のバイト位置を返すので、同じ直し方でよい。
+    /// </summary>
+    internal static int CharColumn(string lineText, int byteColumn)
+    {
+        if (byteColumn <= 1 || lineText.All(c => c < 0x80))
+            return byteColumn;
+        var bytes = Encoding.UTF8.GetBytes(lineText);
+        return Encoding.UTF8.GetCharCount(bytes, 0, Math.Min(byteColumn - 1, bytes.Length)) + 1;
     }
 
     /// <summary>rg を起動し標準出力を行単位で最大 <paramref name="maxLines"/> 行まで読む。

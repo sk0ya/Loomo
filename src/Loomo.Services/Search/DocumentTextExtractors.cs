@@ -182,7 +182,11 @@ public static class OfficeTextExtractor
         {
             using var zip = ZipFile.OpenRead(path);
             var shared = ReadSharedStrings(zip, ct);
-            var sheets = OrderedParts(zip, "xl/workbook.xml", "xl/_rels/workbook.xml.rels", "sheet", "xl/");
+            // グラフシート（chartsheets/）・マクロシートはセルを持たず、プレビュー（ClosedXML の Worksheets）にも
+            // 並ばない。数えるとそれより後ろのシートの番号がずれるので、ワークシートだけを数える。
+            var sheets = OrderedParts(zip, "xl/workbook.xml", "xl/_rels/workbook.xml.rels", "sheet", "xl/")
+                .Where(sheet => sheet.Path.Contains("/worksheets/", StringComparison.OrdinalIgnoreCase))
+                .ToList();
             var lines = new List<DocumentLine>();
             for (var i = 0; i < sheets.Count; i++)
             {
