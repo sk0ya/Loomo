@@ -13,7 +13,8 @@ internal sealed class CommandPaletteSearchPresenter(
         IReadOnlyList<PaletteCommand> commands,
         Action<PaletteMode> setHint,
         string? activeFilePath,
-        Func<string, string> toDisplayPath)
+        Func<string, string> toDisplayPath,
+        Func<IReadOnlyList<PaletteCommand>> terminalCommands)
     {
         var query = PaletteQuery.Parse(input);
         setHint(query.Mode);
@@ -28,6 +29,10 @@ internal sealed class CommandPaletteSearchPresenter(
             case PaletteMode.Command:
                 status.Text = "";
                 ShowItems(PaletteFilter.Filter(commands, query.Text), query.Text);
+                break;
+            case PaletteMode.Terminal:
+                status.Text = "";
+                ShowItems(PaletteFilter.Filter(terminalCommands(), query.Text), query.Text);
                 break;
             case PaletteMode.Line:
                 var result = PaletteLineNavigationPolicy.Resolve(

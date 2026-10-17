@@ -26,6 +26,9 @@ public enum PaletteMode
     Symbol,
     /// <summary>いま開いているファイルの行番号。</summary>
     Line,
+    /// <summary>可視ターミナルで実行したコマンド（最近のコマンド・§24.20）。部屋の操作（<see cref="Command"/>）
+    /// とは混ぜない——コマンド行は記号だらけで、操作名を探す打鍵に飛び石一致で引っかかるため。</summary>
+    Terminal,
 }
 
 /// <summary>
@@ -39,11 +42,13 @@ public readonly record struct PaletteQuery(PaletteMode Mode, string Text)
     public const char TextPrefix = '#';
     public const char SymbolPrefix = '@';
     public const char LinePrefix = ':';
+    public const char TerminalPrefix = '$';
 
     /// <summary>Tab で巡回する順（ヒント行の並びとも揃える）。</summary>
     private static readonly PaletteMode[] Cycle =
     {
         PaletteMode.All, PaletteMode.File, PaletteMode.Text, PaletteMode.Symbol, PaletteMode.Line, PaletteMode.Command,
+        PaletteMode.Terminal,
     };
 
     /// <summary>場所を含む検索結果を扱うモード（プレビューを出す）。</summary>
@@ -72,6 +77,7 @@ public readonly record struct PaletteQuery(PaletteMode Mode, string Text)
         TextPrefix => PaletteMode.Text,
         SymbolPrefix => PaletteMode.Symbol,
         LinePrefix => PaletteMode.Line,
+        TerminalPrefix => PaletteMode.Terminal,
         _ => null,
     };
 
@@ -83,6 +89,7 @@ public readonly record struct PaletteQuery(PaletteMode Mode, string Text)
         PaletteMode.Text => TextPrefix.ToString(),
         PaletteMode.Symbol => SymbolPrefix.ToString(),
         PaletteMode.Line => LinePrefix.ToString(),
+        PaletteMode.Terminal => TerminalPrefix.ToString(),
         _ => "",
     };
 
@@ -101,6 +108,7 @@ public readonly record struct PaletteQuery(PaletteMode Mode, string Text)
         PaletteMode.Text => "テキスト",
         PaletteMode.Symbol => "シンボル",
         PaletteMode.Line => "行",
+        PaletteMode.Terminal => "ターミナル",
         _ => "コマンド",
     };
 
@@ -129,6 +137,7 @@ public static class PaletteHintPolicy
     private static readonly PaletteMode[] ModeOrder =
     {
         PaletteMode.All, PaletteMode.File, PaletteMode.Text, PaletteMode.Symbol, PaletteMode.Line, PaletteMode.Command,
+        PaletteMode.Terminal,
     };
 
     public static IReadOnlyList<PaletteHintMode> Modes { get; } = ModeOrder

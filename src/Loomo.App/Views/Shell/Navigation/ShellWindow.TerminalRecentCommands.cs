@@ -83,9 +83,8 @@ public partial class ShellWindow {
 
     private const string RecentTerminalCommandCategory = "最近のコマンド";
 
-    /// <summary>「最近のコマンドを選び直す」。一覧を最近のコマンドだけにしてパレットを開く。</summary>
-    private void OpenRecentTerminalCommands()
-        => OpenCommandPalette(PaletteMode.Command, BuildRecentTerminalPaletteCommands());
+    /// <summary>「最近のコマンドを選び直す」。パレットを「$ ターミナル」の探し方で開く。</summary>
+    private void OpenRecentTerminalCommands() => OpenCommandPalette(PaletteMode.Terminal);
 
     /// <summary>選んだコマンドを可視ターミナルのプロンプトへ入力する（Enter は送らない）。
     /// ペグボードの「ターミナルへ送る」と同じ流儀（§24.3）。</summary>

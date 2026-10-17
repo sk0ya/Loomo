@@ -65,14 +65,27 @@ public class PaletteNavigationTests
     {
         var mode = PaletteMode.All;
         var seen = new List<PaletteMode>();
-        for (var i = 0; i < 6; i++)
+        for (var i = 0; i < 7; i++)
         {
             seen.Add(mode);
             mode = PaletteQuery.NextMode(mode);
         }
 
-        Assert.Equal(PaletteMode.All, mode);   // 6手で1周
-        Assert.Equal(6, seen.Distinct().Count());
+        Assert.Equal(PaletteMode.All, mode);   // 7手で1周
+        Assert.Equal(7, seen.Distinct().Count());
+    }
+
+    [Fact]
+    public void Dollar_prefix_selects_terminal_commands_not_room_commands()
+    {
+        // 最近のコマンド（§24.20）は「> コマンド」に混ぜず「$ ターミナル」で引く。
+        var query = PaletteQuery.Parse("$dotnet");
+
+        Assert.Equal(PaletteMode.Terminal, query.Mode);
+        Assert.Equal("dotnet", query.Text);
+        Assert.False(query.IsNavigation);
+        Assert.Equal("$dotnet", query.ToInput(PaletteMode.Terminal));
+        Assert.Equal(PaletteMode.All, PaletteQuery.NextMode(PaletteMode.Terminal));
     }
 
     [Fact]

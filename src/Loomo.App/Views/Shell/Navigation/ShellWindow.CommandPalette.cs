@@ -127,7 +127,7 @@ public partial class ShellWindow {
     private void RefilterPalette()
         => _ = PaletteSearchPresentation.RefilterAsync(
             PaletteInput.Text, _paletteCommands, SetPaletteHint,
-            ActiveEditorFilePath(), _workspace.ToDisplayPath);
+            ActiveEditorFilePath(), _workspace.ToDisplayPath, BuildRecentTerminalPaletteCommands);
     private string? ActiveEditorFilePath()
         => EditorTabNavigationPolicy.ActiveFilePath(_activeEditorTab);
     /// <summary>確定（Enter／クリック）で実際に飛ぶ。プレビューで見ていた場所と同じ <see cref="PaletteTarget"/>
@@ -393,9 +393,7 @@ public partial class ShellWindow {
             var target = workspace;
             list.Add(new("ワークスペース", $"切替: {target.Name}", () => _ = _vm.Workspaces.ActivateWorkspaceAsync(target)));
         }
-        // 最近のコマンド（§24.20）も検索対象に並べる。末尾に置くのは、空の問い合わせで部屋の操作を
-        // 押し流さないため（打てば「最近のコマンド」のカテゴリやコマンド行そのもので引っかかる）。
-        list.AddRange(BuildRecentTerminalPaletteCommands());
+        // 最近のコマンド（§24.20）はここに混ぜない。「$」の探し方（PaletteMode.Terminal）で別に引く。
         return list;
     }
 
