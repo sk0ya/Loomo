@@ -54,6 +54,10 @@ public partial class App : Application
 
         _services.GetRequiredService<AppBootstrapper>().Initialize();
 
+        // PDF 本文検索の一時キャッシュ：ほかに Loomo がいなければ、前回落ちて消し損ねたぶんを捨てる。
+        // プロセス列挙を伴うので起動の臨界パスには載せない。
+        _ = Task.Run(sk0ya.Loomo.Services.Search.PdfTextCache.CleanupIfLastInstance);
+
         // 取り込み待ちのログイン情報を流し込む（設計書 §21.5.4）。ここでしかできない——
         // Login Data は稼働中の WebView2 が掴んでいて書けず、WebView2 がまだ1つも作られていないのは
         // この瞬間だけ。待ちが無いときはファイルの有無を見るだけで抜ける（起動を遅くしない）。
@@ -172,6 +176,8 @@ public partial class App : Application
         // 端末の常駐ホスト（§34.6）：最後の Loomo が正常に終わるならシェルを残さない。落ちたときはここを通らないので、
         // シェルは生き残って次の起動で戻る。
         try { _services?.GetService<sk0ya.Loomo.Services.Terminal.PtyHostClient>()?.Leave(); } catch { }
+        // PDF 本文検索の一時キャッシュは、最後の Loomo が終わるときに捨てる（ほかが動いていれば残す）。
+        try { sk0ya.Loomo.Services.Search.PdfTextCache.CleanupIfLastInstance(); } catch { }
         _relay?.Dispose();
         _services?.Dispose();
         base.OnExit(e);

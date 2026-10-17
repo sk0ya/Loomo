@@ -36,6 +36,8 @@ public sealed class EditorSupportWebViewController : IDisposable
     private readonly SemaphoreSlim _findGate = new(1, 1);
     private string? _appliedFindTerm;          // 今の文書へ実際に適用済みの Find 条件（null＝不明・未適用）
     private bool _appliedFindCaseSensitive;
+    private (string Uri, int Page)? _pendingPdfPage;   // まだ載っていない PDF を開くときに飛ぶページ
+    private int _pdfJumpCount;                         // 載せている PDF のページ移動を毎回別文書にするための通し番号
 
     public EditorSupportWebViewController(
         Panel host,
@@ -172,6 +174,48 @@ public sealed class EditorSupportWebViewController : IDisposable
 
     private static bool IsPdf(string? uri)
         => uri is not null && uri.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// PDF の <paramref name="page"/> ページ目（1始まり）を出す（検索結果の「p.N」から）。Chromium の PDF ビューアは
+    /// <b>文書を開くときの</b> URL の <c>#page=N</c> でそのページを開く。まだ載っていない（これから開く・読み込み中）
+    /// なら覚えておいて、その PDF を載せるときに付ける。
+    /// <para>
+    /// <b>載せている PDF へ <c>#page=N</c> だけ足しても動かない</b>——同じ文書内の移動として扱われ、ビューアは
+    /// 反応しない（実測：SourceChanged が IsNewDocument=false で来て表示は1ページ目のまま）。そこでクエリに通し番号を
+    /// 付けて別文書として開き直させる（<c>file://</c> はクエリを無視して同じファイルを読む）。同じページを続けて
+    /// 選んでも毎回そのページへ戻るのも、通し番号で URL が毎回変わるから。
+    /// </para>
+    /// ページの同一性（<see cref="EditorSupportPageStateMachine"/>）はページ無しの URI のまま持つ——
+    /// ページ付きを別ページ扱いにすると、描き直しのたびに先頭へ読み直してしまう。
+    /// </summary>
+    public void ShowPdfPage(string fileUri, int page)
+    {
+        if (page < 1 || !IsPdf(fileUri))
+            return;
+        if (_page.IsShowing(fileUri) && Core is { } core)
+        {
+            _pendingPdfPage = null;
+            var jump = ++_pdfJumpCount;
+            try { core.Navigate($"{fileUri}?loomo-jump={jump}#page={page}"); }
+            catch { /* 移れなくても表示は続く */ }
+            return;
+        }
+        _pendingPdfPage = (fileUri, page);
+    }
+
+    private static string WithPdfPage(string fileUri, int page)
+        => fileUri + "#page=" + page.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+    /// <summary>覚えておいたページ付きで <paramref name="uri"/> を開くなら、その URL（使ったら忘れる）。</summary>
+    private string TakePendingPdfTarget(string uri)
+    {
+        if (_pendingPdfPage is not { } pending)
+            return uri;
+        _pendingPdfPage = null;
+        return string.Equals(pending.Uri, uri, StringComparison.OrdinalIgnoreCase)
+            ? WithPdfPage(uri, pending.Page)
+            : uri;
+    }
 
     /// <summary>
     /// WebView2 を用意する。<b>生成に失敗したコントロールは捨てて作り直す</b>——失敗した WebView2 を握ったまま
@@ -328,7 +372,7 @@ public sealed class EditorSupportWebViewController : IDisposable
         }
 
         BeginLoad(new EditorSupportPageLoadId(uri, null, CanReload: true));
-        try { core.Navigate(uri); }
+        try { core.Navigate(TakePendingPdfTarget(uri)); }
         catch { Fail(); }
         return EditorSupportPageApplyResult.Applied;
     }
@@ -548,6 +592,9 @@ public sealed class EditorSupportWebViewController : IDisposable
             _appliedFindTerm = null;
             PushSearchHighlight(loaded);
             PostMarkdownState(loaded);
+            // 読み込み中に「このページへ」と頼まれていた（開いた直後に検索結果を選んだ）なら、いま移る。
+            if (_pendingPdfPage is { } pending && _page.IsShowing(pending.Uri))
+                ShowPdfPage(pending.Uri, pending.Page);
         }
         NavigationCompleted?.Invoke(this, EventArgs.Empty);
 

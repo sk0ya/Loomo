@@ -330,7 +330,7 @@ public partial class SearchPanelView : UserControl
             return;
 
         var (target, next) = SearchResultTreePolicy.NextUnreplaced(
-            vm.AllFileGroups(), ResultTree.SelectedItem as SearchMatchItem);
+            vm.ReplaceableFileGroups(), ResultTree.SelectedItem as SearchMatchItem);
         if (target is null)
             return;
 

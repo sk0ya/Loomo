@@ -647,7 +647,7 @@
                                 <MenuItem Header="置換" Tag="ReplaceOneMenu" Click="OnReplaceOneContextClick" />
                             </ContextMenu>
                         </Grid.ContextMenu>
-                        <TextBlock x:Name="LineNumText" Grid.Column="0" Text="{Binding Line}"
+                        <TextBlock x:Name="LineNumText" Grid.Column="0" Text="{Binding LineLabel}"
                                    FontSize="{DynamicResource Fs11}" MinWidth="34" Opacity="0.6" />
                         <TextBlock x:Name="PreviewText" Grid.Column="1" FontSize="{DynamicResource Fs11}"
                                    FontFamily="Consolas" TextTrimming="CharacterEllipsis"

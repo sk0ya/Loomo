@@ -67,6 +67,12 @@ public sealed partial class SearchMatchItem : ObservableObject
     public int Column { get; }
     public string LineText { get; }
     public string Preview => LineText.TrimStart();
+
+    /// <summary>PDF 本文の一致か（<see cref="Line"/> は行ではなくページ番号）。</summary>
+    public bool IsPdfPage => !IsTerminal && SearchPdf.IsPdf(FullPath);
+
+    /// <summary>一致行の左に出す位置。PDF はページ（p.3）、それ以外は行番号。</summary>
+    public string LineLabel => IsPdfPage ? $"p.{Line}" : Line.ToString(System.Globalization.CultureInfo.InvariantCulture);
     public bool IsExpanded { get; set; }
 
     /// <summary>この場でもう置換した（1件だけ置換・置換して次へ）。一覧からは消さず取り消し線で示す
@@ -158,3 +164,13 @@ public sealed partial class SearchFolderNode : ObservableObject
 }
 
 public readonly record struct SearchHit(string FullPath, int Line, int Column, string Highlight = "");
+
+/// <summary>検索結果の PDF の扱い。PDF の一致は Line がページ番号で、置換の対象にしない（本文はバイナリの中）。</summary>
+public static class SearchPdf
+{
+    public static bool IsPdf(string? path)
+        => path is not null && path.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>PDF 本文の一致をまとめる見出し（結果ツリーの末尾に置く）。</summary>
+    public const string SectionName = "PDF の本文";
+}

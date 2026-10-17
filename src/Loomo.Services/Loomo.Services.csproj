@@ -118,4 +118,9 @@
     <PackageReference Include="sk0ya.Terminal.Controls" Version="$(TerminalPackageVersion)" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- PDF 本文の検索（Search/PdfTextExtractor）。純 .NET（ネイティブ依存なし）・MIT。 -->
+    <PackageReference Include="PdfPig" Version="0.1.16" />
+  </ItemGroup>
+
 </Project>

@@ -23,7 +23,8 @@ internal static class SearchReplacePresenter
     public static void PrepareFileMenu(ContextMenu menu, SearchPanelViewModel vm)
     {
         var group = (menu.PlacementTarget as FrameworkElement)?.DataContext as SearchFileGroup;
-        SetTaggedVisibility(menu, "ReplaceFileMenu", vm.IsReplaceVisible && group is { Count: > 0 });
+        SetTaggedVisibility(menu, "ReplaceFileMenu",
+            vm.IsReplaceVisible && group is { Count: > 0 } && !SearchPdf.IsPdf(group.FullPath));
     }
 
     public static void ReplaceFromContextMenu(object sender, SearchPanelViewModel? vm)
@@ -34,7 +35,10 @@ internal static class SearchReplacePresenter
     }
 
     public static void PrepareMatchMenu(ContextMenu menu, SearchPanelViewModel vm)
-        => SetTaggedVisibility(menu, "ReplaceOneMenu", vm.IsReplaceVisible);
+    {
+        var match = (menu.PlacementTarget as FrameworkElement)?.DataContext as SearchMatchItem;
+        SetTaggedVisibility(menu, "ReplaceOneMenu", vm.IsReplaceVisible && match is not { IsPdfPage: true });
+    }
 
     public static bool ReplaceOne(SearchPanelViewModel vm, SearchMatchItem match)
     {
@@ -46,7 +50,7 @@ internal static class SearchReplacePresenter
 
     public static bool ReplaceAll(Window? owner, SearchPanelViewModel vm)
     {
-        var groups = vm.AllFileGroups();
+        var groups = vm.ReplaceableFileGroups();
         var matchCount = groups.Sum(group => group.Count);
         if (matchCount == 0)
             return false;

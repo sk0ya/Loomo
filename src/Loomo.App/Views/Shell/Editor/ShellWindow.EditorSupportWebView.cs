@@ -59,6 +59,18 @@ public partial class ShellWindow {
         foreach (var mirror in Detached.AllItems.Select(i => i.Content).OfType<DetachedEditorSupportView>())
             mirror.SetSearchHighlight(term, caseSensitive, useRegex);
     }
+    /// <summary>検索結果の一致へ移る（開いた後に呼ぶ）。PDF の一致は Line がページ番号なので、エディタではなく
+    /// EditorSupport の PDF ビューアをそのページへ送る（ページ内の語は <see cref="ApplyEditorSupportSearchHighlight"/>
+    /// の Find が塗る）。</summary>
+    private void RevealSearchHit(SearchHit hit) {
+        if (SearchPdf.IsPdf(hit.FullPath)) {
+            if (_editorSupportResolver.Resolve(hit.FullPath).Provider is IEditorSupportUriProvider uriProvider)
+                _editorSupport.WebView.ShowPdfPage(uriProvider.ResolveNavigationUri(hit.FullPath), hit.Line);
+            return;
+        }
+        _activeEditorTab?.Control.NavigateTo(hit.Line - 1, Math.Max(0, hit.Column - 1));
+        _activeEditorTab?.Control.HighlightSearch(hit.Highlight);
+    }
     private void PostEditorSupportScrollRatio(double ratio) => _editorSupport.WebView.PostScrollRatio(ratio);
     private async Task OpenEditorSupportSnapshotInBrowserAsync(string html, string? mapFolder, string title) {
         if (!_editorSupportNavigation.TryWritePage(html, out var pageUrl))

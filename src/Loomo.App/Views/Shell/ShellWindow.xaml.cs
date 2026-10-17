@@ -327,13 +327,11 @@ public partial class ShellWindow : Window {
         }
         vm.SearchPanel.PreviewRequested += async (_, h) => {
             await OpenFileInPreviewTabAsync(h.FullPath);
-            _activeEditorTab?.Control.NavigateTo(h.Line - 1, Math.Max(0, h.Column - 1));
-            _activeEditorTab?.Control.HighlightSearch(h.Highlight);
+            RevealSearchHit(h);
         };
         vm.SearchPanel.ActivateRequested += async (_, h) => {
             await OpenFileInNewEditorTabAsync(h.FullPath);
-            _activeEditorTab?.Control.NavigateTo(h.Line - 1, Math.Max(0, h.Column - 1));
-            _activeEditorTab?.Control.HighlightSearch(h.Highlight);
+            RevealSearchHit(h);
         };
         vm.SearchPanel.ClearHighlightRequested += (_, _) => _activeEditorTab?.Control.HighlightSearch("");
         vm.SearchPanel.PropertyChanged += (_, e) => {
