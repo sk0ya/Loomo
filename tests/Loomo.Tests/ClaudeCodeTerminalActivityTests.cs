@@ -108,3 +108,63 @@ public sealed class ClaudeCodeTerminalActivityTests
             PaneActivityKind.AgentWaiting, isTerminal: true, isIde: false, ideTaskRunning: false, 0, ""));
     }
 }
+
+/// <summary>エディタの場所を Claude Code へ送る参照（§24.3.1）。</summary>
+public sealed class ClaudeCodeReferenceTests
+{
+    [Fact]
+    public void 作業場所の下は相対パスで区切りはスラッシュ()
+        => Assert.Equal("@src/App/Foo.cs#L10-24 ",
+            ClaudeCodeReference.Format(@"C:\repo\src\App\Foo.cs", @"C:\repo", 9, 23));
+
+    [Fact]
+    public void 一行だけなら範囲にしない_選択なしはファイルだけ()
+    {
+        Assert.Equal("@Foo.cs#L3 ", ClaudeCodeReference.Format(@"C:\repo\Foo.cs", @"C:\repo", 2, 2));
+        Assert.Equal("@Foo.cs ", ClaudeCodeReference.Format(@"C:\repo\Foo.cs", @"C:\repo", null, null));
+    }
+
+    [Fact]
+    public void 作業場所の外や別ドライブは絶対パス()
+    {
+        Assert.Equal(@"@C:\other\Foo.cs ", ClaudeCodeReference.Format(@"C:\other\Foo.cs", @"C:\repo", null, null));
+        Assert.Equal(@"@D:\x\Foo.cs ", ClaudeCodeReference.Format(@"D:\x\Foo.cs", @"C:\repo", null, null));
+        Assert.Equal(@"@C:\repo2\Foo.cs ", ClaudeCodeReference.Format(@"C:\repo2\Foo.cs", @"C:\repo", null, null));
+    }
+
+    [Fact]
+    public void 空白を含むパスは引用符で囲む()
+        => Assert.Equal("@\"my docs/a b.md\"#L1 ",
+            ClaudeCodeReference.Format(@"C:\repo\my docs\a b.md", @"C:\repo", 0, 0));
+
+    [Fact]
+    public void 次の行の頭で終わる選択はその行を含めない()
+    {
+        Assert.Equal((4, 6), ClaudeCodeReference.LinesOfSelection(4, 7, 0));
+        Assert.Equal((4, 7), ClaudeCodeReference.LinesOfSelection(4, 7, 3));
+        Assert.Equal((4, 4), ClaudeCodeReference.LinesOfSelection(4, 4, 0));
+    }
+
+    [Fact]
+    public void 見出しは短く1始まり()
+    {
+        Assert.Equal("Foo.cs:10-24", ClaudeCodeReference.Label(@"C:\repo\Foo.cs", 9, 23));
+        Assert.Equal("Foo.cs", ClaudeCodeReference.Label(@"C:\repo\Foo.cs", null, null));
+    }
+
+    [Fact]
+    public void 宛先は前に出ているClaudeタブ_なければ最後に動いたClaudeタブ()
+    {
+        var a = Guid.NewGuid();
+        var b = Guid.NewGuid();
+        var plain = Guid.NewGuid();
+        var sut = new PaneActivityTracker();
+        Assert.Null(sut.AgentTabFor(plain));
+        sut.TerminalTitleChanged(a, "✳ Claude Code", false);
+        sut.TerminalTitleChanged(b, "◐ Fix", false);
+        Assert.Equal(b, sut.AgentTabFor(plain));
+        Assert.Equal(a, sut.AgentTabFor(a));
+        sut.TerminalTitleChanged(a, "◐ Other", false);
+        Assert.Equal(a, sut.AgentTabFor(null));
+    }
+}

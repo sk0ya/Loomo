@@ -20,22 +20,10 @@ public partial class ShellWindow {
         AdjustNativeEditorMenuItems(
             e.Menu, control, control is not null ? Mouse.GetPosition(control) : new Point());
         // ① 素材を別のペインへ送る（§23.3 の「〜へ送る」）
-        AddMenuGroup(e.Menu, menu => SelectionActionMenuBuilder.AddSelectionMenuItems(
-            menu, e.SelectedText, e.HasSelection,
-            SelectionActionMenuBuilder.BuildEditorSendMenuItem(
-                _workspace, e.SelectedText, e.HasSelection, workingDirectory: null,
-                currentDocumentPath: control?.FilePath,
-                openLocation: location => _ = SendLocationToEditorAsync(location)),
-            SelectionActionMenuBuilder.BuildDiffSendMenu(CompareEntries(
-                control, SelectionActionPresentation.SelectionSourceLabel(control?.FilePath),
-                e.SelectedText, e.HasSelection)),
-            !_vm.AiBar.IsBusy && !_vm.AiBar.IsWarmingUp,
-            () => {
-                EnsurePaneVisibleOrSwapTopLeft(PaneKind.Ai);
-                _vm.AiBar.AskAbout(e.SelectedText);
-            },
-            text => _ = SearchSelectionInBrowserAsync(text),
-            AddWorkflowMenuItems));
+        AddMenuGroup(e.Menu, menu => {
+            AddClaudeSendMenuItem(menu, control);
+            AddEditorSelectionSendItems(menu, control, e);
+        });
         // 「どこかへ行く」操作はコントロール側の「移動」サブメニューへ入れる。
         // Loomo の定義 Peek だけ別の場所に出ていると、移動の入口が2つに割れる。
         AddCSharpPeekMenuItem(e.NavigateMenu, control);
@@ -59,6 +47,23 @@ public partial class ShellWindow {
             AddDebugMenuItems(menu, control);
         });
     }
+    private void AddEditorSelectionSendItems(ContextMenu menu, VimEditorControl? control, EditorContextMenuBuildingEventArgs e)
+        => SelectionActionMenuBuilder.AddSelectionMenuItems(
+            menu, e.SelectedText, e.HasSelection,
+            SelectionActionMenuBuilder.BuildEditorSendMenuItem(
+                _workspace, e.SelectedText, e.HasSelection, workingDirectory: null,
+                currentDocumentPath: control?.FilePath,
+                openLocation: location => _ = SendLocationToEditorAsync(location)),
+            SelectionActionMenuBuilder.BuildDiffSendMenu(CompareEntries(
+                control, SelectionActionPresentation.SelectionSourceLabel(control?.FilePath),
+                e.SelectedText, e.HasSelection)),
+            !_vm.AiBar.IsBusy && !_vm.AiBar.IsWarmingUp,
+            () => {
+                EnsurePaneVisibleOrSwapTopLeft(PaneKind.Ai);
+                _vm.AiBar.AskAbout(e.SelectedText);
+            },
+            text => _ = SearchSelectionInBrowserAsync(text),
+            AddWorkflowMenuItems);
 
     /// <summary>1つの束を足す。中身が1つでも入ったときだけ、束の<b>前</b>に区切り線を1本入れる。
     /// 寄稿側が自分で区切り線を足さなくなるので、「区切り線だけが並ぶ」「末尾が区切り線で終わる」が

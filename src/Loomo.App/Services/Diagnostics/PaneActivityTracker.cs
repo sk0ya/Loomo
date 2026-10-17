@@ -9,6 +9,7 @@ internal sealed class PaneActivityTracker
         public int? UnseenExitCode;
         public ClaudeCodeStatus? Agent;
         public bool AgentUnseenTurn;
+        public long AgentStamp;
     }
 
     private sealed class IdeState
@@ -19,6 +20,7 @@ internal sealed class PaneActivityTracker
 
     private readonly Dictionary<Guid, TerminalState> _terminals = new();
     private readonly Dictionary<PaneKind, IdeState> _ides = new();
+    private long _agentClock;
 
     public PaneActivityKind AiUnseenCompletion { get; private set; }
 
@@ -90,10 +92,28 @@ internal sealed class PaneActivityTracker
             state.Agent, state.AgentUnseenTurn, status, paneWatched);
         state.Agent = next.Agent;
         state.AgentUnseenTurn = next.AgentUnseenTurn;
+        if (next.Agent is not null)
+            state.AgentStamp = ++_agentClock;
         return next;
     }
 
     public bool ForgetTerminal(Guid tabId) => _terminals.Remove(tabId);
+
+    /// <summary>素材を Claude Code へ送るときの宛先タブ。いま前に出ているタブが Claude なら
+    /// それ、でなければ最後に Claude の印が動いたタブ。Claude が居なければ null。</summary>
+    public Guid? AgentTabFor(Guid? activeTabId)
+    {
+        if (activeTabId is { } active && _terminals.TryGetValue(active, out var current) && current.Agent is not null)
+            return active;
+        Guid? best = null;
+        long bestStamp = -1;
+        foreach (var (id, state) in _terminals)
+        {
+            if (state.Agent is not null && state.AgentStamp > bestStamp)
+                (best, bestStamp) = (id, state.AgentStamp);
+        }
+        return best;
+    }
 
     public bool MarkSeen(PaneKind kind)
     {

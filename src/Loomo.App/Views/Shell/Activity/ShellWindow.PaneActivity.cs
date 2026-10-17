@@ -54,7 +54,13 @@ public partial class ShellWindow {
         var transition = _paneActivity.TerminalTitleChanged(tabId, title, IsTerminalPaneWatched());
         if (transition.ShouldRefresh)
             UpdatePaneActivityBadge(PaneKind.Terminal);
-        if (transition.TurnEnded && !IsActive)
+        if (!transition.TurnEnded)
+            return;
+        // Claude が書き換えたファイルを開いたままだと、古い本文のまま保存して Claude の変更を消しうる。
+        // 外部変更の読み直しは Git の変化（Git ペインが出ている間だけ）頼みなので、ターンの終わりにも読み直す。
+        // 未保存の編集があるタブは読み直さない（ReloadExistingTabIfChangedAsync の約束）。
+        _ = RefreshOpenEditorTabsFromDiskAsync();
+        if (!IsActive)
             FlashTaskbarUntilForeground();
     }
     private void FlashTaskbarUntilForeground() {
