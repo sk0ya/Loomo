@@ -585,6 +585,19 @@
                 <DockPanel Grid.Row="4">
                     <DockPanel DockPanel.Dock="Top" Margin="4,2" Background="Transparent">
                         <StackPanel DockPanel.Dock="Right" Style="{StaticResource HeaderActions}">
+                            <!-- 外から来たパッチを当てる（§24.38.1）。当てる前に対象のファイルと方式を見せて確かめる。 -->
+                            <Button Style="{StaticResource RowActionButton}" Content="⤒"
+                                    ToolTip="パッチを当てる（クリップボード／ファイル）"
+                                    Click="OnApplyPatchMenuClick">
+                                <Button.ContextMenu>
+                                    <ContextMenu>
+                                        <MenuItem Header="クリップボードのパッチを当てる"
+                                                  Command="{Binding ApplyPatchFromClipboardCommand}" />
+                                        <MenuItem Header="ファイルのパッチを当てる…"
+                                                  Command="{Binding ApplyPatchFromFileCommand}" />
+                                    </ContextMenu>
+                                </Button.ContextMenu>
+                            </Button>
                             <Button Style="{StaticResource RowActionButton}" Content="⤓"
                                     ToolTip="現在の変更を退避（スタッシュ）"
                                     Command="{Binding StashPushCommand}" />

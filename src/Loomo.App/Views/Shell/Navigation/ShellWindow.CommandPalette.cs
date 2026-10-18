@@ -289,6 +289,10 @@ public partial class ShellWindow {
             }));
         }
         // パレットの中で探し方を切り替える口（プレフィックスを知らなくても辿り着けるように）。
+        list.Add(new("Git", "クリップボードのパッチを当てる", () => _ = _vm.GitPanel.ApplyPatchFromClipboardCommand.ExecuteAsync(null),
+            Id: "git.applyPatchFromClipboard"));
+        list.Add(new("Git", "ファイルのパッチを当てる…", () => _ = _vm.GitPanel.ApplyPatchFromFileCommand.ExecuteAsync(null),
+            Id: "git.applyPatchFromFile"));
         if (PaletteHistory.Entries.Count > 0)
             list.Add(new("パレット", "最近使ったコマンドの記録を消す", PaletteHistory.Clear));
         list.Add(new("移動", "ファイルを検索して開く", () => OpenCommandPalette(PaletteMode.File),

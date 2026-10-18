@@ -107,6 +107,38 @@ public sealed class GitHistoryFilterTests : IAsyncLifetime
     });
 
     [Fact]
+    public void 選んだ行の履歴はその行を変えたコミットだけを出す() => RunOnDispatcher(async () =>
+    {
+        // 1〜3 行目と 5〜6 行目を別々のコミットで変える（§24.38）。
+        var path = Path.Combine(_root, "lines.txt");
+        await File.WriteAllTextAsync(path, "a\nb\nc\nd\ne\nf\n");
+        await MustRunAsync("add", "-A");
+        await MustRunAsync("commit", "-m", "作成");
+        await File.WriteAllTextAsync(path, "A\nb\nc\nd\ne\nf\n");
+        await MustRunAsync("commit", "-am", "上を変える");
+        await File.WriteAllTextAsync(path, "A\nb\nc\nd\nE\nf\n");
+        await MustRunAsync("commit", "-am", "下を変える");
+
+        await _history.ShowPathAsync(_root, path, lineRange: (5, 6));
+
+        Assert.Equal(new[] { "下を変える", "作成" }, Subjects());
+        Assert.Equal("lines.txt:5-6", _history.PathScopeLabel);
+    });
+
+    [Fact]
+    public void 行の範囲は起点をHEADにし_差分もパス指定も付けない()
+    {
+        var args = new GitLogQuery { PathFilter = "src/a.cs", FollowRenames = true, LineRange = (3, 9) }.ToArguments();
+
+        Assert.Contains("HEAD", args);
+        Assert.DoesNotContain("--all", args);
+        Assert.Contains("-s", args);
+        Assert.Contains("-L3,9:src/a.cs", args);
+        Assert.DoesNotContain("--follow", args);
+        Assert.DoesNotContain("--", args);
+    }
+
+    [Fact]
     public void フォルダーの履歴はリネーム追跡を使わない() => RunOnDispatcher(async () =>
     {
         // --follow は pathspec 1件のファイル向け。フォルダーに付けると git が fatal で終わり、

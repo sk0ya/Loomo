@@ -516,7 +516,8 @@ public sealed partial class GitSessionViewModel : ObservableObject
     public Task ShowBranchLogAsync(GitBranchInfo branch) => History.ShowBranchAsync(branch);
     public Task ShowAllBranchesLogAsync() => History.ShowAllBranchesAsync();
 
-    public async Task ShowPathHistoryAsync(string fullPath, string? selectCommitHash = null)
+    public async Task ShowPathHistoryAsync(string fullPath, string? selectCommitHash = null,
+        (int Start, int End)? lineRange = null)
     {
         // マルチルート：fullPath が現在の対象と違うワークスペースフォルダーに属していたら、
         // そのフォルダーのリポジトリへ Git 操作対象を切り替えてから履歴を引く
@@ -526,7 +527,7 @@ public sealed partial class GitSessionViewModel : ObservableObject
         if (string.IsNullOrEmpty(root)) return;
         _loaded = true;
         await RefreshAsync();
-        await History.ShowPathAsync(root, fullPath, selectCommitHash);
+        await History.ShowPathAsync(root, fullPath, selectCommitHash, lineRange);
     }
 
     public async Task SelectCommitAsync(string hash)

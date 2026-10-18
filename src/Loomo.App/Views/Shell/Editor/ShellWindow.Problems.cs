@@ -19,6 +19,9 @@ public partial class ShellWindow
         _vm.TsIde.Problems.Changed += ScheduleProblemMarks;
         // コミットの前に、そのファイルのエラーを確かめる（§24.34）。押した時点の数で見る（印の更新を待たない）。
         _vm.GitPanel.ProblemLookup = path => CurrentProblemCounts().For(path);
+        // パッチを当てる前の確認（§24.38.1）。
+        _vm.GitPanel.ConfirmPatch = (title, message) =>
+            MessageBox.Show(this, message, title, MessageBoxButton.OKCancel, MessageBoxImage.Question) == MessageBoxResult.OK;
     }
 
     private bool _problemMarksPending;

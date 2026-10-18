@@ -22,6 +22,8 @@ public sealed partial class GitHistoryViewModel : ObservableObject
     private string? _path;
     /// <summary>パス絞り込みの対象がファイルか（<c>--follow</c> はファイル1件でしか使えない）。</summary>
     private bool _pathIsFile;
+    /// <summary>選んだ行の履歴（§24.38）の範囲（1 始まり・両端を含む）。null ならファイル全体。</summary>
+    private (int Start, int End)? _lineRange;
     private int _loadedCommitCount;
     private CommitLogFilter _parsedFilter = CommitLogFilter.Parse(null);
 
@@ -358,11 +360,15 @@ public sealed partial class GitHistoryViewModel : ObservableObject
     /// ——追わないと「名前を変えた日」で履歴がぷつりと切れて、それ以前が無かったことになる。
     /// <paramref name="selectHash"/> 指定時は絞り込みを落としてから読む（その1件へ確実に着地させるため）。
     /// </summary>
-    public async Task ShowPathAsync(string root, string fullPath, string? selectHash = null)
+    public async Task ShowPathAsync(string root, string fullPath, string? selectHash = null,
+        (int Start, int End)? lineRange = null)
     {
         _path = Path.GetRelativePath(root, fullPath).Replace('\\', '/');
         _pathIsFile = File.Exists(fullPath);
-        PathScopeLabel = _path;
+        _lineRange = _pathIsFile ? lineRange : null;
+        PathScopeLabel = _lineRange is { } range
+            ? range.Start == range.End ? $"{_path}:{range.Start}" : $"{_path}:{range.Start}-{range.End}"
+            : _path;
         IsPathScoped = true;
         _knownAuthors.Clear();
         if (!string.IsNullOrWhiteSpace(selectHash)) ClearFilters(requery: false);
@@ -395,6 +401,7 @@ public sealed partial class GitHistoryViewModel : ObservableObject
     {
         _path = null;
         _pathIsFile = false;
+        _lineRange = null;
         IsPathScoped = false;
         PathScopeLabel = "";
     }
@@ -412,6 +419,7 @@ public sealed partial class GitHistoryViewModel : ObservableObject
             Skip = skip,
             PathFilter = _path,
             FollowRenames = _pathIsFile,
+            LineRange = _lineRange,
             Authors = EffectiveAuthor is { } author ? new[] { author } : Array.Empty<string>(),
             Since = ToDateOnly(DateFrom),
             Until = ToDateOnly(DateTo),

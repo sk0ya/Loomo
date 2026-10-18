@@ -795,6 +795,103 @@ public sealed partial class GitPanelViewModel : ObservableObject
         await _editor.OpenFileAsync(path);
     }
 
+    /// <summary>クリップボードのパッチを作業ツリーへ当てる（§24.38.1）。</summary>
+    [RelayCommand]
+    private async Task ApplyPatchFromClipboardAsync()
+    {
+        string text;
+        try { text = Clipboard.ContainsText() ? Clipboard.GetText() : ""; }
+        catch (System.Runtime.InteropServices.ExternalException) { text = ""; }
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            StatusMessage = "クリップボードにパッチ（差分の文字）がありません。";
+            StatusIsError = true;
+            return;
+        }
+        await ApplyPatchAsync("クリップボードのパッチ", () => _git.PreviewPatchTextAsync(text));
+    }
+
+    /// <summary>ファイルを選んでパッチを当てる。</summary>
+    [RelayCommand]
+    private async Task ApplyPatchFromFileAsync()
+    {
+        var dialog = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "当てるパッチを選択",
+            Filter = "パッチ (*.patch;*.diff)|*.patch;*.diff|すべてのファイル (*.*)|*.*",
+        };
+        if (_git.RootPath is { Length: > 0 } root && Directory.Exists(root))
+            dialog.InitialDirectory = root;
+        var owner = Application.Current?.MainWindow;
+        if ((owner is null ? dialog.ShowDialog() : dialog.ShowDialog(owner)) != true) return;
+        await ApplyPatchFileAsync(dialog.FileName);
+    }
+
+    /// <summary>このパッチのファイルを当てる（エディタで開いた <c>.patch</c> の右クリックからも）。</summary>
+    public Task ApplyPatchFileAsync(string patchFile)
+        => ApplyPatchAsync(Path.GetFileName(patchFile), () => _git.PreviewPatchFileAsync(patchFile));
+
+    /// <summary>当てる前に、どのファイルにどれだけ当たるか・どの方式で当たるかを見せて確かめる。
+    /// 確認の文言は <see cref="DescribePatch"/>（純粋・テスト対象）。</summary>
+    private async Task ApplyPatchAsync(string source, Func<Task<GitPatchPreview>> preview)
+    {
+        if (IsBusy) return;
+        var checkedPatch = await preview();
+        try
+        {
+            await ApplyCheckedPatchAsync(source, checkedPatch);
+        }
+        finally
+        {
+            checkedPatch.Discard();
+        }
+    }
+
+    private async Task ApplyCheckedPatchAsync(string source, GitPatchPreview checkedPatch)
+    {
+        if (checkedPatch.Mode == GitPatchApplyMode.None)
+        {
+            StatusMessage = $"{source}は当たりません: {Truncate(checkedPatch.Error ?? "")}";
+            StatusIsError = true;
+            return;
+        }
+        if (ConfirmPatch is { } confirm && !confirm("パッチを当てる", DescribePatch(source, checkedPatch)))
+            return;
+        GitCommandResult? applied = null;
+        await RunOpAsync("パッチを当てる", async () => applied = await _git.ApplyPatchAsync(checkedPatch));
+        if (applied is null) return;
+        if (applied.Success)
+            StatusMessage = checkedPatch.Mode == GitPatchApplyMode.ThreeWay
+                ? $"{source}を 3-way で当てました（{checkedPatch.Files.Count} ファイル・当たった変更はステージ済み）。"
+                : $"{source}を当てました（{checkedPatch.Files.Count} ファイル）。";
+        else if (checkedPatch.Mode == GitPatchApplyMode.ThreeWay && IsConflictReport(applied.Message))
+            // 3-way は衝突しても当たる（衝突したファイルに印を付けて終わる）。失敗ではなく「直す番」と伝える。
+            StatusMessage = $"{source}を当てましたが、衝突したファイルがあります（印の付いたところを直してください）: {Truncate(applied.Message)}";
+    }
+
+    internal static bool IsConflictReport(string message)
+        => message.Contains("with conflicts", StringComparison.OrdinalIgnoreCase)
+           || message.Contains("競合", StringComparison.Ordinal);
+
+    /// <summary>当てる前の確認（タイトル, 本文）→ 当てるなら true。ShellWindow がダイアログをつなぐ。null なら確かめずに当てる。</summary>
+    public Func<string, string, bool>? ConfirmPatch { get; set; }
+
+    internal static string DescribePatch(string source, GitPatchPreview preview)
+    {
+        const int shown = 12;
+        var lines = preview.Files
+            .OrderBy(f => f.Key, StringComparer.Ordinal)
+            .Take(shown)
+            .Select(f => $"  {f.Key}  {f.Value.DisplayText}")
+            .ToList();
+        if (preview.Files.Count > shown)
+            lines.Add($"  ほか {preview.Files.Count - shown} ファイル");
+        var mode = preview.Mode == GitPatchApplyMode.ThreeWay
+            ? "\nそのままでは当たらないので 3-way で当てます。当たった変更はステージされ、衝突したところには印が付きます。"
+            : "";
+        return $"{source}を作業ツリーへ当てます（{preview.Files.Count} ファイル）。\n\n{string.Join("\n", lines)}\n{mode}";
+    }
+
     [RelayCommand]
     private Task InitRepositoryAsync() => RunOpAsync("git init", () => _git.InitAsync());
 

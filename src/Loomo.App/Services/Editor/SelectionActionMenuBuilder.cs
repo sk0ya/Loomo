@@ -41,12 +41,20 @@ internal static class SelectionActionMenuBuilder
         return item;
     }
 
-    public static MenuItem BuildGitMenuItem(Action showHistory, Action showBlame)
+    public static MenuItem BuildGitMenuItem(Action showHistory, Action showBlame,
+        (string Label, Action Show)? lineHistory = null)
     {
         var git = new MenuItem { Header = "Git" };
         var history = new MenuItem { Header = "このファイルの履歴を表示" };
         history.Click += (_, _) => showHistory();
         git.Items.Add(history);
+        // 選んだ行（選んでいなければカーソルの行）を変えたコミットだけ（§24.38）。
+        if (lineHistory is { } lines)
+        {
+            var range = new MenuItem { Header = lines.Label };
+            range.Click += (_, _) => lines.Show();
+            git.Items.Add(range);
+        }
         var blame = new MenuItem { Header = "行ごとの最終更新を表示（Blame）", InputGestureText = ":Gblame" };
         blame.Click += (_, _) => showBlame();
         git.Items.Add(blame);

@@ -22,6 +22,7 @@ public sealed class GitService
     private readonly GitHistoryService _history;
     private readonly GitBranchService _branches;
     private readonly GitMutationExecutor _mutations;
+    private readonly GitPatchService _patches;
     private readonly GitMergeService _merge;
     private readonly GitSubmoduleService _submodules;
     private readonly GitCommitService _commits;
@@ -69,6 +70,7 @@ public sealed class GitService
         _submodules = new GitSubmoduleService(_runner, _mutations);
         _commits = new GitCommitService(_rootState, _runner, _mutations);
         _stashes = new GitStashService(_runner, _mutations);
+        _patches = new GitPatchService(_runner, _mutations);
         _diff = new GitDiffService(_rootState, _runner, _mutations);
         _rebase = new GitRebaseService(_runner, _mutations);
         _worktrees = new GitWorktreeService(_rootState, _runner, _mutations);
@@ -133,6 +135,13 @@ public sealed class GitService
             return task;
         }
     }
+
+    /// <summary>外から来たパッチを当てる前に確かめる（§24.38.1）。</summary>
+    public Task<GitPatchPreview> PreviewPatchTextAsync(string patchText) => _patches.PreviewTextAsync(patchText);
+
+    public Task<GitPatchPreview> PreviewPatchFileAsync(string patchFile) => _patches.PreviewFileAsync(patchFile);
+
+    public Task<GitCommandResult> ApplyPatchAsync(GitPatchPreview preview) => _patches.ApplyAsync(preview);
 
     /// <summary>変更一覧に添える増減の行数（キャッシュしない。<see cref="GitStatusService.GetLineStatsAsync"/>）。</summary>
     public Task<IReadOnlyDictionary<string, GitLineStat>> GetLineStatsAsync(bool cached, string? baseRef = null)

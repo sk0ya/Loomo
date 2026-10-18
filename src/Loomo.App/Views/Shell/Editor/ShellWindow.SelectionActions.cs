@@ -156,8 +156,29 @@ public partial class ShellWindow {
     private void AddGitMenuItems(ContextMenu menu, VimEditorControl? control) {
         if (control?.FilePath is not { Length: > 0 } path || !_vm.FolderTree.IsGitRepository)
             return;
-        menu.Items.Add(SelectionActionMenuBuilder.BuildGitMenuItem(
-            () => _ = ShowGitHistoryAsync(path), () => control.ExecuteCommand("Gblame")));
+        var git = SelectionActionMenuBuilder.BuildGitMenuItem(
+            () => _ = ShowGitHistoryAsync(path), () => control.ExecuteCommand("Gblame"),
+            LineHistoryMenuEntry(control, path));
+        // パッチのファイルなら、そのまま作業ツリーへ当てる口（§24.38.1）。保存してある内容を当てる。
+        if (Path.GetExtension(path) is var ext
+            && (ext.Equals(".patch", StringComparison.OrdinalIgnoreCase) || ext.Equals(".diff", StringComparison.OrdinalIgnoreCase))) {
+            var apply = new MenuItem { Header = "このパッチを作業ツリーへ当てる", IsEnabled = !control.IsModified,
+                ToolTip = control.IsModified ? "保存してから当ててください（保存してある内容を当てます）" : null };
+            apply.Click += (_, _) => _ = _vm.GitPanel.ApplyPatchFileAsync(path);
+            git.Items.Add(apply);
+        }
+        menu.Items.Add(git);
+    }
+    /// <summary>「選んだ行の履歴」（§24.38）の見出しと動作。行番号は保存してある版のものとして git に渡すので、
+    /// 未保存の編集があるときは出さない（編集で行がずれていれば、別の行の履歴を見せてしまう）。</summary>
+    private (string Label, Action Show)? LineHistoryMenuEntry(VimEditorControl control, string path) {
+        if (control.IsModified)
+            return null;
+        var (start0, end0) = control.HasSelection && control.SelectionAsLspRange() is { } selection
+            ? ClaudeCodeReference.LinesOfSelection(selection.Start.Line, selection.End.Line, selection.End.Character)
+            : (control.Caret.Line, control.Caret.Line);
+        var label = start0 == end0 ? $"この行（{start0 + 1}）の履歴を表示" : $"選んだ行（{start0 + 1}〜{end0 + 1}）の履歴を表示";
+        return (label, () => _ = ShowGitHistoryAsync(path, lineRange: (start0 + 1, end0 + 1)));
     }
     private void AddBlameCommitMenuItems(ContextMenu menu, VimEditorControl control, Editor.Controls.Git.EditorBlameLine blame) {
         SelectionActionMenuBuilder.AddBlameCommitMenuItems(
@@ -173,8 +194,8 @@ public partial class ShellWindow {
         ShowDiff(new DiffOpenTarget.CommitFile(
             hash, $"コミット {DiffOpenTarget.Short(hash)}", control.FilePath, blame.OriginalLine));
     }
-    private async Task ShowGitHistoryAsync(string fullPath, string? commitHash = null) {
-        await _vm.GitSession.ShowPathHistoryAsync(Path.GetFullPath(fullPath), commitHash);
+    private async Task ShowGitHistoryAsync(string fullPath, string? commitHash = null, (int Start, int End)? lineRange = null) {
+        await _vm.GitSession.ShowPathHistoryAsync(Path.GetFullPath(fullPath), commitHash, lineRange);
         EnsurePaneVisibleOrSwapTopLeft(PaneKind.Git);
         FocusPane(PaneKind.Git);
     }

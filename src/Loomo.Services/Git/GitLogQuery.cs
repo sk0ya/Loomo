@@ -37,6 +37,14 @@ public sealed record GitLogQuery
     /// <summary>リネームを追って履歴を続ける（<c>--follow</c>）。ファイル1件のときだけ意味がある。</summary>
     public bool FollowRenames { get; init; }
 
+    /// <summary>
+    /// <see cref="PathFilter"/> のこの行の範囲（1 始まり・両端を含む）を変えたコミットだけにする（<c>git log -L</c>・§24.38）。
+    /// 行番号は「いまの版」のもので、git が古い版へ向かって範囲を追う。だから起点は <c>--all</c> ではなく
+    /// 表示中のブランチか <c>HEAD</c>——別のブランチの版の行番号で追っても意味が無い。
+    /// 名前の変更は <c>-L</c> 自身が追うので <c>--follow</c> は付けない。差分は出さない（<c>-s</c>）。
+    /// </summary>
+    public (int Start, int End)? LineRange { get; init; }
+
     /// <summary>現在のブランチの主系列だけを表示する。</summary>
     public bool FirstParent { get; init; }
 
@@ -76,7 +84,8 @@ public sealed record GitLogQuery
             // 短縮名だと「リモートの main」と「origin/main という名前のローカルブランチ」を
             // 見分けられず、色分けが推測になる（GitRefLabels）。
             "--decorate=full",
-            string.IsNullOrWhiteSpace(BranchRef) ? "--all" : BranchRef,
+            !string.IsNullOrWhiteSpace(BranchRef) ? BranchRef
+                : IsLineRange ? "HEAD" : "--all",
             $"-n{Limit}",
         };
         if (Skip > 0)
@@ -107,6 +116,14 @@ public sealed record GitLogQuery
         if (Until is { } until)
             args.Add($"--until={Format(WidenForward(until))} 23:59:59");
 
+        if (IsLineRange)
+        {
+            var (start, end) = LineRange!.Value;
+            args.Add("-s");
+            args.Add($"-L{start},{end}:{PathFilter}");
+            return args.ToArray();
+        }
+
         if (FollowRenames && !string.IsNullOrWhiteSpace(PathFilter))
             args.Add("--follow");
 
@@ -117,6 +134,9 @@ public sealed record GitLogQuery
         }
         return args.ToArray();
     }
+
+    private bool IsLineRange => LineRange is { Start: > 0 } range && range.End >= range.Start
+        && !string.IsNullOrWhiteSpace(PathFilter);
 
     private static DateOnly WidenBack(DateOnly value) =>
         value > DateOnly.MinValue ? value.AddDays(-1) : value;
