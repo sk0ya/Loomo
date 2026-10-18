@@ -30,6 +30,7 @@ public partial class ShellWindow {
         // ② コードを選ぶ・書き換える
         AddMenuGroup(e.Menu, menu => {
             AddSemanticSelectionMenuItems(menu, control);
+            AddEmmetMenuItem(menu, control);
             AddRefactorMenuItems(menu, control);
             AddCSharpMenuItems(menu, control);
         });

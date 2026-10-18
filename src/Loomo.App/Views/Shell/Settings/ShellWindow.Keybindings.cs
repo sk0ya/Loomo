@@ -49,6 +49,7 @@ public partial class ShellWindow {
             ["claude.resumeSession"] = OpenClaudeSessions, ["claude.installHooks"] = InstallClaudeHooks, ["claude.uninstallHooks"] = UninstallClaudeHooks,
             ["editor.inspectEncoding"] = InspectActiveFileEncoding,
             ["editor.save"] = SaveActiveEditor,
+            ["editor.emmet.expand"] = ExpandEmmetAbbreviation, ["editor.emmet.wrap"] = WrapWithEmmetAbbreviation,
             ["editor.selection.expand"] = ExpandSemanticSelection, ["editor.selection.shrink"] = ShrinkSemanticSelection, ["editor.test.debugAtCaret"] = DebugTestAtCaret, ["editor.test.runAtCaret"] = RunTestAtCaret,
             ["stage.cycle"] = () => CycleInActiveMode(1), ["mode.toggle"] = ToggleDisplayMode,
             ["tab.newTerminal"] = () => OnTerminalNewTab(this, new RoutedEventArgs()), ["tab.newEditor"] = () => OnEditorNewTab(this, new RoutedEventArgs()), ["tab.newBrowser"] = () => OnBrowserNewTab(this, new RoutedEventArgs()),

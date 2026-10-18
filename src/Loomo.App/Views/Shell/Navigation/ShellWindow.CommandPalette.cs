@@ -333,6 +333,11 @@ public partial class ShellWindow {
         list.Add(new("エディタ", "現在のファイルを保存", SaveActiveEditor, Sc("editor.save"), "editor.save"));
         list.Add(new("エディタ", "選択を意味的に広げる", ExpandSemanticSelection, Sc("editor.selection.expand"), "editor.selection.expand"));
         list.Add(new("エディタ", "選択を1段戻す", ShrinkSemanticSelection, Sc("editor.selection.shrink"), "editor.selection.shrink"));
+        if (Emmet.SyntaxFor(_activeEditorTab?.PeekFilePath) is not null)
+        {
+            list.Add(new("エディタ", "Emmet: 略記を展開", ExpandEmmetAbbreviation, Sc("editor.emmet.expand"), "editor.emmet.expand"));
+            list.Add(new("エディタ", "Emmet: 選択を略記で囲む…", WrapWithEmmetAbbreviation, Sc("editor.emmet.wrap"), "editor.emmet.wrap"));
+        }
         if (ActiveCSharpEditor() is not null)
         {
             foreach (var descriptor in CSharpEditorCommandCatalog.All)

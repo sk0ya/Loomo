@@ -222,6 +222,9 @@ public static class CommandCatalog
         // 既定キーは与えない——テストを書く人だけが使う操作で、既定の1打鍵を占有する理由が無い。
         new CommandDescriptor("editor.test.runAtCaret", CatTest, "カーソル行のテストを実行", null),
         new CommandDescriptor("editor.test.debugAtCaret", CatTest, "カーソル行のテストをデバッグ", null),
+        // Emmet（§36.7）。既定キーは VS Code に無いので与えない（Tab は snippet・Vim と取り合う）。
+        new CommandDescriptor("editor.emmet.expand", CatEdit, "Emmet: 略記を展開", null),
+        new CommandDescriptor("editor.emmet.wrap", CatEdit, "Emmet: 選択を略記で囲む…", null),
 
         // ===== 表示モード（ソロ／レイアウト） =====
         new CommandDescriptor("stage.cycle", CatMode, "次へ切り替え（ソロ＝舞台／レイアウト＝保存レイアウト）", "Ctrl+T"),
