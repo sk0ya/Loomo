@@ -156,6 +156,8 @@ public partial class ShellWindow {
             ScheduleStyleCopAnalysis(control);
             tab.Pending = null;
         }
+        // 無題のタブは本文から言語を決める（§24.28）。ファイルを読み込むタブは、読み込みの通知で自分で外れる。
+        AttachUntitledLanguageDetection(control);
     }
     /// <summary>このタブが今持っている LSP 文書ハンドル。未実体化・対応サーバー無しなら null。
     /// 文書スコープの問い合わせ（アウトライン・参照）はこれを使い、ワークスペーススコープは

@@ -81,6 +81,8 @@
     <!-- 1.0.101: フッター（VimStatusBar）の改行・文字コード表示を押せる口（FileFormatClicked／FileEncodingClicked）と、
          保存時の改行・文字コードを切り替える SetFileFormat／SetFileEncoding（形式の変更・混在改行をそろえる依頼も未保存に数える）。
          §23.3.4 が使う。 -->
+    <!-- 1.0.102: パスの無いバッファへ構文ハイライトの言語を外から設定する SetSyntaxLanguage。
+         無題タブの言語を本文から決める §24.28 が使う。 -->
     <ProjectReference Include="..\..\..\Editor\src\Editor.Controls.Defaults\Editor.Controls.Defaults.csproj"
                       Condition="'$(UseLocalEditor)' != 'false'" />
     <!-- Defaults はパッケージ化時に Core/Controls を同梱する構成で、プロジェクト参照では
