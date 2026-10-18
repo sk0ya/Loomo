@@ -27,13 +27,18 @@ public static partial class PaletteSelectionSeed
     /// 絶対パスはワークスペースの相対パスと照合できないのでファイル名だけにする。</summary>
     private static string? ForFile(string text)
     {
+        // 行・桁は引用符の外に付くこともある（"src/foo.ts":12）ので、引用符を外す前後で2回外す。
+        text = LocationSuffix().Replace(text, "");
         text = text.Trim('"', '\'', '`');
         text = LocationSuffix().Replace(text, "");
         text = text.Replace('\\', '/');
         if (IsRooted(text))
             text = text[(text.LastIndexOf('/') + 1)..];
-        text = text.TrimStart('.', '/');
-        return text.Length == 0 ? null : text;
+        // 先頭の ./ だけを外す。ドットファイル（.gitignore）の「.」は名前の一部なので残す。
+        while (text.StartsWith("./", StringComparison.Ordinal))
+            text = text[2..];
+        text = text.TrimStart('/');
+        return text.Length == 0 || text == "." ? null : text;
     }
 
     private static bool IsRooted(string text)

@@ -123,6 +123,10 @@ public sealed class KeyboardResolver
             }
 
             Pending = null;
+            // Esc は「連鎖をやめる」として消費する（続きの案内にもそう書いてある、§24.2.2）。素通しすると
+            // 待ちの取り消しと同時に、前のペインにも Esc が届く——Claude Code ならターンの中断、Vim なら挿入モードを抜ける。
+            if (chord is { Key: Key.Escape, Modifiers: ModifierKeys.None })
+                return new KeyResolution(true);
             // プレフィックス自身の修飾子は剥がして照合（Ctrl を押しっぱなしでも 2 打目を拾う）。
             var lookup = new KeyChord(chord.Modifiers & ~pending.Modifiers, chord.Key);
             if (_prefixed.TryGetValue(pending, out var second)

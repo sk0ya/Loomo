@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using sk0ya.Loomo.App.ViewModels;
+using sk0ya.Loomo.Core.Diff;
 using sk0ya.Loomo.Core.Files;
 
 namespace sk0ya.Loomo.App.Services;
@@ -11,9 +12,12 @@ namespace sk0ya.Loomo.App.Services;
 /// <summary>フォルダー同士の比較の結果。<paramref name="Comparisons"/> は違いのあるファイルだけ（相対パス順）。</summary>
 /// <param name="Identical">中身まで同じだったファイルの数。</param>
 /// <param name="Skipped">違うがテキストとして並べられないファイル（バイナリ・大きすぎる・読めない）の相対パス。</param>
-/// <param name="Truncated">上限で打ち切った（一覧は途中まで）。</param>
+/// <param name="Truncated">違いの数が上限に達して打ち切った（一覧は途中まで）。</param>
+/// <param name="TooManyFiles">片側のファイルが上限を超えたので比べなかった。途中まで数えた側と比べると、
+/// 数え残したファイルが「片側にしか無い」に化けるため、一部だけ見せることはしない。</param>
 internal sealed record FolderComparisonResult(
-    IReadOnlyList<DiffComparison> Comparisons, int Identical, IReadOnlyList<string> Skipped, bool Truncated);
+    IReadOnlyList<DiffComparison> Comparisons, int Identical, IReadOnlyList<string> Skipped, bool Truncated,
+    bool TooManyFiles = false);
 
 /// <summary>
 /// フォルダー同士を比べる（§24.5.3、Zed 1.24 の <c>zed --diff</c> のディレクトリ版に当たる）。Git の外にある2つの版
@@ -29,16 +33,20 @@ internal static class FolderComparison
     public const int MaxFilesPerSide = 20_000;
 
     /// <summary>並べる違いの上限。これを超えるなら比較の一覧として読める量ではない。</summary>
-    public const int MaxDifferences = 500;
+    public const int MaxDifferences = 200;
 
     /// <summary>テキストとして読み込む上限。超えるものは「並べられない違い」に回す。</summary>
-    public const long MaxTextBytes = 2 * 1024 * 1024;
+    public const long MaxTextBytes = 1024 * 1024;
 
-    public static FolderComparisonResult Build(string leftRoot, string rightRoot, CancellationToken ct = default)
+    public static FolderComparisonResult Build(
+        string leftRoot, string rightRoot, CancellationToken ct = default, int maxFilesPerSide = MaxFilesPerSide)
     {
+        var tooMany = false;
+        var left = Enumerate(leftRoot, maxFilesPerSide, ref tooMany, ct);
+        var right = tooMany ? [] : Enumerate(rightRoot, maxFilesPerSide, ref tooMany, ct);
+        if (tooMany)
+            return new FolderComparisonResult([], 0, [], Truncated: false, TooManyFiles: true);
         var truncated = false;
-        var left = Enumerate(leftRoot, ref truncated, ct);
-        var right = Enumerate(rightRoot, ref truncated, ct);
         var leftName = FolderName(leftRoot);
         var rightName = FolderName(rightRoot);
         if (string.Equals(leftName, rightName, StringComparison.OrdinalIgnoreCase))
@@ -73,12 +81,22 @@ internal static class FolderComparison
             {
                 var leftText = hasLeft ? File.ReadAllText(leftPath!) : "";
                 var rightText = hasRight ? File.ReadAllText(rightPath!) : "";
+                // 行数はここ（裏）で数えて素材に持たせる。差分は改行コード（CRLF／LF）を区別しないので、
+                // バイト列は違っても差分の無いものは「同一」に数える——Windows の checkout と zip の展開を
+                // 比べると全ファイルが「+0 −0」で並び、本当の違いが埋もれるため。
+                var stat = DiffUtil.Stat(leftText, rightText);
+                if (hasLeft && hasRight && stat == (0, 0))
+                {
+                    identical++;
+                    continue;
+                }
                 comparisons.Add(new DiffComparison(
                     $"{leftName}/{rel}", leftText, $"{rightName}/{rel}", rightText,
                     FilePath: hasRight ? rightPath! : leftPath!, FileIsLeft: !hasRight)
                 {
                     Label = rel,
                     Badge = !hasLeft ? "追加" : !hasRight ? "削除" : "",
+                    Stat = stat,
                 });
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -92,6 +110,8 @@ internal static class FolderComparison
     /// <summary>結果を一言で（トースト用）。</summary>
     public static string Summarize(FolderComparisonResult result)
     {
+        if (result.TooManyFiles)
+            return $"ファイルが多すぎるため比較しませんでした（片側 {MaxFilesPerSide:N0} 件まで）。もっと下のフォルダー同士を選んでください。";
         var parts = new List<string> { $"違い {result.Comparisons.Count} 件", $"同一 {result.Identical} 件" };
         if (result.Skipped.Count > 0)
             parts.Add($"テキストで並べられない違い {result.Skipped.Count} 件（{string.Join("、", result.Skipped.Take(3))}{(result.Skipped.Count > 3 ? " ほか" : "")}）");
@@ -100,7 +120,7 @@ internal static class FolderComparison
     }
 
     /// <summary>相対パス（区切りは <c>/</c>）→ 実パス。</summary>
-    private static Dictionary<string, string> Enumerate(string root, ref bool truncated, CancellationToken ct)
+    private static Dictionary<string, string> Enumerate(string root, int maxFiles, ref bool tooMany, CancellationToken ct)
     {
         var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         var pending = new Stack<string>();
@@ -116,9 +136,9 @@ internal static class FolderComparison
                         pending.Push(sub);
                 foreach (var file in Directory.EnumerateFiles(dir))
                 {
-                    if (result.Count >= MaxFilesPerSide)
+                    if (result.Count >= maxFiles)
                     {
-                        truncated = true;
+                        tooMany = true;
                         return result;
                     }
                     result[Path.GetRelativePath(root, file).Replace('\\', '/')] = file;

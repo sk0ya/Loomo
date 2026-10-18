@@ -60,6 +60,44 @@ public sealed class FolderComparisonTests : IDisposable
     }
 
     [Fact]
+    public void Line_ending_only_differences_count_as_identical()
+    {
+        Write(Left, "a.txt", "one\r\ntwo\r\n");
+        Write(Right, "a.txt", "one\ntwo\n");
+
+        var result = FolderComparison.Build(Left, Right);
+
+        Assert.Empty(result.Comparisons);
+        Assert.Equal(1, result.Identical);
+    }
+
+    [Fact]
+    public void Line_counts_are_computed_up_front()
+    {
+        Write(Left, "a.txt", "x\n");
+        Write(Right, "a.txt", "x\ny\nz\n");
+
+        var c = Assert.Single(FolderComparison.Build(Left, Right).Comparisons);
+
+        Assert.Equal((2, 0), c.Stat);
+        Assert.Equal((0, 2), c.Swapped().Stat);
+    }
+
+    [Fact]
+    public void Too_many_files_on_one_side_compares_nothing()
+    {
+        // 片側を途中まで数えて比べると、数え残しが「片側にしか無い」に化ける。だから一部だけ見せない。
+        for (var i = 0; i < 3; i++) Write(Left, $"f{i}.txt", "x");
+        Write(Right, "f0.txt", "y");
+
+        var result = FolderComparison.Build(Left, Right, maxFilesPerSide: 2);
+
+        Assert.True(result.TooManyFiles);
+        Assert.Empty(result.Comparisons);
+        Assert.Contains("多すぎる", FolderComparison.Summarize(result));
+    }
+
+    [Fact]
     public void Binary_differences_are_reported_but_not_listed()
     {
         File.WriteAllBytes(Path.Combine(Left, "image.png"), [0x89, 0x50, 0x00, 0x01]);

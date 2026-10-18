@@ -15,6 +15,10 @@ public class PaletteSelectionSeedTests
     [InlineData(@"C:\Projects\Loomo\src\Foo.cs(12,5)", "Foo.cs")]
     [InlineData("/home/me/app/main.py", "main.py")]
     [InlineData("\"./docs/設計/README.md\"", "docs/設計/README.md")]
+    [InlineData(".gitignore", ".gitignore")]
+    [InlineData("./.editorconfig", ".editorconfig")]
+    [InlineData("\"src/foo.ts\":12", "src/foo.ts")]
+    [InlineData("'src/foo.ts:12:5'", "src/foo.ts")]
     public void File_mode_shapes_paths_into_a_file_query(string selection, string expected)
         => Assert.Equal(expected, PaletteSelectionSeed.For(PaletteMode.File, selection));
 

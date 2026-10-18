@@ -259,6 +259,10 @@ public partial class ShellWindow {
             return;
         }
         var summary = FolderComparison.Summarize(result);
+        if (result.TooManyFiles) {
+            ToastService.Warning(summary);
+            return;
+        }
         if (result.Comparisons.Count == 0) {
             ToastService.Info(result.Skipped.Count == 0 && !result.Truncated
                 ? $"2つのフォルダーの中身は同じです（{result.Identical} 件）。" : summary);

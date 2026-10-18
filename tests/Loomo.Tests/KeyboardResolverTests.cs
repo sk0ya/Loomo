@@ -45,6 +45,19 @@ public class KeyboardResolverTests
     }
 
     [Fact]
+    public void Escape_while_pending_cancels_the_chord_and_is_consumed()
+    {
+        var r = NewResolver();
+        r.Resolve(C(Key.W, ModifierKeys.Control));
+
+        var res = r.Resolve(C(Key.Escape));
+
+        Assert.True(res.Handled);
+        Assert.Null(res.Execute);
+        Assert.Null(r.Pending);
+    }
+
+    [Fact]
     public void Continuations_list_second_chords_of_a_prefix()
     {
         var r = NewResolver();

@@ -705,7 +705,7 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
 
     private static DiffFileItem BuildCompareItem(DiffComparison comparison)
     {
-        var (added, removed) = DiffUtil.Stat(comparison.LeftText, comparison.RightText);
+        var (added, removed) = comparison.Stat ?? DiffUtil.Stat(comparison.LeftText, comparison.RightText);
         return new DiffFileItem
         {
             FullPath = comparison.FilePath,

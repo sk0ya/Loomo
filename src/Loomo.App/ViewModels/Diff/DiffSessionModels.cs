@@ -49,18 +49,23 @@ public sealed record DiffComparison(
     /// <summary>一覧の行の印（フォルダー比較の「追加」「削除」）。空なら差分の有無から決める。</summary>
     public string Badge { get; init; } = "";
 
+    /// <summary>あらかじめ数えた追加・削除の行数。まとめて積む比較（フォルダー比較）は裏で数えておき、
+    /// 一覧を組み直すたびに UI スレッドで全件の差分を取り直さないようにする。null なら一覧を作るときに数える。</summary>
+    public (int Added, int Removed)? Stat { get; init; }
+
     public DiffComparison Swapped()
         => new(RightTitle, RightText, LeftTitle, LeftText, FilePath, !FileIsLeft)
         {
             Label = Label,
             Badge = Badge switch { "追加" => "削除", "削除" => "追加", _ => Badge },
+            Stat = Stat is { } stat ? (stat.Removed, stat.Added) : null,
         };
 
     /// <summary>右側だけ別の素材へ差し替える。右がそのファイルだった比較（<see cref="FileIsLeft"/> が false）では
     /// 出どころのファイルも一緒に手放す——残すと「右はもう別物なのに、行はそのファイルの行番号として開く」
     /// 取り違えになるため。</summary>
     public DiffComparison WithRight(string title, string text)
-        => this with { RightTitle = title, RightText = text, FilePath = FileIsLeft ? FilePath : "", Badge = "" };
+        => this with { RightTitle = title, RightText = text, FilePath = FileIsLeft ? FilePath : "", Badge = "", Stat = null };
 
     /// <summary>ファイル一覧に出す見出し（どちらとどちらを比べているか）。</summary>
     public string DisplayPath => Label ?? $"{LeftTitle} ↔ {RightTitle}";
