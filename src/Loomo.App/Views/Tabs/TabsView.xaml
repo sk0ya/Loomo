@@ -127,7 +127,7 @@
         </Style>
 
         <DataTemplate x:Key="TabEntryTemplate">
-            <Border x:Name="TabBorder" Height="28" Margin="0" CornerRadius="4"
+            <Border x:Name="TabBorder" MinHeight="28" Margin="0" CornerRadius="4"
                     Background="Transparent" MouseDown="OnTabMiddleClick">
                 <!-- 右クリック：ContextMenu は視覚ツリーから切り離されるため、Tag へ
                      TabsViewModel（UserControl の DataContext）を積んで PlacementTarget.Tag 経由で参照する -->
@@ -222,9 +222,17 @@
                             <Image Grid.Column="0" Source="{Binding Icon}"
                                    Width="16" Height="16" Margin="0,0,6,0"
                                    HorizontalAlignment="Center" VerticalAlignment="Center" />
-                            <TextBlock x:Name="EntryTitle" Grid.Column="1" Text="{Binding Title}" FontSize="{DynamicResource Fs12_5}"
-                                       VerticalAlignment="Center"
-                                       TextTrimming="CharacterEllipsis" />
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <TextBlock x:Name="EntryTitle" Text="{Binding Title}" FontSize="{DynamicResource Fs12_5}"
+                                           TextTrimming="CharacterEllipsis" />
+                                <!-- ターミナルの行だけの 2 行目（§24.53）：場所 (ブランチ) · 最後のコマンド ✓ · 3分前。
+                                     見出しが同じシェル名で並んでも、どのタブで何を終えたかが一覧で分かる。 -->
+                                <TextBlock x:Name="EntrySummary" Text="{Binding TerminalSummary}"
+                                           ToolTip="{Binding TerminalSummaryToolTip}"
+                                           FontSize="{DynamicResource Fs11}" Foreground="{DynamicResource FgDim}"
+                                           Margin="0,0,0,3" TextTrimming="CharacterEllipsis"
+                                           Visibility="{Binding HasTerminalSummary, Converter={StaticResource BoolToVis}}" />
+                            </StackPanel>
                             <!-- 問題の数（§24.33）。ファイルツリーの行と同じ印。 -->
                             <TextBlock Grid.Column="2" Margin="4,0,0,0"
                                        Text="{Binding ProblemMark.Text}" ToolTip="{Binding ProblemMark.ToolTip}"
@@ -283,6 +291,12 @@
                          「いま見ているタブ」を探す目が端まで往復する——文字そのもので言い切る。 -->
                     <Setter TargetName="EntryTitle" Property="Foreground" Value="{DynamicResource Accent}" />
                     <Setter TargetName="CloseButton" Property="Visibility" Value="Visible" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsTerminalLastFailed}" Value="True">
+                    <Setter TargetName="EntrySummary" Property="Foreground" Value="#E57373" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsTerminalRunning}" Value="True">
+                    <Setter TargetName="EntrySummary" Property="Foreground" Value="{DynamicResource Accent}" />
                 </DataTrigger>
                 <!-- プレビュータブ（編集するまで確定しない）は VS Code 同様に斜体で示す -->
                 <DataTrigger Binding="{Binding IsPreview}" Value="True">

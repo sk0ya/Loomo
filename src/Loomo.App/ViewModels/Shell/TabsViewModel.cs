@@ -90,6 +90,23 @@ public sealed partial class TabEntryViewModel : ObservableObject
     /// シェルが付けるタイトル（実行中のコマンド等）は名前を付けても見え続ける。</summary>
     [ObservableProperty] private string? _customName;
 
+    /// <summary>ターミナルの行の 2 行目（§24.53）：「場所 (ブランチ) · 最後のコマンド ✓ · 3分前」／走っている間は
+    /// 「▶ コマンド · 経過」。ターミナル以外と、まだ何も分かっていないタブは null（1 行の行のまま）。</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasTerminalSummary))]
+    private string? _terminalSummary;
+
+    /// <summary>2 行目のツールチップ（省略しない場所・ブランチ・コマンド・終了コード）。</summary>
+    [ObservableProperty] private string? _terminalSummaryToolTip;
+
+    /// <summary>前面でコマンドが走っている（2 行目をアクセント色にする）。</summary>
+    [ObservableProperty] private bool _isTerminalRunning;
+
+    /// <summary>最後に終わったコマンドが失敗した（2 行目の印を赤にする）。</summary>
+    [ObservableProperty] private bool _isTerminalLastFailed;
+
+    public bool HasTerminalSummary => !string.IsNullOrEmpty(TerminalSummary);
+
     /// <summary>名前を付けられる種別か（右クリックの「名前を付ける…」の表示可否）。</summary>
     public bool CanRename => Kind == TabEntryKind.Terminal;
 
@@ -677,6 +694,19 @@ public sealed partial class TabsViewModel : ObservableObject
         tab.CustomName = name;
         tab.Title = TerminalTitle(name, shellTitle);
         return name;
+    }
+
+    /// <summary>ターミナルの行の 2 行目を差し替える（§24.53）。文言は <see cref="TerminalTabSummary"/> が組む。</summary>
+    public void SetTerminalStatus(Guid id, TerminalTabStatus status, IReadOnlyList<string>? folders, DateTime nowUtc)
+    {
+        var tab = TerminalTabs.FirstOrDefault(t => t.Id == id);
+        if (tab is null) return;
+
+        var line = TerminalTabSummary.Line(status, folders, nowUtc);
+        tab.TerminalSummary = line.Length == 0 ? null : line;
+        tab.TerminalSummaryToolTip = line.Length == 0 ? null : TerminalTabSummary.Detail(status, nowUtc);
+        tab.IsTerminalRunning = status.IsRunning;
+        tab.IsTerminalLastFailed = !status.IsRunning && status.LastRun?.ExitCode is { } code && code != 0;
     }
 
     public void ActivateTerminalTab(Guid id)

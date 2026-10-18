@@ -133,6 +133,7 @@ public partial class ShellWindow {
         tab.View.ContextMenuBuilding += OnTerminalContextMenuBuilding;
         HookTerminalActivity(tab);
         HookTerminalRecentCommands(tab);
+        HookTerminalStatus(tab);
         return tab;
     }
     private EditorTab CreateEditorTab(Guid? requestedId = null) =>
