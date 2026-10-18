@@ -222,6 +222,11 @@ public partial class ShellWindow
     {
         var title = $"#{issue.Number} {issue.Title}";
         OpenCommandPalette(PaletteMode.Command, [
+            new(GitHubCategory, "この Issue で作業を始める（ブランチ＋ワークツリー）…",
+                () => _ = StartWorkOnTicketAsync(new WorkTicket(WorkTicketSource.GitHub, issue.Number, issue.Title, issue.Url)))
+            {
+                Detail = $"{title}{Environment.NewLine}番号入りのブランチとワークツリーを作り、部屋として開く（望めば Claude Code も起動）",
+            },
             new(GitHubCategory, "本文と会話を読む（エディタ）", () => _ = OpenGitHubIssueDocumentAsync(folder, issue)) { Detail = title },
             new(GitHubCategory, "コメントする…", () => _ = CommentOnGitHubAsync(folder, issue.Number, isIssue: true, title)) { Detail = title },
             new(GitHubCategory, "ブラウザで開く", () => _ = OpenUrlInBrowserAsync(issue.Url, null)) { Detail = issue.Url },

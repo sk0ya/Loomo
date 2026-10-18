@@ -28,6 +28,7 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
         <TextBlock Grid.Row="0" Grid.Column="0" Text="作り方" VerticalAlignment="Center" Margin="0,0,12,8" />
@@ -75,11 +76,15 @@
             <ComboBoxItem Content="何もしない" Tag="" />
         </ComboBox>
 
-        <TextBlock x:Name="ErrorText" Grid.Row="6" Grid.Column="0" Grid.ColumnSpan="2"
+        <!-- 課題から始めるときだけ（§24.56）：作った部屋のターミナルで Claude Code を課題の文面つきで起動する。 -->
+        <CheckBox x:Name="StartClaudeBox" Grid.Row="6" Grid.Column="1" Margin="0,8,0,0" Visibility="Collapsed"
+                  Foreground="{DynamicResource Fg}" Content="Claude Code で始める（課題の番号とタイトルを渡す）" />
+
+        <TextBlock x:Name="ErrorText" Grid.Row="7" Grid.Column="0" Grid.ColumnSpan="2"
                    Foreground="#FFE4676B" FontSize="{DynamicResource Fs11}" TextWrapping="Wrap"
                    Visibility="Collapsed" Margin="0,8,0,0" />
 
-        <StackPanel Grid.Row="7" Grid.Column="0" Grid.ColumnSpan="2" Orientation="Horizontal"
+        <StackPanel Grid.Row="8" Grid.Column="0" Grid.ColumnSpan="2" Orientation="Horizontal"
                     HorizontalAlignment="Right" Margin="0,16,0,0">
             <Button Content="作成" Style="{StaticResource FlatButton}" IsDefault="True" MinWidth="76" Click="OnOk" />
             <Button Content="キャンセル" Style="{StaticResource FlatButton}"

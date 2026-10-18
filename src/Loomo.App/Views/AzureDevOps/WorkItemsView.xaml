@@ -225,6 +225,12 @@
                                             <MenuItem Header="既定のブラウザで開く"
                                                       Command="{Binding OpenExternalCommand}"
                                                       CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                                            <MenuItem Header="この課題で作業を始める（ブランチ＋ワークツリー）…"
+                                                      FontWeight="SemiBold"
+                                                      ToolTip="課題の番号入りのブランチとワークツリーを作り、部屋として開く（望めば Claude Code も起動）"
+                                                      Command="{Binding StartWorkCommand}"
+                                                      CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                      Visibility="{Binding PlacementTarget.DataContext.IsWorkItem, RelativeSource={RelativeSource AncestorType=ContextMenu}, Converter={StaticResource BoolToVis}}" />
                                             <MenuItem Header="Loomo で読む・差分・ワークツリー…"
                                                       Command="{Binding OpenPullRequestInRoomCommand}"
                                                       CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}"

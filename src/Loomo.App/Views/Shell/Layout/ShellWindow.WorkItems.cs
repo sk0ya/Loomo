@@ -7,6 +7,7 @@ public partial class ShellWindow {
         if (_vm.WorkItems is not { } workItems)
             return;
         workItems.OpenRequested += (url, title) => _ = OpenUrlInBrowserAsync(url, title);
+        workItems.WorkStartRequested += ticket => _ = StartWorkOnTicketAsync(ticket);
         InitializeAzurePullRequests();
         SidebarWorkItems.IsVisibleChanged += (_, e) => {
             var shown = (bool)e.NewValue;

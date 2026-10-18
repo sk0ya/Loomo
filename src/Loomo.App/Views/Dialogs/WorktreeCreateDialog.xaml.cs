@@ -9,7 +9,11 @@ namespace sk0ya.Loomo.App.Views;
 
 /// <summary>ワークツリー作成ダイアログの結果。</summary>
 public sealed record WorktreeCreateResult(
-    GitWorktreeAddRequest Request, GitWorktreeOpenMode? OpenAfter, IReadOnlyList<string> CarryOver);
+    GitWorktreeAddRequest Request, GitWorktreeOpenMode? OpenAfter, IReadOnlyList<string> CarryOver,
+    string? StartClaudePrompt = null);
+
+/// <summary>課題から始めるとき（§24.56）の初期値：新しいブランチ名・窓の題に添える課題・Claude Code への頼みごと。</summary>
+public sealed record WorktreeCreateSeed(string NewBranch, string Caption, string? ClaudePrompt);
 
 /// <summary>
 /// ワークツリー作成ダイアログ。作り方（新しいブランチ／既存のブランチ／デタッチ）・ブランチ・起点・置き場所・
@@ -38,11 +42,13 @@ public partial class WorktreeCreateDialog : Window
     /// <param name="existingBranch">「既存のブランチ」で開くときのブランチ（ブランチ一覧から来たとき）。</param>
     public static WorktreeCreateResult? Prompt(
         Window? owner, GitSessionViewModel vm, string? startPoint = null, string? existingBranch = null,
-        IReadOnlyList<string>? carryOver = null)
+        IReadOnlyList<string>? carryOver = null, WorktreeCreateSeed? seed = null)
     {
         var dialog = new WorktreeCreateDialog(vm.SuggestWorktreePath) { Owner = owner };
         dialog.Initialize(vm, startPoint, existingBranch);
         dialog.CarryBox.Text = GitWorktreeCarryOver.Format(carryOver ?? []);
+        if (seed is not null)
+            dialog.ApplySeed(seed);
         return dialog.ShowDialog() == true ? dialog._result : null;
     }
 
@@ -78,6 +84,26 @@ public partial class WorktreeCreateDialog : Window
             if (ModeExisting.IsChecked == true) ExistingBranchBox.Focus();
             else NewBranchBox.Focus();
         };
+    }
+
+    private string? _claudePrompt;
+
+    /// <summary>課題から始める（§24.56）：新しいブランチ名を入れ（置き場所も追従する）、題に課題を添え、Claude の印を出す。</summary>
+    private void ApplySeed(WorktreeCreateSeed seed)
+    {
+        Title = $"ワークツリーを作成 — {seed.Caption}";
+        ModeNew.IsChecked = true;
+        NewBranchBox.Text = seed.NewBranch;
+        NewBranchBox.SelectAll();
+        AfterBox.SelectedItem = AfterBox.Items.OfType<ComboBoxItem>()
+            .FirstOrDefault(i => (string)i.Tag == nameof(GitWorktreeOpenMode.Workspace)) ?? AfterBox.SelectedItem;
+        _claudePrompt = seed.ClaudePrompt;
+        if (seed.ClaudePrompt is not null)
+        {
+            StartClaudeBox.Visibility = Visibility.Visible;
+            StartClaudeBox.IsChecked = true;
+            StartClaudeBox.ToolTip = WorkTicketStart.PowerShellClaudeCommand(seed.ClaudePrompt);
+        }
     }
 
     private GitWorktreeAddMode Mode => ModeExisting.IsChecked == true ? GitWorktreeAddMode.ExistingBranch
@@ -157,7 +183,8 @@ public partial class WorktreeCreateDialog : Window
         s_lastAfter = afterTag;
         _result = new WorktreeCreateResult(request,
             Enum.TryParse<GitWorktreeOpenMode>(afterTag, out var after) ? after : null,
-            GitWorktreeCarryOver.Parse(CarryBox.Text));
+            GitWorktreeCarryOver.Parse(CarryBox.Text),
+            StartClaudeBox.IsChecked == true ? _claudePrompt : null);
         DialogResult = true;
     }
 }

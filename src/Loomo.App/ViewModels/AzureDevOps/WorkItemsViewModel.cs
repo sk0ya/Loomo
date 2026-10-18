@@ -257,6 +257,16 @@ public sealed partial class WorkItemsViewModel : ObservableObject, IHarnessTicke
 
     private static bool IsPullRequestRow(WorkItemListRowViewModel? row) => row?.IsPullRequest == true;
 
+    /// <summary>Work Item の行から「この課題で作業を始める」（ブランチ＋ワークツリー＋部屋、§24.56）を頼まれた。</summary>
+    public event Action<WorkTicket>? WorkStartRequested;
+
+    [RelayCommand(CanExecute = nameof(IsWorkItemRow))]
+    private void StartWork(WorkItemListRowViewModel? row)
+    {
+        if (row?.Entry.WorkItem is { } item)
+            WorkStartRequested?.Invoke(new WorkTicket(WorkTicketSource.AzureBoards, item.Id, item.Title, item.WebUrl));
+    }
+
     /// <summary>
     /// PR 用の接続を作る。Work Items の一覧と同じ設定（TaskAzure から取り込んだものを含む）・同じ PAT の候補を、
     /// 同じ順（前回受け付けられたものを先）で試す。読むだけの照会にしか使わない（書き込み口は持たない）。
