@@ -75,6 +75,31 @@
             </Setter>
         </Style>
 
+        <!-- スタッシュの行の説明部分（押すと中身を差分で見る）。行いっぱいに広がる平らなボタン。 -->
+        <Style x:Key="StashRowButton" TargetType="Button">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{DynamicResource Fg}" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Padding" Value="2,1" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Row" Background="{TemplateBinding Background}"
+                                Padding="{TemplateBinding Padding}" CornerRadius="4">
+                            <ContentPresenter HorizontalAlignment="Stretch" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Row" Property="Background" Value="{DynamicResource Border}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <!-- 変更行コンテナ（クリック=選択 / ダブルクリックで差分・コードビハインド）。
              既定の選択クロムを差し替え、ホバー=Bg・選択=Border の控えめなハイライトにする。 -->
         <Style x:Key="ChangeRowItem" TargetType="ListBoxItem">
@@ -544,7 +569,7 @@
                 <GridSplitter Grid.Row="3" Height="6" HorizontalAlignment="Stretch"
                               Background="{DynamicResource Border}" />
 
-                <!-- スタッシュ（退避）。見出しの「⤓」で現在の変更を退避し、各行で 適用／取出／破棄。 -->
+                <!-- スタッシュ（退避）。見出しの「⤓」で現在の変更を退避し、各行で 適用／取出／破棄。行を押すと中身を差分で見る（§24.31）。 -->
                 <DockPanel Grid.Row="4">
                     <DockPanel DockPanel.Dock="Top" Margin="4,2" Background="Transparent">
                         <StackPanel DockPanel.Dock="Right" Style="{StaticResource HeaderActions}">
@@ -567,7 +592,31 @@
                         <ItemsControl ItemsSource="{Binding Stashes}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
-                                    <DockPanel Background="Transparent" ToolTip="{Binding Description}" Margin="4,1">
+                                    <!-- 説明の部分（ボタン）を押すと中身を差分で見る（適用しない）。右クリックにパッチの保存。
+                                         ContextMenu はこの行に直接置く（Style の Setter に置くと Click が結線されない）。
+                                         メニューはビジュアルツリーの外なので、パネルの VM は Tag 経由で渡す。 -->
+                                    <DockPanel Background="Transparent" Margin="4,1"
+                                               Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=ItemsControl}}">
+                                        <DockPanel.ContextMenu>
+                                            <ContextMenu>
+                                                <MenuItem Header="差分で見る"
+                                                          Command="{Binding PlacementTarget.Tag.OpenStashDiffCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                          CommandParameter="{Binding}" />
+                                                <MenuItem Header="パッチとして保存…"
+                                                          Command="{Binding PlacementTarget.Tag.SaveStashPatchCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                          CommandParameter="{Binding}" />
+                                                <Separator />
+                                                <MenuItem Header="適用（退避は残す）"
+                                                          Command="{Binding PlacementTarget.Tag.StashApplyCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                          CommandParameter="{Binding}" />
+                                                <MenuItem Header="取り出し（適用して退避を削除）"
+                                                          Command="{Binding PlacementTarget.Tag.StashPopCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                          CommandParameter="{Binding}" />
+                                                <MenuItem Header="破棄…"
+                                                          Command="{Binding PlacementTarget.Tag.StashDropCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                          CommandParameter="{Binding}" />
+                                            </ContextMenu>
+                                        </DockPanel.ContextMenu>
                                         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
                                             <Button Style="{StaticResource RowActionButton}" Content="↧"
                                                     ToolTip="適用（退避は残す）"
@@ -582,8 +631,14 @@
                                                     Command="{Binding DataContext.StashDropCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                                                     CommandParameter="{Binding}" />
                                         </StackPanel>
-                                        <TextBlock Text="{Binding Description}" TextTrimming="CharacterEllipsis"
-                                                   VerticalAlignment="Center" FontSize="{DynamicResource Fs11}" />
+                                        <Button Style="{StaticResource StashRowButton}"
+                                                ToolTip="{Binding Description, StringFormat='{}{0}&#x0a;押すと中身を差分で見る（右クリックでパッチとして保存）'}"
+                                                AutomationProperties.Name="{Binding Description}"
+                                                Command="{Binding DataContext.OpenStashDiffCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                CommandParameter="{Binding}">
+                                            <TextBlock Text="{Binding Description}" TextTrimming="CharacterEllipsis"
+                                                       VerticalAlignment="Center" FontSize="{DynamicResource Fs11}" />
+                                        </Button>
                                     </DockPanel>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>

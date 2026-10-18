@@ -53,4 +53,36 @@ public sealed record GitLogRow(
 }
 
 /// <summary>スタッシュ1件。</summary>
-public sealed record GitStashEntry(string Ref, string Description);
+public sealed record GitStashEntry(string Ref, string Description)
+{
+    /// <summary>パッチとして保存するときの既定のファイル名（<c>stash-0-On-main-作業中.patch</c>）。
+    /// 番号は <c>stash@{n}</c> の n、続けて説明をファイル名に使えない文字を落として詰めたもの。</summary>
+    public string PatchFileName
+    {
+        get
+        {
+            var open = Ref.IndexOf('{');
+            var close = Ref.IndexOf('}');
+            var index = open >= 0 && close > open ? Ref[(open + 1)..close] : "";
+            var invalid = System.IO.Path.GetInvalidFileNameChars();
+            var words = Description
+                .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                .Select(word => new string(word.Where(c => !invalid.Contains(c)).ToArray()))
+                .Where(word => word.Length > 0);
+            var label = string.Join('-', words);
+            if (label.Length > MaxPatchLabel) label = label[..MaxPatchLabel].TrimEnd('-', '.');
+            var name = string.Join('-', new[] { "stash", index, label }.Where(part => part.Length > 0));
+            return name + ".patch";
+        }
+    }
+
+    private const int MaxPatchLabel = 40;
+}
+
+/// <summary>
+/// スタッシュの中身を差分で見るための解決結果。スタッシュは「作業ツリーの状態」を表すコミットで、
+/// 1 つ目の親（<paramref name="BaseHash"/>）が退避したときの HEAD。親→スタッシュの範囲が退避した変更になる。
+/// 未追跡のファイル（<c>push -u</c>）は 3 つ目の親の別のツリーに入っていて、この範囲には出ない——
+/// その件数を <paramref name="UntrackedCount"/> に持つ（パッチの書き出しには含まれる）。
+/// </summary>
+public sealed record GitStashSnapshot(string BaseHash, string StashHash, int UntrackedCount);

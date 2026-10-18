@@ -489,6 +489,9 @@ public sealed class GitService
     public Task<GitCommandResult> StashApplyAsync(string stashRef) => _stashes.ApplyAsync(stashRef);
     public Task<GitCommandResult> StashPopAsync(string stashRef) => _stashes.PopAsync(stashRef);
     public Task<GitCommandResult> StashDropAsync(string stashRef) => _stashes.DropAsync(stashRef);
+    public Task<GitStashSnapshot?> ResolveStashAsync(string stashRef) => _stashes.ResolveAsync(stashRef);
+    public Task<GitCommandResult> SaveStashPatchAsync(string stashRef, string path) =>
+        _stashes.SavePatchAsync(stashRef, path);
 
     public Task<GitCommandResult> ApplyCachedPatchAsync(string patch, bool reverse) =>
         _diff.ApplyCachedPatchAsync(patch, reverse);

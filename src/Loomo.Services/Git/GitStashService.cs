@@ -56,4 +56,37 @@ public sealed class GitStashService
 
     public Task<GitCommandResult> DropAsync(string stashRef) =>
         _mutations.ExecuteAsync("stash", "drop", stashRef);
+
+    /// <summary>
+    /// スタッシュを差分で見るための親とスタッシュ本体のハッシュ、未追跡のファイル数を引く
+    /// （<see cref="GitStashSnapshot"/>）。スタッシュが見つからなければ null。
+    /// </summary>
+    public async Task<GitStashSnapshot?> ResolveAsync(string stashRef)
+    {
+        // --verify は 1 つしか取らないので付けない（無い参照は 2 つとも失敗で返る）。
+        var hashes = await _runner.RunAsync("rev-parse", $"{stashRef}^1", stashRef)
+            .ConfigureAwait(false);
+        if (!hashes.Success)
+            return null;
+        var lines = hashes.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (lines.Length < 2)
+            return null;
+
+        // 3 つ目の親は -u で退避したときだけある。無いのは正常（rev-parse は失敗で返す）。
+        var untracked = 0;
+        var files = await _runner.RunAsync("ls-tree", "-r", "--name-only", $"{stashRef}^3")
+            .ConfigureAwait(false);
+        if (files.Success)
+            untracked = files.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries).Length;
+        return new GitStashSnapshot(lines[0], lines[1], untracked);
+    }
+
+    /// <summary>
+    /// スタッシュの中身（未追跡のファイルとバイナリも含む）をパッチとして <paramref name="path"/> に書き出す。
+    /// git に直接書かせる（<c>--output</c>）——標準出力を文字列で受けて書き直すと、UTF-8 でない
+    /// ファイルの中身が化けて <c>git apply</c> できないパッチになる。
+    /// </summary>
+    public Task<GitCommandResult> SavePatchAsync(string stashRef, string path) =>
+        _runner.RunAsync("stash", "show", "-p", "--binary", "--include-untracked",
+            $"--output={path}", stashRef);
 }

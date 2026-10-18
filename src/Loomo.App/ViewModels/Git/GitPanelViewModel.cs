@@ -656,6 +656,53 @@ public sealed partial class GitPanelViewModel : ObservableObject
         await RunOpAsync("スタッシュ破棄", () => _git.StashDropAsync(stash.Ref));
     }
 
+    /// <summary>スタッシュの中身を差分で見る（適用しない）。退避したときの HEAD → スタッシュの範囲として
+    /// Diff ペインへ頼む。未追跡のファイルはこの範囲に出ないので、あれば件数を知らせる。</summary>
+    [RelayCommand]
+    private async Task OpenStashDiffAsync(GitStashEntry? stash)
+    {
+        if (stash is null) return;
+        var snapshot = await _git.ResolveStashAsync(stash.Ref);
+        if (snapshot is null)
+        {
+            StatusMessage = $"{stash.Ref} が見つかりません。一覧を更新してください。";
+            return;
+        }
+        DiffOpenRequested?.Invoke(this, new DiffOpenTarget.CommitRange(
+            snapshot.BaseHash, snapshot.StashHash, $"スタッシュ {stash.Ref}"));
+        StatusMessage = snapshot.UntrackedCount > 0
+            ? $"{stash.Ref}：未追跡のファイル {snapshot.UntrackedCount} 件は差分に出ません（パッチとして保存すると入ります）。"
+            : "";
+    }
+
+    /// <summary>スタッシュの中身をパッチとして保存し、エディタで開く（未追跡のファイル・バイナリも含む）。
+    /// 保存したパッチは <c>git apply</c> でそのまま当てられる。</summary>
+    [RelayCommand]
+    private async Task SaveStashPatchAsync(GitStashEntry? stash)
+    {
+        if (stash is null) return;
+        var dialog = new Microsoft.Win32.SaveFileDialog
+        {
+            Title = "スタッシュをパッチとして保存",
+            Filter = "パッチ (*.patch)|*.patch|すべてのファイル (*.*)|*.*",
+            FileName = stash.PatchFileName,
+        };
+        if (_git.RootPath is { Length: > 0 } root && Directory.Exists(root))
+            dialog.InitialDirectory = root;
+        var owner = Application.Current?.MainWindow;
+        if ((owner is null ? dialog.ShowDialog() : dialog.ShowDialog(owner)) != true) return;
+
+        var path = dialog.FileName;
+        var result = await _git.SaveStashPatchAsync(stash.Ref, path);
+        if (!result.Success)
+        {
+            StatusMessage = $"パッチの保存に失敗しました: {Truncate(result.Message)}";
+            return;
+        }
+        StatusMessage = $"{stash.Ref} を {Path.GetFileName(path)} に保存しました。";
+        await _editor.OpenFileAsync(path);
+    }
+
     [RelayCommand]
     private Task InitRepositoryAsync() => RunOpAsync("git init", () => _git.InitAsync());
 
