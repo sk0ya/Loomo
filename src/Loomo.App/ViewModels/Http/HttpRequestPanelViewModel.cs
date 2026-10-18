@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using System.Text;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -190,7 +190,9 @@ public sealed partial class HttpRequestPanelViewModel : ObservableObject
             Selected = row;
     }
 
-    [RelayCommand]
+    // 走っている間も押せること——同じボタンが ■（取り消し）になり、他の行も送れる。
+    // 既定の AsyncRelayCommand は実行中 CanExecute=false になり、■ が押せず全行が 100 秒待ちになる。
+    [RelayCommand(AllowConcurrentExecutions = true)]
     private async Task Send(HttpRequestRowViewModel? row)
     {
         if (row is null || FilePath is null)
@@ -205,7 +207,7 @@ public sealed partial class HttpRequestPanelViewModel : ObservableObject
         await _owner.SendAsync(FilePath, _document, row.Block);
     }
 
-    [RelayCommand(CanExecute = nameof(HasSelection))]
+    [RelayCommand(CanExecute = nameof(HasSelection), AllowConcurrentExecutions = true)]
     private Task SendSelected() => Send(Selected);
 
     [RelayCommand]

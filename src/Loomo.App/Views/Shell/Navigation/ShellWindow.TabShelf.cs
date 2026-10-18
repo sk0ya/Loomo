@@ -1,4 +1,4 @@
-namespace sk0ya.Loomo.App.Views;
+﻿namespace sk0ya.Loomo.App.Views;
 
 /// <summary>
 /// ShellWindow: タブの棚（§24.29）。エディタ／ブラウザのタブが種類ごとの上限（既定 10 枚・ピン留めは数えない）を
@@ -11,13 +11,28 @@ public partial class ShellWindow {
     private readonly DispatcherTimer _tabShelfTimer = new(DispatcherPriority.Background) { Interval = TimeSpan.FromMinutes(10) };
     private bool _shelveOverflowPending;
 
+    /// <summary>棚から戻したばかりのタブ。戻した直後の数え直しでは下げない——人が選んで戻したものを、
+    /// 上限を超えたからとすぐ押し返さない（超えた分は、もともと開いていた古いタブから下げる）。
+    /// 一度数え直したら空にする。</summary>
+    private readonly HashSet<Guid> _justRestoredTabs = new();
+
+    /// <summary>棚から戻している最中（途中の await で数え直しを走らせない。戻し終えてから一度だけ数える）。</summary>
+    private bool _restoringFromShelf;
+
     private void InitializeTabShelf() {
         _vm.Tabs.Shelf.RestoreRequested += (_, items) => _ = RestoreShelvedTabsAsync(items);
-        _vm.Tabs.Shelf.Changed += (_, _) => SaveActiveWorkspaceSnapshot();
+        // 切替の途中は保存しない——タブを外した後・戻す前に CaptureInto が走ると、空のタブ一覧を
+        // 復元元のスナップショットへ書いてしまう。切替の終わりで必ず保存するので、棚の変化はそこで拾われる。
+        _vm.Tabs.Shelf.Changed += (_, _) => {
+            if (!_workspaceTransition.IsSwitching)
+                SaveActiveWorkspaceSnapshot();
+        };
         _vm.Tabs.TabShelveRequested += (_, tab) => _ = ShelveTabsByHandAsync(tab);
         _vm.Tabs.TabPinToggled += (_, tab) => ToggleTabPin(tab);
         _vm.Tabs.ShelveLimitChanged += (_, _) => ScheduleShelveOverflow();
         _tabShelfTimer.Tick += (_, _) => {
+            if (_workspaceTransition.IsSwitching)
+                return;
             _vm.Tabs.Shelf.PurgeExpired(DateTime.UtcNow);
             _vm.Tabs.Shelf.RefreshTimes();
         };
@@ -43,7 +58,7 @@ public partial class ShellWindow {
     }
 
     private async Task ShelveOverflowAsync() {
-        if (!_vm.Tabs.AutoShelve || _activeWorkspace is null || _workspaceTransition.IsSwitching)
+        if (!_vm.Tabs.AutoShelve || _activeWorkspace is null || _workspaceTransition.IsSwitching || _restoringFromShelf)
             return;
         var now = DateTime.UtcNow;
         // 分割で見えているタブは「いま見ている」——並びの上でも新しくしておく
@@ -51,11 +66,14 @@ public partial class ShellWindow {
             tab.LastSeenUtc = now;
         var limit = _vm.Tabs.AutoShelveLimit;
         var editorIds = TabShelfPolicy.SelectOverflow(
-            _editorTabs.Select(t => new TabShelfCandidate(t.Id, t.LastSeenUtc, IsEditorTabShelfProtected(t, byHand: false), t.IsPinned)).ToList(),
+            _editorTabs.Select(t => new TabShelfCandidate(t.Id, t.LastSeenUtc,
+                _justRestoredTabs.Contains(t.Id) || IsEditorTabShelfProtected(t, byHand: false), t.IsPinned)).ToList(),
             limit);
         var browserIds = TabShelfPolicy.SelectOverflow(
-            _browserTabs.Select(t => new TabShelfCandidate(t.Id, t.LastSeenUtc, IsBrowserTabShelfProtected(t, byHand: false), t.IsPinned)).ToList(),
+            _browserTabs.Select(t => new TabShelfCandidate(t.Id, t.LastSeenUtc,
+                _justRestoredTabs.Contains(t.Id) || IsBrowserTabShelfProtected(t, byHand: false), t.IsPinned)).ToList(),
             limit);
+        _justRestoredTabs.Clear();
         await ShelveAsync(editorIds, browserIds);
     }
 
@@ -166,6 +184,16 @@ public partial class ShellWindow {
     /// 複数のときは並べるだけで、前に出すのは先頭の1枚。</summary>
     private async Task RestoreShelvedTabsAsync(IReadOnlyList<ShelvedTabSnapshot> items) {
         await _workspaceTransition.WhenSettledAsync();
+        _restoringFromShelf = true;
+        try {
+            await RestoreShelvedTabsCoreAsync(items);
+        } finally {
+            _restoringFromShelf = false;
+            ScheduleShelveOverflow();
+        }
+    }
+
+    private async Task RestoreShelvedTabsCoreAsync(IReadOnlyList<ShelvedTabSnapshot> items) {
         EditorTab? firstEditor = null;
         var restored = new List<Guid>();
         var missing = 0;
@@ -188,12 +216,15 @@ public partial class ShellWindow {
                     _editorTabs.Add(tab);
                     _vm.Tabs.AddEditorTab(tab.Id, path, false, false);
                 }
-                // 戻したもの同士では、上限を超えても互いを押し出さない（いちばん新しく見た扱い）
+                // 戻したもの同士では、上限を超えても互いを押し出さない（_justRestoredTabs で守る）
                 tab.LastSeenUtc = DateTime.UtcNow;
+                _justRestoredTabs.Add(tab.Id);
                 firstEditor ??= tab;
                 restored.Add(item.Id);
             } else if (item.Url is { Length: > 0 } url) {
                 await OpenUrlInBrowserAsync(url, item.Title);
+                if (_activeBrowserTab is { } opened)
+                    _justRestoredTabs.Add(opened.Id);
                 restored.Add(item.Id);
             } else {
                 restored.Add(item.Id);

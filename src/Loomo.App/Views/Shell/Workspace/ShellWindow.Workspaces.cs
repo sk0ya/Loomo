@@ -143,7 +143,6 @@ public partial class ShellWindow {
         RestoreComposer(workspace);
         _vm.Pegboard.LoadItems(workspace.Pegboard);
         _vm.Tabs.Shelf.Load(workspace.ShelvedTabs);
-        PurgeExpiredShelf();
         _vm.SearchPanel.RestoreTabs(workspace.SearchTabs);
         LoadLayouts(workspace.Layouts, workspace.ScratchLayout, workspace.ActiveLayoutIndex, workspace.LayoutDirty);
         ApplyIdePaneApplicability(WorkspaceSessionCoordinator.WorkspaceFolders(workspace));
@@ -193,6 +192,9 @@ public partial class ShellWindow {
             Detached.Restore(workspace.DetachedWindows, RestoreDetachedItem);
         StartupProfiler.Mark("  復元:CompleteStageSnapshotRestore");
         profile?.Lap("stage");
+        // 棚の期限切れはタブを戻し終えてから落とす。切替の途中（前のタブを外し、新しいタブをまだ戻していない間）に
+        // 保存が走ると、空のタブ一覧を復元元のスナップショットへ書き込んでしまう（§24.29）。
+        PurgeExpiredShelf();
         SaveActiveWorkspaceSnapshot();
         profile?.Lap("scheduleSave");
     }
