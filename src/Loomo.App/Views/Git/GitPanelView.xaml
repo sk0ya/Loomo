@@ -223,6 +223,12 @@
                         </Style>
                     </TextBlock.Style>
                 </TextBlock>
+                <TextBlock DockPanel.Dock="Right" Margin="6,0,0,0" VerticalAlignment="Center"
+                           FontSize="{DynamicResource Fs10}" FontFamily="Cascadia Mono, Consolas"
+                           ToolTip="増えた行・減った行"
+                           Visibility="{Binding Change.LineStat.AddedText, Converter={StaticResource NonEmptyToVis}}">
+                    <Run Text="{Binding Change.LineStat.AddedText, Mode=OneWay}" Foreground="{Binding Source=A, Converter={StaticResource GitStatusBrush}}" /><Run Text="{Binding Change.LineStat.DeletedText, Mode=OneWay}" Foreground="{Binding Source=D, Converter={StaticResource GitStatusBrush}}" />
+                </TextBlock>
                 <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center">
                     <TextBlock.Style>
                         <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
@@ -541,6 +547,12 @@
                                                Foreground="{Binding Status, Converter={StaticResource GitStatusBrush}}"
                                                TextAlignment="Center" FontWeight="SemiBold" VerticalAlignment="Center"
                                                FontFamily="Cascadia Mono, Consolas" />
+                                    <TextBlock DockPanel.Dock="Right" Margin="6,0,0,0" VerticalAlignment="Center"
+                                               FontSize="{DynamicResource Fs10}" FontFamily="Cascadia Mono, Consolas"
+                                               ToolTip="増えた行・減った行"
+                                               Visibility="{Binding LineStat.AddedText, Converter={StaticResource NonEmptyToVis}}">
+                                        <Run Text="{Binding LineStat.AddedText, Mode=OneWay}" Foreground="{Binding Source=A, Converter={StaticResource GitStatusBrush}}" /><Run Text="{Binding LineStat.DeletedText, Mode=OneWay}" Foreground="{Binding Source=D, Converter={StaticResource GitStatusBrush}}" />
+                                    </TextBlock>
                                     <StackPanel Orientation="Horizontal">
                                         <TextBlock Text="{Binding FileName}" TextTrimming="CharacterEllipsis"
                                                    VerticalAlignment="Center" />

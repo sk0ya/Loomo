@@ -39,6 +39,9 @@ public sealed partial class GitChangeItem : ObservableObject
     /// <summary>作業ツリーのツリー表示でコミット対象に含めるか。ステージ済みには使わない。</summary>
     [ObservableProperty] private bool _isChecked;
     public bool IsConflicted => Entry.IsConflicted;
+
+    /// <summary>増減の行数（<c>+12 −3</c>）。数えていない（未追跡など）なら null で、行には何も出さない（§24.32）。</summary>
+    [ObservableProperty] private GitLineStat? _lineStat;
     public string ToolTipText => Entry.OrigPath is null
         ? Entry.Path
         : $"{Entry.OrigPath} → {Entry.Path}";
@@ -209,6 +212,13 @@ public sealed partial class GitPanelViewModel : ObservableObject
     [ObservableProperty] private bool _hasRemote;
     [ObservableProperty] private bool _hasUpstream;
     [ObservableProperty] private string _commitMessage = "";
+    /// <summary>書きかけのメッセージの帳面（対象フォルダーごと・ワークスペースに保存・§24.32）。</summary>
+    private readonly CommitDraftBook _commitDrafts = new();
+    /// <summary>いまメッセージ欄が誰の下書きを映しているか（Git の対象フォルダー）。</summary>
+    private string? _commitDraftRoot;
+    /// <summary>amend を立てる前に書いていたメッセージ。amend の間は欄が対象コミットの件名になるので、
+    /// 下ろしたときにこれを戻す（以前は空にしていた＝書きかけが消えた）。</summary>
+    private string _messageBeforeAmend = "";
     [ObservableProperty] private bool _amend;
     private Task? _amendCommitsLoadTask;
     private bool _amendCommitsLoaded;
@@ -331,9 +341,11 @@ public sealed partial class GitPanelViewModel : ObservableObject
             _amendCommitsGeneration++;
             SelectedAmendCommit = null;
             AmendCommits.Clear();
-            CommitMessage = "";
+            CommitMessage = _messageBeforeAmend;
+            _messageBeforeAmend = "";
             return;
         }
+        _messageBeforeAmend = CommitMessage;
         _amendCommitsLoaded = false;
         RequestAmendCommitsLoad();
     }
@@ -476,10 +488,55 @@ public sealed partial class GitPanelViewModel : ObservableObject
 
     private void OnActiveRootChanged(object? sender, EventArgs e)
     {
+        UiDispatch.Post(SwitchCommitDraftToActiveRoot);
         _amendCommitsLoaded = false;
         _amendCommitsGeneration++;
         if (!_loaded) return;
         UiDispatch.Post(() => _ = RefreshAsync());
+    }
+
+    /// <summary>いまの欄の下書き（amend 中は amend を立てる前に書いていたもの）。</summary>
+    private string CurrentDraftText => Amend ? _messageBeforeAmend : CommitMessage;
+
+    /// <summary>対象フォルダーが替わったら、前の下書きを帳面へしまい、新しい対象の下書きを欄へ出す。
+    /// 同じ対象のままなら何もしない（復元の直後に遅れて届いた通知が、戻した下書きを上書きしない）。</summary>
+    private void SwitchCommitDraftToActiveRoot()
+    {
+        var root = _git.RootPath;
+        if (string.Equals(root, _commitDraftRoot, StringComparison.OrdinalIgnoreCase)) return;
+        _commitDrafts.Put(_commitDraftRoot, CurrentDraftText);
+        _commitDraftRoot = root;
+        ShowDraft(_commitDrafts.Get(root));
+    }
+
+    private void ShowDraft(string text)
+    {
+        if (Amend)
+        {
+            // amend を下ろすと _messageBeforeAmend が欄へ戻るので、先に入れておく。
+            _messageBeforeAmend = text;
+            Amend = false;
+        }
+        else
+        {
+            CommitMessage = text;
+        }
+    }
+
+    /// <summary>ワークスペースの保存：いまの欄も含めた下書きの帳面（無ければ null）。</summary>
+    public Dictionary<string, string>? CaptureCommitDrafts()
+    {
+        _commitDrafts.Put(_commitDraftRoot ?? _git.RootPath, CurrentDraftText);
+        return _commitDrafts.Export();
+    }
+
+    /// <summary>ワークスペースの復元：帳面を差し替え、いまの対象フォルダーの下書きを欄へ出す。
+    /// Git の対象フォルダーが切り替わったあと（LoadRoot の後）に呼ぶ。</summary>
+    public void RestoreCommitDrafts(IReadOnlyDictionary<string, string>? drafts)
+    {
+        _commitDrafts.Replace(drafts);
+        _commitDraftRoot = _git.RootPath;
+        ShowDraft(_commitDrafts.Get(_commitDraftRoot));
     }
 
     [RelayCommand]
@@ -572,6 +629,39 @@ public sealed partial class GitPanelViewModel : ObservableObject
             sections.Add(GitChangeTreeNode.BuildSection(
                 "バージョン管理外ファイル", UnversionedFiles, wasExpanded.GetValueOrDefault("バージョン管理外ファイル", false)));
         WorkingTreeSections = sections;
+        await ApplyLineStatsAsync(baseRef: null);
+    }
+
+    /// <summary>各行に増減の行数を添える（§24.32）。一覧を出してから数えるので、遅い git でも一覧は待たせない。
+    /// ステージ済みはインデックス側、未ステージは作業ツリー側、基準があればその基準との差を数える。</summary>
+    private async Task ApplyLineStatsAsync(string? baseRef)
+    {
+        if (baseRef is not null)
+        {
+            var against = await _git.GetLineStatsAsync(cached: false, baseRef);
+            foreach (var node in WorkingTreeSections)
+                foreach (var item in Leaves(node))
+                    item.LineStat = against.GetValueOrDefault(item.Entry.Path);
+            return;
+        }
+        var staged = Staged.Count > 0
+            ? await _git.GetLineStatsAsync(cached: true)
+            : new Dictionary<string, GitLineStat>();
+        var unstaged = Changes.Count > 0
+            ? await _git.GetLineStatsAsync(cached: false)
+            : new Dictionary<string, GitLineStat>();
+        foreach (var item in Staged)
+            item.LineStat = staged.GetValueOrDefault(item.Entry.Path);
+        foreach (var item in Changes)
+            item.LineStat = unstaged.GetValueOrDefault(item.Entry.Path);
+    }
+
+    private static IEnumerable<GitChangeItem> Leaves(GitChangeTreeNode node)
+    {
+        if (node.Change is { } change) yield return change;
+        foreach (var child in node.Children)
+            foreach (var leaf in Leaves(child))
+                yield return leaf;
     }
 
     /// <summary>
@@ -611,6 +701,8 @@ public sealed partial class GitPanelViewModel : ObservableObject
         WorkingTreeSections = items.Count == 0
             ? Array.Empty<GitChangeTreeNode>()
             : new[] { GitChangeTreeNode.BuildSection(resolution.Label, items) };
+        if (items.Count > 0)
+            await ApplyLineStatsAsync(resolution.BaseRef);
     }
 
     private void OnCompareBaseChanged(object? sender, EventArgs e)
@@ -851,6 +943,12 @@ public sealed partial class GitPanelViewModel : ObservableObject
             StatusIsError = true;
             return;
         }
+        if (WarnProblemsBeforeCommit(Staged.Select(i => i.Entry.Path).Concat(pathsToStage)) is { } warning)
+        {
+            StatusMessage = warning;
+            StatusIsError = true;
+            return;
+        }
         await RunOpAsync(amend ? "コミット（amend）" : "コミット", async () =>
         {
             if (pathsToStage.Length > 0)
@@ -865,10 +963,56 @@ public sealed partial class GitPanelViewModel : ObservableObject
         });
         if (!StatusIsError)
         {
-            CommitMessage = "";
+            if (!amend)
+            {
+                CommitMessage = "";
+                _commitDrafts.Put(_commitDraftRoot, "");
+            }
+            // amend の後は、amend を立てる前に書いていた下書きが欄へ戻る（OnAmendChanged）。
             Amend = false;
             Sign = false;
         }
+    }
+
+    /// <summary>ファイルのエラーの数を引く口（§24.34）。ShellWindow が Problems の索引（§24.33）をつなぐ。
+    /// つながっていなければ確かめない。</summary>
+    public Func<string, ProblemMark?>? ProblemLookup { get; set; }
+
+    /// <summary>「それでもコミットする」と一度見せた警告の中身。同じ中身のまま押し直されたら、そのまま通す。</summary>
+    private string? _acknowledgedProblemWarning;
+
+    /// <summary>
+    /// コミットするファイルにエラーが残っていれば、1 回目はコミットせずに知らせる（§24.34・VS Code 1.98 の
+    /// 「Diagnostics commit hook」）。ダイアログは出さない——同じ中身でもう一度押せばそのままコミットする。
+    /// エラーが変われば（直した・増えた）また知らせる。警告は数えない（止めるほどのものではない）。
+    /// </summary>
+    internal string? WarnProblemsBeforeCommit(IEnumerable<string> relativePaths)
+    {
+        var root = _git.RootPath;
+        if (ProblemLookup is null || string.IsNullOrEmpty(root)) return null;
+        var withErrors = relativePaths
+            .Distinct(StringComparer.Ordinal)
+            .Select(path => (Path: path, Mark: ProblemLookup(Path.Combine(root, path))))
+            .Where(x => x.Mark is { Errors: > 0 })
+            .OrderBy(x => x.Path, StringComparer.Ordinal)
+            .ToList();
+        if (withErrors.Count == 0)
+        {
+            _acknowledgedProblemWarning = null;
+            return null;
+        }
+        var signature = string.Join("|", withErrors.Select(x => $"{x.Path}:{x.Mark!.Errors}"));
+        if (signature == _acknowledgedProblemWarning)
+        {
+            _acknowledgedProblemWarning = null;
+            return null;
+        }
+        _acknowledgedProblemWarning = signature;
+        var first = withErrors[0];
+        var others = withErrors.Count > 1 ? $" ほか {withErrors.Count - 1} ファイル" : "";
+        var total = withErrors.Sum(x => x.Mark!.Errors);
+        return $"コミットするファイルにエラーが {total} 件あります（{Path.GetFileName(first.Path)}{others}）。"
+            + "もう一度コミットを押すと、そのままコミットします。";
     }
 
     /// <summary>変更行の右クリックメニュー「ファイルを開く」：そのファイルの実体をエディタで開く

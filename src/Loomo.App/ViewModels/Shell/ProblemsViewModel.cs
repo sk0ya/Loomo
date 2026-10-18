@@ -471,7 +471,11 @@ public sealed partial class ProblemsViewModel : ObservableObject
         WarningCount = Groups.Sum(g => g.WarningCount);
         InformationCount = Groups.Sum(g => g.InformationCount);
         HintCount = Groups.Sum(g => g.HintCount);
+        Changed?.Invoke();
     }
+
+    /// <summary>中身が組み直されたとき（ツリーとタブの印・§24.33 が数え直す合図。表示の絞り込みの変更でも来る）。</summary>
+    public event Action? Changed;
 
     /// <summary>全発生源を合わせ、フィルターを通して重複を除いた問題。<paramref name="applyScope"/> が false なら
     /// 範囲（現在のファイル）だけは見ない（同じコードの問題を全ファイルから集めるとき用）。</summary>

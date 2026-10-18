@@ -202,8 +202,11 @@ public partial class ShellWindow {
     // ——前に置くと Git の対象フォルダーがまだ切り替わっておらず、VM が走らせるブランチ候補の読込が
     // 「ワークスペースフォルダーが開かれていません」で空を返し、保存した枝が既定ブランチへすり替わる
     // （deferHydration の経路が本番の起動経路なので、そこでこそ踏む）。
-    private void RestoreGitCompareBase(WorkspaceSnapshot workspace)
-        => _vm.GitPanel.CompareBase.Restore(workspace.GitCompare);
+    private void RestoreGitCompareBase(WorkspaceSnapshot workspace) {
+        _vm.GitPanel.CompareBase.Restore(workspace.GitCompare);
+        // 下書きも対象フォルダーが切り替わってから戻す（前の部屋の欄の中身を、この部屋の帳面へ書かない）。
+        _vm.GitPanel.RestoreCommitDrafts(workspace.CommitDrafts);
+    }
 
     private void SaveActiveWorkspaceSnapshot(bool immediate = false) {
         if (_activeWorkspace is null)
@@ -239,6 +242,7 @@ public partial class ShellWindow {
         snapshot.Files = _vm.Files.Capture();
         snapshot.Harness = _vm.Harness.Capture();
         snapshot.GitCompare = _vm.GitPanel.CompareBase.Capture();
+        snapshot.CommitDrafts = _vm.GitPanel.CaptureCommitDrafts();
         snapshot.ComposerText = CaptureComposerText();
         snapshot.ComposerVisible = IsComposerVisible;
         snapshot.ComposerHeight = CaptureComposerHeight();

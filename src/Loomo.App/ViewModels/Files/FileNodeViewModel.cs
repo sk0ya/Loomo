@@ -65,6 +65,9 @@ public sealed partial class FileNodeViewModel : ObservableObject
     // git の差分マーク。XAML 側の DataTrigger が種別ごとに表示文字・色を割り当てる。
     [ObservableProperty] private GitChangeKind _gitStatus;
 
+    /// <summary>このファイル（フォルダーなら配下）のエラー・警告の数（§24.33）。無ければ null。</summary>
+    [ObservableProperty] private ProblemMark? _problemMark;
+
     // 現在のツリーが Git リポジトリ配下か（「Git」コンテキストメニューの出し分け用）。
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanGitBlame))]
@@ -119,6 +122,7 @@ public sealed partial class FileNodeViewModel : ObservableObject
         IsWorkspaceFolderRoot = isWorkspaceFolderRoot;
         _owner = owner;
         GitStatus = owner.GitStatusFor(fullPath, isDirectory, rootKey);
+        _problemMark = IsShellItem ? null : owner.ProblemCounts.For(fullPath);
         IsGitRepository = owner.IsGitRepositoryFor(rootKey);
         if (isDirectory && !isWorkspaceFolderRoot && !IsShellItem)
             _isPinned = owner.IsPinnedPath(fullPath);

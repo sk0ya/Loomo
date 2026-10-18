@@ -15,6 +15,30 @@ public partial class ShellWindow
         _vm.TsIde.Problems.ExcerptRequested += OnProblemExcerptRequested;
         _lspWorkspace.DiagnosticsPublished += OnLspDiagnosticsPublished;
         _workspace.FoldersChanged += OnProblemWorkspaceFoldersChanged;
+        _vm.Debug.Problems.Changed += ScheduleProblemMarks;
+        _vm.TsIde.Problems.Changed += ScheduleProblemMarks;
+        // コミットの前に、そのファイルのエラーを確かめる（§24.34）。押した時点の数で見る（印の更新を待たない）。
+        _vm.GitPanel.ProblemLookup = path => CurrentProblemCounts().For(path);
+    }
+
+    private bool _problemMarksPending;
+
+    /// <summary>いまの問題の数（IDE と TS IDE の Problems を合わせたもの・§24.33）。コミット前の確認（§24.34）も引く。</summary>
+    private ProblemFileCounts CurrentProblemCounts()
+        => ProblemFileCounts.From(_vm.Debug.Problems.AllProblems().Concat(_vm.TsIde.Problems.AllProblems()));
+
+    /// <summary>ツリーとタブの問題の印を付け直す（§24.33）。診断はキー入力ごとに届くので、続けて来た分は
+    /// 1 回にまとめ、入力と描画より後（Background）で数える。</summary>
+    private void ScheduleProblemMarks()
+    {
+        if (_problemMarksPending) return;
+        _problemMarksPending = true;
+        Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() => {
+            _problemMarksPending = false;
+            var counts = CurrentProblemCounts();
+            _vm.FolderTree.ApplyProblemCounts(counts);
+            _vm.Tabs.ApplyProblemCounts(counts);
+        }));
     }
 
     private void OnLspDiagnosticsPublished(string uri, IReadOnlyList<Editor.Core.Lsp.LspDiagnostic> diagnostics)

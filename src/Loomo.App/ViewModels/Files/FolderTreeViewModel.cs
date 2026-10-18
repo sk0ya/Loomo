@@ -530,6 +530,26 @@ public sealed partial class FolderTreeViewModel : ObservableObject
         return _multiRootStates.TryGetValue(rootKey, out var state) ? state.GitState : GitTreeState.Empty;
     }
 
+    /// <summary>ツリーの行に出す問題の数の索引（§24.33）。新しく作るノードもこれを引く。</summary>
+    internal ProblemFileCounts ProblemCounts { get; private set; } = ProblemFileCounts.Empty;
+
+    /// <summary>問題の数が変わったとき、いま作られているノード（読み込み済みの枝）の印を差し替える。
+    /// 畳んだ枝の中は作られていなければ歩かない——開いたときにノードの生成で引く。</summary>
+    public void ApplyProblemCounts(ProblemFileCounts counts)
+    {
+        if (counts.SameAs(ProblemCounts)) return;
+        ProblemCounts = counts;
+        var stack = new Stack<FileNodeViewModel>(Nodes);
+        while (stack.Count > 0)
+        {
+            var node = stack.Pop();
+            if (node.FullPath.Length == 0) continue;   // 遅延読込のダミー
+            node.ProblemMark = node.IsShellItem ? null : counts.For(node.FullPath);
+            foreach (var child in node.Children)
+                stack.Push(child);
+        }
+    }
+
     // ツリー上のノードに付ける差分マークの種別。フォルダは配下に変更を含むなら DirectoryChanged。
     internal GitChangeKind GitStatusFor(string fullPath, bool isDirectory, string rootKey)
     {

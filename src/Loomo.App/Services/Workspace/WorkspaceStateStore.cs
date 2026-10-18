@@ -492,6 +492,9 @@ public sealed class WorkspaceSnapshot
     /// 「このブランチで入れた変更を見ている」という現在地はワークスペースごとに違うのでここに持つ。</summary>
     public GitCompareSnapshot? GitCompare { get; set; }
 
+    /// <summary>書きかけのコミットメッセージ（Git の対象フォルダーの絶対パス → 本文・§24.32）。null の旧データは下書きなし。</summary>
+    public Dictionary<string, string>? CommitDrafts { get; set; }
+
     /// <summary>ハーネスペイン（§37.7）の選んでいたタブと期間。候補の選択は持ち越さない（記録が変われば意味が変わる）。</summary>
     public HarnessPaneSnapshot? Harness { get; set; }
 }

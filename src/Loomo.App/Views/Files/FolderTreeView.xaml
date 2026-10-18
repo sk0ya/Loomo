@@ -493,6 +493,23 @@
                                        FontFamily="Consolas" FontSize="{DynamicResource Fs11}" FontWeight="SemiBold"
                                        VerticalAlignment="Center"
                                        Visibility="Collapsed" />
+                            <!-- 問題の数（§24.33）。エラーがあれば赤でエラーの数、無ければ黄で警告の数。フォルダーは配下の合計。 -->
+                            <TextBlock DockPanel.Dock="Right" Margin="4,0,0,0"
+                                       Text="{Binding ProblemMark.Text}" ToolTip="{Binding ProblemMark.ToolTip}"
+                                       FontFamily="Consolas" FontSize="{DynamicResource Fs11}" FontWeight="SemiBold"
+                                       VerticalAlignment="Center"
+                                       Visibility="{Binding ProblemMark.Text, Converter={StaticResource NonEmptyToVis}}">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Foreground" Value="#CCA700" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding ProblemMark.HasErrors}" Value="True">
+                                                <Setter Property="Foreground" Value="#E57373" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
                             <StackPanel x:Name="NormalRow" DockPanel.Dock="Left" Orientation="Horizontal">
                                 <!-- 1 個のアイコンが色ちがいの線 数本でできているため、Path ではなく
                                      DrawingImage（FileIcons が凍結して使い回す）を 1 要素で描く。 -->

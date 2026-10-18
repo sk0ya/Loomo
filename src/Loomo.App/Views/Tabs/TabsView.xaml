@@ -206,6 +206,7 @@
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <!-- フォルダーツリー・検索結果と同じ FileIcons の線画を同じ 16x16 で描く。 -->
                             <Image Grid.Column="0" Source="{Binding Icon}"
@@ -214,8 +215,25 @@
                             <TextBlock x:Name="EntryTitle" Grid.Column="1" Text="{Binding Title}" FontSize="{DynamicResource Fs12_5}"
                                        VerticalAlignment="Center"
                                        TextTrimming="CharacterEllipsis" />
+                            <!-- 問題の数（§24.33）。ファイルツリーの行と同じ印。 -->
+                            <TextBlock Grid.Column="2" Margin="4,0,0,0"
+                                       Text="{Binding ProblemMark.Text}" ToolTip="{Binding ProblemMark.ToolTip}"
+                                       FontFamily="Consolas" FontSize="{DynamicResource Fs11}" FontWeight="SemiBold"
+                                       VerticalAlignment="Center"
+                                       Visibility="{Binding ProblemMark.Text, Converter={StaticResource NonEmptyToVis}}">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Foreground" Value="#CCA700" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding ProblemMark.HasErrors}" Value="True">
+                                                <Setter Property="Foreground" Value="#E57373" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
                             <!-- ピン留め中の印（上限に数えない・自動では棚へ下がらない）。 -->
-                            <TextBlock Grid.Column="2" Text="&#xE840;" FontFamily="Segoe MDL2 Assets"
+                            <TextBlock Grid.Column="3" Text="&#xE840;" FontFamily="Segoe MDL2 Assets"
                                        FontSize="{DynamicResource Fs11}" Margin="4,0,0,0"
                                        Foreground="{DynamicResource Accent}" VerticalAlignment="Center"
                                        ToolTip="ピン留め中（上限に数えず、自動では棚へ下げません）"

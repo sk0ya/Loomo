@@ -134,6 +134,10 @@ public sealed class GitService
         }
     }
 
+    /// <summary>変更一覧に添える増減の行数（キャッシュしない。<see cref="GitStatusService.GetLineStatsAsync"/>）。</summary>
+    public Task<IReadOnlyDictionary<string, GitLineStat>> GetLineStatsAsync(bool cached, string? baseRef = null)
+        => _status.GetLineStatsAsync(cached, baseRef);
+
     public Task<IReadOnlyList<string>> GetRemotesAsync() =>
         Cached(ref _cachedRemotes, _branches.GetRemotesAsync);
 

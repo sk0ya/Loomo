@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.IO;
 using System.Threading.Tasks;
 
@@ -61,6 +62,23 @@ public sealed class GitStatusService
             MergeInProgress = File.Exists(Path.Combine(gitDir, "MERGE_HEAD")),
             CherryPickInProgress = File.Exists(Path.Combine(gitDir, "CHERRY_PICK_HEAD")),
         };
+    }
+
+    /// <summary>
+    /// 変更一覧に添える増減の行数（§24.32）。<paramref name="baseRef"/> があればその基準と作業ツリーの差、
+    /// 無ければ <paramref name="cached"/> でインデックス側（ステージ済み）か作業ツリー側（未ステージ）を数える。
+    /// 取れなければ空——行数は添え物なので、失敗で一覧を止めない。
+    /// </summary>
+    public async Task<IReadOnlyDictionary<string, GitLineStat>> GetLineStatsAsync(bool cached, string? baseRef = null)
+    {
+        var args = new List<string> { "--no-optional-locks", "diff", "--numstat", "-z", "--find-renames" };
+        if (baseRef is not null) args.Add(baseRef);
+        else if (cached) args.Add("--cached");
+        args.Add("--");
+        var result = await _runner.RunAsync(args.ToArray()).ConfigureAwait(false);
+        return result.Success
+            ? GitNumstatParser.Parse(result.Output)
+            : new Dictionary<string, GitLineStat>();
     }
 
 }

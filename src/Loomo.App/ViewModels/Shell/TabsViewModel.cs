@@ -83,6 +83,9 @@ public sealed partial class TabEntryViewModel : ObservableObject
     /// 「パスをコピー」「エクスプローラーで表示」の表示可否・対象に使う。</summary>
     [ObservableProperty] private string? _filePath;
 
+    /// <summary>このタブのファイルのエラー・警告の数（§24.33）。ファイルを持たないタブと問題の無いファイルは null。</summary>
+    [ObservableProperty] private ProblemMark? _problemMark;
+
     /// <summary>人が付けた名前（Terminal タブのみ。未設定は null）。見出しは「名前 · シェルのタイトル」になり、
     /// シェルが付けるタイトル（実行中のコマンド等）は名前を付けても見え続ける。</summary>
     [ObservableProperty] private string? _customName;
@@ -702,6 +705,7 @@ public sealed partial class TabsViewModel : ObservableObject
             IsModified = isModified,
             IsGroupShown = ShowEditorTabs,
         };
+        tab.ProblemMark = _problemCounts.For(tab.FilePath);
         WatchGroupState(tab);
         tab.SetFileIcon(FileIconIndexFor(path));
 
@@ -727,6 +731,18 @@ public sealed partial class TabsViewModel : ObservableObject
         tab.Title = title;
         tab.SetFileIcon(FileIconIndexFor(path));
         tab.FilePath = RealFilePath(path);
+        tab.ProblemMark = _problemCounts.For(tab.FilePath);
+    }
+
+    private ProblemFileCounts _problemCounts = ProblemFileCounts.Empty;
+
+    /// <summary>エディタのタブに問題の数の印を付け直す（§24.33）。中身が同じなら何もしない。</summary>
+    public void ApplyProblemCounts(ProblemFileCounts counts)
+    {
+        if (counts.SameAs(_problemCounts)) return;
+        _problemCounts = counts;
+        foreach (var tab in EditorTabs)
+            tab.ProblemMark = counts.For(tab.FilePath);
     }
 
     /// <summary>エディタタブの種別アイコン。フォルダーツリー・検索結果とまったく同じ引き方をするので、
