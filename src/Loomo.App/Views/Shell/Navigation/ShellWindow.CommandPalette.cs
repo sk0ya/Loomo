@@ -9,6 +9,12 @@ namespace sk0ya.Loomo.App.Views;
 /// 設計書 §24.2。</summary>
 public partial class ShellWindow {
     private IReadOnlyList<PaletteCommand> _paletteCommands = Array.Empty<PaletteCommand>();
+    /// <summary>実行した部屋の操作の履歴（§24.37）。開いただけの一覧の先頭に最近使ったものを出す。</summary>
+    private PaletteCommandHistory? _paletteHistory;
+    private PaletteCommandHistory PaletteHistory
+        => _paletteHistory ??= new PaletteCommandHistory(PaletteCommandHistory.DefaultPath());
+    /// <summary>いまの一覧が部屋の操作の一覧か（特定の候補から選ばせる一覧は履歴に残さない）。</summary>
+    private bool _paletteShowsRoomCommands;
     /// <summary>項目を選ばずに閉じられた（Escape・外側クリック・一覧の差し替え）ときに1回だけ呼ぶ。
     /// パレットを「選んでもらう問い」として使う側（タスクの pickString 入力）が、取り消しを知るため。</summary>
     private Action? _paletteDismissed;
@@ -39,6 +45,7 @@ public partial class ShellWindow {
             if (commands is not null) {
                 TakePaletteDismissed()?.Invoke();
                 _paletteCommands = commands;
+                _paletteShowsRoomCommands = false;
                 PaletteInput.Text = PaletteQuery.PrefixOf(mode);
                 PaletteInput.CaretIndex = PaletteInput.Text.Length;
                 RefilterPalette();
@@ -50,7 +57,8 @@ public partial class ShellWindow {
         }
         // 選んでいる語を最初の検索語に（§24.2.3）。パレットが焦点を取る前に、いまの焦点の持ち主から読む。
         var seed = commands is null ? PaletteSelectionSeed.For(mode, SelectionForPaletteSeed()) : null;
-        _paletteCommands = commands ?? BuildPaletteCommands();
+        _paletteShowsRoomCommands = commands is null;
+        _paletteCommands = commands ?? PaletteHistory.Order(BuildPaletteCommands());
         CommandPaletteOverlay.Visibility = Visibility.Visible;
         SetPaletteHint(mode);
         UpdatePaletteBoxSize();
@@ -203,7 +211,13 @@ public partial class ShellWindow {
             return;
         _paletteDismissed = null;
         CloseCommandPalette(refocus: false);
+        RecordPaletteCommand(command);
         command.Execute();
+    }
+    private void RecordPaletteCommand(PaletteCommand command) {
+        // 「$ ターミナル」の最近のコマンドなど、プレフィックスで出した一覧の行は部屋の操作ではないので残さない。
+        if (_paletteShowsRoomCommands && _paletteCommands.Contains(command))
+            PaletteHistory.Record(command);
     }
     private void OnPaletteTextChanged(object sender, TextChangedEventArgs e) => RefilterPalette();
     private void OnPaletteInputKeyDown(object sender, KeyEventArgs e) {
@@ -238,6 +252,7 @@ public partial class ShellWindow {
             e.Handled = true;
             _paletteDismissed = null;
             CloseCommandPalette(refocus: false);
+            RecordPaletteCommand(command);
             command.Execute();
         }
     }
@@ -274,6 +289,8 @@ public partial class ShellWindow {
             }));
         }
         // パレットの中で探し方を切り替える口（プレフィックスを知らなくても辿り着けるように）。
+        if (PaletteHistory.Entries.Count > 0)
+            list.Add(new("パレット", "最近使ったコマンドの記録を消す", PaletteHistory.Clear));
         list.Add(new("移動", "ファイルを検索して開く", () => OpenCommandPalette(PaletteMode.File),
             Sc("palette.goToFile"), "palette.goToFile"));
         list.Add(new("移動", "テキストを検索して開く", () => OpenCommandPalette(PaletteMode.Text),

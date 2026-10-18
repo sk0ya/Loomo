@@ -143,6 +143,35 @@ public class DetachedPaneWindowTests
     }
 
     [Fact]
+    public void 常に手前は保存され_復元で戻る()
+    {
+        RunSta(() =>
+        {
+            var owner = new Window { Width = 200, Height = 200, ShowInTaskbar = false };
+            owner.Show();
+            var manager = new DetachedWindowManager(owner);
+            try
+            {
+                manager.Detach(NewItem("A"));
+                var window = Assert.Single(owner.OwnedWindows.OfType<DetachedPaneWindow>());
+                window.SetTopmost(true);
+
+                var snapshots = manager.Capture(item => new sk0ya.Loomo.App.Services.DetachedItemSnapshot { Kind = "Editor", Text = item.Title });
+                Assert.True(Assert.Single(snapshots).IsTopmost);
+
+                manager.Restore(snapshots, s => NewItem(s.Text ?? ""));
+                var restored = Assert.Single(owner.OwnedWindows.OfType<DetachedPaneWindow>());
+                Assert.True(restored.Topmost);
+            }
+            finally
+            {
+                manager.CloseAll();
+                owner.Close();
+            }
+        });
+    }
+
+    [Fact]
     public void 中身はリサイズ枠と重ならない()
     {
         // 枠の上の押下は非クライアント（サイズ変更）扱いで WPF へ届かない。中身を縁まで敷くと、縁に貼り付く

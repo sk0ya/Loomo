@@ -15,6 +15,10 @@ internal sealed class PaneActivityTracker
         public string? TranscriptPath;
         /// <summary>Claude Code が付けた題（印を外したタイトル）。一覧に出す。</summary>
         public string? AgentTitle;
+        /// <summary>コマンドが OSC 9;4 で出している進捗（§24.35）。</summary>
+        public TerminalProgress Progress;
+        /// <summary>見ていない間に鳴ったベル（§24.35）。</summary>
+        public bool UnseenBell;
     }
 
     private sealed class IdeState
@@ -70,6 +74,8 @@ internal sealed class PaneActivityTracker
         state.UnseenExitCode = next.UnseenExitCode;
         if (commandDone)
         {
+            // 進捗を 0 に戻さずに終わるコマンドがある（途中で Ctrl+C など）。終わったら捨てる。
+            state.Progress = default;
             // claude が終わればシェルのプロンプトに戻る。タイトルが戻るのを待たずに捨てる。
             state.Agent = null;
             state.AgentUnseenTurn = false;
@@ -141,6 +147,36 @@ internal sealed class PaneActivityTracker
 
     public bool ForgetTerminal(Guid tabId) => _terminals.Remove(tabId);
 
+    /// <summary>コマンドが進捗を知らせてきた（OSC 9;4・§24.35）。表示が変わるなら true
+    /// （同じ種類で % だけ動いたときも true——バッジの数字を書き換える）。</summary>
+    public bool TerminalProgressChanged(Guid tabId, TerminalProgress progress)
+    {
+        if (!_terminals.TryGetValue(tabId, out var state))
+        {
+            if (!progress.IsActive)
+                return false;
+            _terminals[tabId] = state = new TerminalState();
+        }
+        if (state.Progress == progress)
+            return false;
+        state.Progress = progress;
+        return true;
+    }
+
+    /// <summary>ベルが鳴った（§24.35）。ペインを見ているなら残さない（見えているタブの帯には Terminal 自身が印を出す）。
+    /// 状態が変わったら true。</summary>
+    public bool TerminalBellRang(Guid tabId, bool paneWatched)
+    {
+        if (paneWatched)
+            return false;
+        if (!_terminals.TryGetValue(tabId, out var state))
+            _terminals[tabId] = state = new TerminalState();
+        if (state.UnseenBell)
+            return false;
+        state.UnseenBell = true;
+        return true;
+    }
+
     /// <summary>Claude Code が居るタブ（§38.8 の一覧）。人間の番が先：承認待ち → 入力待ち（見ていない間に
     /// ターンが終わった）→ 待機 → 作業中。同じ段の中は最後に印が動いた順。</summary>
     public IReadOnlyList<ClaudeAgentTab> AgentTabs()
@@ -183,6 +219,7 @@ internal sealed class PaneActivityTracker
                 state.UnseenExitCode = null;
                 state.AgentUnseenTurn = false;
                 state.AgentApproval = false;
+                state.UnseenBell = false;
             }
             return true;
         }
@@ -197,10 +234,13 @@ internal sealed class PaneActivityTracker
         return true;
     }
 
-    public PaneActivityKind AggregateTerminal(out int exitCode)
+    public PaneActivityKind AggregateTerminal(out int exitCode) => AggregateTerminal(out exitCode, out _);
+
+    public PaneActivityKind AggregateTerminal(out int exitCode, out TerminalProgress progress)
         => PaneActivityPresentation.AggregateTerminal(
             _terminals.Values.Select(state =>
-                (state.Running, state.UnseenExitCode, state.Agent, state.AgentUnseenTurn, state.AgentApproval)), out exitCode);
+                (state.Running, state.UnseenExitCode, state.Agent, state.AgentUnseenTurn, state.AgentApproval,
+                    state.Progress, state.UnseenBell)), out exitCode, out progress);
 
     public PaneActivityKind AggregateIde(
         PaneKind kind, bool taskRunning, bool sessionBusy, bool sessionStopped)

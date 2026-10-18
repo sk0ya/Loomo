@@ -76,6 +76,20 @@ public partial class DetachedPaneWindow : Window
 
     private void OnCloseWindow(object sender, RoutedEventArgs e) => Close();
 
+    private void OnToggleTopmost(object sender, RoutedEventArgs e)
+    {
+        SetTopmost(!Topmost);
+        _manager.NotifyChanged();   // スナップショットに乗る（ワークスペースの復元で戻す）
+    }
+
+    /// <summary>常に手前（§24.36）の切り替えと、ボタンの見た目（オンはアクセント色）。</summary>
+    internal void SetTopmost(bool topmost)
+    {
+        Topmost = topmost;
+        TopmostGlyph.Foreground = (Brush)(TryFindResource(topmost ? "Accent" : "FgDim") ?? Brushes.Gray);
+        TopmostButton.ToolTip = topmost ? "常に手前に表示を解除" : "常に手前に表示";
+    }
+
     /// <summary>最大化ボタンのアイコンとツールチップを状態に合わせる（本体の <c>UpdateMaximizeGlyph</c> と同じ見せ方）。</summary>
     private void UpdateMaxRestoreGlyph()
     {
@@ -264,6 +278,7 @@ public partial class DetachedPaneWindow : Window
         {
             Left = bounds.Left, Top = bounds.Top, Width = bounds.Width, Height = bounds.Height,
             IsMaximized = WindowState == WindowState.Maximized,
+            IsTopmost = Topmost,
             ActiveItemIndex = Math.Max(0, _items.ToList().FindIndex(i => i.IsActive)),
             Items = _items.Select(captureItem).Where(i => i is not null).Cast<DetachedItemSnapshot>().ToList()
         };

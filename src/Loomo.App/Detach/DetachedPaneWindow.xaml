@@ -162,6 +162,14 @@
                 <Button x:Name="TabOverflowButton" Style="{StaticResource DetachCaptionButton}" Width="28"
                         Content="▾" FontSize="{DynamicResource Fs11}" ToolTip="タブ一覧"
                         Click="OnTabOverflowClick" />
+                <!-- 常に手前（§24.36）。Loomo の外で作業している間も、このウィンドウ（ターミナル・プレビュー等）を
+                     ほかのアプリより手前に置いて見ておける。オンの間はアクセント色。 -->
+                <Button x:Name="TopmostButton" Style="{StaticResource DetachCaptionButton}" Width="32"
+                        ToolTip="常に手前に表示" Click="OnToggleTopmost"
+                        AutomationProperties.Name="常に手前に表示">
+                    <TextBlock x:Name="TopmostGlyph" Text="&#xE718;" FontFamily="Segoe MDL2 Assets"
+                               FontSize="{DynamicResource Fs11}" Foreground="{DynamicResource FgDim}" />
+                </Button>
                 <!-- 最小化・最大化・閉じるは本体と同じスタイル＋同じ Path アイコン（文字グリフだと本体とズレる）。
                      スタイルは App のテーマ辞書にあるので、Application 無しのテストでも組めるよう DynamicResource で引く。
                      Height はバーの高さに合わせて伸ばす（CaptionButton 既定の 36 は本体のバー用）。 -->

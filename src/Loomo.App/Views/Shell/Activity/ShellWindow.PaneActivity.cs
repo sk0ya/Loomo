@@ -55,6 +55,41 @@ public partial class ShellWindow {
         // 見出し（HeaderTitleChanged）ではなく生のタイトル：見出しは / \ を含む部分を捨てるので
         // 「◐ Fix src/foo.cs」が読めなくなる（§38.6）。
         tab.View.WindowTitleChanged += (_, title) => OnTerminalTitleChanged(tab.Id, title);
+        // コマンドが出す進捗（OSC 9;4）とベル（BEL）も袖へ（§24.35）。
+        tab.View.TaskbarProgressChanged += (_, e) => OnTerminalProgressChanged(tab.Id, e);
+        tab.View.BellRang += (_, _) => OnTerminalBellRang(tab.Id);
+    }
+    private void OnTerminalProgressChanged(Guid tabId, TaskbarProgressChangedEventArgs e) {
+        var progress = new TerminalProgress(e.State switch {
+            TaskbarProgressState.Normal => TerminalProgressKind.Normal,
+            TaskbarProgressState.Error => TerminalProgressKind.Error,
+            TaskbarProgressState.Indeterminate => TerminalProgressKind.Indeterminate,
+            TaskbarProgressState.Warning => TerminalProgressKind.Warning,
+            _ => TerminalProgressKind.None,
+        }, Math.Clamp(e.Progress, 0, 100));
+        if (_paneActivity.TerminalProgressChanged(tabId, progress))
+            UpdatePaneActivityBadge(PaneKind.Terminal);
+    }
+    private void OnTerminalBellRang(Guid tabId) {
+        if (!_paneActivity.TerminalBellRang(tabId, IsTerminalPaneWatched()))
+            return;
+        UpdatePaneActivityBadge(PaneKind.Terminal);
+        if (!IsActive)
+            FlashTaskbarUntilForeground();
+    }
+    /// <summary>ターミナルの進捗を Loomo のタスクバーのボタンにも出す（§24.35）。Loomo の外で作業していても見える。</summary>
+    private void UpdateTaskbarProgress(PaneActivityKind activity, TerminalProgress progress) {
+        var info = TaskbarItemInfo ??= new System.Windows.Shell.TaskbarItemInfo();
+        info.ProgressState = activity switch {
+            PaneActivityKind.ProgressError => System.Windows.Shell.TaskbarItemProgressState.Error,
+            PaneActivityKind.Progress => progress.Kind switch {
+                TerminalProgressKind.Indeterminate => System.Windows.Shell.TaskbarItemProgressState.Indeterminate,
+                TerminalProgressKind.Warning => System.Windows.Shell.TaskbarItemProgressState.Paused,
+                _ => System.Windows.Shell.TaskbarItemProgressState.Normal,
+            },
+            _ => System.Windows.Shell.TaskbarItemProgressState.None,
+        };
+        info.ProgressValue = progress.Percent / 100.0;
     }
     /// <summary>タイトルの印から Claude Code の作業中／入力待ちを拾う（§24.1.1）。ターンが終わったとき
     /// Loomo が裏に回っていれば、タスクバーを点滅させて呼び戻す（前面に出たら止まる）。</summary>
@@ -125,8 +160,9 @@ public partial class ShellWindow {
     private void UpdatePaneActivityBadge(PaneKind kind) {
         if (kind == PaneKind.Terminal) RefreshWorktreeAgentMarks();
         var exitCode = 0;
+        TerminalProgress progress = default;
         var activity = kind switch {
-            PaneKind.Terminal => _paneActivity.AggregateTerminal(out exitCode),
+            PaneKind.Terminal => _paneActivity.AggregateTerminal(out exitCode, out progress),
             PaneKind.Debug or PaneKind.TsIde => AggregateIdeActivity(kind),
             PaneKind.Ai => PaneActivityPresentation.AggregateAi(
                 _vm.AiBar.IsBusy, _vm.AiBar.Workflow.IsRunning, _vm.AiBar.StatusText,
@@ -134,6 +170,8 @@ public partial class ShellWindow {
             _ => PaneActivityKind.None,
         };
         UpdateDockBarBadge(kind, activity);   // 袖なしのドックでは帯のアイコンが周辺視野（§24.1）
+        if (kind == PaneKind.Terminal)
+            UpdateTaskbarProgress(activity, progress);
         if (!_stageActivityBadges.TryGetValue(kind, out var badge))
             return;
         var (chip, label) = badge;
@@ -162,7 +200,7 @@ public partial class ShellWindow {
         var manager = kind is PaneKind.Debug or PaneKind.TsIde ? GetIdeManager(kind) : null;
         label.Text = PaneActivityPresentation.BadgeText(activity,
             kind == PaneKind.Terminal, manager is not null, manager?.IsTaskRunning == true,
-            exitCode, manager?.StatusMessage ?? "");
+            exitCode, manager?.StatusMessage ?? "", progress);
     }
     private DebugManagerViewModelBase GetIdeManager(PaneKind kind)
         => kind == PaneKind.Debug ? _vm.Debug : _vm.TsIde;

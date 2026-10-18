@@ -632,6 +632,8 @@ public sealed class DetachedWindowSnapshot
     public double Width { get; set; } = 960;
     public double Height { get; set; } = 680;
     public bool IsMaximized { get; set; }
+    /// <summary>常に手前に表示（§24.36）。</summary>
+    public bool IsTopmost { get; set; }
     public int ActiveItemIndex { get; set; }
     public List<DetachedItemSnapshot> Items { get; set; } = new();
 }

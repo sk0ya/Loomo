@@ -283,6 +283,7 @@ internal sealed class DetachedWindowManager
                 win.Show();
                 win.RestoreActiveIndex(snapshot.ActiveItemIndex);
                 if (snapshot.IsMaximized) win.WindowState = WindowState.Maximized;
+                if (snapshot.IsTopmost) win.SetTopmost(true);
             }
         }
         finally { _suppressChanged = false; }
