@@ -123,6 +123,49 @@ public sealed class ClaudeCodeTerminalActivityTests
         Assert.Equal("✳ Claude 入力待ち", PaneActivityPresentation.BadgeText(
             PaneActivityKind.AgentWaiting, isTerminal: true, isIde: false, ideTaskRunning: false, 0, ""));
     }
+
+    // ===== 動いている Claude の一覧（§38.8） =====
+
+    [Fact]
+    public void 一覧は人間の番を先に並べる()
+    {
+        var sut = new PaneActivityTracker();
+        Guid working = Guid.NewGuid(), waiting = Guid.NewGuid(), ended = Guid.NewGuid(), approval = Guid.NewGuid(), shell = Guid.NewGuid();
+        sut.TerminalTitleChanged(working, "◐ Build feature", paneWatched: false);
+        sut.TerminalTitleChanged(waiting, "✳ Idle session", paneWatched: true);
+        sut.TerminalTitleChanged(ended, "◐ Fix tests", paneWatched: false);
+        sut.TerminalTitleChanged(ended, "✳ Fix tests", paneWatched: false);
+        sut.TerminalTitleChanged(approval, "◐ Deploy", paneWatched: false);
+        sut.TerminalAgentNeedsApproval(approval, paneWatched: false);
+        sut.TerminalCommandChanged(shell, commandExecuted: true, commandDone: false, null, paneWatched: false);
+
+        var agents = sut.AgentTabs();
+
+        Assert.Equal(new[] { approval, ended, waiting, working }, agents.Select(a => a.TabId));
+        Assert.Equal(new[] { ClaudeAgentState.NeedsApproval, ClaudeAgentState.TurnEnded, ClaudeAgentState.Waiting, ClaudeAgentState.Working },
+            agents.Select(a => a.State));
+        Assert.Equal("Fix tests", agents[1].Title);
+    }
+
+    [Fact]
+    public void claudeが終わったタブは一覧から消える()
+    {
+        var sut = new PaneActivityTracker();
+        var tab = Guid.NewGuid();
+        sut.TerminalCommandChanged(tab, commandExecuted: true, commandDone: false, null, paneWatched: false);
+        sut.TerminalTitleChanged(tab, "◐ Work", paneWatched: false);
+        Assert.Single(sut.AgentTabs());
+
+        sut.TerminalCommandChanged(tab, commandExecuted: false, commandDone: true, 0, paneWatched: false);
+        Assert.Empty(sut.AgentTabs());
+    }
+
+    [Theory]
+    [InlineData("◐ Fix src/foo.cs", "Fix src/foo.cs")]
+    [InlineData("✳ Claude Code", "Claude Code")]
+    [InlineData("✳  ", null)]
+    [InlineData("pwsh", null)]
+    public void 題は印を外して読む(string title, string? subject) => Assert.Equal(subject, ClaudeCodeTitle.Subject(title));
 }
 
 /// <summary>エディタの場所を Claude Code へ送る参照（§24.3.1）。</summary>

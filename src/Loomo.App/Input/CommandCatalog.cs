@@ -205,6 +205,7 @@ public static class CommandCatalog
         new CommandDescriptor("editor.inspectEncoding", CatEdit, "文字コードを調べる（BOM・改行・見えない文字・文字化け）", null),
 
         // ===== Claude Code（§24.1.1・§38）=====
+        new CommandDescriptor("claude.agents", CatClaude, "動いている Claude Code の一覧（承認待ち・入力待ちを先に）", null),
         new CommandDescriptor("claude.resumeSession", CatClaude, "Claude Code のセッションを再開…", null),
         new CommandDescriptor("claude.installHooks", CatClaude, "Claude Code のフックを設定（承認待ち・セッションを Loomo へ知らせる）", null),
         new CommandDescriptor("claude.uninstallHooks", CatClaude, "Claude Code のフックを外す", null),

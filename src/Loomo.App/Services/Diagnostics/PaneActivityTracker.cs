@@ -13,6 +13,8 @@ internal sealed class PaneActivityTracker
         public bool AgentApproval;
         public string? SessionId;
         public string? TranscriptPath;
+        /// <summary>Claude Code が付けた題（印を外したタイトル）。一覧に出す。</summary>
+        public string? AgentTitle;
     }
 
     private sealed class IdeState
@@ -72,6 +74,7 @@ internal sealed class PaneActivityTracker
             state.Agent = null;
             state.AgentUnseenTurn = false;
             state.AgentApproval = false;
+            state.AgentTitle = null;
         }
         return true;
     }
@@ -96,6 +99,8 @@ internal sealed class PaneActivityTracker
             state.Agent, state.AgentUnseenTurn, status, paneWatched);
         state.Agent = next.Agent;
         state.AgentUnseenTurn = next.AgentUnseenTurn;
+        if (status is not null)
+            state.AgentTitle = ClaudeCodeTitle.Subject(title);
         if (next.Agent is not null)
             state.AgentStamp = ++_agentClock;
         // 承認したら作業が再開する（印が回り出す）。終了したら当然いらない。
@@ -135,6 +140,18 @@ internal sealed class PaneActivityTracker
         => _terminals.TryGetValue(tabId, out var state) && state.SessionId is { } id ? (id, state.TranscriptPath) : null;
 
     public bool ForgetTerminal(Guid tabId) => _terminals.Remove(tabId);
+
+    /// <summary>Claude Code が居るタブ（§38.8 の一覧）。人間の番が先：承認待ち → 入力待ち（見ていない間に
+    /// ターンが終わった）→ 待機 → 作業中。同じ段の中は最後に印が動いた順。</summary>
+    public IReadOnlyList<ClaudeAgentTab> AgentTabs()
+        => _terminals
+            .Where(pair => pair.Value.Agent is not null)
+            .Select(pair => new ClaudeAgentTab(
+                pair.Key, ClaudeAgentTab.StateOf(pair.Value.Agent!.Value, pair.Value.AgentApproval, pair.Value.AgentUnseenTurn),
+                pair.Value.AgentTitle, pair.Value.SessionId, pair.Value.TranscriptPath, pair.Value.AgentStamp))
+            .OrderBy(tab => tab.State)
+            .ThenByDescending(tab => tab.Stamp)
+            .ToList();
 
     /// <summary>そのタブの前面でシェル以外が動いているか（OSC133 の C を見て D 未着、または Claude Code）。
     /// 動いている間に打ち込んだ行はシェルでなくそのプログラムに届く。</summary>
