@@ -291,6 +291,25 @@ internal sealed class EditorSupportController
     }
 
     /// <summary>
+    /// 利用者が「作り直す」を選んだ。<b>追従元・ピン・履歴は残し</b>、表示の側に溜まったものだけを捨てる
+    /// ——載せていたビジュアル（CSV グリッド等）の実体、取ってあった構造、準備待ちの回数。
+    /// 構造を捨てるのは、固まって見える原因が「古い構造に合わせたキャレット追従」のこともあるから。
+    /// WebView2 側は <see cref="EditorSupportWebViewController.Rebuild"/> が受け持つ。
+    /// </summary>
+    public void ResetForRebuild(Panel host)
+    {
+        if (_visual is not null)
+            host.Children.Remove(_visual);
+        _visual = null;
+        _mountedVisual = null;
+        Visuals.Reset();
+        ClearOutline();
+        StopReadyRetry();
+        _caretTimer?.Stop();
+        DiagnosticStopwatch = null;
+    }
+
+    /// <summary>
     /// ワークスペース切替。追従元を外し、<b>その追従元に紐づいて覚えていたものを全部捨てる</b>。
     /// 戻り値は外した追従元（呼び元がイベント購読を外すため）。
     /// <para>

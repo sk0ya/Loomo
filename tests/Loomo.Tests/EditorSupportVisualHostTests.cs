@@ -89,6 +89,37 @@ public class EditorSupportVisualHostTests
         Assert.Empty(host.Visuals);
     });
 
+    [Fact]
+    public void Reset_makes_a_fresh_visual_that_still_gets_the_search_highlight() => RunSta(() =>
+    {
+        // 「作り直す」：固まった実体を捨て、次は作りたてを返す。検索条件は作り直した実体にも渡る。
+        var provider = new FakeProvider();
+        using var host = new EditorSupportVisualHost();
+        host.SetSearchHighlight("needle", caseSensitive: false, useRegex: false);
+        var stuck = (FakeVisual)host.GetOrCreate(provider);
+
+        host.Reset();
+        var fresh = (FakeVisual)host.GetOrCreate(provider);
+
+        Assert.True(stuck.Disposed);
+        Assert.NotSame(stuck, fresh);
+        Assert.Equal("needle", fresh.Term);
+    });
+
+    [Fact]
+    public void ResetForRebuild_discards_visuals_and_the_remembered_structure() => RunSta(() =>
+    {
+        var provider = new FakeProvider();
+        var controller = new EditorSupportController();
+        var visual = (FakeVisual)controller.Visuals.GetOrCreate(provider);
+
+        controller.ResetForRebuild(new Grid());
+
+        Assert.True(visual.Disposed);
+        Assert.NotSame(visual, controller.Visuals.GetOrCreate(provider));
+        Assert.Null(controller.OutlineRoots);
+    });
+
     /// <summary>WPF 要素を作るので STA が要る（本番も UI スレッドで作られる）。</summary>
     private static void RunSta(Action action)
     {

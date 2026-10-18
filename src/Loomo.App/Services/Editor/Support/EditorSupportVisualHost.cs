@@ -75,7 +75,11 @@ public sealed class EditorSupportVisualHost : IDisposable
             target.ApplySearchHighlight(_searchTerm, _searchCaseSensitive, _searchUseRegex);
     }
 
-    public void Dispose()
+    public void Dispose() => Reset();
+
+    /// <summary>持っている実体をすべて破棄する。次の <see cref="GetOrCreate"/> は作りたてを返す
+    /// （検索条件は保持しているので、作り直した実体にも渡る）。「作り直す」から呼ぶ。</summary>
+    public void Reset()
     {
         foreach (var visual in _visuals.Values)
         {

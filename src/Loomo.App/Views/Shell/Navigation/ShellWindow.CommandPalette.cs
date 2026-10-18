@@ -383,6 +383,9 @@ public partial class ShellWindow {
             if (command.CanExecute(null))
                 list.Add(new("テスト", $"失敗したテストを再実行（{label}）", () => command.Execute(null)));
         }
+        // 固まったときの逃げ道。ヘッダーの ↻ と同じ実装（ペインが舞台に無い・袖にいても引ける口として）。
+        if (_editorSupport.Source is not null)
+            list.Add(new("プレビュー", "EditorSupport の表示を作り直す（固まった・描かれないとき）", RebuildEditorSupport));
         list.Add(new("コンポーザ", IsComposerVisible ? "コンポーザを閉じる" : "コンポーザを開く", () => SetComposerVisible(!IsComposerVisible)));
         list.Add(new("コンポーザ", "本文をターミナルで実行", RunComposer, Sc("composer.run"), "composer.run"));
         list.Add(new("コンポーザ", "本文をペグボードへ残す", () => OnComposerPinToPegboard(this, new RoutedEventArgs())));

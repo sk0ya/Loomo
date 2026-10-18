@@ -266,13 +266,16 @@ public sealed class EditorSupportWebViewController : IDisposable
     private void OnProcessFailed(object? sender, CoreWebView2ProcessFailedEventArgs e)
     {
         CodeSupportDiag.Log($"editor support webview: プロセス落ち {e.ProcessFailedKind}");
-        var browserExited = e.ProcessFailedKind == CoreWebView2ProcessFailedKind.BrowserProcessExited;
+        // 描画プロセスの無応答（ページの JS が回り続けている等）は読み直しでは戻らない——読み直しの要求も
+        // 固まったプロセスへ届くだけなので、ブラウザプロセスの死と同じく WebView2 ごと捨てて作り直す。
+        var discard = e.ProcessFailedKind is CoreWebView2ProcessFailedKind.BrowserProcessExited
+            or CoreWebView2ProcessFailedKind.RenderProcessUnresponsive;
         // WebView2 が自分のイベントを配っている最中にコントロールを壊さない（次のディスパッチへ回す）。
         _host.Dispatcher.BeginInvoke(new Action(() =>
         {
             try
             {
-                if (browserExited)
+                if (discard)
                     DiscardView();
             }
             catch (Exception ex)
@@ -283,6 +286,36 @@ public sealed class EditorSupportWebViewController : IDisposable
             CodeSupportDiag.Log("editor support webview: 組み直しを要求");
             ReloadRequested?.Invoke(this, EventArgs.Empty);
         }));
+    }
+
+    /// <summary>
+    /// 利用者が「作り直す」を選んだ（固まった・描かれない）。WebView2 を<b>無条件に捨て</b>、やり直しの回数と
+    /// 初回描画の取りこぼし対策も最初からにする。自動の復帰（応答監視・プロセス落ち・再試行）は
+    /// 「同じページの二度目の失敗は追わない」「再試行は3回まで」と歯止めを持っているので、
+    /// それを使い切った後でも、ここからなら必ず白紙の WebView2 で組み直せる。
+    /// 次の <see cref="EnsureAsync"/> が作り直す。
+    /// </summary>
+    public void Rebuild()
+    {
+        CodeSupportDiag.Log("editor support webview: 利用者の求めで作り直す");
+        StopWatchdog();
+        StopRetry();
+        try
+        {
+            DiscardView();
+        }
+        catch (Exception ex)
+        {
+            // 固まった WebView2 の後始末は例外を投げうる。ここで止まると作り直せない。
+            CodeSupportDiag.Log($"editor support webview: 後始末で例外 {ex}");
+            if (View is not null)
+                _host.Children.Remove(View);   // 固まった画面を残したまま新しいものを重ねない
+            View = null;
+            _initTask = null;
+            _eventsAttached = false;
+        }
+        _page.ResetFirstRenderHealing();
+        _pdfFind.Invalidate();
     }
 
     /// <summary>使えなくなった WebView2 を捨てる（次の <see cref="EnsureAsync"/> が作り直す）。</summary>

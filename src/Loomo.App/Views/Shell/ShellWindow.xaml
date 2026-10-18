@@ -1219,6 +1219,14 @@
                             <Path Style="{StaticResource PaneToggleIcon}"
                                   Data="M8,2 L14,8 M10,4 L5,9 L4,13 L8,12 L13,7 M8,12 L4,16" />
                         </ToggleButton>
+                        <!-- 作り直す：固まった・描かれないときの逃げ道。WebView2 ごと白紙から組み直す（自動復帰が諦めた後でも効く） -->
+                        <Button DockPanel.Dock="Right"
+                                Style="{StaticResource PaneActionButton}" Width="30" Height="24"
+                                ToolTip="表示を作り直す（固まった・描かれないとき。追従中のファイルを白紙から描き直す）"
+                                Click="OnRebuildEditorSupport">
+                            <Path Style="{StaticResource PaneActionIcon}"
+                                  Data="M11.5,5.2 A4.8,4.8 0 1 0 10.2,10.4 M11.5,5.2 V1.5 H7.8" />
+                        </Button>
                         <!-- アウトライン（見出し一覧）：Markdown プレビューの右端に固定表示。見出しの無い文書では出ない -->
                         <ToggleButton x:Name="EditorSupportOutlineToggle" DockPanel.Dock="Right"
                                       Style="{StaticResource PaneToggle}" Width="30" Height="24"

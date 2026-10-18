@@ -11,6 +11,26 @@ public partial class ShellWindow {
         _editorSupportForceFullPage = true;
         InvalidateEditorSupport();
     }
+    /// <summary>
+    /// 利用者の「作り直す」（ヘッダーの ↻・右クリック・コマンドパレット）。<b>自動の復帰が諦めた後の逃げ道</b>で、
+    /// 自動側は無限に回らないよう歯止めを持つ（同じページの二度目の失敗は追わない・WebView2 の再試行は3回・
+    /// 描画の見限りは中断を伝えてから5秒）——歯止めに当たると、ペインを閉じて開き直しても中身は戻らなかった。
+    /// <para>
+    /// 捨てるのは表示の側だけ：走行中の描画と持ち越した要求、WebView2（ページの記憶ごと）、ビジュアルの実体、
+    /// 取ってあった構造。追従元・ピン・ファイル履歴は残すので、同じファイルが白紙から描き直される。
+    /// 走行中の描画が中断に応じなくても、更新ループが見限った時点で（最長5秒）新しい描画が走る。
+    /// </para>
+    /// </summary>
+    private void RebuildEditorSupport() {
+        CodeSupportDiag.Log("editor support: 利用者の求めで作り直す");
+        _editorSupportDebounceTimer?.Stop();
+        _editorSupportLoop?.Restart();   // 先に走行中の描画を止める（捨てる WebView2 へ書かせない）
+        _editorSupport.ResetForRebuild(EditorSupportContentHost);
+        _editorSupport.WebView.Rebuild();   // 検索ハイライトの条件はどちらも保持しているので、作り直した先にも塗られる
+        _editorSupportForceFullPage = true;
+        InvalidateEditorSupport();
+    }
+    private void OnRebuildEditorSupport(object sender, RoutedEventArgs e) => RebuildEditorSupport();
     /// <summary>プレビュー中のファイルをディスク上で見張る監視（§24.8）。<b>常に1ファイルぶんだけ</b>で、
     /// 対象が変われば張り替え、見張る理由が無くなれば止める。</summary>
     private SingleFileWatcher? _editorSupportFileWatcher;
@@ -219,6 +239,10 @@ public partial class ShellWindow {
             back.IsEnabled = _editorSupport.History.CanGoBack;
             back.CustomItemSelected += (_, _) => Dispatcher.BeginInvoke(() => _ = EditorSupportGoBackAsync());
             e.MenuItems.Insert(1, back);
+            e.MenuItems.Add(core.Environment.CreateContextMenuItem("", null, CoreWebView2ContextMenuItemKind.Separator));
+            var rebuild = core.Environment.CreateContextMenuItem("表示を作り直す（固まったとき）", null, CoreWebView2ContextMenuItemKind.Command);
+            rebuild.CustomItemSelected += (_, _) => Dispatcher.BeginInvoke(() => RebuildEditorSupport());
+            e.MenuItems.Add(rebuild);
             // リンク上での右クリックか（＝生 href の取得）は非同期でしか分からないので、メニュー表示を待たせる。
             _ = AddEditorSupportLinkMenuItemAsync(core, e, e.GetDeferral(), _editorSupport.Source?.Control.FilePath);
         } catch {
