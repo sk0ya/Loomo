@@ -159,4 +159,19 @@ public static class GitWorktreeCleanup
             .Select(line => line.Trim().TrimStart('*', '+').Trim())
             .Where(line => line.Length > 0)
             .ToHashSet(StringComparer.Ordinal);
+
+    /// <summary>
+    /// ブランチの reflog の件名（<c>git reflog show --format=%gs</c>）から、そのブランチで作業した跡があるか。
+    /// <c>git branch --merged</c> は自前のコミットが無いブランチ（作ったばかり）も「取り込み済み」に数えるので、
+    /// 作成の 1 行しか無いものはそこから外す。reflog が無い（無効・期限切れ）ときは null＝判断できない。
+    /// </summary>
+    public static bool? ReflogShowsOwnWork(string? reflogSubjects)
+    {
+        var lines = (reflogSubjects ?? "").Split('\n')
+            .Select(line => line.Trim())
+            .Where(line => line.Length > 0)
+            .ToList();
+        if (lines.Count == 0) return null;
+        return lines.Any(line => !line.StartsWith("branch: Created from", StringComparison.Ordinal));
+    }
 }

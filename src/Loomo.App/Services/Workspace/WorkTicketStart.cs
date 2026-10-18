@@ -67,7 +67,33 @@ public static class WorkTicketStart
             ? $"{Mention(ticket)} に取り組んでください。"
             : $"{Mention(ticket)} に取り組んでください。課題: {ticket.Url}";
 
-    /// <summary>可視ターミナル（pwsh）へ打つ 1 行。単一引用符で囲み、中の <c>'</c> は <c>''</c> に重ねる。</summary>
+    /// <summary>
+    /// 可視ターミナル（pwsh）へ打つ 1 行。単一引用符で囲み、中の引用符は重ねる。
+    /// PowerShell は <c>‘ ’ ‚ ‛</c> も単一引用符として扱うので、<c>'</c> だけ重ねると Issue の題（他人が書ける）
+    /// の <c>’</c> で文字列が閉じ、残りがコマンドとして走る。<c>"</c> は Windows PowerShell 5.1 が外部 exe へ
+    /// 渡すとき引数を割るので、見た目の近い <c>”</c> に置き換える。
+    /// </summary>
     public static string PowerShellClaudeCommand(string prompt)
-        => "claude '" + prompt.Replace("\r", " ").Replace("\n", " ").Replace("'", "''") + "'";
+    {
+        var builder = new StringBuilder("claude '");
+        foreach (var c in prompt)
+        {
+            switch (c)
+            {
+                case '\r' or '\n':
+                    builder.Append(' ');
+                    break;
+                case '\'' or '‘' or '’' or '‚' or '‛':
+                    builder.Append(c).Append(c);
+                    break;
+                case '"':
+                    builder.Append('”');
+                    break;
+                default:
+                    builder.Append(c);
+                    break;
+            }
+        }
+        return builder.Append('\'').ToString();
+    }
 }

@@ -258,12 +258,31 @@ public sealed class GitWorktreeService
             bool? isMerged = worktree.Branch is not { } branch || defaultBranch is null
                     || string.Equals(branch, defaultLocal, StringComparison.Ordinal)
                 ? null
-                : merged.Contains(branch);
+                : merged.Contains(branch) && await HasOwnWorkAsync(branch, defaultBranch, cancellationToken).ConfigureAwait(false);
             var usage = new GitWorktreeUsage(worktree.Path, size, lastCommit, isMerged, defaultBranch);
             usages.Add(usage);
             progress?.Report(usage);
         }
         return usages;
+    }
+
+    /// <summary>
+    /// <c>--merged</c> に載ったブランチが、本当に作業を終えて取り込まれたものか。作ったばかりで自前のコミットが無い
+    /// ブランチ（§24.56 で課題から起こした直後など）も <c>--merged</c> には載るので、それを「取り込み済み」として
+    /// 片付けの候補に出さない。reflog で作業の跡を見て、reflog が無ければ先端が既定ブランチと同じかで判断する。
+    /// </summary>
+    private async Task<bool> HasOwnWorkAsync(string branch, string defaultBranch, CancellationToken cancellationToken)
+    {
+        var reflog = await _runner.RunAsync(cancellationToken,
+            "reflog", "show", "--format=%gs", "refs/heads/" + branch, "--").ConfigureAwait(false);
+        if (reflog.Success && GitWorktreeCleanup.ReflogShowsOwnWork(reflog.Output) is { } fromReflog)
+            return fromReflog;
+
+        var tips = await _runner.RunAsync(cancellationToken,
+            "rev-parse", "refs/heads/" + branch, defaultBranch).ConfigureAwait(false);
+        if (!tips.Success) return false;
+        var hashes = tips.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return hashes.Length == 2 && !string.Equals(hashes[0], hashes[1], StringComparison.Ordinal);
     }
 
     private async Task<int?> CountChangesAsync(GitWorktreeInfo worktree)

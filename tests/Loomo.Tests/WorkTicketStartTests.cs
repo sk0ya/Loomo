@@ -47,4 +47,14 @@ public class WorkTicketStartTests
             WorkTicketStart.PowerShellClaudeCommand(prompt));
         Assert.DoesNotContain("\n", WorkTicketStart.PowerShellClaudeCommand("a\r\nb"));
     }
+
+    [Fact]
+    public void PowerShell_command_doubles_typographic_quotes_and_neutralizes_double_quotes()
+    {
+        // pwsh は ‘ ’ ‚ ‛ でも単一引用符の文字列を閉じる。重ねないと題の残りがコマンドとして走る。
+        Assert.Equal("claude 'x’’; Remove-Item ~\\src; ‘‘'",
+            WorkTicketStart.PowerShellClaudeCommand("x’; Remove-Item ~\\src; ‘"));
+        Assert.Equal("claude 'a‚‚b‛‛c'", WorkTicketStart.PowerShellClaudeCommand("a‚b‛c"));
+        Assert.Equal("claude 'say ”hi”'", WorkTicketStart.PowerShellClaudeCommand("say \"hi\""));
+    }
 }

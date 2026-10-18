@@ -95,10 +95,15 @@ public sealed partial class RunningViewModel : ObservableObject
     {
         var existing = Items.ToDictionary(i => i.Key, StringComparer.Ordinal);
         var wanted = new List<RunningItemViewModel>(entries.Count);
+        var regrouped = false;
         foreach (var entry in entries)
         {
             if (existing.Remove(entry.Key, out var item))
+            {
+                var oldGroup = item.Group;
                 item.Apply(entry);
+                regrouped |= !string.Equals(oldGroup, item.Group, StringComparison.Ordinal);
+            }
             else
                 item = new RunningItemViewModel(entry, nowUtc);
             item.Tick(nowUtc);
@@ -115,6 +120,10 @@ public sealed partial class RunningViewModel : ObservableObject
             else if (index != i)
                 Items.Move(index, i);
         }
+        // ビューはライブグルーピングではないので、使い回した行の Group が変わっても Move が起きなければ
+        // 古い見出しの下に残る（先頭 1 行が 実行中→あなたの番 になったときなど）。変わったときだけ組み直す。
+        if (regrouped)
+            View.Refresh();
 
         AttentionCount = Items.Count(i => i.Tone == RunningEntryTone.Attention);
         RunningCount = Items.Count(i => i.Entry.Kind != RunningEntryKind.LanguageServer);

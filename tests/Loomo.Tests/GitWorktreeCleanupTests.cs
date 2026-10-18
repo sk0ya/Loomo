@@ -67,6 +67,14 @@ public class GitWorktreeCleanupTests
     public void ParseMergedBranches_strips_markers()
         => Assert.Equal(["main", "a", "b"], GitWorktreeCleanup.ParseMergedBranches("* main\n+ a\n  b\n\n").ToList());
 
+    [Theory]
+    [InlineData("branch: Created from main\n", false)]                       // 作ったばかり＝取り込み済みではない
+    [InlineData("commit: fix login\nbranch: Created from main\n", true)]
+    [InlineData("reset: moving to HEAD~1\nbranch: Created from HEAD\n", true)]
+    [InlineData("", null)]                                                    // reflog 無し＝判断できない
+    public void ReflogShowsOwnWork(string reflog, bool? expected)
+        => Assert.Equal(expected, GitWorktreeCleanup.ReflogShowsOwnWork(reflog));
+
     [Fact]
     public void MeasureDirectory_sums_nested_files()
     {

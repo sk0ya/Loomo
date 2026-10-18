@@ -100,6 +100,23 @@ public class RunningEntriesTests
     }
 
     [Fact]
+    public void Reused_row_moves_to_its_new_group_even_without_a_move()
+    {
+        // 1 行だけだと並びは変わらず Items.Move が起きない。それでも見出しは「あなたの番」へ移ること。
+        var vm = new RunningViewModel();
+        var tab = Guid.NewGuid();
+        vm.Apply(RunningEntries.Build(
+            [new RunningTerminalSource(tab, "claude", TerminalTabStatus.Empty, ClaudeAgentState.Working)],
+            [], [], [], false, null), Now);
+        vm.Apply(RunningEntries.Build(
+            [new RunningTerminalSource(tab, "claude", TerminalTabStatus.Empty, ClaudeAgentState.NeedsApproval)],
+            [], [], [], false, null), Now);
+
+        var group = Assert.IsAssignableFrom<System.Windows.Data.CollectionViewGroup>(Assert.Single(vm.View.Groups!));
+        Assert.Equal(RunningEntries.AttentionGroup, group.Name);
+    }
+
+    [Fact]
     public void Stop_command_is_ignored_for_rows_that_cannot_stop()
     {
         var vm = new RunningViewModel();

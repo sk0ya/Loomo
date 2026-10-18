@@ -332,7 +332,12 @@ public sealed class GitWorktreeServiceTests : IAsyncLifetime
     [Fact]
     public async Task 片付けの材料は大きさと最後のコミットと取り込み済みかを数える()
     {
-        var mergedPath = await AddFeatureWorktreeAsync("merged");      // main から切ったまま＝取り込み済み
+        var mergedPath = await AddFeatureWorktreeAsync("merged");
+        await File.WriteAllTextAsync(Path.Combine(mergedPath, "m.txt"), "m");
+        await RunInAsync(mergedPath, "add", "m.txt");
+        await RunInAsync(mergedPath, "commit", "-m", "merged work");
+        await RunInAsync(_root, "merge", "--ff-only", "merged");      // 作業して main へ取り込んだ＝取り込み済み
+        await AddFeatureWorktreeAsync("fresh");                        // 切ったばかり＝--merged には載るが取り込み済みではない
         var workPath = await AddFeatureWorktreeAsync("work");
         await File.WriteAllTextAsync(Path.Combine(workPath, "w.txt"), new string('x', 5000));
         await RunInAsync(workPath, "add", "w.txt");
@@ -342,11 +347,13 @@ public sealed class GitWorktreeServiceTests : IAsyncLifetime
 
         var usages = await _git.InspectWorktreesAsync(list, new SyncProgress(reported.Add), CancellationToken.None);
 
-        Assert.Equal(2, usages.Count);                                 // メインは数えない
+        Assert.Equal(3, usages.Count);                                 // メインは数えない
         Assert.Equal(usages, reported);
         var merged = Assert.Single(usages, u => Assert.Single(list, w => w.Path == u.Path).Branch == "merged");
         var work = Assert.Single(usages, u => Assert.Single(list, w => w.Path == u.Path).Branch == "work");
+        var fresh = Assert.Single(usages, u => Assert.Single(list, w => w.Path == u.Path).Branch == "fresh");
         Assert.True(merged.IsMerged);
+        Assert.False(fresh.IsMerged);
         Assert.False(work.IsMerged);
         Assert.Equal("main", work.MergedInto);
         Assert.True(work.SizeBytes > 5000);
