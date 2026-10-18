@@ -21,7 +21,10 @@ public enum SidebarPanel
     /// <summary>ワークスペースの TODO タグ一覧。</summary>
     Todo,
     /// <summary>Azure DevOps の自分の Work Items。既定では上段バーのソリューションの下に住む。</summary>
-    WorkItems
+    WorkItems,
+    /// <summary>部屋の中でいま動いているもの（ターミナルのコマンド・Claude Code・デバッグ・言語サーバー・§24.54）。
+    /// 既定では中段バーのタブ一覧の下に住む。</summary>
+    Running
 }
 
 /// <summary>中央オーバーレイ設定画面のカテゴリ（左ナビ）。</summary>
@@ -113,6 +116,9 @@ public sealed partial class ShellViewModel : ObservableObject
 
     /// <summary>Azure DevOps の Work Items（サイドバーの面 <see cref="SidebarPanel.WorkItems"/>）。テストの組み立てでは無いことがある。</summary>
     public WorkItemsViewModel? WorkItems { get; }
+
+    /// <summary>動いているもの面（§24.54）。材料は ShellWindow が集めて流し込む。</summary>
+    public RunningViewModel Running { get; } = new();
 
     /// <summary>Terminal ペインのヘッダーに出す Claude Code の使用量（5時間枠）。テストの組み立てでは無いことがある。</summary>
     public ClaudeUsageViewModel? ClaudeUsage { get; }
@@ -382,6 +388,10 @@ public sealed partial class ShellViewModel : ObservableObject
     /// <summary>ActivityBar のペグボードアイコン（§23.3）。</summary>
     [RelayCommand]
     private void ShowPegboard() => Activate(SidebarPanel.Pegboard);
+
+    /// <summary>ActivityBar の「動いているもの」アイコン（§24.54）。</summary>
+    [RelayCommand]
+    private void ShowRunning() => Activate(SidebarPanel.Running);
 
     /// <summary>軌跡（§27）から過去のパネルへ戻る。もう出せないパネル——C# の無い部屋の
     /// ソリューション——は開かない。ActivityBar のアイコンごと消えているので、開いてしまうと

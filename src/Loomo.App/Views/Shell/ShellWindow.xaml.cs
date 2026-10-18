@@ -258,6 +258,7 @@ public partial class ShellWindow : Window {
         HookAiActivity();
         WireTerminalForegroundBusy();
         WireTerminalStatusRows();
+        InitializeRunningPanel();
         InitializeClaudeHooks();   // パイプ名を先に決める（ターミナルの環境変数に入る）
         InitializeClaudeIde();
         InitializeEditWait();

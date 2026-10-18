@@ -182,6 +182,7 @@ public static class TrailLogic
         SidebarPanel.Tabs => "タブ一覧",
         SidebarPanel.Todo => "TODO Tree",
         SidebarPanel.WorkItems => "Work Items",
+        SidebarPanel.Running => "動いているもの",
         _ => panel.ToString()
     };
 }

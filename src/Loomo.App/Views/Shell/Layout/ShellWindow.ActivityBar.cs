@@ -27,6 +27,7 @@ public partial class ShellWindow {
             [SidebarPanel.Tabs] = SidebarTabs,
             [SidebarPanel.Todo] = SidebarTodoTree,
             [SidebarPanel.WorkItems] = SidebarWorkItems,
+            [SidebarPanel.Running] = SidebarRunning,
         };
     private IReadOnlyDictionary<SidebarPanel, FrameworkElement>? _sidebarPanelViews;
 

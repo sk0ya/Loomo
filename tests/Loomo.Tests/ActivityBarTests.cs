@@ -16,7 +16,7 @@ public sealed class ActivityBarTests
         var sut = new ActivityBarViewModel();
 
         Assert.Equal(["explorer", "git", "solution", "workitems"], sut.PrimaryItems.Select(i => i.Id));
-        Assert.Equal(["tabs", "todo", "pegboard"], sut.SecondaryItems.Select(i => i.Id));
+        Assert.Equal(["tabs", "running", "todo", "pegboard"], sut.SecondaryItems.Select(i => i.Id));
         Assert.Equal(ActivityBarSlot.Secondary, sut.SlotOf(SidebarPanel.Tabs));
         Assert.Equal(ActivityBarSlot.Primary, sut.SlotOf(SidebarPanel.Explorer));
     }
@@ -58,7 +58,7 @@ public sealed class ActivityBarTests
 
         Assert.True(sut.Move(tabs, ActivityBarSlot.Primary, 0));
         Assert.Equal(["tabs", "explorer", "git", "solution", "workitems"], sut.PrimaryItems.Select(i => i.Id));
-        Assert.Equal(["todo", "pegboard"], sut.SecondaryItems.Select(i => i.Id));
+        Assert.Equal(["running", "todo", "pegboard"], sut.SecondaryItems.Select(i => i.Id));
         Assert.Equal(ActivityBarSlot.Primary, tabs.Slot);
 
         // 同じ段の中での並べ替え（下へ動かすと抜けたぶん詰まる）。
@@ -107,11 +107,11 @@ public sealed class ActivityBarTests
         sut.Move(sut.ItemFor(SidebarPanel.Git)!, ActivityBarSlot.Secondary, 0);
 
         Assert.Equal(["explorer", "solution", "workitems"], settings.ActivityBar.Primary);
-        Assert.Equal(["git", "tabs", "todo", "pegboard"], settings.ActivityBar.Secondary);
+        Assert.Equal(["git", "tabs", "running", "todo", "pegboard"], settings.ActivityBar.Secondary);
 
         // 保存した並びで起動し直すとそのまま戻る。
         var restored = new ActivityBarViewModel(settings);
-        Assert.Equal(["git", "tabs", "todo", "pegboard"], restored.SecondaryItems.Select(i => i.Id));
+        Assert.Equal(["git", "tabs", "running", "todo", "pegboard"], restored.SecondaryItems.Select(i => i.Id));
     }
 
     [Fact]

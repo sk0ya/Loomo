@@ -445,6 +445,7 @@ public partial class ShellWindow {
         list.Add(new("サイドバー", "タブ一覧を開閉", () => _vm.ShowTabsCommand.Execute(null), Sc("sidebar.tabs"), "sidebar.tabs"));
         list.Add(new("サイドバー", "Git", () => _vm.ShowGitCommand.Execute(null), Sc("sidebar.git"), "sidebar.git"));
         list.Add(new("サイドバー", "ペグボード", () => _vm.ShowPegboardCommand.Execute(null), Sc("sidebar.pegboard"), "sidebar.pegboard"));
+        list.Add(new("サイドバー", "動いているもの", () => _vm.ShowRunningCommand.Execute(null), Sc("sidebar.running"), "sidebar.running"));
         if (_vm.IsCSharpSolutionAvailable)
             list.Add(new("サイドバー", "ソリューション（C#）", () => _vm.ShowSolutionCommand.Execute(null), Sc("sidebar.solution"), "sidebar.solution"));
         list.Add(new("サイドバー", "設定", () => _vm.ShowSettingsCommand.Execute(null), Sc("sidebar.settings"), "sidebar.settings"));

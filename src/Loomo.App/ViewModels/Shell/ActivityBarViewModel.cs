@@ -56,6 +56,9 @@ public sealed partial class ActivityBarItemViewModel : ObservableObject
     /// <summary>いまの部屋で出せる面か。出せないものはアイコンごと消す
     /// （C# の無い部屋のソリューションなど）。</summary>
     [ObservableProperty] private bool _isAvailable = true;
+
+    /// <summary>アイコンの右上に添える小さな数（動いているもの面の「あなたの番」の数・§24.54）。null は出さない。</summary>
+    [ObservableProperty] private string? _badge;
 }
 
 /// <summary>項目が動いたときの通知。段をまたいだのか、同じ段での並べ替えだけなのかを分けて伝える
@@ -76,7 +79,7 @@ public sealed partial class ActivityBarViewModel : ObservableObject
     public static readonly string[] DefaultPrimaryIds = ["explorer", "git", "solution", "workitems"];
 
     /// <summary>既定で中段に並ぶ項目 Id。タブ一覧の下に TODO Tree、その下にペグボードを並べる。</summary>
-    public static readonly string[] DefaultSecondaryIds = ["tabs", "todo", "pegboard"];
+    public static readonly string[] DefaultSecondaryIds = ["tabs", "running", "todo", "pegboard"];
 
     public ActivityBarViewModel(LoomoSettings? settings = null, SettingsStore? settingsStore = null)
     {
@@ -91,6 +94,8 @@ public sealed partial class ActivityBarViewModel : ObservableObject
                 "PegboardPanelButton"),
             new("tabs", SidebarPanel.Tabs, "▤", "タブ一覧", "TabsPanelButton"),
             new("todo", SidebarPanel.Todo, "☑", "TODO Tree", "TodoPanelButton"),
+            new("running", SidebarPanel.Running, "▶", "動いているもの（コマンド・Claude Code・デバッグ・言語サーバー）",
+                "RunningPanelButton"),
             new("workitems", SidebarPanel.WorkItems, "📋", "自分の Work Items（Azure DevOps）", "WorkItemsPanelButton"),
         ];
 

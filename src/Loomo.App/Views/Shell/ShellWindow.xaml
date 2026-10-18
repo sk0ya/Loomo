@@ -487,6 +487,7 @@
         <!-- ActivityBar のアイコン1つ。どちらの段でもこの1枚を使う（段は ItemsSource が決める）。
              押す＝その段の区画でそのパネルを開く／閉じる。掴んで動かす＝段の移動・並べ替え。 -->
         <DataTemplate x:Key="ActivityBarItemTemplate">
+            <Grid Visibility="{Binding IsAvailable, Converter={StaticResource BoolToVis}}">
             <Button Style="{StaticResource ActivityIconButton}" Content="{Binding Icon}"
                     ToolTip="{Binding Label}" Tag="{Binding IsSelected}"
                     Command="{Binding DataContext.ActivateActivityItemCommand,
@@ -498,6 +499,14 @@
                     PreviewMouseLeftButtonDown="OnActivityItemMouseDown"
                     PreviewMouseLeftButtonUp="OnActivityItemMouseUp"
                     PreviewMouseMove="OnActivityItemMouseMove" />
+            <!-- 人の番の数（承認待ち・停止中・§24.54）。押下はアイコンへ通す。 -->
+            <Border HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,3,3,0" MinWidth="14" Height="14"
+                    CornerRadius="7" Padding="3,0" Background="{DynamicResource Accent}" IsHitTestVisible="False"
+                    Visibility="{Binding Badge, Converter={StaticResource NonEmptyToVis}}">
+                <TextBlock Text="{Binding Badge}" Foreground="{DynamicResource AccentFg}" FontSize="9"
+                           FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Border>
+            </Grid>
         </DataTemplate>
 
         <!-- Claude Code 使用量の詳細（Terminal ヘッダー）。ホバーのツールチップとクリックのポップアップで共有する。
@@ -943,6 +952,7 @@
                     <Grid x:Name="SecondarySidebarHost" Grid.Row="2">
                         <views:TabsView x:Name="SidebarTabs" DataContext="{Binding Tabs}" />
                         <views:TodoTreeView x:Name="SidebarTodoTree" DataContext="{Binding TodoTree}" Visibility="Collapsed" />
+                        <views:RunningView x:Name="SidebarRunning" DataContext="{Binding Running}" Visibility="Collapsed" />
                     </Grid>
                 </Grid>
 
