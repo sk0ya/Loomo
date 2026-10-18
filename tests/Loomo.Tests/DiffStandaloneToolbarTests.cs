@@ -64,7 +64,8 @@ public sealed class DiffStandaloneToolbarTests
             var toggles = Descendants(bar).OfType<RadioButton>()
                 .Select(r => BindingOperations.GetBinding(r, ToggleButton.IsCheckedProperty)?.Path.Path)
                 .ToList();
-            Assert.Contains("IsSideBySide", toggles);
+            Assert.Contains("IsLayoutSide", toggles);
+            Assert.Contains("IsLayoutContinuous", toggles);   // 通しで読む（§24.50）
             Assert.Contains("IsMarkdownRender", toggles);
 
             // 空白無視は入／切の単独トグル（RadioButton だと一度入れたら押しても切れない）。

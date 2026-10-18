@@ -41,7 +41,7 @@ public sealed partial class DiffSessionViewModel
     /// <b>コンフリクト中を外すのが要点</b>——本文グリッドごと Ours/Result/Theirs へ置き換わっているので、
     /// トグルだけ出しても押した先に描く場所が無い。</summary>
     public bool CanRenderMarkdown
-        => MarkdownBlockDiff.IsMarkdownPath(SelectedFile?.FullPath) && !Conflict.IsConflictMode;
+        => MarkdownBlockDiff.IsMarkdownPath(SelectedFile?.FullPath) && !Conflict.IsConflictMode && !IsContinuous;
 
     /// <summary>いまレンダリング表示が効いているか（トグルが倒れていて、対象が Markdown）。</summary>
     public bool IsMarkdownRenderActive => IsMarkdownRender && CanRenderMarkdown;
@@ -77,7 +77,7 @@ public sealed partial class DiffSessionViewModel
     /// <summary>この読込でレンダリング表示を使うか。<b>選択中の項目ではなく読込対象の項目</b>で判断する
     /// ——読込の途中で選択が変わっても、この1回の組み立ての前提はぶれない。</summary>
     private bool UseMarkdownRender(DiffFileItem? item)
-        => IsMarkdownRender && MarkdownBlockDiff.IsMarkdownPath(item?.FullPath);
+        => IsMarkdownRender && !IsContinuous && MarkdownBlockDiff.IsMarkdownPath(item?.FullPath);
 
     /// <summary>レンダリング差分を組み立てる（差分の計算も HTML 化も UI スレッドの外）。</summary>
     private async Task<MarkdownDiffRender> BuildMarkdownRenderAsync(DiffFileItem item)

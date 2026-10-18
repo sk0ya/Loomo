@@ -129,6 +129,7 @@ public partial class ShellWindow {
     private TerminalTab HookTerminalTab(TerminalTab tab) {
         tab.View.HeaderTitleChanged += (_, title) => UpdateTerminalTab(tab, title);
         tab.View.HyperlinkActivated += OnTerminalLinkActivated;
+        tab.View.HyperlinkDragStarting += OnTerminalLinkDragStarting;
         tab.View.ContextMenuBuilding += OnTerminalContextMenuBuilding;
         HookTerminalActivity(tab);
         HookTerminalRecentCommands(tab);

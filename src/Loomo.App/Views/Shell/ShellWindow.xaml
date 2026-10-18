@@ -2300,10 +2300,14 @@
                                 <StackPanel Orientation="Horizontal">
                                     <RadioButton Style="{StaticResource SourceToggle}" Content="左右"
                                                  ToolTip="削除を左・追加を右に並べて表示（side by side）"
-                                                 IsChecked="{Binding DiffSession.IsSideBySide}" />
+                                                 IsChecked="{Binding DiffSession.IsLayoutSide}" />
                                     <RadioButton Style="{StaticResource SourceToggle}" Content="統合"
                                                  ToolTip="差分を1列で表示（unified）"
-                                                 IsChecked="{Binding DiffSession.IsSideBySide, Converter={StaticResource InverseBool}}" />
+                                                 IsChecked="{Binding DiffSession.IsLayoutUnified}" />
+                                    <!-- 一覧の全ファイルを見出しを挟んで 1 本に（§24.50）。 -->
+                                    <RadioButton Style="{StaticResource SourceToggle}" Content="通し"
+                                                 ToolTip="一覧の全ファイルの差分を 1 本に並べて、切り替えずに上から読む（一覧で選ぶとそのファイルへ移る）"
+                                                 IsChecked="{Binding DiffSession.IsLayoutContinuous}" />
                                 </StackPanel>
                             </Border>
                             <!-- 空白の違いを無視して比べる（git diff -w）。字下げ・整形だけの変更を消して本当の変更を読む。

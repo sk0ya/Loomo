@@ -92,6 +92,7 @@ public sealed partial class AppearanceViewModel : ObservableObject
     [ObservableProperty] private string _terminalFontFamily = "";
     [ObservableProperty] private string _terminalFontSize = "";
     [ObservableProperty] private bool _terminalFontLigatures;
+    [ObservableProperty] private bool _terminalLineTimeOnHover;
     /// <summary>ターミナルのシェルを常駐ホストに持たせるか（§34）。外観ではないが、ターミナル設定の画面が
     /// この VM に載っているので同居させる。効くのは次に作るタブから（今のタブの持ち主は変えない）。</summary>
     [ObservableProperty] private bool _persistentTerminalSessions;
@@ -274,6 +275,7 @@ public sealed partial class AppearanceViewModel : ObservableObject
         _terminalFontFamily = ap.TerminalFontFamily ?? "";
         _terminalFontSize = ap.TerminalFontSize > 0 ? ap.TerminalFontSize.ToString("0.#") : "";
         _terminalFontLigatures = ap.TerminalFontLigatures;
+        _terminalLineTimeOnHover = ap.TerminalLineTimeOnHover;
         _persistentTerminalSessions = _settings.PersistentTerminalSessions;
         _claudeCodeIdeIntegration = _settings.ClaudeCodeIdeIntegration;
     }
@@ -430,6 +432,13 @@ public sealed partial class AppearanceViewModel : ObservableObject
         if (_settings.Appearance.TerminalFontLigatures == value) return;
         _settings.Appearance.TerminalFontLigatures = value;
         PersistAppearance(value ? "ターミナルの合字を有効にしました" : "ターミナルの合字を無効にしました");
+    }
+
+    partial void OnTerminalLineTimeOnHoverChanged(bool value)
+    {
+        if (_settings.Appearance.TerminalLineTimeOnHover == value) return;
+        _settings.Appearance.TerminalLineTimeOnHover = value;
+        PersistAppearance(value ? "ターミナルの行に出た時刻を出します" : "ターミナルの行に出た時刻を出しません");
     }
 
     partial void OnClaudeCodeIdeIntegrationChanged(bool value)

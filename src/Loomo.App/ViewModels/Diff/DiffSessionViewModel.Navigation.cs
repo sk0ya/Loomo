@@ -95,6 +95,9 @@ public sealed partial class DiffSessionViewModel
     /// </summary>
     public void JumpToAutoTarget()
     {
+        // 通しで読んでいるときは、選んでいるファイルの見出しから見せる（§24.50）。
+        if (IsContinuous && TryScrollToContinuousFile(SelectedFile))
+            return;
         // blame からのピンポイントジャンプ：対象ファイルが選択されたままなら該当行へ。
         // 行が見つからないとき（コンテキスト外など）は消費せず通常の自動ジャンプへ落とす
         // （別ファイル読込の古い通知で走った場合も、対象ファイルの読込完了時にやり直せる）。
@@ -171,7 +174,8 @@ public sealed partial class DiffSessionViewModel
     /// <summary>隣のファイルを選択し、その差分の最初／最後の変更へ自動ジャンプさせる（端なら何もしない）。</summary>
     private void MoveToAdjacentFile(bool forward)
     {
-        if (SelectedFile is null) return;
+        // 通しで読んでいる間は全ファイルが 1 本に並んでいるので、端はほんとうの端（隣へ移らない）。
+        if (SelectedFile is null || IsContinuous) return;
         var idx = Files.IndexOf(SelectedFile);
         var nextIdx = forward ? idx + 1 : idx - 1;
         if (idx < 0 || nextIdx < 0 || nextIdx >= Files.Count) return;

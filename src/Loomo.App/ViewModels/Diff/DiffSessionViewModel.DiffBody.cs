@@ -99,6 +99,18 @@ public sealed partial class DiffSessionViewModel
     private async Task LoadDiffAsync(DiffFileItem? item)
     {
         var version = ++_diffLoadVersion;
+        if (IsContinuous)
+        {
+            // 通しで読む（§24.50）：一覧の全ファイルを 1 本に。選んでいるファイルに関わらず同じ中身。
+            var continuous = await BuildContinuousContentAsync();
+            if (version != _diffLoadVersion)
+                return;
+            MarkdownRenderHtml = null;
+            UnifiedSyntax = continuous.Syntax;
+            UnifiedInline = continuous.Inline;
+            ReplaceIfChanged(DiffRows, continuous.Rows);
+            return;
+        }
         if (UseMarkdownRender(item))
         {
             // レンダリング表示中はテキスト行を組み立てない（画面から退けてあるものを作っても捨てるだけ）。

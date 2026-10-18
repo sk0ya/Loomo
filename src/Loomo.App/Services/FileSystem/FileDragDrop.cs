@@ -18,6 +18,30 @@ public static class FileDragDrop
         data.SetFileDropList(files);
     }
 
+    /// <summary>ターミナルのリンクを運ぶときに添える、行と列（§24.52）。受け手のエディタはその行で開く。</summary>
+    public const string SourceLocationFormat = "Loomo.SourceLocation";
+
+    public static void SetSourceLocation(DataObject data, int line, int column)
+        => data.SetData(SourceLocationFormat, $"{line}:{column}");
+
+    /// <summary>添えた行と列（1 始まり。列が無ければ 0）。無ければ false。</summary>
+    public static bool TryGetSourceLocation(IDataObject? data, out int line, out int column)
+    {
+        line = column = 0;
+        try
+        {
+            if (data?.GetDataPresent(SourceLocationFormat) != true
+                || data.GetData(SourceLocationFormat) is not string text)
+                return false;
+            var parts = text.Split(':');
+            return parts.Length == 2 && int.TryParse(parts[0], out line) && int.TryParse(parts[1], out column) && line > 0;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     public static IReadOnlyList<string> TryGetPaths(IDataObject? data)
     {
         try

@@ -318,6 +318,9 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
         }
         SyncTreeSelection(value);
         UpdateCanDiscard();
+        // 通しで読んでいる間は、組み上がった 1 本の中でそのファイルの見出しへ移るだけ（§24.50）。
+        if (IsContinuous && !_reselectingSameFile && TryScrollToContinuousFile(value))
+            return;
         InvalidateWorkingTreePatch(value); // 開き直すたびに作業ツリーの最新内容を読み直す
         // 読み直しで同じファイルを選び直しただけ（ステージで一覧の印が変わった等）なら、読んでいた位置を動かさない。
         _ = LoadAndAutoJumpAsync(value, autoJump: !_reselectingSameFile);
@@ -370,7 +373,8 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
         var capabilities = CompareBase.Capabilities;
         var gitWorkingTree = IsGitMode && !HasGitTarget;
         CanDiscardSelected = gitWorkingTree && capabilities.CanDiscard && SelectedFile?.Entry is not null;
-        CanStageLines = gitWorkingTree && capabilities.CanApplyLines && SupportsLineStaging(SelectedFile);
+        // 通しで読んでいる間は行が複数のファイルにまたがるので、行単位のステージ・破棄は出さない（§24.50）。
+        CanStageLines = gitWorkingTree && capabilities.CanApplyLines && SupportsLineStaging(SelectedFile) && !IsContinuous;
         CanDiscardLines = CanStageLines;
     }
 
@@ -385,6 +389,7 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
 
     partial void OnIsSideBySideChanged(bool value)
     {
+        NotifyLayoutChoice();
         ResetChangeCursor();
         NotifyMarkdownRenderState();
         _ = LoadAndAutoJumpAsync(SelectedFile);
@@ -961,6 +966,11 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
     /// </summary>
     public void RequestOpenRowInEditor(int rowIndex)
     {
+        if (IsContinuous)
+        {
+            RequestOpenContinuousRowInEditor(rowIndex);
+            return;
+        }
         if (SelectedFile is not { FullPath.Length: > 0 } item)
         {
             SetStatus("この比較には開けるファイルがありません。", isError: true);

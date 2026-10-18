@@ -19,6 +19,7 @@ internal sealed class FileDropInteractionController
     private readonly Action<FileCompareRequest> _compareFiles;
     private readonly Action<PaneKind> _ensurePaneVisible;
     private readonly Action<PaneKind> _focusPane;
+    private readonly Func<string, int, int, Task>? _openEditorLocation;
     private CancellationTokenSource? _dropCts;
 
     internal FileDropInteractionController(
@@ -33,8 +34,10 @@ internal sealed class FileDropInteractionController
         Func<string, Task> showPathHistory,
         Action<FileCompareRequest> compareFiles,
         Action<PaneKind> ensurePaneVisible,
-        Action<PaneKind> focusPane)
+        Action<PaneKind> focusPane,
+        Func<string, int, int, Task>? openEditorLocation = null)
     {
+        _openEditorLocation = openEditorLocation;
         _editorPane = editorPane;
         _diffPane = diffPane;
         _searchPane = searchPane;
@@ -70,10 +73,19 @@ internal sealed class FileDropInteractionController
         var token = operation.Token;
         try
         {
-            foreach (var path in paths)
+            // ターミナルのリンク（`src/foo.cs:12`）を運んできたら、その行で開く（§24.52）。
+            if (paths.Length == 1 && _openEditorLocation is not null
+                && FileDragDrop.TryGetSourceLocation(e.Data, out var line, out var column))
             {
-                token.ThrowIfCancellationRequested();
-                await _openEditorFile(path);
+                await _openEditorLocation(paths[0], line, column);
+            }
+            else
+            {
+                foreach (var path in paths)
+                {
+                    token.ThrowIfCancellationRequested();
+                    await _openEditorFile(path);
+                }
             }
             if (!token.IsCancellationRequested)
                 _focusPane(PaneKind.Editor);

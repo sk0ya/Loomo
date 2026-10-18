@@ -247,6 +247,12 @@ public partial class ShellWindow {
         EnsurePaneVisibleOrSwapTopLeft(PaneKind.Terminal);
         ActivateTerminalTab(id);
         FocusPane(PaneKind.Terminal);
+        // 過去の地点なら、その頃の出力へ（§24.51）。いまに近い地点で飛ぶと、流れている出力の追従を止めてしまう。
+        if (TerminalLineTimePolicy.ShouldScrollTo(entry.Timestamp, DateTime.Now)
+            && _terminalTabs.FirstOrDefault(t => t.Id == id) is { } tab) {
+            var at = entry.Timestamp;
+            _ = Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() => tab.View.ScrollToTime(at)));
+        }
     }
     private void OnTrailWheel(object sender, MouseWheelEventArgs e) => _trailBar.OnWheel(e);
     private void ScrollTrailToCurrent() => _trailBar.ScrollToCurrent();

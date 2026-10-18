@@ -13,7 +13,8 @@ public partial class ShellWindow
         path => _vm.GitSession.ShowPathHistoryAsync(path),
         CompareFilesInDiff,
         EnsurePaneVisibleOrSwapTopLeft,
-        FocusPane);
+        FocusPane,
+        (path, line, column) => OpenPathInEditorAsync(path, line, column));
 
     /// <summary>ターミナルへ落としたファイルの入れ方。シェルには引用付きのパス、Claude Code が動いているタブには
     /// <c>@参照</c>（§24.3.1）——シェルの引用は Claude には意味が無く、@ なら Claude がファイルとして読む。</summary>

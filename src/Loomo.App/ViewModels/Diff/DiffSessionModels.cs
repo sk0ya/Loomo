@@ -3,7 +3,8 @@ using sk0ya.Loomo.Services;
 namespace sk0ya.Loomo.App.ViewModels;
 
 /// <param name="Staged">変更行（Added/Removed）がステージ済みか（作業ツリーの差分だけが持つ）。</param>
-public sealed record DiffRowVm(string Kind, string Text, bool Staged = false);
+/// <param name="Owner">通しで読む（§24.50）ときの、その行のファイル。1 ファイルの表示では null（＝選択中のファイル）。</param>
+public sealed record DiffRowVm(string Kind, string Text, bool Staged = false, DiffFileItem? Owner = null);
 
 /// <param name="LeftStaged">左の削除行がステージ済みか（作業ツリーの差分だけが持つ）。</param>
 /// <param name="RightStaged">右の追加行がステージ済みか（同上）。</param>

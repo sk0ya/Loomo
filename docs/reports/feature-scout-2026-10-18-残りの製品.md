@@ -9,6 +9,8 @@
 > エディタとブラウザはまだ。`CommandCatalog` にあるのは `terminal.reopenClosed` だけ（`src/Loomo.App/Input/CommandCatalog.cs:164`）。
 > 今回の 2 と同じ場所を触るので、一緒にやると安い。
 
+> 2026-10-19 追記：9 件すべてを実装した（§24.44〜§24.52。1・6・8 は Terminal 1.0.46）。
+
 ## まず手を付けるなら
 
 | # | 候補 | 置き場 | 規模 | 理由 |

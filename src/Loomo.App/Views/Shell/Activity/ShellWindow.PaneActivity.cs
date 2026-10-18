@@ -58,6 +58,25 @@ public partial class ShellWindow {
         // コマンドが出す進捗（OSC 9;4）とベル（BEL）も袖へ（§24.35）。
         tab.View.TaskbarProgressChanged += (_, e) => OnTerminalProgressChanged(tab.Id, e);
         tab.View.BellRang += (_, _) => OnTerminalBellRang(tab.Id);
+        // コマンドが出す通知（OSC 9・OSC 777）はタブの中の 5 秒のトーストではなく、部屋の通知欄へ（§24.49）。
+        tab.View.NotificationReceived += (_, e) => OnTerminalNotification(tab.Id, e);
+    }
+    /// <summary>ターミナルのコマンドが出した通知を、出所（タブ名）と「そのタブへ」付きで通知欄に載せる（§24.49）。
+    /// 見ていないタブからならベルと同じく袖に印を残し、Loomo が裏ならタスクバーを点滅させる。</summary>
+    private void OnTerminalNotification(Guid tabId, TerminalNotificationEventArgs e) {
+        e.Handled = true;
+        var source = TerminalNotificationPresentation.Source(TerminalTabTitle(tabId));
+        NotificationService.Post(
+            TerminalNotificationPresentation.Message(e.Title, e.Body), NotificationKind.Info, source,
+            new NotificationAction("そのタブへ", () => GoToTerminalTab(tabId)));
+        OnTerminalBellRang(tabId);
+    }
+    private void GoToTerminalTab(Guid tabId) {
+        if (_terminalTabs.All(t => t.Id != tabId))
+            return;   // 知らせを見るまでの間に閉じられた
+        EnsurePaneVisibleOrSwapTopLeft(PaneKind.Terminal);
+        ActivateTerminalTab(tabId);
+        FocusPane(PaneKind.Terminal);
     }
     private void OnTerminalProgressChanged(Guid tabId, TaskbarProgressChangedEventArgs e) {
         var progress = new TerminalProgress(e.State switch {

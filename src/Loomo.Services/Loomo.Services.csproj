@@ -121,6 +121,9 @@
          UI スレッド占有が 43% → 2.5%（入力遅延 p99 161ms → 25ms） -->
     <!-- 1.0.45: 整形前のウィンドウタイトル（TerminalTabView.WindowTitleChanged / WindowTitle）。タブ見出しは
          / \ を含む部分を捨てるので、Claude Code の「◐ Fix src/foo.cs」が読めなかった（§38.6） -->
+    <!-- 1.0.46: 通知（OSC 9・OSC 777）を TerminalTabView.NotificationReceived で渡す（§24.49）・行が出た時刻
+         （ShowLineTimeOnHover / ScrollToTime、再接続の再生でも戻る・§24.51）・リンクの Ctrl+ドラッグ
+         （HyperlinkDragStarting・Ctrl+クリックは離したときに開く・§24.52） -->
     <!-- 版は Directory.Build.props の TerminalPackageVersion（常駐ホストと共有するため一か所） -->
     <PackageReference Include="sk0ya.Terminal.Controls" Version="$(TerminalPackageVersion)" />
   </ItemGroup>

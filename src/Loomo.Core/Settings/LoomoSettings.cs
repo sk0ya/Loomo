@@ -445,6 +445,9 @@ public sealed class AppearanceSettings
     /// 有効にするか。既定 OFF。フォントが合字を持つ場合のみ描画に反映される。</summary>
     public bool TerminalFontLigatures { get; set; }
 
+    /// <summary>ターミナルの行にマウスを載せると、その行が出た時刻を吹き出しで出す（§24.51）。既定 ON。</summary>
+    public bool TerminalLineTimeOnHover { get; set; } = true;
+
     /// <summary>袖（右端のミニチュア一覧）を何列で並べるか。1（既定）または 2。2列にすると同じ袖幅で
     /// 倍の枚数が視界に入る代わりにカード1枚は小さくなる。範囲外の値は UI 側で 1〜2 に丸める。</summary>
     public int WingColumns { get; set; } = 1;

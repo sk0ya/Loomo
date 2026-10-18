@@ -103,6 +103,7 @@ public sealed class ShellAppearanceCoordinator
         var size = appearance.TerminalFontSize > 0 ? appearance.TerminalFontSize : view.TerminalFontSize;
         view.SetFont(family, size);
         view.SetFontLigaturesEnabled(appearance.TerminalFontLigatures);
+        view.ShowLineTimeOnHover = appearance.TerminalLineTimeOnHover;
     }
 
     internal EditorTheme BuildEditorTheme()
