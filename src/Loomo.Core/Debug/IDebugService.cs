@@ -39,6 +39,9 @@ public interface IDebugService
     /// <summary>現在アクティブな（stackTrace/step の対象となる）スレッド ID。停止時にその停止スレッドへ更新される。</summary>
     int ActiveThreadId { get; }
 
+    /// <summary>デバッグ対象のプロセス ID（分からなければ null）。実行中アプリのモニター（§28.15）が CPU とメモリを読む相手。</summary>
+    int? DebuggeeProcessId => null;
+
     /// <summary>指定構成でデバッグ起動する。既存セッションがあれば先に停止する。
     /// アダプタ未導入・起動失敗時は例外を投げず、状態を <see cref="DebugSessionState.Failed"/> にして
     /// <see cref="Output"/> に理由を流す。</summary>

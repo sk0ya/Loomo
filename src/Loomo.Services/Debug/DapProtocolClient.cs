@@ -28,6 +28,9 @@ internal sealed class DapProtocolClient : IDisposable
 
     public bool IsRunning => !_disposed && !_process.HasExited;
 
+    /// <summary>アダプタのプロセス ID（launch したデバッグ対象はこの子になる）。</summary>
+    public int AdapterProcessId => _process.Id;
+
     public DapProtocolClient(string executable, IEnumerable<string> args, string? workingDir = null)
     {
         var psi = new ProcessStartInfo

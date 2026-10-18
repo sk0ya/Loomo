@@ -45,6 +45,30 @@ public sealed class NetcoredbgDebugService : IDebugService
     /// <c>terminateDebuggee</c> を渡す/渡さないの判断に使う（アタッチ先プロセスは終了させない）。</summary>
     private bool _attached;
 
+    /// <summary>DAP の <c>process</c> イベントで知らされた、またはアタッチ先のプロセス ID（§28.15）。</summary>
+    private int? _debuggeeProcessId;
+
+    /// <summary>
+    /// デバッグ対象のプロセス ID（§28.15）。アダプタが <c>process</c> イベントで知らせたもの → アタッチ先 → launch なら
+    /// アダプタの子（netcoredbg は <c>dotnet &lt;dll&gt;</c>／自己完結 exe を、NetFxDebug は exe を自分の子として起こす）の順。
+    /// </summary>
+    public int? DebuggeeProcessId
+    {
+        get
+        {
+            if (_debuggeeProcessId is { } known)
+                return known;
+            if (_attached || _client is not { IsRunning: true } client
+                || _state is DebugSessionState.Idle or DebugSessionState.Terminated or DebugSessionState.Failed)
+                return null;
+            var children = ProcessTree.ChildrenOf(client.AdapterProcessId);
+            if (children.Count == 0)
+                return null;
+            _debuggeeProcessId = children[^1];   // 一度見つけたら覚える（毎秒スナップショットを取らない）
+            return _debuggeeProcessId;
+        }
+    }
+
     /// <summary>
     /// launch/attach リクエストを stdin に書き終えたことを示すシグナル。initialized イベント由来の構成フェーズ
     /// （<see cref="ConfigureAsync"/>）はこれを待ってから configurationDone を送る。netcoredbg は
@@ -128,6 +152,8 @@ public sealed class NetcoredbgDebugService : IDebugService
             failureLabel: "アタッチに失敗しました",
             precheck: () => config.ProcessId > 0 ? null : "アタッチ先のプロセス ID が不正です。",
             ct: ct);
+        if (_state is not (DebugSessionState.Failed or DebugSessionState.Idle or DebugSessionState.Terminated))
+            _debuggeeProcessId = config.ProcessId;
     }
 
     /// <summary>launch / attach に共通するセッション開始シーケンス。<paramref name="requestCommand"/> 以外は
@@ -165,6 +191,7 @@ public sealed class NetcoredbgDebugService : IDebugService
 
             _exitCode = null;
             _attached = attaching;
+            _debuggeeProcessId = null;
             SetState(DebugSessionState.Launching);
 
             DapProtocolClient client;
@@ -285,6 +312,12 @@ public sealed class NetcoredbgDebugService : IDebugService
                     _activeThreadId = threadId;
                     _ = HandleStoppedAsync(reason, threadId);
                 }
+                break;
+
+            case "process":
+                if (body.ValueKind == JsonValueKind.Object
+                    && body.TryGetProperty("systemProcessId", out var pid) && pid.ValueKind == JsonValueKind.Number)
+                    _debuggeeProcessId = pid.GetInt32();
                 break;
 
             case "continued":

@@ -108,6 +108,9 @@ public abstract partial class DebugManagerViewModelBase : ObservableObject, IDeb
     public ProblemsViewModel Problems { get; }
     public DebugBreakpointsViewModel Breakpoints { get; }
 
+    /// <summary>実行中・デバッグ中のプロセスの CPU とメモリ（「モニター」タブ・§28.15）。</summary>
+    public DebugMonitorViewModel Monitor { get; } = new();
+
     // --- エディタ連携の通知（ShellWindow が購読。ExecutionLineChanged 等はアクティブセッションの分を中継する） ---
 
     /// <summary>停止位置をエディタへ反映するための通知（path, 0始まり行）。行が -1 のときは実行行ハイライト解除。

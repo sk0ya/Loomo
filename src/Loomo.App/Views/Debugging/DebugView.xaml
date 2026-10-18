@@ -428,7 +428,52 @@
                 </TabControl>
             </TabItem>
 
-            <!-- 4 構成（起動構成・例外・アタッチ）。普段の実行は「実行」タブから行う。 -->
+            <!-- 4 モニター（§28.15）：実行中・デバッグ中のプロセスの CPU とメモリ。止まった区間は薄く、印は縦線。 -->
+            <TabItem Style="{StaticResource DebugTabItem}" Header="モニター">
+                <DockPanel DataContext="{Binding Monitor}" Margin="4">
+                    <TextBlock DockPanel.Dock="Top" Text="{Binding ProcessText}" Foreground="{DynamicResource FgDim}"
+                               FontSize="{DynamicResource Fs11}" TextTrimming="CharacterEllipsis" Margin="2,0,0,4" />
+                    <Border DockPanel.Dock="Top" Background="#33D9534D" CornerRadius="3" Padding="6,3" Margin="0,0,0,4"
+                            Visibility="{Binding Warning, Converter={StaticResource NonEmptyToVis}}">
+                        <TextBlock Text="{Binding Warning}" Foreground="{DynamicResource Fg}" FontSize="{DynamicResource Fs11}"
+                                   TextWrapping="Wrap" />
+                    </Border>
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <TextBlock Grid.Row="0" FontSize="{DynamicResource Fs11}" Margin="2,0,0,2">
+                            <Run Text="CPU" Foreground="{DynamicResource FgDim}" /><Run Text="  " /><Run
+                                 Text="{Binding CpuText, Mode=OneWay}" FontWeight="SemiBold" Foreground="{DynamicResource Fg}" /><Run
+                                 Text="   スレッド " Foreground="{DynamicResource FgDim}" /><Run
+                                 Text="{Binding ThreadsText, Mode=OneWay}" Foreground="{DynamicResource Fg}" />
+                        </TextBlock>
+                        <Border Grid.Row="1" BorderBrush="{DynamicResource Border}" BorderThickness="1" Background="{DynamicResource Bg}">
+                            <v:MonitorChart Metric="Cpu" Samples="{Binding SamplesView}" Markers="{Binding MarkersView}"
+                                            Stroke="{DynamicResource Accent}" Foreground="{DynamicResource FgDim}" />
+                        </Border>
+                        <TextBlock Grid.Row="2" FontSize="{DynamicResource Fs11}" Margin="2,6,0,2">
+                            <Run Text="メモリ（ワーキングセット）" Foreground="{DynamicResource FgDim}" /><Run Text="  " /><Run
+                                 Text="{Binding MemoryText, Mode=OneWay}" FontWeight="SemiBold" Foreground="{DynamicResource Fg}" /><Run
+                                 Text="   最大 " Foreground="{DynamicResource FgDim}" /><Run
+                                 Text="{Binding PeakText, Mode=OneWay}" Foreground="{DynamicResource Fg}" />
+                        </TextBlock>
+                        <Border Grid.Row="3" BorderBrush="{DynamicResource Border}" BorderThickness="1" Background="{DynamicResource Bg}">
+                            <v:MonitorChart Metric="Memory" Samples="{Binding SamplesView}" Markers="{Binding MarkersView}"
+                                            Stroke="{DynamicResource SymMethod}" Foreground="{DynamicResource FgDim}" />
+                        </Border>
+                        <TextBlock Grid.Row="1" Grid.RowSpan="3" Text="実行・デバッグを始めると、ここに CPU とメモリが流れます"
+                                   Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs11}"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                                   Visibility="{Binding HasData, Converter={StaticResource InverseBoolToVis}}" />
+                    </Grid>
+                </DockPanel>
+            </TabItem>
+
+            <!-- 5 構成（起動構成・例外・アタッチ）。普段の実行は「実行」タブから行う。 -->
             <TabItem Style="{StaticResource DebugTabItem}" Header="構成">
                 <v:DebugConfigView />
             </TabItem>
