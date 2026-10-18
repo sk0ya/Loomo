@@ -14,6 +14,7 @@ public partial class ShellWindow {
             ["palette.previousScope"] = () => CyclePaletteMode(-1),
             ["terminal.recentCommands"] = OpenRecentTerminalCommands,
             ["terminal.reopenClosed"] = ReopenClosedTerminalTab,
+            ["git.toggleCaretLineBlame"] = ToggleCaretLineBlame,
             ["terminal.compareOutput"] = OpenTerminalOutputComparisons,
             ["terminal.openOutput"] = OpenTerminalOutputs,
             ["tasks.run"] = OpenWorkspaceTasks,

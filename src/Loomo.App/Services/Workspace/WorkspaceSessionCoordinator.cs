@@ -368,6 +368,7 @@ public static class WorkspaceSessionCoordinator
                 CaretLine = pending.CaretLine,
                 CaretColumn = pending.CaretColumn,
                 ScrollRatio = pending.ScrollRatio,
+                ClosedFolds = pending.ClosedFolds,
                 LastSeenUtc = LastSeenOf(tab.LastSeenUtc),
                 IsPinned = tab.IsPinned
             };
@@ -389,6 +390,7 @@ public static class WorkspaceSessionCoordinator
             CaretLine = editor.Caret.Line,
             CaretColumn = editor.Caret.Column,
             ScrollRatio = editor.VerticalScrollRatio,
+            ClosedFolds = CaptureFolds(editor),
             LastSeenUtc = LastSeenOf(tab.LastSeenUtc),
             IsPinned = tab.IsPinned
         };
@@ -398,8 +400,20 @@ public static class WorkspaceSessionCoordinator
     private static DateTime? LastSeenOf(DateTime lastSeenUtc)
         => lastSeenUtc == default ? null : lastSeenUtc;
 
+    /// <summary>閉じている折りたたみ（§24.43）。畳んでいなければ null（保存に空の欄を書かない）。</summary>
+    internal static List<FoldSnapshot>? CaptureFolds(VimEditorControl editor)
+    {
+        var closed = editor.GetClosedFolds();
+        return closed.Count == 0 ? null : closed.Select(f => new FoldSnapshot(f.StartLine, f.EndLine, f.IsManual)).ToList();
+    }
+
     private static void RestoreEditorViewState(VimEditorControl editor, EditorTabSnapshot snapshot)
     {
+        // 折りたたみを先に戻す（カーソルが畳んだ中にあれば、移動で開く——Vim と同じ）。
+        // 外で書き換わって縮んだファイルの範囲はエディタが捨てる。
+        if (snapshot.ClosedFolds is { Count: > 0 } folds)
+            editor.RestoreClosedFolds(folds.Select(f =>
+                new Editor.Core.Folds.FoldRegion(f.StartLine, f.EndLine, IsClosed: true, IsManual: f.IsManual)));
         // 0 行・0 列、先頭スクロールも明示的な保存状態。現在値がたまたま初期値と同じことへ依存しない。
         editor.NavigateTo(Math.Max(0, snapshot.CaretLine), Math.Max(0, snapshot.CaretColumn));
         if (snapshot.ScrollRatio is { } ratio && double.IsFinite(ratio))

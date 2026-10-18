@@ -162,6 +162,7 @@ public static class CommandCatalog
         new CommandDescriptor("terminal.recentCommands", CatTerminal, "最近のコマンドを選び直す", null),
         // 既定のキーは割り当てない（Ctrl+Shift+T は mode.toggle が使っている）。設定から足せる（§24.41）。
         new CommandDescriptor("terminal.reopenClosed", CatTerminal, "閉じたターミナルを開き直す", null),
+        new CommandDescriptor("git.toggleCaretLineBlame", CatEdit, "カーソル行の最終更新（blame）の表示を切り替える", null),
         new CommandDescriptor("terminal.compareOutput", CatTerminal, "コマンドの出力を前回と比較", null),
         new CommandDescriptor("terminal.openOutput", CatTerminal, "コマンドの出力をエディタで開く", null),
         // 出典付きでペグボードへ残す（§24.26）。右クリック（選択時）と同じ実装へ入る。

@@ -432,6 +432,15 @@ public partial class ShellWindow {
             if (tab.IsRealized)
                 tab.Control.VimEnabled = _settings.Vim.Enabled;
     }
+    /// <summary>カーソル行の blame（§24.42）をその場で切り替えて保存する（パレット・キーから）。</summary>
+    private void ToggleCaretLineBlame() {
+        _settings.Editor.ShowCaretLineBlame = !_settings.Editor.ShowCaretLineBlame;
+        _vm.Appearance.SaveOutsideOverlay();
+        ApplyEditorSettingsToOpenEditorTabs();
+        ShowRefactorStatus(_settings.Editor.ShowCaretLineBlame
+            ? "カーソル行の最終更新を行末に表示します（未保存の編集がある間とコミットしていない行には出ません）。"
+            : "カーソル行の最終更新を隠しました。");
+    }
     private void ApplyEditorSettingsToOpenEditorTabs() {
         ApplyDebugInlineValuesSetting();
         foreach (var tab in _editorTabs) {

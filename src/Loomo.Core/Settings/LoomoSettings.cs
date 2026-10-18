@@ -366,6 +366,9 @@ public sealed class EditorSettings
     /// <summary>LSPが返すparameter name等のinlay hintをエディタ内へ表示する。既定 OFF。</summary>
     public bool ShowInlayHints { get; set; }
 
+    /// <summary>カーソル行の末尾に、その行を最後に変えたコミット（作者・日付・件名）を薄く出す（§24.42・Editor 1.0.103）。既定 OFF。</summary>
+    public bool ShowCaretLineBlame { get; set; }
+
     /// <summary>デバッグで止まっている間、関数内の行末に変数の値を薄く表示する（VS Code の Inline Values）。既定 ON。</summary>
     public bool ShowDebugInlineValues { get; set; } = true;
 

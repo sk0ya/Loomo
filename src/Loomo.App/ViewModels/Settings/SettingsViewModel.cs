@@ -68,6 +68,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _autoClosePairs;
     [ObservableProperty] private bool _linkedEditing;
     [ObservableProperty] private bool _showInlayHints;
+    [ObservableProperty] private bool _showCaretLineBlame;
     [ObservableProperty] private bool _showDebugInlineValues = true;
     [ObservableProperty] private int _tabWidth;
     [ObservableProperty] private bool _useSpacesForTab;
@@ -156,6 +157,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         FormatOnSaveExcludedExtensions = form.FormatOnSaveExcludedExtensions;
         ApplyEditorConfigOnSave = form.ApplyEditorConfigOnSave;
         AutoClosePairs = form.AutoClosePairs; ShowInlayHints = form.ShowInlayHints;
+        ShowCaretLineBlame = form.ShowCaretLineBlame;
         ShowDebugInlineValues = form.ShowDebugInlineValues;
         LinkedEditing = form.LinkedEditing;
         TabWidth = form.TabWidth; UseSpacesForTab = form.UseSpacesForTab;
@@ -221,6 +223,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     partial void OnAutoClosePairsChanged(bool value) => Persist();
     partial void OnLinkedEditingChanged(bool value) => Persist();
     partial void OnShowInlayHintsChanged(bool value) => Persist();
+    partial void OnShowCaretLineBlameChanged(bool value) => Persist();
     partial void OnShowDebugInlineValuesChanged(bool value) => Persist();
     partial void OnTabWidthChanged(int value) => Persist();
     partial void OnUseSpacesForTabChanged(bool value) => Persist();
@@ -258,6 +261,7 @@ public sealed partial class SettingsViewModel : ObservableObject
             FormatOnSaveExcludedExtensions = FormatOnSaveExcludedExtensions,
             ApplyEditorConfigOnSave = ApplyEditorConfigOnSave,
             AutoClosePairs = AutoClosePairs, ShowInlayHints = ShowInlayHints,
+            ShowCaretLineBlame = ShowCaretLineBlame,
             ShowDebugInlineValues = ShowDebugInlineValues,
             LinkedEditing = LinkedEditing,
             TabWidth = TabWidth, UseSpacesForTab = UseSpacesForTab,

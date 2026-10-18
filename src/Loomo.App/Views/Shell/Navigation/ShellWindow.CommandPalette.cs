@@ -292,6 +292,9 @@ public partial class ShellWindow {
         if (ClosedTerminalCount() is var closedTerminals and > 0)
             list.Add(new("ターミナル", $"閉じたターミナルを開き直す（{closedTerminals}）", ReopenClosedTerminalTab,
                 Sc("terminal.reopenClosed"), "terminal.reopenClosed"));
+        list.Add(new("Git", _settings.Editor.ShowCaretLineBlame
+                ? "カーソル行の最終更新（blame）を隠す" : "カーソル行の最終更新（blame）を行末に表示する",
+            ToggleCaretLineBlame, Sc("git.toggleCaretLineBlame"), "git.toggleCaretLineBlame"));
         list.Add(new("Git", "クリップボードのパッチを当てる", () => _ = _vm.GitPanel.ApplyPatchFromClipboardCommand.ExecuteAsync(null),
             Id: "git.applyPatchFromClipboard"));
         list.Add(new("Git", "ファイルのパッチを当てる…", () => _ = _vm.GitPanel.ApplyPatchFromFileCommand.ExecuteAsync(null),

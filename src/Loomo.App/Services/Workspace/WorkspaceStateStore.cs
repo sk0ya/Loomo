@@ -625,6 +625,9 @@ public sealed class WorkspaceFolderPin
     public string? TreeRootPath { get; set; }
 }
 
+/// <summary>閉じていた折りたたみ 1 つ（行は 0 始まり）。<see cref="IsManual"/> は手で畳んだもの（<c>zf</c>・using 節）。</summary>
+public sealed record FoldSnapshot(int StartLine, int EndLine, bool IsManual);
+
 public sealed class DetachedWindowSnapshot
 {
     public double Left { get; set; }
@@ -926,6 +929,9 @@ public sealed class EditorTabSnapshot
 
     /// <summary>縦スクロール位置（0..1）。レイアウト前は取れないため null あり・復元はベストエフォート。</summary>
     public double? ScrollRatio { get; set; }
+
+    /// <summary>閉じていた折りたたみ（§24.43）。null の旧データ・何も畳んでいないタブは書かない。</summary>
+    public List<FoldSnapshot>? ClosedFolds { get; set; }
 
     /// <summary>最後に見た時刻（§24.29）。上限を超えたときに、いちばん長く見ていないタブから棚へ下げるための並び。
     /// null の旧データはいちばん古い扱い。</summary>

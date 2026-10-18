@@ -29,6 +29,7 @@ public sealed class ShellAppearanceCoordinator
         // 連動編集（タグ名の開き/閉じを同時に書き換える）。未対応の Editor では set が黙って無視される。
         SetOption(control, "linkedediting", settings.LinkedEditing);
         SetOption(control, "inlayhints", settings.ShowInlayHints);
+        control.ShowCaretLineBlame = settings.ShowCaretLineBlame;
         SetOption(control, "inlinesuggest", settings.InlineSuggest);
         control.SetTabWidth(settings.TabWidth, settings.UseSpacesForTab);
         control.ImagePasteOptions = new Editor.Core.Editing.ImagePasteOptions

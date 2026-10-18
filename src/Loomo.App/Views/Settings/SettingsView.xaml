@@ -718,6 +718,11 @@
                                     <TextBlock Text="LSPのinlay hint（引数名など）を表示する" TextWrapping="Wrap" />
                                 </CheckBox>
                                 <CheckBox Margin="0,8,0,0"
+                                          IsChecked="{Binding Settings.ShowCaretLineBlame}"
+                                          ToolTip="カーソルのある行の末尾に、その行を最後に変えたコミットの作者・日付・件名を薄く表示します。未保存の編集がある間とコミットしていない行には出ません。">
+                                    <TextBlock Text="カーソル行の最終更新（blame）を行末に表示する" TextWrapping="Wrap" />
+                                </CheckBox>
+                                <CheckBox Margin="0,8,0,0"
                                           IsChecked="{Binding Settings.ShowDebugInlineValues}"
                                           ToolTip="デバッグで一時停止している間、関数の先頭から停止行までの行末に、その行に出てくる変数の値を薄く表示します（続行・ステップで消えます）。">
                                     <TextBlock Text="デバッグ中に変数の値を行末に表示する" TextWrapping="Wrap" />

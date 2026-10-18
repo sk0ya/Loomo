@@ -137,6 +137,37 @@ public sealed class EditorTabCaptureTests
         Assert.Equal((@"C:\w\A.cs", 10, 14), (span.Path, span.StartLine, span.EndLine));
     }
 
+    /// <summary>閉じていた折りたたみもタブと一緒に保存し、開き直したときに戻す（§24.43）。</summary>
+    [Fact]
+    public void Closed_folds_are_captured_and_restored_with_the_tab()
+    {
+        _host.Run(() =>
+        {
+            var path = WriteTemp("folds.txt", string.Join("\n", Enumerable.Range(0, 30).Select(i => $"line {i}")));
+            var tab = RealizedTab(path);
+            tab.Control.RestoreClosedFolds([new Editor.Core.Folds.FoldRegion(4, 9, IsClosed: true, IsManual: true)]);
+
+            var snapshot = WorkspaceSessionCoordinator.CaptureEditorTab(tab, tab.Id);
+            Assert.Equal(new[] { new FoldSnapshot(4, 9, true) }, snapshot.ClosedFolds);
+
+            var restored = new VimEditorControl();
+            WorkspaceSessionCoordinator.RestoreEditor(restored, snapshot);
+
+            var fold = Assert.Single(restored.GetClosedFolds());
+            Assert.Equal((4, 9, true), (fold.StartLine, fold.EndLine, fold.IsManual));
+        });
+    }
+
+    [Fact]
+    public void A_tab_without_folds_writes_no_fold_list()
+    {
+        _host.Run(() =>
+        {
+            var tab = RealizedTab(WriteTemp("plain.txt", "a\nb\n"));
+            Assert.Null(WorkspaceSessionCoordinator.CaptureEditorTab(tab, tab.Id).ClosedFolds);
+        });
+    }
+
     private static EditorTab RealizedTab(string path)
     {
         var control = new VimEditorControl();
