@@ -150,6 +150,26 @@
                         <MenuItem Header="すべて閉じる"
                                   Command="{Binding PlacementTarget.Tag.CloseAllTabsCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                   CommandParameter="{Binding}" />
+                        <!-- 閉じずに棚へ（§24.29）。戻すと同じ場所が戻る。ターミナルは下げない。 -->
+                        <MenuItem Header="棚へ下げる"
+                                  Visibility="{Binding CanShelve, Converter={StaticResource BoolToVis}}"
+                                  Command="{Binding PlacementTarget.Tag.ShelveTabCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                  CommandParameter="{Binding}" />
+                        <!-- ピン留めは上限の枚数に数えず、自動では棚へ下げない（何枚でもよい）。 -->
+                        <MenuItem x:Name="PinMenuItem" Header="ピン留め"
+                                  Visibility="{Binding CanShelve, Converter={StaticResource BoolToVis}}"
+                                  Command="{Binding PlacementTarget.Tag.TogglePinTabCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                  CommandParameter="{Binding}">
+                            <MenuItem.Style>
+                                <Style TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsPinned}" Value="True">
+                                            <Setter Property="Header" Value="ピン留めを外す" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </MenuItem.Style>
+                        </MenuItem>
                         <Separator />
                         <MenuItem Header="別ウィンドウで開く"
                                   Command="{Binding PlacementTarget.Tag.DetachTabCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
@@ -185,6 +205,7 @@
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <!-- フォルダーツリー・検索結果と同じ FileIcons の線画を同じ 16x16 で描く。 -->
                             <Image Grid.Column="0" Source="{Binding Icon}"
@@ -193,6 +214,12 @@
                             <TextBlock x:Name="EntryTitle" Grid.Column="1" Text="{Binding Title}" FontSize="{DynamicResource Fs12_5}"
                                        VerticalAlignment="Center"
                                        TextTrimming="CharacterEllipsis" />
+                            <!-- ピン留め中の印（上限に数えない・自動では棚へ下がらない）。 -->
+                            <TextBlock Grid.Column="2" Text="&#xE840;" FontFamily="Segoe MDL2 Assets"
+                                       FontSize="{DynamicResource Fs11}" Margin="4,0,0,0"
+                                       Foreground="{DynamicResource Accent}" VerticalAlignment="Center"
+                                       ToolTip="ピン留め中（上限に数えず、自動では棚へ下げません）"
+                                       Visibility="{Binding IsPinned, Converter={StaticResource BoolToVis}}" />
                         </Grid>
                     </Button>
 
@@ -341,6 +368,79 @@
                 </Setter.Value>
             </Setter>
         </Style>
+        <!-- 棚の1行（§24.29）。各種類のグループの末尾に畳んだ「棚」の中に並ぶ。 -->
+        <DataTemplate x:Key="ShelfEntryTemplate">
+            <Border x:Name="ShelfRow" Height="26" CornerRadius="4" Background="Transparent"
+                    ToolTip="{Binding ToolTip}">
+                <Grid>
+                    <Button Style="{StaticResource SidebarTabButton}"
+                            Padding="7,0,46,0" HorizontalContentAlignment="Stretch"
+                            Foreground="{DynamicResource FgDim}"
+                            Command="{Binding DataContext.Shelf.RestoreCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                            CommandParameter="{Binding}"
+                            AutomationProperties.Name="{Binding Title}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <!-- 帯のタブと見分けるため、絵も名前も一段薄くする（棚にある＝いまは開いていない）。 -->
+                            <Image Grid.Column="0" Source="{Binding Icon}" Opacity="0.6"
+                                   Width="16" Height="16" Margin="0,0,6,0" VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="1" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                       FontSize="{DynamicResource Fs12}">
+                                <Run Text="{Binding Title, Mode=OneWay}" />
+                                <Run Text="{Binding Detail, Mode=OneWay}" FontSize="{DynamicResource Fs10}"
+                                     Foreground="{DynamicResource FgDim}" />
+                            </TextBlock>
+                            <TextBlock Grid.Column="2" Text="{Binding ShelvedLabel}" Margin="6,0,0,0"
+                                       FontSize="{DynamicResource Fs10}" Opacity="0.7"
+                                       Foreground="{DynamicResource FgDim}" VerticalAlignment="Center" />
+                        </Grid>
+                    </Button>
+                    <!-- 行のピン留め：7 日経っても棚から消さない。ピン留め中は常に印を出す。 -->
+                    <Button x:Name="PinButton" Style="{StaticResource SidebarTabButton}"
+                            Width="20" Height="20" Margin="0,0,24,0" Padding="0"
+                            HorizontalAlignment="Right" VerticalAlignment="Center"
+                            Visibility="Collapsed" Opacity="0.8"
+                            Foreground="{DynamicResource FgDim}"
+                            ToolTip="ピン留め（7 日経っても棚から消さない）"
+                            Command="{Binding DataContext.Shelf.TogglePinCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                            CommandParameter="{Binding}">
+                        <TextBlock x:Name="PinGlyph" Text="&#xE718;" FontFamily="Segoe MDL2 Assets"
+                                   FontSize="{DynamicResource Fs11}"
+                                   Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                    </Button>
+                    <Button x:Name="DiscardButton" Style="{StaticResource SidebarTabButton}"
+                            Width="20" Height="20" Margin="0,0,4,0" Padding="0"
+                            HorizontalAlignment="Right" VerticalAlignment="Center"
+                            Visibility="Collapsed" Opacity="0.8"
+                            Foreground="{DynamicResource FgDim}"
+                            ToolTip="棚から捨てる"
+                            Command="{Binding DataContext.Shelf.DiscardCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                            CommandParameter="{Binding}">
+                        <Path Width="8" Height="8" Stretch="Uniform"
+                              Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                              StrokeThickness="1.4" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                              Data="M0,0 L8,8 M0,8 L8,0" />
+                    </Button>
+                </Grid>
+            </Border>
+            <DataTemplate.Triggers>
+                <Trigger SourceName="ShelfRow" Property="IsMouseOver" Value="True">
+                    <Setter TargetName="ShelfRow" Property="Background" Value="{DynamicResource Bg}" />
+                    <Setter TargetName="DiscardButton" Property="Visibility" Value="Visible" />
+                    <Setter TargetName="PinButton" Property="Visibility" Value="Visible" />
+                </Trigger>
+                <DataTrigger Binding="{Binding IsPinned}" Value="True">
+                    <Setter TargetName="PinButton" Property="Visibility" Value="Visible" />
+                    <Setter TargetName="PinButton" Property="Foreground" Value="{DynamicResource Accent}" />
+                    <Setter TargetName="PinButton" Property="ToolTip" Value="ピン留めを外す（外すと 7 日で消えます）" />
+                    <Setter TargetName="PinGlyph" Property="Text" Value="&#xE840;" />
+                </DataTrigger>
+            </DataTemplate.Triggers>
+        </DataTemplate>
     </UserControl.Resources>
 
     <!-- タブ一覧は独立したサイドバーパネル（SidebarPanel.Tabs）。既定では中段 ActivityBar に住み、
@@ -486,12 +586,65 @@
                                        Foreground="{DynamicResource Fg}" VerticalAlignment="Center" />
                         </Grid>
                     </ToggleButton>
+                    <!-- 棚（§24.29）：種類ごとのタブが上限を超えたら、いちばん長く見ていないものを棚へ下げる。 -->
+                    <ToggleButton Style="{StaticResource TabKindRow}"
+                                  IsChecked="{Binding AutoShelve, Mode=TwoWay}"
+                                  ToolTip="エディタ／ブラウザのタブがそれぞれ上限を超えたら、いちばん長く見ていないものを棚へ下げます。&#x0a;ピン留めしたタブは数えません。棚から戻すと同じ場所が戻ります（棚の行は 7 日で消えます）。"
+                                  AutomationProperties.AutomationId="TabsAutoShelveToggle"
+                                  AutomationProperties.Name="タブが多いときは古いものを棚へ下げる">
+                        <Grid Margin="0,0,4,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="⇩" Width="16" Margin="0,0,6,0"
+                                       TextAlignment="Center" FontSize="{DynamicResource Fs13}"
+                                       Foreground="{DynamicResource FgDim}" />
+                            <TextBlock Grid.Column="1" Text="タブが多いときは古いものを棚へ下げる"
+                                       TextWrapping="Wrap" FontSize="{DynamicResource Fs12}"
+                                       Foreground="{DynamicResource Fg}" VerticalAlignment="Center" />
+                        </Grid>
+                    </ToggleButton>
+                    <ItemsControl x:Name="ShelveLimitChoices" ItemsSource="{Binding ShelveLimitOptions}"
+                                  Margin="30,2,6,4" IsEnabled="{Binding AutoShelve}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Button x:Name="Chip" Style="{StaticResource SidebarTabButton}"
+                                        Padding="0" Margin="0,0,3,3"
+                                        Command="{Binding DataContext.SelectShelveLimitCommand, ElementName=ShelveLimitChoices}"
+                                        CommandParameter="{Binding}"
+                                        AutomationProperties.Name="{Binding Label}">
+                                    <Border x:Name="ChipBorder" CornerRadius="3" BorderThickness="1"
+                                            BorderBrush="{DynamicResource Border}" Padding="5,1">
+                                        <TextBlock x:Name="ChipText" Text="{Binding Label}"
+                                                   FontSize="{DynamicResource Fs11}"
+                                                   Foreground="{DynamicResource FgDim}" />
+                                    </Border>
+                                </Button>
+                                <DataTemplate.Triggers>
+                                    <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                                        <Setter TargetName="ChipBorder" Property="BorderBrush" Value="{DynamicResource Accent}" />
+                                        <Setter TargetName="ChipText" Property="Foreground" Value="{DynamicResource Accent}" />
+                                    </DataTrigger>
+                                    <Trigger SourceName="Chip" Property="IsEnabled" Value="False">
+                                        <Setter TargetName="Chip" Property="Opacity" Value="0.45" />
+                                    </Trigger>
+                                </DataTemplate.Triggers>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
                 </StackPanel>
             </Border>
         </Popup>
 
         <!-- 溢れた分はここでスクロールする。種別Providerの中で、BrowserだけがドメインProviderを持つ。 -->
         <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="2,0,3,6">
+            <StackPanel>
             <ItemsControl ItemsSource="{Binding Kinds}">
                 <ItemsControl.ItemTemplate>
                     <DataTemplate>
@@ -499,7 +652,7 @@
                                   Header="{Binding}"
                                   HeaderTemplate="{StaticResource TabKindHeaderTemplate}"
                                   IsExpanded="{Binding IsShown, Mode=TwoWay}"
-                                  Visibility="{Binding HasTabs, Converter={StaticResource BoolToVis}}">
+                                  Visibility="{Binding HasContent, Converter={StaticResource BoolToVis}}">
                             <StackPanel>
                                 <ItemsControl ItemsSource="{Binding DomainGroups}" Margin="14,0,0,0">
                                     <ItemsControl.ItemTemplate>
@@ -516,11 +669,46 @@
                                 </ItemsControl>
                                 <ItemsControl ItemsSource="{Binding DirectTabs}"
                                               ItemTemplate="{StaticResource TabEntryTemplate}" />
+                                <!-- この種類の棚（§24.29）。上限を超えて帯から下げたタブ。普段は畳んでおく。 -->
+                                <Expander Style="{StaticResource TabsGroupExpander}" Margin="14,1,0,0"
+                                          Header="{Binding}"
+                                          IsExpanded="{Binding IsShelfExpanded, Mode=TwoWay}"
+                                          Visibility="{Binding HasShelfItems, Converter={StaticResource BoolToVis}}"
+                                          AutomationProperties.AutomationId="TabsShelfSection">
+                                    <Expander.HeaderTemplate>
+                                        <DataTemplate>
+                                            <Border Background="Transparent" Padding="4,2" Margin="0"
+                                                    ToolTip="上限を超えたので帯から下げたタブ。押すと元の場所へ戻ります。7 日で消えます（行をピン留めすると残ります）">
+                                                <Border.Tag>
+                                                    <Binding Path="DataContext.Shelf" RelativeSource="{RelativeSource AncestorType=UserControl}" />
+                                                </Border.Tag>
+                                                <Border.ContextMenu>
+                                                    <ContextMenu>
+                                                        <MenuItem Header="すべて戻す"
+                                                                  Command="{Binding PlacementTarget.Tag.RestoreAllCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                                                        <MenuItem Header="棚を空にする（ピン留めは残す）"
+                                                                  Command="{Binding PlacementTarget.Tag.ClearCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                                                    </ContextMenu>
+                                                </Border.ContextMenu>
+                                                <DockPanel>
+                                                    <TextBlock DockPanel.Dock="Right"
+                                                               Text="{Binding ShelfCount, StringFormat=({0})}"
+                                                               Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs10}" />
+                                                    <TextBlock Text="棚" Foreground="{DynamicResource FgDim}"
+                                                               FontSize="{DynamicResource Fs10}" />
+                                                </DockPanel>
+                                            </Border>
+                                        </DataTemplate>
+                                    </Expander.HeaderTemplate>
+                                    <ItemsControl ItemsSource="{Binding ShelfItems}"
+                                                  ItemTemplate="{StaticResource ShelfEntryTemplate}" />
+                                </Expander>
                             </StackPanel>
                         </Expander>
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
+            </StackPanel>
         </ScrollViewer>
     </DockPanel>
 </UserControl>

@@ -1,4 +1,4 @@
-namespace sk0ya.Loomo.App.Views;
+﻿namespace sk0ya.Loomo.App.Views;
 /// <summary>ShellWindow: ペイン内分割（vim 風 Ctrl+W v/s/q）と外観適用・PaneSplitView 実装</summary>
 public partial class ShellWindow {
     private readonly WorkspaceEditTransactionCoordinator _workspaceEditTransactions = new();
@@ -138,7 +138,8 @@ public partial class ShellWindow {
         new(requestedId ?? Guid.NewGuid()) { Realizer = RealizeEditorControl };
     private EditorTab CreatePendingEditorTab(EditorTabSnapshot snapshot) =>
         new(snapshot.Id == Guid.Empty ? Guid.NewGuid() : snapshot.Id) {
-            Realizer = RealizeEditorControl, Pending = snapshot
+            Realizer = RealizeEditorControl, Pending = snapshot,
+            LastSeenUtc = snapshot.LastSeenUtc ?? default, IsPinned = snapshot.IsPinned
         };
     private void RealizeEditorControl(EditorTab tab) {
         var control = BuildEditorControl(tab);

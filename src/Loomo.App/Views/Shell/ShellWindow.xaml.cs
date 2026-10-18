@@ -292,6 +292,7 @@ public partial class ShellWindow : Window {
         PreviewGotKeyboardFocus += OnWindowPreviewGotKeyboardFocus;
         Deactivated += OnWindowDeactivated;
         InitializeAwaySummary();
+        InitializeTabShelf();
         var startDir = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         if (vm.Workspaces.ActiveWorkspace is null) {
             var termTab = CreateTerminalTab(startDir);

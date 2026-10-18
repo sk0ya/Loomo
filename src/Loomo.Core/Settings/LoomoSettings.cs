@@ -251,6 +251,13 @@ public sealed class TabsPanelSettings
 
     /// <summary>ターミナルのタブを一覧に出すか。</summary>
     public bool ShowTerminal { get; set; } = true;
+
+    /// <summary>エディタ／ブラウザのタブが上限を超えたら、いちばん長く見ていないものを棚へ自動で下げるか（§24.29）。
+    /// 閉じるのではなく棚に残すので、7 日のうちは元の場所（キャレット・スクロール・URL）へ戻せる。</summary>
+    public bool AutoShelve { get; set; } = true;
+
+    /// <summary>種類ごと（エディタ／ブラウザ）のタブの上限。ピン留めしたタブは数えない。</summary>
+    public int AutoShelveLimit { get; set; } = 10;
 }
 
 /// <summary>Git ペインのコミット一覧の列。列は ID 文字列（"Commit" / "Date" / "Author" / "Id"）で持つ——

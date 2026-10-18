@@ -471,6 +471,10 @@ public sealed class WorkspaceSnapshot
     /// <summary>ペグボード（§23.3）のアイテム。ワークスペース毎に持つ。</summary>
     public List<PegboardItemSnapshot> Pegboard { get; set; } = new();
 
+    /// <summary>タブの棚（§24.29）。上限の枚数を超えたので自動で（または手で）帯から下げたエディタ／ブラウザのタブ。
+    /// 新しい順。開いていたときの場所（キャレット・スクロール・URL）を持ち、棚から戻すとそこへ戻る。</summary>
+    public List<ShelvedTabSnapshot> ShelvedTabs { get; set; } = new();
+
     /// <summary>検索ペインのタブに残した検索結果（VS Code の Search Editor 相当・§23.3.1）。
     /// 新しい検索をしても消えず、再起動後も同じ結果を見比べられるよう、結果そのもの（パス・行・行テキスト）を持つ。
     /// 空の旧データはタブ無しとして復元する。</summary>
@@ -917,6 +921,39 @@ public sealed class EditorTabSnapshot
 
     /// <summary>縦スクロール位置（0..1）。レイアウト前は取れないため null あり・復元はベストエフォート。</summary>
     public double? ScrollRatio { get; set; }
+
+    /// <summary>最後に見た時刻（§24.29）。上限を超えたときに、いちばん長く見ていないタブから棚へ下げるための並び。
+    /// null の旧データはいちばん古い扱い。</summary>
+    public DateTime? LastSeenUtc { get; set; }
+
+    /// <summary>ピン留め（§24.29）。上限の枚数に数えず、自動では棚へ下げない。</summary>
+    public bool IsPinned { get; set; }
+}
+
+/// <summary>棚に下げたタブ1枚（§24.29）。<see cref="Kind"/> は "editor" / "browser"。</summary>
+public sealed class ShelvedTabSnapshot
+{
+    public const string EditorKind = "editor";
+    public const string BrowserKind = "browser";
+
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string Kind { get; set; } = EditorKind;
+    public string? Title { get; set; }
+
+    /// <summary>エディタタブのファイル。</summary>
+    public string? FilePath { get; set; }
+
+    /// <summary>ブラウザタブの URL。</summary>
+    public string? Url { get; set; }
+
+    public int CaretLine { get; set; }
+    public int CaretColumn { get; set; }
+    public double? ScrollRatio { get; set; }
+
+    public DateTime ShelvedUtc { get; set; } = DateTime.UtcNow;
+
+    /// <summary>棚の行のピン留め。期限（<see cref="TabShelfPolicy.RetentionDays"/> 日）が来ても消さない。</summary>
+    public bool Pinned { get; set; }
 }
 
 /// <summary>抜粋タブ1枚（§35.3）。<see cref="TabIndex"/> はエディタタブの並びの中の位置。</summary>
@@ -954,4 +991,10 @@ public sealed class BrowserTabSnapshot
     public string? Url { get; set; }
     public string? Title { get; set; }
     public bool IsActive { get; set; }
+
+    /// <summary>最後に見た時刻（§24.29）。<see cref="EditorTabSnapshot.LastSeenUtc"/> と同じ。</summary>
+    public DateTime? LastSeenUtc { get; set; }
+
+    /// <summary>ピン留め（§24.29）。</summary>
+    public bool IsPinned { get; set; }
 }

@@ -58,6 +58,12 @@ internal sealed record EditorTab(Guid Id)
 
         public string? VirtualTitle { get; set; }
 
+        /// <summary>最後に見た時刻（§24.29）。上限を超えたとき、いちばん長く見ていないタブから棚へ下げる。</summary>
+        public DateTime LastSeenUtc { get; set; }
+
+        /// <summary>ピン留め（§24.29）。上限の枚数に数えず、自動では棚へ下げない。</summary>
+        public bool IsPinned { get; set; }
+
         /// <summary>復元待ちの抜粋タブ（§35.3）。実体化で抜粋を組み直して消費する。</summary>
         public ExcerptTabSnapshot? PendingExcerpt { get; set; }
 
@@ -94,6 +100,12 @@ internal sealed record BrowserTab(Guid Id, WebView2CompositionControl InitialVie
         /// <summary>いま載せているコントロール。ブラウザプロセスが落ちた WebView2 は二度と描かないので
         /// 作り直して差し替える（§21.5.3）＝タブの寿命の間で固定ではない。</summary>
         public WebView2CompositionControl View { get; set; } = InitialView;
+
+        /// <summary>最後に見た時刻（§24.29）。<see cref="EditorTab.LastSeenUtc"/> と同じ。</summary>
+        public DateTime LastSeenUtc { get; set; }
+
+        /// <summary>ピン留め（§24.29）。</summary>
+        public bool IsPinned { get; set; }
 
         /// <summary>最後に得たページタイトル。WebView2未実体化時の保存・復元にも使用する。</summary>
         public string? Title { get; set; }

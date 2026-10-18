@@ -392,6 +392,9 @@ public partial class ShellWindow {
         list.Add(new("ペグボード", "クリップボードを残す", () => _vm.Pegboard.AddFromClipboardCommand.Execute(null)));
         list.Add(new("ペグボード", "エディタの選択を残す", PinEditorSelectionToPegboard));
         list.Add(new("ペグボード", "ブラウザのURLを残す", PinBrowserUrlToPegboard));
+        if (_vm.Tabs.Shelf.HasItems)
+            list.Add(new("タブ", $"棚のタブをすべて戻す（{_vm.Tabs.Shelf.Count} 件）",
+                () => _vm.Tabs.Shelf.RestoreAllCommand.Execute(null)));
         list.Add(new("サイドバー", "エクスプローラ", () => _vm.ShowExplorerCommand.Execute(null), Sc("sidebar.explorer"), "sidebar.explorer"));
         list.Add(new("サイドバー", "タブ一覧を開閉", () => _vm.ShowTabsCommand.Execute(null), Sc("sidebar.tabs"), "sidebar.tabs"));
         list.Add(new("サイドバー", "Git", () => _vm.ShowGitCommand.Execute(null), Sc("sidebar.git"), "sidebar.git"));

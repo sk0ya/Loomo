@@ -135,10 +135,14 @@ public static class WorkspaceSessionCoordinator
 
     /// <summary>プレビュー専用ブラウザータブを除いて保存形式へ写す。</summary>
     public static BrowserTabSnapshot? CaptureBrowserTab(
-        Guid id, string? url, string? title, bool isActive)
+        Guid id, string? url, string? title, bool isActive, DateTime lastSeenUtc = default, bool isPinned = false)
         => EditorSupportNavigationService.IsPreviewUrl(url)
             ? null
-            : new BrowserTabSnapshot { Id = id, Url = url, Title = title, IsActive = isActive };
+            : new BrowserTabSnapshot
+            {
+                Id = id, Url = url, Title = title, IsActive = isActive,
+                LastSeenUtc = LastSeenOf(lastSeenUtc), IsPinned = isPinned
+            };
 
     /// <summary>一時プレビューを除いたブラウザータブ一覧を保存形式へ写す。</summary>
     internal static List<BrowserTabSnapshot> CaptureBrowserTabs(
@@ -147,7 +151,9 @@ public static class WorkspaceSessionCoordinator
                 tab.Id,
                 BrowserDisplayMapper.CurrentUrl(tab.View.TryUrl(), tab.PendingUrl),
                 tab.CurrentTitle,
-                tab.Id == activeTabId))
+                tab.Id == activeTabId,
+                tab.LastSeenUtc,
+                tab.IsPinned))
             .OfType<BrowserTabSnapshot>()
             .ToList();
 
@@ -361,7 +367,9 @@ public static class WorkspaceSessionCoordinator
                 IsActive = isActive,
                 CaretLine = pending.CaretLine,
                 CaretColumn = pending.CaretColumn,
-                ScrollRatio = pending.ScrollRatio
+                ScrollRatio = pending.ScrollRatio,
+                LastSeenUtc = LastSeenOf(tab.LastSeenUtc),
+                IsPinned = tab.IsPinned
             };
         }
 
@@ -380,9 +388,15 @@ public static class WorkspaceSessionCoordinator
             IsActive = isActive,
             CaretLine = editor.Caret.Line,
             CaretColumn = editor.Caret.Column,
-            ScrollRatio = editor.VerticalScrollRatio
+            ScrollRatio = editor.VerticalScrollRatio,
+            LastSeenUtc = LastSeenOf(tab.LastSeenUtc),
+            IsPinned = tab.IsPinned
         };
     }
+
+    /// <summary>最後に見た時刻（§24.29）の保存形。一度も見ていない（既定値）は書かない。</summary>
+    private static DateTime? LastSeenOf(DateTime lastSeenUtc)
+        => lastSeenUtc == default ? null : lastSeenUtc;
 
     private static void RestoreEditorViewState(VimEditorControl editor, EditorTabSnapshot snapshot)
     {

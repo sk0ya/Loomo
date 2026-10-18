@@ -90,6 +90,12 @@ public sealed partial class TabEntryViewModel : ObservableObject
     /// <summary>名前を付けられる種別か（右クリックの「名前を付ける…」の表示可否）。</summary>
     public bool CanRename => Kind == TabEntryKind.Terminal;
 
+    /// <summary>棚へ下げられる種別か（§24.29）。ターミナルは帯から外すとシェルが死ぬので下げない。</summary>
+    public bool CanShelve => Kind != TabEntryKind.Terminal;
+
+    /// <summary>ピン留め（§24.29）。上限の枚数に数えず、自動では棚へ下げない。棚を持つ種別だけ。</summary>
+    [ObservableProperty] private bool _isPinned;
+
     /// <summary>TABS の種別表示設定を GroupStyle の中身へ反映する。</summary>
     [ObservableProperty] private bool _isGroupShown = true;
 
@@ -133,6 +139,17 @@ public sealed partial class TabEntryViewModel : ObservableObject
 
         return uri.Host.TrimEnd('.').ToLowerInvariant();
     }
+}
+
+/// <summary>タブの上限の選択肢1つ（TABS の設定ビューの「5枚／10枚／15枚…」・§24.29）。</summary>
+public sealed partial class ShelveLimitOptionViewModel : ObservableObject
+{
+    public ShelveLimitOptionViewModel(int count) => Count = count;
+
+    public int Count { get; }
+    public string Label => $"{Count}枚";
+
+    [ObservableProperty] private bool _isSelected;
 }
 
 /// <summary>Browser配下に表示する、複数タブのドメインサブグループ。</summary>
@@ -196,11 +213,39 @@ public sealed partial class TabKindRowViewModel : ObservableObject
     /// <summary>タブが存在する種別だけ、一覧のグループ見出しを出す。</summary>
     public bool HasTabs => Count > 0;
 
+    /// <summary>グループを出すか（タブが無くても棚に何かあれば出す——そこから戻せるように）。</summary>
+    public bool HasContent => HasTabs || HasShelfItems;
+
     /// <summary>この種別を一覧に並べるか。</summary>
     [ObservableProperty] private bool _isShown = true;
 
     partial void OnCountChanged(int value)
-        => OnPropertyChanged(nameof(HasTabs));
+    {
+        OnPropertyChanged(nameof(HasTabs));
+        OnPropertyChanged(nameof(HasContent));
+    }
+
+    /// <summary>この種別の棚（§24.29）。グループの末尾に畳んで出す。ターミナルは棚を持たない（null）。</summary>
+    public ObservableCollection<ShelvedTabEntryViewModel>? ShelfItems { get; private set; }
+
+    public bool HasShelfItems => ShelfItems is { Count: > 0 };
+
+    public int ShelfCount => ShelfItems?.Count ?? 0;
+
+    /// <summary>棚を開いているか。既定は畳む（棚は普段は見ないもの）。</summary>
+    [ObservableProperty] private bool _isShelfExpanded;
+
+    internal void AttachShelf(ObservableCollection<ShelvedTabEntryViewModel> items)
+    {
+        ShelfItems = items;
+        items.CollectionChanged += (_, _) =>
+        {
+            OnPropertyChanged(nameof(HasShelfItems));
+            OnPropertyChanged(nameof(ShelfCount));
+            OnPropertyChanged(nameof(HasContent));
+        };
+        OnPropertyChanged(nameof(ShelfItems));
+    }
 }
 
 /// <summary>Terminal / Editor / Browser のタブ相当情報をサイドバーへ表示する。</summary>
@@ -238,6 +283,8 @@ public sealed partial class TabsViewModel : ObservableObject
     public event EventHandler<TabEntryViewModel>? TabRenameRequested;
     /// <summary>「新しいタブ」：指定の種別で空のタブを1つ開く（見出しの＋・行の右クリック）。</summary>
     public event EventHandler<TabEntryKind>? TabNewRequested;
+    /// <summary>行の右クリック「棚へ下げる」（§24.29）。</summary>
+    public event EventHandler<TabEntryViewModel>? TabShelveRequested;
 
     /// <summary>見出しの件数表示。<b>いま一覧に出ている</b>タブだけを数える——種別を隠しているのに
     /// 隠した分まで数えると、並んでいる行数と食い違って見出しが嘘をつく。</summary>
@@ -252,6 +299,45 @@ public sealed partial class TabsViewModel : ObservableObject
 
     /// <summary>設定ビューに出す種別の行（並びは一覧と同じ エディタ → ブラウザ → ターミナル）。</summary>
     public IReadOnlyList<TabKindRowViewModel> Kinds { get; }
+
+    /// <summary>タブの棚（§24.29）。</summary>
+    public TabShelfViewModel Shelf { get; }
+
+    /// <summary>タブが上限を超えたら、いちばん長く見ていないものを棚へ自動で下げるか。</summary>
+    public bool AutoShelve
+    {
+        get => _settings?.TabsPanel.AutoShelve ?? true;
+        set
+        {
+            if (_settings is null || _settings.TabsPanel.AutoShelve == value)
+                return;
+            _settings.TabsPanel.AutoShelve = value;
+            OnPropertyChanged();
+            Persist();
+        }
+    }
+
+    /// <summary>タブの上限の選択肢。</summary>
+    public IReadOnlyList<ShelveLimitOptionViewModel> ShelveLimitOptions { get; }
+
+    /// <summary>種類ごとのタブの上限（ピン留めは数えない）。</summary>
+    public int AutoShelveLimit => TabShelfPolicy.Limit(_settings?.TabsPanel.AutoShelveLimit ?? TabShelfPolicy.DefaultLimit);
+
+    [RelayCommand]
+    private void SelectShelveLimit(ShelveLimitOptionViewModel? option)
+    {
+        if (option is null || _settings is null)
+            return;
+        _settings.TabsPanel.AutoShelveLimit = option.Count;
+        foreach (var o in ShelveLimitOptions)
+            o.IsSelected = ReferenceEquals(o, option);
+        OnPropertyChanged(nameof(AutoShelveLimit));
+        Persist();
+        ShelveLimitChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>上限を変えた（下げたら、その場で超えた分を棚へ）。</summary>
+    public event EventHandler? ShelveLimitChanged;
 
     /// <summary>エディタのタブを一覧に出すか。隠しても閉じるわけではなく、この一覧に出さないだけ。</summary>
     public bool ShowEditorTabs
@@ -341,6 +427,13 @@ public sealed partial class TabsViewModel : ObservableObject
         _browserKind = new(TabEntryKind.Browser, "ブラウザ", "TabsShowBrowserToggle", BrowserTabs);
         _terminalKind = new(TabEntryKind.Terminal, "ターミナル", "TabsShowTerminalToggle", TerminalTabs);
         Kinds = [_editorKind, _browserKind, _terminalKind];
+        Shelf = new TabShelfViewModel(() => _icons.GetBrowserDefaultIcon());
+        _editorKind.AttachShelf(Shelf.EditorItems);
+        _browserKind.AttachShelf(Shelf.BrowserItems);
+        var limit = AutoShelveLimit;
+        ShelveLimitOptions = TabShelfPolicy.LimitChoices
+            .Select(c => new ShelveLimitOptionViewModel(c) { IsSelected = c == limit })
+            .ToList();
         _groupBrowserTabsByDomain = settings?.TabsPanel.GroupBrowserByDomain ?? false;
         TabsView = CollectionViewSource.GetDefaultView(AllTabs);
         TabsView.GroupDescriptions.Add(new PropertyGroupDescription(nameof(TabEntryViewModel.GroupLabel)));
@@ -530,6 +623,7 @@ public sealed partial class TabsViewModel : ObservableObject
         foreach (var tab in EditorTabs) tab.RefreshIcon();
         foreach (var tab in BrowserTabs) tab.RefreshIcon();
         foreach (var tab in TerminalTabs) tab.RefreshIcon();
+        Shelf.RefreshIcons();
         RefreshKindIcons();
     }
 
@@ -822,6 +916,30 @@ public sealed partial class TabsViewModel : ObservableObject
     {
         if (tab is { CanRename: true })
             TabRenameRequested?.Invoke(this, tab);
+    }
+
+    /// <summary>行の右クリック「ピン留め／ピン留めを外す」（§24.29）。</summary>
+    public event EventHandler<TabEntryViewModel>? TabPinToggled;
+
+    [RelayCommand]
+    private void TogglePinTab(TabEntryViewModel? tab)
+    {
+        if (tab is { CanShelve: true })
+            TabPinToggled?.Invoke(this, tab);
+    }
+
+    /// <summary>行のピン留め表示を合わせる（復元・切替で行を作り直したとき）。</summary>
+    public void SetTabPinned(Guid id, bool pinned)
+    {
+        if (EditorTabs.Concat(BrowserTabs).FirstOrDefault(t => t.Id == id) is { } tab)
+            tab.IsPinned = pinned;
+    }
+
+    [RelayCommand]
+    private void ShelveTab(TabEntryViewModel? tab)
+    {
+        if (tab is { CanShelve: true })
+            TabShelveRequested?.Invoke(this, tab);
     }
 
     [RelayCommand]

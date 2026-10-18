@@ -56,8 +56,10 @@ public partial class ShellWindow {
             if (excerpt.IsActive)
                 activeId = tab.Id;
         }
-        foreach (var tab in _editorTabs)
+        foreach (var tab in _editorTabs) {
             _vm.Tabs.AddEditorTab(tab.Id, tab.PeekTitleSource, tab.PeekIsModified, false);
+            _vm.Tabs.SetTabPinned(tab.Id, tab.IsPinned);
+        }
         ActivateEditorTab(activeId, focusView: false);
         _editorViews?.Restore(workspace.EditorViewLayout, _editorTabs.Select(t => t.Id));
     }
@@ -86,8 +88,10 @@ public partial class ShellWindow {
     private void AttachEditorTabs() {
         _editorViews?.Reset();
         _vm.Tabs.EditorTabs.Clear();
-        foreach (var tab in _editorTabs)
+        foreach (var tab in _editorTabs) {
             _vm.Tabs.AddEditorTab(tab.Id, tab.PeekTitleSource, tab.PeekIsModified, false);
+            _vm.Tabs.SetTabPinned(tab.Id, tab.IsPinned);
+        }
     }
     private async Task RestoreBrowserTabsAsync(WorkspaceSnapshot workspace) {
         var browserWorkspace = WorkspaceSessionCoordinator.GetOrCreateWorkspace(
@@ -101,9 +105,13 @@ public partial class ShellWindow {
         }
         browserWorkspace.IsInitialized = true;
         var restore = WorkspaceSessionCoordinator.ResolveBrowserTabRestorePlan(workspace, DefaultBrowserUrl);
-        foreach (var snapshot in restore.Snapshots)
-            CreateBrowserTab(snapshot.Url ?? DefaultBrowserUrl,
+        foreach (var snapshot in restore.Snapshots) {
+            var tab = CreateBrowserTab(snapshot.Url ?? DefaultBrowserUrl,
                 snapshot.Id == Guid.Empty ? null : snapshot.Id, snapshot.Title);
+            tab.LastSeenUtc = snapshot.LastSeenUtc ?? default;
+            tab.IsPinned = snapshot.IsPinned;
+            _vm.Tabs.SetTabPinned(tab.Id, tab.IsPinned);
+        }
         ActivateBrowserTab(_browserTabs[restore.ActiveIndex].Id);
     }
     private void DetachBrowserTabs() {
@@ -124,6 +132,7 @@ public partial class ShellWindow {
                 tab.CurrentTitle,
                 false,
                 BrowserUrlOf(tab));
+            _vm.Tabs.SetTabPinned(tab.Id, tab.IsPinned);
             await RefreshBrowserTabIconAsync(tab);
         }
     }

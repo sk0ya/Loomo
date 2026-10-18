@@ -104,6 +104,8 @@ public partial class ShellWindow {
             return;
         _editorViews?.Activate(id, focusView);
         profile?.Lap("editor.views");
+        tab.LastSeenUtc = DateTime.UtcNow;   // 見た（棚の判定・§24.29）
+        ScheduleShelveOverflow();
         _activeEditorTab = tab;
         CurrentEditorWorkspace.ActiveTabId = id;
         _editor.Attach(tab.Control);
@@ -119,6 +121,7 @@ public partial class ShellWindow {
         profile?.Lap("editor.bookkeeping");
     }
     private void SetActiveEditorTab(EditorTab tab) {
+        tab.LastSeenUtc = DateTime.UtcNow;
         _activeEditorTab = tab;
         CurrentEditorWorkspace.ActiveTabId = tab.Id;
         _editor.Attach(tab.Control);
@@ -144,6 +147,7 @@ public partial class ShellWindow {
         }
         _editorLspNotices.ShowForFile(filePath);
         SeedEditorLocationHistory(tab);
+        ForgetShelvedFile(filePath);   // 棚にあるファイルを別の道から開き直した（§24.29）
     }
     private void CloseEditorTab(Guid id) {
         var index = _editorTabs.FindIndex(t => t.Id == id);
