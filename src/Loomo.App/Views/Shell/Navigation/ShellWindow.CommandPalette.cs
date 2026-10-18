@@ -372,6 +372,9 @@ public partial class ShellWindow {
         if (ActiveEditorTestAtCaret() is { } caretDebugTest)
             list.Add(new("エディタ", $"カーソル行のテストをデバッグ: {caretDebugTest.Test.DisplayName}",
                 DebugTestAtCaret, Sc("editor.test.debugAtCaret"), "editor.test.debugAtCaret"));
+        if (IsHttpRequestFile(_activeEditorTab?.PeekFilePath))
+            list.Add(new("エディタ", "HTTP: カーソル位置のリクエストを送る",
+                SendHttpRequestAtCaret, Sc("http.sendAtCaret"), "http.sendAtCaret"));
         // 失敗の再実行もテストビューのボタンだけにしない。失敗が残っているランナーの分だけ出す。
         foreach (var (label, command) in new (string, ICommand)[]
                  {

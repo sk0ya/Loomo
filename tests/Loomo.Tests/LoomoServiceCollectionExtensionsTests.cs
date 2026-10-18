@@ -57,8 +57,10 @@ public sealed class LoomoServiceCollectionExtensionsTests
     {
         var services = new ServiceCollection().AddLoomoEditorSupport();
 
-        Assert.Equal(19, services.Count(x => x.ServiceType == typeof(IEditorSupportProvider)));
+        Assert.Equal(20, services.Count(x => x.ServiceType == typeof(IEditorSupportProvider)));
         Assert.Contains(services, x => x.ImplementationType == typeof(FlowEditorSupport));
+        // .http は具象でも引ける（ShellWindow が応答の受け口を張る）。同じ実体を2つの名前で持つ
+        Assert.Contains(services, x => x.ServiceType == typeof(HttpEditorSupport));
         Assert.DoesNotContain(
             new ServiceCollection().AddLoomoPresentation(),
             x => x.ServiceType == typeof(IEditorSupportProvider));

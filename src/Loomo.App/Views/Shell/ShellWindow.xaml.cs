@@ -293,6 +293,7 @@ public partial class ShellWindow : Window {
         Deactivated += OnWindowDeactivated;
         InitializeAwaySummary();
         InitializeTabShelf();
+        InitializeHttpRequests();
         var startDir = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         if (vm.Workspaces.ActiveWorkspace is null) {
             var termTab = CreateTerminalTab(startDir);

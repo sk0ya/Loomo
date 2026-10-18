@@ -230,6 +230,9 @@ public static class CommandCatalog
         // 既定キーは与えない——テストを書く人だけが使う操作で、既定の1打鍵を占有する理由が無い。
         new CommandDescriptor("editor.test.runAtCaret", CatTest, "カーソル行のテストを実行", null),
         new CommandDescriptor("editor.test.debugAtCaret", CatTest, "カーソル行のテストをデバッグ", null),
+        // .http（§24.30）。REST Client の Ctrl+Alt+R は既定に取らない——.http を書く人だけの操作で、
+        // 既定の1打鍵を全員から占有する理由が無い（テストの実行と同じ扱い。割り当てはキーボード設定で）。
+        new CommandDescriptor("http.sendAtCaret", CatEdit, "HTTP: カーソル位置のリクエストを送る", null),
         // Emmet（§36.7）。既定キーは VS Code に無いので与えない（Tab は snippet・Vim と取り合う）。
         new CommandDescriptor("editor.emmet.expand", CatEdit, "Emmet: 略記を展開", null),
         new CommandDescriptor("editor.emmet.wrap", CatEdit, "Emmet: 選択を略記で囲む…", null),
