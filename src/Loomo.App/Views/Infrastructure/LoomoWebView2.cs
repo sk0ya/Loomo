@@ -11,6 +11,17 @@ namespace sk0ya.Loomo.App.Views;
 /// </summary>
 public sealed class LoomoWebView2 : WebView2CompositionControl
 {
+    public LoomoWebView2()
+    {
+        // ローカルファイルをパスだけで開く口（https://file.loomo/C:/…）は、どの WebView2 にも同じに付ける。
+        // 初期化完了は EnsureCoreWebView2Async の待ちが明ける前・Source への最初の遷移より前に届く。
+        CoreWebView2InitializationCompleted += (_, e) =>
+        {
+            if (e.IsSuccess && this.TryCore() is { } core)
+                Services.LocalFileServer.Attach(core);
+        };
+    }
+
     protected override Size ArrangeOverride(Size finalSize)
     {
         var clamped = WebViewArrangePolicy.Clamp(finalSize);

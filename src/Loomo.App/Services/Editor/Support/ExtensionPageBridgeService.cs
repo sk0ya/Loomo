@@ -103,7 +103,9 @@ internal static class ExtensionPageBridgeService
                 || target.ValueKind != JsonValueKind.String)
                 return false;
             var candidate = target.GetString() ?? "";
-            if (!Uri.TryCreate(candidate, UriKind.Absolute, out var uri) || !IsOpenableScheme(uri.Scheme))
+            // https でもローカルファイルの口（file.loomo）は file: と同じ扱いで通さない。
+            if (!Uri.TryCreate(candidate, UriKind.Absolute, out var uri) || !IsOpenableScheme(uri.Scheme)
+                || LocalFileUrl.IsLocalFileUrl(candidate))
                 return false;
             url = candidate;
             return true;

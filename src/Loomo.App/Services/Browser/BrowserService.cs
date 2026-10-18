@@ -234,6 +234,9 @@ public sealed class BrowserService : IBrowserService
     private static string NormalizeUrl(string url)
     {
         url = url.Trim();
-        return url.Contains("://", StringComparison.Ordinal) ? url : "https://" + url;
+        if (!url.Contains("://", StringComparison.Ordinal))
+            return "https://" + url;
+        // file:// の HTML はパスを載せた file.loomo で開く（LocalFileUrl）。
+        return LocalFileUrl.TryFromFileUri(url) ?? url;
     }
 }

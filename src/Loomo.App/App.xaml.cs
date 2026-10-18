@@ -73,6 +73,8 @@ public partial class App : Application
         // 待っているのはこれ——立ったら取り合いを降りて、後から来た要求を受け始める（届いたものは初フレームまで溜める）。
         _relay = new InstanceRelayServer(InstanceRelay.PipeName(Environment.ProcessId));
         var workspace = _services.GetRequiredService<IWorkspaceService>();
+        // ローカル HTML が部品として読める範囲＝そのページを担当するワークスペースフォルダー（§21.5.1）。
+        LocalFileServer.UseWorkspace(workspace);
         workspace.FoldersChanged += (_, _) => _relay.SetFolders(workspace.Folders);
         _relay.SetFolders(workspace.Folders);
         ExternalOpenStartup.ReleaseElection();

@@ -457,6 +457,9 @@ public sealed class FaviconService
             return null;
         if (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)
             return null;
+        // Loomo 自身の仮想ホスト（file.loomo＝ローカルファイル等）はサイトではない。名前も引けない。
+        if (uri.Host.EndsWith(".loomo", StringComparison.OrdinalIgnoreCase))
+            return null;
         return string.IsNullOrEmpty(uri.Host) ? null : uri.Authority.ToLowerInvariant();
     }
 

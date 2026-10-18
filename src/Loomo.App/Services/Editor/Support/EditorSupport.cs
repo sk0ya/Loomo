@@ -353,7 +353,7 @@ public sealed class MarkdownEditorSupport : IEditorSupportIncrementalHtmlProvide
 
 /// <summary>
 /// ブラウザ（WebView2/Chromium）が標準で開けるファイル（PDF・SVG・HTML 等）を、ペインの
-/// WebView2 へファイルの <c>file://</c> URI で直接ナビゲートして表示する提供者。レンダリングは
+/// WebView2 へファイルの <c>file://</c> URI（HTML は <see cref="LocalFileUrl"/>）で直接ナビゲートして表示する提供者。レンダリングは
 /// ブラウザ任せなので、専用ビューア無しで「とりあえず開ける」ものをまとめて受け持つ。
 /// </summary>
 public sealed class BrowserEditorSupport : IEditorSupportUriProvider
@@ -381,8 +381,12 @@ public sealed class BrowserEditorSupport : IEditorSupportUriProvider
             : $"{label}: {Path.GetFileName(filePath)}";
     }
 
+    // HTML だけは file:// にしない——オリジンが null になって fetch・ES モジュールが弾かれる。
+    // パスを載せた https://file.loomo/… で開き、LocalFileServer がディスクから直接返す（コピーもマップも無し）。
     public string ResolveNavigationUri(string filePath)
-        => new Uri(Path.GetFullPath(filePath)).AbsoluteUri;
+        => LocalFileUrl.IsPage(filePath)
+            ? LocalFileUrl.FromPath(filePath)
+            : new Uri(Path.GetFullPath(filePath)).AbsoluteUri;
 }
 
 /// <summary>

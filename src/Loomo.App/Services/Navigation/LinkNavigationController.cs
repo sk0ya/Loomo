@@ -49,7 +49,9 @@ internal static class FileBrowserLinkTargetResolver
             return false;
 
         var fullPath = Path.GetFullPath(path);
-        target = new FileBrowserLinkTarget(new Uri(fullPath).AbsoluteUri, Path.GetFileName(fullPath));
+        // HTML はパスを載せた file.loomo で（file:// だと fetch・ES モジュールが動かない）。
+        var url = LocalFileUrl.IsPage(fullPath) ? LocalFileUrl.FromPath(fullPath) : new Uri(fullPath).AbsoluteUri;
+        target = new FileBrowserLinkTarget(url, Path.GetFileName(fullPath));
         return true;
     }
 }

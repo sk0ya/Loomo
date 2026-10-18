@@ -254,12 +254,13 @@ public static class WorkspaceSessionCoordinator
         // 絶対 URI として通ってしまい、そのままではどこへも遷移しない文字列が返っていた。
         if (KnownSchemes.Contains(SchemeOf(address))
             && Uri.TryCreate(address, UriKind.Absolute, out var uri) && !string.IsNullOrEmpty(uri.Scheme))
-            return uri.ToString();
+            return LocalFileUrl.TryFromFileUri(uri.AbsoluteUri) ?? uri.ToString();
         // ローカルパス（`C:\…` と UNC の `\\srv\share\…`）は file: URI へ。スキーム判定を既知の名前に
         // 絞った副作用で、`C:\notes\a.html` のドライブレターが未知スキーム "C" として素通りし、
         // `https://C:\notes\a.html` という Uri に載らない文字列を作ってしまう（＝遷移で例外）。
+        // HTML はパスを載せた https://file.loomo/… へ（file:// だと fetch・ES モジュールが動かない）。
         if (TryLocalPathUri(address) is { } fileUri)
-            return fileUri;
+            return LocalFileUrl.TryFromFileUri(fileUri) ?? fileUri;
         // 空白を含むものはホスト名になり得ないので、ローカル判定より先に検索語として抜く
         // （「localhost is down」のような文が `http://localhost is down` になって遷移で弾かれていた）。
         if (address.Contains(' '))

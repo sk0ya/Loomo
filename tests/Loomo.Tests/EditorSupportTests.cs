@@ -99,6 +99,11 @@ public class EditorSupportTests
         Assert.EndsWith("manual.pdf", uri);
     }
 
+    [Fact]
+    public void BrowserSupport_HTMLはパスを載せたローカルファイルのURLで開く()
+        => Assert.Equal("https://file.loomo/C:/work/page.html",
+            new BrowserEditorSupport().ResolveNavigationUri(@"C:\work\page.html"));
+
     [Theory]
     [InlineData(@"C:\work\package.json")]
     [InlineData(@"C:\work\tsconfig.JSON")]

@@ -369,8 +369,11 @@ public class BrowserLibraryTests
             WorkspaceSessionCoordinator.NormalizeBrowserAddress(input, "https://home/"));
 
     [Theory]
-    [InlineData(@"C:\notes\a.html", "file:///C:/notes/a.html")]
+    // HTML はパスを載せた file.loomo へ（file:// だと fetch・ES モジュールが動かない）。それ以外は file:// のまま。
+    [InlineData(@"C:\notes\a.html", "https://file.loomo/C:/notes/a.html")]
+    [InlineData(@"C:\notes\a.pdf", "file:///C:/notes/a.pdf")]
     [InlineData(@"\\srv\share\a.txt", "file://srv/share/a.txt")]
+    [InlineData("file:///C:/notes/a.html#top", "https://file.loomo/C:/notes/a.html#top")]
     public void Local_paths_become_file_urls(string input, string expected)
     {
         // ドライブレターは未知スキーム "C" に見えるので、スキーム判定だけに任せると
