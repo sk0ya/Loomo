@@ -329,6 +329,15 @@ public sealed class GitService
 
     public Task<GitCommandResult> PruneWorktreesAsync() => _worktrees.PruneAsync();
 
+    /// <summary>ワークツリーの片付けの材料（大きさ・最後のコミット・既定ブランチへ取り込み済みか・§24.55）。</summary>
+    public async Task<IReadOnlyList<GitWorktreeUsage>> InspectWorktreesAsync(
+        IReadOnlyList<GitWorktreeInfo> worktrees, IProgress<GitWorktreeUsage>? progress,
+        System.Threading.CancellationToken cancellationToken)
+    {
+        var defaultBranch = await GetDefaultBranchAsync().ConfigureAwait(false);
+        return await _worktrees.InspectAsync(worktrees, defaultBranch, progress, cancellationToken).ConfigureAwait(false);
+    }
+
     public Task<GitCommandResult> LockWorktreeAsync(string path, string? reason) => _worktrees.LockAsync(path, reason);
 
     public Task<GitCommandResult> UnlockWorktreeAsync(string path) => _worktrees.UnlockAsync(path);

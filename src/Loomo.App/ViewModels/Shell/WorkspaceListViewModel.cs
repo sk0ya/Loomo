@@ -453,6 +453,19 @@ public sealed partial class WorkspaceListViewModel : ObservableObject
                         && !string.IsNullOrWhiteSpace(w.RootPath) && !Directory.Exists(w.RootPath))
             .ToList());
 
+    /// <summary>そのフォルダーを根にする部屋を最後に開いた時刻（部屋が無ければ null）。ワークツリーの片付け（§24.55）用。</summary>
+    public DateTime? LastUsedOfRoot(string path)
+    {
+        try
+        {
+            return FindByRoot(Path.GetFullPath(path)) is { LastUsedUtc: var used } && used != default ? used : null;
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return null;
+        }
+    }
+
     private static bool SamePath(string a, string? b)
         => WorkspacePaths.IsWithin(a, b) && WorkspacePaths.IsWithin(b, a);
 

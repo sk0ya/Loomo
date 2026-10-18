@@ -197,6 +197,16 @@ public sealed partial class GitSessionViewModel
 
     public Task<GitCommandResult?> PruneWorktreesAsync() => Commands.PruneWorktreesAsync();
 
+    /// <summary>ワークツリーのパス → その部屋（ワークスペース）を最後に開いた時刻。部屋が無ければ null。
+    /// 片付け（§24.55）の「最後に触った」に使う。部屋の一覧を持つ ShellWindow が入れる。</summary>
+    public Func<string, DateTime?>? WorktreeRoomLastUsed { get; set; }
+
+    /// <summary>片付けの材料（大きさ・最後のコミット・取り込み済みか）を集める（§24.55）。</summary>
+    public Task<IReadOnlyList<GitWorktreeUsage>> InspectWorktreesAsync(
+        IReadOnlyList<GitWorktreeInfo> worktrees, IProgress<GitWorktreeUsage>? progress,
+        System.Threading.CancellationToken cancellationToken)
+        => _git.InspectWorktreesAsync(worktrees, progress, cancellationToken);
+
     public Task<GitCommandResult?> LockWorktreeAsync(GitWorktreeInfo worktree, string? reason)
         => Commands.LockWorktreeAsync(worktree, reason);
 

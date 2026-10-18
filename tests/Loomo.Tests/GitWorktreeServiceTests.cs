@@ -330,6 +330,36 @@ public sealed class GitWorktreeServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task 片付けの材料は大きさと最後のコミットと取り込み済みかを数える()
+    {
+        var mergedPath = await AddFeatureWorktreeAsync("merged");      // main から切ったまま＝取り込み済み
+        var workPath = await AddFeatureWorktreeAsync("work");
+        await File.WriteAllTextAsync(Path.Combine(workPath, "w.txt"), new string('x', 5000));
+        await RunInAsync(workPath, "add", "w.txt");
+        await RunInAsync(workPath, "commit", "-m", "work only");       // main に無いコミット＝未取り込み
+        var list = await _git.GetWorktreesAsync();
+        var reported = new List<GitWorktreeUsage>();
+
+        var usages = await _git.InspectWorktreesAsync(list, new SyncProgress(reported.Add), CancellationToken.None);
+
+        Assert.Equal(2, usages.Count);                                 // メインは数えない
+        Assert.Equal(usages, reported);
+        var merged = Assert.Single(usages, u => Assert.Single(list, w => w.Path == u.Path).Branch == "merged");
+        var work = Assert.Single(usages, u => Assert.Single(list, w => w.Path == u.Path).Branch == "work");
+        Assert.True(merged.IsMerged);
+        Assert.False(work.IsMerged);
+        Assert.Equal("main", work.MergedInto);
+        Assert.True(work.SizeBytes > 5000);
+        Assert.NotNull(work.LastCommitUtc);
+        Assert.True(DateTime.UtcNow - work.LastCommitUtc!.Value < TimeSpan.FromMinutes(5));
+    }
+
+    private sealed class SyncProgress(Action<GitWorktreeUsage> report) : IProgress<GitWorktreeUsage>
+    {
+        public void Report(GitWorktreeUsage value) => report(value);
+    }
+
+    [Fact]
     public async Task ロックとロック解除()
     {
         var path = await AddFeatureWorktreeAsync();

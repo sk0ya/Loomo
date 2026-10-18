@@ -223,6 +223,49 @@ public sealed class GitWorktreeService
         return result.Success && hash.Length > 0 ? hash : null;
     }
 
+    /// <summary>
+    /// 片付けの材料を集める（§24.55）：大きさ・最後のコミットの時刻・既定ブランチへ取り込み済みか。
+    /// 大きさは数十万ファイルを歩くことがあるので 1 つずつ裏で数え、終わったものから <paramref name="progress"/> へ出す。
+    /// メイン・bare・消えたものは数えない（片付けの対象にならない／数えようがない）。
+    /// </summary>
+    public async Task<IReadOnlyList<GitWorktreeUsage>> InspectAsync(
+        IReadOnlyList<GitWorktreeInfo> worktrees, string? defaultBranch,
+        IProgress<GitWorktreeUsage>? progress, CancellationToken cancellationToken)
+    {
+        var merged = new HashSet<string>(StringComparer.Ordinal);
+        if (defaultBranch is { Length: > 0 })
+        {
+            var result = await _runner.RunAsync(cancellationToken,
+                "branch", "--merged", defaultBranch, "--format=%(refname:short)").ConfigureAwait(false);
+            if (result.Success)
+                merged = GitWorktreeCleanup.ParseMergedBranches(result.Output);
+        }
+        var defaultLocal = defaultBranch is { } d && d.IndexOf('/') is var slash and > 0 ? d[(slash + 1)..] : defaultBranch;
+
+        var usages = new List<GitWorktreeUsage>();
+        foreach (var worktree in worktrees)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (worktree.IsMain || worktree.IsBare || !worktree.Exists)
+                continue;
+            var size = await Task.Run(() => GitWorktreeCleanup.MeasureDirectory(worktree.Path, cancellationToken),
+                cancellationToken).ConfigureAwait(false);
+            var log = await _runner.RunInAsync(worktree.Path, null, null, cancellationToken,
+                "log", "-1", "--format=%ct", "HEAD").ConfigureAwait(false);
+            DateTime? lastCommit = log.Success && long.TryParse(log.Output.Trim(), out var seconds)
+                ? DateTimeOffset.FromUnixTimeSeconds(seconds).UtcDateTime
+                : null;
+            bool? isMerged = worktree.Branch is not { } branch || defaultBranch is null
+                    || string.Equals(branch, defaultLocal, StringComparison.Ordinal)
+                ? null
+                : merged.Contains(branch);
+            var usage = new GitWorktreeUsage(worktree.Path, size, lastCommit, isMerged, defaultBranch);
+            usages.Add(usage);
+            progress?.Report(usage);
+        }
+        return usages;
+    }
+
     private async Task<int?> CountChangesAsync(GitWorktreeInfo worktree)
     {
         if (!worktree.Exists || worktree.IsBare) return null;

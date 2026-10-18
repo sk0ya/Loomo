@@ -138,6 +138,40 @@ public partial class GitSessionView
         if (Vm is { } vm) await vm.RefreshWorktreesAsync();
     }
 
+    /// <summary>
+    /// 片付け（§24.55）。件数付きで読み直してから窓を開き、選ばれたものを 1 つずつ消す（消すたびに部屋も片付く）。
+    /// 未コミットのものは窓で「変更ごと消す」に印を付けたときだけ強制で消す。消えたものが出たら最後に掃除する。
+    /// </summary>
+    private async void OnWorktreesCleanup(object sender, RoutedEventArgs e)
+    {
+        if (Vm is not { } vm) return;
+        await vm.RefreshWorktreesAsync();
+        if (WorktreeCleanupDialog.Prompt(Window.GetWindow(this), vm) is not { } result)
+            return;
+        var removed = 0;
+        var failed = new List<string>();
+        var vanished = false;
+        foreach (var worktree in result.Worktrees)
+        {
+            if (worktree.IsPrunable)
+            {
+                vanished = true;
+                continue;
+            }
+            var outcome = await vm.RemoveWorktreeAsync(worktree, force: result.Force && worktree.IsDirty);
+            if (outcome is { Success: true }) removed++;
+            else failed.Add($"{worktree.DisplayName}: {outcome?.Message?.Trim() ?? "削除できませんでした"}");
+        }
+        if (vanished)
+            await vm.PruneWorktreesAsync();
+        if (failed.Count > 0)
+            MessageBox.Show(Window.GetWindow(this),
+                $"{removed} 件を削除しました。消せなかったもの：{Environment.NewLine}{Environment.NewLine}"
+                + string.Join(Environment.NewLine, failed),
+                "ワークツリーの片付け", MessageBoxButton.OK, MessageBoxImage.Warning);
+        await vm.RefreshWorktreesAsync();
+    }
+
     private async void OnWorktreesPrune(object sender, RoutedEventArgs e)
     {
         if (Vm is { } vm) await vm.PruneWorktreesAsync();

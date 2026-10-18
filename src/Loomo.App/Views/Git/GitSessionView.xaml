@@ -719,6 +719,12 @@
                                 <Button DockPanel.Dock="Right" Style="{StaticResource ToolbarButton}" Margin="0"
                                         Width="22" Padding="0" Content="↻" ToolTip="読み直す（ほかのワークツリーでの編集件数を数え直す）"
                                         Click="OnWorktreesRefresh" />
+                                <!-- 使われていないものを大きさつきで並べて、選んで消す（§24.55）。 -->
+                                <Button DockPanel.Dock="Right" Style="{StaticResource ToolbarButton}" Margin="0,0,2,0"
+                                        Width="22" Padding="0" Content="🧹"
+                                        ToolTip="片付け…（取り込み済み・しばらく触っていないワークツリーを、大きさつきで並べて消す）"
+                                        AutomationProperties.Name="ワークツリーの片付け"
+                                        Click="OnWorktreesCleanup" />
                             </DockPanel>
                             <ListBox x:Name="WorktreeList" Style="{StaticResource GitList}"
                                      ItemsSource="{Binding Worktrees}"
