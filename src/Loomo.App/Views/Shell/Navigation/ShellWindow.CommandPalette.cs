@@ -308,6 +308,8 @@ public partial class ShellWindow {
         list.Add(new("GitHub", "GitHub: プルリクエスト（読む・差分・ワークツリー・レビュー）", OpenGitHubPullRequests,
             Sc("github.pullRequests"), "github.pullRequests"));
         list.Add(new("GitHub", "GitHub: Issue（読む・コメント）", OpenGitHubIssues, Sc("github.issues"), "github.issues"));
+        list.Add(new("Azure DevOps", "Azure DevOps: プルリクエスト（読む・差分・ワークツリー）", OpenAzurePullRequests,
+            Sc("azure.pullRequests"), "azure.pullRequests"));
         list.Add(new("NuGet", "NuGet パッケージを管理…", () => OpenNuGetPackageManager(), Sc("nuget.manage"), "nuget.manage"));
         list.Add(new("Claude Code", "動いている Claude Code の一覧（承認待ち・入力待ちを先に）", OpenClaudeAgents, Sc("claude.agents"), "claude.agents"));
         list.Add(new("Claude Code", "Claude Code のセッションを再開…", OpenClaudeSessions, Sc("claude.resumeSession"), "claude.resumeSession"));

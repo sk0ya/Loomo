@@ -46,7 +46,7 @@ public partial class ShellWindow {
             ["localHistory.show"] = ShowLocalHistory, ["localHistory.restore"] = RestoreFromLocalHistory,
             ["localHistory.recent"] = ShowRecentLocalHistory, ["localHistory.restoreDeleted"] = RestoreDeletedFileFromLocalHistory,
             ["nuget.manage"] = () => OpenNuGetPackageManager(),
-            ["claude.agents"] = OpenClaudeAgents, ["github.pullRequests"] = OpenGitHubPullRequests, ["github.issues"] = OpenGitHubIssues, ["claude.resumeSession"] = OpenClaudeSessions, ["claude.installHooks"] = InstallClaudeHooks, ["claude.uninstallHooks"] = UninstallClaudeHooks,
+            ["claude.agents"] = OpenClaudeAgents, ["github.pullRequests"] = OpenGitHubPullRequests, ["github.issues"] = OpenGitHubIssues, ["azure.pullRequests"] = OpenAzurePullRequests, ["claude.resumeSession"] = OpenClaudeSessions, ["claude.installHooks"] = InstallClaudeHooks, ["claude.uninstallHooks"] = UninstallClaudeHooks,
             ["editor.inspectEncoding"] = InspectActiveFileEncoding,
             ["editor.save"] = SaveActiveEditor,
             ["editor.emmet.expand"] = ExpandEmmetAbbreviation, ["editor.emmet.wrap"] = WrapWithEmmetAbbreviation,

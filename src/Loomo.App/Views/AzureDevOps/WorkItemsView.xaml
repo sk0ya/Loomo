@@ -225,6 +225,10 @@
                                             <MenuItem Header="既定のブラウザで開く"
                                                       Command="{Binding OpenExternalCommand}"
                                                       CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                                            <MenuItem Header="Loomo で読む・差分・ワークツリー…"
+                                                      Command="{Binding OpenPullRequestInRoomCommand}"
+                                                      CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                      Visibility="{Binding PlacementTarget.DataContext.IsPullRequest, RelativeSource={RelativeSource AncestorType=ContextMenu}, Converter={StaticResource BoolToVis}}" />
                                             <Separator />
                                             <MenuItem Header="ID をコピー"
                                                       Command="{Binding CopyIdCommand}"

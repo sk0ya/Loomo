@@ -90,46 +90,18 @@ public partial class ShellWindow
     }
 
     /// <summary>PR の先頭と基準ブランチをリモートから取り、分岐点からの2点比較を Diff ペインへ出す。
-    /// PR の先頭は <c>refs/pull/N/head</c>（フォークの PR も元のリポジトリに載る）を ref を作らずに取る
-    /// ——ブランチ一覧を PR の数だけ散らかさない。</summary>
+    /// PR の先頭は <c>refs/pull/N/head</c>（フォークの PR も元のリポジトリに載る）を ref を作らずに取る。</summary>
     private async Task OpenGitHubPullRequestDiffAsync(GitHubPullRequest pr)
     {
         if (await FetchGitHubPullRequestAsync(pr) is not { } fetched) return;
-        ShowDiff(new DiffOpenTarget.PointsRange(
-            new GitCompareEndpoint(GitCompareEndpointKind.Ref, fetched.BaseHash, pr.BaseRef),
-            new GitCompareEndpoint(GitCompareEndpointKind.Ref, fetched.HeadHash, $"#{pr.Number}"),
-            FromMergeBase: true, $"#{pr.Number}"));
+        ShowPullRequestDiff(fetched, pr.BaseRef, $"#{pr.Number}");
     }
 
     private async Task OpenGitHubPullRequestWorktreeAsync(GitHubPullRequest pr)
     {
         if (await FetchGitHubPullRequestAsync(pr) is not { } fetched) return;
-        var git = _vm.GitSession;
-        var branch = $"pr/{pr.Number}";
-        if (git.Worktrees.FirstOrDefault(w => w.Branch == branch) is { } existing)
-        {
-            // もう置いてある：先頭が進んでいればそのワークツリーで pull してもらう（勝手に書き換えない）。
-            git.OpenWorktree(existing, GitWorktreeOpenMode.Workspace);
-            return;
-        }
-        var exists = git.BranchInfos.Any(b => !b.IsRemote && b.Name == branch);
-        if (exists)
-        {
-            // どこにも置かれていない古い pr/N は PR の今の先頭へ合わせ直す（置かれていないので誰の作業も消さない）。
-            var moved = await _git.RunAsync("branch", "-f", branch, fetched.HeadHash);
-            if (!moved.Success)
-            {
-                ShowGitHubError($"ブランチ {branch} を更新できませんでした", moved.Message);
-                return;
-            }
-        }
-        var request = new GitWorktreeAddRequest(
-            exists ? GitWorktreeAddMode.ExistingBranch : GitWorktreeAddMode.NewBranch,
-            git.SuggestWorktreePath($"pr-{pr.Number}"), branch, exists ? null : fetched.HeadHash);
-        await git.CreateWorktreeAsync(request, GitWorktreeOpenMode.Workspace);
+        await OpenPullRequestWorktreeAsync($"pr/{pr.Number}", $"pr-{pr.Number}", fetched.HeadHash, ShowGitHubError);
     }
-
-    private sealed record FetchedPullRequest(string HeadHash, string BaseHash);
 
     private async Task<FetchedPullRequest?> FetchGitHubPullRequestAsync(GitHubPullRequest pr)
     {
@@ -138,22 +110,8 @@ public partial class ShellWindow
             ShowGitHubError("GitHub のリモートが見つかりません", "git remote に github.com を指すリモートがありません。");
             return null;
         }
-        var head = await FetchToHashAsync(remote, $"refs/pull/{pr.Number}/head");
-        var @base = head.Hash is null ? head : await FetchToHashAsync(remote, $"refs/heads/{pr.BaseRef}");
-        if (head.Hash is null || @base.Hash is null)
-        {
-            ShowGitHubError($"#{pr.Number} を取得できませんでした", (head.Hash is null ? head.Error : @base.Error) ?? "");
-            return null;
-        }
-        return new FetchedPullRequest(head.Hash, @base.Hash);
-    }
-
-    private async Task<(string? Hash, string? Error)> FetchToHashAsync(string remote, string reference)
-    {
-        var fetch = await _git.RunAsync("fetch", "--no-tags", remote, reference);
-        if (!fetch.Success) return (null, fetch.Message);
-        var hash = await _git.RunAsync("rev-parse", "FETCH_HEAD");
-        return hash.Success ? (hash.Output.Trim(), null) : (null, hash.Message);
+        return await FetchPullRequestAsync(remote, $"refs/pull/{pr.Number}/head", $"refs/heads/{pr.BaseRef}",
+            $"#{pr.Number}", ShowGitHubError);
     }
 
     /// <summary>github.com を指すリモート（origin を優先）。gh が選ぶリポジトリと同じ順で選ぶ。</summary>

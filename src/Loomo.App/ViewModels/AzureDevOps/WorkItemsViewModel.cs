@@ -16,6 +16,11 @@ namespace sk0ya.Loomo.App.ViewModels;
 /// Work Items 一覧の1行（Work Item・PR・見出しのどれか）。種類の文字と ID は出さない——種類は左端の色で分かり、
 /// ID はツールチップとコピーで足りる。そのぶんタイトルに幅を回す。
 /// </summary>
+/// <summary>PR を部屋の中で扱う（§24.27.1）ための接続：Work Items と同じ設定・同じ PAT。</summary>
+public sealed record AzureDevOpsConnection(
+    string OrganizationUrl, IReadOnlyList<AzureDevOpsPrTarget> Targets,
+    System.Net.Http.Headers.AuthenticationHeaderValue Auth);
+
 public sealed class WorkItemListRowViewModel(WorkItemListEntry entry, bool hasChildren = false, bool isCollapsed = false)
 {
     /// <summary>PR の色（Azure DevOps の PR アイコンの青）。</summary>
@@ -239,6 +244,60 @@ public sealed partial class WorkItemsViewModel : ObservableObject, IHarnessTicke
 
     /// <summary>行が選ばれた（ブラウザペインで開く）。ホストが購読する。</summary>
     public event Action<string, string>? OpenRequested;
+
+    /// <summary>PR の行から「部屋の中で扱う」（概要と会話・差分・ワークツリー、§24.27.1）を頼まれた。</summary>
+    public event Action<AzureDevOpsPullRequest>? PullRequestActionsRequested;
+
+    [RelayCommand(CanExecute = nameof(IsPullRequestRow))]
+    private void OpenPullRequestInRoom(WorkItemListRowViewModel? row)
+    {
+        if (row?.Entry.PullRequest is { } pull)
+            PullRequestActionsRequested?.Invoke(pull);
+    }
+
+    private static bool IsPullRequestRow(WorkItemListRowViewModel? row) => row?.IsPullRequest == true;
+
+    /// <summary>
+    /// PR 用の接続を作る。Work Items の一覧と同じ設定（TaskAzure から取り込んだものを含む）・同じ PAT の候補を、
+    /// 同じ順（前回受け付けられたものを先）で試す。読むだけの照会にしか使わない（書き込み口は持たない）。
+    /// 設定や PAT が足りなければ、何を足せばよいかを <see cref="AzureDevOpsException"/> の文言にして投げる。
+    /// </summary>
+    public AzureDevOpsWorkItemClient Client => _client;
+
+    public async Task<AzureDevOpsConnection> ConnectAsync(CancellationToken cancellationToken)
+    {
+        var taskAzure = TaskAzureSettings.TryLoad();
+        ImportFromTaskAzureIfEmpty(taskAzure);
+        var settings = _settings.AzureDevOps;
+        var organizationUrl = AzureDevOpsWorkItemClient.NormalizeOrganizationUrl(settings.OrganizationUrl);
+        if (organizationUrl.Length == 0)
+            throw new AzureDevOpsException("組織 URL が設定されていません（Work Items ペインの設定、または TaskAzure の設定）。");
+        var targets = settings.PrTargets
+            .Where(t => t.Project.Trim().Length > 0 && t.Repository.Trim().Length > 0)
+            .Select(t => new AzureDevOpsPrTarget(t.Project.Trim(), t.Repository.Trim())).ToList();
+        if (targets.Count == 0)
+            throw new AzureDevOpsException("PR を引くリポジトリ（PR 対象）が設定されていません。Work Items ペインの設定で足してください。");
+        var candidates = OrderCandidates(_pats.FindCandidates(taskAzure?.PatEnvVarName));
+        if (candidates.Count == 0)
+        {
+            var name = taskAzure?.PatEnvVarName ?? AzureDevOpsPatStore.EnvironmentVariable;
+            throw new AzureDevOpsException($"PAT が取得できませんでした。環境変数 {name} または Windows 資格情報マネージャー（{name}）に PAT を設定してください。");
+        }
+        foreach (var candidate in candidates)
+        {
+            var auth = AzureDevOpsPatStore.CreateHeader(candidate.Pat);
+            try
+            {
+                await _client.GetCurrentUserIdAsync(organizationUrl, auth, cancellationToken);
+                _workingPatSource = candidate.Source;
+                return new AzureDevOpsConnection(organizationUrl, targets, auth);
+            }
+            catch (AzureDevOpsException ex) when (ex.IsAuthentication && candidate != candidates[^1])
+            {
+            }
+        }
+        throw new AzureDevOpsException("PAT が受け付けられませんでした。", isAuthentication: true);   // ループの最後は必ず投げるか返す
+    }
 
     partial void OnIsShownChanged(bool value)
     {

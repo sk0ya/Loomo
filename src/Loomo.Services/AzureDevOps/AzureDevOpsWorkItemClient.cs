@@ -32,7 +32,18 @@ public sealed record AzureDevOpsPullRequest(
     string Repository,
     bool IsDraft,
     string WebUrl,
-    IReadOnlyList<int> LinkedWorkItemIds);
+    IReadOnlyList<int> LinkedWorkItemIds,
+    string Author = "",
+    string SourceRefName = "",
+    string TargetRefName = "",
+    DateTimeOffset? CreatedAt = null)
+{
+    /// <summary>元のブランチ名（<c>refs/heads/</c> を外したもの）。</summary>
+    public string SourceBranch => AzureDevOpsPullRequestJson.BranchName(SourceRefName);
+
+    /// <summary>入れ先のブランチ名。</summary>
+    public string TargetBranch => AzureDevOpsPullRequestJson.BranchName(TargetRefName);
+}
 
 /// <summary>PR を照会する先（TaskAzure の PrTarget と同じ：プロジェクトとリポジトリの組）。</summary>
 public sealed record AzureDevOpsPrTarget(string Project, string Repository);
@@ -131,14 +142,41 @@ public sealed class AzureDevOpsWorkItemClient
         return results.SelectMany(r => r).ToList();
     }
 
+    /// <summary>自分がレビュアーに入っている進行中の PR（§24.27.1）。Work Items の一覧には出さない（自分の作業ではない）。
+    /// 取れない先は黙って飛ばす（自分の PR と同じ）。</summary>
+    public async Task<IReadOnlyList<AzureDevOpsPullRequest>> GetPullRequestsToReviewAsync(
+        string organizationUrl, IReadOnlyList<AzureDevOpsPrTarget> targets, AuthenticationHeaderValue auth,
+        CancellationToken cancellationToken)
+    {
+        if (targets.Count == 0) return [];
+        var userId = await GetCurrentUserIdAsync(organizationUrl, auth, cancellationToken).ConfigureAwait(false);
+        var results = await Task.WhenAll(targets.Select(t =>
+            FetchPrsForTargetAsync(organizationUrl, t, userId, auth, cancellationToken, "reviewerId"))).ConfigureAwait(false);
+        return results.SelectMany(r => r).ToList();
+    }
+
+    /// <summary>PR の中身（説明・レビュアーと投票・マージ状態）と会話（スレッド）。読むだけ（§24.27.1）。</summary>
+    public async Task<AzureDevOpsPullRequestDetail> GetPullRequestDetailAsync(
+        string organizationUrl, AzureDevOpsPrTarget target, int pullRequestId, AuthenticationHeaderValue auth,
+        CancellationToken cancellationToken)
+    {
+        var baseUrl = $"{organizationUrl}/{Uri.EscapeDataString(target.Project)}/_apis/git/repositories/" +
+                      $"{Uri.EscapeDataString(target.Repository)}/pullrequests/{pullRequestId}";
+        using var pr = await SendAsync(HttpMethod.Get, $"{baseUrl}?$expand=workItemRefs&api-version={ApiVersion}",
+            null, auth, cancellationToken).ConfigureAwait(false);
+        using var threads = await SendAsync(HttpMethod.Get, $"{baseUrl}/threads?api-version={ApiVersion}",
+            null, auth, cancellationToken).ConfigureAwait(false);
+        return AzureDevOpsPullRequestJson.ParseDetail(pr.RootElement, threads.RootElement, organizationUrl, target);
+    }
+
     private async Task<IReadOnlyList<AzureDevOpsPullRequest>> FetchPrsForTargetAsync(
         string organizationUrl, AzureDevOpsPrTarget target, string userId, AuthenticationHeaderValue auth,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, string role = "creatorId")
     {
         var encodedProject = Uri.EscapeDataString(target.Project);
         var encodedRepo = Uri.EscapeDataString(target.Repository);
         var url = $"{organizationUrl}/{encodedProject}/_apis/git/repositories/{encodedRepo}/pullrequests" +
-                  $"?searchCriteria.status=active&searchCriteria.creatorId={userId}" +
+                  $"?searchCriteria.status=active&searchCriteria.{role}={userId}" +
                   $"&$expand=workItemRefs&api-version={ApiVersion}";
 
         using var request = CreateRequest(HttpMethod.Get, url, null, auth);
@@ -150,7 +188,7 @@ public sealed class AzureDevOpsWorkItemClient
         return ParsePullRequests(doc.RootElement, organizationUrl, target);
     }
 
-    private async Task<string> GetCurrentUserIdAsync(
+    public async Task<string> GetCurrentUserIdAsync(
         string organizationUrl, AuthenticationHeaderValue auth, CancellationToken cancellationToken)
     {
         using var doc = await SendAsync(HttpMethod.Get, $"{organizationUrl}/_apis/connectionData",
@@ -161,32 +199,9 @@ public sealed class AzureDevOpsWorkItemClient
     internal static IReadOnlyList<AzureDevOpsPullRequest> ParsePullRequests(
         JsonElement root, string organizationUrl, AzureDevOpsPrTarget target)
     {
-        var encodedProject = Uri.EscapeDataString(target.Project);
-        var encodedRepo = Uri.EscapeDataString(target.Repository);
         var result = new List<AzureDevOpsPullRequest>();
         foreach (var item in root.GetProperty("value").EnumerateArray())
-        {
-            var prId = item.GetProperty("pullRequestId").GetInt32();
-            var linkedIds = new List<int>();
-            if (item.TryGetProperty("workItemRefs", out var refs) && refs.ValueKind == JsonValueKind.Array)
-            {
-                foreach (var r in refs.EnumerateArray())
-                {
-                    if (r.TryGetProperty("id", out var idProp)
-                        && idProp.ValueKind == JsonValueKind.String
-                        && int.TryParse(idProp.GetString(), out var wid))
-                        linkedIds.Add(wid);
-                }
-            }
-            result.Add(new AzureDevOpsPullRequest(
-                prId,
-                TryGetString(item, "title"),
-                target.Project,
-                target.Repository,
-                item.TryGetProperty("isDraft", out var draft) && draft.ValueKind == JsonValueKind.True,
-                $"{organizationUrl}/{encodedProject}/_git/{encodedRepo}/pullrequest/{prId}",
-                linkedIds));
-        }
+            result.Add(AzureDevOpsPullRequestJson.ParsePullRequest(item, organizationUrl, target));
         return result;
     }
 
