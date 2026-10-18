@@ -38,6 +38,9 @@ internal sealed class TerminalTab(Guid id, TerminalTabView view)
     /// 残るよう、生きたタブの側に持つ（スナップショットへも書く、§34）。変わる値を持つので record にはしない
     /// （値の等価・ハッシュに名前が混ざらないように）。</summary>
     public string? CustomName { get; set; }
+
+    /// <summary>最後に見た時刻。閉じたあとに直前に見ていたタブへ戻るため（§24.44）。保存はしない。</summary>
+    public DateTime LastSeenUtc { get; set; }
 }
     /// <summary><see cref="VirtualTitle"/> は仮想ドキュメント（設定の長文項目など）を開いたタブの表示名。
     /// 仮想ドキュメントは FilePath を持たないため、タブ名はこの値から決める（通常ファイルは null）。</summary>

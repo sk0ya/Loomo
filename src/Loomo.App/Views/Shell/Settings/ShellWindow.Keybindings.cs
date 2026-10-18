@@ -58,6 +58,10 @@ public partial class ShellWindow {
             ["sidebar.explorer"] = () => _vm.ShowExplorerCommand.Execute(null), ["sidebar.tabs"] = () => _vm.ShowTabsCommand.Execute(null), ["sidebar.sessions"] = () => _vm.Sessions.ToggleOpenCommand.Execute(null), ["sidebar.git"] = () => _vm.ShowGitCommand.Execute(null), ["sidebar.pegboard"] = () => _vm.ShowPegboardCommand.Execute(null), ["sidebar.solution"] = () => _vm.ShowSolutionCommand.Execute(null), ["sidebar.settings"] = () => _vm.ShowSettingsCommand.Execute(null), ["sidebar.appearance"] = () => _vm.ShowAppearanceCommand.Execute(null), ["explorer.revealActiveFile"] = RevealActiveFileInFolderTree, };
         foreach (var command in CSharpEditorCommandCatalog.All)
             actions[command.Id] = () => ExecuteCSharpEditorCommand(command.Id);
+        for (var n = 1; n <= 9; n++) {
+            var number = n;
+            actions[$"tab.goto{number}"] = () => GoToTabNumber(number);
+        }
         return new KeyboardDispatcher(
             _keybindings,
             actions,
@@ -84,6 +88,8 @@ public partial class ShellWindow {
         // OnPaneNavKey が TryExecuteScoped で拾う）。
         "palette.nextScope" or "palette.previousScope" => IsPaletteOpen,
         "editor.save" => IsEditorFocused(),
+        // 番号のタブ（§24.47）はタブを持つペインにフォーカスがあるときだけ。ほかでは Ctrl+数字を内側へ通す。
+        _ when id.StartsWith("tab.goto", StringComparison.Ordinal) => FocusedTabPane() is not null,
         // 構造編集は本文を書き換えるので、エディタにフォーカスがあるときだけ。ターミナルで押した
         // Ctrl+Shift+↑ が、裏のC#タブの文を黙って動かす事故を防ぐ（キーは内側のペインへ届く）。
         _ when id.StartsWith("editor.csharp.structure.", StringComparison.Ordinal)
@@ -97,6 +103,35 @@ public partial class ShellWindow {
         _ => !id.StartsWith("editor.csharp.", StringComparison.Ordinal) ||
             ActiveCSharpEditor() is not null,
     };
+
+    /// <summary>フォーカスのある、タブを持つペイン（ターミナル／エディタ／ブラウザ）。無ければ null。</summary>
+    private PaneKind? FocusedTabPane() {
+        if (IsEditorFocused())
+            return PaneKind.Editor;
+        if (TerminalPane.IsKeyboardFocusWithin || _focusedRegion?.Pane == PaneKind.Terminal)
+            return PaneKind.Terminal;
+        if (BrowserPane.IsKeyboardFocusWithin || _focusedRegion?.Pane == PaneKind.Browser)
+            return PaneKind.Browser;
+        return null;
+    }
+
+    /// <summary>フォーカスのあるペインの N 番目のタブへ（§24.47）。</summary>
+    private void GoToTabNumber(int number) {
+        switch (FocusedTabPane()) {
+            case PaneKind.Editor:
+                if (TabNumberPolicy.Pick(_editorTabs, number, t => t.IsPinned) is >= 0 and var e)
+                    ActivateEditorTab(_editorTabs[e].Id);
+                break;
+            case PaneKind.Terminal:
+                if (TabNumberPolicy.Pick(_terminalTabs, number, _ => false) is >= 0 and var t)
+                    ActivateTerminalTab(_terminalTabs[t].Id);
+                break;
+            case PaneKind.Browser:
+                if (TabNumberPolicy.Pick(_browserTabs, number, t => t.IsPinned) is >= 0 and var b)
+                    ActivateBrowserTab(_browserTabs[b].Id);
+                break;
+        }
+    }
 
     private bool IsEditorFocused()
         => EditorPane.IsKeyboardFocusWithin || _focusedRegion?.Pane == PaneKind.Editor;

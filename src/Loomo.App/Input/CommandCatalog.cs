@@ -263,6 +263,10 @@ public static class CommandCatalog
         new CommandDescriptor("tab.newEditor", CatTab, "新しいエディタタブ", null),
         new CommandDescriptor("tab.newBrowser", CatTab, "新しいブラウザタブ", null),
     }
+    // 番号でタブを選ぶ（§24.47）。フォーカスのあるペイン（ターミナル／エディタ／ブラウザ）の N 番目へ。
+    // ピン留めが先頭に並び、9 は最後のタブ（ブラウザと同じ）。
+    .Concat(Enumerable.Range(1, 9).Select(n => new CommandDescriptor(
+        $"tab.goto{n}", CatTab, n == 9 ? "最後のタブへ" : $"{n} 番目のタブへ", $"Ctrl+{n}")))
     .Concat(CSharpEditorCommandCatalog.All.Select(command =>
         new CommandDescriptor(command.Id, CategoryOf(command.Group), command.Title, command.DefaultBinding)))
     .ToArray();

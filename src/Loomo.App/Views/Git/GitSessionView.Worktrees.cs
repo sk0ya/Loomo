@@ -37,9 +37,10 @@ public partial class GitSessionView
     private async Task CreateWorktreeAsync(string? startPoint = null, string? existingBranch = null)
     {
         if (Vm is not { } vm) return;
-        if (WorktreeCreateDialog.Prompt(Window.GetWindow(this), vm, startPoint, existingBranch) is not { } result)
+        var carry = await vm.LoadWorktreeCarryEntriesAsync();
+        if (WorktreeCreateDialog.Prompt(Window.GetWindow(this), vm, startPoint, existingBranch, carry) is not { } result)
             return;
-        if (await vm.CreateWorktreeAsync(result.Request, result.OpenAfter))
+        if (await vm.CreateWorktreeAsync(result.Request, result.OpenAfter, result.CarryOver))
             vm.ReferenceTab = GitReferenceTab.Worktrees;   // 作ったものが見える場所へ
     }
 

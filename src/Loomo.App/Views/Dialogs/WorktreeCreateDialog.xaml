@@ -27,6 +27,7 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
         <TextBlock Grid.Row="0" Grid.Column="0" Text="作り方" VerticalAlignment="Center" Margin="0,0,12,8" />
@@ -62,18 +63,23 @@
             <TextBox x:Name="PathBox" MinHeight="26" VerticalContentAlignment="Center" />
         </DockPanel>
 
-        <TextBlock Grid.Row="4" Grid.Column="0" Text="作成後" VerticalAlignment="Center" Margin="0,0,12,0" />
-        <ComboBox x:Name="AfterBox" Grid.Row="4" Grid.Column="1" MinHeight="26" VerticalContentAlignment="Center">
+        <!-- Git に載らないものを引き継ぐ（§24.48）。フォルダーはジャンクション、ファイルはコピー。リポジトリごとに覚える。 -->
+        <TextBlock Grid.Row="4" Grid.Column="0" Text="引き継ぐもの" VerticalAlignment="Center" Margin="0,0,12,8" />
+        <TextBox x:Name="CarryBox" Grid.Row="4" Grid.Column="1" MinHeight="26" VerticalContentAlignment="Center" Margin="0,0,0,8"
+                 ToolTip="いまのワークツリーから持っていく、Git に載らないもの（; 区切り・ワークツリーの中の相対パス）。&#x0a;フォルダー（node_modules など）はリンクで置くので入れ直しも複製も要りません。ファイル（.env など）はコピーします。&#x0a;新しいワークツリーに既にあるものは飛ばします。" />
+
+        <TextBlock Grid.Row="5" Grid.Column="0" Text="作成後" VerticalAlignment="Center" Margin="0,0,12,0" />
+        <ComboBox x:Name="AfterBox" Grid.Row="5" Grid.Column="1" MinHeight="26" VerticalContentAlignment="Center">
             <ComboBoxItem Content="ワークスペースとして開く（別の部屋で作業する）" Tag="Workspace" />
             <ComboBoxItem Content="今のワークスペースにフォルダーとして追加（並べて見る）" Tag="AddFolder" />
             <ComboBoxItem Content="何もしない" Tag="" />
         </ComboBox>
 
-        <TextBlock x:Name="ErrorText" Grid.Row="5" Grid.Column="0" Grid.ColumnSpan="2"
+        <TextBlock x:Name="ErrorText" Grid.Row="6" Grid.Column="0" Grid.ColumnSpan="2"
                    Foreground="#FFE4676B" FontSize="{DynamicResource Fs11}" TextWrapping="Wrap"
                    Visibility="Collapsed" Margin="0,8,0,0" />
 
-        <StackPanel Grid.Row="6" Grid.Column="0" Grid.ColumnSpan="2" Orientation="Horizontal"
+        <StackPanel Grid.Row="7" Grid.Column="0" Grid.ColumnSpan="2" Orientation="Horizontal"
                     HorizontalAlignment="Right" Margin="0,16,0,0">
             <Button Content="作成" Style="{StaticResource FlatButton}" IsDefault="True" MinWidth="76" Click="OnOk" />
             <Button Content="キャンセル" Style="{StaticResource FlatButton}"

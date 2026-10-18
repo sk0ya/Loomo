@@ -101,8 +101,49 @@ public sealed class GitWorktreeService
         return await ResolveCommitAsync("HEAD").ConfigureAwait(false);
     }
 
-    public Task<GitCommandResult> RemoveAsync(string path, bool force)
-        => _mutations.ExecuteAsync(GitWorktreeArgs.RemoveArgs(path, force));
+    public async Task<GitCommandResult> RemoveAsync(string path, bool force)
+    {
+        // 引き継いだジャンクション（§24.48）は先に外す——残したまま消すと、リンクの先（元のワークツリーの
+        // node_modules など）の中身まで消しかねない。外せなくても git の判断はそのまま仰ぐ。
+        if (Directory.Exists(path))
+            GitWorktreeCarryOver.Unlink(path, await CarryRecordFileAsync(path).ConfigureAwait(false));
+        return await _mutations.ExecuteAsync(GitWorktreeArgs.RemoveArgs(path, force)).ConfigureAwait(false);
+    }
+
+    /// <summary>ワークツリーへ引き継ぐもの（§24.48）。リポジトリ共通の設定に覚えたもの。</summary>
+    public async Task<IReadOnlyList<string>> GetCarryEntriesAsync()
+    {
+        var result = await _runner.RunAsync("config", "--get", GitWorktreeCarryOver.ConfigKey).ConfigureAwait(false);
+        return result.Success ? GitWorktreeCarryOver.Parse(result.Output) : [];
+    }
+
+    /// <summary>作ったワークツリーへ、いまのワークツリーから引き継ぐ（§24.48）。引き継ぐものはリポジトリの設定に覚える
+    /// （空にしたら忘れる）。</summary>
+    public async Task<GitWorktreeCarryResult> CarryOverAsync(string targetPath, IReadOnlyList<string> entries)
+    {
+        if (entries.Count == 0)
+        {
+            await _runner.RunAsync("config", "--unset", GitWorktreeCarryOver.ConfigKey).ConfigureAwait(false);
+            return GitWorktreeCarryResult.Empty;
+        }
+        await _runner.RunAsync("config", GitWorktreeCarryOver.ConfigKey, GitWorktreeCarryOver.Format(entries)).ConfigureAwait(false);
+        var top = await _runner.RunAsync("rev-parse", "--show-toplevel").ConfigureAwait(false);
+        if (!top.Success || top.Output.Trim() is not { Length: > 0 } source)
+            return new GitWorktreeCarryResult([], [], [], entries);
+        source = Path.GetFullPath(source);
+        var record = await CarryRecordFileAsync(targetPath).ConfigureAwait(false);
+        return await Task.Run(() => GitWorktreeCarryOver.Apply(source, targetPath, entries, record)).ConfigureAwait(false);
+    }
+
+    /// <summary>そのワークツリーの git ディレクトリにある、作ったジャンクションの控え。</summary>
+    private async Task<string?> CarryRecordFileAsync(string worktreePath)
+    {
+        var gitDir = await _runner.RunInAsync(
+            worktreePath, null, null, CancellationToken.None, "rev-parse", "--absolute-git-dir").ConfigureAwait(false);
+        return gitDir.Success && gitDir.Output.Trim() is { Length: > 0 } dir
+            ? Path.Combine(dir, GitWorktreeCarryOver.RecordFileName)
+            : null;
+    }
 
     public Task<GitCommandResult> PruneAsync() => _mutations.ExecuteAsync(GitWorktreeArgs.PruneArgs());
 

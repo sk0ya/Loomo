@@ -154,10 +154,21 @@ public sealed partial class GitSessionViewModel
     }
 
     /// <summary>ワークツリーを作る。成功したら <paramref name="openAfter"/> の開き方で開く。</summary>
-    public async Task<bool> CreateWorktreeAsync(GitWorktreeAddRequest request, GitWorktreeOpenMode? openAfter)
+    /// <summary>作成ダイアログの「引き継ぐもの」の初期値（リポジトリに覚えたもの・§24.48）。</summary>
+    public Task<IReadOnlyList<string>> LoadWorktreeCarryEntriesAsync() => _git.GetWorktreeCarryEntriesAsync();
+
+    public async Task<bool> CreateWorktreeAsync(
+        GitWorktreeAddRequest request, GitWorktreeOpenMode? openAfter, IReadOnlyList<string>? carryOver = null)
     {
         var result = await Commands.AddWorktreeAsync(request);
         if (result is not { Success: true }) return false;
+        // 開く前に引き継ぐ——部屋を開いた直後からビルドも実行も動くように（§24.48）。
+        if (carryOver is not null)
+        {
+            var carried = await _git.CarryOverToWorktreeAsync(request.Path, carryOver);
+            if (GitWorktreeCarryPresentation.Summary(carried) is { } summary)
+                SetStatus(summary, isError: carried.Failed.Count > 0);
+        }
         if (openAfter is { } mode)
             WorktreeOpenRequested?.Invoke(this, new GitWorktreeOpenRequest(request.Path, mode));
         return true;

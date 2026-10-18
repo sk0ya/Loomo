@@ -179,6 +179,16 @@
                                   Visibility="{Binding CanRename, Converter={StaticResource BoolToVis}}"
                                   Command="{Binding PlacementTarget.Tag.RenameTabCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                   CommandParameter="{Binding}" />
+                        <!-- ブラウザだけ：前に出さずに URL・リンクを写す（§24.46） -->
+                        <Separator Visibility="{Binding BrowserUrl, Converter={StaticResource NonEmptyToVis}}" />
+                        <MenuItem Header="URL をコピー"
+                                  Visibility="{Binding BrowserUrl, Converter={StaticResource NonEmptyToVis}}"
+                                  Command="{Binding PlacementTarget.Tag.CopyBrowserUrlCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                  CommandParameter="{Binding}" />
+                        <MenuItem Header="リンクをコピー（Markdown / HTML）"
+                                  Visibility="{Binding BrowserUrl, Converter={StaticResource NonEmptyToVis}}"
+                                  Command="{Binding PlacementTarget.Tag.CopyBrowserLinkCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                  CommandParameter="{Binding}" />
                         <Separator Visibility="{Binding FilePath, Converter={StaticResource NonEmptyToVis}}" />
                         <MenuItem Header="パスをコピー"
                                   Visibility="{Binding FilePath, Converter={StaticResource NonEmptyToVis}}"

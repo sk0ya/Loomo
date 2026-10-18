@@ -44,6 +44,7 @@ public partial class ShellWindow {
             return;
         _terminalViews?.Activate(id, focusView);
         profile?.Lap("terminal.views");
+        tab.LastSeenUtc = DateTime.UtcNow;   // 閉じたときの戻り先（§24.44）
         _activeTerminalTab = tab;
         CurrentTerminalWorkspace.ActiveTabId = id;
         _terminal.Attach(tab.View);
@@ -59,6 +60,7 @@ public partial class ShellWindow {
         profile?.Lap("terminal.bookkeeping");
     }
     private void SetActiveTerminalTab(TerminalTab tab) {
+        tab.LastSeenUtc = DateTime.UtcNow;
         _activeTerminalTab = tab;
         CurrentTerminalWorkspace.ActiveTabId = tab.Id;
         _terminal.Attach(tab.View);
@@ -98,7 +100,8 @@ public partial class ShellWindow {
                 _terminalTabs.Add(newTab);
                 _vm.Tabs.AddTerminalTab(newTab.Id, "Terminal", false);
                 ActivateTerminalTab(newTab.Id);
-            });
+            },
+            t => t.LastSeenUtc);
     }
     private void ActivateEditorTab(
         Guid id, WorkspaceSwitchProfiler? profile = null, bool focusView = true) {
@@ -197,7 +200,8 @@ public partial class ShellWindow {
                 _editorTabs.Add(newTab);
                 _vm.Tabs.AddEditorTab(newTab.Id, null, false, false);
                 ActivateEditorTab(newTab.Id);
-            });
+            },
+            t => t.LastSeenUtc);
     }
     private void OnFolderTreeEntryRenamed(EntryRenamedEventArgs e) {
         if (e.IsDirectory)

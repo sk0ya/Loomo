@@ -36,6 +36,15 @@ public partial class ShellWindow {
             rename.Click += (_, _) => RenameTerminalTab(tab.Id);
             menu.Items.Add(rename);
         }
+        if (tab.BrowserUrl is { Length: > 0 }) {
+            menu.Items.Add(new Separator());
+            var copyUrl = new MenuItem { Header = "URL をコピー" };
+            copyUrl.Click += (_, _) => _vm.Tabs.CopyBrowserUrlCommand.Execute(tab);
+            menu.Items.Add(copyUrl);
+            var copyLink = new MenuItem { Header = "リンクをコピー（Markdown / HTML）" };
+            copyLink.Click += (_, _) => _vm.Tabs.CopyBrowserLinkCommand.Execute(tab);
+            menu.Items.Add(copyLink);
+        }
         menu.IsOpen = true;
     }
 

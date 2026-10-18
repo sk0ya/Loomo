@@ -64,6 +64,7 @@ public partial class ShellWindow
         var request = new GitWorktreeAddRequest(
             exists ? GitWorktreeAddMode.ExistingBranch : GitWorktreeAddMode.NewBranch,
             git.SuggestWorktreePath(folderName), branch, exists ? null : headHash);
-        await git.CreateWorktreeAsync(request, GitWorktreeOpenMode.Workspace);
+        // PR のワークツリーにも、リポジトリに覚えた「引き継ぐもの」を持っていく（§24.48）。
+        await git.CreateWorktreeAsync(request, GitWorktreeOpenMode.Workspace, await git.LoadWorktreeCarryEntriesAsync());
     }
 }

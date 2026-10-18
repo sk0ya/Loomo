@@ -8,7 +8,8 @@ using sk0ya.Loomo.Services;
 namespace sk0ya.Loomo.App.Views;
 
 /// <summary>ワークツリー作成ダイアログの結果。</summary>
-public sealed record WorktreeCreateResult(GitWorktreeAddRequest Request, GitWorktreeOpenMode? OpenAfter);
+public sealed record WorktreeCreateResult(
+    GitWorktreeAddRequest Request, GitWorktreeOpenMode? OpenAfter, IReadOnlyList<string> CarryOver);
 
 /// <summary>
 /// ワークツリー作成ダイアログ。作り方（新しいブランチ／既存のブランチ／デタッチ）・ブランチ・起点・置き場所・
@@ -36,10 +37,12 @@ public partial class WorktreeCreateDialog : Window
     /// <param name="startPoint">起点の初期値（コミット一覧の「ここからワークツリー」等。null なら現在ブランチ）。</param>
     /// <param name="existingBranch">「既存のブランチ」で開くときのブランチ（ブランチ一覧から来たとき）。</param>
     public static WorktreeCreateResult? Prompt(
-        Window? owner, GitSessionViewModel vm, string? startPoint = null, string? existingBranch = null)
+        Window? owner, GitSessionViewModel vm, string? startPoint = null, string? existingBranch = null,
+        IReadOnlyList<string>? carryOver = null)
     {
         var dialog = new WorktreeCreateDialog(vm.SuggestWorktreePath) { Owner = owner };
         dialog.Initialize(vm, startPoint, existingBranch);
+        dialog.CarryBox.Text = GitWorktreeCarryOver.Format(carryOver ?? []);
         return dialog.ShowDialog() == true ? dialog._result : null;
     }
 
@@ -153,7 +156,8 @@ public partial class WorktreeCreateDialog : Window
         var afterTag = (AfterBox.SelectedItem as ComboBoxItem)?.Tag as string ?? "";
         s_lastAfter = afterTag;
         _result = new WorktreeCreateResult(request,
-            Enum.TryParse<GitWorktreeOpenMode>(afterTag, out var after) ? after : null);
+            Enum.TryParse<GitWorktreeOpenMode>(afterTag, out var after) ? after : null,
+            GitWorktreeCarryOver.Parse(CarryBox.Text));
         DialogResult = true;
     }
 }

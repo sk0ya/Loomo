@@ -11,7 +11,8 @@ internal static class PaneTabTransferCoordinator
         bool removedWasActive,
         Action<Guid> activateNeighbor,
         Action<Guid> syncFocusedTab,
-        Action createReplacement)
+        Action createReplacement,
+        Func<TTab, DateTime>? lastSeenOf = null)
     {
         if (remaining.Count == 0)
         {
@@ -23,7 +24,11 @@ internal static class PaneTabTransferCoordinator
         split?.RepairTabs(validIds);
         if (removedWasActive)
         {
-            activateNeighbor(idOf(remaining[Math.Min(removedIndex, remaining.Count - 1)]));
+            // 隣ではなく直前に見ていたタブへ（§24.44）。最後に見た時刻を持たない呼び出しは隣。
+            var next = lastSeenOf is null
+                ? Math.Min(removedIndex, remaining.Count - 1)
+                : TabCloseSuccessor.Pick(remaining, removedIndex, lastSeenOf);
+            activateNeighbor(idOf(remaining[next]));
             return;
         }
 

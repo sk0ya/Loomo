@@ -18,6 +18,9 @@ internal static class LocalFileServer
         public string? PendingTopLevelPath;
         /// <summary>表のページが部品として読める範囲。ネットのページなら null（＝何も読ませない）。</summary>
         public string? Scope;
+        /// <summary>いまのページが読んだローカルのファイル（文書自身を含む）。保存で読み直すときに見張る相手（§24.45）。
+        /// 遷移のたびに作り直す。</summary>
+        public HashSet<string> Served = new(StringComparer.OrdinalIgnoreCase);
     }
 
     private static readonly ConditionalWeakTable<CoreWebView2, PageState> States = new();
@@ -26,6 +29,15 @@ internal static class LocalFileServer
     /// <summary>範囲の基準にするワークスペースを渡す（起動時に1回）。無ければページのフォルダーが範囲になる。</summary>
     public static void UseWorkspace(IWorkspaceService workspace)
         => _workspaceFolderFor = workspace.FolderFor;
+
+    /// <summary>この WebView2 のいまのページが読んだローカルのファイル（§24.45）。ローカルのページでなければ空。</summary>
+    public static IReadOnlyList<string> ServedFiles(CoreWebView2 core)
+    {
+        if (!States.TryGetValue(core, out var state))
+            return [];
+        lock (state.Served)
+            return state.Served.ToArray();
+    }
 
     public static void Attach(CoreWebView2 core)
     {
@@ -51,6 +63,8 @@ internal static class LocalFileServer
             // ネットのページ（など）へ移る：部品としてのローカル読み出しは一切通さない。
             state.PendingTopLevelPath = null;
             state.Scope = null;
+            lock (state.Served)
+                state.Served.Clear();
             return;
         }
         if (!LocalFileAccess.AllowsTopLevelNavigation(state.Scope is not null, e.IsUserInitiated))
@@ -60,6 +74,8 @@ internal static class LocalFileServer
         }
         state.PendingTopLevelPath = path;
         state.Scope = LocalFileAccess.ScopeOf(path, _workspaceFolderFor);
+        lock (state.Served)
+            state.Served.Clear();
     }
 
     private static async void OnWebResourceRequested(object? sender, CoreWebView2WebResourceRequestedEventArgs e)
@@ -83,6 +99,9 @@ internal static class LocalFileServer
             }
             else
             {
+                if (States.TryGetValue(core, out var served))
+                    lock (served.Served)
+                        served.Served.Add(path);
                 var range = Header(e.Request.Headers, "Range");
                 var uri = e.Request.Uri;
                 deferral = e.GetDeferral();

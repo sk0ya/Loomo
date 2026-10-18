@@ -322,6 +322,11 @@ public sealed class GitService
 
     public Task<GitCommandResult> RemoveWorktreeAsync(string path, bool force) => _worktrees.RemoveAsync(path, force);
 
+    public Task<IReadOnlyList<string>> GetWorktreeCarryEntriesAsync() => _worktrees.GetCarryEntriesAsync();
+
+    public Task<GitWorktreeCarryResult> CarryOverToWorktreeAsync(string path, IReadOnlyList<string> entries)
+        => _worktrees.CarryOverAsync(path, entries);
+
     public Task<GitCommandResult> PruneWorktreesAsync() => _worktrees.PruneAsync();
 
     public Task<GitCommandResult> LockWorktreeAsync(string path, string? reason) => _worktrees.LockAsync(path, reason);

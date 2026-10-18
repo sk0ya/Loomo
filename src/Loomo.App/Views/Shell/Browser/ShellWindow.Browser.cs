@@ -52,6 +52,31 @@ public partial class ShellWindow {
             BrowserAddressSuggestions.SetText,
             RecordTrailBrowser,
             EvaluateBrowserExtensionPrompt);
+        if (ReferenceEquals(_activeBrowserTab, tab))
+            WatchActiveLocalPage();
+    }
+    private LocalPageWatcher? _localPageWatcher;
+    /// <summary>いま見ているタブがローカルのページなら、そのページが読んだファイルを見張る（§24.45）。
+    /// 見張るのは前に出ているタブだけ——裏のタブは前に出たときに張り直す（見えないページを読み直さない）。</summary>
+    private void WatchActiveLocalPage() {
+        var core = _activeBrowserTab?.View.TryCore();
+        var files = core is not null && LocalFileUrl.IsLocalFileUrl(_activeBrowserTab!.View.TryUrl())
+            ? LocalFileServer.ServedFiles(core)
+            : [];
+        if (files.Count == 0) {
+            _localPageWatcher?.Stop();
+            return;
+        }
+        _localPageWatcher ??= new LocalPageWatcher(OnActiveLocalPageChanged);
+        _localPageWatcher.Watch(files);
+    }
+    private void OnActiveLocalPageChanged() {
+        var tab = _activeBrowserTab;
+        // 届くまでにタブが替わった・ネットのページへ移った・読み込み中なら読み直さない（届いた時点の状態で取り直す）。
+        if (tab is null || tab.IsLoading || tab.View.TryCore() is not { } core
+            || !LocalFileUrl.IsLocalFileUrl(tab.View.TryUrl()))
+            return;
+        try { core.Reload(); } catch { /* 閉じかけの WebView2 */ }
     }
     private void OnBrowserNavigationStarting(BrowserTab tab, CoreWebView2NavigationStartingEventArgs e) {
         tab.IsLoading = true;
@@ -264,7 +289,8 @@ public partial class ShellWindow {
             await CreateBrowserTabAsync(DefaultBrowserUrl);
             return;
         }
-        ActivateBrowserTab(_browserTabs[Math.Min(index, _browserTabs.Count - 1)].Id);
+        // 隣ではなく直前に見ていたタブへ（§24.44）
+        ActivateBrowserTab(_browserTabs[TabCloseSuccessor.Pick(_browserTabs, index, t => t.LastSeenUtc)].Id);
     }
     private void ActivateBrowserTab(Guid id) {
         var tab = _browserTabs.FirstOrDefault(t => t.Id == id);
@@ -291,6 +317,7 @@ public partial class ShellWindow {
         UpdateBrowserToolbar(tab);
         tab.View.Focus();
         ScheduleBrowserRealize(tab);
+        WatchActiveLocalPage();
         SaveActiveWorkspaceSnapshot();
     }
     private void UpdateBrowserTab(BrowserTab? tab, bool commitNavigationUrl = false) {

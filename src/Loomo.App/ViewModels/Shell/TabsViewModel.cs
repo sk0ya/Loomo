@@ -102,6 +102,9 @@ public sealed partial class TabEntryViewModel : ObservableObject
     /// <summary>TABS の種別表示設定を GroupStyle の中身へ反映する。</summary>
     [ObservableProperty] private bool _isGroupShown = true;
 
+    /// <summary>ブラウザタブのいまの URL（「URL をコピー」の対象・§24.46）。ブラウザ以外は null。</summary>
+    [ObservableProperty] private string? _browserUrl;
+
     /// <summary>ブラウザタブの現在URLから求めたホスト名。ブラウザ以外は null。</summary>
     public string? BrowserDomain { get; private set; }
 
@@ -125,6 +128,7 @@ public sealed partial class TabEntryViewModel : ObservableObject
         if (Kind != TabEntryKind.Browser)
             return;
 
+        BrowserUrl = string.IsNullOrWhiteSpace(url) ? null : url;
         var domain = TryGetBrowserDomain(url);
         if (string.Equals(BrowserDomain, domain, StringComparison.Ordinal))
             return;
@@ -967,6 +971,20 @@ public sealed partial class TabsViewModel : ObservableObject
     {
         if (tab?.FilePath is { Length: > 0 } path)
             Clipboard.SetText(path);
+    }
+
+    /// <summary>ブラウザのタブの URL を写す（§24.46）。タブを前に出さずに済む。</summary>
+    [RelayCommand]
+    private void CopyBrowserUrl(TabEntryViewModel? tab)
+        => ClipboardText.Set(BrowserTabLink.Url(tab?.BrowserUrl));
+
+    /// <summary>ブラウザのタブを <c>[題](URL)</c> で写す（リッチテキストへ貼ればリンク）。</summary>
+    [RelayCommand]
+    private void CopyBrowserLink(TabEntryViewModel? tab)
+    {
+        if (tab is null || BrowserTabLink.Markdown(tab.Title, tab.BrowserUrl) is not { } markdown)
+            return;
+        ClipboardText.SetLink(markdown, BrowserTabLink.Html(tab.Title, tab.BrowserUrl)!);
     }
 
     [RelayCommand]
