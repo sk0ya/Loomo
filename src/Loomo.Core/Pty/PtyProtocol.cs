@@ -47,6 +47,12 @@ public static class PtyProtocol
         Resize = 21,
         /// <summary>本体→ホスト：このセッションを殺す。</summary>
         Kill = 22,
+        /// <summary>
+        /// 本体→ホスト：タブを閉じたが、しばらくは殺さずに預かる（int32 LE の秒数・§24.41）。この接続はすぐ閉じる。
+        /// 期限までに同じ ID で開き直されれば繋ぎ直し、来なければホストが殺す。これを知らない古いホストは読み捨てるので、
+        /// そのシェルは切り離しのまま Loomo の正常終了（<see cref="Operation.Leave"/>）まで残る。
+        /// </summary>
+        Park = 23,
     }
 
     public enum Operation
@@ -87,13 +93,16 @@ public static class PtyProtocol
     /// <param name="InUse">開こうとしたシェルには別の接続が繋がっている（先勝ち。後から来た方には渡さない）。</param>
     public sealed record Response(bool Created = false, List<SessionInfo>? Sessions = null, bool InUse = false);
 
+    /// <param name="ParkedUntilUtc">閉じたタブとして預かっている期限（§24.41）。預かっていなければ null。
+    /// 預かっているシェルは「持ち主のいないシェル」として拾わない（閉じたタブが勝手に戻ってくる）。</param>
     public sealed record SessionInfo(
         Guid SessionId,
         Guid? WorkspaceId,
         string? Title,
         string? WorkingDirectory,
         DateTime CreatedUtc,
-        bool Attached);
+        bool Attached,
+        DateTime? ParkedUntilUtc = null);
 
     /// <summary>
     /// 同じユーザー・同じログオンセッションのホストにだけ出会う名前。ACL は

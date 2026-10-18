@@ -24,6 +24,7 @@ internal sealed class PtyHostServer(string pipeName, TimeSpan? idleExit, Action?
     {
         if (idleExit is { } limit)
             new Thread(() => IdleWatch(limit)) { IsBackground = true, Name = "PtyHostIdleWatch" }.Start();
+        new Thread(ParkWatch) { IsBackground = true, Name = "PtyHostParkWatch" }.Start();
         while (true)
         {
             // Asynchronous（overlapped）は必須。同期ハンドルだと Windows は同じハンドルの I/O を直列にするので、
@@ -114,6 +115,7 @@ internal sealed class PtyHostServer(string pipeName, TimeSpan? idleExit, Action?
                     }
 
                     client.Send(PtyProtocol.FrameType.Response, Json(new PtyProtocol.Response(Created: created)));
+                    session.ParkedUntilUtc = null;   // 閉じたタブを開き直した（§24.41）
                     session.Attach(client, request.Columns, request.Rows);
                     ReadInput(pipe, session);
                     return;
@@ -158,6 +160,12 @@ internal sealed class PtyHostServer(string pipeName, TimeSpan? idleExit, Action?
                     break;
                 case PtyProtocol.FrameType.Kill:
                     session.Kill();
+                    return;
+                case PtyProtocol.FrameType.Park:
+                    var seconds = frame.Payload.Length >= 4
+                        ? System.Buffers.Binary.BinaryPrimitives.ReadInt32LittleEndian(frame.Payload) : 0;
+                    session.ParkedUntilUtc = DateTime.UtcNow + TimeSpan.FromSeconds(Math.Clamp(seconds, 1, 3600));
+                    HostLog.Write($"閉じたタブを預かる {session.Id:N} {seconds}秒");
                     return;
             }
         }
@@ -322,6 +330,24 @@ internal sealed class PtyHostServer(string pipeName, TimeSpan? idleExit, Action?
     {
         lock (_gate)
             return _sessions.Values.Select(s => s.Describe()).ToList();
+    }
+
+    /// <summary>預かった期限を過ぎ、開き直されなかったシェルを殺す（§24.41）。</summary>
+    private void ParkWatch()
+    {
+        while (true)
+        {
+            Thread.Sleep(TimeSpan.FromSeconds(2));
+            List<HostSession> expired;
+            var now = DateTime.UtcNow;
+            lock (_gate)
+                expired = _sessions.Values.Where(s => !s.Attached && s.ParkedUntilUtc is { } until && until <= now).ToList();
+            foreach (var session in expired)
+            {
+                HostLog.Write($"預かった期限が切れたので終了 {session.Id:N}");
+                session.Kill();
+            }
+        }
     }
 
     private void IdleWatch(TimeSpan limit)

@@ -83,6 +83,25 @@ public sealed class RemotePtySession : ITerminalSession
         try { _pipe.Dispose(); } catch { }
     }
 
+    /// <summary>
+    /// タブを閉じたが、<paramref name="keepFor"/> のあいだ殺さずにホストへ預ける（§24.41）。この接続は閉じるので、
+    /// 以後の <see cref="Dispose"/> は何もしない（殺さない）。開き直すときは同じ ID で新しく繋ぐ。
+    /// </summary>
+    public void Park(TimeSpan keepFor)
+    {
+        var seconds = (int)Math.Clamp(keepFor.TotalSeconds, 1, 3600);
+        var payload = new byte[4];
+        System.Buffers.Binary.BinaryPrimitives.WriteInt32LittleEndian(payload, seconds);
+        Send(PtyProtocol.FrameType.Park, payload);
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+            return;
+        // ホストが Park を読み終える（＝接続を閉じる）まで待つ。待たずに捨てると、Park が届く前に切れて
+        // ただの切り離し（期限なし）になりうる。
+        if (!ReferenceEquals(Thread.CurrentThread, _reader))
+            _readerDone.Wait(TimeSpan.FromSeconds(2));
+        try { _pipe.Dispose(); } catch { }
+    }
+
     /// <summary>殺さずに接続だけ捨てる——Loomo のプロセスが消えたときと同じ（テスト用）。</summary>
     internal void Abandon()
     {

@@ -289,6 +289,9 @@ public partial class ShellWindow {
             }));
         }
         // パレットの中で探し方を切り替える口（プレフィックスを知らなくても辿り着けるように）。
+        if (ClosedTerminalCount() is var closedTerminals and > 0)
+            list.Add(new("ターミナル", $"閉じたターミナルを開き直す（{closedTerminals}）", ReopenClosedTerminalTab,
+                Sc("terminal.reopenClosed"), "terminal.reopenClosed"));
         list.Add(new("Git", "クリップボードのパッチを当てる", () => _ = _vm.GitPanel.ApplyPatchFromClipboardCommand.ExecuteAsync(null),
             Id: "git.applyPatchFromClipboard"));
         list.Add(new("Git", "ファイルのパッチを当てる…", () => _ = _vm.GitPanel.ApplyPatchFromFileCommand.ExecuteAsync(null),

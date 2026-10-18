@@ -74,9 +74,12 @@ public partial class ShellWindow {
             return;
         var wasActive = _activeTerminalTab?.Id == id;
         var tab = _terminalTabs[index];
+        // 殺さずにしばらく預ける（§24.41）。預けられなかったら（常駐でない・繋いでいない）従来どおり殺す。
+        var parked = await TryParkTerminalAsync(tab);
         ViewportTree.Detach(tab.View);
         await tab.View.CloseAsync();
-        KillPersistentTerminal(id);
+        if (!parked)
+            KillPersistentTerminal(id);
         _terminalTabs.RemoveAt(index);
         _vm.Tabs.RemoveTerminalTab(id);
         _terminalViews?.RemoveTab(id);

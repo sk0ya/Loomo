@@ -321,6 +321,72 @@ public sealed class PtyHostSessionTests : IDisposable
         Assert.NotEqual(first, _client.Install());
     }
 
+    [Fact]
+    public async Task 閉じたタブを預けたシェルは開き直すと同じ画面に戻り_一覧では預かり中と分かる()
+    {
+        var id = Guid.NewGuid();
+        var workspace = Guid.NewGuid();
+        var first = _client.OpenSession(id, workspace, Request());
+        var firstOutput = new Collector(first);
+        first.Start();
+        firstOutput.WaitFor(t => t.Contains(">>"), "プロンプト");
+        first.Write("echo parked-456\r");
+        firstOutput.WaitFor(t => Count(t, "parked-456") >= 2, "echo の結果");
+
+        first.Park(TimeSpan.FromMinutes(3));
+        first.Dispose();   // 預けたあとの Dispose は殺さない（ビューは閉じるときに必ず呼ぶ）
+
+        await WaitUntilAsync(async () =>
+            (await _client.ListAsync()).SingleOrDefault(s => s.SessionId == id) is { Attached: false, ParkedUntilUtc: not null },
+            "預かり中になる");
+        Assert.Null(firstOutput.ExitCode);
+
+        var second = _client.OpenSession(id, workspace, Request());
+        Assert.False(second.Created);
+        var secondOutput = new Collector(second);
+        second.Start();
+        secondOutput.WaitFor(t => Count(t, "parked-456") >= 2, "開き直した後のスナップショット");
+        // 開き直したら預かりは解ける（期限で殺されない）。
+        await WaitUntilAsync(async () =>
+            (await _client.ListAsync()).SingleOrDefault(s => s.SessionId == id) is { Attached: true, ParkedUntilUtc: null },
+            "預かりが解ける");
+        second.Dispose();
+    }
+
+    [Fact]
+    public async Task 預けた期限を過ぎたシェルはホストが殺す()
+    {
+        var id = Guid.NewGuid();
+        var first = _client.OpenSession(id, Guid.NewGuid(), Request());
+        var output = new Collector(first);
+        first.Start();
+        output.WaitFor(t => t.Contains(">>"), "プロンプト");
+
+        first.Park(TimeSpan.FromSeconds(1));
+
+        await WaitUntilAsync(async () => (await _client.ListAsync()).All(s => s.SessionId != id), "期限で消える");
+    }
+
+    [Fact]
+    public void 閉じたターミナルの控えは新しい順に戻り_期限と別の部屋のものは戻さない()
+    {
+        var workspace = Guid.NewGuid();
+        var other = Guid.NewGuid();
+        var now = new DateTime(2026, 10, 18, 12, 0, 0, DateTimeKind.Utc);
+        var tabs = new sk0ya.Loomo.App.Services.ClosedTerminalTabs();
+        var old = new sk0ya.Loomo.App.Services.ClosedTerminalTab(Guid.NewGuid(), workspace, null, null, now.AddMinutes(-5));
+        var a = new sk0ya.Loomo.App.Services.ClosedTerminalTab(Guid.NewGuid(), workspace, "A", null, now.AddMinutes(-2));
+        var b = new sk0ya.Loomo.App.Services.ClosedTerminalTab(Guid.NewGuid(), workspace, "B", null, now.AddMinutes(-1));
+        var elsewhere = new sk0ya.Loomo.App.Services.ClosedTerminalTab(Guid.NewGuid(), other, "X", null, now);
+        tabs.Push(old); tabs.Push(a); tabs.Push(b); tabs.Push(elsewhere);
+
+        Assert.Equal(2, tabs.Count(workspace, now));
+        Assert.Equal(b, tabs.TakeLatest(workspace, now));
+        Assert.Equal(a, tabs.TakeLatest(workspace, now));
+        Assert.Null(tabs.TakeLatest(workspace, now));
+        Assert.Equal(elsewhere, tabs.TakeLatest(other, now));
+    }
+
     private static async Task WaitUntilAsync(Func<Task<bool>> condition, string what)
     {
         var watch = Stopwatch.StartNew();

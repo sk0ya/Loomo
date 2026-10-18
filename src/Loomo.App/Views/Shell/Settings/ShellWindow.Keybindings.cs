@@ -13,6 +13,7 @@ public partial class ShellWindow {
             ["palette.nextScope"] = () => CyclePaletteMode(+1),
             ["palette.previousScope"] = () => CyclePaletteMode(-1),
             ["terminal.recentCommands"] = OpenRecentTerminalCommands,
+            ["terminal.reopenClosed"] = ReopenClosedTerminalTab,
             ["terminal.compareOutput"] = OpenTerminalOutputComparisons,
             ["terminal.openOutput"] = OpenTerminalOutputs,
             ["tasks.run"] = OpenWorkspaceTasks,

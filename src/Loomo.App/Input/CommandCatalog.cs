@@ -160,6 +160,8 @@ public static class CommandCatalog
         // 最近のコマンド（§24.20）。選ぶとプロンプトへ入力するだけで実行はしない（§24.3 の「送る」）。
         // 既定キーは与えない——パレットの一覧にも並ぶので、毎回の起点にしたい人だけが付ければよい。
         new CommandDescriptor("terminal.recentCommands", CatTerminal, "最近のコマンドを選び直す", null),
+        // 既定のキーは割り当てない（Ctrl+Shift+T は mode.toggle が使っている）。設定から足せる（§24.41）。
+        new CommandDescriptor("terminal.reopenClosed", CatTerminal, "閉じたターミナルを開き直す", null),
         new CommandDescriptor("terminal.compareOutput", CatTerminal, "コマンドの出力を前回と比較", null),
         new CommandDescriptor("terminal.openOutput", CatTerminal, "コマンドの出力をエディタで開く", null),
         // 出典付きでペグボードへ残す（§24.26）。右クリック（選択時）と同じ実装へ入る。

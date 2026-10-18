@@ -63,7 +63,17 @@ internal sealed class HostSession
     }
 
     public PtyProtocol.SessionInfo Describe() =>
-        new(Id, WorkspaceId, Title, WorkingDirectory, CreatedUtc, Attached);
+        new(Id, WorkspaceId, Title, WorkingDirectory, CreatedUtc, Attached, ParkedUntilUtc);
+
+    /// <summary>閉じたタブとして預かっている期限（§24.41）。開き直されたら消える。</summary>
+    public DateTime? ParkedUntilUtc
+    {
+        get { lock (_parkGate) return _parkedUntilUtc; }
+        set { lock (_parkGate) _parkedUntilUtc = value; }
+    }
+
+    private readonly object _parkGate = new();
+    private DateTime? _parkedUntilUtc;
 
     /// <summary>
     /// このシェルを <paramref name="client"/> の持ち物にする。先勝ち：もう誰かが繋がっていれば false で、

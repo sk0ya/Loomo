@@ -21,6 +21,7 @@ public partial class ShellWindow {
             try {
                 var session = _ptyHost.OpenSession(tabId, owner.Value, request);
                 _localTerminalTabs.TryRemove(tabId, out _);
+                _remoteTerminalSessions[tabId] = session;   // 閉じるときに預ける相手（§24.41）
                 return session;
             } catch (Exception ex) {
                 // 同じシェルは先勝ち（§34.5）：別の Loomo が繋いでいるなら奪わない。ホストが起きない・答えない
@@ -37,6 +38,49 @@ public partial class ShellWindow {
 
     /// <summary>先勝ちに負けて自前のシェルで立てたタブ。端末ビューのバックグラウンドスレッドから書かれる。</summary>
     private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, byte> _localTerminalTabs = new();
+
+    /// <summary>常駐ホストのシェルへの接続（タブ ID → 接続）。端末ビューのバックグラウンドスレッドから書かれる。</summary>
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, sk0ya.Loomo.Services.Terminal.RemotePtySession>
+        _remoteTerminalSessions = new();
+
+    /// <summary>手で閉じたターミナル（§24.41）。シェルはホストが期限まで預かっている。</summary>
+    private readonly ClosedTerminalTabs _closedTerminalTabs = new();
+
+    /// <summary>
+    /// 手で閉じるタブのシェルを、殺さずにホストへ預ける（§24.41）。預けたら true（呼び手は殺さない）。
+    /// 常駐でないタブ・まだ一度も繋いでいないタブ（復元しただけで表示していない）は預けない——繋がっていない
+    /// シェルは中身を見ていないので、戻す価値より「閉じたのに残る」害の方が大きい。
+    /// </summary>
+    private async Task<bool> TryParkTerminalAsync(TerminalTab tab) {
+        if (!PersistentTerminalsEnabled || CurrentTerminalWorkspace.WorkspaceId is not { } workspaceId
+            || !_remoteTerminalSessions.TryRemove(tab.Id, out var session))
+            return false;
+        var entry = new ClosedTerminalTab(tab.Id, workspaceId, tab.CustomName, tab.View.WorkingDirectory, DateTime.UtcNow);
+        // Park はホストが読み終えるまで待つ（ふつうは数 ms）。UI スレッドでは待たない。
+        await Task.Run(() => session.Park(ClosedTerminalTabs.KeepFor));
+        _closedTerminalTabs.Push(entry);
+        return true;
+    }
+
+    /// <summary>このワークスペースで最後に閉じたターミナルを、同じタブ ID で開き直す（§24.41）。ホストが預かっていた
+    /// シェルへ繋ぎ直すので、画面・スクロールバック・動いていたプロセスごと戻る。</summary>
+    private void ReopenClosedTerminalTab() {
+        if (CurrentTerminalWorkspace.WorkspaceId is not { } workspaceId
+            || _closedTerminalTabs.TakeLatest(workspaceId, DateTime.UtcNow) is not { } closed) {
+            ShowRefactorStatus("開き直せるターミナルはありません（閉じてから 3 分たったものは戻せません）。");
+            return;
+        }
+        var cwd = Directory.Exists(closed.WorkingDirectory) ? closed.WorkingDirectory!
+            : _activeWorkspace?.RootPath ?? _terminal.CurrentDirectory;
+        AddRestoredTerminalTab(cwd, closed.Id, closed.CustomName);
+        if (!IsPaneVisible(PaneKind.Terminal))
+            SetPaneVisible(PaneKind.Terminal, true);
+        ActivateTerminalTab(closed.Id);
+        FocusPane(PaneKind.Terminal);
+    }
+
+    private int ClosedTerminalCount()
+        => CurrentTerminalWorkspace.WorkspaceId is { } id ? _closedTerminalTabs.Count(id, DateTime.UtcNow) : 0;
 
     /// <summary>今のワークスペースのターミナルタブをスナップショットへ書く。切替の途中などで、いま見えている
     /// タブ集合がこのスナップショットの持ち物でないときは触らない（前に書いた内容を残す）。</summary>
@@ -111,7 +155,9 @@ public partial class ShellWindow {
         if (!ReferenceEquals(_activeTerminalWorkspace, terminalWorkspace))
             return;
         var orphans = sessions
-            .Where(s => s.WorkspaceId == workspaceId && !s.Attached && terminalWorkspace.Tabs.All(t => t.Id != s.SessionId))
+            // 閉じたタブとして預かっているシェル（§24.41）は持ち主のいないシェルではない——拾うと閉じたタブが勝手に戻る。
+            .Where(s => s.WorkspaceId == workspaceId && !s.Attached && s.ParkedUntilUtc is null
+                && terminalWorkspace.Tabs.All(t => t.Id != s.SessionId))
             .OrderBy(s => s.CreatedUtc)
             .ToList();
         if (orphans.Count == 0)
