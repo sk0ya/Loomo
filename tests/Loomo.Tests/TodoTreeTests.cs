@@ -28,7 +28,7 @@ public sealed class TodoTreeTests
         settings.ActivityBar.Primary = ["explorer", "git", "solution", "pegboard"];
         settings.ActivityBar.Secondary = ["tabs"];
         var vm = new ActivityBarViewModel(settings);
-        Assert.Equal(["tabs", "todo"], vm.SecondaryItems.Select(i => i.Id));
+        Assert.Equal(["tabs", "todo", "running"], vm.SecondaryItems.Select(i => i.Id));
         vm.Move(vm.ItemFor(SidebarPanel.Todo)!, ActivityBarSlot.Primary, 1);
         Assert.Equal("todo", new ActivityBarViewModel(settings).PrimaryItems[1].Id);
     }
