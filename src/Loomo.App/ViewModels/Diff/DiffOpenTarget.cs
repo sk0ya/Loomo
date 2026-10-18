@@ -17,7 +17,7 @@ namespace sk0ya.Loomo.App.ViewModels;
 /// </summary>
 public abstract record DiffOpenTarget
 {
-    private DiffOpenTarget() { }   // 派生はこの中の6つだけ（受け手の振り分けを閉じた集合にする）
+    private DiffOpenTarget() { }   // 派生はこの中の7つだけ（受け手の振り分けを閉じた集合にする）
 
     /// <summary>切り離しウィンドウのタブ名。<b>短く</b>——タブは何枚も並ぶので、長いと隣が潰れて
     /// どれがどれだか分からなくなる。ハッシュは7桁、飾りの語（「コミット」「作業ツリー」）は落とし、
@@ -91,6 +91,12 @@ public abstract record DiffOpenTarget
         public override string TitleFor(string? path)
             => $"{Trim(Value.LeftTitle, Half)} ↔ {Trim(Value.RightTitle, Half)}";
         public override string IconPath => Value.FilePath;
+    }
+
+    /// <summary>まとまった比較（フォルダー同士の比較、§24.5.3）。1ファイル1件の比較を並びのまま積む。</summary>
+    public sealed record ComparisonSet(IReadOnlyList<DiffComparison> Values, string LeftTitle, string RightTitle) : DiffOpenTarget
+    {
+        public override string TitleFor(string? path) => $"{Trim(LeftTitle, Half)} ↔ {Trim(RightTitle, Half)}";
     }
 
     /// <summary>タブ名の上限。日本語混じりでも一目で読める程度に詰める。</summary>

@@ -64,6 +64,13 @@ internal sealed class FilesColumnCommandController
             vm.RequestCompare(files[0].FullPath, files[1].FullPath);
     }
 
+    public void CompareSelectedFolders(
+        FilesColumnViewModel? vm, IReadOnlyList<FileEntryViewModel> selection)
+    {
+        if (vm is not null && selection.Count == 2 && selection.All(entry => entry.IsDirectory))
+            vm.RequestCompareFolders(selection[0].FullPath, selection[1].FullPath);
+    }
+
     internal FileContextMenuState CreateContextMenuState(
         FilesColumnViewModel vm,
         IReadOnlyList<FileEntryViewModel> selection)

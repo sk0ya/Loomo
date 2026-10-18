@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Windows.Input;
 
 namespace sk0ya.Loomo.App.Input;
@@ -18,18 +19,23 @@ public sealed class KeyboardDispatcher
     private readonly Func<string, bool>? _canExecute;
     private readonly Action<string>? _onEnterMode;
     private readonly Action<string>? _onExitMode;
+    private readonly Action<KeyChord?>? _onPendingChanged;
 
     /// <param name="actions">コマンド Id → 実体アクション（ShellWindow が結線）。</param>
     /// <param name="canExecute">コンテキスト依存コマンドの実行可否。falseならキーを消費せず内側へ渡す。</param>
     /// <param name="onEnterMode">モーダル状態に入ったとき（例: リサイズモードのヒント表示）。</param>
     /// <param name="onExitMode">モーダル状態を抜けたとき。</param>
+    /// <param name="onPendingChanged">連鎖の 1 打目を受けて 2 打目を待ち始めた（そのプレフィックス）／
+    /// 待ちが解けた（null）とき。続きのキーの一覧を出し入れするのに使う（§24.2.2）。</param>
     public KeyboardDispatcher(
         KeybindingService bindings,
         IReadOnlyDictionary<string, Action> actions,
         Action<string>? onEnterMode = null,
         Action<string>? onExitMode = null,
-        Func<string, bool>? canExecute = null)
+        Func<string, bool>? canExecute = null,
+        Action<KeyChord?>? onPendingChanged = null)
     {
+        _onPendingChanged = onPendingChanged;
         _bindings = bindings;
         _actions = actions;
         _canExecute = canExecute;
@@ -39,7 +45,17 @@ public sealed class KeyboardDispatcher
         Rebuild();
     }
 
-    private void Rebuild() => _resolver.SetBindings(_bindings.Effective);
+    private void Rebuild()
+    {
+        var prevPending = _resolver.Pending;
+        _resolver.SetBindings(_bindings.Effective);
+        NotifyPending(prevPending);
+    }
+
+    /// <summary>連鎖待ちの <paramref name="prefix"/> に続けて押せるキーと、その先のコマンド Id。
+    /// アクションが結線されていないコマンド（別スコープ）は押しても何も起きないので出さない。</summary>
+    public IReadOnlyList<(KeyChord Second, string Id)> ContinuationsOf(KeyChord prefix)
+        => _resolver.Continuations(prefix).Where(c => _actions.ContainsKey(c.Id)).ToList();
 
     /// <summary>
     /// モーダルに開いている面（コマンドパレット等）の中で、<b>その面のコマンドだけ</b>を実行する。
@@ -74,8 +90,10 @@ public sealed class KeyboardDispatcher
         if (KeyChord.FromEvent(e) is not { } chord) return;   // 修飾子のみ：状態を保ったまま素通し
 
         var prevMode = _resolver.Mode;
+        var prevPending = _resolver.Pending;
         var res = _resolver.Resolve(chord);
         ApplyModeTransition(prevMode);
+        NotifyPending(prevPending);
 
         if (res.Execute is { } id)
         {
@@ -98,7 +116,9 @@ public sealed class KeyboardDispatcher
     /// モードは抑止中でなければ抜ける（リサイズ自身が起こすフォーカス移動で抜けないようにするため）。</summary>
     public void OnExternalFocusChange(bool suppressModeExit)
     {
+        var prevPending = _resolver.Pending;
         _resolver.ClearPending();
+        NotifyPending(prevPending);
         if (suppressModeExit) return;
         var prev = _resolver.Mode;
         if (_resolver.ExitMode() && prev is { } m)
@@ -109,9 +129,17 @@ public sealed class KeyboardDispatcher
     public void Reset()
     {
         var prev = _resolver.Mode;
+        var prevPending = _resolver.Pending;
         _resolver.Reset();
+        NotifyPending(prevPending);
         if (prev is { } m)
             _onExitMode?.Invoke(m);
+    }
+
+    private void NotifyPending(KeyChord? previous)
+    {
+        var now = _resolver.Pending;
+        if (now != previous) _onPendingChanged?.Invoke(now);
     }
 
     private void ApplyModeTransition(string? prevMode)

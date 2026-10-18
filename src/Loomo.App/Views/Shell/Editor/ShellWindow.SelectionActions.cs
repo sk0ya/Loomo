@@ -242,8 +242,30 @@ public partial class ShellWindow {
     /// <summary>エクスプローラーからの比較要求：ファイル同士、またはファイルとクリップボードを Diff ペインへ。
     /// 2ファイルのときは右（新側）を比較の出どころにして、行から飛ぶ先を「新しい方」に揃える。</summary>
     private void CompareFilesInDiff(FileCompareRequest request) {
+        if (request.RightPath is { } right && Directory.Exists(request.LeftPath) && Directory.Exists(right)) {
+            _ = CompareFoldersInDiffAsync(request.LeftPath, right);
+            return;
+        }
         ShowDiffResolution(DiffComparisonSourceResolver.FromFiles(
             request.LeftPath, request.RightPath, ClipboardText.TryGet));
+    }
+    /// <summary>フォルダー同士の比較（§24.5.3）。読むのは裏で、結果は違うファイルを1件ずつ比較のストックへ積む。</summary>
+    private async Task CompareFoldersInDiffAsync(string left, string right) {
+        FolderComparisonResult result;
+        try {
+            result = await Task.Run(() => FolderComparison.Build(left, right));
+        } catch (Exception ex) {
+            ToastService.Error($"フォルダーを比較できませんでした: {ex.Message}");
+            return;
+        }
+        var summary = FolderComparison.Summarize(result);
+        if (result.Comparisons.Count == 0) {
+            ToastService.Info(result.Skipped.Count == 0 && !result.Truncated
+                ? $"2つのフォルダーの中身は同じです（{result.Identical} 件）。" : summary);
+            return;
+        }
+        ShowDiff(new DiffOpenTarget.ComparisonSet(result.Comparisons, Path.GetFileName(left), Path.GetFileName(right)));
+        ToastService.Info(summary);
     }
     private void ShowDiffResolution(DiffComparisonResolution resolution) {
         if (resolution.ErrorMessage is { } error) {

@@ -305,6 +305,9 @@ public partial class FilesColumnView : UserControl
     private void OnCompareSelectedClick(object sender, RoutedEventArgs e)
         => _fileCommands.CompareSelectedFiles(Vm, Selection());
 
+    private void OnCompareSelectedFoldersClick(object sender, RoutedEventArgs e)
+        => _fileCommands.CompareSelectedFolders(Vm, Selection());
+
     private void OnSearchInFolderClick(object sender, RoutedEventArgs e)
     {
         if (SingleSelection() is { IsDirectory: true } entry)

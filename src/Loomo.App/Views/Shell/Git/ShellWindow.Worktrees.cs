@@ -13,6 +13,24 @@ public partial class ShellWindow {
         _vm.GitSession.WorktreeOpenRequested += (_, request) => OpenWorktree(request);
         _vm.GitSession.WorktreeRemoving += (_, path) => DetachWorktreeFolders(path);
         _vm.GitSession.WorktreeRemoved += (_, path) => _vm.Workspaces.RemoveWorktreeRoom(path);
+        _vm.GitSession.PropertyChanged += (_, e) => {
+            if (e.PropertyName == nameof(GitSessionViewModel.Worktrees)) RefreshWorktreeAgentMarks();
+        };
+    }
+
+    /// <summary>ワークツリー一覧の「そこで Claude Code が動いている」印を、この部屋のターミナルの状態から
+    /// 入れ直す（§24.17.2）。ターミナルの印が動いたときと一覧を読み直したときに呼ぶ。</summary>
+    private void RefreshWorktreeAgentMarks() {
+        var worktrees = _vm.GitSession.Worktrees;
+        var marks = worktrees.Count <= 1 && _vm.GitSession.WorktreeAgentMarks.Count == 0
+            ? _vm.GitSession.WorktreeAgentMarks
+            : WorktreeAgentMarks.For(worktrees, _paneActivity.AgentTabs().Select(agent =>
+                new WorktreeAgentSighting(agent.State, agent.TranscriptPath,
+                    _terminalTabs.FirstOrDefault(t => t.Id == agent.TabId)?.View.WorkingDirectory)));
+        var current = _vm.GitSession.WorktreeAgentMarks;
+        if (marks.Count == current.Count && marks.All(p => current.TryGetValue(p.Key, out var v) && v == p.Value))
+            return;   // 同じなら差し替えない（行の再描画を起こさない）
+        _vm.GitSession.WorktreeAgentMarks = marks;
     }
 
     private void OpenWorktree(GitWorktreeOpenRequest request) {

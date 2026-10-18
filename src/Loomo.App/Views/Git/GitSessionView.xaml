@@ -755,6 +755,27 @@
                                 <ListBox.ItemTemplate>
                                     <DataTemplate>
                                         <DockPanel LastChildFill="True" ToolTip="{Binding Path}">
+                                            <!-- そこで動いている Claude Code（§24.17.2）。この部屋のターミナルのものだけ。 -->
+                                            <TextBlock DockPanel.Dock="Right" FontSize="{DynamicResource Fs11}"
+                                                       Foreground="{DynamicResource Accent}" Margin="6,0,0,0"
+                                                       ToolTip="このワークスペースのターミナルで、ここを作業場所にしている Claude Code">
+                                                <TextBlock.Text>
+                                                    <MultiBinding Converter="{StaticResource DictionaryLookup}">
+                                                        <Binding Path="Path" />
+                                                        <Binding Path="DataContext.WorktreeAgentMarks"
+                                                                 RelativeSource="{RelativeSource AncestorType=ListBox}" />
+                                                    </MultiBinding>
+                                                </TextBlock.Text>
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Style.Triggers>
+                                                            <Trigger Property="Text" Value="">
+                                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                            </Trigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
                                             <!-- 未コミットの件数（未追跡を含む）。0 なら出さない。 -->
                                             <TextBlock DockPanel.Dock="Right" Text="{Binding ChangeCount, StringFormat=±{0}}"
                                                        FontSize="{DynamicResource Fs11}" Foreground="#FFE5A23B" Margin="6,0,0,0"

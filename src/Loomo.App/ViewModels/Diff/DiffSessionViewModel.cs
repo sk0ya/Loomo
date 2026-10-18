@@ -411,6 +411,9 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
             case DiffOpenTarget.Comparison c:
                 ShowComparison(c.Value);
                 return Task.CompletedTask;
+            case DiffOpenTarget.ComparisonSet set:
+                ShowComparisons(set.Values);
+                return Task.CompletedTask;
             case DiffOpenTarget.CommitRange r:
                 ShowCommitRange(r.FromHash, r.ToHash, r.Label);
                 return Task.CompletedTask;
@@ -612,6 +615,16 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
     /// </summary>
     public void ShowComparison(DiffComparison comparison) => StockAndShow(comparison, replacing: null);
 
+    /// <summary>まとまった比較（フォルダー同士の比較の各ファイル、§24.5.3）を、並びを保ったまま先頭へ積み、
+    /// 最初の1件を選ぶ。既にある素材は積み直さない。</summary>
+    public void ShowComparisons(IReadOnlyList<DiffComparison> comparisons)
+    {
+        if (comparisons.Count == 0) return;
+        var fresh = comparisons.Where(c => !_comparisons.Contains(c)).ToList();
+        _comparisons.InsertRange(0, fresh);
+        StockAndShow(comparisons[0], replacing: null);
+    }
+
     /// <summary>比較をストックへ入れて、それを選んだ状態で表示する。</summary>
     /// <param name="replacing">作り直し（左右入替・再比較）の元。指定するとその<b>同じ位置</b>へ置き換える
     /// ——先頭へ積み直すと、入れ替えるたびに一覧の中で行が飛んで見失うため。</param>
@@ -698,7 +711,7 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
             FullPath = comparison.FilePath,
             DisplayPath = comparison.DisplayPath,
             // 一覧自体が比較モードだと分かるため、各項目で「比較」を繰り返さない。
-            Badge = added == 0 && removed == 0 ? "同一" : "",
+            Badge = comparison.Badge is { Length: > 0 } badge ? badge : added == 0 && removed == 0 ? "同一" : "",
             Stats = $"+{added} −{removed}",
             Comparison = comparison,
             FileIsLeft = comparison.FileIsLeft,

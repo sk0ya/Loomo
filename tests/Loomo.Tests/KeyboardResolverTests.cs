@@ -45,6 +45,23 @@ public class KeyboardResolverTests
     }
 
     [Fact]
+    public void Continuations_list_second_chords_of_a_prefix()
+    {
+        var r = NewResolver();
+        var next = r.Continuations(C(Key.W, ModifierKeys.Control));
+        Assert.Contains(next, c => c.Second == C(Key.H) && c.Id == "pane.focus.left");
+        Assert.Contains(next, c => c.Second == C(Key.H, ModifierKeys.Shift) && c.Id == "pane.resize.left");
+        Assert.Contains(next, c => c.Id == "palette.openFromPrefix");
+    }
+
+    [Fact]
+    public void Continuations_of_a_non_prefix_are_empty()
+    {
+        var r = NewResolver();
+        Assert.Empty(r.Continuations(C(Key.P, ModifierKeys.Control | ModifierKeys.Shift)));
+    }
+
+    [Fact]
     public void Prefix_tolerates_held_control_on_second_chord()
     {
         var r = NewResolver();

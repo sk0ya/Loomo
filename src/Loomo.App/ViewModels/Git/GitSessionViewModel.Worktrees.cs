@@ -40,6 +40,11 @@ public sealed partial class GitSessionViewModel
     [NotifyPropertyChangedFor(nameof(SwitchableWorktrees))]
     private IReadOnlyList<GitWorktreeInfo> _worktrees = Array.Empty<GitWorktreeInfo>();
 
+    /// <summary>ワークツリーのパス → そこで動いている Claude Code の印（§24.17.2）。この部屋のターミナルの
+    /// 状態から ShellWindow が入れる（Git の VM はターミナルを知らない）。</summary>
+    [ObservableProperty]
+    private IReadOnlyDictionary<string, string> _worktreeAgentMarks = new Dictionary<string, string>();
+
     /// <summary>メイン以外のワークツリーの数（タブの件数）。メインしか無いリポジトリでは 0。</summary>
     public int LinkedWorktreeCount => Math.Max(0, Worktrees.Count - 1);
 

@@ -253,6 +253,13 @@ public sealed partial class FolderTreeViewModel
         CompareRequested?.Invoke(this, new FileCompareRequest(leftPath, rightPath));
     }
 
+    /// <summary>フォルダー同士の比較を要求する（§24.5.3）。左＝先に選んだ方。どちらも実在フォルダーのときだけ。</summary>
+    public void RequestCompareFolders(string leftPath, string rightPath)
+    {
+        if (_fileCommands.EntryExists(leftPath, isDirectory: true) && _fileCommands.EntryExists(rightPath, isDirectory: true))
+            CompareRequested?.Invoke(this, new FileCompareRequest(leftPath, rightPath));
+    }
+
     /// <summary>このフォルダーを検索の開始フォルダーにして検索パネルを開くよう要求する（ShellWindow が処理）。
     /// フォルダかつ実在のときだけ発火する。</summary>
     public void RequestSearchInFolder(FileNodeViewModel node)

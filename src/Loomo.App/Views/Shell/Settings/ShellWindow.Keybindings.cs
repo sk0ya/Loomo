@@ -61,7 +61,8 @@ public partial class ShellWindow {
             actions,
             onEnterMode: mode => { if (mode == CommandCatalog.ResizeMode) SetResizeMode(true); },
             onExitMode: mode => { if (mode == CommandCatalog.ResizeMode) SetResizeMode(false); },
-            canExecute: CanExecuteKeyboardCommand);
+            canExecute: CanExecuteKeyboardCommand,
+            onPendingChanged: OnKeyChordPendingChanged);
     }
 
     /// <summary>キーからコマンドを実行してよいか。false ならキーは<b>消費されず</b>内側のペインへ

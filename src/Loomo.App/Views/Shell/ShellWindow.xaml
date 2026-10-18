@@ -3414,6 +3414,23 @@
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
+
+            <!-- 連鎖キーの続き（§24.2.2）：Ctrl+W などの 1 打目を押して少し待つと、2 打目に押せるキーと
+                 コマンド名を出す。束の最下段＝通知欄の真上に、通知欄と同じ幅で置く。履歴には残さない
+                 （知らせではなく、いま押しかけているキーの手元の案内なので）。中身は ShellWindow.KeyChordHint.cs が組む。 -->
+            <Border x:Name="KeyChordHint" Visibility="Collapsed" Margin="0,6,0,0" IsHitTestVisible="False"
+                    Width="{DynamicResource NotificationAreaW}" HorizontalAlignment="Right"
+                    Background="{DynamicResource Panel}" BorderBrush="{DynamicResource Accent}" BorderThickness="1"
+                    CornerRadius="4" Padding="10,6">
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="10" ShadowDepth="2" Opacity="0.35" />
+                </Border.Effect>
+                <StackPanel>
+                    <TextBlock x:Name="KeyChordHintHeader" Foreground="{DynamicResource FgDim}"
+                               FontSize="{DynamicResource Fs11}" Margin="0,0,0,4" />
+                    <Grid x:Name="KeyChordHintRows" />
+                </StackPanel>
+            </Border>
             </StackPanel>
         </Grid>
     </Border>

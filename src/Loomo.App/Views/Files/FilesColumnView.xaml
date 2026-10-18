@@ -937,6 +937,8 @@
                                 <MenuItem Header="クリップボードと比較" Tag="FileOnly" Click="OnCompareWithClipboardClick" />
                                 <MenuItem Header="選択した2つを比較" Tag="CompareTwo" Click="OnCompareSelectedClick"
                                           ToolTip="先に選んだ方を左（旧）、後を右（新）として比較します" />
+                                <MenuItem Header="選択した2つのフォルダーを比較" Tag="CompareTwoFolders" Click="OnCompareSelectedFoldersClick"
+                                          ToolTip="中身の違うファイルを Diff ペインの比較に並べます（先に選んだ方が左＝旧）" />
                             </MenuItem>
                             <MenuItem Header="Git" Tag="GitMenu">
                                 <MenuItem Header="履歴を表示" Click="OnGitHistoryClick" />

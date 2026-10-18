@@ -23,6 +23,9 @@ internal readonly record struct FileHistoryMenuPresentation(string Header, bool 
 
 internal static class FileContextMenuPolicy
 {
+    /// <summary>フォルダーをちょうど2つ選んでいる（フォルダー同士の比較、§24.5.3）。</summary>
+    public static bool IsTwoFolders(FileContextMenuState state) => state.SelectionCount == 2 && state.FileCount == 0;
+
     public static bool IsVisible(string? tag, FileContextMenuState state, bool historyVisible)
         => tag switch
         {
@@ -36,7 +39,9 @@ internal static class FileContextMenuPolicy
             "DirSelection" => state.SelectionCount > 0 && state.FileCount == 0,
             "Html" => state.HasSingleSelection && state.SingleIsHtml,
             "CompareTwo" => state.FileCount == 2,
-            "DiffMenu" => (state.HasSingleSelection && !state.SingleIsDirectory) || state.FileCount == 2,
+            "CompareTwoFolders" => IsTwoFolders(state),
+            "DiffMenu" => (state.HasSingleSelection && !state.SingleIsDirectory) || state.FileCount == 2
+                || IsTwoFolders(state),
             "SearchableDir" => state.HasSingleSelection && state.SingleIsDirectory
                 && state.CanSearchInSingleDirectory,
             "Pinnable" => state.CanPin,

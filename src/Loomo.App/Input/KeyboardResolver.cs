@@ -70,6 +70,17 @@ public sealed class KeyboardResolver
 
     public void ClearPending() => Pending = null;
 
+    /// <summary><paramref name="prefix"/> の 2 打目として割り当たっているキーとコマンド Id（キーの表記順）。
+    /// 連鎖待ちのあいだ「次に押せるもの」を見せるのに使う（§24.2.2）。</summary>
+    public IReadOnlyList<(KeyChord Second, string Id)> Continuations(KeyChord prefix)
+    {
+        if (!_prefixed.TryGetValue(prefix, out var second)) return [];
+        var list = new List<(KeyChord Second, string Id)>(second.Count);
+        foreach (var (chord, id) in second) list.Add((chord, id));
+        list.Sort((a, b) => string.CompareOrdinal(a.Second.Format(), b.Second.Format()));
+        return list;
+    }
+
     /// <summary>モードを抜ける。抜けたとき true。</summary>
     public bool ExitMode()
     {

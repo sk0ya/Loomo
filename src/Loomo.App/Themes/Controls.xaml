@@ -21,6 +21,7 @@
     <conv:EqualityActiveTagConverter x:Key="EqualityActiveTagConverter" />
     <conv:AllTrueToVisibilityConverter x:Key="AllTrueToVisibilityConverter" />
     <conv:EqualityToVisibilityConverter x:Key="EqualityToVis" />
+    <conv:DictionaryLookupConverter x:Key="DictionaryLookup" />
     <conv:GitStatusToBrushConverter x:Key="GitStatusBrush" />
     <conv:GitRefKindToBrushConverter x:Key="GitRefKindBrush" />
     <conv:RelativeDateConverter x:Key="RelativeDate" />

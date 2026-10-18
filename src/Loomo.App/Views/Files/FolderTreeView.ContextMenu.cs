@@ -242,6 +242,14 @@ public partial class FolderTreeView
             vm.RequestCompare(files[0].FullPath, files[1].FullPath);
     }
 
+    private void OnCompareSelectedFoldersClick(object sender, RoutedEventArgs e)
+    {
+        var selection = CurrentSelection(ContextNode(sender));
+        if (selection.Count == 2 && selection.All(n => n.IsDirectory && !n.IsShellItem)
+            && DataContext is FolderTreeViewModel vm)
+            vm.RequestCompareFolders(selection[0].FullPath, selection[1].FullPath);
+    }
+
     private IReadOnlyList<FileNodeViewModel> SelectedFilesForCompare(FileNodeViewModel? contextNode)
         => CurrentSelection(contextNode).Where(n => !n.IsDirectory).ToList();
 

@@ -77,9 +77,11 @@ internal static class FileContextMenuPresenter
         bool showAi,
         bool showTwoFileDiff,
         string? undoDescription,
-        string? redoDescription)
+        string? redoDescription,
+        bool showTwoFolderDiff = false)
     {
         SetTaggedVisibility(menu, "FileSystemOnly", fileSystemVisible);
+        SetTaggedVisibility(menu, "CompareTwoFolders", showTwoFolderDiff);
         SetTaggedVisibility(menu, "AiMenu", showAi);
         if (FindMenuItem(menu, "DiffMenu") is { } diffMenu
             && FindMenuItem(diffMenu, "CompareTwo") is { } compareTwo)
@@ -115,7 +117,8 @@ internal static class FileContextMenuPresenter
             showAi,
             FileContextMenuPolicy.HasExactlyTwoFiles(selection.Count(item => !item.IsDirectory)),
             vm?.History.UndoDescription,
-            vm?.History.RedoDescription);
+            vm?.History.RedoDescription,
+            showTwoFolderDiff: selection.Count == 2 && selection.All(item => item.IsDirectory && !item.IsShellItem));
     }
 
     /// <summary>ファイル一覧の状態と履歴をメニューへ反映する。</summary>

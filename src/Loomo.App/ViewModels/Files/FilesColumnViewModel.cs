@@ -1537,6 +1537,13 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
         CompareRequested?.Invoke(this, new FileCompareRequest(leftPath, rightPath));
     }
 
+    /// <summary>フォルダー同士の比較を要求する（§24.5.3）。左＝先に選んだ方。どちらも実在フォルダーのときだけ。</summary>
+    public void RequestCompareFolders(string leftPath, string rightPath)
+    {
+        if (Directory.Exists(leftPath) && Directory.Exists(rightPath))
+            CompareRequested?.Invoke(this, new FileCompareRequest(leftPath, rightPath));
+    }
+
     public void RequestSearchInFolder(string folder)
     {
         // 検索はワークスペースを対象にする道具なので、外のフォルダーは渡さない。

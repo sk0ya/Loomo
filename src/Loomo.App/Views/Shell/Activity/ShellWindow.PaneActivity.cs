@@ -123,6 +123,7 @@ public partial class ShellWindow {
         UpdatePaneActivityBadge(kind);
     }
     private void UpdatePaneActivityBadge(PaneKind kind) {
+        if (kind == PaneKind.Terminal) RefreshWorktreeAgentMarks();
         var exitCode = 0;
         var activity = kind switch {
             PaneKind.Terminal => _paneActivity.AggregateTerminal(out exitCode),

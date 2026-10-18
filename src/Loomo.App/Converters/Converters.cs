@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Windows;
 using System.Windows.Data;
@@ -203,6 +204,17 @@ public sealed class EqualityToVisibilityConverter : IMultiValueConverter
 {
     public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
         => values.Length >= 2 && Equals(values[0], values[1]) ? Visibility.Visible : Visibility.Collapsed;
+
+    public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture)
+        => throw new NotSupportedException();
+}
+
+/// <summary>values[0] をキーに values[1]（文字列の辞書）を引く。無ければ空文字（行の中の任意の印に使う）。</summary>
+public sealed class DictionaryLookupConverter : IMultiValueConverter
+{
+    public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
+        => values.Length >= 2 && values[0] is string key && values[1] is IReadOnlyDictionary<string, string> map
+           && map.TryGetValue(key, out var value) ? value : "";
 
     public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture)
         => throw new NotSupportedException();

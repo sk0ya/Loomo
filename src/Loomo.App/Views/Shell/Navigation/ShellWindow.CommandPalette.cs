@@ -48,14 +48,30 @@ public partial class ShellWindow {
             SetPaletteMode(mode);
             return;
         }
+        // 選んでいる語を最初の検索語に（§24.2.3）。パレットが焦点を取る前に、いまの焦点の持ち主から読む。
+        var seed = commands is null ? PaletteSelectionSeed.For(mode, SelectionForPaletteSeed()) : null;
         _paletteCommands = commands ?? BuildPaletteCommands();
         CommandPaletteOverlay.Visibility = Visibility.Visible;
         SetPaletteHint(mode);
         UpdatePaletteBoxSize();
-        PaletteInput.Text = PaletteQuery.PrefixOf(mode);
-        PaletteInput.CaretIndex = PaletteInput.Text.Length;
+        var prefix = PaletteQuery.PrefixOf(mode);
+        PaletteInput.Text = prefix + seed;
+        // 検索語は選んだ状態で置く：そのまま Enter で探せて、打てば置き換わる。
+        if (seed is not null) PaletteInput.Select(prefix.Length, seed.Length);
+        else PaletteInput.CaretIndex = PaletteInput.Text.Length;
         RefilterPalette();
         PaletteInput.Focus();
+    }
+
+    /// <summary>いま焦点のあるペインで選んでいる文字列（ターミナル→エディタの順）。焦点がどちらにも無ければ null
+    /// ——見えていない裏のタブの選択を勝手に持ち込まない。</summary>
+    private string? SelectionForPaletteSeed() {
+        if ((TerminalPane.IsKeyboardFocusWithin || _focusedRegion?.Pane == PaneKind.Terminal)
+            && _activeTerminalTab is { } terminal && terminal.View.HasSelection)
+            return terminal.View.SelectedText;
+        if (IsEditorFocused() && _activeEditorTab is { IsRealized: true } editor && editor.Control.HasSelection)
+            return editor.Control.SelectedText;
+        return null;
     }
     /// <summary>探し方の案内をそのままクリックできるようにし、選択中のモードをアクセント色で示す。</summary>
     private void SetPaletteHint(PaletteMode activeMode) {

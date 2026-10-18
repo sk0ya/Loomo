@@ -43,17 +43,27 @@ public sealed record DiffComparison(
     string LeftTitle, string LeftText, string RightTitle, string RightText, string FilePath = "",
     bool FileIsLeft = false)
 {
+    /// <summary>一覧に出す見出しを左右の題の代わりに使うとき（フォルダー比較の相対パス、§24.5.3）。</summary>
+    public string? Label { get; init; }
+
+    /// <summary>一覧の行の印（フォルダー比較の「追加」「削除」）。空なら差分の有無から決める。</summary>
+    public string Badge { get; init; } = "";
+
     public DiffComparison Swapped()
-        => new(RightTitle, RightText, LeftTitle, LeftText, FilePath, !FileIsLeft);
+        => new(RightTitle, RightText, LeftTitle, LeftText, FilePath, !FileIsLeft)
+        {
+            Label = Label,
+            Badge = Badge switch { "追加" => "削除", "削除" => "追加", _ => Badge },
+        };
 
     /// <summary>右側だけ別の素材へ差し替える。右がそのファイルだった比較（<see cref="FileIsLeft"/> が false）では
     /// 出どころのファイルも一緒に手放す——残すと「右はもう別物なのに、行はそのファイルの行番号として開く」
     /// 取り違えになるため。</summary>
     public DiffComparison WithRight(string title, string text)
-        => this with { RightTitle = title, RightText = text, FilePath = FileIsLeft ? FilePath : "" };
+        => this with { RightTitle = title, RightText = text, FilePath = FileIsLeft ? FilePath : "", Badge = "" };
 
     /// <summary>ファイル一覧に出す見出し（どちらとどちらを比べているか）。</summary>
-    public string DisplayPath => $"{LeftTitle} ↔ {RightTitle}";
+    public string DisplayPath => Label ?? $"{LeftTitle} ↔ {RightTitle}";
 
     /// <summary>差分本体の上に出す帯（どちらが左でどちらが右か）。</summary>
     public string Caption => $"◀ 左: {LeftTitle}　　右: {RightTitle} ▶";

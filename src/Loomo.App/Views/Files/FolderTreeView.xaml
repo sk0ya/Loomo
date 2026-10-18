@@ -432,6 +432,11 @@
                                                   ToolTip="先に選んだ方を左（旧）、後を右（新）として比較します"
                                                   Visibility="Collapsed" />
                                     </MenuItem>
+                                    <!-- フォルダーを2つ選んだときの「Diffへ送る」（§24.5.3）。上の Diffへ送る はフォルダーでは
+                                         出ないので、同じ名前が2度並ぶことはない。 -->
+                                    <MenuItem Header="Diffへ送る（選択した2つのフォルダーを比較）" Tag="CompareTwoFolders"
+                                              Click="OnCompareSelectedFoldersClick" Visibility="Collapsed"
+                                              ToolTip="中身の違うファイルを Diff ペインの比較に並べます（先に選んだ方が左＝旧）" />
                                     <MenuItem Header="Git" Visibility="{Binding CanGitHistory, Converter={StaticResource BoolToVis}}">
                                         <MenuItem Header="履歴を表示" Click="OnGitHistoryClick" />
                                         <MenuItem Header="Git Blame" Click="OnGitBlameClick"
