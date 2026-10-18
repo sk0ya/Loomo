@@ -2032,10 +2032,15 @@
                                Tag="Git" Cursor="SizeAll"
                                PreviewMouseLeftButtonDown="OnPaneTitleMouseDown" PreviewMouseMove="OnPaneTitleMouseMove">
                         <TextBlock DockPanel.Dock="Left" Style="{StaticResource PanelHeader}" Text="GIT"
-                                   ToolTip="右クリックでGitHubのPull Request／Issueを開く">
+                                   ToolTip="右クリックでGitHubのPull Request／Issue">
                             <TextBlock.ContextMenu>
                                 <ContextMenu>
                                     <MenuItem Header="GitHub">
+                                        <MenuItem Header="プルリクエスト（Loomo で読む・差分・レビュー）…" Click="OnGitHubPullRequestsMenu"
+                                                  IsEnabled="{Binding PlacementTarget.DataContext.GitSession.IsGitHubRepository, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                                        <MenuItem Header="Issue（Loomo で読む・コメント）…" Click="OnGitHubIssuesMenu"
+                                                  IsEnabled="{Binding PlacementTarget.DataContext.GitSession.IsGitHubRepository, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                                        <Separator />
                                         <MenuItem Header="Pull Requestsを開く"
                                                   Command="{Binding PlacementTarget.DataContext.GitSession.OpenPullRequestsCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                                   IsEnabled="{Binding PlacementTarget.DataContext.GitSession.IsGitHubRepository, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />

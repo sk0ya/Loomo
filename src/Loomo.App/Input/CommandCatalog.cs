@@ -66,6 +66,7 @@ public static class CommandCatalog
     private const string CatTask = "タスク";
     private const string CatComposer = "コンポーザ";
     private const string CatTrail = "軌跡";
+    private const string CatGitHub = "GitHub";
 
     /// <summary>大分類と、それぞれに属する小分類（表示順）。どのコマンドの小分類も、ちょうど 1 つの
     /// 大分類に属する（テストで保証）。新しい小分類を足したら、ここにも載せる。</summary>
@@ -79,6 +80,7 @@ public static class CommandCatalog
             CatFormat, CatRefactor, CatGenerate, CatStructure, CatHistory, CatPackages,
         }),
         new("ターミナル", "🖥", new[] { CatTerminal, CatClaude, CatTask, CatComposer }),
+        new("Git", "⑂", new[] { CatGitHub }),
         new("軌跡", "🧭", new[] { CatTrail }),
     };
 
@@ -209,6 +211,10 @@ public static class CommandCatalog
         new CommandDescriptor("claude.resumeSession", CatClaude, "Claude Code のセッションを再開…", null),
         new CommandDescriptor("claude.installHooks", CatClaude, "Claude Code のフックを設定（承認待ち・セッションを Loomo へ知らせる）", null),
         new CommandDescriptor("claude.uninstallHooks", CatClaude, "Claude Code のフックを外す", null),
+
+        // ===== GitHub（§24.27）=====
+        new CommandDescriptor("github.pullRequests", CatGitHub, "GitHub: プルリクエスト（読む・差分・ワークツリー・レビュー）", null),
+        new CommandDescriptor("github.issues", CatGitHub, "GitHub: Issue（読む・コメント）", null),
 
         // ===== NuGet（§36）=====
         new CommandDescriptor("nuget.manage", CatPackages, "NuGet パッケージを管理…", null),
