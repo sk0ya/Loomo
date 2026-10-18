@@ -1144,6 +1144,24 @@
             <TextBlock DockPanel.Dock="Right" Text="{Binding RelativeDate}" FontSize="{DynamicResource Fs10}"
                        Foreground="{DynamicResource FgDim}" VerticalAlignment="Center" Margin="8,1,2,0" />
 
+            <!-- このブランチから出ている PR（§24.39）。押すと PR でできることを開く（§24.27）。
+                 押す先はツリーの持ち主の VM（Git ペイン）。持たない一覧ではコマンドが見つからず何もしない。 -->
+            <Button DockPanel.Dock="Right" Margin="8,0,0,0" Padding="4,0" VerticalAlignment="Center"
+                    Background="Transparent" BorderThickness="0" Cursor="Hand"
+                    Content="{Binding PullRequestLabel}" ToolTip="{Binding PullRequestToolTip}"
+                    FontSize="{DynamicResource Fs10}" FontWeight="SemiBold" Foreground="{DynamicResource Accent}"
+                    Command="{Binding DataContext.OpenBranchPullRequestCommand, RelativeSource={RelativeSource AncestorType=TreeView}}"
+                    CommandParameter="{Binding}"
+                    Visibility="{Binding HasPullRequest, Converter={StaticResource BoolToVis}}">
+                <Button.Template>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}" CornerRadius="3">
+                            <ContentPresenter VerticalAlignment="Center" />
+                        </Border>
+                    </ControlTemplate>
+                </Button.Template>
+            </Button>
+
             <!-- 上流との差。0 のときは TrackLabel が空になり、幅も取らない -->
             <TextBlock DockPanel.Dock="Right" Text="{Binding TrackLabel}" FontSize="{DynamicResource Fs10}"
                        FontWeight="SemiBold" Foreground="{DynamicResource Accent}"

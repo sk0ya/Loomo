@@ -44,6 +44,32 @@ public sealed class BranchTreeNode : INotifyPropertyChanged
 
     private bool _isExpanded;
 
+    /// <summary>このブランチから出ているオープンな PR（§24.39）。無ければ null。</summary>
+    public Loomo.Services.GitHub.GitHubPullRequest? PullRequest
+    {
+        get => _pullRequest;
+        set
+        {
+            if (Equals(_pullRequest, value)) return;
+            _pullRequest = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(PullRequest)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(PullRequestLabel)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(PullRequestToolTip)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(HasPullRequest)));
+        }
+    }
+
+    private Loomo.Services.GitHub.GitHubPullRequest? _pullRequest;
+
+    public bool HasPullRequest => _pullRequest is not null;
+
+    /// <summary>行に出す印（<c>#123</c>）。</summary>
+    public string PullRequestLabel => _pullRequest is { } pr ? $"#{pr.Number}" : "";
+
+    public string? PullRequestToolTip => _pullRequest is { } pr
+        ? $"#{pr.Number} {pr.Title}\n{BranchPullRequests.StateLabel(pr)}・押すと PR でできることを開く"
+        : null;
+
     public event PropertyChangedEventHandler? PropertyChanged;
 
     /// <summary>リーフのツールチップ：フルネーム＋上流（あれば）。フォルダ・見出しには出さない。</summary>

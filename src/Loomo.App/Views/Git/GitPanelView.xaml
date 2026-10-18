@@ -340,6 +340,21 @@
                                    ToolTip="{Binding BranchLabel}" />
                     </StackPanel>
 
+                    <!-- 分岐元とぶつかりそうなら知らせる（§24.40）。マージを試す前に、並行作業のどれが衝突し始めたかが見える。 -->
+                    <Button Margin="0,4,0,0" Padding="0" HorizontalAlignment="Left"
+                            Background="Transparent" BorderThickness="0" Cursor="Hand"
+                            Command="{Binding OpenConflictForecastCommand}"
+                            ToolTip="{Binding ConflictForecastToolTip}"
+                            Visibility="{Binding HasConflictForecast, Converter={StaticResource BoolToVis}}">
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <ContentPresenter />
+                            </ControlTemplate>
+                        </Button.Template>
+                        <TextBlock Text="{Binding ConflictForecastLabel}" FontSize="{DynamicResource Fs11}"
+                                   Foreground="#E2C08D" TextTrimming="CharacterEllipsis" />
+                    </Button>
+
                     <!-- 2行目：同期操作。プル/プッシュは件数を出して対象の有無を見える化する。 -->
                     <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                         <Button Style="{StaticResource SyncButton}" ToolTip="フェッチ（リモートの最新を取得）"

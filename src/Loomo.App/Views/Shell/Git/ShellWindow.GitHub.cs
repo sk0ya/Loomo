@@ -20,7 +20,33 @@ public partial class ShellWindow
     private readonly GitHubCli _gitHub = new();
 
     private void OnGitHubPullRequestsMenu(object sender, RoutedEventArgs e) => OpenGitHubPullRequests();
+
+    /// <summary>ブランチ一覧の PR の印（§24.39）。gh が無ければ引かない（入れ方は PR の一覧を開いたときに出す）。</summary>
+    private void InitializeBranchPullRequests()
+    {
+        _vm.GitSession.PullRequestSource = folder => GitHubCli.IsInstalled
+            ? _gitHub.ListPullRequestsAsync(folder)
+            : Task.FromResult<IReadOnlyList<GitHubPullRequest>>(Array.Empty<GitHubPullRequest>());
+        _vm.GitPanel.ConflictForecastOpenRequested += OpenConflictForecastPalette;
+        _vm.GitSession.BranchPullRequestOpenRequested += pr => {
+            if (_git.RootPath is { Length: > 0 } folder)
+                OpenGitHubPullRequestActions(folder, pr);
+        };
+    }
     private void OnGitHubIssuesMenu(object sender, RoutedEventArgs e) => OpenGitHubIssues();
+
+    /// <summary>分岐元とぶつかりそうなファイル（§24.40）の一覧。選ぶとそのファイルを分岐元と比べる。</summary>
+    private void OpenConflictForecastPalette(GitConflictForecast forecast)
+    {
+        if (_git.RootPath is not { Length: > 0 } root) return;
+        var items = forecast.Files.Select(path => new PaletteCommand("衝突しそう", path, () =>
+            ShowDiff(new DiffOpenTarget.CompareBase(new GitCompareBaseSelection(GitCompareBaseKind.Branch, forecast.Target), forecast.Target)))
+        {
+            Target = new PaletteTarget(Path.Combine(root, path)),
+            Detail = $"{forecast.Target} へマージすると衝突する（作業ツリーには触らずに確かめた）\nEnter で {forecast.Target} との差分を開く",
+        }).ToList();
+        OpenCommandPalette(PaletteMode.Command, items);
+    }
 
     private async void OpenGitHubPullRequests()
     {

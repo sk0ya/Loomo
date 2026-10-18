@@ -23,6 +23,7 @@ public sealed class GitService
     private readonly GitBranchService _branches;
     private readonly GitMutationExecutor _mutations;
     private readonly GitPatchService _patches;
+    private readonly GitConflictForecastService _forecasts;
     private readonly GitMergeService _merge;
     private readonly GitSubmoduleService _submodules;
     private readonly GitCommitService _commits;
@@ -71,6 +72,7 @@ public sealed class GitService
         _commits = new GitCommitService(_rootState, _runner, _mutations);
         _stashes = new GitStashService(_runner, _mutations);
         _patches = new GitPatchService(_runner, _mutations);
+        _forecasts = new GitConflictForecastService(_runner);
         _diff = new GitDiffService(_rootState, _runner, _mutations);
         _rebase = new GitRebaseService(_runner, _mutations);
         _worktrees = new GitWorktreeService(_rootState, _runner, _mutations);
@@ -135,6 +137,9 @@ public sealed class GitService
             return task;
         }
     }
+
+    /// <summary>いまのブランチを <paramref name="target"/> へマージしたら衝突するファイル（§24.40）。作業ツリーには触らない。</summary>
+    public Task<GitConflictForecast> ForecastConflictsAsync(string target) => _forecasts.ForecastAsync(target);
 
     /// <summary>外から来たパッチを当てる前に確かめる（§24.38.1）。</summary>
     public Task<GitPatchPreview> PreviewPatchTextAsync(string patchText) => _patches.PreviewTextAsync(patchText);

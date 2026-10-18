@@ -15,6 +15,7 @@ public partial class ShellWindow
         _vm.TsIde.Problems.ExcerptRequested += OnProblemExcerptRequested;
         _lspWorkspace.DiagnosticsPublished += OnLspDiagnosticsPublished;
         _workspace.FoldersChanged += OnProblemWorkspaceFoldersChanged;
+        InitializeBranchPullRequests();
         _vm.Debug.Problems.Changed += ScheduleProblemMarks;
         _vm.TsIde.Problems.Changed += ScheduleProblemMarks;
         // コミットの前に、そのファイルのエラーを確かめる（§24.34）。押した時点の数で見る（印の更新を待たない）。

@@ -420,6 +420,7 @@ public sealed partial class GitSessionViewModel : ObservableObject
         BranchTree = BranchTreeBuilder.Update(BranchTree, _allBranches);
         UpdateFilteredBranchTree();
         UpdatePaneFilteredBranchTree();
+        ApplyBranchPullRequests();
         UpdateRemote(overview.Remotes);
         var remoteUrls = await _git.GetRemoteUrlsAsync();
         Remotes = remoteUrls;
@@ -427,6 +428,7 @@ public sealed partial class GitSessionViewModel : ObservableObject
             .OrderBy(remote => string.Equals(remote.Name, "origin", StringComparison.OrdinalIgnoreCase) ? 0 : 1)
             .Select(remote => GitHostingUrl.TryGetGitHubRepositoryUrl(remote.Url, out var url) ? url : null)
             .FirstOrDefault(url => url is not null);
+        _ = RefreshBranchPullRequestsAsync();
         Tags = overview.Tags;
         Submodules = overview.Submodules;
         await ReloadWorktreesAsync();
@@ -457,12 +459,93 @@ public sealed partial class GitSessionViewModel : ObservableObject
             : remotes.FirstOrDefault() ?? "";
     }
 
-    partial void OnBranchFilterChanged(string value) => UpdateFilteredBranchTree();
+    // ===== ブランチの PR（§24.39） =====
+
+    /// <summary>オープンな PR を引く口（ShellWindow が gh をつなぐ）。null なら引かない。</summary>
+    public Func<string, Task<IReadOnlyList<Loomo.Services.GitHub.GitHubPullRequest>>>? PullRequestSource { get; set; }
+
+    /// <summary>PR の印を押した（§24.27 の操作を開く）。</summary>
+    public event Action<Loomo.Services.GitHub.GitHubPullRequest>? BranchPullRequestOpenRequested;
+
+    /// <summary>同じリポジトリを引き直すまでの間（保存のたびに走る RefreshAsync から gh を毎回起こさない）。</summary>
+    internal static readonly TimeSpan PullRequestRefreshInterval = TimeSpan.FromMinutes(2);
+
+    private IReadOnlyDictionary<string, Loomo.Services.GitHub.GitHubPullRequest> _branchPullRequests =
+        new Dictionary<string, Loomo.Services.GitHub.GitHubPullRequest>();
+    private string? _pullRequestsRoot;
+    private DateTime _pullRequestsFetchedUtc;
+    private bool _pullRequestsLoading;
+
+    /// <summary>GitHub のリポジトリなら、間を空けて PR を引き直す。失敗（未ログイン・ネットワーク）は黙って印を出さない
+    /// ——添え物なので一覧を止めない。間を空けるのは失敗しても同じ（何度も gh を起こさない）。</summary>
+    private async Task RefreshBranchPullRequestsAsync(bool force = false)
+    {
+        var root = _git.RootPath;
+        if (PullRequestSource is null || !IsGitHubRepository || string.IsNullOrEmpty(root))
+        {
+            SetBranchPullRequests(new Dictionary<string, Loomo.Services.GitHub.GitHubPullRequest>(), root);
+            return;
+        }
+        var sameRoot = string.Equals(root, _pullRequestsRoot, StringComparison.OrdinalIgnoreCase);
+        if (_pullRequestsLoading || (!force && sameRoot && DateTime.UtcNow - _pullRequestsFetchedUtc < PullRequestRefreshInterval))
+            return;
+        if (!sameRoot)
+            SetBranchPullRequests(new Dictionary<string, Loomo.Services.GitHub.GitHubPullRequest>(), root);
+        _pullRequestsLoading = true;
+        _pullRequestsFetchedUtc = DateTime.UtcNow;
+        try
+        {
+            var pulls = await PullRequestSource(root);
+            // 待っている間に対象のリポジトリが替わっていたら捨てる（前のリポジトリの PR を今の一覧に付けない）。
+            if (string.Equals(_git.RootPath, root, StringComparison.OrdinalIgnoreCase))
+                SetBranchPullRequests(BranchPullRequests.ByHead(pulls), root);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            System.Diagnostics.Debug.WriteLine($"[Git] PR の取得に失敗: {ex.Message}");
+        }
+        finally
+        {
+            _pullRequestsLoading = false;
+        }
+    }
+
+    private void SetBranchPullRequests(IReadOnlyDictionary<string, Loomo.Services.GitHub.GitHubPullRequest> byHead, string? root)
+    {
+        _branchPullRequests = byHead;
+        _pullRequestsRoot = root;
+        ApplyBranchPullRequests();
+    }
+
+    /// <summary>いまのツリー（全体・サイドバーの絞り込み・ペインの絞り込み）に PR を付け直す。
+    /// 絞り込みのツリーは別のノードなので、それぞれに付ける。</summary>
+    private void ApplyBranchPullRequests()
+    {
+        BranchPullRequests.Apply(BranchTree, _branchPullRequests);
+        if (!ReferenceEquals(FilteredBranchTree, BranchTree))
+            BranchPullRequests.Apply(FilteredBranchTree, _branchPullRequests);
+        if (!ReferenceEquals(PaneFilteredBranchTree, BranchTree))
+            BranchPullRequests.Apply(PaneFilteredBranchTree, _branchPullRequests);
+    }
+
+    [RelayCommand]
+    private void OpenBranchPullRequest(BranchTreeNode? node)
+    {
+        if (node?.PullRequest is { } pr)
+            BranchPullRequestOpenRequested?.Invoke(pr);
+    }
+
+    partial void OnBranchFilterChanged(string value)
+    {
+        UpdateFilteredBranchTree();
+        ApplyBranchPullRequests();   // 絞り込みのツリーは作り直したノードなので付け直す
+    }
 
     partial void OnPaneBranchFilterChanged(string value)
     {
         OnPropertyChanged(nameof(HasPaneBranchFilter));
         UpdatePaneFilteredBranchTree();
+        ApplyBranchPullRequests();
     }
 
     /// <summary>絞り込みを解除して一覧を元のツリーへ戻す（ペイン左列の「✕」と Esc から）。</summary>

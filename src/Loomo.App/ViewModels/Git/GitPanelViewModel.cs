@@ -205,6 +205,60 @@ public sealed partial class GitPanelViewModel : ObservableObject
 
     [ObservableProperty] private bool _isRepository = true;
     [ObservableProperty] private string _branchLabel = "";
+
+    /// <summary>分岐元へマージしたら衝突しそうなファイル（§24.40）。null なら衝突しない（か、まだ見ていない）。</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ConflictForecastLabel), nameof(ConflictForecastToolTip), nameof(HasConflictForecast))]
+    private GitConflictForecast? _conflictForecast;
+
+    public bool HasConflictForecast => ConflictForecast is { HasConflicts: true };
+
+    public string ConflictForecastLabel => ConflictForecast is { HasConflicts: true } f
+        ? $"⚠ {ShortRef(f.Target)} と衝突 {f.Files.Count}" : "";
+
+    public string? ConflictForecastToolTip => ConflictForecast is { HasConflicts: true } f
+        ? $"このブランチを {f.Target} へマージすると衝突するファイル（作業ツリーには触らずに確かめた結果）:\n"
+          + string.Join("\n", f.Files.Take(10).Select(path => "  " + path))
+          + (f.Files.Count > 10 ? $"\n  ほか {f.Files.Count - 10} ファイル" : "")
+          + "\n押すと一覧を開く"
+        : null;
+
+    private static string ShortRef(string target) => target.StartsWith("origin/", StringComparison.Ordinal) ? target[7..] : target;
+
+    /// <summary>衝突しそうなファイルの一覧を開いてほしい（ShellWindow がパレットで出す）。</summary>
+    public event Action<GitConflictForecast>? ConflictForecastOpenRequested;
+
+    [RelayCommand]
+    private void OpenConflictForecast()
+    {
+        if (ConflictForecast is { HasConflicts: true } forecast)
+            ConflictForecastOpenRequested?.Invoke(forecast);
+    }
+
+    private int _forecastGeneration;
+
+    /// <summary>
+    /// 分岐元（比較基準がブランチ／分岐点ならそのブランチ、作業ツリーなら既定のブランチ）とぶつかるかを確かめ直す（§24.40）。
+    /// HEAD と相手のコミットが前回と同じなら git に聞き直さない（状態の更新は保存のたびに走る）。
+    /// 一覧を出したあとに回すので、遅い merge-tree でも一覧は待たせない。
+    /// </summary>
+    private async Task UpdateConflictForecastAsync()
+    {
+        var generation = ++_forecastGeneration;
+        string? target = CompareBase.NeedsBranch ? CompareBase.Selection.Target : null;
+        target ??= await _git.GetDefaultBranchAsync();
+        if (generation != _forecastGeneration) return;
+        if (string.IsNullOrWhiteSpace(target) || string.Equals(target, BranchLabel, StringComparison.Ordinal))
+        {
+            ConflictForecast = null;
+            return;
+        }
+        var forecast = await _git.ForecastConflictsAsync(target);
+        if (generation != _forecastGeneration) return;
+        // 同じ答え（サービスが前回の答えをそのまま返した）なら触らない——ツールチップや一覧を作り直さない。
+        if (!ReferenceEquals(ConflictForecast, forecast))
+            ConflictForecast = forecast.Error is null ? forecast : null;
+    }
     /// <summary>上流より進んでいるコミット数（プッシュ対象）。0 なら送るものなし。</summary>
     [ObservableProperty] private int _ahead;
     /// <summary>上流より遅れているコミット数（プル対象）。0 なら取り込むものなし。</summary>
@@ -630,6 +684,7 @@ public sealed partial class GitPanelViewModel : ObservableObject
                 "バージョン管理外ファイル", UnversionedFiles, wasExpanded.GetValueOrDefault("バージョン管理外ファイル", false)));
         WorkingTreeSections = sections;
         await ApplyLineStatsAsync(baseRef: null);
+        await UpdateConflictForecastAsync();
     }
 
     /// <summary>各行に増減の行数を添える（§24.32）。一覧を出してから数えるので、遅い git でも一覧は待たせない。
@@ -703,6 +758,7 @@ public sealed partial class GitPanelViewModel : ObservableObject
             : new[] { GitChangeTreeNode.BuildSection(resolution.Label, items) };
         if (items.Count > 0)
             await ApplyLineStatsAsync(resolution.BaseRef);
+        await UpdateConflictForecastAsync();
     }
 
     private void OnCompareBaseChanged(object? sender, EventArgs e)
