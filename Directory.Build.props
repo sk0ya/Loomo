@@ -21,7 +21,7 @@
          1.0.101（フッターの改行・文字コード表示のクリック〔FileFormatClicked／FileEncodingClicked〕と、
          保存時の改行・文字コードを切り替える SetFileFormat／SetFileEncoding。§23.3.4 が使う）（2026-10-17 公開）。
          1.0.103（折りたたみの保存・復元 GetClosedFolds／RestoreClosedFolds と、カーソル行の blame ShowCaretLineBlame。
-         §24.42・§24.43 が使う）。 -->
+         §24.42・§24.43 が使う）（2026-10-18 公開）を nuget.org 最新版として使用する。 -->
     <UseLocalEditor Condition="'$(UseLocalEditor)' == ''">false</UseLocalEditor>
     <EditorPackageVersion Condition="'$(EditorPackageVersion)' == ''">1.0.103</EditorPackageVersion>
     <!-- sk0ya.Terminal.Controls の版。本体（Loomo.Services）と端末の常駐ホスト（Loomo.Pty.Host、§34）が
