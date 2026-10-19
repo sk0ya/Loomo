@@ -1,0 +1,249 @@
+<UserControl x:Class="sk0ya.Loomo.App.Views.TerminalSupportPaneView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    x:Name="Root"
+    Background="{DynamicResource Panel}" Focusable="True">
+
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis" />
+
+        <Style x:Key="SectionTitle" TargetType="TextBlock">
+            <Setter Property="Margin" Value="10,10,10,3" />
+            <Setter Property="FontSize" Value="{DynamicResource Fs11}" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
+        </Style>
+
+        <Style x:Key="Dim" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="{DynamicResource Fs11}" />
+            <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
+            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+        </Style>
+
+        <Style x:Key="Mono" TargetType="TextBlock">
+            <Setter Property="FontFamily" Value="Cascadia Mono, Consolas" />
+            <Setter Property="FontSize" Value="{DynamicResource Fs11}" />
+            <Setter Property="Foreground" Value="{DynamicResource Fg}" />
+        </Style>
+
+        <!-- 押せる行：背景なしのボタン。素の ItemsControl の行はマウスで押せる形にしないと、ダブルクリックの
+             受け口を別に作ることになる（Hyperlink／Focusable の罠を避けて Button で受ける）。 -->
+        <Style x:Key="RowButton" TargetType="Button">
+            <Setter Property="Foreground" Value="{DynamicResource Fg}" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="b" Background="Transparent" Padding="10,2">
+                            <ContentPresenter HorizontalAlignment="Stretch" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="b" Property="Background" Value="{DynamicResource BgAlt}" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="b" Property="Background" Value="{DynamicResource Border}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="SmallButton" TargetType="Button" BasedOn="{StaticResource SecondaryButton}">
+            <Setter Property="Margin" Value="0,0,6,0" />
+            <Setter Property="Padding" Value="8,2" />
+            <Setter Property="FontSize" Value="{DynamicResource Fs11}" />
+        </Style>
+
+        <!-- 操作キーの一覧（Claude と TUI で共用） -->
+        <DataTemplate x:Key="KeyRowTemplate">
+            <Grid Margin="10,1">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" SharedSizeGroup="Keys" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Border Background="{DynamicResource BgAlt}" BorderBrush="{DynamicResource Border}" BorderThickness="1"
+                        CornerRadius="3" Padding="5,0" Margin="0,0,8,0" HorizontalAlignment="Left">
+                    <TextBlock Style="{StaticResource Mono}" Text="{Binding Keys}" />
+                </Border>
+                <TextBlock Grid.Column="1" FontSize="{DynamicResource Fs11}" Foreground="{DynamicResource Fg}"
+                           Text="{Binding Action}" TextWrapping="Wrap" VerticalAlignment="Center" />
+            </Grid>
+        </DataTemplate>
+
+    </UserControl.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- タブが無い -->
+        <TextBlock Grid.RowSpan="2" Margin="12" TextWrapping="Wrap"
+                   Text="ターミナルのタブがありません。タブを開くと、そこで動いているものに合わせてここに情報が出ます。">
+            <TextBlock.Style>
+                <Style TargetType="TextBlock" BasedOn="{StaticResource Dim}">
+                    <Setter Property="Visibility" Value="Collapsed" />
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding HasTab}" Value="False">
+                            <Setter Property="Visibility" Value="Visible" />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </TextBlock.Style>
+        </TextBlock>
+
+        <!-- 追従しているタブ（Claude のときは頭の帯がこの役をするので出さない） -->
+        <Button Style="{StaticResource RowButton}" Command="{Binding GoToTerminalCommand}"
+                ToolTip="このタブへ行く" Margin="0,6,0,0">
+            <Button.Visibility>
+                <MultiBinding Converter="{StaticResource AllTrueToVisibilityConverter}">
+                    <Binding Path="HasTab" />
+                    <Binding Path="IsClaude" Converter="{StaticResource InverseBool}" />
+                </MultiBinding>
+            </Button.Visibility>
+            <StackPanel>
+                <TextBlock FontSize="{DynamicResource Fs12}" FontWeight="SemiBold" Text="{Binding TabName}"
+                           TextTrimming="CharacterEllipsis" />
+                <TextBlock Style="{StaticResource Dim}" Text="{Binding WorkingDirectory}" ToolTip="{Binding WorkingDirectory}" />
+            </StackPanel>
+        </Button>
+
+        <!-- ═══ Claude Code：会話を読み物として（§39.4） ═══
+             頭の1行（自分の番か・題）と、残りの高さいっぱいの文書。文書は ClaudeConversationView が
+             EditorSupport と同じ WebView とページ（テーマ・mermaid・アウトライン・本文差し替え）で描く。 -->
+        <DockPanel Grid.Row="1" Visibility="{Binding IsClaude, Converter={StaticResource BoolToVis}}">
+            <Border DockPanel.Dock="Top" Padding="10,6,10,6" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1">
+                <StackPanel>
+                    <DockPanel>
+                        <TextBlock DockPanel.Dock="Left" Margin="0,0,8,0" FontSize="{DynamicResource Fs11}" FontWeight="SemiBold"
+                                   Text="{Binding NowHeadline}" VerticalAlignment="Center">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding NowTone}" Value="Human">
+                                            <Setter Property="Foreground" Value="{DynamicResource Accent}" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding NowTone}" Value="Working">
+                                            <Setter Property="Foreground" Value="{DynamicResource Fg}" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                        <Button DockPanel.Dock="Right" Style="{StaticResource SmallButton}" Margin="6,0,0,0" Content="記録"
+                                Command="{Binding OpenTranscriptCommand}" ToolTip="このセッションの記録（jsonl）をエディタで開く"
+                                Visibility="{Binding HasClaudeSession, Converter={StaticResource BoolToVis}}" />
+                        <Button Style="{StaticResource RowButton}" Padding="0" Command="{Binding GoToTerminalCommand}"
+                                ToolTip="{Binding TabName}" HorizontalContentAlignment="Left">
+                            <TextBlock FontSize="{DynamicResource Fs12}" FontWeight="SemiBold" Text="{Binding ClaudeTitle}"
+                                       TextTrimming="CharacterEllipsis" />
+                        </Button>
+                    </DockPanel>
+                    <TextBlock Style="{StaticResource Dim}" Text="{Binding ClaudeFacts}" />
+                    <TextBlock Style="{StaticResource Dim}" TextWrapping="Wrap" Text="{Binding ClaudeNotice}"
+                               Visibility="{Binding ClaudeNotice, Converter={StaticResource NonEmptyToVis}}" />
+                </StackPanel>
+            </Border>
+            <Grid x:Name="ConversationHost" />
+        </DockPanel>
+
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <ScrollViewer.Visibility>
+                <MultiBinding Converter="{StaticResource AllTrueToVisibilityConverter}">
+                    <Binding Path="HasTab" />
+                    <Binding Path="IsClaude" Converter="{StaticResource InverseBool}" />
+                </MultiBinding>
+            </ScrollViewer.Visibility>
+            <StackPanel Grid.IsSharedSizeScope="True" Margin="0,0,0,10">
+
+                <!-- ═══ そのほかのプログラム（TUI など） ═══ -->
+                <StackPanel Visibility="{Binding IsProgram, Converter={StaticResource BoolToVis}}">
+                    <Border Margin="10,8,10,0" Padding="8,6" CornerRadius="4" BorderThickness="1"
+                            BorderBrush="{DynamicResource Border}" Background="{DynamicResource BgAlt}">
+                        <StackPanel>
+                            <DockPanel>
+                                <TextBlock DockPanel.Dock="Right" Style="{StaticResource Dim}" Text="{Binding Elapsed}" ToolTip="実行し始めてから" />
+                                <TextBlock FontSize="{DynamicResource Fs13}" FontWeight="SemiBold" Foreground="{DynamicResource Fg}"
+                                           Text="{Binding ProgramName}" TextTrimming="CharacterEllipsis" />
+                            </DockPanel>
+                            <TextBlock Style="{StaticResource Dim}" Text="{Binding ProgramDescription}" TextWrapping="Wrap" />
+                            <TextBlock Margin="0,4,0,0" Style="{StaticResource Mono}" Text="{Binding CommandLine}" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Border>
+                    <!-- TUI の操作キーは主役なので畳まない -->
+                    <StackPanel Visibility="{Binding HasKeys, Converter={StaticResource BoolToVis}}">
+                        <TextBlock Style="{StaticResource SectionTitle}" Text="操作キー" />
+                        <ItemsControl ItemsSource="{Binding Keys}" ItemTemplate="{StaticResource KeyRowTemplate}" />
+                    </StackPanel>
+                </StackPanel>
+
+                <!-- ═══ シェル（前面に何も居ない） ═══ -->
+                <StackPanel Visibility="{Binding IsShell, Converter={StaticResource BoolToVis}}">
+                    <TextBlock Style="{StaticResource SectionTitle}" Text="このタブで実行したコマンド" />
+                    <TextBlock Margin="10,0" TextWrapping="Wrap"
+                               Text="実行し終えたコマンドと出力がここに並びます（出力は再起動で消えます）。">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock" BasedOn="{StaticResource Dim}">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding HasRuns}" Value="True">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                    <ItemsControl ItemsSource="{Binding Runs}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Button Style="{StaticResource RowButton}" ToolTip="クリックで出力をエディタで開く（右クリックで前回と比べる・プロンプトへ入れる）"
+                                        Command="{Binding DataContext.OpenOutputCommand, ElementName=Root}" CommandParameter="{Binding}"
+                                        Tag="{Binding DataContext, ElementName=Root}">
+                                    <Button.ContextMenu>
+                                        <ContextMenu>
+                                            <MenuItem Header="出力をエディタで開く"
+                                                      Command="{Binding PlacementTarget.Tag.OpenOutputCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                      CommandParameter="{Binding}" />
+                                            <MenuItem Header="前回の出力と比べる" IsEnabled="{Binding CanCompare}"
+                                                      Command="{Binding PlacementTarget.Tag.CompareOutputCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                      CommandParameter="{Binding}" />
+                                            <MenuItem Header="プロンプトへ入れる（Enter は押さない）"
+                                                      Command="{Binding PlacementTarget.Tag.InsertCommandCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                      CommandParameter="{Binding}" />
+                                        </ContextMenu>
+                                    </Button.ContextMenu>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" SharedSizeGroup="Badge" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Margin="0,0,8,0" FontSize="{DynamicResource Fs11}" Text="{Binding Badge}">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Foreground" Value="{DynamicResource Success}" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Failed}" Value="True">
+                                                            <Setter Property="Foreground" Value="{DynamicResource Error}" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                        <TextBlock Grid.Column="1" Style="{StaticResource Mono}" Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Grid.Column="2" Margin="8,0,0,0" Style="{StaticResource Dim}" Text="{Binding Age}" />
+                                    </Grid>
+                                </Button>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</UserControl>

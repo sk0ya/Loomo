@@ -60,6 +60,7 @@ public static class ClaudeTranscriptParser
             CostUsd = state.Cost,
             ToolCalls = calls,
             Prompts = state.Prompts,
+            PromptMarks = state.PromptMarks,
             Commands = state.Commands,
             SkillsUsed = state.Skills,
             AgentsUsed = state.Agents,
@@ -129,7 +130,14 @@ public static class ClaudeTranscriptParser
                         ReadAssistant(state, pending, root, path, lineNumber, at, isSubagent);
                         break;
                     case "user":
-                        ReadUser(state, pending, root, isSubagent);
+                        ReadUser(state, pending, root, isSubagent, lineNumber, at);
+                        break;
+                    // 作業の途中に人間が足した指示（Claude はターンを終えずに取り込む）。user の行にはならず、
+                    // queued_command の添付として残る——これも人間の頼みごとで、ここから先の操作はこれに応えたもの。
+                    case "attachment" when !isSubagent
+                        && root.TryGetProperty("attachment", out var attachment) && attachment.ValueKind == JsonValueKind.Object
+                        && Str(attachment, "type") == "queued_command" && Str(attachment, "commandMode") is null or "prompt":
+                        AddPrompt(state, Str(attachment, "prompt"), new RunPromptMark(lineNumber, at));
                         break;
                 }
             }
@@ -182,7 +190,8 @@ public static class ClaudeTranscriptParser
     }
 
     private static void ReadUser(
-        ParseState state, Dictionary<string, CallBuilder> pending, JsonElement root, bool isSubagent)
+        ParseState state, Dictionary<string, CallBuilder> pending, JsonElement root, bool isSubagent,
+        int lineNumber, DateTimeOffset? at)
     {
         if (!root.TryGetProperty("message", out var message) || message.ValueKind != JsonValueKind.Object
             || !message.TryGetProperty("content", out var content))
@@ -192,7 +201,7 @@ public static class ClaudeTranscriptParser
         if (content.ValueKind == JsonValueKind.String)
         {
             if (!isSubagent && !isMeta)
-                AddPrompt(state, content.GetString());
+                AddPrompt(state, content.GetString(), new RunPromptMark(lineNumber, at));
             return;
         }
         if (content.ValueKind != JsonValueKind.Array)
@@ -217,7 +226,7 @@ public static class ClaudeTranscriptParser
             }
         }
         if (!hadToolResult && !isSubagent && !isMeta)
-            AddPrompt(state, text.ToString());
+            AddPrompt(state, text.ToString(), new RunPromptMark(lineNumber, at));
     }
 
     private static readonly Regex CommandName =
@@ -226,7 +235,7 @@ public static class ClaudeTranscriptParser
     private static readonly Regex CommandArgs =
         new(@"<command-args>(.*?)</command-args>", RegexOptions.Singleline);
 
-    private static void AddPrompt(ParseState state, string? text)
+    private static void AddPrompt(ParseState state, string? text, RunPromptMark mark)
     {
         if (string.IsNullOrWhiteSpace(text))
             return;
@@ -246,6 +255,7 @@ public static class ClaudeTranscriptParser
             || trimmed.StartsWith("[Request interrupted", StringComparison.Ordinal))
             return;
         state.Prompts.Add(text.Trim());
+        state.PromptMarks.Add(mark);
     }
 
     private static void FillResult(CallBuilder call, JsonElement block)
@@ -381,6 +391,7 @@ public static class ClaudeTranscriptParser
         public readonly SortedSet<string> Models = new(StringComparer.Ordinal);
         public readonly List<CallBuilder> Calls = new();
         public readonly List<string> Prompts = new();
+        public readonly List<RunPromptMark> PromptMarks = new();
         public readonly List<HarnessCommandInvocation> Commands = new();
         public readonly List<string> Skills = new();
         public readonly List<string> Agents = new();

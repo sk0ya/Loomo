@@ -36,6 +36,7 @@ public partial class ShellWindow {
             case "SessionStart" when (string?)hookEvent["session_id"] is { Length: > 0 } sessionId:
                 _paneActivity.TerminalAgentSessionStarted(tabId, sessionId, (string?)hookEvent["transcript_path"]);
                 RefreshClaudeContext();
+                RequestTerminalSupportRefresh();
                 break;
             case "Notification" when ClaudeHookBridge.IsPermissionRequest(hookEvent):
                 if (_paneActivity.TerminalAgentNeedsApproval(tabId, IsTerminalPaneWatched()))

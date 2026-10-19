@@ -71,6 +71,9 @@ public readonly record struct RunTokenUsage(long Input, long Output, long CacheR
         => new(a.Input + b.Input, a.Output + b.Output, a.CacheRead + b.CacheRead, a.CacheCreation + b.CacheCreation);
 }
 
+/// <summary>頼みごと1つの記録の中の位置（本体の記録の1始まりの行番号）と時刻。</summary>
+public readonly record struct RunPromptMark(int LineNumber, DateTimeOffset? At);
+
 /// <summary>ツール呼び出し1回とその結果。</summary>
 public sealed record RunToolCall
 {
@@ -125,6 +128,9 @@ public sealed record HarnessRun
     public IReadOnlyList<RunToolCall> ToolCalls { get; init; } = [];
     /// <summary>人間の入力（本体のみ・メタ行は除く）。</summary>
     public IReadOnlyList<string> Prompts { get; init; } = [];
+    /// <summary><see cref="Prompts"/> と同じ並びの、記録の中の位置（1始まりの行番号）と時刻。ツール呼び出しの
+    /// <see cref="RunToolCall.LineNumber"/> と比べれば、どの頼みごとに応えた操作かで区切れる（ターン、§39.4）。</summary>
+    public IReadOnlyList<RunPromptMark> PromptMarks { get; init; } = [];
     /// <summary>人間が打ったスラッシュコマンド（<c>/ticket-run VCI-001</c> 等。本体のみ）。指示とは別に持つ。</summary>
     public IReadOnlyList<HarnessCommandInvocation> Commands { get; init; } = [];
     /// <summary>呼ばれた Skill の名前（観測）。</summary>

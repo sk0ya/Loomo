@@ -144,6 +144,8 @@ public static class CommandCatalog
         new CommandDescriptor("pane.files", CatPane, "ファイル一覧を開く", null),
         // ハーネスも既定キーなし（毎回の起点ではない。§37）。
         new CommandDescriptor("pane.harness", CatPane, "ハーネスを開く", null),
+        // ターミナルサポートも既定キーなし（ターミナルの脇に出しておく面で、呼びに行く起点ではない。§39）。
+        new CommandDescriptor("pane.terminalSupport", CatPane, "ターミナルサポートを開く", null),
 
         // ===== 検索 =====
         // pane.search は検索ペインの外では開く、検索ペイン内では次の対象へ切り替える。

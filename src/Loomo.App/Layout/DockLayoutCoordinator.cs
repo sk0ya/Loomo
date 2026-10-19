@@ -39,6 +39,7 @@ public sealed class DockLayoutCoordinator
     [
         PaneKind.Editor, PaneKind.Terminal, PaneKind.Browser, PaneKind.EditorSupport, PaneKind.Git,
         PaneKind.Ai, PaneKind.Debug, PaneKind.TsIde, PaneKind.Search, PaneKind.Files, PaneKind.Harness,
+        PaneKind.TerminalSupport,
     ];
 
     /// <summary>ドックに出せる面か（＝<see cref="DockOrder"/> に居るか）。
@@ -69,6 +70,8 @@ public sealed class DockLayoutCoordinator
             [PaneKind.Files] = DockRegion.Bottom,
             // ハーネスは3列（構成要素・候補・根拠）を並べて腰を据えて調べる面なので、下の高さでは足りない（§37.7）。
             [PaneKind.Harness] = DockRegion.Center,
+            // ターミナルの脇に添える面（EditorSupport と同じ右。§39.6）。
+            [PaneKind.TerminalSupport] = DockRegion.Right,
         };
 
     /// <summary>ドックをまだ一度も組んでいない部屋を復元するときに、下／右へ出しておく面。

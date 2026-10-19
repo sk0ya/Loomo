@@ -170,6 +170,8 @@
         <StreamGeometry x:Key="PaneIcon.Search">M6.8,2.5 A4.3,4.3 0 1 0 6.8,11.1 A4.3,4.3 0 1 0 6.8,2.5 M9.9,9.9 L13.5,13.5</StreamGeometry>
         <!-- ファイル一覧：フォルダー＋行（＝中身を並べて見る面） -->
         <StreamGeometry x:Key="PaneIcon.Files">M2,4 H6 L7.5,5.8 H14 V12.5 H2 Z M4.5,8.2 H11.5 M4.5,10.4 H11.5</StreamGeometry>
+        <!-- ターミナルサポート：プロンプト記号の脇に情報の行（ターミナル＋添え書き） -->
+        <StreamGeometry x:Key="PaneIcon.TerminalSupport">M2,4 L5.5,7 L2,10 M6.5,10.5 H9 M10.5,3 V13 M12,5 H14 M12,8 H14 M12,11 H14</StreamGeometry>
         <StreamGeometry x:Key="PaneIcon.Harness">M2.5,4 H13.5 M2.5,8 H13.5 M2.5,12 H13.5 M6,2.3 V5.7 M10.5,6.3 V9.7 M5,10.3 V13.7</StreamGeometry>
         <StreamGeometry x:Key="PaneIcon.TsIde">M8,1.5 L13.5,4.75 V11.25 L8,14.5 L2.5,11.25 V4.75 Z M8,5.6 C6.9,5.6 6.3,6.6 6.3,8 C6.3,9.5 7,10.6 8,10.6 C9,10.6 9.7,9.5 9.7,8 C9.7,6.6 9.1,5.6 8,5.6 Z M8,5.7 V10.5</StreamGeometry>
         <!-- トレース：時系列の点（＝AI操作の足跡を並べて読む面）。ドックの帯にも並ぶので、
@@ -2251,6 +2253,22 @@
                     </DockPanel>
                     <Border Style="{StaticResource PaneHeaderRule}" />
                     <ContentControl x:Name="HarnessPaneHost" DataContext="{Binding Harness}" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" Focusable="False" />
+                </DockPanel>
+
+                <!-- ターミナルサポート : 前に出ているターミナルのタブに追従し、そこで動いているもの（Claude Code・TUI・
+                     シェル）に合わせた情報を横に出す（§39）。EditorSupport のターミナル版。DataContext は
+                     ShellWindow.TerminalSupport.cs がコードで与える（ShellViewModel を経由しない）。 -->
+                <DockPanel x:Name="TerminalSupportPane" Visibility="Collapsed" Background="{DynamicResource Panel}">
+                    <DockPanel Style="{StaticResource PaneHeaderBar}" LastChildFill="False"
+                               Tag="TerminalSupport" Cursor="SizeAll"
+                               PreviewMouseLeftButtonDown="OnPaneTitleMouseDown" PreviewMouseMove="OnPaneTitleMouseMove">
+                        <TextBlock DockPanel.Dock="Left" Style="{StaticResource PanelHeader}" Text="TERMINAL SUPPORT" />
+                        <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="30" Height="24"
+                                Content="—" FontSize="{DynamicResource Fs13}" ToolTip="このペインを隠す"
+                                Tag="TerminalSupport" Click="OnHidePane" />
+                    </DockPanel>
+                    <Border Style="{StaticResource PaneHeaderRule}" />
+                    <ContentControl x:Name="TerminalSupportPaneHost" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" Focusable="False" />
                 </DockPanel>
 
                 <!-- Diff : セッションペイン（Git作業ツリー差分＋アドホック比較） -->

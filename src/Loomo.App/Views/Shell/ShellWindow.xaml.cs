@@ -180,6 +180,14 @@ public partial class ShellWindow : Window {
         DeferPaneContent(SearchPaneHost, () => new SearchPanelView());
         DeferPaneContent(FilesPaneHost, () => new FilesPaneView());
         DeferPaneContent(HarnessPaneHost, () => new HarnessPaneView());
+        DeferPaneContent(TerminalSupportPaneHost, () => {
+            // Claude の会話を読み物として描く（§39.4）。道具は Diff ペインと同じく部屋のプレビューのもの。
+            var support = new TerminalSupportPaneView();
+            support.ConfigureConversation(editorSupportViewFactory, EditorSupportPreviewFolder,
+                () => _settings.Appearance.MarkdownPreviewTheme);
+            support.ConversationLinkClicked += (_, href) => OnTerminalSupportConversationLink(href);
+            return support;
+        });
         DeferPaneContent(TraceSessionHost, () => new TraceSessionView());
         DeferPaneContent(DebugPaneHost, () => new DebugView());
         DeferPaneContent(TsIdePaneHost, () => new TsDebugView());
@@ -260,6 +268,7 @@ public partial class ShellWindow : Window {
         WireTerminalForegroundBusy();
         WireTerminalStatusRows();
         InitializeRunningPanel();
+        InitializeTerminalSupport();
         InitializeDebugMonitor();
         InitializeClaudeHooks();   // パイプ名を先に決める（ターミナルの環境変数に入る）
         InitializeClaudeIde();

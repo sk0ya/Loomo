@@ -247,6 +247,9 @@ public partial class ShellWindow {
             case PaneKind.Harness:
                 PaneContent<HarnessPaneView>(HarnessPaneHost).FocusList();
                 break;
+            case PaneKind.TerminalSupport:
+                PaneFocusElementResolver.FocusFirstFocusable(TerminalSupportPane);
+                break;
         }
         RecordTrailPane(kind);
     }

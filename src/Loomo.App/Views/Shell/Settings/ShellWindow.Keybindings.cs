@@ -32,6 +32,7 @@ public partial class ShellWindow {
             ["pane.search"] = OpenOrCycleSearch,
             ["pane.files"] = () => { EnsurePaneVisibleOrSwapTopLeft(PaneKind.Files); FocusPane(PaneKind.Files); },
             ["pane.harness"] = () => { EnsurePaneVisibleOrSwapTopLeft(PaneKind.Harness); FocusPane(PaneKind.Harness); },
+            ["pane.terminalSupport"] = () => { EnsurePaneVisibleOrSwapTopLeft(PaneKind.TerminalSupport); FocusPane(PaneKind.TerminalSupport); },
             ["search.nextScope"] = () => CycleSearchScope(+1),
             ["search.previousScope"] = () => CycleSearchScope(-1),
             ["search.scope.text"] = () => OpenSearch(SearchScope.Text),

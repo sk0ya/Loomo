@@ -32,6 +32,7 @@ public partial class ShellWindow {
         if (!_terminalOutputs.TryGetValue(owner, out var store))
             _terminalOutputs[owner] = store = new TerminalCommandOutputs();
         store.Record(output);
+        RequestTerminalSupportRefresh();
     }
 
     private TerminalCommandOutputs? ActiveTerminalOutputs

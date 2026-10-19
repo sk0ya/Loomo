@@ -177,7 +177,10 @@ public partial class ShellWindow {
         UpdatePaneActivityBadge(kind);
     }
     private void UpdatePaneActivityBadge(PaneKind kind) {
-        if (kind == PaneKind.Terminal) RefreshWorktreeAgentMarks();
+        if (kind == PaneKind.Terminal) {
+            RefreshWorktreeAgentMarks();
+            RequestTerminalSupportRefresh();   // Claude の状態・前面のコマンドの変化はターミナルサポートにも効く（§39）
+        }
         RequestRunningRefresh();   // Claude の状態・IDE の作業・AI の応答の変化は、動いているもの面にも効く（§24.54）
         var exitCode = 0;
         TerminalProgress progress = default;

@@ -57,6 +57,7 @@ public partial class ShellWindow {
         RecordTrailTerminalTab(tab);
         SaveActiveWorkspaceSnapshot();
         RefreshClaudeContext();
+        RequestTerminalSupportRefresh();
         profile?.Lap("terminal.bookkeeping");
     }
     private void SetActiveTerminalTab(TerminalTab tab) {
@@ -69,6 +70,7 @@ public partial class ShellWindow {
         _vm.Tabs.ActivateTerminalTab(tab.Id);
         RecordTrailTerminalTab(tab);
         RefreshClaudeContext();
+        RequestTerminalSupportRefresh();
     }
     private async Task CloseTerminalTabAsync(Guid id) {
         var index = _terminalTabs.FindIndex(t => t.Id == id);

@@ -758,7 +758,10 @@ public enum PaneKind
     /// 1フォルダーぶんを平らに並べて並べ替え・絞り込み・一括操作をする面（§26.10）。</summary>
     Files,
     /// <summary>ハーネスペイン。AI 開発ハーネスの改善箇所を記録から見つけ、根拠を辿り、版を比べる作業台（§37）。</summary>
-    Harness
+    Harness,
+    /// <summary>ターミナルサポートペイン。前に出ているターミナルのタブに追従し、そこで動いているもの
+    /// （Claude Code・TUI・シェル）に合わせた情報を横に出す（§39）。EditorSupport のターミナル版。</summary>
+    TerminalSupport
 }
 
 /// <summary>
