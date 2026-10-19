@@ -33,6 +33,9 @@ public sealed record ClaudeSessionMatch(ClaudeLiveSession? Session, string? Reas
 /// 動いている（親をたどると Pty.Host か Loomo 自身に行き着く）、(2) 場所がタブと同じ、(3) ほかのタブに結び付いて
 /// いない、ものだけを候補にする。1つなら確定。複数ならタブで claude を打った時刻とセッションの開始時刻で選び、
 /// それでも決まらなければ<b>結び付けない</b>（別の会話を出すより、出さないほうがよい）。</para>
+/// <para><b>タブのシェルの PID が分かるとき</b>（Terminal 1.0.47 以降の ConPTY・それを返す Pty.Host）は、それが一番強い：
+/// そのシェルの子孫の claude だけを候補にする。場所も時刻も見ないので、同じ場所で複数動いていても、claude の中で
+/// 場所が変わっても決まる。</para>
 /// </summary>
 public static class ClaudeLiveSessions
 {
@@ -96,12 +99,28 @@ public static class ClaudeLiveSessions
     /// <param name="insideLoomo">その PID が Loomo の端末の中で動いているか（<see cref="IsInsideLoomoTerminal"/>）。</param>
     /// <param name="tab">タブの手がかり。</param>
     /// <param name="claimedByOtherTabs">ほかのタブに結び付いているセッション ID（フックで確定したもの）。</param>
+    /// <param name="underTabShell">その PID がこのタブのシェルの子孫か（<see cref="IsDescendantOf"/>）。シェルの PID が
+    /// 分からなければ null で、そのときは場所と時刻で確かめる。</param>
     public static ClaudeSessionMatch Match(
         IReadOnlyList<ClaudeLiveSession> sessions,
         Func<int, bool> insideLoomo,
         ClaudeTabClue tab,
-        IReadOnlySet<string> claimedByOtherTabs)
+        IReadOnlySet<string> claimedByOtherTabs,
+        Func<int, bool>? underTabShell = null)
     {
+        if (underTabShell is not null)
+        {
+            var mine = sessions.Where(s => !claimedByOtherTabs.Contains(s.SessionId) && underTabShell(s.Pid)).ToList();
+            if (mine.Count == 1)
+                return new(mine[0], null);
+            if (mine.Count == 0)
+                return new(null, "このタブのシェルの中に Claude Code のセッションが見つかりません（起動の直後はまだ書かれていないことがあります）。");
+            // claude の中から claude を起こした等。打った時刻が合うものが1つだけなら、それ。
+            if (tab.ClaudeStartedUtc is { } at
+                && mine.Where(s => s.StartedAt is { } started && (started.UtcDateTime - at).Duration() <= StartTolerance).ToList() is [var only])
+                return new(only, null);
+            return new(null, $"このタブのシェルの中で Claude Code が {mine.Count} つ動いていて、どれか特定できません。");
+        }
         if (tab.WorkingDirectory is not { Length: > 0 } cwd)
             return new(null, "タブの場所が分からないので、どのセッションか確かめられません。");
         var candidates = sessions
@@ -148,6 +167,22 @@ public static class ClaudeLiveSessions
                 return false;
             if (current != pid && (current == loomoPid
                 || Path.GetFileNameWithoutExtension(entry.Name).Equals(PtyHostProcessName, StringComparison.OrdinalIgnoreCase)))
+                return true;
+            current = entry.Parent;
+        }
+        return false;
+    }
+
+    /// <summary><paramref name="pid"/> が <paramref name="ancestor"/> の子孫か（自分自身は含めない）。深さの上限と輪の検出つき。</summary>
+    public static bool IsDescendantOf(int pid, int ancestor, IReadOnlyDictionary<int, (int Parent, string Name)> processes)
+    {
+        var seen = new HashSet<int>();
+        var current = pid;
+        for (var depth = 0; depth < 32 && seen.Add(current); depth++)
+        {
+            if (!processes.TryGetValue(current, out var entry))
+                return false;
+            if (entry.Parent == ancestor)
                 return true;
             current = entry.Parent;
         }

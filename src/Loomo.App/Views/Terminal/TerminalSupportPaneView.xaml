@@ -153,13 +153,8 @@
             <Grid x:Name="ConversationHost" />
         </DockPanel>
 
-        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-            <ScrollViewer.Visibility>
-                <MultiBinding Converter="{StaticResource AllTrueToVisibilityConverter}">
-                    <Binding Path="HasTab" />
-                    <Binding Path="IsClaude" Converter="{StaticResource InverseBool}" />
-                </MultiBinding>
-            </ScrollViewer.Visibility>
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                      Visibility="{Binding IsProgram, Converter={StaticResource BoolToVis}}">
             <StackPanel Grid.IsSharedSizeScope="True" Margin="0,0,0,10">
 
                 <!-- ═══ そのほかのプログラム（TUI など） ═══ -->
@@ -183,67 +178,99 @@
                     </StackPanel>
                 </StackPanel>
 
-                <!-- ═══ シェル（前面に何も居ない） ═══ -->
-                <StackPanel Visibility="{Binding IsShell, Converter={StaticResource BoolToVis}}">
-                    <TextBlock Style="{StaticResource SectionTitle}" Text="このタブで実行したコマンド" />
-                    <TextBlock Margin="10,0" TextWrapping="Wrap"
-                               Text="実行し終えたコマンドと出力がここに並びます（出力は再起動で消えます）。">
-                        <TextBlock.Style>
-                            <Style TargetType="TextBlock" BasedOn="{StaticResource Dim}">
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding HasRuns}" Value="True">
-                                        <Setter Property="Visibility" Value="Collapsed" />
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </TextBlock.Style>
-                    </TextBlock>
-                    <ItemsControl ItemsSource="{Binding Runs}">
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate>
-                                <Button Style="{StaticResource RowButton}" ToolTip="クリックで出力をエディタで開く（右クリックで前回と比べる・プロンプトへ入れる）"
-                                        Command="{Binding DataContext.OpenOutputCommand, ElementName=Root}" CommandParameter="{Binding}"
-                                        Tag="{Binding DataContext, ElementName=Root}">
-                                    <Button.ContextMenu>
-                                        <ContextMenu>
-                                            <MenuItem Header="出力をエディタで開く"
-                                                      Command="{Binding PlacementTarget.Tag.OpenOutputCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
-                                                      CommandParameter="{Binding}" />
-                                            <MenuItem Header="前回の出力と比べる" IsEnabled="{Binding CanCompare}"
-                                                      Command="{Binding PlacementTarget.Tag.CompareOutputCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
-                                                      CommandParameter="{Binding}" />
-                                            <MenuItem Header="プロンプトへ入れる（Enter は押さない）"
-                                                      Command="{Binding PlacementTarget.Tag.InsertCommandCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
-                                                      CommandParameter="{Binding}" />
-                                        </ContextMenu>
-                                    </Button.ContextMenu>
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="Auto" SharedSizeGroup="Badge" />
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="Auto" />
-                                        </Grid.ColumnDefinitions>
-                                        <TextBlock Margin="0,0,8,0" FontSize="{DynamicResource Fs11}" Text="{Binding Badge}">
-                                            <TextBlock.Style>
-                                                <Style TargetType="TextBlock">
-                                                    <Setter Property="Foreground" Value="{DynamicResource Success}" />
-                                                    <Style.Triggers>
-                                                        <DataTrigger Binding="{Binding Failed}" Value="True">
-                                                            <Setter Property="Foreground" Value="{DynamicResource Error}" />
-                                                        </DataTrigger>
-                                                    </Style.Triggers>
-                                                </Style>
-                                            </TextBlock.Style>
-                                        </TextBlock>
-                                        <TextBlock Grid.Column="1" Style="{StaticResource Mono}" Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
-                                        <TextBlock Grid.Column="2" Margin="8,0,0,0" Style="{StaticResource Dim}" Text="{Binding Age}" />
-                                    </Grid>
-                                </Button>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                </StackPanel>
             </StackPanel>
         </ScrollViewer>
+
+        <!-- ═══ シェル（前面に何も居ない）：実行し終えたコマンドと、選んだ回の出力の見せ直し（§39.5・§39.5.1） ═══
+             一覧は上に小さく、残りの高さは選んだ回の出力を形に合わせて描くページ（表・JSON のツリー・枝の図・
+             テストとビルドの成否と file:line）。ページは Claude の会話と同じ WebView の道具で描く。 -->
+        <DockPanel Grid.Row="1" Visibility="{Binding IsShell, Converter={StaticResource BoolToVis}}">
+            <TextBlock DockPanel.Dock="Top" Style="{StaticResource SectionTitle}" Text="このタブで実行したコマンド" />
+            <TextBlock DockPanel.Dock="Top" Margin="10,0" TextWrapping="Wrap"
+                       Text="実行し終えたコマンドと出力がここに並びます。選ぶと出力を形に合わせて見せます（表・JSON・git log --graph・テストやビルドの結果）。出力は再起動で消えます。">
+                <TextBlock.Style>
+                    <Style TargetType="TextBlock" BasedOn="{StaticResource Dim}">
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding HasRuns}" Value="True">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </TextBlock.Style>
+            </TextBlock>
+            <ScrollViewer DockPanel.Dock="Top" MaxHeight="168" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                          Grid.IsSharedSizeScope="True">
+                <ItemsControl ItemsSource="{Binding Runs}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Button ToolTip="クリックで出力を下に見せる（右クリックでエディタで開く・前回と比べる・プロンプトへ入れる）"
+                                    Command="{Binding DataContext.SelectRunCommand, ElementName=Root}" CommandParameter="{Binding}"
+                                    Tag="{Binding DataContext, ElementName=Root}" Style="{StaticResource RowButton}">
+                                <Button.ContextMenu>
+                                    <ContextMenu>
+                                        <MenuItem Header="出力をエディタで開く"
+                                                  Command="{Binding PlacementTarget.Tag.OpenOutputCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                  CommandParameter="{Binding}" />
+                                        <MenuItem Header="前回の出力と比べる" IsEnabled="{Binding CanCompare}"
+                                                  Command="{Binding PlacementTarget.Tag.CompareOutputCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                  CommandParameter="{Binding}" />
+                                        <MenuItem Header="プロンプトへ入れる（Enter は押さない）"
+                                                  Command="{Binding PlacementTarget.Tag.InsertCommandCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                  CommandParameter="{Binding}" />
+                                    </ContextMenu>
+                                </Button.ContextMenu>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" SharedSizeGroup="Badge" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Margin="0,0,8,0" FontSize="{DynamicResource Fs11}" Text="{Binding Badge}">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Foreground" Value="{DynamicResource Success}" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding Failed}" Value="True">
+                                                        <Setter Property="Foreground" Value="{DynamicResource Error}" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                    <TextBlock Grid.Column="1" Text="{Binding Title}" TextTrimming="CharacterEllipsis">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock" BasedOn="{StaticResource Mono}">
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                                                        <Setter Property="FontWeight" Value="SemiBold" />
+                                                        <Setter Property="Foreground" Value="{DynamicResource Accent}" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                    <TextBlock Grid.Column="2" Margin="8,0,0,0" Style="{StaticResource Dim}" Text="{Binding Age}" />
+                                </Grid>
+                            </Button>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+            <!-- 選んだ回の頭：形の一言と、エディタで開く・前回と比べる -->
+            <Border DockPanel.Dock="Top" Margin="0,6,0,0" Padding="10,4" BorderBrush="{DynamicResource Border}" BorderThickness="0,1,0,1"
+                    Visibility="{Binding HasRuns, Converter={StaticResource BoolToVis}}">
+                <DockPanel>
+                    <Button DockPanel.Dock="Right" Style="{StaticResource SmallButton}" Margin="6,0,0,0" Content="前回と比べる"
+                            Command="{Binding CompareOutputCommand}" CommandParameter="{Binding SelectedRun}"
+                            IsEnabled="{Binding SelectedRun.CanCompare, FallbackValue=False}"
+                            ToolTip="同じコマンドの前回の出力と Diff で比べる" />
+                    <Button DockPanel.Dock="Right" Style="{StaticResource SmallButton}" Margin="6,0,0,0" Content="エディタで開く"
+                            Command="{Binding OpenOutputCommand}" CommandParameter="{Binding SelectedRun}"
+                            ToolTip="出力をそのままエディタで開く（読むための写し・保存しても残らない）" />
+                    <TextBlock Style="{StaticResource Dim}" VerticalAlignment="Center" Text="{Binding OutputLabel}" ToolTip="{Binding SelectedRun.Title}" />
+                </DockPanel>
+            </Border>
+            <Grid x:Name="OutputHost" Visibility="{Binding HasRuns, Converter={StaticResource BoolToVis}}" />
+        </DockPanel>
     </Grid>
 </UserControl>

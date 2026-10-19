@@ -69,7 +69,7 @@ public sealed class PtyHostClient
             var response = ReadResponse(pipe);
             if (response.InUse)
                 throw new PtySessionInUseException(sessionId);
-            return new RemotePtySession(pipe, response.Created);
+            return new RemotePtySession(pipe, response.Created, response.ShellProcessId);
         }
         catch
         {

@@ -91,7 +91,10 @@ public static class PtyProtocol
     /// <param name="Created">新しく作ったなら true、生きていたものに繋いだなら false。</param>
     /// <param name="Sessions">一覧の要求への答え。</param>
     /// <param name="InUse">開こうとしたシェルには別の接続が繋がっている（先勝ち。後から来た方には渡さない）。</param>
-    public sealed record Response(bool Created = false, List<SessionInfo>? Sessions = null, bool InUse = false);
+    /// <param name="ShellProcessId">開いたシェルの PID（ConPTY の上で起動したプロセス）。本体はタブの中で動いているもの
+    /// （Claude Code 等）がこのタブのものかを、親をたどって確かめるのに使う（§39.4.2）。足しただけの欄なので版は上げない——
+    /// 知らない古いホストは 0 を返し、本体はそのとき PID なしの確かめ方に戻る。</param>
+    public sealed record Response(bool Created = false, List<SessionInfo>? Sessions = null, bool InUse = false, int ShellProcessId = 0);
 
     /// <param name="ParkedUntilUtc">閉じたタブとして預かっている期限（§24.41）。預かっていなければ null。
     /// 預かっているシェルは「持ち主のいないシェル」として拾わない（閉じたタブが勝手に戻ってくる）。</param>

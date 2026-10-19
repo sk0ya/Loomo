@@ -17,6 +17,7 @@ public sealed record ClaudeTouchedFile(string Path, int Edits, DateTimeOffset? L
 /// </summary>
 public sealed record ClaudeTurn(
     string Prompt,
+    int PromptLine,
     DateTimeOffset? At,
     IReadOnlyList<RunToolCall> Calls,
     IReadOnlyList<ClaudeTouchedFile> Files,
@@ -31,7 +32,13 @@ public sealed record ClaudeTurn(
 
     /// <summary>失敗した操作（人間の拒否は含まない）。</summary>
     public IEnumerable<RunToolCall> Failures => Calls.Where(c => c.IsError);
+
+    /// <summary>このターンで呼んだサブエージェントの数（本体の Agent／Task 呼び出し）。</summary>
+    public int Subagents => Calls.Count(c => !c.FromSubagent && c.Tool is "Agent" or "Task");
 }
+
+/// <summary>assistant の本文1つ（本体の記録の1始まりの行番号つき）。</summary>
+public readonly record struct ClaudeReplyText(int Line, DateTimeOffset? At, string Text);
 
 /// <summary>
 /// 動いている Claude Code のセッション1つを、ターミナルサポートの横の面（§39.4）に出す形へ畳んだもの。
@@ -70,23 +77,24 @@ public sealed record ClaudeSessionDigest(
         "Edit", "MultiEdit", "Write", "NotebookEdit",
     };
 
-    /// <summary>記録ファイルを読んで畳む。書き込み中でも読める（<see cref="ClaudeTranscriptLocator.ReadLines"/>）。</summary>
+    /// <summary>記録ファイルを読んで畳む（サブエージェントの記録も）。書き込み中でも読める。
+    /// 続けて読み直すなら <see cref="ClaudeSessionFollower"/>（追記分だけ読む）。</summary>
     public static ClaudeSessionDigest? Read(string transcriptPath)
-    {
-        if (!File.Exists(transcriptPath))
-            return null;
-        var lines = ClaudeTranscriptLocator.ReadLines(transcriptPath).ToList();
-        return Build(Path.GetFileNameWithoutExtension(transcriptPath), transcriptPath,
-            File.GetLastWriteTimeUtc(transcriptPath), lines);
-    }
+        => new ClaudeSessionFollower(transcriptPath).Refresh().Digest;
 
     /// <summary>行の列から畳む（I/O なし。テストは文字列で書ける）。</summary>
     public static ClaudeSessionDigest Build(string sessionId, string transcriptPath, DateTime lastWriteUtc, IReadOnlyList<string> lines)
     {
-        var run = ClaudeTranscriptParser.Parse(sessionId, transcriptPath, lines);
-        var summary = ClaudeSessionCatalog.Summarize(sessionId, transcriptPath, lastWriteUtc, lines);
-        var replies = ReadReplies(lines);
+        var follower = new ClaudeSessionFollower(transcriptPath, sessionId);
+        follower.Feed(transcriptPath, lines, isSubagent: false);
+        return follower.Compose(lastWriteUtc);
+    }
 
+    /// <summary>読み終わりの材料（Run・要約・本文）から畳む。</summary>
+    internal static ClaudeSessionDigest Compose(
+        string sessionId, string transcriptPath, DateTime lastWriteUtc,
+        HarnessRun run, ClaudeSessionSummary summary, IReadOnlyList<ClaudeReplyText> replies)
+    {
         var turns = new List<ClaudeTurn>();
         var marks = run.PromptMarks;
         var first = Math.Max(0, marks.Count - MaxTurns);
@@ -100,9 +108,9 @@ public sealed record ClaudeSessionDigest(
                     : call.LineNumber > start.LineNumber && (end is null || call.LineNumber < end.Value.LineNumber))
                 .ToList();
             var texts = replies.Where(r => r.Line > start.LineNumber && (end is null || r.Line < end.Value.LineNumber)).ToList();
-            var lastAt = new[] { calls.LastOrDefault()?.At, texts.LastOrDefault().At }.Max();
-            turns.Add(new ClaudeTurn(run.Prompts[i], start.At, calls, TouchedFiles(calls),
-                texts.Select(r => r.Text!).ToList(), lastAt));
+            var lastAt = new[] { calls.LastOrDefault()?.At, texts.Count > 0 ? texts[^1].At : null }.Max();
+            turns.Add(new ClaudeTurn(run.Prompts[i], start.LineNumber, start.At, calls, TouchedFiles(calls),
+                texts.Select(r => r.Text).ToList(), lastAt));
         }
 
         // 結果がまだ無い最後の操作＝いま実行中か、人間の承認を待っているもの。最後の1つに限る——途中の結果欠けは
@@ -130,41 +138,35 @@ public sealed record ClaudeSessionDigest(
             .OrderByDescending(file => file.LastAt ?? DateTimeOffset.MinValue)
             .ToList();
 
-    /// <summary>assistant の本文（text ブロック）を行番号つきで。思考（thinking）とツール呼び出しは含めない。</summary>
-    private static List<(int Line, DateTimeOffset? At, string? Text)> ReadReplies(IReadOnlyList<string> lines)
+    /// <summary>assistant の本文（text ブロック）。思考（thinking）とツール呼び出しは含めない。本文を持たない行は null。</summary>
+    internal static ClaudeReplyText? ReadReply(string line, int lineNumber)
     {
-        var result = new List<(int, DateTimeOffset?, string?)>();
-        for (var i = 0; i < lines.Count; i++)
+        // 全行を JSON として開くと重いので、本文を持ちうる行だけ開く。
+        if (!line.Contains("\"assistant\"", StringComparison.Ordinal) || !line.Contains("\"text\"", StringComparison.Ordinal))
+            return null;
+        try
         {
-            var line = lines[i];
-            // 全行を JSON として開くと重いので、本文を持ちうる行だけ開く。
-            if (!line.Contains("\"assistant\"", StringComparison.Ordinal) || !line.Contains("\"text\"", StringComparison.Ordinal))
-                continue;
-            try
+            using var doc = JsonDocument.Parse(line);
+            var root = doc.RootElement;
+            if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("type", out var type) || type.GetString() != "assistant"
+                || !root.TryGetProperty("message", out var message) || !message.TryGetProperty("content", out var content)
+                || content.ValueKind != JsonValueKind.Array)
+                return null;
+            var text = new StringBuilder();
+            foreach (var block in content.EnumerateArray())
             {
-                using var doc = JsonDocument.Parse(line);
-                var root = doc.RootElement;
-                if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("type", out var type) || type.GetString() != "assistant"
-                    || !root.TryGetProperty("message", out var message) || !message.TryGetProperty("content", out var content)
-                    || content.ValueKind != JsonValueKind.Array)
-                    continue;
-                var text = new StringBuilder();
-                foreach (var block in content.EnumerateArray())
-                {
-                    if (block.ValueKind == JsonValueKind.Object && block.TryGetProperty("type", out var t) && t.GetString() == "text"
-                        && block.TryGetProperty("text", out var body) && body.ValueKind == JsonValueKind.String)
-                        text.Append(body.GetString());
-                }
-                var trimmed = text.ToString().Trim();
-                if (trimmed.Length == 0)
-                    continue;
-                DateTimeOffset? at = root.TryGetProperty("timestamp", out var ts) && ts.ValueKind == JsonValueKind.String
-                    && DateTimeOffset.TryParse(ts.GetString(), System.Globalization.CultureInfo.InvariantCulture,
-                        System.Globalization.DateTimeStyles.AssumeUniversal, out var parsed) ? parsed : null;
-                result.Add((i + 1, at, trimmed.Length <= MaxReplyChars ? trimmed : trimmed[..MaxReplyChars]));
+                if (block.ValueKind == JsonValueKind.Object && block.TryGetProperty("type", out var t) && t.GetString() == "text"
+                    && block.TryGetProperty("text", out var body) && body.ValueKind == JsonValueKind.String)
+                    text.Append(body.GetString());
             }
-            catch (JsonException) { }
+            var trimmed = text.ToString().Trim();
+            if (trimmed.Length == 0)
+                return null;
+            DateTimeOffset? at = root.TryGetProperty("timestamp", out var ts) && ts.ValueKind == JsonValueKind.String
+                && DateTimeOffset.TryParse(ts.GetString(), System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.AssumeUniversal, out var parsed) ? parsed : null;
+            return new ClaudeReplyText(lineNumber, at, trimmed.Length <= MaxReplyChars ? trimmed : trimmed[..MaxReplyChars]);
         }
-        return result;
+        catch (JsonException) { return null; }
     }
 }

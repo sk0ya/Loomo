@@ -114,7 +114,7 @@ internal sealed class PtyHostServer(string pipeName, TimeSpan? idleExit, Action?
                         return;
                     }
 
-                    client.Send(PtyProtocol.FrameType.Response, Json(new PtyProtocol.Response(Created: created)));
+                    client.Send(PtyProtocol.FrameType.Response, Json(new PtyProtocol.Response(Created: created, ShellProcessId: session.ShellProcessId)));
                     session.ParkedUntilUtc = null;   // 閉じたタブを開き直した（§24.41）
                     session.Attach(client, request.Columns, request.Rows);
                     ReadInput(pipe, session);

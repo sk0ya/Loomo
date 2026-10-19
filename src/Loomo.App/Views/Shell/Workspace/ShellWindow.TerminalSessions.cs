@@ -16,13 +16,13 @@ public partial class ShellWindow {
         view.SessionFactory = original => {
             var request = WithEnvironment(original, environment);
             if (owner is null)
-                return new ConPtySession(request.Columns, request.Rows, request.LaunchCommandLine,
-                    request.WorkingDirectory, request.EnvironmentVariables);
+                return RememberShell(tabId, new ConPtySession(request.Columns, request.Rows, request.LaunchCommandLine,
+                    request.WorkingDirectory, request.EnvironmentVariables));
             try {
                 var session = _ptyHost.OpenSession(tabId, owner.Value, request);
                 _localTerminalTabs.TryRemove(tabId, out _);
                 _remoteTerminalSessions[tabId] = session;   // 閉じるときに預ける相手（§24.41）
-                return session;
+                return RememberShell(tabId, session);
             } catch (Exception ex) {
                 // 同じシェルは先勝ち（§34.5）：別の Loomo が繋いでいるなら奪わない。ホストが起きない・答えない
                 // ときも端末が使えなくなるよりはよい。どちらもこのタブには常駐しない新しいシェルを立て、
@@ -30,11 +30,34 @@ public partial class ShellWindow {
                 if (ex is not sk0ya.Loomo.Services.Terminal.PtySessionInUseException)
                     System.Diagnostics.Trace.WriteLine($"端末の常駐ホストを使えないため自前のシェルで開きます: {ex.Message}");
                 _localTerminalTabs[tabId] = 0;
-                return new ConPtySession(request.Columns, request.Rows, request.LaunchCommandLine,
-                    request.WorkingDirectory, request.EnvironmentVariables);
+                return RememberShell(tabId, new ConPtySession(request.Columns, request.Rows, request.LaunchCommandLine,
+                    request.WorkingDirectory, request.EnvironmentVariables));
             }
         };
     }
+
+    /// <summary>タブ ID → いまのシェルの接続。シェルの PID を引くためだけに持つ（§39.4.2）。端末ビューの
+    /// バックグラウンドスレッドから書かれる。タブを閉じたら外す。</summary>
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, ITerminalSession> _terminalShells = new();
+
+    private ITerminalSession RememberShell(Guid tabId, ITerminalSession session) {
+        _terminalShells[tabId] = session;
+        return session;
+    }
+
+    /// <summary>
+    /// タブのシェルの PID（分からなければ null）。自前の ConPTY なら起動したプロセス、常駐ならホストが開いたときに返したもの。
+    /// タブの中で動いている Claude Code がこのタブのものかを、親をたどって確かめるのに使う——同じ場所で claude が
+    /// 二つ動いていても、打った時刻に頼らずに決まる。
+    /// </summary>
+    private int? TerminalShellProcessId(Guid tabId)
+        => _terminalShells.TryGetValue(tabId, out var session)
+            ? session switch {
+                ConPtySession local when local.ProcessId > 0 => local.ProcessId,
+                sk0ya.Loomo.Services.Terminal.RemotePtySession { ShellProcessId: > 0 } remote => remote.ShellProcessId,
+                _ => null,
+            }
+            : null;
 
     /// <summary>先勝ちに負けて自前のシェルで立てたタブ。端末ビューのバックグラウンドスレッドから書かれる。</summary>
     private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, byte> _localTerminalTabs = new();

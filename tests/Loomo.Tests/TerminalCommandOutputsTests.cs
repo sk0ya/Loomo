@@ -15,6 +15,25 @@ public sealed class TerminalCommandOutputsTests
         => new(command, text, exit, T0.AddMinutes(minutes), headOmitted);
 
     [Fact]
+    public void ForTab_KeepsThisTabsRun_WhenAnotherTabRanTheSameCommand()
+    {
+        var (mine, other) = (Guid.NewGuid(), Guid.NewGuid());
+        var store = new TerminalCommandOutputs();
+        store.Record(Run("dotnet test", "こちら", minutes: 0) with { TabId = mine });
+        store.Record(Run("git status", "clean", minutes: 1) with { TabId = mine });
+        store.Record(Run("dotnet test", "あちら", minutes: 2) with { TabId = other });
+
+        // こちらの dotnet test は「前回」へ繰り下がったが、こちらのタブの一覧からは消えない
+        Assert.Equal(["git status", "dotnet test"], store.ForTab(mine).Select(o => o.Command).ToArray());
+        Assert.Equal("こちら", store.ForTab(mine)[1].Text);
+        Assert.Equal("あちら", Assert.Single(store.ForTab(other)).Text);
+
+        // 比べる相手は同じコマンドの1つ前の回（繰り下がった方には相手がいない）
+        Assert.Equal("こちら", store.PreviousOf(store.ForTab(other)[0])?.Text);
+        Assert.Null(store.PreviousOf(store.ForTab(mine)[1]));
+    }
+
+    [Fact]
     public void SameCommandShiftsLatestToPrevious()
     {
         var store = new TerminalCommandOutputs();

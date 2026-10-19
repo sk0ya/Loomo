@@ -51,6 +51,8 @@ internal sealed class HostSession
     public volatile string? Title;
     public volatile string? WorkingDirectory;
     public bool Attached => Volatile.Read(ref _owner) is not null;
+    /// <summary>ConPTY の上で動いているシェルの PID（起動前・失敗なら 0）。</summary>
+    public int ShellProcessId => _pty.ProcessId;
     /// <summary>終わった、または殺すよう頼まれた（殺しは画面モデルのスレッドで後から起きるが、同じ ID で
     /// 作り直しに来た Open にはもう渡さない）。</summary>
     public bool HasFinished => _killRequested || Volatile.Read(ref _finished) != 0;

@@ -25,13 +25,17 @@ public partial class ShellWindow {
         TerminalSupportPaneHost.DataContext = _terminalSupport;
         _terminalSupport.SetDisplayPath(path => _workspace.ToDisplayPath(path));
         _terminalSupport.SetWorkspaceFilter(path => _workspace.Contains(path));
+        // 出力の中の相対パス（ビルドの診断）は、その回を実行した場所と、そこを持つワークスペースのフォルダーから解く。
+        _terminalSupport.SetProblemContext(cwd => {
+            var folder = _workspace.FolderForOrPrimary(cwd) ?? cwd ?? "";
+            return new sk0ya.Loomo.Core.Tasks.ProblemMatchContext(folder, cwd ?? folder);
+        });
 
         _terminalSupport.FileOpenRequested += (_, path) => _ = OpenPathInEditorAsync(path, 0, 0);
         _terminalSupport.OutputOpenRequested += (_, output) => _ = OpenTerminalOutputInEditorAsync(output);
         _terminalSupport.OutputCompareRequested += (_, output) => {
-            var pair = ActiveTerminalOutputs?.Pairs.FirstOrDefault(p => ReferenceEquals(p.Latest, output));
-            if (pair is { } found)
-                ShowDiff(new DiffOpenTarget.Comparison(TerminalCommandOutputs.Compare(found.Previous, found.Latest)));
+            if (ActiveTerminalOutputs?.PreviousOf(output) is { } previous)
+                ShowDiff(new DiffOpenTarget.Comparison(TerminalCommandOutputs.Compare(previous, output)));
         };
         _terminalSupport.CommandInsertRequested += (_, command) => SendRecentCommandToTerminal(command);
         _terminalSupport.GoToTerminalRequested += (_, _) => {
@@ -65,8 +69,8 @@ public partial class ShellWindow {
         _terminalSupportRefreshQueued = false;
         var subject = BuildTerminalSupportSubject();
         var outputs = ActiveTerminalOutputs;
-        var latestWithPrevious = outputs?.Pairs.Select(p => p.Latest).ToHashSet() ?? [];
-        _terminalSupport.Update(subject, outputs?.Latest ?? [], latestWithPrevious.Contains, DateTime.UtcNow);
+        IReadOnlyList<TerminalCommandOutput> runs = subject is not null && outputs is not null ? outputs.ForTab(subject.TabId) : [];
+        _terminalSupport.Update(subject, runs, run => outputs?.PreviousOf(run) is not null, DateTime.UtcNow);
         if (subject?.Mode == TerminalSupportMode.ClaudeCode)
             _ = RefreshTerminalSupportClaudeAsync(subject);
         UpdateTerminalSupportClaudeTimer();
@@ -85,7 +89,7 @@ public partial class ShellWindow {
     /// <summary>
     /// このタブの Claude の記録を決めて読み直す（§39.4.2）。SessionStart のフックで結び付いていればそれ（タブ ID 付きで
     /// 届くので確定）。無ければ<b>動いている claude のプロセスから確かめる</b>（<see cref="ClaudeLiveSessions.Match"/>：
-    /// この Loomo の端末の中・同じ場所・ほかのタブのものでない）。確かめられなければ何も出さない——
+    /// タブのシェルの PID が分かればその子孫、分からなければこの Loomo の端末の中・同じ場所・ほかのタブのものでない）。確かめられなければ何も出さない——
     /// 場所の記録フォルダーの最新を当て推量すると、Loomo の外で動いている別の claude の会話を出してしまう。
     /// </summary>
     private async Task RefreshTerminalSupportClaudeAsync(TerminalSupportSubject subject) {
@@ -102,12 +106,16 @@ public partial class ShellWindow {
             ? subject.RunningSinceUtc : null;
         var clue = new ClaudeTabClue(subject.WorkingDirectory, typedAt);
         var loomoPid = Environment.ProcessId;
+        var shellPid = TerminalShellProcessId(subject.TabId);
         ClaudeSessionMatch match;
         try {
             match = await Task.Run(() => {
                 var processes = ClaudeLiveSessions.SnapshotParents();
+                Func<int, bool>? underShell = shellPid is { } shell && processes.ContainsKey(shell)
+                    ? pid => ClaudeLiveSessions.IsDescendantOf(pid, shell, processes)
+                    : null;   // シェルの PID が分からない・もう居ない（PID は再利用されうる）なら場所と時刻で
                 return ClaudeLiveSessions.Match(ClaudeLiveSessions.Read(),
-                    pid => ClaudeLiveSessions.IsInsideLoomoTerminal(pid, processes, loomoPid), clue, claimed);
+                    pid => ClaudeLiveSessions.IsInsideLoomoTerminal(pid, processes, loomoPid), clue, claimed, underShell);
             });
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception) {
@@ -140,8 +148,8 @@ public partial class ShellWindow {
             _terminalSupportClaudeTimer.Start();
     }
 
-    /// <summary>会話の本文のリンク（ファイル・URL）。振り分けは EditorSupport のプレビューと同じ口。相対パスは
-    /// Claude が動いている場所（タブの cwd）から解く——Claude は自分の作業フォルダーからの相対で書く。</summary>
+    /// <summary>ページ（会話・出力）の本文のリンク（ファイル・URL）。振り分けは EditorSupport のプレビューと同じ口。相対パスは
+    /// タブの cwd から解く——Claude は自分の作業フォルダーからの相対で書き、出力の file:line は絶対パスにしてある。</summary>
     private void OnTerminalSupportConversationLink(string href) {
         var cwd = BuildTerminalSupportSubject()?.WorkingDirectory;
         var source = cwd is { Length: > 0 } ? Path.Combine(cwd, "claude-conversation.md") : null;

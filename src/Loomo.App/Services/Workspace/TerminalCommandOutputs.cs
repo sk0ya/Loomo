@@ -68,6 +68,29 @@ public sealed class TerminalCommandOutputs
     public IReadOnlyList<TerminalCommandOutput> All
         => _entries.SelectMany(e => e.Previous is null ? new[] { e.Latest } : new[] { e.Latest, e.Previous }).ToList();
 
+    /// <summary>
+    /// このタブで実行した回（新しい順、コマンドごとに新しい方1つ）。置き場はコマンド行ごとに全タブで2回分なので、
+    /// 別のタブで同じコマンドを打つと、こちらのタブの回は「今回」から「前回」へ繰り下がる——<see cref="Latest"/> だけを
+    /// 見ていると、こちらの一覧から消えていた（§39.5）。
+    /// </summary>
+    public IReadOnlyList<TerminalCommandOutput> ForTab(Guid tabId)
+        => _entries
+            .Select(e => e.Latest.TabId == tabId ? e.Latest : e.Previous is { } p && p.TabId == tabId ? p : null)
+            .OfType<TerminalCommandOutput>()
+            .OrderByDescending(o => o.FinishedUtc)
+            .ToList();
+
+    /// <summary><paramref name="output"/> と比べる相手（同じコマンドの1つ前の回）。持っていなければ null。</summary>
+    public TerminalCommandOutput? PreviousOf(TerminalCommandOutput output)
+    {
+        foreach (var entry in _entries)
+        {
+            if (ReferenceEquals(entry.Latest, output))
+                return entry.Previous;
+        }
+        return null;
+    }
+
     private static TerminalCommandOutput Clip(TerminalCommandOutput output)
     {
         if (output.Text.Length <= MaxChars)

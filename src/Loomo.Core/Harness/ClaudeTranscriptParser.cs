@@ -29,19 +29,20 @@ public static class ClaudeTranscriptParser
         IEnumerable<string> lines,
         IEnumerable<(string Path, IEnumerable<string> Lines)>? subagents = null)
     {
-        var state = new ParseState();
-        ReadFile(state, transcriptPath, lines, isSubagent: false);
-        var subagentCount = 0;
+        var reader = new ClaudeTranscriptReader();
+        reader.Feed(transcriptPath, lines, isSubagent: false);
         if (subagents is not null)
         {
             foreach (var (path, subLines) in subagents)
-            {
-                subagentCount++;
-                ReadFile(state, path, subLines, isSubagent: true);
-            }
+                reader.Feed(path, subLines, isSubagent: true);
         }
+        return reader.Snapshot(runId, transcriptPath);
+    }
 
-        var calls = state.Calls.Select((b, i) => b.Build(i)).ToList();
+    /// <summary><see cref="ClaudeTranscriptReader"/> の読み終わりから Run を組む。</summary>
+    internal static HarnessRun Build(string runId, string transcriptPath, ParseState state, IEnumerable<CallBuilder> builders, int subagentCount)
+    {
+        var calls = builders.Select((b, i) => b.Build(i)).ToList();
         var usage = state.UsageByMessage.Values.Aggregate(default(RunTokenUsage), (sum, u) => sum + u);
         var title = !string.IsNullOrWhiteSpace(state.Title)
             ? state.Title!
@@ -59,11 +60,12 @@ public static class ClaudeTranscriptParser
             Usage = usage,
             CostUsd = state.Cost,
             ToolCalls = calls,
-            Prompts = state.Prompts,
-            PromptMarks = state.PromptMarks,
-            Commands = state.Commands,
-            SkillsUsed = state.Skills,
-            AgentsUsed = state.Agents,
+            // 読み手は追記を続けるので、渡すのはその時点の写し（後から伸びない）。
+            Prompts = state.Prompts.ToList(),
+            PromptMarks = state.PromptMarks.ToList(),
+            Commands = state.Commands.ToList(),
+            SkillsUsed = state.Skills.ToList(),
+            AgentsUsed = state.Agents.ToList(),
             SubagentCount = subagentCount,
             ToolErrorCount = calls.Count(c => c.IsError),
             ToolCallCountExcludingRejected = calls.Count(c => !c.IsRejected),
@@ -89,63 +91,61 @@ public static class ClaudeTranscriptParser
         return null;
     }
 
-    private static void ReadFile(ParseState state, string path, IEnumerable<string> lines, bool isSubagent)
+    /// <summary>1行を読む。<paramref name="pending"/> はこのファイルで結果を待っているツール呼び出し
+    /// （ファイルごとに持つ。読み手が追記を跨いで持ち越す）。</summary>
+    internal static void ReadLine(
+        ParseState state, Dictionary<string, CallBuilder> pending, List<CallBuilder> calls,
+        string path, string line, int lineNumber, bool isSubagent)
     {
-        var pending = new Dictionary<string, CallBuilder>(StringComparer.Ordinal);
-        var lineNumber = 0;
-        foreach (var line in lines)
+        if (string.IsNullOrWhiteSpace(line))
+            return;
+        JsonDocument doc;
+        try { doc = JsonDocument.Parse(line); }
+        catch (JsonException) { return; } // 書きかけの最終行など
+        using (doc)
         {
-            lineNumber++;
-            if (string.IsNullOrWhiteSpace(line))
-                continue;
-            JsonDocument doc;
-            try { doc = JsonDocument.Parse(line); }
-            catch (JsonException) { continue; } // 書きかけの最終行など
-            using (doc)
+            var root = doc.RootElement;
+            if (root.ValueKind != JsonValueKind.Object)
+                return;
+            var type = Str(root, "type");
+            var at = Time(root);
+            if (at is { } t && type is "user" or "assistant" or "system")
             {
-                var root = doc.RootElement;
-                if (root.ValueKind != JsonValueKind.Object)
-                    continue;
-                var type = Str(root, "type");
-                var at = Time(root);
-                if (at is { } t && type is "user" or "assistant" or "system")
-                {
-                    if (state.First is null || t < state.First) state.First = t;
-                    if (state.Last is null || t > state.Last) state.Last = t;
-                }
-                if (!isSubagent && state.Cwd is null && Str(root, "cwd") is { Length: > 0 } cwd)
-                    state.Cwd = cwd;
+                if (state.First is null || t < state.First) state.First = t;
+                if (state.Last is null || t > state.Last) state.Last = t;
+            }
+            if (!isSubagent && state.Cwd is null && Str(root, "cwd") is { Length: > 0 } cwd)
+                state.Cwd = cwd;
 
-                switch (type)
-                {
-                    case "ai-title" when !isSubagent:
-                        state.Title = Str(root, "aiTitle") ?? state.Title;
-                        break;
-                    case "cost-state" when !isSubagent:
-                        if (root.TryGetProperty("totalCostUSD", out var cost) && cost.ValueKind == JsonValueKind.Number
-                            && cost.TryGetDecimal(out var usd))
-                            state.Cost = usd;
-                        break;
-                    case "assistant":
-                        ReadAssistant(state, pending, root, path, lineNumber, at, isSubagent);
-                        break;
-                    case "user":
-                        ReadUser(state, pending, root, isSubagent, lineNumber, at);
-                        break;
-                    // 作業の途中に人間が足した指示（Claude はターンを終えずに取り込む）。user の行にはならず、
-                    // queued_command の添付として残る——これも人間の頼みごとで、ここから先の操作はこれに応えたもの。
-                    case "attachment" when !isSubagent
-                        && root.TryGetProperty("attachment", out var attachment) && attachment.ValueKind == JsonValueKind.Object
-                        && Str(attachment, "type") == "queued_command" && Str(attachment, "commandMode") is null or "prompt":
-                        AddPrompt(state, Str(attachment, "prompt"), new RunPromptMark(lineNumber, at));
-                        break;
-                }
+            switch (type)
+            {
+                case "ai-title" when !isSubagent:
+                    state.Title = Str(root, "aiTitle") ?? state.Title;
+                    break;
+                case "cost-state" when !isSubagent:
+                    if (root.TryGetProperty("totalCostUSD", out var cost) && cost.ValueKind == JsonValueKind.Number
+                        && cost.TryGetDecimal(out var usd))
+                        state.Cost = usd;
+                    break;
+                case "assistant":
+                    ReadAssistant(state, pending, calls, root, path, lineNumber, at, isSubagent);
+                    break;
+                case "user":
+                    ReadUser(state, pending, root, isSubagent, lineNumber, at);
+                    break;
+                // 作業の途中に人間が足した指示（Claude はターンを終えずに取り込む）。user の行にはならず、
+                // queued_command の添付として残る——これも人間の頼みごとで、ここから先の操作はこれに応えたもの。
+                case "attachment" when !isSubagent
+                    && root.TryGetProperty("attachment", out var attachment) && attachment.ValueKind == JsonValueKind.Object
+                    && Str(attachment, "type") == "queued_command" && Str(attachment, "commandMode") is null or "prompt":
+                    AddPrompt(state, Str(attachment, "prompt"), new RunPromptMark(lineNumber, at));
+                    break;
             }
         }
     }
 
     private static void ReadAssistant(
-        ParseState state, Dictionary<string, CallBuilder> pending, JsonElement root,
+        ParseState state, Dictionary<string, CallBuilder> pending, List<CallBuilder> calls, JsonElement root,
         string path, int lineNumber, DateTimeOffset? at, bool isSubagent)
     {
         if (!root.TryGetProperty("message", out var message) || message.ValueKind != JsonValueKind.Object)
@@ -183,7 +183,7 @@ public static class ClaudeTranscriptParser
                 state.Skills.Add(skill);
             if (name is "Agent" or "Task" && input.ValueKind == JsonValueKind.Object)
                 state.Agents.Add(Str(input, "subagent_type") is { Length: > 0 } kind ? kind : "general-purpose");
-            state.Calls.Add(builder);
+            calls.Add(builder);
             if (Str(block, "id") is { Length: > 0 } toolUseId)
                 pending[toolUseId] = builder;
         }
@@ -248,10 +248,12 @@ public static class ClaudeTranscriptParser
             var args = CommandArgs.Match(trimmed) is { Success: true } a ? a.Groups[1].Value.Trim() : "";
             state.Commands.Add(new HarnessCommandInvocation(name.Groups[1].Value.Trim(), args));
         }
-        // スラッシュコマンドの記録・ローカルコマンドの出力・中断の印は人間の指示ではない。
+        // スラッシュコマンドの記録・ローカルコマンドの出力・中断の印・バックグラウンドの作業の終了通知（Claude Code が
+        // user の行として差し込む <task-notification>）は人間の指示ではない。
         if (trimmed.StartsWith("<local-command", StringComparison.Ordinal)
             || trimmed.StartsWith("<command-", StringComparison.Ordinal)
             || trimmed.StartsWith("<bash-", StringComparison.Ordinal)
+            || trimmed.StartsWith("<task-notification>", StringComparison.Ordinal)
             || trimmed.StartsWith("[Request interrupted", StringComparison.Ordinal))
             return;
         state.Prompts.Add(text.Trim());
@@ -380,7 +382,7 @@ public static class ClaudeTranscriptParser
            && DateTimeOffset.TryParse(s, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var t)
             ? t : null;
 
-    private sealed class ParseState
+    internal sealed class ParseState
     {
         public string? Title;
         public decimal? Cost;
@@ -389,7 +391,6 @@ public static class ClaudeTranscriptParser
         public DateTimeOffset? Last;
         public readonly Dictionary<string, RunTokenUsage> UsageByMessage = new(StringComparer.Ordinal);
         public readonly SortedSet<string> Models = new(StringComparer.Ordinal);
-        public readonly List<CallBuilder> Calls = new();
         public readonly List<string> Prompts = new();
         public readonly List<RunPromptMark> PromptMarks = new();
         public readonly List<HarnessCommandInvocation> Commands = new();
@@ -397,7 +398,7 @@ public static class ClaudeTranscriptParser
         public readonly List<string> Agents = new();
     }
 
-    private sealed class CallBuilder
+    internal sealed class CallBuilder
     {
         public int LineNumber;
         public string TranscriptPath = "";

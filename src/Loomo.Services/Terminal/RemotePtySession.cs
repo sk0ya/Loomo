@@ -26,14 +26,18 @@ public sealed class RemotePtySession : ITerminalSession
     private readonly ManualResetEventSlim _readerDone = new(initialState: true);
     private Thread? _reader;
 
-    internal RemotePtySession(NamedPipeClientStream pipe, bool created)
+    internal RemotePtySession(NamedPipeClientStream pipe, bool created, int shellProcessId = 0)
     {
         _pipe = pipe;
         Created = created;
+        ShellProcessId = shellProcessId;
     }
 
     /// <summary>新しく作ったシェルなら true、生きていたシェルに繋ぎ直したなら false。</summary>
     public bool Created { get; }
+
+    /// <summary>ホストの上で動いているシェルの PID。古いホストは返さないので 0（分からない）。</summary>
+    public int ShellProcessId { get; }
 
     public TerminalSessionCapabilities Capabilities { get; } = new(
         TerminalSessionKind.ConPty, SupportsResize: true, SupportsTerminalInput: true);

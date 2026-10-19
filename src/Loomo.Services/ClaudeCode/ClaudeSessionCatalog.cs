@@ -39,20 +39,33 @@ public static class ClaudeSessionCatalog
     /// 最後の頼みごとは <c>last-prompt</c>、コンテキスト量は最後の <c>assistant</c> の usage。</summary>
     public static ClaudeSessionSummary Summarize(string sessionId, string path, DateTime lastWriteUtc, IEnumerable<string> lines)
     {
-        string? title = null, lastPrompt = null, model = null;
-        long? context = null;
+        var accumulator = new SummaryAccumulator();
         foreach (var line in lines)
+            accumulator.Add(line);
+        return accumulator.ToSummary(sessionId, path, lastWriteUtc);
+    }
+
+    /// <summary><see cref="Summarize"/> を行ごとに積む形（追記分だけ読む読み手が持ち越す、§39.8）。
+    /// どの値も「最後に見たもの」なので、追記分を足すだけで全体を読んだのと同じになる。</summary>
+    public sealed class SummaryAccumulator
+    {
+        private string? _title, _lastPrompt, _model;
+        private long? _context;
+
+        public void Add(string line)
         {
             // 全行を JSON として開くと重いので、関係する行だけ開く。
             if (line.Contains("\"ai-title\"", StringComparison.Ordinal))
-                title = ReadString(line, "aiTitle") ?? title;
+                _title = ReadString(line, "aiTitle") ?? _title;
             else if (line.Contains("\"last-prompt\"", StringComparison.Ordinal))
-                lastPrompt = ReadString(line, "lastPrompt") ?? lastPrompt;
+                _lastPrompt = ReadString(line, "lastPrompt") ?? _lastPrompt;
             else if (line.Contains("\"usage\"", StringComparison.Ordinal) && line.Contains("\"assistant\"", StringComparison.Ordinal)
                      && ReadUsage(line) is { } usage)
-                (context, model) = (usage.Tokens, usage.Model ?? model);
+                (_context, _model) = (usage.Tokens, usage.Model ?? _model);
         }
-        return new ClaudeSessionSummary(sessionId, path, lastWriteUtc, title, lastPrompt, context, model);
+
+        public ClaudeSessionSummary ToSummary(string sessionId, string path, DateTime lastWriteUtc)
+            => new(sessionId, path, lastWriteUtc, _title, _lastPrompt, _context, _model);
     }
 
     private static string? ReadString(string line, string property)

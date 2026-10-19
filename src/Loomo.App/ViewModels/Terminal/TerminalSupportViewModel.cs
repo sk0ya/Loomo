@@ -2,12 +2,15 @@ using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using sk0ya.Loomo.App.Services;
+using sk0ya.Loomo.Core.Tasks;
 using sk0ya.Loomo.Services.ClaudeCode;
 
 namespace sk0ya.Loomo.App.ViewModels;
 
-/// <summary>このタブで実行し終えたコマンド1回分（§39.5）。</summary>
-public sealed record TerminalSupportRunRow(TerminalCommandOutput Output, string Title, string Badge, bool Failed, string Age, bool CanCompare);
+/// <summary>このタブで実行し終えたコマンド1回分（§39.5）。
+/// <paramref name="IsSelected"/> は下に出力を見せている回か（§39.5.1）。</summary>
+public sealed record TerminalSupportRunRow(TerminalCommandOutput Output, string Title, string Badge, bool Failed, string Age, bool CanCompare,
+    bool IsSelected = false);
 
 /// <summary>TUI の操作キー1つ（§39.3）。</summary>
 public sealed record TerminalSupportKeyRow(string Keys, string Action);
@@ -23,7 +26,8 @@ public enum TerminalSupportNowTone { Human, Working, Idle }
 /// <item>Claude Code：会話を<b>読み物</b>として（頼みごとを見出しに、返事を Markdown として描画した1本の文書、
 ///   <see cref="ClaudeConversationDocument"/>）。ここは本文の HTML を作るまでで、描くのは View 側の WebView。</item>
 /// <item>そのほかのプログラム（TUI など）：コマンド行・経過時間・知っているプログラムなら操作キー</item>
-/// <item>シェル：このタブで実行し終えたコマンドと、その出力（開く・前回と比べる）</item>
+/// <item>シェル：このタブで実行し終えたコマンドと、選んだ回の出力を<b>形に合わせて見せ直したもの</b>（表・JSON のツリー・
+///   枝の図・テストとビルドの成否と file:line、<see cref="TerminalOutputPresenter"/>、§39.5.1）</item>
 /// </list>
 /// 状態の組み立ては ShellWindow（タブ・タイトル・OSC 133 を持っている側）が行い、ここは受け取って整えるだけ。
 /// Claude の記録だけはここで裏読みする（数 MB になり得るので UI スレッドでは読まない）。
@@ -32,7 +36,8 @@ public sealed partial class TerminalSupportViewModel : ObservableObject
 {
     private Guid? _tabId;
     private string? _transcriptPath;
-    private (long Length, DateTime WriteUtc)? _digestStamp;
+    private ClaudeSessionFollower? _follower;
+    private int _appliedVersion = -1;
     private int _digestGeneration;
     private Func<string, string> _displayPath = path => path;
     private Func<string, bool> _inWorkspace = _ => true;
@@ -40,6 +45,7 @@ public sealed partial class TerminalSupportViewModel : ObservableObject
     private ClaudeAgentState? _agentState;
     private ClaudeSessionDigest? _digest;
     private int _bodyGeneration;
+    private ClaudeConversationDocument.RenderCache _renderCache = new();
 
     [ObservableProperty] private bool _hasTab;
     [ObservableProperty] private bool _isClaude;
@@ -72,6 +78,17 @@ public sealed partial class TerminalSupportViewModel : ObservableObject
     [ObservableProperty] private bool _hasRuns;
     [ObservableProperty] private bool _hasKeys;
 
+    // ── シェル：選んだ回の出力の見せ直し（§39.5.1） ──
+    /// <summary>見せている回。新しい回が来たら付いていく——古い回を選んで読んでいる間は動かさない。</summary>
+    [ObservableProperty] private TerminalSupportRunRow? _selectedRun;
+    [ObservableProperty] private string _outputLabel = "";
+    /// <summary>見せ直した出力（body の中身の HTML）。描くのは View 側の WebView。</summary>
+    [ObservableProperty] private string _outputBody = "";
+    private TerminalCommandOutput? _presentedOutput;
+    private bool _followNewestRun = true;
+    private int _outputGeneration;
+    private Func<string?, ProblemMatchContext> _problemContext = cwd => new ProblemMatchContext(cwd ?? "", cwd ?? "");
+
     /// <summary>ファイルをエディタで開いてほしい。</summary>
     public event EventHandler<string>? FileOpenRequested;
     /// <summary>コマンドの出力をエディタで開いてほしい。</summary>
@@ -89,6 +106,9 @@ public sealed partial class TerminalSupportViewModel : ObservableObject
     /// <summary>ワークスペースの中か（<c>workspace.Contains</c>、マルチルート）。外で書き換えたファイル——Claude の
     /// 一時ファイル・作業メモ——は数だけ出す。</summary>
     internal void SetWorkspaceFilter(Func<string, bool> inWorkspace) => _inWorkspace = inWorkspace;
+
+    /// <summary>出力の中の相対パス（ビルドの診断）を解く基準。引数はその回を実行した場所。</summary>
+    internal void SetProblemContext(Func<string?, ProblemMatchContext> context) => _problemContext = context;
 
     /// <summary>追従するタブの様子を受け取る。<paramref name="runs"/> は覚えているコマンドの出力（全タブぶん、新しい順）。
     /// <paramref name="comparable"/> は前回の出力も持っているか。</summary>
@@ -138,19 +158,63 @@ public sealed partial class TerminalSupportViewModel : ObservableObject
                 _ = RebuildConversationAsync();   // 作業中かどうかで最後の本文の扱い（途中／返事）が変わる
         }
 
-        var tabRuns = runs.Where(r => r.TabId == subject.TabId).ToList();
-        ReplaceIfChanged(Runs, tabRuns.Select(r => new TerminalSupportRunRow(
-            r, RecentTerminalCommands.Title(r.Command), RecentTerminalCommands.Badge(r.ExitCode),
-            r.ExitCode is { } code && code != 0, Age(nowUtc - r.FinishedUtc), comparable(r))).ToList());
-        HasRuns = Runs.Count > 0;
+        _tabRuns = runs.Where(r => r.TabId == subject.TabId).ToList();
+        _comparable = comparable;
+        _runsNowUtc = nowUtc;
+        // 選び直す：最新を見ていたら新しい最新へ、古い回を選んでいたらその回のまま、消えていたら最新へ。
+        var keep = _followNewestRun ? null : _tabRuns.FirstOrDefault(r => ReferenceEquals(r, SelectedRun?.Output));
+        if (keep is null)
+            _followNewestRun = true;
+        RebuildRuns(keep ?? _tabRuns.FirstOrDefault());
         Tick(nowUtc);
+    }
+
+    private IReadOnlyList<TerminalCommandOutput> _tabRuns = [];
+    private Func<TerminalCommandOutput, bool> _comparable = _ => false;
+    private DateTime _runsNowUtc;
+
+    /// <summary>一覧を組み直し、<paramref name="selected"/> を選んだ回にする（行は値なので、選んだ印も行に入れる）。</summary>
+    private void RebuildRuns(TerminalCommandOutput? selected)
+    {
+        ReplaceIfChanged(Runs, _tabRuns.Select(r => new TerminalSupportRunRow(
+            r, RecentTerminalCommands.Title(r.Command), RecentTerminalCommands.Badge(r.ExitCode),
+            r.ExitCode is { } code && code != 0, Age(_runsNowUtc - r.FinishedUtc), _comparable(r),
+            ReferenceEquals(r, selected))).ToList());
+        HasRuns = Runs.Count > 0;
+        SelectedRun = Runs.FirstOrDefault(r => r.IsSelected);
+    }
+
+    partial void OnSelectedRunChanged(TerminalSupportRunRow? value)
+    {
+        if (ReferenceEquals(value?.Output, _presentedOutput))
+            return;
+        _presentedOutput = value?.Output;
+        _ = PresentOutputAsync(value?.Output);
+    }
+
+    /// <summary>選んだ回の出力を形に合わせて見せ直す。出力は最大 1MB あるので裏のスレッドで。</summary>
+    private async Task PresentOutputAsync(TerminalCommandOutput? output)
+    {
+        var generation = ++_outputGeneration;
+        if (output is null)
+        {
+            OutputLabel = OutputBody = "";
+            return;
+        }
+        var context = _problemContext(output.WorkingDirectory);
+        var presentation = await Task.Run(() => TerminalOutputPresenter.Present(output, context));
+        if (generation != _outputGeneration)
+            return;
+        OutputLabel = presentation.Label;
+        OutputBody = presentation.Body;
     }
 
     /// <summary>経過時間を書き直す（ShellWindow の1秒時計から。ペインが見えている間だけ呼ばれる）。</summary>
     internal void Tick(DateTime nowUtc)
         => Elapsed = _runningSinceUtc is { } since ? FormatElapsed(nowUtc - since) : "";
 
-    /// <summary>Claude の記録を読み直す。長さと更新時刻が前回と同じなら読まない（作業中は数秒おきに呼ばれる）。
+    /// <summary>Claude の記録を読み直す。読むのは前回からの追記分だけ（<see cref="ClaudeSessionFollower"/>、§39.8）で、
+    /// 何も書き足されていなければ描き直さない（作業中は数秒おきに呼ばれる）。
     /// <paramref name="transcriptPath"/> が null なら、このタブのセッションを確かめられなかった（理由は
     /// <paramref name="unresolvedReason"/>）——そのときは何も描かない（別の会話を出すより、出さないほうがよい）。</summary>
     internal async Task RefreshClaudeAsync(string? transcriptPath, string? unresolvedReason)
@@ -158,32 +222,30 @@ public sealed partial class TerminalSupportViewModel : ObservableObject
         if (transcriptPath is null)
         {
             _transcriptPath = null;
-            _digestStamp = null;
+            _follower = null;
+            _appliedVersion = -1;
             await ApplyDigest(null);
             ClaudeNotice = unresolvedReason ?? "このタブの Claude Code のセッションが見つかりません。";
             return;
         }
-        (long, DateTime)? stamp;
-        try
+        if (_follower is null || !string.Equals(_follower.TranscriptPath, transcriptPath, StringComparison.OrdinalIgnoreCase))
         {
-            var info = new FileInfo(transcriptPath);
-            stamp = info.Exists ? (info.Length, info.LastWriteTimeUtc) : null;
+            _follower = new ClaudeSessionFollower(transcriptPath);
+            _appliedVersion = -1;
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { stamp = null; }
-        if (stamp is null)
-            return;
-        if (_transcriptPath == transcriptPath && _digestStamp == stamp)
-            return;
         _transcriptPath = transcriptPath;
-        _digestStamp = stamp;
+        var follower = _follower;
 
         var generation = ++_digestGeneration;
-        ClaudeSessionDigest? digest;
-        try { digest = await Task.Run(() => ClaudeSessionDigest.Read(transcriptPath)); }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { digest = null; }
-        if (generation != _digestGeneration || _transcriptPath != transcriptPath)
-            return;   // 読んでいる間にタブが替わった・もっと新しい読み直しが走った
-        await ApplyDigest(digest);
+        (int Version, ClaudeSessionDigest? Digest) result;
+        try { result = await Task.Run(follower.Refresh); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return; }
+        // 読んでいる間にタブが替わった・もっと新しい読み直しが走った。捨てても取りこぼさない——次の読み直しは
+        // 版がこちらの描いたものと違えば（追記が無くても）描く。
+        if (generation != _digestGeneration || !ReferenceEquals(_follower, follower) || result.Version == _appliedVersion)
+            return;
+        _appliedVersion = result.Version;
+        await ApplyDigest(result.Digest);
     }
 
     internal Task ApplyDigest(ClaudeSessionDigest? digest)
@@ -210,8 +272,8 @@ public sealed partial class TerminalSupportViewModel : ObservableObject
             ConversationBody = "";
             return;
         }
-        var (inWorkspace, displayPath, working) = (_inWorkspace, _displayPath, _agentState == ClaudeAgentState.Working);
-        var body = await Task.Run(() => ClaudeConversationDocument.BuildBody(digest, inWorkspace, displayPath, working));
+        var (inWorkspace, displayPath, working, cache) = (_inWorkspace, _displayPath, _agentState == ClaudeAgentState.Working, _renderCache);
+        var body = await Task.Run(() => ClaudeConversationDocument.BuildBody(digest, inWorkspace, displayPath, working, cache));
         if (generation == _bodyGeneration)
             ConversationBody = body;
     }
@@ -243,8 +305,10 @@ public sealed partial class TerminalSupportViewModel : ObservableObject
     private void ClearClaude()
     {
         _transcriptPath = null;
-        _digestStamp = null;
+        _follower = null;
+        _appliedVersion = -1;
         _digest = null;
+        _renderCache = new();
         _digestGeneration++;
         _bodyGeneration++;
         _agentTitle = null;
@@ -258,6 +322,16 @@ public sealed partial class TerminalSupportViewModel : ObservableObject
     private void OpenTranscript()
     {
         if (_transcriptPath is { } path) FileOpenRequested?.Invoke(this, path);
+    }
+
+    /// <summary>一覧の行を押した：その回を見せる。最新の行なら、以後も最新に付いていく。</summary>
+    [RelayCommand]
+    private void SelectRun(TerminalSupportRunRow? row)
+    {
+        if (row is null)
+            return;
+        _followNewestRun = _tabRuns.Count > 0 && ReferenceEquals(row.Output, _tabRuns[0]);
+        RebuildRuns(row.Output);
     }
 
     [RelayCommand]

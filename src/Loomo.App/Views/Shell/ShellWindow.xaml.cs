@@ -185,7 +185,7 @@ public partial class ShellWindow : Window {
             var support = new TerminalSupportPaneView();
             support.ConfigureConversation(editorSupportViewFactory, EditorSupportPreviewFolder,
                 () => _settings.Appearance.MarkdownPreviewTheme);
-            support.ConversationLinkClicked += (_, href) => OnTerminalSupportConversationLink(href);
+            support.PageLinkClicked += (_, href) => OnTerminalSupportConversationLink(href);
             return support;
         });
         DeferPaneContent(TraceSessionHost, () => new TraceSessionView());

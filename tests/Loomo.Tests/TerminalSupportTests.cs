@@ -175,6 +175,19 @@ public sealed class TerminalSupportTests : IDisposable
     }
 
     [Fact]
+    public void Digest_TaskNotification_IsNotAPrompt()
+    {
+        // バックグラウンドの作業が終わると、Claude Code は user の行として通知を差し込む（実記録の形）。人間の頼みごとではない。
+        var lines = SampleSession()
+            .Append(User("<task-notification>\n<task-id>b5j3</task-id>\n<status>completed</status>\n</task-notification>", "2026-10-19T01:03:00Z"))
+            .Append(Reply("r9", "テストが通りました。", "2026-10-19T01:03:01Z"))
+            .ToArray();
+        var digest = Digest(lines);
+        Assert.Equal(2, digest.Turns.Count);
+        Assert.Equal("テストが通りました。", digest.CurrentTurn!.Reply);   // 通知のあとの返事は、続いている頼みごとのもの
+    }
+
+    [Fact]
     public void Digest_PendingCall_IsTheLastCallWithoutResult()
     {
         var digest = Digest(SampleSession());
@@ -197,6 +210,112 @@ public sealed class TerminalSupportTests : IDisposable
         Assert.Equal(ClaudeSessionDigest.MaxTurns, digest.Turns.Count);
         Assert.Equal($"頼み {ClaudeSessionDigest.MaxTurns + 4}", digest.CurrentTurn!.Prompt);
     }
+
+    // ===== 追記分だけ読む（§39.8） =====
+
+    [Fact]
+    public void Reader_FedInChunks_EqualsFullParse_AndCountsUsageOncePerMessage()
+    {
+        var lines = SampleSession().Append(Assistant("m7", [new { type = "text", text = "同じ応答の別ブロック" }],
+            "2026-10-19T01:01:10Z", input: 60_000)).ToArray();
+        var full = sk0ya.Loomo.Core.Harness.ClaudeTranscriptParser.Parse("s1", "p", lines);
+
+        var reader = new sk0ya.Loomo.Core.Harness.ClaudeTranscriptReader();
+        reader.Feed("p", lines.Take(5), isSubagent: false);   // t2 の結果の手前で切る（結果待ちを持ち越す）
+        reader.Feed("p", lines.Skip(5), isSubagent: false);
+        var chunked = reader.Snapshot("s1", "p");
+
+        Assert.Equal(full.ToolCalls.Select(c => (c.Index, c.LineNumber, c.Tool, c.HasResult, c.IsError, c.IsRejected)),
+            chunked.ToolCalls.Select(c => (c.Index, c.LineNumber, c.Tool, c.HasResult, c.IsError, c.IsRejected)));
+        Assert.Equal(full.PromptMarks, chunked.PromptMarks);
+        Assert.Equal(full.Usage, chunked.Usage);   // m7 は2行に分かれても1回
+        Assert.Equal(lines.Length, reader.LinesRead("p"));
+    }
+
+    private string WriteTranscript(IEnumerable<string> lines, string name = "s1")
+    {
+        var path = Path.Combine(_base, name + ".jsonl");
+        File.WriteAllText(path, string.Join("\n", lines) + "\n");
+        return path;
+    }
+
+    private static void Append(string path, string text) => File.AppendAllText(path, text);
+
+    [Fact]
+    public void Follower_ReadsOnlyWhatWasAppended_AndMatchesAFullRead()
+    {
+        var lines = SampleSession();
+        var path = WriteTranscript(lines.Take(6));
+        var follower = new ClaudeSessionFollower(path);
+        var (v1, first) = follower.Refresh();
+        Assert.Equal("new.cs を作りました。", Assert.Single(first!.Turns).Reply);
+
+        // 変わっていなければ同じ版・同じ digest
+        var (same, again) = follower.Refresh();
+        Assert.Equal(v1, same);
+        Assert.Same(first, again);
+
+        // 書きかけの行は改行が来るまで読まない
+        var rest = lines.Skip(6).ToArray();
+        var cut = rest[0].Length / 2;
+        Append(path, rest[0][..cut]);
+        Assert.Single(follower.Refresh().Digest!.Turns);
+        Append(path, rest[0][cut..] + "\n" + string.Join("\n", rest.Skip(1)) + "\n");
+        var (v2, latest) = follower.Refresh();
+        Assert.True(v2 > v1);
+
+        var expected = ClaudeSessionDigest.Build("s1", path, DateTime.UtcNow, lines);
+        Assert.Equal(expected.Turns.Select(t => (t.Prompt, t.PromptLine, t.Calls.Count, t.Files.Count, t.Reply)),
+            latest!.Turns.Select(t => (t.Prompt, t.PromptLine, t.Calls.Count, t.Files.Count, t.Reply)));
+        Assert.Equal(expected.PendingCall?.Command, latest.PendingCall?.Command);
+        Assert.Equal(expected.Title, latest.Title);
+        Assert.Equal(expected.ContextTokens, latest.ContextTokens);
+    }
+
+    [Fact]
+    public void Follower_FileRewrittenShorter_StartsOver()
+    {
+        var path = WriteTranscript(SampleSession());
+        var follower = new ClaudeSessionFollower(path);
+        Assert.Equal(2, follower.Refresh().Digest!.Turns.Count);
+
+        WriteTranscript([User("やり直し", "2026-10-19T02:00:00Z")]);
+        var digest = follower.Refresh().Digest!;
+        Assert.Equal("やり直し", Assert.Single(digest.Turns).Prompt);
+        Assert.Null(digest.Title);
+    }
+
+    [Fact]
+    public void Follower_ReadsSubagentTranscripts_IntoTheTurnByTime()
+    {
+        var lines = SampleSession().Take(10)   // 二つ目の頼みごと（01:01:00）と、その最初の操作まで
+            .Append(Assistant("m9", [ToolUse("a1", "Agent", new { subagent_type = "Explore", prompt = "調べて" })], "2026-10-19T01:01:20Z"))
+            .ToArray();
+        var path = WriteTranscript(lines);
+        var follower = new ClaudeSessionFollower(path);
+        Assert.Equal(1, follower.Refresh().Digest!.CurrentTurn!.Subagents);
+
+        // サブエージェントの記録はあとから現れる
+        var subFolder = Directory.CreateDirectory(Path.Combine(_base, "s1", "subagents")).FullName;
+        File.WriteAllText(Path.Combine(subFolder, "agent-x.jsonl"), string.Join("\n",
+            Assistant("sa1", [ToolUse("st1", "Write", new { file_path = @"C:\ws\sub.cs", content = "x" })], "2026-10-19T01:01:30Z"),
+            Result("st1", "ok", "2026-10-19T01:01:31Z")) + "\n");
+        var turn = follower.Refresh().Digest!.CurrentTurn!;
+        Assert.Contains(turn.Calls, c => c.FromSubagent && c.Tool == "Write");
+        Assert.Contains(turn.Files, f => f.Path == @"C:\ws\sub.cs");
+        Assert.Equal(1, turn.Subagents);   // サブエージェントの中の操作は数に入れない
+    }
+
+    [Fact]
+    public void Follower_MissingFile_GivesNoDigest()
+    {
+        var follower = new ClaudeSessionFollower(Path.Combine(_base, "none.jsonl"));
+        Assert.Null(follower.Refresh().Digest);
+    }
+
+    [Fact]
+    public void SplitLines_LikeReadLine()
+        => Assert.Equal(["a", "b", "", "c"], ClaudeSessionFollower.SplitLines("a\r\nb\n\nc\n"));
 
     // ===== タブのセッションを確かめる（推量しない） =====
 
@@ -252,6 +371,41 @@ public sealed class TerminalSupportTests : IDisposable
         var match = ClaudeLiveSessions.Match([], _ => true, new ClaudeTabClue(@"C:\ws", null), NoneClaimed);
         Assert.Null(match.Session);
         Assert.NotNull(match.Reason);
+    }
+
+    [Fact]
+    public void Match_TabShellKnown_PicksItsDescendant_IgnoringFolderAndTime()
+    {
+        // 同じ場所で二つ動いていて、打った時刻も分からない——場所と時刻では決まらない形。
+        var sessions = new[] { Live(12, "mine"), Live(22, "other") };
+        var processes = new Dictionary<int, (int Parent, string Name)>
+        {
+            [11] = (10, "pwsh.exe"), [12] = (11, "claude.exe"),
+            [21] = (10, "pwsh.exe"), [22] = (21, "claude.exe"),
+        };
+        var clue = new ClaudeTabClue(@"C:\elsewhere", null);   // claude の中で場所が変わっていても
+        var match = ClaudeLiveSessions.Match(sessions, _ => true, clue, NoneClaimed,
+            pid => ClaudeLiveSessions.IsDescendantOf(pid, 11, processes));
+        Assert.Equal("mine", match.Session?.SessionId);
+
+        // シェルの中に居なければ、場所が同じでも結び付けない
+        var none = ClaudeLiveSessions.Match([Live(22, "other")], _ => true, new ClaudeTabClue(@"C:\ws", null), NoneClaimed,
+            pid => ClaudeLiveSessions.IsDescendantOf(pid, 11, processes));
+        Assert.Null(none.Session);
+        Assert.NotNull(none.Reason);
+    }
+
+    [Fact]
+    public void IsDescendantOf_WalksParents_StopsOnLoops()
+    {
+        var processes = new Dictionary<int, (int Parent, string Name)>
+        {
+            [11] = (10, "pwsh.exe"), [12] = (11, "node.exe"), [13] = (12, "claude.exe"),
+            [40] = (41, "a.exe"), [41] = (40, "b.exe"),
+        };
+        Assert.True(ClaudeLiveSessions.IsDescendantOf(13, 11, processes));
+        Assert.False(ClaudeLiveSessions.IsDescendantOf(11, 11, processes));   // 自分自身は含めない
+        Assert.False(ClaudeLiveSessions.IsDescendantOf(40, 11, processes));
     }
 
     [Fact]
@@ -347,9 +501,9 @@ public sealed class TerminalSupportTests : IDisposable
             .ToArray();
         var body = Body(lines);
 
-        // 頼みごとは見出し（アウトライン欄に並ぶよう id つき）
-        Assert.Contains("<h2 id=\"cc-turn-0\">一つ目の頼みごと</h2>", body);
-        Assert.Contains("<h2 id=\"cc-turn-1\">二つ目の頼みごと</h2>", body);
+        // 頼みごとは見出し（アウトライン欄に並ぶよう id つき。id は記録の行＝古いターンが落ちても変わらない）
+        Assert.Contains("<h2 id=\"cc-turn-1\">一つ目の頼みごと</h2>", body);
+        Assert.Contains("<h2 id=\"cc-turn-7\">二つ目の頼みごと</h2>", body);
         // 返事は Markdown として描かれる（表が表になる）。見出しは頼みごとの下へ2段下がる
         Assert.Contains("<table", body);
         Assert.Contains("<h4", body);
@@ -386,6 +540,39 @@ public sealed class TerminalSupportTests : IDisposable
         Assert.DoesNotContain("file:///C:/ws/new.cs", body);
         Assert.Contains("ワークスペースの外 1 ファイル", body);
         Assert.Contains("✗ 失敗 1", body);
+    }
+
+    [Fact]
+    public void Document_ReplyIdsAreScopedPerTurn()
+    {
+        var lines = new[]
+        {
+            User("一つ目", "2026-10-19T01:00:00Z"),
+            Reply("r1", "## まとめ\n\n[上へ](#まとめ)", "2026-10-19T01:00:01Z"),
+            User("二つ目", "2026-10-19T01:01:00Z"),
+            Reply("r2", "## まとめ", "2026-10-19T01:01:01Z"),
+        };
+        var body = Body(lines);
+        Assert.Contains("id=\"t1-まとめ\"", body);
+        Assert.Contains("id=\"t3-まとめ\"", body);
+        Assert.Contains("href=\"#t1-まとめ\"", body);   // 同じターンの中のリンクも付いていく
+    }
+
+    [Fact]
+    public void Document_Cache_RedrawsOnlyTheTurnThatChanged()
+    {
+        var cache = new ClaudeConversationDocument.RenderCache();
+        var before = Digest(SampleSession());
+        var after = Digest(SampleSession().Append(Result("t7", "ok", "2026-10-19T01:01:30Z"))
+            .Append(Reply("r2", "通りました。", "2026-10-19T01:01:31Z")).ToArray());
+
+        ClaudeConversationDocument.BuildBody(before, _ => true, p => p, working: true, cache);
+        Assert.Equal(ClaudeConversationDocument.TurnKey(before.Turns[0], false), ClaudeConversationDocument.TurnKey(after.Turns[0], false));
+        Assert.NotEqual(ClaudeConversationDocument.TurnKey(before.Turns[1], true), ClaudeConversationDocument.TurnKey(after.Turns[1], false));
+
+        var cached = ClaudeConversationDocument.BuildBody(after, _ => true, p => p, working: false, cache);
+        Assert.Equal(ClaudeConversationDocument.BuildBody(after, _ => true, p => p, working: false), cached);
+        Assert.Equal(2, cache.Count);   // 使われなかった前の版は捨てる
     }
 
     [Fact]

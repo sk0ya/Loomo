@@ -730,6 +730,33 @@ internal static class MarkdownPage
                     window.chrome.webview.postMessage({ type: 'linkClicked', href });
                 });
 
+                // 並べ替えられる表（table.loomo-sortable、ターミナルの出力を表にしたもの §39.5.1）：見出しを押すと
+                // その列で並べ替え、もう一度押すと逆順。数だけの列（.tso-num）は数として比べる。本文差し替えで
+                // 表ごと入れ替わっても効くよう、document で受ける。
+                document.addEventListener('click', e => {
+                    const th = e.target.closest && e.target.closest('table.loomo-sortable th');
+                    if (!th || markdownEditMode) return;
+                    const table = th.closest('table');
+                    const body = table.tBodies[0];
+                    if (!body) return;
+                    const column = Array.prototype.indexOf.call(th.parentElement.children, th);
+                    const descending = th.dataset.sort === 'asc';
+                    for (const other of th.parentElement.children) delete other.dataset.sort;
+                    th.dataset.sort = descending ? 'desc' : 'asc';
+                    const numeric = th.classList.contains('tso-num');
+                    const key = row => {
+                        const text = (row.children[column]?.textContent || '').trim();
+                        return numeric ? (parseFloat(text.replace(/,/g, '')) || 0) : text;
+                    };
+                    const rows = Array.from(body.rows);
+                    rows.sort((a, b) => {
+                        const x = key(a), y = key(b);
+                        const order = numeric ? x - y : String(x).localeCompare(String(y), undefined, { numeric: true });
+                        return descending ? -order : order;
+                    });
+                    for (const row of rows) body.appendChild(row);
+                });
+
                 // 画面サイズ・ペイン幅・表示切替で innerHeight/scrollHeight が変わると、絶対 scrollY を
                 // 保つブラウザの挙動でエディタとの比率がズレる。resize 中は scroll エコーを止めて
                 // （リフロー起因の scroll でエディタが飛ぶのを防ぐ）、最後に意図した比率へ貼り直す。
@@ -1002,6 +1029,22 @@ internal static class MarkdownPage
             .loomo-outline-panel a:hover { color: {{link}}; background: {{bg}}; text-decoration: none; }
             .loomo-outline-panel a.active { color: {{link}}; border-left-color: {{link}}; }
             .loomo-outline-panel a.outline-h1 { font-weight: 600; }
+            /* 狭いペインでは一覧が本文の幅を食う（240px でも 38vw でも、横に並べると本文が細る）。右端の細い帯に畳み、
+               触れたとき（キーボードなら中へ焦点が入ったとき）だけ本文の上へ重ねて開く。 */
+            @media (max-width: 560px) {
+                html { --outline-w: 22px; }
+                body.loomo-outline { padding-right: calc(var(--outline-w) + 16px); }
+                .loomo-outline-panel { overflow: hidden; padding-top: 8px; cursor: default; }
+                .loomo-outline-panel::before {
+                    content: '≡'; display: block; text-align: center; color: {{muted}}; font-size: 14px;
+                }
+                .loomo-outline-panel:not(:hover):not(:focus-within) > * { display: none; }
+                .loomo-outline-panel:hover, .loomo-outline-panel:focus-within {
+                    width: min(260px, 85vw); overflow-y: auto; padding-top: 12px;
+                    box-shadow: -6px 0 18px rgba(0, 0, 0, .35);
+                }
+                .loomo-outline-panel:hover::before, .loomo-outline-panel:focus-within::before { display: none; }
+            }
             /* PDF エクスポート（PrintToPdfAsync＝表示のまま印刷）には持ち込まない。position:fixed は
                全ページに焼き付き、右余白のぶん本文が細く潰れる。 */
             @media print {
