@@ -59,6 +59,8 @@ public sealed partial class ShellViewModel : ObservableObject
     public AppearanceViewModel Appearance { get; }
     public LspSettingsViewModel Lsp { get; }
     public LspPromptViewModel LspPrompt { get; }
+    /// <summary>未保存のタブのファイルが外で書き換わったときのバー（§24.57）。</summary>
+    public ExternalFileChangeBarViewModel ExternalFileChange { get; } = new();
     /// <summary>Claude Code が IDE 連携で出した編集の提案を受け入れる／却下するバー（§38）。</summary>
     public ClaudeProposalViewModel ClaudeProposal { get; } = new();
 

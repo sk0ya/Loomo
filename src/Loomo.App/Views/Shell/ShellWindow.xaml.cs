@@ -217,6 +217,7 @@ public partial class ShellWindow : Window {
         _browserTabs = _scratchBrowserWorkspace.Tabs;
         InitializePanes();
         HookBranchSwitchers();
+        HookExternalFileChanges();
         HookWorkspaceSwitcher();
         HookDebugSwitcher();
         HookPaneMenu();

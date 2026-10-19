@@ -119,7 +119,7 @@ public partial class ShellWindow {
         if (!transition.TurnEnded)
             return;
         // Claude が書き換えたファイルを開いたままだと、古い本文のまま保存して Claude の変更を消しうる。
-        // 外部変更の読み直しは Git の変化（Git ペインが出ている間だけ）頼みなので、ターンの終わりにも読み直す。
+        // 書き換えはタブの見張り（§24.57）が拾うが、監視が落ちていた・取りこぼした場合の網としてターンの終わりにも確かめる。
         // 未保存の編集があるタブは読み直さない（ReloadExistingTabIfChangedAsync の約束）。
         _ = RefreshOpenEditorTabsFromDiskAsync();
         if (_activeTerminalTab?.Id == tabId)

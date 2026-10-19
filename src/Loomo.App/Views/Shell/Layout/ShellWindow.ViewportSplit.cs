@@ -158,6 +158,9 @@ public partial class ShellWindow {
             SyncEditorTestGlyphs(control);
             ScheduleStyleCopAnalysis(control);
             tab.Pending = null;
+            // 読み込みの通知（Loaded）も通らないので、外部変更の見張りもここで足す（§24.57）。
+            RememberDiskFingerprint(control);
+            ScheduleEditorFileWatchSync();
         }
         // 無題のタブは本文から言語を決める（§24.28）。ファイルを読み込むタブは、読み込みの通知で自分で外れる。
         AttachUntitledLanguageDetection(control);
@@ -191,6 +194,9 @@ public partial class ShellWindow {
         var control = new VimEditorControl(new VimEditorControlOptions {
             // ガターの変更マークは共有の比較基準に合わせる（§24.11.1）。それ以外はエディタ既定の git 実装。
             GitServiceFactory = () => new sk0ya.Loomo.Services.EditorGutterGitService(_git, () => _gutterBase.Current),
+            // 外での書き換えは Loomo がタブごとに見張って取り込む（§24.57）。エディタの監視も残すと、1回の
+            // 書き換えに両方が反応し、未保存のタブでは Loomo のバーとエディタのモーダル確認が二重に出る。
+            WatchFileOnDisk = false,
             // キャレットの先に薄く出す提案のうち、ローカル LLM（FIM）が作る方。
             // エディタ内蔵の予測（既出行からの補完）はこれが無くても動き、先に出る。
             InlineSuggestionProvider = RequestInlineSuggestionAsync,
@@ -375,9 +381,9 @@ public partial class ShellWindow {
     /// <summary>エディタへファイルを読み込ませる。<b>Loomo 側の <c>LoadFile</c> の唯一の漏斗</b>で、
     /// ここを通る経路は現在このとおり:
     /// 新規タブ／プレビュータブで開く（<c>OpenFileInNewEditorTabAsync</c>／<c>OpenFileInPreviewTabAsync</c>）・
-    /// 外部変更の読み直し（<c>ReloadExistingTabIfChangedAsync</c> ← 既存タブを開き直したとき／
-    /// Git のブランチ切替（<c>RefreshOpenEditorTabsFromDiskAsync</c>）／検索パネルの一括置換）・
     /// 分割で同じファイルを開く（<c>SplitEditorView</c>）・切り離し窓（複製／リンク先を別窓で開く／復元）。
+    /// 外部変更の読み直しは<b>ここを通らない</b>——同じパスの <c>LoadFile</c> はディスクを読まないので、
+    /// <c>ReloadEditorFromDiskAsync</c>（<c>VimEditorControl.ReloadFromDisk</c>）で入れ直す（§24.57）。
     /// <para>読み込み後の後始末をここへ集める理由は、<c>VimEditorControl.LoadFile</c> が
     /// テストグリフを捨てるのに <c>BufferChanged</c> を<b>発火しない</b>こと。個々の呼び出し側で
     /// 送り直していると、上のどれか（実際にブランチ切替で全タブ）が落ちる。</para></summary>

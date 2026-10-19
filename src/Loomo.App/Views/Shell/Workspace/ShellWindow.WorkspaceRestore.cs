@@ -42,6 +42,7 @@ public partial class ShellWindow {
             ActivateEditorTab(
                 editorWorkspace.ActiveTabId ?? _editorTabs[0].Id, profile, focusView: false);
             _editorViews?.Restore(workspace.EditorViewLayout, _editorTabs.Select(t => t.Id));
+            OnEditorWorkspaceAttached();   // 裏に居た間の外部変更を拾い、見張りをこのタブ集合へ張り替える（§24.57）
             return;
         }
         editorWorkspace.IsInitialized = true;
@@ -62,6 +63,7 @@ public partial class ShellWindow {
         }
         ActivateEditorTab(activeId, focusView: false);
         _editorViews?.Restore(workspace.EditorViewLayout, _editorTabs.Select(t => t.Id));
+        SyncEditorFileWatches();   // 前のワークスペースのタブの見張りを外す（§24.57）
     }
     private void DetachTerminalTabs() {
         CurrentTerminalWorkspace.ActiveTabId = _activeTerminalTab?.Id;

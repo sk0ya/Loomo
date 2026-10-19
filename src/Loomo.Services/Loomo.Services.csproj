@@ -83,6 +83,9 @@
          §23.3.4 が使う。 -->
     <!-- 1.0.102: パスの無いバッファへ構文ハイライトの言語を外から設定する SetSyntaxLanguage。
          無題タブの言語を本文から決める §24.28 が使う。 -->
+    <!-- 1.0.104: VimEditorControlOptions.WatchFileOnDisk（既定 true）。false ならエディタはファイルを見張らない——
+         Loomo がタブのファイルを見張り、未保存の競合はモーダルでなくバーで尋ねる。VimEditorControl.ReloadFromDisk は
+         外で変わったファイルを1回の取り消せる編集として読み直す（:e! と違い履歴・カーソルが残る）。§24.57 が使う。 -->
     <ProjectReference Include="..\..\..\Editor\src\Editor.Controls.Defaults\Editor.Controls.Defaults.csproj"
                       Condition="'$(UseLocalEditor)' != 'false'" />
     <!-- Defaults はパッケージ化時に Core/Controls を同梱する構成で、プロジェクト参照では

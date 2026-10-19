@@ -1207,6 +1207,32 @@
                             </StackPanel>
                         </Grid>
                     </Border>
+                    <!-- 外部変更のバー（§24.57）：未保存の編集があるタブのファイルがエディタの外で書き換わった。
+                         黙って読み直すと人の編集が消え、放っておくと次の保存で外の変更が消えるので、人に選んでもらう。 -->
+                    <Border DockPanel.Dock="Top" Background="{DynamicResource BgAlt}"
+                            BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1" Padding="10,6"
+                            Visibility="{Binding ExternalFileChange.IsVisible, Converter={StaticResource BoolToVis}}">
+                        <!-- 文と操作は上下に分ける。横並びにすると、狭いエディタ枠では文の列が幅0になって1字ずつ折り返し、
+                             バーが本文を押し出す。ボタンは入り切らなければ次の行へ回す。 -->
+                        <StackPanel>
+                            <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource Fg}" FontSize="{DynamicResource Fs12}"
+                                       Text="{Binding ExternalFileChange.Message}" />
+                            <WrapPanel Margin="0,4,0,0">
+                                <Button Content="ディスクの内容で読み直す" Style="{StaticResource FlatButton}"
+                                        FontSize="{DynamicResource Fs11}" Padding="8,2" Margin="0,2,6,0"
+                                        ToolTip="いまのディスクの内容を読み込む（未保存の編集は Ctrl+Z で戻せる）"
+                                        Command="{Binding ExternalFileChange.ReloadCommand}" />
+                                <Button Content="差分を見る" Style="{StaticResource SecondaryButton}"
+                                        FontSize="{DynamicResource Fs11}" Padding="8,2" Margin="0,2,6,0"
+                                        ToolTip="ディスクの内容（左）と編集中の内容（右）を比べる"
+                                        Command="{Binding ExternalFileChange.CompareCommand}" />
+                                <Button Content="このまま編集を続ける" Style="{StaticResource SecondaryButton}"
+                                        FontSize="{DynamicResource Fs11}" Padding="8,2" Margin="0,2,6,0"
+                                        ToolTip="バーを閉じる（保存すると外の変更を上書きする）"
+                                        Command="{Binding ExternalFileChange.KeepCommand}" />
+                            </WrapPanel>
+                        </StackPanel>
+                    </Border>
                     <!-- 分割しても下端に1つだけ表示する共有ステータスバー。各エディタは SetSharedStatusBar で
                          自前のバーを隠してここへ状態を流す（フォーカス中のエディタの mode/file/cursor を表示）。 -->
                     <editor:VimStatusBar x:Name="EditorSharedStatusBar" DockPanel.Dock="Bottom" />

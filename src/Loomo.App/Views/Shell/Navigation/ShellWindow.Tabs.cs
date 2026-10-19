@@ -143,6 +143,7 @@ public partial class ShellWindow {
     // 新規タブは Activate→LoadFile の順なので評価時点でパスが未設定だった（設計書 §30.6 P3）。
     // LoadFile の後にもう一度呼べるよう、同じパスの二度目は捨てる。
     private void OnActiveEditorFileChanged(EditorTab tab) {
+        UpdateExternalChangeBar();   // 外で書き換わった未保存のタブなら、上端のバーを出す（§24.57）
         var filePath = tab.IsRealized ? tab.Control.FilePath : tab.PeekFilePath;
         _vm.Debug.Problems.CurrentFilePath = filePath;
         _vm.TsIde.Problems.CurrentFilePath = filePath;
@@ -231,6 +232,7 @@ public partial class ShellWindow {
         if (tab.IsRealized) {
             tab.Control.RebaseFilePath(newPath);
             UpdateEditorTab(tab);   // タブ名更新＋スナップショット保存
+            SyncEditorFileWatches();   // 外部変更の見張りも新しいパスへ（§24.57）
             // 相棒ペインの種類（md プレビュー／CSV 表／コードのアウトライン）は毎回の描画で
             // パスから決め直すので、追従元が自分なら描き直しを1回頼めばよい。
             if (ReferenceEquals(_editorSupport.Source, tab))

@@ -67,17 +67,4 @@ internal static class EditorTabNavigationPolicy
         tabs.RemoveAt(index);
         tabs.Add(preview);
     }
-
-    public static async Task<string?> FindChangedExternalFileAsync(EditorTab tab)
-    {
-        var editor = tab.Control;
-        var path = editor.FilePath;
-        if (string.IsNullOrEmpty(path) || !File.Exists(path) || editor.IsModified)
-            return null;
-
-        string diskText;
-        try { diskText = await File.ReadAllTextAsync(path); }
-        catch { return null; }
-        return EolInsensitiveText.Equals(diskText, editor.Text) ? null : path;
-    }
 }

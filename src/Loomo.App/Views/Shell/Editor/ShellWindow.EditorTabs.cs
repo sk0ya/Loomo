@@ -96,10 +96,9 @@ public partial class ShellWindow {
         SaveActiveWorkspaceSnapshot();
     }
     private async Task ReloadExistingTabIfChangedAsync(EditorTab tab) {
-        if (await EditorTabNavigationPolicy.FindChangedExternalFileAsync(tab) is { } path) {
-            await LoadEditorFileAsync(tab, path);
-            UpdateEditorTab(tab);
-        }
+        // 判定と読み直しは外部変更の監視と同じ一本（§24.57）。未保存のタブは読み直さず競合の印を付ける。
+        if (tab.IsRealized)
+            await CheckEditorAgainstDiskAsync(tab.Control, tab);
         if (ReferenceEquals(_editorSupport.Source, tab))
             InvalidateEditorSupport();
     }
