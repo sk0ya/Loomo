@@ -1,5 +1,9 @@
 using System.ComponentModel;
+using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
+using System.Windows.Input;
+using System.Windows.Media;
 using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.App.ViewModels;
 
@@ -29,6 +33,7 @@ public partial class TerminalSupportPaneView : UserControl
         DataContextChanged += (_, _) => Attach(DataContext as TerminalSupportViewModel);
         ConversationHost.IsVisibleChanged += (_, _) => ShowConversation();
         ConversationTree.SelectedItemChanged += (_, e) => _ = _vm?.SelectTreeItemAsync(e.NewValue as ClaudeTreeItem);
+        ConversationTree.PreviewMouseLeftButtonUp += OnTreeRowClicked;
         OutputHost.IsVisibleChanged += (_, _) => ShowOutput();
     }
 
@@ -63,6 +68,28 @@ public partial class TerminalSupportPaneView : UserControl
             ShowConversation();
         else if (e.PropertyName is nameof(TerminalSupportViewModel.OutputBody) or nameof(TerminalSupportViewModel.IsShell))
             ShowOutput();
+    }
+
+    /// <summary>
+    /// 子を持つ行（ターン・エージェント）は、題を押しても開閉する（VS Code のエクスプローラーと同じ）。矢印だけが開閉の口だと、
+    /// 小さな的を狙わないと開けなかった。矢印そのものを押したときは矢印が開閉する（押下で切り替わる）ので、ここでは触らない。
+    /// </summary>
+    private static void OnTreeRowClicked(object sender, MouseButtonEventArgs e)
+    {
+        if (e.OriginalSource is not DependencyObject source)
+            return;
+        for (var node = source; node is not null; node = node is Visual ? VisualTreeHelper.GetParent(node) : LogicalTreeHelper.GetParent(node))
+        {
+            if (node is ToggleButton)
+                return;
+            if (node is TreeViewItem { HasItems: true } row)
+            {
+                row.IsExpanded = !row.IsExpanded;
+                return;
+            }
+            if (node is TreeViewItem)
+                return;
+        }
     }
 
     private void ShowConversation()

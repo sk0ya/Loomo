@@ -145,21 +145,30 @@
                                                   IsChecked="{Binding IsExpanded, RelativeSource={RelativeSource TemplatedParent}}">
                                         <ToggleButton.Template>
                                             <ControlTemplate TargetType="ToggleButton">
-                                                <Border Background="Transparent" Width="16" Height="16">
-                                                    <Path x:Name="Arrow" Width="6" Height="6" Stretch="Uniform"
+                                                <!-- 押せる範囲は行の高さいっぱい（20px 角）、印は線の山形（›）。6px の塗りの三角では
+                                                     見えず、押し損ねていた。 -->
+                                                <Border x:Name="Hit" Background="Transparent" Width="20" Height="20" CornerRadius="3">
+                                                    <Path x:Name="Arrow" Width="10" Height="10" Data="M3.5,1.5 L7,5 L3.5,8.5"
                                                           HorizontalAlignment="Center" VerticalAlignment="Center"
-                                                          Fill="{DynamicResource FgDim}" Data="M0,0 L4,4 L0,8 Z" />
+                                                          Stroke="{DynamicResource FgDim}" StrokeThickness="1.6"
+                                                          StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                                          RenderTransformOrigin="0.5,0.5">
+                                                        <Path.RenderTransform>
+                                                            <RotateTransform Angle="0" />
+                                                        </Path.RenderTransform>
+                                                    </Path>
                                                 </Border>
                                                 <ControlTemplate.Triggers>
                                                     <Trigger Property="IsChecked" Value="True">
                                                         <Setter TargetName="Arrow" Property="RenderTransform">
                                                             <Setter.Value>
-                                                                <RotateTransform Angle="90" CenterX="3" CenterY="3" />
+                                                                <RotateTransform Angle="90" />
                                                             </Setter.Value>
                                                         </Setter>
                                                     </Trigger>
                                                     <Trigger Property="IsMouseOver" Value="True">
-                                                        <Setter TargetName="Arrow" Property="Fill" Value="{DynamicResource Fg}" />
+                                                        <Setter TargetName="Arrow" Property="Stroke" Value="{DynamicResource Fg}" />
+                                                        <Setter TargetName="Hit" Property="Background" Value="{DynamicResource Border}" />
                                                     </Trigger>
                                                 </ControlTemplate.Triggers>
                                             </ControlTemplate>
