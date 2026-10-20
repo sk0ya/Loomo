@@ -139,6 +139,14 @@ internal sealed record BrowserTab(Guid Id, WebView2CompositionControl InitialVie
         /// <summary>読み込み中か。タブごとに持つ——ツールバーの「更新／停止」は
         /// <b>いま見ているタブ</b>の状態を出すので、裏のタブの読み込みに引きずられてはいけない。</summary>
         public bool IsLoading { get; set; }
+
+        /// <summary>最後に読み込みが通った時刻と、そのとき軌跡へ渡した URL。
+        /// 次の遷移がページ自身のリダイレクトかどうかの判定に使う（<see cref="BrowserRedirectHop"/>）。</summary>
+        public DateTime? LastCompletedUtc { get; set; }
+        public string? LastCompletedUrl { get; set; }
+
+        /// <summary>いま進行中の遷移が中継ページからのリダイレクトなら、置き換える軌跡の URL（中継ページ）。</summary>
+        public string? RedirectFromUrl { get; set; }
     }
 
 /// <summary>ワークスペースごとの端末タブ。生きた <see cref="TerminalTabView"/> をここで抱えたまま

@@ -51,7 +51,8 @@ public partial class ShellWindow {
             completedTab => _ = RefreshBrowserTabIconAsync(completedTab),
             BrowserAddressSuggestions.SetText,
             RecordTrailBrowser,
-            EvaluateBrowserExtensionPrompt);
+            EvaluateBrowserExtensionPrompt,
+            DateTime.UtcNow);
         if (ReferenceEquals(_activeBrowserTab, tab))
             WatchActiveLocalPage();
     }
@@ -80,6 +81,11 @@ public partial class ShellWindow {
     }
     private void OnBrowserNavigationStarting(BrowserTab tab, CoreWebView2NavigationStartingEventArgs e) {
         tab.IsLoading = true;
+        // サーバーのリダイレクトは同じ遷移の続き（完了は 1 度）なので、最初の開始で決めた判定を保つ。
+        if (!e.IsRedirected)
+            tab.RedirectFromUrl = BrowserRedirectHop.IsHop(
+                e.IsUserInitiated, e.NavigationKind, tab.LastCompletedUtc, DateTime.UtcNow)
+                ? tab.LastCompletedUrl : null;
         if (!ReferenceEquals(_activeBrowserTab, tab))
             return;
         _vm.Browser.IsLoading = true;

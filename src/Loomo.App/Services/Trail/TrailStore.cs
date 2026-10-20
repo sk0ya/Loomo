@@ -247,6 +247,10 @@ public sealed class TrailStore : IDisposable
         string? paneLayout)
         => EnqueueRowUpdate(row, id => Update(id, timestamp, label, line, column, paneLayout));
 
+    /// <summary><see cref="Retarget"/> の遅延版。</summary>
+    public void RetargetDeferred(TrailRowRef row, DateTime timestamp, string target, string label, string? paneLayout)
+        => EnqueueRowUpdate(row, id => Retarget(id, timestamp, target, label, paneLayout));
+
     /// <summary><see cref="UpdatePosition"/> の遅延版。</summary>
     public void UpdatePositionDeferred(TrailRowRef row, int line, int column)
         => EnqueueRowUpdate(row, id => UpdatePosition(id, line, column));
@@ -299,6 +303,20 @@ public sealed class TrailStore : IDisposable
 
             // 同一点のデデュープ更新で参照先が変わった場合、誰からも参照されない旧配置を回収する。
             CleanupLayoutIfUnreferenced(previousLayoutId, layoutId);
+        }
+    }
+
+    /// <summary>地点の行き先そのものを差し替える（ブラウザの中継ページを、リダイレクト先で置き換える）。</summary>
+    public void Retarget(long id, DateTime timestamp, string target, string label, string? paneLayout)
+    {
+        lock (_gate)
+        {
+            Update(id, timestamp, label, -1, -1, paneLayout);
+            using var cmd = Connection.CreateCommand();
+            cmd.CommandText = "UPDATE trail_entries SET target = $target WHERE id = $id;";
+            cmd.Parameters.AddWithValue("$target", target);
+            cmd.Parameters.AddWithValue("$id", id);
+            cmd.ExecuteNonQuery();
         }
     }
 

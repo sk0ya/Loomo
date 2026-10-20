@@ -17,10 +17,19 @@ internal static class BrowserNavigationCompletionController
         Action<BrowserTab> updateToolbar,
         Action<BrowserTab> refreshIcon,
         Action<string> setAddress,
-        Action<string?, string?> recordTrail,
-        Action<BrowserTab> evaluateExtensionPrompt)
+        Action<string?, string?, string?> recordTrail,
+        Action<BrowserTab> evaluateExtensionPrompt,
+        DateTime nowUtc)
     {
         tab.IsLoading = false;
+        // 中継ページからの遷移かどうかは、この遷移の間だけの話。
+        var redirectFrom = tab.RedirectFromUrl;
+        tab.RedirectFromUrl = null;
+        if (succeeded)
+        {
+            tab.LastCompletedUtc = nowUtc;
+            tab.LastCompletedUrl = url;
+        }
         updateTab(tab);
         updateToolbar(tab);
         refreshIcon(tab);
@@ -32,7 +41,7 @@ internal static class BrowserNavigationCompletionController
         if (succeeded)
         {
             tab.RendererReloads = 0;
-            recordTrail(url, title);
+            recordTrail(url, title, redirectFrom);
             browser.RecordVisit(url, title);
         }
         evaluateExtensionPrompt(tab);

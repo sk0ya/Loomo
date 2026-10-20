@@ -80,7 +80,16 @@ public sealed partial class TrailEntryViewModel : ObservableObject
     public string? PaneLayout { get; internal set; }
 
     /// <summary>戻り先の実体（ファイル＝フルパス、ブラウザ＝URL、ペイン／パネル＝enum 名）。</summary>
-    public string Target { get; }
+    public string Target { get; private set; }
+
+    /// <summary>行き先を差し替える（ブラウザの中継ページを、リダイレクト先で置き換えるときだけ）。</summary>
+    internal void Retarget(string target, string label)
+    {
+        Target = target;
+        OnPropertyChanged(nameof(Target));
+        Label = label;
+        OnPropertyChanged(nameof(Tooltip));
+    }
 
     /// <summary>ホバー詳細に出す短い名前（ファイル名／ページタイトル／ペイン名）。</summary>
     [ObservableProperty]

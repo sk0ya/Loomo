@@ -4,7 +4,7 @@ namespace sk0ya.Loomo.App.Services;
 
 public sealed record TrailRecordRequest(
     TrailEntryKind Kind, string Target, string Label, int Line, int Column,
-    DisplayMode DisplayMode, PaneKind? StagePane, string? PaneLayout);
+    DisplayMode DisplayMode, PaneKind? StagePane, string? PaneLayout, string? ReplacesTarget = null);
 
 public sealed record TrailRecordResult(TrailEntryViewModel Entry, bool Added, bool LiveDayChanged);
 
@@ -51,6 +51,19 @@ public sealed class TrailRecordHandler
         {
             _liveDay = today;
             Latest = null;
+        }
+
+        // 中継ページ（ブラウザのリダイレクト）の点は足さずに行き先で置き換える。
+        // 直前の地点がその中継ページのときだけ——間に別の地点が挟まっていれば、それは人が見た順序なので触らない。
+        if (request.ReplacesTarget is { } replaces && Latest is { } hop && hop.Kind == request.Kind
+            && string.Equals(hop.Target, replaces, StringComparison.Ordinal)
+            && hop.Mode == request.DisplayMode && hop.StagePane == request.StagePane)
+        {
+            hop.Retarget(request.Target, request.Label);
+            hop.Timestamp = now;
+            hop.PaneLayout = request.PaneLayout;
+            Try(() => _store.RetargetDeferred(hop.Row, now, request.Target, request.Label, request.PaneLayout));
+            return new TrailRecordResult(hop, false, dayChanged);
         }
 
         var comparison = request.Kind is TrailEntryKind.File or TrailEntryKind.Edit or TrailEntryKind.Preview

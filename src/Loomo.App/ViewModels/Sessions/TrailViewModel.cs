@@ -231,13 +231,16 @@ public sealed partial class TrailViewModel : ObservableObject
             displayMode: displayMode, stagePane: stagePane, paneLayout: null);
     }
 
+    /// <param name="redirectFrom">中継ページから来た遷移なら、その中継ページの URL。
+    /// 直前の地点がそのページなら点を足さずに置き換える（中継ページを軌跡に残さない）。</param>
     public void RecordBrowser(string url, string? title,
-        DisplayMode displayMode = DisplayMode.Layout, PaneKind? stagePane = null, string? paneLayout = null)
+        DisplayMode displayMode = DisplayMode.Layout, PaneKind? stagePane = null, string? paneLayout = null,
+        string? redirectFrom = null)
     {
         if (string.IsNullOrWhiteSpace(url)) return;
         var label = string.IsNullOrWhiteSpace(title) ? HostOf(url) : title.Trim();
         Record(TrailEntryKind.Browser, url, label, displayMode: displayMode, stagePane: stagePane,
-            paneLayout: paneLayout);
+            paneLayout: paneLayout, replacesTarget: redirectFrom);
     }
 
     public void RecordPane(string paneKindName, string label,
@@ -278,13 +281,14 @@ public sealed partial class TrailViewModel : ObservableObject
 
     /// <summary>全軌跡ソース共通の記録入口。</summary>
     public void Record(TrailEntryKind kind, string target, string label, int line = -1, int column = -1,
-        DisplayMode displayMode = DisplayMode.Layout, PaneKind? stagePane = null, string? paneLayout = null)
+        DisplayMode displayMode = DisplayMode.Layout, PaneKind? stagePane = null, string? paneLayout = null,
+        string? replacesTarget = null)
     {
         if (string.IsNullOrWhiteSpace(target))
             return;
 
         var result = _recorder.Record(new TrailRecordRequest(
-            kind, target, label, line, column, displayMode, stagePane, paneLayout));
+            kind, target, label, line, column, displayMode, stagePane, paneLayout, replacesTarget));
         if (result is null) return;
         if (result.LiveDayChanged && _followingToday)
         {

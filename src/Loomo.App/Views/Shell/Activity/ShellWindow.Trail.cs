@@ -123,11 +123,13 @@ public partial class ShellWindow {
         RecordTrail((mode, stagePane, layout) =>
             _vm.Trail.RecordPreview(path, mode, stagePane, layout));
     }
-    private void RecordTrailBrowser(string? url, string? title) {
+    /// <param name="redirectFrom">中継ページ（<see cref="BrowserRedirectHop"/>）から来たなら、その URL。
+    /// 直前の地点がそれなら、点を足さずにこの行き先で置き換える。</param>
+    private void RecordTrailBrowser(string? url, string? title, string? redirectFrom = null) {
         if (!TrailLogic.IsRecordableBrowserUrl(url, DefaultBrowserUrl))
             return;
         RecordTrail((mode, stagePane, layout) =>
-            _vm.Trail.RecordBrowser(url!, title, mode, stagePane, layout));
+            _vm.Trail.RecordBrowser(url!, title, mode, stagePane, layout, redirectFrom));
     }
     private void RecordTrailTerminalTab(TerminalTab tab) {
         var label = TrailLogic.TerminalLabel(
