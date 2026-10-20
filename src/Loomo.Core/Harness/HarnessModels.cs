@@ -110,6 +110,14 @@ public sealed record RunToolCall
     /// <summary>失敗時の結果の先頭（1行に畳んだもの）。</summary>
     public string? ErrorHead { get; init; }
     public bool FromSubagent { get; init; }
+    /// <summary>tool_use の id。記録から結果・入力の全文を引き直すときの鍵（§39.9）。</summary>
+    public string? ToolUseId { get; init; }
+    /// <summary>結果（tool_result）の行番号（同じファイルの1始まり）。結果がまだ無ければ 0。</summary>
+    public int ResultLineNumber { get; init; }
+    /// <summary>Agent／Task に渡した頼みごと（上限つき）。サブエージェントの記録と結ぶため（§39.9）。</summary>
+    public string? AgentPrompt { get; init; }
+    /// <summary>Agent／Task の結果に記録された起動したサブエージェントの id（<c>toolUseResult.agentId</c>）。</summary>
+    public string? AgentId { get; init; }
 }
 
 /// <summary>Run＝エージェントの1セッション（本体＋サブエージェント、§37.3.1）。</summary>

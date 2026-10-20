@@ -178,6 +178,8 @@ public static class ClaudeTranscriptParser
                 InputChars = input.ValueKind == JsonValueKind.Undefined ? 0 : input.GetRawText().Length,
             };
             Describe(builder, name, input);
+            if (name is "Agent" or "Task" && input.ValueKind == JsonValueKind.Object && Str(input, "prompt") is { } agentPrompt)
+                builder.AgentPrompt = agentPrompt.Length <= MaxAgentPromptChars ? agentPrompt : agentPrompt[..MaxAgentPromptChars];
             if (name == "Skill" && input.ValueKind == JsonValueKind.Object
                 && (Str(input, "skill") ?? Str(input, "command")) is { Length: > 0 } skill)
                 state.Skills.Add(skill);
@@ -185,7 +187,10 @@ public static class ClaudeTranscriptParser
                 state.Agents.Add(Str(input, "subagent_type") is { Length: > 0 } kind ? kind : "general-purpose");
             calls.Add(builder);
             if (Str(block, "id") is { Length: > 0 } toolUseId)
+            {
+                builder.ToolUseId = toolUseId;
                 pending[toolUseId] = builder;
+            }
         }
     }
 
@@ -218,7 +223,14 @@ public static class ClaudeTranscriptParser
                 case "tool_result":
                     hadToolResult = true;
                     if (Str(block, "tool_use_id") is { } id && pending.Remove(id, out var call))
+                    {
                         FillResult(call, block);
+                        call.ResultLineNumber = lineNumber;
+                        // 起動したサブエージェントの id（同期・非同期どちらの結果にも載る）。記録のファイル名と同じ。
+                        if (call.Tool is "Agent" or "Task" && root.TryGetProperty("toolUseResult", out var toolResult)
+                            && toolResult.ValueKind == JsonValueKind.Object && Str(toolResult, "agentId") is { Length: > 0 } agentId)
+                            call.AgentId = agentId;
+                    }
                     break;
                 case "text":
                     text.Append(Str(block, "text"));
@@ -359,6 +371,9 @@ public static class ClaudeTranscriptParser
         static string? Cap(string? text) => text is null ? null : text.Length <= MaxEditTextChars ? text : text[..MaxEditTextChars];
     }
 
+    /// <summary>Agent に渡した頼みごとを持つ上限。サブエージェントの記録の最初の行と突き合わせるのに足りる長さ。</summary>
+    public const int MaxAgentPromptChars = 4000;
+
     /// <summary>置換文字列を持つ上限。Run はキャッシュに積まれるので、大きな置換を丸ごと抱えない。</summary>
     private const int MaxEditTextChars = 4000;
 
@@ -418,6 +433,10 @@ public static class ClaudeTranscriptParser
         public bool OutputPersisted;
         public string? ErrorHead;
         public bool FromSubagent;
+        public string? ToolUseId;
+        public int ResultLineNumber;
+        public string? AgentPrompt;
+        public string? AgentId;
 
         public RunToolCall Build(int index) => new()
         {
@@ -440,6 +459,10 @@ public static class ClaudeTranscriptParser
             OutputPersisted = OutputPersisted,
             ErrorHead = ErrorHead,
             FromSubagent = FromSubagent,
+            ToolUseId = ToolUseId,
+            ResultLineNumber = ResultLineNumber,
+            AgentPrompt = AgentPrompt,
+            AgentId = AgentId,
         };
     }
 }

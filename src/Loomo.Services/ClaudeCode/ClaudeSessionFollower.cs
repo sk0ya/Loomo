@@ -27,6 +27,7 @@ public sealed class ClaudeSessionFollower
     private ClaudeTranscriptReader _reader = new();
     private ClaudeSessionCatalog.SummaryAccumulator _summary = new();
     private List<ClaudeReplyText> _replies = new();
+    private List<ClaudeSubagentText> _subagentTexts = new();
     private readonly Dictionary<string, long> _offsets = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<string> _subagentPaths = new();
     private (long Length, DateTime WriteUtc, long SubagentStamp)? _stamp;
@@ -103,7 +104,7 @@ public sealed class ClaudeSessionFollower
         {
             var run = _reader.Snapshot(_sessionId, TranscriptPath);
             return ClaudeSessionDigest.Compose(_sessionId, TranscriptPath, lastWriteUtc, run,
-                _summary.ToSummary(_sessionId, TranscriptPath, lastWriteUtc), _replies);
+                _summary.ToSummary(_sessionId, TranscriptPath, lastWriteUtc), _replies, _subagentTexts);
         }
     }
 
@@ -119,7 +120,35 @@ public sealed class ClaudeSessionFollower
                     _replies.Add(reply);
             }
         }
+        else
+        {
+            var agent = SubagentText(path);
+            foreach (var line in lines)
+            {
+                if (ClaudeSessionDigest.ReadReply(line, 0) is { } reply)
+                    agent.Replies.Add(reply.Text);
+                else if (agent.Prompt is null)
+                    ClaudeSessionDigest.ReadSubagentStart(line, agent);
+            }
+        }
         _reader.Feed(path, lines, isSubagent);
+    }
+
+    /// <summary>サブエージェントの記録ごとの読みもの。初めて見たときに名前（meta.json）を読む。</summary>
+    private ClaudeSubagentText SubagentText(string path)
+    {
+        var agent = _subagentTexts.FirstOrDefault(a => string.Equals(a.TranscriptPath, path, StringComparison.OrdinalIgnoreCase));
+        if (agent is not null)
+            return agent;
+        var name = Path.GetFileNameWithoutExtension(path);
+        agent = new ClaudeSubagentText
+        {
+            TranscriptPath = path,
+            AgentId = name.StartsWith("agent-", StringComparison.Ordinal) ? name["agent-".Length..] : name,
+            Name = ClaudeSessionDigest.ReadSubagentName(Path.ChangeExtension(path, ".meta.json")),
+        };
+        _subagentTexts.Add(agent);
+        return agent;
     }
 
     /// <summary>前回の読み終わりから、改行で終わった行までを読んで食わせる。ファイルが縮んでいたら false。</summary>
@@ -209,6 +238,7 @@ public sealed class ClaudeSessionFollower
         _reader = new ClaudeTranscriptReader();
         _summary = new ClaudeSessionCatalog.SummaryAccumulator();
         _replies = new List<ClaudeReplyText>();
+        _subagentTexts = new List<ClaudeSubagentText>();
         _offsets.Clear();
         _subagentPaths.Clear();
         _stamp = null;

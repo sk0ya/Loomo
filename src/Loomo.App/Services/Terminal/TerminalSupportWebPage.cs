@@ -19,7 +19,7 @@ internal sealed class TerminalSupportWebPage : IDisposable
     private readonly Dispatcher _dispatcher;
     private readonly string _pageTag;
     private readonly string _title;
-    private readonly bool _followTurns;
+    private bool _followTurns;
     private IEditorSupportViewFactory? _factory;
     private EditorSupportNavigationService? _navigation;
     private WebView2CompositionControl? _web;
@@ -54,11 +54,14 @@ internal sealed class TerminalSupportWebPage : IDisposable
     }
 
     /// <summary>本文を出す。<paramref name="theme"/> が前回と同じなら本文だけ差し替える。同じ本文なら何もしない。
-    /// <paramref name="fromTop"/> は別の中身に替わった（別のコマンドの出力を選んだ）——先頭から見せる。</summary>
-    public async Task ShowAsync(string body, string theme, bool fromTop = false)
+    /// <paramref name="fromTop"/> は別の中身に替わった（別のコマンドの出力・ツリーの別の節を選んだ）——先頭から見せる。
+    /// <paramref name="followTurns"/> を渡せば、ターンに付いていくかをここで替える（ツリーで「会話をすべて」を選んだときだけ付いていく、§39.9）。</summary>
+    public async Task ShowAsync(string body, string theme, bool fromTop = false, bool? followTurns = null)
     {
         if (_disposed || _factory is null || _navigation is null)
             return;
+        if (followTurns is { } follow)
+            _followTurns = follow;
         if (_pageKey == theme && body == _lastBody)
             return;
         _lastBody = body;

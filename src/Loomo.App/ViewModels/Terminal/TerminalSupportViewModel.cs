@@ -15,6 +15,29 @@ public sealed record TerminalSupportRunRow(TerminalCommandOutput Output, string 
 /// <summary>TUI の操作キー1つ（§39.3）。</summary>
 public sealed record TerminalSupportKeyRow(string Keys, string Action);
 
+/// <summary>
+/// Claude の会話のツリーの1行（§39.9）。<see cref="Id"/> は記録の位置から作った節の id で、記録が書き足されても・トグルを
+/// 替えても同じ行は同じインスタンスのまま——開閉と選択を持ち越す（更新でビュー状態を壊さない）。
+/// </summary>
+public sealed partial class ClaudeTreeItem(string id) : ObservableObject
+{
+    public string Id { get; } = id;
+    [ObservableProperty] private string _icon = "";
+    [ObservableProperty] private string _label = "";
+    [ObservableProperty] private string _hint = "";
+    /// <summary>ターン（頼みごと）の行。太字にする。</summary>
+    [ObservableProperty] private bool _isTurn;
+    /// <summary>失敗した操作の行（題を赤く）。</summary>
+    [ObservableProperty] private bool _failed;
+    /// <summary>中に失敗を含むターン・エージェント（題ではなく ✗N だけを赤く——束ねる行まで赤いと騒がしい）。</summary>
+    [ObservableProperty] private bool _hintFailed;
+    [ObservableProperty] private bool _working;
+    [ObservableProperty] private bool _isExpanded;
+    [ObservableProperty] private bool _isSelected;
+    public ObservableCollection<ClaudeTreeItem> Children { get; } = [];
+    internal ClaudeTreeNode? Node { get; set; }
+}
+
 /// <summary>頭の1行の調子：人間の番か、Claude が動いているか。</summary>
 public enum TerminalSupportNowTone { Human, Working, Idle }
 
@@ -23,8 +46,9 @@ public enum TerminalSupportNowTone { Human, Working, Idle }
 /// 追従し、そこで動いているものの中身を<b>ターミナルとは別の見せ方</b>で出す横の面——EditorSupport が .md を
 /// プレビューにするのと同じ型。新しい情報を足すのではなく、同じ中身を描き直す。
 /// <list type="bullet">
-/// <item>Claude Code：会話を<b>読み物</b>として（頼みごとを見出しに、返事を Markdown として描画した1本の文書、
-///   <see cref="ClaudeConversationDocument"/>）。ここは本文の HTML を作るまでで、描くのは View 側の WebView。</item>
+/// <item>Claude Code：会話を<b>ツリー</b>に（ターン → 返事の節・書き換えたファイル・サブエージェントとその操作・コマンド・失敗、
+///   種類はトグルで選び、文字で絞り込む、<see cref="ClaudeSessionTree"/>、§39.9）、選んだ節<b>だけ</b>を読み物として
+///   （<see cref="ClaudeConversationDocument.BuildNodeBody"/>）。ここは本文の HTML を作るまでで、描くのは View 側の WebView。</item>
 /// <item>そのほかのプログラム（TUI など）：コマンド行・経過時間・知っているプログラムなら操作キー</item>
 /// <item>シェル：このタブで実行し終えたコマンドと、選んだ回の出力を<b>形に合わせて見せ直したもの</b>（表・JSON のツリー・
 ///   枝の図・テストとビルドの成否と file:line、<see cref="TerminalOutputPresenter"/>、§39.5.1）</item>
@@ -69,8 +93,40 @@ public sealed partial class TerminalSupportViewModel : ObservableObject
     [ObservableProperty] private bool _hasClaudeSession;
     [ObservableProperty] private TerminalSupportNowTone _nowTone = TerminalSupportNowTone.Idle;
     [ObservableProperty] private string _nowHeadline = "";
-    /// <summary>会話を読み物にした本文（body の中身の HTML）。記録が無ければ空。</summary>
+    /// <summary>ツリーで選んだ節を読み物にした本文（body の中身の HTML）。記録が無ければ空。</summary>
     [ObservableProperty] private string _conversationBody = "";
+    /// <summary><see cref="ConversationBody"/> がどの節のものか。替わったらページは先頭から見せる。</summary>
+    [ObservableProperty] private string _conversationNodeId = "";
+    /// <summary>「会話をすべて」を見せている（ページはターンに付いていく、§39.4）。</summary>
+    [ObservableProperty] private bool _showsWholeConversation;
+
+    // ── Claude：ツリーとトグル（§39.9） ──
+    public ObservableCollection<ClaudeTreeItem> Tree { get; } = [];
+    [ObservableProperty] private bool _showReplies = true;
+    [ObservableProperty] private bool _showChanges = true;
+    [ObservableProperty] private bool _showAgents = true;
+    [ObservableProperty] private bool _showCommands;
+    [ObservableProperty] private bool _showFailures;
+    [ObservableProperty] private bool _showNotes;
+    /// <summary>ツリーの絞り込み（頼みごと・返事の本文・ファイル名・コマンド・エージェントへの頼みごとに当てる）。</summary>
+    [ObservableProperty] private string _treeFilter = "";
+    private readonly Dictionary<string, ClaudeTreeItem> _treeItems = new(StringComparer.Ordinal);
+    private string? _selectedNodeId;
+    private ClaudeTreeNode? _selectedNode;
+    /// <summary>最新のターン（の中）を見ている——新しいターンが始まったらその頭へ付いていく。古いターンを読み返しているときは動かさない。</summary>
+    private bool _followLatestTurn = true;
+    private string? _renderedKey;
+
+    partial void OnShowRepliesChanged(bool value) => _ = RebuildConversationAsync();
+    partial void OnShowChangesChanged(bool value) => _ = RebuildConversationAsync();
+    partial void OnShowAgentsChanged(bool value) => _ = RebuildConversationAsync();
+    partial void OnShowCommandsChanged(bool value) => _ = RebuildConversationAsync();
+    partial void OnShowFailuresChanged(bool value) => _ = RebuildConversationAsync();
+    partial void OnShowNotesChanged(bool value) => _ = RebuildConversationAsync();
+    partial void OnTreeFilterChanged(string value) => _ = RebuildConversationAsync();
+
+    private ClaudeTreeFilter CurrentFilter
+        => new(ShowReplies, ShowChanges, ShowAgents, ShowCommands, ShowFailures, ShowNotes, TreeFilter ?? "");
 
     public ObservableCollection<TerminalSupportKeyRow> Keys { get; } = [];
     public ObservableCollection<TerminalSupportRunRow> Runs { get; } = [];
@@ -270,20 +326,128 @@ public sealed partial class TerminalSupportViewModel : ObservableObject
         return RebuildConversationAsync();
     }
 
-    /// <summary>本文を組み直す。全ターンの Markdown を描くので裏のスレッドで（作業中は数秒おきに来る）。
-    /// 組んでいる間にもっと新しい組み直しが走ったら、古い結果は捨てる。</summary>
-    private async Task RebuildConversationAsync()
+    /// <summary>ツリーを組み直し、選んでいる節の本文を描き直す（中身が変わったときだけ）。</summary>
+    private Task RebuildConversationAsync()
     {
-        var generation = ++_bodyGeneration;
         if (_digest is not { } digest)
         {
+            ++_bodyGeneration;
+            Tree.Clear();
+            _treeItems.Clear();
+            _selectedNodeId = null;
+            _selectedNode = null;
+            _renderedKey = null;
             ConversationBody = "";
+            return Task.CompletedTask;
+        }
+        var filter = CurrentFilter;
+        var nodes = ClaudeSessionTree.Build(digest, filter, _inWorkspace, _displayPath, _agentState == ClaudeAgentState.Working);
+        var searching = filter.Text.Trim().Length > 0;
+        var latestTurnId = digest.Turns.Count > 0 ? "t" + digest.Turns[^1].PromptLine : null;
+        var byId = new Dictionary<string, ClaudeTreeNode>(StringComparer.Ordinal);
+        SyncTree(Tree, nodes, byId, latestTurnId, searching);
+
+        // 選び直す：何も選んでいない・最新のターンに付いていく途中なら、最新のターンへ。
+        if (latestTurnId is not null && (_selectedNodeId is null
+                || (_followLatestTurn && !InTurn(_selectedNodeId, latestTurnId))))
+            _selectedNodeId = latestTurnId;
+        // 選んだ節がトグル・絞り込みで隠れても、見せている中身はそのまま（隠れる前の節を描き続ける）。
+        if (_selectedNodeId is { } selectedId && byId.TryGetValue(selectedId, out var node))
+            _selectedNode = node;
+        foreach (var item in _treeItems.Values)
+            item.IsSelected = item.Id == _selectedNodeId && byId.ContainsKey(item.Id);
+        return RenderSelectedAsync();
+    }
+
+    /// <summary>ツリーの行を節に合わせる。同じ id の行は使い回す（開閉・選択がそのまま残る）。</summary>
+    private void SyncTree(
+        ObservableCollection<ClaudeTreeItem> target, IReadOnlyList<ClaudeTreeNode> nodes, Dictionary<string, ClaudeTreeNode> byId,
+        string? latestTurnId, bool searching)
+    {
+        var items = new List<ClaudeTreeItem>(nodes.Count);
+        foreach (var node in nodes)
+        {
+            byId[node.Id] = node;
+            if (!_treeItems.TryGetValue(node.Id, out var item))
+            {
+                // 最新のターンだけ開いて生やす。ほかは畳んでおき、開閉は人に任せる。
+                item = new ClaudeTreeItem(node.Id) { IsExpanded = node.Id == latestTurnId };
+                _treeItems[node.Id] = item;
+            }
+            item.Node = node;
+            item.Icon = Icon(node.Kind);
+            item.Label = node.Label;
+            item.Hint = node.Hint;
+            item.IsTurn = node.Kind == ClaudeTreeKind.Turn;
+            item.Failed = node.Failed && node.Kind is ClaudeTreeKind.Command or ClaudeTreeKind.Failure;
+            item.HintFailed = node.Failed && node.Kind is ClaudeTreeKind.Turn or ClaudeTreeKind.Agent;
+            item.Working = node.Working;
+            if (searching && node.Children.Count > 0)
+                item.IsExpanded = true;   // 絞り込み中は当たったところまで開く
+            SyncTree(item.Children, node.Children, byId, latestTurnId, searching);
+            items.Add(item);
+        }
+        ReplaceIfChanged(target, items);
+    }
+
+    private static string Icon(ClaudeTreeKind kind) => kind switch
+    {
+        ClaudeTreeKind.Conversation => "≡",
+        ClaudeTreeKind.Turn => "",   // 開閉の矢印がターンの印を兼ねる
+        ClaudeTreeKind.Section => "§",
+        ClaudeTreeKind.Note => "…",
+        ClaudeTreeKind.File => "✎",
+        ClaudeTreeKind.Command => "$",
+        ClaudeTreeKind.Agent => "◇",
+        ClaudeTreeKind.Failure => "✗",
+        _ => "",
+    };
+
+    private static bool InTurn(string nodeId, string turnId)
+        => nodeId == turnId || nodeId.StartsWith(turnId + "/", StringComparison.Ordinal);
+
+    /// <summary>ツリーの行を選んだ（View の SelectedItemChanged から。こちらが選んだときも来る）。</summary>
+    internal Task SelectTreeItemAsync(ClaudeTreeItem? item)
+    {
+        if (item?.Node is not { } node || item.Id == _selectedNodeId)
+            return Task.CompletedTask;
+        _selectedNodeId = item.Id;
+        _selectedNode = node;
+        var latestTurnId = _digest is { Turns.Count: > 0 } d ? "t" + d.Turns[^1].PromptLine : null;
+        // 最新のターン（の中）を選んだなら、以後も新しいターンへ付いていく。「会話をすべて」はページ自身が付いていく。
+        _followLatestTurn = latestTurnId is not null && InTurn(item.Id, latestTurnId);
+        return RenderSelectedAsync();
+    }
+
+    /// <summary>選んでいる節の本文を描く。記録を読むことがあるので裏のスレッドで。中身の指紋が同じなら描き直さない。
+    /// 組んでいる間にもっと新しい組み直しが走ったら、古い結果は捨てる。</summary>
+    private async Task RenderSelectedAsync()
+    {
+        if (_digest is not { } digest || _selectedNode is not { } node)
+        {
+            ++_bodyGeneration;
+            _renderedKey = null;
+            // 頼みごとがまだ無いセッションは、その旨だけ（会話をすべての空の形）。
+            ConversationBody = _digest is { } empty ? ClaudeConversationDocument.BuildBody(empty, _inWorkspace, _displayPath, false) : "";
             return;
         }
-        var (inWorkspace, displayPath, working, cache) = (_inWorkspace, _displayPath, _agentState == ClaudeAgentState.Working, _renderCache);
-        var body = await Task.Run(() => ClaudeConversationDocument.BuildBody(digest, inWorkspace, displayPath, working, cache));
-        if (generation == _bodyGeneration)
-            ConversationBody = body;
+        var working = _agentState == ClaudeAgentState.Working;
+        var key = node.Id + "#" + node.Key + "#" + working;
+        if (key == _renderedKey)
+            return;
+        var generation = ++_bodyGeneration;
+        var matching = _matching;
+        var context = new ClaudeConversationDocument.NodeContext(
+            _inWorkspace, _displayPath, working, WorkingDirectory.Length > 0 ? WorkingDirectory : null,
+            ClaudeTranscriptLookup.ReadResult, ClaudeTranscriptLookup.ReadInput,
+            output => TerminalOutputPresenter.Present(output, matching(output)), _renderCache);
+        var body = await Task.Run(() => ClaudeConversationDocument.BuildNodeBody(node, digest, context));
+        if (generation != _bodyGeneration)
+            return;
+        _renderedKey = key;
+        ShowsWholeConversation = node.Kind == ClaudeTreeKind.Conversation;
+        ConversationNodeId = node.Id;
+        ConversationBody = body;
     }
 
     /// <summary>頭の1行。自分の番か（承認待ち・ターンの終わり）、Claude が動いているか。</summary>
@@ -319,6 +483,14 @@ public sealed partial class TerminalSupportViewModel : ObservableObject
         _renderCache = new();
         _digestGeneration++;
         _bodyGeneration++;
+        Tree.Clear();
+        _treeItems.Clear();
+        _selectedNodeId = null;
+        _selectedNode = null;
+        _renderedKey = null;
+        _followLatestTurn = true;
+        ConversationNodeId = "";
+        ShowsWholeConversation = false;
         _agentTitle = null;
         _agentState = null;
         ClaudeTitle = ClaudeFacts = ClaudeNotice = NowHeadline = ConversationBody = "";

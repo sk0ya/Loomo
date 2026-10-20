@@ -16,16 +16,19 @@ public partial class TerminalSupportPaneView : UserControl
     private readonly TerminalSupportWebPage _output;
     private Func<string>? _theme;
     private TerminalSupportViewModel? _vm;
+    /// <summary>会話のページにいま出している節。替わったら先頭から見せる。</summary>
+    private string? _shownNodeId;
 
     public TerminalSupportPaneView()
     {
         InitializeComponent();
-        _conversation = new TerminalSupportWebPage(ConversationHost, Dispatcher, "claude", "Claude", followTurns: true);
+        _conversation = new TerminalSupportWebPage(ConversationHost, Dispatcher, "claude", "Claude", followTurns: false);
         _conversation.LinkClicked += (_, href) => PageLinkClicked?.Invoke(this, href);
         _output = new TerminalSupportWebPage(OutputHost, Dispatcher, "output", "出力", followTurns: false);
         _output.LinkClicked += (_, href) => PageLinkClicked?.Invoke(this, href);
         DataContextChanged += (_, _) => Attach(DataContext as TerminalSupportViewModel);
         ConversationHost.IsVisibleChanged += (_, _) => ShowConversation();
+        ConversationTree.SelectedItemChanged += (_, e) => _ = _vm?.SelectTreeItemAsync(e.NewValue as ClaudeTreeItem);
         OutputHost.IsVisibleChanged += (_, _) => ShowOutput();
     }
 
@@ -67,7 +70,10 @@ public partial class TerminalSupportPaneView : UserControl
         // 見えていないうちは WebView を作らない（Claude の居ないタブ・隠れたペインで Chromium を起こさない）。
         if (_vm is not { IsClaude: true } vm || _theme is null || !ConversationHost.IsVisible)
             return;
-        _ = _conversation.ShowAsync(vm.ConversationBody, _theme());
+        // ツリーで別の節を選んだら先頭から。同じ節の書き足し（作業中のターン）は読んでいる位置のまま。
+        var fromTop = _shownNodeId is not null && _shownNodeId != vm.ConversationNodeId;
+        _shownNodeId = vm.ConversationNodeId;
+        _ = _conversation.ShowAsync(vm.ConversationBody, _theme(), fromTop, followTurns: vm.ShowsWholeConversation);
     }
 
     private void ShowOutput()
