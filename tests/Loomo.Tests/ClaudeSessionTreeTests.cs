@@ -146,11 +146,11 @@ public sealed class ClaudeSessionTreeTests : IDisposable
     // ===== 種類と絞り込み =====
 
     [Fact]
-    public void Tree_NewestTurnFirst_WithReplySectionsAndChanges_ByDefault()
+    public void Tree_TurnsInConversationOrder_WithReplySectionsAndChanges_ByDefault()
     {
         var roots = Tree(Read());
         Assert.Equal(ClaudeTreeKind.Conversation, roots[0].Kind);
-        Assert.Equal(["二つ目の頼みごと", "一つ目の頼みごと"], roots.Skip(1).Select(n => n.Label));
+        Assert.Equal(["一つ目の頼みごと", "二つ目の頼みごと"], roots.Skip(1).Select(n => n.Label));   // 新しいものが下へつながる
         var first = TurnOf(roots, "一つ目の頼みごと");
         // 返事は見出しで節に（前置きも1節・コードブロックの中の見出しは切らない）
         Assert.Equal(["前置き。", "原因", "直し方"], first.Children.Where(n => n.Kind == ClaudeTreeKind.Section).Select(n => n.Label));

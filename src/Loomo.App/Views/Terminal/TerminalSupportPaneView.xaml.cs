@@ -34,6 +34,12 @@ public partial class TerminalSupportPaneView : UserControl
         ConversationHost.IsVisibleChanged += (_, _) => ShowConversation();
         ConversationTree.SelectedItemChanged += (_, e) => _ = _vm?.SelectTreeItemAsync(e.NewValue as ClaudeTreeItem);
         ConversationTree.PreviewMouseLeftButtonUp += OnTreeRowClicked;
+        // 選んだ行を見える位置へ（新しいターンは下へつながるので、最新のターンへ付いていくときにツリーも下へ送る）。
+        ConversationTree.AddHandler(TreeViewItem.SelectedEvent, new RoutedEventHandler((_, e) =>
+        {
+            if (e.OriginalSource is TreeViewItem row)
+                row.BringIntoView();
+        }));
         OutputHost.IsVisibleChanged += (_, _) => ShowOutput();
     }
 

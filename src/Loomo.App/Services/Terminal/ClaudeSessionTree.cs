@@ -60,7 +60,7 @@ internal sealed record ClaudeTreeNode(string Id, ClaudeTreeKind Kind, string Lab
 }
 
 /// <summary>
-/// Claude Code の会話をツリーに組む（§39.9）。<b>ターン軸</b>：ターン（新しい順）の下に、返事の節・書き換えたファイル・
+/// Claude Code の会話をツリーに組む（§39.9）。<b>ターン軸</b>：ターン（古い順、会話と同じく新しいものが下へつながる）の下に、返事の節・書き換えたファイル・
 /// サブエージェント（その下にそのエージェントの操作）・コマンド・失敗・途中のメモを、トグルで選んだ種類だけ並べる。
 /// 葉はどれも「押すと、ターミナルでは見られない形に描き直した中身が出る」もの——要約1行で終わるものは置かない（§39.1）。
 /// 純粋な関数（I/O なし）。中身の描き方は <see cref="ClaudeConversationDocument.BuildNodeBody"/>。
@@ -83,7 +83,7 @@ internal static class ClaudeSessionTree
                 Key = string.Join(',', digest.Turns.Select((t, i) => ClaudeConversationDocument.TurnKey(t, working && i == digest.Turns.Count - 1))),
             });
 
-        for (var i = digest.Turns.Count - 1; i >= 0; i--)
+        for (var i = 0; i < digest.Turns.Count; i++)
         {
             var turn = digest.Turns[i];
             var latest = i == digest.Turns.Count - 1;
