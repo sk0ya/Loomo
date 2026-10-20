@@ -127,7 +127,8 @@
     <!-- 1.0.46: 通知（OSC 9・OSC 777）を TerminalTabView.NotificationReceived で渡す（§24.49）・行が出た時刻
          （ShowLineTimeOnHover / ScrollToTime、再接続の再生でも戻る・§24.51）・リンクの Ctrl+ドラッグ
          （HyperlinkDragStarting・Ctrl+クリックは離したときに開く・§24.52） -->
-    <!-- 1.0.47: ConPtySession.ProcessId を公開。タブのシェルの PID から、そのタブの中の Claude Code を確かめる（§39.4.2） -->
+    <!-- 1.0.47: ConPtySession.ProcessId を公開（タブのシェルの PID から、そのタブの中の Claude Code を確かめる §39.4.2）・
+         ShellCommandOutputEventArgs.StyledLines（コマンドの出力を描かれたときの色で見せ直す §39.8） -->
     <!-- 版は Directory.Build.props の TerminalPackageVersion（常駐ホストと共有するため一か所） -->
     <PackageReference Include="sk0ya.Terminal.Controls" Version="$(TerminalPackageVersion)" />
   </ItemGroup>

@@ -87,7 +87,8 @@ public sealed partial class TerminalSupportViewModel : ObservableObject
     private TerminalCommandOutput? _presentedOutput;
     private bool _followNewestRun = true;
     private int _outputGeneration;
-    private Func<string?, ProblemMatchContext> _problemContext = cwd => new ProblemMatchContext(cwd ?? "", cwd ?? "");
+    private Func<TerminalCommandOutput, TerminalOutputMatching> _matching =
+        output => new TerminalOutputMatching(new ProblemMatchContext(output.WorkingDirectory ?? "", output.WorkingDirectory ?? ""));
 
     /// <summary>ファイルをエディタで開いてほしい。</summary>
     public event EventHandler<string>? FileOpenRequested;
@@ -107,8 +108,15 @@ public sealed partial class TerminalSupportViewModel : ObservableObject
     /// 一時ファイル・作業メモ——は数だけ出す。</summary>
     internal void SetWorkspaceFilter(Func<string, bool> inWorkspace) => _inWorkspace = inWorkspace;
 
-    /// <summary>出力の中の相対パス（ビルドの診断）を解く基準。引数はその回を実行した場所。</summary>
-    internal void SetProblemContext(Func<string?, ProblemMatchContext> context) => _problemContext = context;
+    /// <summary>出力の診断の読み方（相対パスの基準・tasks.json のタスクならその matcher）。</summary>
+    internal void SetOutputMatching(Func<TerminalCommandOutput, TerminalOutputMatching> matching) => _matching = matching;
+
+    /// <summary>見せている回を読み直す（読み方が後から分かった——タスクの終わりは出力の切り出しより遅れて届く）。</summary>
+    internal void RepresentOutput()
+    {
+        if (SelectedRun?.Output is { } output)
+            _ = PresentOutputAsync(output);
+    }
 
     /// <summary>追従するタブの様子を受け取る。<paramref name="runs"/> は覚えているコマンドの出力（全タブぶん、新しい順）。
     /// <paramref name="comparable"/> は前回の出力も持っているか。</summary>
@@ -201,8 +209,8 @@ public sealed partial class TerminalSupportViewModel : ObservableObject
             OutputLabel = OutputBody = "";
             return;
         }
-        var context = _problemContext(output.WorkingDirectory);
-        var presentation = await Task.Run(() => TerminalOutputPresenter.Present(output, context));
+        var matching = _matching(output);
+        var presentation = await Task.Run(() => TerminalOutputPresenter.Present(output, matching));
         if (generation != _outputGeneration)
             return;
         OutputLabel = presentation.Label;

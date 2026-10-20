@@ -117,6 +117,7 @@ public partial class ShellWindow
         {
             var result = await TaskRunner.RunAsync(task, all, ActiveEditorFilePathForTasks, step =>
             {
+                RememberTaskOutputMatching(step);
                 if (_activeWorkspace?.Id == workspaceId)
                     PublishTaskProblems(step);
             },

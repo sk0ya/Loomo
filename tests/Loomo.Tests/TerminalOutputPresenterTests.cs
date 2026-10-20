@@ -183,6 +183,166 @@ public sealed class TerminalOutputPresenterTests
     public void SplitCsv_HandlesQuotes()
         => Assert.Equal(["a, b", "say \"hi\"", ""], TerminalOutputPresenter.SplitCsv("\"a, b\",\"say \"\"hi\"\"\","));
 
+    // ===== ほかのテストの道具 =====
+
+    [Fact]
+    public void TestingPlatform_SummaryAndFailures()
+    {
+        const string text = """
+            failed MyTests.Adds (12ms)
+              Assert.AreEqual failed. Expected:<1>. Actual:<2>.
+              Stack Trace:
+                 at MyTests.Adds() in C:\ws\tests\MyTests.cs:line 10
+
+            Test run summary: Failed! - bin\Debug\net10.0\MyTests.dll (net10.0|x64)
+              total: 3
+              failed: 1
+              succeeded: 2
+              skipped: 0
+              duration: 1s 234ms
+            """;
+        var result = Present("dotnet test", text);
+        Assert.Equal(TerminalOutputShape.Tests, result.Shape);
+        Assert.Equal("テスト · 失敗 1 / 合格 2", result.Label);
+        Assert.Contains("MyTests.dll", result.Body);
+        Assert.Contains("Assert.AreEqual failed.", result.Body);
+        Assert.Contains("href=\"file:///C:/ws/tests/MyTests.cs:10\"", result.Body);
+    }
+
+    [Fact]
+    public void Pytest_SummaryFailuresAndRelativeLocations()
+    {
+        const string text = """
+            ___________________________ test_add ___________________________
+
+                def test_add():
+            >       assert 1 + 1 == 3
+            E       assert 2 == 3
+
+            tests/test_math.py:4: AssertionError
+            =========================== short test summary info ============================
+            FAILED tests/test_math.py::test_add - assert 2 == 3
+            ===================== 1 failed, 3 passed, 1 skipped in 0.12s =====================
+            """;
+        var result = Present("pytest", text);
+        Assert.Equal(TerminalOutputShape.Tests, result.Shape);
+        Assert.Equal("テスト · 失敗 1 / 合格 3 / スキップ 1", result.Label);
+        Assert.Contains("tests/test_math.py::test_add", result.Body);
+        Assert.Contains("href=\"file:///C:/ws/tests/test_math.py:4\"", result.Body);   // 実行した場所から解く
+    }
+
+    [Fact]
+    public void Jest_SummaryFailuresWithoutTheCodeFrame()
+    {
+        const string text = """
+            FAIL src/sum.test.js
+              ● sum › adds 1 + 2
+
+                expect(received).toBe(expected) // Object.is equality
+
+                Expected: 4
+                Received: 3
+
+                  3 | test('adds 1 + 2', () => {
+                > 4 |   expect(sum(1, 2)).toBe(4);
+                    |                     ^
+
+                  at Object.<anonymous> (src/sum.test.js:4:21)
+
+            Tests:       1 failed, 2 passed, 3 total
+            Time:        0.5 s
+            """;
+        var result = Present("npx jest", text);
+        Assert.Equal(TerminalOutputShape.Tests, result.Shape);
+        Assert.Equal("テスト · 失敗 1 / 合格 2", result.Label);
+        Assert.Contains("sum › adds 1 + 2", result.Body);
+        Assert.Contains("Expected: 4", result.Body);
+        Assert.DoesNotContain("toBe(4);", result.Body);   // 抜粋のコードはリンクで足りる
+        Assert.Contains("href=\"file:///C:/ws/src/sum.test.js:4\"", result.Body);
+    }
+
+    [Fact]
+    public void Vitest_Summary()
+    {
+        const string text = """
+             FAIL  src/a.test.ts > math > adds
+            AssertionError: expected 3 to be 4
+             ❯ src/a.test.ts:5:17
+
+             Test Files  1 failed (1)
+                  Tests  1 failed | 4 passed (5)
+               Duration  320ms
+            """;
+        var result = Present("npx vitest run", text);
+        Assert.Equal(TerminalOutputShape.Tests, result.Shape);
+        Assert.Equal("テスト · 失敗 1 / 合格 4", result.Label);
+        Assert.Contains("href=\"file:///C:/ws/src/a.test.ts:5\"", result.Body);
+    }
+
+    [Fact]
+    public void BulletsAndErrorLines_WithoutATestSummary_AreNotTests()
+    {
+        // systemctl status の「● 」や、ログの「ERROR …」をテストの結果と取り違えない。
+        Assert.Equal(TerminalOutputShape.Plain, Present("systemctl status nginx", "● nginx.service - A high performance web server\n   Active: active (running)").Shape);
+        Assert.Equal(TerminalOutputShape.Plain, Present("cat app.log", "ERROR something went wrong\nFAILED step 2").Shape);
+    }
+
+    // ===== 色（ANSI） =====
+
+    private static Terminal.Tabs.TerminalOutputRun Run(string text, System.Windows.Media.Color? fg = null, bool bold = false)
+        => new(text, fg, null, bold, false, false, false, false, false, null);
+
+    [Fact]
+    public void StyledPlainOutput_KeepsTheColors()
+    {
+        var red = System.Windows.Media.Color.FromRgb(0xE5, 0x53, 0x4B);
+        var output = new TerminalCommandOutput("npm run lint", "error  x\nok", 1, DateTime.UtcNow, false,
+            Styled: [[Run("error", red, bold: true), Run("  x")], [Run("ok")]]);
+        var body = TerminalOutputPresenter.Present(output, Context).Body;
+        Assert.Contains("<span style=\"color:#E5534B;font-weight:bold\">error</span>  x\nok", body);
+
+        // 行の数が文字と揃っていなければ素の文字
+        var broken = output with { Styled = [[Run("error", red)]] };
+        Assert.DoesNotContain("<span style", TerminalOutputPresenter.Present(broken, Context).Body);
+    }
+
+    [Fact]
+    public void StyledOrNull_DropsUncoloredOutput()
+    {
+        Assert.Null(TerminalCommandOutput.StyledOrNull([[Run("plain")]]));
+        Assert.NotNull(TerminalCommandOutput.StyledOrNull([[Run("plain")], [Run("x", bold: true)]]));
+    }
+
+    [Fact]
+    public void ClippedOutput_KeepsTheStyledTailInStep()
+    {
+        var lines = Enumerable.Range(0, 3).Select(i => new string('x', TerminalCommandOutputs.MaxChars / 2) + i).ToList();
+        var store = new TerminalCommandOutputs();
+        store.Record(new TerminalCommandOutput("big", string.Join('\n', lines), 0, DateTime.UtcNow, false,
+            Styled: lines.Select(l => (IReadOnlyList<Terminal.Tabs.TerminalOutputRun>)[Run(l, bold: true)]).ToList()));
+        var kept = Assert.Single(store.Latest);
+        Assert.Equal(TerminalCommandOutputs.LineCount(kept.Text), kept.Styled!.Count);
+        Assert.EndsWith("2", kept.Styled[^1][0].Text);
+    }
+
+    // ===== tasks.json の matcher =====
+
+    [Fact]
+    public void TaskMatchers_AreAppliedToThatTasksOutput()
+    {
+        // 組み込みには無い書式（自前のリンタ）を、タスクが宣言した matcher で読む。
+        var lint = new ProblemMatcher("mylint",
+        [
+            new ProblemPattern(new System.Text.RegularExpressions.Regex(@"^LINT (\S+) line (\d+): (.*)$"))
+            { File = 1, Line = 2, Message = 3 },
+        ]);
+        var output = new TerminalCommandOutput("mylint .", "LINT src/a.cs line 7: 名前が長すぎます", 1, DateTime.UtcNow, false);
+        Assert.Equal(TerminalOutputShape.Plain, TerminalOutputPresenter.Present(output, Context).Shape);
+        var withTask = TerminalOutputPresenter.Present(output, new TerminalOutputMatching(Context, [lint]));
+        Assert.Equal(TerminalOutputShape.Problems, withTask.Shape);
+        Assert.Contains("名前が長すぎます", withTask.Body);
+    }
+
     // ===== 選んだ回への追従 =====
 
     private static TerminalSupportSubject Shell(Guid tabId) => new(tabId, "pwsh", @"C:\ws", null, null, null);

@@ -20,15 +20,32 @@ public partial class ShellWindow {
     /// これは「作業の途中経過（いま何を書き換えているか）」のための間隔。</summary>
     private static readonly TimeSpan TerminalSupportClaudeInterval = TimeSpan.FromSeconds(4);
 
+    /// <summary>tasks.json のタスクとして打ち込んだ1行 → その読み方（§39.5.1）。出力の置き場はコマンド行で引くので、同じ鍵で持つ。
+    /// どのタスクの出力かは、タスクの実行が打ち込んだ行（<see cref="sk0ya.Loomo.Core.Tasks.TaskInvocation.TerminalLine"/>）で分かる。</summary>
+    private readonly Dictionary<string, TerminalOutputMatching> _taskOutputMatching = new(StringComparer.Ordinal);
+
+    /// <summary>タスクの1段が終わった：打ち込んだ行とそのタスクの matcher を覚え、見せている回を読み直す。</summary>
+    private void RememberTaskOutputMatching(sk0ya.Loomo.Core.Tasks.TaskRunStep step) {
+        if (step.Task.Matchers.Count == 0 || RecentTerminalCommands.Normalize(step.Invocation.TerminalLine) is not { } line)
+            return;
+        _taskOutputMatching[line] = new TerminalOutputMatching(
+            new sk0ya.Loomo.Core.Tasks.ProblemMatchContext(step.Task.WorkspaceFolder, step.Invocation.Cwd), step.Task.Matchers);
+        _terminalSupport.RepresentOutput();
+    }
+
     private void InitializeTerminalSupport() {
         TerminalSupportPane.DataContext = _terminalSupport;
         TerminalSupportPaneHost.DataContext = _terminalSupport;
         _terminalSupport.SetDisplayPath(path => _workspace.ToDisplayPath(path));
         _terminalSupport.SetWorkspaceFilter(path => _workspace.Contains(path));
         // 出力の中の相対パス（ビルドの診断）は、その回を実行した場所と、そこを持つワークスペースのフォルダーから解く。
-        _terminalSupport.SetProblemContext(cwd => {
+        // tasks.json のタスクから打ち込んだ行なら、そのタスクの matcher と基準（§31.17）。
+        _terminalSupport.SetOutputMatching(output => {
+            if (_taskOutputMatching.TryGetValue(output.Command, out var task))
+                return task;
+            var cwd = output.WorkingDirectory;
             var folder = _workspace.FolderForOrPrimary(cwd) ?? cwd ?? "";
-            return new sk0ya.Loomo.Core.Tasks.ProblemMatchContext(folder, cwd ?? folder);
+            return new TerminalOutputMatching(new sk0ya.Loomo.Core.Tasks.ProblemMatchContext(folder, cwd ?? folder));
         });
 
         _terminalSupport.FileOpenRequested += (_, path) => _ = OpenPathInEditorAsync(path, 0, 0);

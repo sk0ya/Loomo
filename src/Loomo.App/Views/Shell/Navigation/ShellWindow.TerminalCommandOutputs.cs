@@ -21,7 +21,7 @@ public partial class ShellWindow {
             if (RecentTerminalCommands.Normalize(e.CommandLine) is { } command)
                 RecordTerminalCommandOutput(tab.Id,
                     new TerminalCommandOutput(command, e.Output, e.ExitCode, DateTime.UtcNow, e.HeadLost,
-                        tab.Id, executedIn ?? tab.View.WorkingDirectory));
+                        tab.Id, executedIn ?? tab.View.WorkingDirectory, TerminalCommandOutput.StyledOrNull(e.StyledLines)));
         };
     }
 

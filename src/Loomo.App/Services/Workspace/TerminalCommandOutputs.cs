@@ -10,10 +10,19 @@ namespace sk0ya.Loomo.App.Services;
 /// <paramref name="HeadOmitted"/> は先頭が欠けていること——スクロールバックの上限から押し出されたか、
 /// <see cref="TerminalCommandOutputs.MaxChars"/> を超えて頭を落としたか。
 /// <paramref name="TabId"/>／<paramref name="WorkingDirectory"/> は出どころ（どのタブで・どこで実行したか）——
-/// ペグボードへ出典付きで残すときに使う（§24.26）。</summary>
+/// ペグボードへ出典付きで残すときに使う（§24.26）。
+/// <paramref name="Styled"/> は描かれたときの色と書式（<see cref="Text"/> の1行に1つ、行の文字の連なり。Terminal 1.0.47〜）。
+/// 色の無い出力では持たない（null）——見せ直し（§39.5.1）が素の文字を色付きで描くためだけのもの。</summary>
 public sealed record TerminalCommandOutput(
     string Command, string Text, int? ExitCode, DateTime FinishedUtc, bool HeadOmitted,
-    Guid TabId = default, string? WorkingDirectory = null);
+    Guid TabId = default, string? WorkingDirectory = null,
+    IReadOnlyList<IReadOnlyList<Terminal.Tabs.TerminalOutputRun>>? Styled = null)
+{
+    /// <summary>書式を持っておく値打ちがあるか（どこかの文字に色か書式が付いている）。無ければ null を返す。</summary>
+    public static IReadOnlyList<IReadOnlyList<Terminal.Tabs.TerminalOutputRun>>? StyledOrNull(
+        IReadOnlyList<IReadOnlyList<Terminal.Tabs.TerminalOutputRun>>? styled)
+        => styled is not null && styled.Any(row => row.Any(run => !run.IsPlain)) ? styled : null;
+}
 
 /// <summary>
 /// コマンドごとに「前回」と「今回」の出力を持つ置き場（純ロジック・テスト対象）。§24.21。
@@ -100,7 +109,9 @@ public sealed class TerminalCommandOutputs
         var newline = tail.IndexOf('\n');
         if (newline >= 0 && newline < tail.Length - 1)
             tail = tail[(newline + 1)..];
-        return output with { Text = tail, HeadOmitted = true };
+        // 書式は行ごとなので、残した行の数だけ末尾から残す。
+        var styled = output.Styled is { } rows ? rows.Skip(Math.Max(0, rows.Count - LineCount(tail))).ToList() : null;
+        return output with { Text = tail, HeadOmitted = true, Styled = styled };
     }
 
     /// <summary>Diff へ送る素材。左＝前回・右＝今回（git 差分と同じ「旧→新」の向き）。</summary>

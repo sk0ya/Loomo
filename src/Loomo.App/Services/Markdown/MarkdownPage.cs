@@ -208,6 +208,9 @@ internal static class MarkdownPage
                 const outlineEnabled = {{outlineJs}};
                 let outlineEntries = [];   // { a, el } の並び（本文順）
                 let outlineScheduled = false;
+                // 狭いペインで一覧を開いたままにしているか（帯を押して切り替える）。一覧は本文差し替えのたびに
+                // 作り直すので、状態はここに持つ。
+                let outlinePinned = false;
 
                 // scrollHint は、パネルが既に消えている呼び出し元（applyBody は body ごと差し替えるので、
                 // ここへ来た時点で前のパネルは無い）が控えておいた一覧のスクロール位置。
@@ -234,6 +237,7 @@ internal static class MarkdownPage
                     const heading = document.createElement('div');
                     heading.className = 'loomo-outline-title';
                     heading.textContent = 'アウトライン';
+                    heading.title = '狭いときは、ここ（畳んだ帯なら上端の ≡）を押すと開いたままにする。もう一度押すと畳む';
                     panel.appendChild(heading);
                     const nav = document.createElement('nav');
                     for (let i = 0; i < headings.length; i++) {
@@ -261,6 +265,13 @@ internal static class MarkdownPage
                         outlineEntries.push({ a, el: h });
                     }
                     panel.appendChild(nav);
+                    // 狭いペインの帯：押すと開いたまま／もう一度押すと畳む（触れている間だけ開くのでは、目次を見ながら
+                    // 本文を読めない）。項目の押下は飛び先へ。
+                    panel.addEventListener('click', ev => {
+                        if (ev.target.closest && ev.target.closest('a')) return;
+                        outlinePinned = !outlinePinned;
+                        document.body.classList.toggle('loomo-outline-pinned', outlinePinned);
+                    });
                     document.body.appendChild(panel);
                     panel.scrollTop = keptScroll;
                     document.body.classList.add('loomo-outline');
@@ -1038,12 +1049,19 @@ internal static class MarkdownPage
                 .loomo-outline-panel::before {
                     content: '≡'; display: block; text-align: center; color: {{muted}}; font-size: 14px;
                 }
-                .loomo-outline-panel:not(:hover):not(:focus-within) > * { display: none; }
+                body:not(.loomo-outline-pinned) .loomo-outline-panel:not(:hover):not(:focus-within) > * { display: none; }
                 .loomo-outline-panel:hover, .loomo-outline-panel:focus-within {
                     width: min(260px, 85vw); overflow-y: auto; padding-top: 12px;
                     box-shadow: -6px 0 18px rgba(0, 0, 0, .35);
                 }
+                /* 開いたまま（帯を押した）：本文の上に重ねず、横に並べて幅を分ける——目次を見ながら本文を読むため。 */
+                body.loomo-outline-pinned { --outline-w: min(200px, 42vw); }
+                body.loomo-outline-pinned .loomo-outline-panel {
+                    width: var(--outline-w); overflow-y: auto; padding-top: 12px; box-shadow: none;
+                }
+                body.loomo-outline-pinned .loomo-outline-panel::before,
                 .loomo-outline-panel:hover::before, .loomo-outline-panel:focus-within::before { display: none; }
+                body.loomo-outline-pinned .loomo-outline-title::after { content: ' · 開いたまま'; }
             }
             /* PDF エクスポート（PrintToPdfAsync＝表示のまま印刷）には持ち込まない。position:fixed は
                全ページに焼き付き、右余白のぶん本文が細く潰れる。 */
