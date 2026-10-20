@@ -74,14 +74,51 @@
             </Grid>
         </DataTemplate>
 
-        <!-- ツリーの種類の切り替え（§39.9）。押して点いている種類だけがツリーに出る。 -->
-        <Style x:Key="KindToggle" TargetType="ToggleButton" BasedOn="{StaticResource SegmentToggle}">
+        <!-- ツリーに出す種類の切り替え（§39.9）。キー設定の観点チップと同じ丸い形で、色の付いた印と件数を添える。
+             点いている種類だけがツリーに出る。 -->
+        <Style x:Key="KindChip" TargetType="ToggleButton">
+            <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
             <Setter Property="FontSize" Value="{DynamicResource Fs11}" />
-            <Setter Property="Padding" Value="6,0" />
-            <Setter Property="Margin" Value="0,0,2,2" />
+            <Setter Property="Margin" Value="0,0,2,3" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border x:Name="b" CornerRadius="10" Padding="5,1,6,1" Background="Transparent"
+                                BorderBrush="{DynamicResource Border}" BorderThickness="1">
+                            <ContentPresenter VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="b" Property="Background" Value="{DynamicResource BgAlt}" />
+                                <Setter Property="Foreground" Value="{DynamicResource Fg}" />
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="b" Property="Background" Value="{DynamicResource SelectionBg}" />
+                                <Setter TargetName="b" Property="BorderBrush" Value="{DynamicResource AccentHover}" />
+                                <Setter Property="Foreground" Value="{DynamicResource Fg}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
 
-        <!-- 会話のツリーの行：矢印・印・題・薄い一言。選んだ行は淡く塗る。 -->
+        <!-- チップの中身：印（色）・名前・件数（薄く） -->
+        <Style x:Key="ChipGlyph" TargetType="TextBlock">
+            <Setter Property="Margin" Value="0,0,3,0" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style x:Key="ChipCount" TargetType="TextBlock">
+            <Setter Property="Margin" Value="3,0,0,0" />
+            <Setter Property="Opacity" Value="0.6" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+
+        <!-- 会話のツリーの行：開閉の矢印・種類の印（色）・題・薄い一言。選んだ行は角丸の淡い面＋左端のアクセントの線、
+             子は細いガイド線で字下げ（コードのアウトラインと同じ作法）。 -->
         <Style x:Key="ConversationTreeItem" TargetType="TreeViewItem">
             <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
             <Setter Property="IsSelected" Value="{Binding IsSelected, Mode=TwoWay}" />
@@ -96,18 +133,20 @@
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition />
                             </Grid.RowDefinitions>
-                            <Border x:Name="Bd" Background="Transparent" CornerRadius="3" Padding="0,1">
+                            <Border x:Name="Bd" Background="Transparent" CornerRadius="4" Padding="0,2" Margin="0,0,0,1">
                                 <Grid>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="*" />
                                     </Grid.ColumnDefinitions>
-                                    <ToggleButton x:Name="Expander" ClickMode="Press" Focusable="False"
+                                    <Border x:Name="Bar" Width="2" Margin="0,1,0,1" CornerRadius="1" Background="Transparent" />
+                                    <ToggleButton x:Name="Expander" Grid.Column="1" ClickMode="Press" Focusable="False"
                                                   IsChecked="{Binding IsExpanded, RelativeSource={RelativeSource TemplatedParent}}">
                                         <ToggleButton.Template>
                                             <ControlTemplate TargetType="ToggleButton">
-                                                <Border Background="Transparent" Width="13" Height="14">
-                                                    <Path x:Name="Arrow" Width="7" Height="7" Stretch="Uniform"
+                                                <Border Background="Transparent" Width="16" Height="16">
+                                                    <Path x:Name="Arrow" Width="6" Height="6" Stretch="Uniform"
                                                           HorizontalAlignment="Center" VerticalAlignment="Center"
                                                           Fill="{DynamicResource FgDim}" Data="M0,0 L4,4 L0,8 Z" />
                                                 </Border>
@@ -115,18 +154,24 @@
                                                     <Trigger Property="IsChecked" Value="True">
                                                         <Setter TargetName="Arrow" Property="RenderTransform">
                                                             <Setter.Value>
-                                                                <RotateTransform Angle="90" CenterX="3.5" CenterY="3.5" />
+                                                                <RotateTransform Angle="90" CenterX="3" CenterY="3" />
                                                             </Setter.Value>
                                                         </Setter>
+                                                    </Trigger>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter TargetName="Arrow" Property="Fill" Value="{DynamicResource Fg}" />
                                                     </Trigger>
                                                 </ControlTemplate.Triggers>
                                             </ControlTemplate>
                                         </ToggleButton.Template>
                                     </ToggleButton>
-                                    <ContentPresenter Grid.Column="1" ContentSource="Header" HorizontalAlignment="Stretch" VerticalAlignment="Center" />
+                                    <ContentPresenter Grid.Column="2" ContentSource="Header" HorizontalAlignment="Stretch" VerticalAlignment="Center" />
                                 </Grid>
                             </Border>
-                            <ItemsPresenter x:Name="ItemsHost" Grid.Row="1" Margin="12,0,0,0" />
+                            <Border x:Name="ItemsHost" Grid.Row="1" Margin="10,0,0,2"
+                                    BorderBrush="{DynamicResource Border}" BorderThickness="1,0,0,0" Padding="2,0,0,0">
+                                <ItemsPresenter />
+                            </Border>
                         </Grid>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsExpanded" Value="False">
@@ -140,11 +185,38 @@
                             </Trigger>
                             <Trigger Property="IsSelected" Value="True">
                                 <Setter TargetName="Bd" Property="Background" Value="{DynamicResource SelectionBg}" />
+                                <Setter TargetName="Bar" Property="Background" Value="{DynamicResource AccentHover}" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
+        </Style>
+
+        <!-- 種類の印の色（コードのアウトラインの記号の色を借りる。どのテーマでも馴染む） -->
+        <Style x:Key="KindGlyph" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="{DynamicResource Fs11}" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="HorizontalAlignment" Value="Center" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding Kind}" Value="Section">
+                    <Setter Property="Foreground" Value="{DynamicResource SymInterface}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Kind}" Value="File">
+                    <Setter Property="Foreground" Value="{DynamicResource SymType}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Kind}" Value="Agent">
+                    <Setter Property="Foreground" Value="{DynamicResource SymMethod}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Kind}" Value="Command">
+                    <Setter Property="Foreground" Value="{DynamicResource SymEnum}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Kind}" Value="Failure">
+                    <Setter Property="Foreground" Value="{DynamicResource Error}" />
+                </DataTrigger>
+            </Style.Triggers>
         </Style>
 
     </UserControl.Resources>
@@ -224,24 +296,67 @@
                 </StackPanel>
             </Border>
             <!-- ツリーに出す種類と絞り込み（§39.9） -->
-            <StackPanel DockPanel.Dock="Top" Margin="8,6,8,4"
+            <StackPanel DockPanel.Dock="Top" Margin="8,8,8,6"
                         Visibility="{Binding HasClaudeSession, Converter={StaticResource BoolToVis}}">
-                <WrapPanel>
-                    <ToggleButton Style="{StaticResource KindToggle}" Content="§ 返事" IsChecked="{Binding ShowReplies}" ToolTip="返事を見出しごとの節に分けて出す" />
-                    <ToggleButton Style="{StaticResource KindToggle}" Content="✎ 変更" IsChecked="{Binding ShowChanges}" ToolTip="書き換えたファイル（選ぶと差分）" />
-                    <ToggleButton Style="{StaticResource KindToggle}" Content="◇ サブ" IsChecked="{Binding ShowAgents}" ToolTip="サブエージェントと、その下にそのエージェントの操作" />
-                    <ToggleButton Style="{StaticResource KindToggle}" Content="$ コマンド" IsChecked="{Binding ShowCommands}" ToolTip="走らせたコマンド（選ぶと出力を形に合わせて見せる）" />
-                    <ToggleButton Style="{StaticResource KindToggle}" Content="✗ 失敗" IsChecked="{Binding ShowFailures}" ToolTip="失敗した操作" />
-                    <ToggleButton Style="{StaticResource KindToggle}" Content="… メモ" IsChecked="{Binding ShowNotes}" ToolTip="作業の途中のメモ" />
-                </WrapPanel>
-                <Grid Margin="0,2,0,0">
-                    <TextBox x:Name="TreeFilterBox" Text="{Binding TreeFilter, UpdateSourceTrigger=PropertyChanged, Delay=200}"
-                             FontSize="{DynamicResource Fs11}" Padding="4,2"
+                <!-- 絞り込み（左に虫眼鏡、空のときだけ説明、入力中だけ ✕） -->
+                <Grid>
+                    <TextBox x:Name="TreeFilterBox" Padding="24,3,22,3" FontSize="{DynamicResource Fs12}"
+                             Text="{Binding TreeFilter, UpdateSourceTrigger=PropertyChanged, Delay=200}"
                              ToolTip="頼みごと・返事の本文・ファイル名・コマンド・エージェントへの頼みごとで絞り込む" />
-                    <TextBlock Margin="7,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False" Style="{StaticResource Dim}"
-                               Text="絞り込み（本文・ファイル・コマンド）"
+                    <TextBlock Text="&#xE721;" FontFamily="Segoe MDL2 Assets" Margin="8,0,0,0" HorizontalAlignment="Left"
+                               VerticalAlignment="Center" IsHitTestVisible="False" FontSize="{DynamicResource Fs11}"
+                               Foreground="{DynamicResource FgDim}" />
+                    <TextBlock Text="会話の中を探す" Margin="25,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False"
+                               FontSize="{DynamicResource Fs12}" Foreground="{DynamicResource FgDim}"
                                Visibility="{Binding Text, ElementName=TreeFilterBox, Converter={StaticResource EmptyToVis}}" />
+                    <Button HorizontalAlignment="Right" Margin="0,0,2,0" Width="20" Height="20"
+                            Style="{StaticResource IconButton}" FontSize="{DynamicResource Fs11}"
+                            Content="✕" ToolTip="絞り込みを消す" Command="{Binding ClearTreeFilterCommand}"
+                            Visibility="{Binding Text, ElementName=TreeFilterBox, Converter={StaticResource NonEmptyToVis}}" />
                 </Grid>
+                <WrapPanel Margin="0,6,0,0">
+                    <ToggleButton Style="{StaticResource KindChip}" IsChecked="{Binding ShowReplies}" ToolTip="返事を見出しごとの節に分けて出す">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Style="{StaticResource ChipGlyph}" Text="§" Foreground="{DynamicResource SymInterface}" />
+                            <TextBlock Text="返事" />
+                            <TextBlock Style="{StaticResource ChipCount}" Text="{Binding ReplyCount}" />
+                        </StackPanel>
+                    </ToggleButton>
+                    <ToggleButton Style="{StaticResource KindChip}" IsChecked="{Binding ShowChanges}" ToolTip="書き換えたファイル（選ぶと差分）">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Style="{StaticResource ChipGlyph}" Text="✎" Foreground="{DynamicResource SymType}" />
+                            <TextBlock Text="変更" />
+                            <TextBlock Style="{StaticResource ChipCount}" Text="{Binding ChangeCount}" />
+                        </StackPanel>
+                    </ToggleButton>
+                    <ToggleButton Style="{StaticResource KindChip}" IsChecked="{Binding ShowAgents}" ToolTip="サブエージェントと、その下にそのエージェントの操作">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Style="{StaticResource ChipGlyph}" Text="◆" Foreground="{DynamicResource SymMethod}" />
+                            <TextBlock Text="サブ" />
+                            <TextBlock Style="{StaticResource ChipCount}" Text="{Binding AgentCount}" />
+                        </StackPanel>
+                    </ToggleButton>
+                    <ToggleButton Style="{StaticResource KindChip}" IsChecked="{Binding ShowCommands}" ToolTip="走らせたコマンド（選ぶと出力を形に合わせて見せる）">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Style="{StaticResource ChipGlyph}" Text="$" Foreground="{DynamicResource SymEnum}" />
+                            <TextBlock Text="コマンド" />
+                            <TextBlock Style="{StaticResource ChipCount}" Text="{Binding CommandCount}" />
+                        </StackPanel>
+                    </ToggleButton>
+                    <ToggleButton Style="{StaticResource KindChip}" IsChecked="{Binding ShowFailures}" ToolTip="失敗した操作">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Style="{StaticResource ChipGlyph}" Text="✗" Foreground="{DynamicResource Error}" />
+                            <TextBlock Text="失敗" />
+                            <TextBlock Style="{StaticResource ChipCount}" Text="{Binding FailureCount}" />
+                        </StackPanel>
+                    </ToggleButton>
+                    <ToggleButton Style="{StaticResource KindChip}" IsChecked="{Binding ShowNotes}" ToolTip="作業の途中のメモ">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="メモ" />
+                            <TextBlock Style="{StaticResource ChipCount}" Text="{Binding NoteCount}" />
+                        </StackPanel>
+                    </ToggleButton>
+                </WrapPanel>
             </StackPanel>
             <Grid>
                 <Grid.RowDefinitions>
@@ -250,26 +365,39 @@
                     <RowDefinition Height="3*" MinHeight="80" />
                 </Grid.RowDefinitions>
                 <TreeView x:Name="ConversationTree" ItemsSource="{Binding Tree}" Background="Transparent" BorderThickness="0"
-                          Padding="4,0" ItemContainerStyle="{StaticResource ConversationTreeItem}"
+                          Padding="4,0,6,4" ItemContainerStyle="{StaticResource ConversationTreeItem}"
                           ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                           Visibility="{Binding HasClaudeSession, Converter={StaticResource BoolToVis}}">
                     <TreeView.ItemTemplate>
                         <HierarchicalDataTemplate ItemsSource="{Binding Children}">
-                            <Grid ToolTip="{Binding Label}">
+                            <Grid ToolTip="{Binding Label}" Margin="0,0,4,0">
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="16" />
+                                    <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Text="{Binding Icon}" FontSize="{DynamicResource Fs11}" Foreground="{DynamicResource FgDim}"
-                                           HorizontalAlignment="Center" />
-                                <TextBlock Grid.Column="1" Text="{Binding Label}" TextTrimming="CharacterEllipsis" FontSize="{DynamicResource Fs12}">
+                                <!-- 種類の印（ターンは開閉の矢印が印を兼ねるので空き） -->
+                                <TextBlock Width="16" Style="{StaticResource KindGlyph}" Text="{Binding Icon}"
+                                           Visibility="{Binding Icon, Converter={StaticResource NonEmptyToVis}}" />
+                                <TextBlock Grid.Column="1" Text="{Binding Label}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center">
                                     <TextBlock.Style>
                                         <Style TargetType="TextBlock">
                                             <Setter Property="Foreground" Value="{DynamicResource Fg}" />
+                                            <Setter Property="FontSize" Value="{DynamicResource Fs12}" />
                                             <Style.Triggers>
                                                 <DataTrigger Binding="{Binding IsTurn}" Value="True">
                                                     <Setter Property="FontWeight" Value="SemiBold" />
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding Kind}" Value="Conversation">
+                                                    <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding Kind}" Value="Note">
+                                                    <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
+                                                </DataTrigger>
+                                                <!-- コマンドは等幅で（ターミナルで見たときの形のまま探せる） -->
+                                                <DataTrigger Binding="{Binding Kind}" Value="Command">
+                                                    <Setter Property="FontFamily" Value="Cascadia Mono, Consolas" />
+                                                    <Setter Property="FontSize" Value="{DynamicResource Fs11}" />
                                                 </DataTrigger>
                                                 <DataTrigger Binding="{Binding Failed}" Value="True">
                                                     <Setter Property="Foreground" Value="{DynamicResource Error}" />
@@ -278,23 +406,31 @@
                                         </Style>
                                     </TextBlock.Style>
                                 </TextBlock>
-                                <TextBlock Grid.Column="2" Margin="6,0,2,0" Text="{Binding Hint}">
-                                    <TextBlock.Style>
-                                        <Style TargetType="TextBlock" BasedOn="{StaticResource Dim}">
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding HintFailed}" Value="True">
-                                                    <Setter Property="Foreground" Value="{DynamicResource Error}" />
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </TextBlock.Style>
-                                </TextBlock>
+                                <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="8,0,0,0" VerticalAlignment="Center">
+                                    <!-- 作業中のターン・エージェント -->
+                                    <Ellipse Width="6" Height="6" Margin="0,0,5,0" Fill="{DynamicResource AccentHover}" VerticalAlignment="Center"
+                                             ToolTip="作業中" Visibility="{Binding Working, Converter={StaticResource BoolToVis}}" />
+                                    <TextBlock Text="{Binding Hint}" FontSize="{DynamicResource Fs11}" VerticalAlignment="Center"
+                                               Foreground="{DynamicResource FgDim}" />
+                                    <TextBlock Text="{Binding FailBadge}" FontSize="{DynamicResource Fs11}" VerticalAlignment="Center"
+                                               Margin="6,0,0,0" Foreground="{DynamicResource Error}" ToolTip="中で失敗した操作の数"
+                                               Visibility="{Binding FailBadge, Converter={StaticResource NonEmptyToVis}}" />
+                                </StackPanel>
                             </Grid>
                         </HierarchicalDataTemplate>
                     </TreeView.ItemTemplate>
                 </TreeView>
-                <GridSplitter Grid.Row="1" Height="4" HorizontalAlignment="Stretch" Background="{DynamicResource Border}"
-                              ResizeDirection="Rows" Focusable="False" />
+                <!-- 分割線：見た目は 1px、掴める幅は 5px -->
+                <GridSplitter Grid.Row="1" Height="5" HorizontalAlignment="Stretch" Background="Transparent"
+                              ResizeDirection="Rows" Focusable="False" Cursor="SizeNS">
+                    <GridSplitter.Template>
+                        <ControlTemplate TargetType="GridSplitter">
+                            <Border Background="Transparent">
+                                <Border Height="1" VerticalAlignment="Center" Background="{DynamicResource Border}" />
+                            </Border>
+                        </ControlTemplate>
+                    </GridSplitter.Template>
+                </GridSplitter>
                 <Grid x:Name="ConversationHost" Grid.Row="2" />
             </Grid>
         </DockPanel>

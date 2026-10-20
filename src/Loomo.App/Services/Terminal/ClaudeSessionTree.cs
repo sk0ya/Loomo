@@ -31,6 +31,9 @@ internal sealed record ClaudeTreeFilter(
     public bool AnyCategory => Replies || Changes || Agents || Commands || Failures || Notes;
 }
 
+/// <summary>種類ごとの件数（トグルのチップに添える）。</summary>
+internal readonly record struct ClaudeTreeCounts(int Replies, int Changes, int Agents, int Commands, int Failures, int Notes);
+
 /// <summary>
 /// ツリーの節1つ。<see cref="Id"/> は記録の位置から作るので、記録が書き足されても・トグルを替えても同じ節は同じ id
 /// （開閉・選択を持ち越す鍵）。<see cref="Key"/> は描き直しが要るかの指紋。
@@ -40,6 +43,8 @@ internal sealed record ClaudeTreeNode(string Id, ClaudeTreeKind Kind, string Lab
     /// <summary>行の右に添える薄い一言（時刻・件数）。</summary>
     public string Hint { get; init; } = "";
     public bool Failed { get; init; }
+    /// <summary>中に含む失敗の数（ターン・エージェント）。一言とは別に、赤い ✗N として出す。</summary>
+    public int FailureCount { get; init; }
     /// <summary>作業中のターン（またはその返事）。</summary>
     public bool Working { get; init; }
     public string Key { get; init; } = "";
@@ -99,6 +104,26 @@ internal static class ClaudeSessionTree
         return roots;
     }
 
+    /// <summary>種類ごとの件数。ツリーと同じ数え方（返事は節、変更はターン・エージェントごとのファイル、ワークスペースの外は数えない）。</summary>
+    public static ClaudeTreeCounts Count(ClaudeSessionDigest digest, Func<string, bool> inWorkspace)
+    {
+        int replies = 0, changes = 0, agents = 0, commands = 0, failures = 0, notes = 0;
+        foreach (var turn in digest.Turns)
+        {
+            if (turn.Reply is { } reply)
+                replies += SplitSections(reply).Count;
+            notes += Math.Max(0, turn.Replies.Count - 1);
+            agents += turn.Agents.Count;
+            changes += turn.Calls
+                .Where(c => c.FilePath is { Length: > 0 } && IsWrite(c.Tool) && !c.IsRejected && !c.IsError && inWorkspace(c.FilePath))
+                .Select(c => (c.FilePath!.ToLowerInvariant(), c.FromSubagent ? c.TranscriptPath : ""))
+                .Distinct().Count();
+            commands += turn.Calls.Count(c => c.Command is not null && !c.IsRejected);
+            failures += turn.Failures.Count();
+        }
+        return new ClaudeTreeCounts(replies, changes, agents, commands, failures, notes);
+    }
+
     private static ClaudeTreeNode TurnNode(
         ClaudeTurn turn, bool inProgress, ClaudeTreeFilter filter, Func<string, bool> inWorkspace, Func<string, string> displayPath)
     {
@@ -134,12 +159,9 @@ internal static class ClaudeSessionTree
         var failures = turn.Failures.Count();
         return new ClaudeTreeNode(id, ClaudeTreeKind.Turn, Shorten(FirstLine(turn.Prompt)), children)
         {
-            Hint = string.Join(" ", new[]
-            {
-                turn.At is { } at ? LocalTime(at) : null,
-                failures > 0 ? $"✗{failures}" : null,
-            }.Where(s => s is not null)),
+            Hint = turn.At is { } at ? LocalTime(at) : "",
             Failed = failures > 0,
+            FailureCount = failures,
             Working = inProgress,
             Turn = turn,
             Key = ClaudeConversationDocument.TurnKey(turn, inProgress),
@@ -198,12 +220,9 @@ internal static class ClaudeSessionTree
         var running = agent.Launch is { HasResult: false } || agent.Report is null;
         return new ClaudeTreeNode(id, ClaudeTreeKind.Agent, Shorten(agent.Name ?? FirstLine(agent.Prompt ?? agent.AgentId)), children)
         {
-            Hint = string.Join(" ", new[]
-            {
-                $"{agent.Calls.Count} 操作",
-                failures > 0 ? $"✗{failures}" : null,
-            }.Where(s => s is not null)),
+            Hint = $"{agent.Calls.Count} 操作",
             Failed = failures > 0,
+            FailureCount = failures,
             Working = running,
             Turn = turn,
             Agent = agent,

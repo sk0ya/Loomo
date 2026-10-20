@@ -22,6 +22,8 @@ public sealed record TerminalSupportKeyRow(string Keys, string Action);
 public sealed partial class ClaudeTreeItem(string id) : ObservableObject
 {
     public string Id { get; } = id;
+    /// <summary>節の種類の名前（<see cref="ClaudeTreeKind"/>。印の色・等幅などの見た目を XAML で振り分ける）。</summary>
+    [ObservableProperty] private string _kind = "";
     [ObservableProperty] private string _icon = "";
     [ObservableProperty] private string _label = "";
     [ObservableProperty] private string _hint = "";
@@ -29,8 +31,8 @@ public sealed partial class ClaudeTreeItem(string id) : ObservableObject
     [ObservableProperty] private bool _isTurn;
     /// <summary>失敗した操作の行（題を赤く）。</summary>
     [ObservableProperty] private bool _failed;
-    /// <summary>中に失敗を含むターン・エージェント（題ではなく ✗N だけを赤く——束ねる行まで赤いと騒がしい）。</summary>
-    [ObservableProperty] private bool _hintFailed;
+    /// <summary>中に含む失敗（ターン・エージェント、「✗N」）。題ではなくこれだけを赤く——束ねる行まで赤いと騒がしい。</summary>
+    [ObservableProperty] private string _failBadge = "";
     [ObservableProperty] private bool _working;
     [ObservableProperty] private bool _isExpanded;
     [ObservableProperty] private bool _isSelected;
@@ -110,6 +112,13 @@ public sealed partial class TerminalSupportViewModel : ObservableObject
     [ObservableProperty] private bool _showNotes;
     /// <summary>ツリーの絞り込み（頼みごと・返事の本文・ファイル名・コマンド・エージェントへの頼みごとに当てる）。</summary>
     [ObservableProperty] private string _treeFilter = "";
+    /// <summary>種類ごとの件数（チップに添える。トグルに関わらずセッション全体の数）。</summary>
+    [ObservableProperty] private int _replyCount;
+    [ObservableProperty] private int _changeCount;
+    [ObservableProperty] private int _agentCount;
+    [ObservableProperty] private int _commandCount;
+    [ObservableProperty] private int _failureCount;
+    [ObservableProperty] private int _noteCount;
     private readonly Dictionary<string, ClaudeTreeItem> _treeItems = new(StringComparer.Ordinal);
     private string? _selectedNodeId;
     private ClaudeTreeNode? _selectedNode;
@@ -340,6 +349,9 @@ public sealed partial class TerminalSupportViewModel : ObservableObject
             ConversationBody = "";
             return Task.CompletedTask;
         }
+        var counts = ClaudeSessionTree.Count(digest, _inWorkspace);
+        (ReplyCount, ChangeCount, AgentCount, CommandCount, FailureCount, NoteCount)
+            = (counts.Replies, counts.Changes, counts.Agents, counts.Commands, counts.Failures, counts.Notes);
         var filter = CurrentFilter;
         var nodes = ClaudeSessionTree.Build(digest, filter, _inWorkspace, _displayPath, _agentState == ClaudeAgentState.Working);
         var searching = filter.Text.Trim().Length > 0;
@@ -375,13 +387,14 @@ public sealed partial class TerminalSupportViewModel : ObservableObject
                 _treeItems[node.Id] = item;
             }
             item.Node = node;
+            item.Kind = node.Kind.ToString();
             item.Icon = Icon(node.Kind);
             item.Label = node.Label;
             item.Hint = node.Hint;
             item.IsTurn = node.Kind == ClaudeTreeKind.Turn;
             item.Failed = node.Failed && node.Kind is ClaudeTreeKind.Command or ClaudeTreeKind.Failure;
-            item.HintFailed = node.Failed && node.Kind is ClaudeTreeKind.Turn or ClaudeTreeKind.Agent;
-            item.Working = node.Working;
+            item.FailBadge = node.FailureCount > 0 ? $"✗{node.FailureCount}" : "";
+            item.Working = node.Working && node.Kind is ClaudeTreeKind.Turn or ClaudeTreeKind.Agent;   // 点は束ねる行にだけ
             if (searching && node.Children.Count > 0)
                 item.IsExpanded = true;   // 絞り込み中は当たったところまで開く
             SyncTree(item.Children, node.Children, byId, latestTurnId, searching);
@@ -398,7 +411,7 @@ public sealed partial class TerminalSupportViewModel : ObservableObject
         ClaudeTreeKind.Note => "…",
         ClaudeTreeKind.File => "✎",
         ClaudeTreeKind.Command => "$",
-        ClaudeTreeKind.Agent => "◇",
+        ClaudeTreeKind.Agent => "◆",
         ClaudeTreeKind.Failure => "✗",
         _ => "",
     };
@@ -497,6 +510,9 @@ public sealed partial class TerminalSupportViewModel : ObservableObject
         NowTone = TerminalSupportNowTone.Idle;
         HasClaudeSession = false;
     }
+
+    [RelayCommand]
+    private void ClearTreeFilter() => TreeFilter = "";
 
     [RelayCommand]
     private void OpenTranscript()
