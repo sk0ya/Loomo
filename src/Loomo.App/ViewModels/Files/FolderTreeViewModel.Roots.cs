@@ -348,11 +348,8 @@ public sealed partial class FolderTreeViewModel : IFolderPinStore
             RootOptions.Clear();
             RootOptions.Add(new FolderRootOption(_workspaceRoot!, LabelFor(_workspaceRoot!), isPinned: false));
 
-            // Explorer の左ペインで常用する仮想ルート。ピン留めとは別の固定候補なので、
-            // ワークスペース状態へは候補一覧ではなく TreeRootPath だけを保存する。
-            foreach (var shell in FolderTreeShellNamespaces.Known)
-                RootOptions.Add(new FolderRootOption(shell.Path, shell.Label, isPinned: false,
-                    isShellNamespace: true));
+            // ごみ箱・ネットワーク・ライブラリ等の仮想ルートは候補に並べない（頼んでいないものがピン欄に
+            // 混ざるだけ）。アドレス欄に「ごみ箱」等と打てば開けるし、保存済みの TreeRootPath も復元される。
 
             // ブランチ切替などで一時的に消えたピンも保持する。存在状態は FolderRootOption が表示する。
             foreach (var pin in pinnedFolders)

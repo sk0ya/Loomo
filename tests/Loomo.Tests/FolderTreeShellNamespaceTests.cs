@@ -60,11 +60,9 @@ public sealed class FolderTreeShellNamespaceTests
             var workspace = new FakeWorkspaceService();
             var provider = new AvailableShellProvider(shellRoot, shellChild);
             var sut = CreateSut(workspace, new FolderTreeQuery(provider));
-            sut.LoadRoot(root);
-
-            // 仮想ルートは表示ルートの候補として並ぶ。選んでもワークスペースは動かない。
-            var option = Assert.Single(sut.RootOptions, o => o.FullPath == shellRoot);
-            sut.SelectedRootOption = option;
+            // 仮想ルート（候補には並ばないが、保存済みの表示ルートとして復元される）を開いても
+            // ワークスペースは動かない。
+            sut.LoadRoot(root, treeRootPath: shellRoot);
 
             Assert.Equal(shellRoot, sut.CurrentRoot);
             Assert.Equal(root, workspace.PrimaryFolder);
@@ -131,10 +129,12 @@ public sealed class FolderTreeShellNamespaceTests
         var root = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), "loomo-shell-empty-" + Guid.NewGuid().ToString("N"))).FullName;
         try
         {
-            var sut = CreateSut(new FakeWorkspaceService(), new FolderTreeQuery(new UnavailableShellProvider()));
-            sut.LoadRoot(root);
-            sut.SelectedRootOption = sut.RootOptions.Single(o =>
-                o.IsShellNamespace && o.FullPath == FolderTreeShellNamespaces.Known[0].Path);
+            // 保存済みの仮想ルートを復元した後で、Shell 名前空間が使えなくなった状態。
+            var provider = new TogglingShellProvider();
+            var sut = CreateSut(new FakeWorkspaceService(), new FolderTreeQuery(provider));
+            sut.LoadRoot(root, treeRootPath: FolderTreeShellNamespaces.Known[0].Path);
+            provider.Available = false;
+            sut.ShowChangedOnly = !sut.ShowChangedOnly;   // 再描画させる
 
             Assert.Contains("Shell", sut.EmptyMessage, StringComparison.OrdinalIgnoreCase);
             Assert.Contains("利用できません", sut.EmptyMessage);
@@ -146,7 +146,7 @@ public sealed class FolderTreeShellNamespaceTests
     }
 
     [Fact]
-    public void LoadRoot_exposes_known_shell_roots_without_making_them_pinned()
+    public void LoadRoot_does_not_list_shell_roots_as_root_options_or_pins()
     {
         var root = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), "loomo-shell-test-" + Guid.NewGuid().ToString("N"))).FullName;
         try
@@ -158,7 +158,7 @@ public sealed class FolderTreeShellNamespaceTests
 
             sut.LoadRoot(root);
 
-            Assert.Contains(sut.RootOptions, o => o.IsShellNamespace && !o.IsPinned);
+            Assert.DoesNotContain(sut.RootOptions, o => o.IsShellNamespace);
             Assert.DoesNotContain(sut.PinnedFolders, p => FolderTreeShellNamespaces.IsShellPath(p));
         }
         finally
@@ -171,6 +171,14 @@ public sealed class FolderTreeShellNamespaceTests
     {
         // Query は provider の concrete type を受けるため、存在確認だけを無効化する。
         public override bool Exists(string path) => false;
+        public override FolderTreeEntries Enumerate(string path)
+            => new(Array.Empty<string>(), Array.Empty<string>());
+    }
+
+    private sealed class TogglingShellProvider : WindowsFolderTreeShellNamespaceProvider
+    {
+        public bool Available { get; set; } = true;
+        public override bool Exists(string path) => Available;
         public override FolderTreeEntries Enumerate(string path)
             => new(Array.Empty<string>(), Array.Empty<string>());
     }
