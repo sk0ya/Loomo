@@ -10,6 +10,10 @@ public enum SearchScope { Text, FileName, Advanced, Terminal, Class, Symbol }
 
 public readonly record struct SearchKindOption(SearchFileKind Value, string Label);
 
+/// <summary>検索フォルダー欄 ▾ の1候補。<see cref="Value"/> は <c>SearchRoot</c> にそのまま入る表記
+/// （空＝ワークスペース全体）、<see cref="Detail"/> はメニューの右に添える同じ表記（全体のときは空）。</summary>
+public sealed record SearchRootChoice(string Label, string Detail, string Value, bool IsPin, bool IsCurrent);
+
 public readonly record struct TerminalSearchHit(int LineIndex, int Column, int Length, string LineText);
 
 /// <summary>クラス／シンボル検索の結果。<see cref="HasConnection"/> が false なら

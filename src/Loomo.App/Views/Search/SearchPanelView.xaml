@@ -327,6 +327,7 @@
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <Path Grid.Column="0" Width="13" Height="13" Stretch="Uniform"
                       VerticalAlignment="Center" Margin="0,0,5,0"
@@ -369,7 +370,16 @@
                         </Border>
                     </Popup>
                 </Grid>
-                <Button Grid.Column="2" Content="↺" Margin="4,0,0,0" Padding="0"
+                <!-- ▾：ワークスペース全体／各フォルダー／ピン留めフォルダーから選ぶ（打たずに絞る近道）。 -->
+                <Button Grid.Column="2" Margin="4,0,0,0" Padding="0" Width="20"
+                        Style="{StaticResource FolderBarButton}"
+                        ToolTip="ワークスペース全体・ピン留めフォルダーから選ぶ"
+                        Click="OnRootChoicesClick">
+                    <Path Width="8" Height="5" Stretch="Uniform"
+                          Stroke="{DynamicResource FgDim}" StrokeThickness="1.2"
+                          Data="M0,0 L4,4 L8,0" />
+                </Button>
+                <Button Grid.Column="3" Content="↺" Margin="4,0,0,0" Padding="0"
                         Width="20"
                         Style="{StaticResource FolderBarButton}"
                         ToolTip="FolderTree のルートに戻す"

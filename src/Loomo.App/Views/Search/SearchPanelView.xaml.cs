@@ -195,6 +195,44 @@ public partial class SearchPanelView : UserControl
     private void CommitRootBox()
         => RootBox.GetBindingExpression(TextBox.TextProperty)?.UpdateSource();
 
+    /// <summary>▾：ワークスペース全体／各フォルダー／ピン留めフォルダーから選ぶ。候補は開くたびに引き直す
+    /// （メニューはその場で組む——Style に置いた ContextMenu は Click が結線されないため）。</summary>
+    private void OnRootChoicesClick(object sender, RoutedEventArgs e)
+    {
+        if (Vm is not { } vm)
+            return;
+        CloseRootSuggest();
+        // 入力途中の文字は確定してから「いま」を判定する（✓ の位置がずれないように）。
+        CommitRootBox();
+
+        var menu = new ContextMenu { PlacementTarget = RootBox, Placement = PlacementMode.Bottom };
+        var pinHeaderAdded = false;
+        foreach (var choice in vm.RootChoices())
+        {
+            if (choice.IsPin && !pinHeaderAdded)
+            {
+                menu.Items.Add(new Separator());
+                menu.Items.Add(new MenuItem { Header = "ピン留め", IsEnabled = false });
+                pinHeaderAdded = true;
+            }
+            var item = new MenuItem
+            {
+                Header = choice.Label,
+                InputGestureText = choice.Detail == choice.Label ? "" : choice.Detail,
+                IsChecked = choice.IsCurrent,
+                ToolTip = string.IsNullOrEmpty(choice.Detail) ? null : choice.Detail,
+            };
+            item.Click += (_, _) => vm.SelectRootChoice(choice);
+            menu.Items.Add(item);
+        }
+        if (!pinHeaderAdded)
+        {
+            menu.Items.Add(new Separator());
+            menu.Items.Add(new MenuItem { Header = "ピン留めフォルダーなし", IsEnabled = false });
+        }
+        menu.IsOpen = true;
+    }
+
     private void CloseRootSuggest() => RootSuggestPopup.IsOpen = false;
 
     private bool IsInsidePopup(DependencyObject node)

@@ -27,6 +27,8 @@ public sealed partial class SearchPanelViewModel : ObservableObject
     private readonly IWorkspaceService _workspace;
     private readonly SearchPanelQuery _searchQuery;
     private readonly SearchResultTreeMapper _treeMapper;
+    // ピン留めフォルダーの持ち主（FolderTree）。検索フォルダー欄の ▾ 候補に並べるためだけに読む。
+    private readonly IFolderPinStore? _pins;
     private CancellationTokenSource? _cts;
 
     /// <summary>1ヒットを「エディタでプレビュー」したい（単クリック・キーボード選択）。</summary>
@@ -210,11 +212,12 @@ public sealed partial class SearchPanelViewModel : ObservableObject
     public event EventHandler? TabsChanged;
 
     public SearchPanelViewModel(IWorkspaceService workspace, SearchPanelQuery searchQuery,
-        SearchResultTreeMapper treeMapper)
+        SearchResultTreeMapper treeMapper, IFolderPinStore? pins = null)
     {
         _workspace = workspace;
         _searchQuery = searchQuery;
         _treeMapper = treeMapper;
+        _pins = pins;
         _workspace.FoldersChanged += (_, _) => OnFoldersChanged();
         Results.CollectionChanged += (_, _) =>
         {
@@ -482,6 +485,42 @@ public sealed partial class SearchPanelViewModel : ObservableObject
     /// <summary>検索フォルダーを既定（FolderTree のルート）へ戻す。</summary>
     [RelayCommand]
     private void ResetSearchRoot() => SearchRoot = _defaultRoot;
+
+    /// <summary>検索フォルダー欄の ▾ で選べる候補。先頭に「ワークスペース全体」、マルチルートなら
+    /// 各ワークスペースフォルダー、続いてピン留めフォルダー（FolderTree と同じもの・<see cref="IFolderPinStore"/>）。
+    /// 打たずに絞れるようにするための近道で、選んだ結果は手入力と同じ <see cref="SearchRoot"/> の表記になる。
+    /// 開くたびに引き直す（ピンの増減を購読して持ち続けるほどの量ではない）。</summary>
+    public IReadOnlyList<SearchRootChoice> RootChoices()
+    {
+        var current = Normalize(SearchRoot);
+        var choices = new List<SearchRootChoice>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        void Add(string label, string? fullPath, bool isPin)
+        {
+            var value = ToRelative(fullPath);
+            if (!seen.Add(Normalize(value)))
+                return;
+            var detail = fullPath is null ? "" : value;
+            choices.Add(new SearchRootChoice(label, detail, value, isPin,
+                string.Equals(Normalize(value), current, StringComparison.OrdinalIgnoreCase)));
+        }
+
+        Add("ワークスペース全体", null, isPin: false);
+        if (_workspace.Folders.Count > 1)
+            foreach (var folder in _workspace.Folders)
+                Add(LabelFor(folder), folder, isPin: false);
+        foreach (var pin in _pins?.AllPins ?? Array.Empty<string>())
+            Add(LabelFor(pin), pin, isPin: true);
+        return choices;
+    }
+
+    /// <summary>▾ の候補を選ぶ（<see cref="RootChoices"/> の1件）。</summary>
+    public void SelectRootChoice(SearchRootChoice choice)
+    {
+        ActiveTab = null;
+        SearchRoot = choice.Value;
+    }
 
     /// <summary>フルパスを検索フォルダー欄用の表記へ変換する。単一ルートはワークスペースルートからの
     /// 相対パス（'/' 区切り）。マルチルートは先頭にそのフォルダーの表示名を付けた「フォルダー名/相対パス」
