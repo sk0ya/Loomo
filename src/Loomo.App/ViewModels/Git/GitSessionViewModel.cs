@@ -637,6 +637,19 @@ public sealed partial class GitSessionViewModel : ObservableObject
 
     // ===== 同期 =====
 
+    /// <summary>
+    /// 手で読み直す（コミット一覧の ⟳）。監視（RepositoryChanged）は取りこぼしうる——ペインが
+    /// 隠れている間の外部の commit、監視対象外の変化——ので、読み取りキャッシュごと捨てて
+    /// 状態・ブランチ・コミット一覧をまとめて引き直す。失敗しても一覧は前の内容のまま残す。
+    /// </summary>
+    [RelayCommand]
+    private async Task ReloadAsync()
+    {
+        _git.InvalidateReadCache();
+        try { await RefreshAsync(); }
+        catch (Exception) { }
+    }
+
     [RelayCommand] private Task FetchAsync() => Commands.FetchAsync();
     [RelayCommand] private Task PullAsync() => Commands.PullAsync();
     [RelayCommand] private Task PushAsync() => Commands.PushAsync();

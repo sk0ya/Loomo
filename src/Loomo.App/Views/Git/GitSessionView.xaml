@@ -878,6 +878,12 @@
                     <Border x:Name="LogFilterBar" DockPanel.Dock="Top" Padding="5,3"
                             BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1">
                         <WrapPanel Orientation="Horizontal">
+                            <!-- 手で読み直す。監視の取りこぼし（隠れている間の外部の commit 等）で一覧が古いときの逃げ道。
+                                 先頭に置くのは、後ろの「✕ 解除」の出入りで位置が動かないように。 -->
+                            <Button Content="⟳" Margin="0,1,6,1" MinHeight="24" MinWidth="24"
+                                    VerticalAlignment="Center" Style="{StaticResource ToolbarButton}"
+                                    ToolTip="コミット一覧を更新"
+                                    Command="{Binding ReloadCommand}" />
                             <Grid Width="210" Margin="0,1,6,1" VerticalAlignment="Center">
                                 <TextBox x:Name="LogFilterBox" MinHeight="24" Padding="6,3"
                                          VerticalContentAlignment="Center" Cursor="IBeam"
