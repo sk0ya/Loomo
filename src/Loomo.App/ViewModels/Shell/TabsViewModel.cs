@@ -81,7 +81,9 @@ public sealed partial class TabEntryViewModel : ObservableObject
 
     /// <summary>実ファイルの絶対パス（Editor タブのみ。Untitled／仮想ドキュメントは null）。
     /// 「パスをコピー」「エクスプローラーで表示」の表示可否・対象に使う。</summary>
-    [ObservableProperty] private string? _filePath;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanOpenInOtherRoom))]
+    private string? _filePath;
 
     /// <summary>このタブのファイルのエラー・警告の数（§24.33）。ファイルを持たないタブと問題の無いファイルは null。</summary>
     [ObservableProperty] private ProblemMark? _problemMark;
@@ -120,7 +122,12 @@ public sealed partial class TabEntryViewModel : ObservableObject
     [ObservableProperty] private bool _isGroupShown = true;
 
     /// <summary>ブラウザタブのいまの URL（「URL をコピー」の対象・§24.46）。ブラウザ以外は null。</summary>
-    [ObservableProperty] private string? _browserUrl;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanOpenInOtherRoom))]
+    private string? _browserUrl;
+
+    /// <summary>右クリック「他の Loomo で開く」の表示可否：渡せるファイルか URL を持っている。</summary>
+    public bool CanOpenInOtherRoom => OtherRoomOpen.RequestFor(FilePath, BrowserUrl) is not null;
 
     /// <summary>ブラウザタブの現在URLから求めたホスト名。ブラウザ以外は null。</summary>
     public string? BrowserDomain { get; private set; }
