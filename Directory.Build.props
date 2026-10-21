@@ -25,7 +25,7 @@
          1.0.104（VimEditorControlOptions.WatchFileOnDisk でエディタの監視を切り、VimEditorControl.ReloadFromDisk で取り消せる読み直し。
          §24.57 が使う）（2026-10-19 公開）を nuget.org 最新版として使用する。 -->
     <UseLocalEditor Condition="'$(UseLocalEditor)' == ''">false</UseLocalEditor>
-    <EditorPackageVersion Condition="'$(EditorPackageVersion)' == ''">1.0.104</EditorPackageVersion>
+    <EditorPackageVersion Condition="'$(EditorPackageVersion)' == ''">1.0.105</EditorPackageVersion>
     <!-- sk0ya.Terminal.Controls の版。本体（Loomo.Services）と端末の常駐ホスト（Loomo.Pty.Host、§34）が
          同じ版を参照するので、ここ一か所で決める。版ごとの変更点は Loomo.Services.csproj の注記にある。 -->
     <TerminalPackageVersion Condition="'$(TerminalPackageVersion)' == ''">1.0.47</TerminalPackageVersion>
