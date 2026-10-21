@@ -324,6 +324,45 @@ public sealed partial class ShellViewModel : ObservableObject
         Activate(item.Panel);
     }
 
+    /// <summary>サイドバー2区画の開閉と表示中パネル。ダブルクリックで畳む前の状態の控え。</summary>
+    public readonly record struct SidebarSections(
+        bool PrimaryVisible, SidebarPanel Primary, bool SecondaryVisible, SidebarPanel Secondary);
+
+    /// <summary>ダブルクリックで畳む直前の状態。全部閉じた状態からのダブルクリックでここへ戻す
+    /// （このセッションだけ。保存はしない）。</summary>
+    private SidebarSections? _sidebarsBeforeCollapse;
+
+    public SidebarSections CaptureSidebars()
+        => new(IsSidebarVisible, ActivePanel, IsSecondarySidebarVisible, SecondaryPanel);
+
+    /// <summary>ActivityBar のアイコンのダブルクリック。<paramref name="before"/> は1回目のクリックより前の状態
+    /// ——1回目で開閉が一度切り替わっているので、いまの状態では判断しない。
+    /// 何か開いていたなら上段・中段とも畳んで控える。全部閉じていたなら控えた状態へ戻す
+    /// （控えが無ければ、1回目で開いた分を畳んで閉じたままにする）。</summary>
+    public void ToggleAllSidebars(SidebarSections before)
+    {
+        if (before.PrimaryVisible || before.SecondaryVisible)
+        {
+            _sidebarsBeforeCollapse = before;
+            IsSidebarVisible = false;
+            IsSecondarySidebarVisible = false;
+            return;
+        }
+        if (_sidebarsBeforeCollapse is not { } saved)
+        {
+            IsSidebarVisible = false;
+            IsSecondarySidebarVisible = false;
+            return;
+        }
+        _sidebarsBeforeCollapse = null;
+        ActivePanel = saved.Primary;
+        SecondaryPanel = saved.Secondary;
+        IsSidebarVisible = saved.PrimaryVisible;
+        IsSecondarySidebarVisible = saved.SecondaryVisible;
+        // 畳んでいる間にアイコンが段を移った／出せなくなったパネルは寄せ直す。
+        NormalizeSections();
+    }
+
     /// <summary>ActivityBar の設定（歯車）アイコン。中央オーバーレイの設定画面を外観カテゴリで開く
     /// （同じカテゴリで開いていれば閉じる＝トグル）。開くときにローカルのモデル一覧を取得する。</summary>
     [RelayCommand]

@@ -16,6 +16,8 @@ public partial class ShellWindow {
     private const string ActivityItemFormat = "Loomo.ActivityBarItem";
     private Point _activityDragOrigin;
     private ActivityBarItemViewModel? _activityDragItem;
+    /// <summary>直前のシングル押下の時点のサイドバー状態。ダブルクリックの判断に使う。</summary>
+    private ShellViewModel.SidebarSections _sidebarsBeforeClick;
 
     /// <summary>パネル種別 → XAML で宣言したビュー。載せ替えの対象はこの7つ。</summary>
     private IReadOnlyDictionary<SidebarPanel, FrameworkElement> SidebarPanelViews => _sidebarPanelViews
@@ -105,6 +107,16 @@ public partial class ShellWindow {
     // ===== 項目のドラッグ＆ドロップ（段の移動・並べ替え） =====
 
     private void OnActivityItemMouseDown(object sender, MouseButtonEventArgs e) {
+        // すばやいダブルクリック＝サイドバーを全部畳む／全部閉じていたなら畳む前へ戻す。
+        // 2回目の押下を Button に渡さないことで2回目の Click（＝開閉のトグル）を起こさせない。
+        // 判断は1回目のクリックより前の状態で行う（1回目で開閉が一度切り替わっているため）。
+        if (e.ClickCount == 2) {
+            _activityDragItem = null;
+            _vm.ToggleAllSidebars(_sidebarsBeforeClick);
+            e.Handled = true;
+            return;
+        }
+        _sidebarsBeforeClick = _vm.CaptureSidebars();
         _activityDragOrigin = e.GetPosition(this);
         _activityDragItem = (sender as FrameworkElement)?.DataContext as ActivityBarItemViewModel;
     }
