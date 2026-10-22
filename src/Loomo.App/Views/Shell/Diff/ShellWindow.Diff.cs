@@ -13,11 +13,22 @@
 /// 出すと書いていたエディタが押し出される（<see cref="DockLayoutCoordinator.DockOrder"/> にも居ない）。</para>
 /// </summary>
 public partial class ShellWindow {
+    /// <summary>ドック中に比較基準の差分を出した窓のタブ（次の比較基準はこれと差し替える）。</summary>
+    private DetachedItem? _compareBaseDiffItem;
+
     /// <summary>差分を見せる。ペインが出ていなければ別ウィンドウで開く（このクラスの主役）。</summary>
     private void ShowDiff(DiffOpenTarget target) {
         // 比較基準の差分だけは<b>別ウィンドウに逃がさない</b>。基準は Git パネル・Diff ペインと共有する
         // 1つの状態（GitCompareBaseViewModel）なので、窓のタブとして何枚も開くと、新しく開いた比較が
         // 前のタブの中身まで書き換え、タブ名だけが古い相手のまま残る。出し先を1つにすれば食い違わない。
+        // ただしドックでは Diff ペインを出せない（DockOrder に居ない）ので、ペインへ送ると何も見えないまま
+        // 終わる。そこで窓へ出すが、<b>比較基準のタブは1枚だけ</b>にして前のタブと差し替える。
+        if (target is DiffOpenTarget.CompareBase && _dockActive) {
+            var item = CreateDiffSpinoffItem(target);
+            Detached.Replace(_compareBaseDiffItem, item);
+            _compareBaseDiffItem = item;
+            return;
+        }
         if (target is DiffOpenTarget.CompareBase) {
             _ = _vm.DiffSession.ShowAsync(target);
             EnsurePaneVisibleOrSwapTopLeft(PaneKind.Diff);
@@ -45,7 +56,7 @@ public partial class ShellWindow {
     /// <summary>切り離した窓の VM へ差分を出す。作業ツリーの差分だけは<b>追従させる</b>
     /// （ペインと同じで、ステージや編集のたびに窓の中身が古くなるため）。コミットの差分は動かない。</summary>
     private static Task ShowDiffInWindowAsync(DiffSessionViewModel vm, DiffOpenTarget target) {
-        if (target is DiffOpenTarget.WorkingTreeFile)
+        if (target is DiffOpenTarget.WorkingTreeFile or DiffOpenTarget.CompareBase)
             vm.StartLiveTracking();
         return vm.ShowAsync(target);
     }

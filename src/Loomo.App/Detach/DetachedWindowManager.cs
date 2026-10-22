@@ -84,6 +84,26 @@ internal sealed class DetachedWindowManager
         NotifyChanged();
     }
 
+    /// <summary>
+    /// <paramref name="previous"/> がまだどこかの窓に居れば、その窓で <paramref name="item"/> に差し替えて前へ出す
+    /// （同じ用途のタブを1枚に保つため）。居なければ <see cref="Detach"/> と同じ。新しいタブを先に足してから
+    /// 古いタブを外す——逆にすると、それが窓の最後の1枚だったとき窓ごと閉じて位置が失われる。
+    /// </summary>
+    public void Replace(DetachedItem? previous, DetachedItem item)
+    {
+        if (previous is null || _windows.FirstOrDefault(w => w.Contains(previous)) is not { } window)
+        {
+            Detach(item);
+            return;
+        }
+        window.AddItem(item);
+        window.RemoveItem(previous, dispose: true);
+        if (window.WindowState == WindowState.Minimized)
+            window.WindowState = WindowState.Normal;
+        window.Activate();
+        NotifyChanged();
+    }
+
     /// <summary>直近に前へ出た窓（一度も Activated が来ていなければ最後に作った窓）。</summary>
     private DetachedPaneWindow? RecentWindow()
         => _activationOrder.FirstOrDefault(w => _windows.Contains(w)) ?? _windows.LastOrDefault();
