@@ -211,6 +211,9 @@ internal static class MarkdownPage
                 // 狭いペインで一覧を開いたままにしているか（帯を押して切り替える）。一覧は本文差し替えのたびに
                 // 作り直すので、状態はここに持つ。
                 let outlinePinned = false;
+                // 畳んだ見出しの鍵（レベル＋文字＋同名の何番目か）。一覧は本文差し替えのたびに作り直すので、
+                // 要素ではなく鍵で持つ——打鍵のたびに畳んだ節が開き直ってはいけない。
+                const outlineCollapsed = new Set();
 
                 // scrollHint は、パネルが既に消えている呼び出し元（applyBody は body ごと差し替えるので、
                 // ここへ来た時点で前のパネルは無い）が控えておいた一覧のスクロール位置。
@@ -240,18 +243,40 @@ internal static class MarkdownPage
                     heading.title = '狭いときは、ここ（畳んだ帯なら上端の ≡）を押すと開いたままにする。もう一度押すと畳む';
                     panel.appendChild(heading);
                     const nav = document.createElement('nav');
+                    const seen = new Map();
                     for (let i = 0; i < headings.length; i++) {
                         const h = headings[i];
                         const a = document.createElement('a');
                         a.href = '#' + h.id;                     // クリックは本文リンクと同じ経路で自前スクロール
                         a.className = 'outline-h' + levels[i];
-                        a.style.paddingLeft = (12 + (levels[i] - minLevel) * 12) + 'px';
+                        a.style.paddingLeft = (4 + (levels[i] - minLevel) * 12) + 'px';
                         // 見出しの中にあるパーマリンク（#）を落とした文字だけを拾う。
                         const clone = h.cloneNode(true);
                         const anchor = clone.querySelector('.heading-anchor');
                         if (anchor) anchor.remove();
-                        a.textContent = (clone.textContent || '').trim();
-                        a.title = a.textContent;
+                        const text = (clone.textContent || '').trim();
+                        a.textContent = text;
+                        a.title = text;
+                        const baseKey = levels[i] + ':' + text;
+                        const nth = (seen.get(baseKey) || 0) + 1;
+                        seen.set(baseKey, nth);
+                        const key = baseKey + '#' + nth;
+                        // 子（直後に続く、より深い見出し）を持つ項目だけ ▸ で畳める。葉は同じ幅を空けて字下げをそろえる。
+                        const hasChildren = i + 1 < headings.length && levels[i + 1] > levels[i];
+                        const twisty = document.createElement('span');
+                        twisty.className = 'loomo-outline-twisty';
+                        if (hasChildren) {
+                            twisty.textContent = '▸';
+                            twisty.title = '畳む／開く';
+                            twisty.addEventListener('click', ev => {
+                                ev.preventDefault();
+                                ev.stopPropagation();   // 見出しへ飛ばない・狭いペインの帯の開閉にも流さない
+                                if (outlineCollapsed.has(key)) outlineCollapsed.delete(key);
+                                else outlineCollapsed.add(key);
+                                applyOutlineCollapse();
+                            });
+                        }
+                        a.insertBefore(twisty, a.firstChild);
                         // 飛び先は href の解決（＝同じ id の<b>最初</b>の要素）ではなく、この項目が指す
                         // 見出し要素そのもの。見出し id は正規化しただけで一意化されていないので、
                         // 同名の見出しが2つある文書（「## まとめ」が複数など）だと href では常に
@@ -262,9 +287,29 @@ internal static class MarkdownPage
                             h.scrollIntoView();
                         });
                         nav.appendChild(a);
-                        outlineEntries.push({ a, el: h });
+                        outlineEntries.push({ a, el: h, level: levels[i], key, hasChildren, hidden: false });
                     }
                     panel.appendChild(nav);
+                    // 見出し行の「すべて畳む／すべて開く」。畳めるものが1つも無い（平らな）文書では出さない。
+                    if (outlineEntries.some(e => e.hasChildren)) {
+                        const all = document.createElement('button');
+                        all.className = 'loomo-outline-all';
+                        all.addEventListener('click', ev => {
+                            ev.stopPropagation();
+                            const parents = outlineEntries.filter(e => e.hasChildren);
+                            const collapseAll = parents.some(e => !outlineCollapsed.has(e.key));
+                            for (const e of parents) {
+                                if (collapseAll) outlineCollapsed.add(e.key);
+                                else outlineCollapsed.delete(e.key);
+                            }
+                            applyOutlineCollapse();
+                        });
+                        heading.appendChild(all);
+                    }
+                    // 消えた見出しの鍵は捨てる（同名の見出しを後から足したとき、昔の畳み状態が蘇らないように）。
+                    const live = new Set(outlineEntries.map(e => e.key));
+                    for (const k of Array.from(outlineCollapsed)) if (!live.has(k)) outlineCollapsed.delete(k);
+                    applyOutlineCollapse(true);
                     // 狭いペインの帯：押すと開いたまま／もう一度押すと畳む（触れている間だけ開くのでは、目次を見ながら
                     // 本文を読めない）。項目の押下は飛び先へ。
                     panel.addEventListener('click', ev => {
@@ -278,6 +323,28 @@ internal static class MarkdownPage
                     updateOutlineActive();
                 }
 
+                // 畳んだ見出しの子孫を隠す。祖先のうち畳まれているものを積んでおき、その配下（より深い見出し）を隠す。
+                function applyOutlineCollapse(skipActive) {
+                    const stack = [];
+                    for (const e of outlineEntries) {
+                        while (stack.length && stack[stack.length - 1] >= e.level) stack.pop();
+                        e.hidden = stack.length > 0;
+                        e.a.classList.toggle('collapsed-hidden', e.hidden);
+                        const collapsed = e.hasChildren && outlineCollapsed.has(e.key);
+                        e.a.classList.toggle('collapsed', collapsed);
+                        if (collapsed) stack.push(e.level);
+                    }
+                    // 組み立て中（まだ文書に挿していない）パネルでも引けるよう、項目から辿る。
+                    const panel = outlineEntries.length ? outlineEntries[0].a.closest('.loomo-outline-panel') : null;
+                    const all = panel ? panel.querySelector('.loomo-outline-all') : null;
+                    if (all) {
+                        const anyOpen = outlineEntries.some(e => e.hasChildren && !outlineCollapsed.has(e.key));
+                        all.textContent = anyOpen ? '⊟' : '⊞';
+                        all.title = anyOpen ? 'すべて畳む' : 'すべて開く';
+                    }
+                    if (!skipActive) updateOutlineActive();
+                }
+
                 // いま画面の上端にある見出しを強調する（本文をスクロールした先が一覧上で分かる）。
                 function updateOutlineActive() {
                     if (!outlineEntries.length) return;
@@ -286,6 +353,8 @@ internal static class MarkdownPage
                         if (outlineEntries[i].el.getBoundingClientRect().top <= 80) active = i;
                         else break;
                     }
+                    // 畳んだ節の中に居るときは、見えている祖先（＝畳んだ見出し）を強調する。
+                    while (active > 0 && outlineEntries[active].hidden) active--;
                     for (let i = 0; i < outlineEntries.length; i++)
                         outlineEntries[i].a.classList.toggle('active', i === active);
                 }
@@ -1040,6 +1109,18 @@ internal static class MarkdownPage
             .loomo-outline-panel a:hover { color: {{link}}; background: {{bg}}; text-decoration: none; }
             .loomo-outline-panel a.active { color: {{link}}; border-left-color: {{link}}; }
             .loomo-outline-panel a.outline-h1 { font-weight: 600; }
+            .loomo-outline-panel a.collapsed-hidden { display: none; }
+            .loomo-outline-twisty {
+                display: inline-block; width: 12px; margin-right: 2px; text-align: center;
+                color: {{muted}}; font-weight: normal; transform: rotate(90deg); transition: transform .1s;
+            }
+            .loomo-outline-panel a.collapsed .loomo-outline-twisty { transform: none; }
+            .loomo-outline-twisty:hover { color: {{link}}; }
+            .loomo-outline-all {
+                float: right; border: none; background: transparent; color: {{muted}};
+                font-size: 12px; line-height: 1; padding: 0 2px; cursor: pointer;
+            }
+            .loomo-outline-all:hover { color: {{link}}; }
             /* 狭いペインでは一覧が本文の幅を食う（240px でも 38vw でも、横に並べると本文が細る）。右端の細い帯に畳み、
                触れたとき（キーボードなら中へ焦点が入ったとき）だけ本文の上へ重ねて開く。 */
             @media (max-width: 560px) {
