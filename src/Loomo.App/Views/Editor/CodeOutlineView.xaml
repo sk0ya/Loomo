@@ -23,6 +23,15 @@
             <Setter Property="Foreground" Value="{DynamicResource Fg}" />
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
             <Setter Property="Padding" Value="0" />
+            <!-- 子リストも VirtualizingStackPanel にして、展開中の配下も見えている分しか作らせない
+                 （ツリー側の仮想化設定と両方そろって初めて効く）。 -->
+            <Setter Property="ItemsPanel">
+                <Setter.Value>
+                    <ItemsPanelTemplate>
+                        <VirtualizingStackPanel />
+                    </ItemsPanelTemplate>
+                </Setter.Value>
+            </Setter>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="TreeViewItem">
@@ -154,21 +163,35 @@
 
     <Grid>
         <!-- アウトライン＋②パネル（!IsNotice） -->
-        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
-                      Padding="6,6,6,10"
-                      Visibility="{Binding IsOutline, Converter={StaticResource BoolVis}}">
-            <StackPanel>
-                <!-- 空プレースホルダ -->
-                <TextBlock Text="（コード構造がありません）" Foreground="{DynamicResource FgDim}"
-                           Margin="2,4"
-                           Visibility="{Binding IsOutlineEmpty, Converter={StaticResource BoolVis}}" />
+        <Grid Margin="6,6,6,10"
+              Visibility="{Binding IsOutline, Converter={StaticResource BoolVis}}">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+            <!-- 空プレースホルダ -->
+            <TextBlock Text="（コード構造がありません）" Foreground="{DynamicResource FgDim}"
+                       Margin="2,4"
+                       Visibility="{Binding IsOutlineEmpty, Converter={StaticResource BoolVis}}" />
 
-                <!-- 構造アウトライン（折りたたみツリー） -->
-                <TreeView ItemsSource="{Binding Roots}" BorderThickness="0" Background="Transparent"
-                          ScrollViewer.VerticalScrollBarVisibility="Disabled"
-                          ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                          PreviewMouseWheel="Tree_PreviewMouseWheel"
+            <!-- ツリーと②は収まるうちは詰めて並べ、収まらなければ高さを分けてそれぞれスクロールする。
+                 ツリーに有限の高さを渡して UI 仮想化を効かせるため（OutlineSplitPanel・§31.20）。 -->
+            <v:OutlineSplitPanel Grid.Row="1">
+                <!-- 構造アウトライン（折りたたみツリー）。見えている行しかコンテナを作らない：各階層の
+                     パネルは OutlineTreeItem 側。Recycling は使い回し（開閉・current は全部バインド経由）。 -->
+                <TreeView x:Name="OutlineTree" ItemsSource="{Binding Roots}" BorderThickness="0" Background="Transparent"
+                          ScrollViewer.VerticalScrollBarVisibility="Auto"
+                          ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                          ScrollViewer.CanContentScroll="True"
+                          VirtualizingPanel.IsVirtualizing="True"
+                          VirtualizingPanel.VirtualizationMode="Recycling"
+                          VirtualizingPanel.ScrollUnit="Pixel"
                           Foreground="{DynamicResource Fg}">
+                    <TreeView.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <VirtualizingStackPanel />
+                        </ItemsPanelTemplate>
+                    </TreeView.ItemsPanel>
                     <TreeView.ItemContainerStyle>
                         <!-- 選択ハイライト無しのツリー項目（上の Resources 参照）。既定テンプレートの選択帯が
                              テーマから浮く問題への対処。行の状態（current/ホバー）は ItemTemplate 側が描く。 -->
@@ -239,14 +262,18 @@
                 </TreeView>
 
                 <!-- ②呼び出し解析パネル（見出し＋区切り線は対象シンボル解決時のみ） -->
-                <Border BorderBrush="{DynamicResource Border}" BorderThickness="0,1,0,0"
-                        Margin="0,10,0,0" Padding="0,8,0,0"
-                        Visibility="{Binding HasCallTitle, Converter={StaticResource BoolVis}}">
-                    <TextBlock Text="{Binding CallTitle}" FontWeight="SemiBold" />
-                </Border>
-                <ItemsControl ItemsSource="{Binding Sections}" Margin="0,8,0,0" />
-            </StackPanel>
-        </ScrollViewer>
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
+                    <StackPanel>
+                        <Border BorderBrush="{DynamicResource Border}" BorderThickness="0,1,0,0"
+                                Margin="0,10,0,0" Padding="0,8,0,0"
+                                Visibility="{Binding HasCallTitle, Converter={StaticResource BoolVis}}">
+                            <TextBlock Text="{Binding CallTitle}" FontWeight="SemiBold" />
+                        </Border>
+                        <ItemsControl ItemsSource="{Binding Sections}" Margin="0,8,0,0" />
+                    </StackPanel>
+                </ScrollViewer>
+            </v:OutlineSplitPanel>
+        </Grid>
 
         <!-- 案内（未接続／未導入・IsNotice） -->
         <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="10,8"

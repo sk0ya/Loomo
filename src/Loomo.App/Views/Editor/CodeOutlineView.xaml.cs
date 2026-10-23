@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
-using System.Windows.Media;
 using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.App.ViewModels;
 
@@ -64,26 +63,6 @@ public partial class CodeOutlineView : UserControl
     internal void ShowNotice(LspNoticeModel.Notice notice)
         => _vm.ShowNotice(notice);
 
-    /// <summary>
-    /// TreeView 内部の ScrollViewer（スクロールバー Disabled でもホイールは握って Handled にする）が
-    /// 外側 ScrollViewer へホイールを渡さず、ツリー上でマウススクロールが効かない問題への対処。
-    /// 未処理のホイールを親へ再送し、外側 ScrollViewer に届ける。
-    /// </summary>
-    private void Tree_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
-    {
-        if (e.Handled || sender is not DependencyObject d)
-            return;
-
-        e.Handled = true;
-        var forwarded = new MouseWheelEventArgs(e.MouseDevice, e.Timestamp, e.Delta)
-        {
-            RoutedEvent = MouseWheelEvent,
-            Source = sender,
-        };
-        if (VisualTreeHelper.GetParent(d) is UIElement parent)
-            parent.RaiseEvent(forwarded);
-    }
-
     private void OutlineRow_Click(object sender, MouseButtonEventArgs e)
     {
         // Range.Start ではなく SelectionRange.Start を使い、doc コメント／属性の先頭や宣言行の左端ではなく
@@ -94,7 +73,7 @@ public partial class CodeOutlineView : UserControl
 
     /// <summary>
     /// マウスで直接クリックした項目は既に表示範囲内にあるため、選択時に WPF が発行する
-    /// <see cref="FrameworkElement.RequestBringIntoView"/> を止める。これを外側の ScrollViewer が
+    /// <see cref="FrameworkElement.RequestBringIntoView"/> を止める。これをツリーの ScrollViewer が
     /// 処理すると、深いノードを全幅表示しようとして EditorSupport が不要に右へスクロールする。
     /// キーボード操作等の表示要求はそのまま通す。
     /// </summary>

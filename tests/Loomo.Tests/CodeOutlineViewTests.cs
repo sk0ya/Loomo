@@ -202,6 +202,99 @@ public class CodeOutlineViewTests
         });
     }
 
+    [Theory]
+    [InlineData(600, 100, 200, 100, 200)]   // 収まる：望みどおり詰めて並べる
+    [InlineData(600, 5000, 100, 500, 100)]  // ツリーが長い：②は望みどおり、ツリーが残り全部
+    [InlineData(600, 100, 5000, 100, 500)]  // ②が長い：ツリーは望みどおり、②が残り全部
+    [InlineData(600, 5000, 5000, 360, 240)] // 両方長い：②に 4 割を残す
+    public void 割り付けは収まらないときだけ高さを分ける(
+        double available, double top, double bottom, double expectedTop, double expectedBottom)
+    {
+        Assert.Equal((expectedTop, expectedBottom), OutlineSplitPanel.Split(available, top, bottom));
+    }
+
+    [Fact]
+    public void 大きいアウトラインは見えている行しか作らない()
+    {
+        RunSta(() =>
+        {
+            var view = new CodeOutlineView();
+            var window = new Window { Width = 360, Height = 640, Content = view, ShowInTaskbar = false };
+            try
+            {
+                view.ShowOutline(LargeOutline(), currentLine1: 0, PanelsWithOneCaller());
+                window.Show();
+                Pump();
+
+                // 600 項目すべてではなく、640px に見えるぶん（＋前後の余白）だけがコンテナになる。
+                var realized = CountDescendants<TreeViewItem>(view);
+                Assert.InRange(realized, 1, 100);
+
+                // 外部の UI オートメーションのリスナーが居ると WPF はレイアウトのたびにこの木を丸ごと辿る。
+                // 仮想化していれば作られていない項目の配下は辿られない。
+                var peer = System.Windows.Automation.Peers.UIElementAutomationPeer.CreatePeerForElement(window);
+                Assert.InRange(CountPeers(peer), 1, 1500);
+            }
+            finally { window.Close(); }
+        });
+    }
+
+    [Fact]
+    public void ツリーが長くても呼び出しパネルは画面内に残る()
+    {
+        RunSta(() =>
+        {
+            var view = new CodeOutlineView();
+            var window = new Window { Width = 360, Height = 640, Content = view, ShowInTaskbar = false };
+            try
+            {
+                view.ShowOutline(LargeOutline(), currentLine1: 0, PanelsWithOneCaller());
+                window.Show();
+                Pump();
+
+                var blocks = new List<TextBlock>();
+                CollectDescendants(view, blocks);
+                var caller = Assert.Single(blocks, b => b.Text == "Foo.cs:42");
+                var bottom = caller.TranslatePoint(new Point(0, caller.ActualHeight), view).Y;
+                Assert.True(caller.IsVisible);
+                Assert.InRange(bottom, 0, view.ActualHeight);
+            }
+            finally { window.Close(); }
+        });
+    }
+
+    private static OutlineNode[] LargeOutline()
+    {
+        var classes = new OutlineNode[6];
+        for (var c = 0; c < classes.Length; c++)
+        {
+            var members = new OutlineNode[100];
+            for (var m = 0; m < members.Length; m++)
+            {
+                var line = c * 1000 + m * 10 + 1;
+                members[m] = new OutlineNode($"Member{c}_{m}", SymbolKind.Method, line, line + 5, line, 4,
+                    Array.Empty<OutlineNode>());
+            }
+            classes[c] = new OutlineNode($"Class{c}", SymbolKind.Class, c * 1000, c * 1000 + 999, c * 1000, 6, members);
+        }
+        return classes;
+    }
+
+    private static CallPanels PanelsWithOneCaller()
+        => new(
+            new[] { new CallReference("Caller", "file:///C:/work/Foo.cs", 41) },
+            Array.Empty<CallReference>(),
+            Array.Empty<CallReference>(),
+            "Member0_0");
+
+    private static int CountPeers(System.Windows.Automation.Peers.AutomationPeer peer)
+    {
+        var count = 1;
+        foreach (var child in peer.GetChildren() ?? new List<System.Windows.Automation.Peers.AutomationPeer>())
+            count += CountPeers(child);
+        return count;
+    }
+
     private static string AllTextBlockText(DependencyObject root)
     {
         var blocks = new List<TextBlock>();

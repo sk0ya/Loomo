@@ -86,6 +86,9 @@
     <!-- 1.0.104: VimEditorControlOptions.WatchFileOnDisk（既定 true）。false ならエディタはファイルを見張らない——
          Loomo がタブのファイルを見張り、未保存の競合はモーダルでなくバーで尋ねる。VimEditorControl.ReloadFromDisk は
          外で変わったファイルを1回の取り消せる編集として読み直す（:e! と違い履歴・カーソルが残る）。§24.57 が使う。 -->
+    <!-- 1.0.106: Vim の移動・挿入の打鍵あたりの費用（§31.20）。字句分けを行状態の契約 ILineStateSyntaxLanguage で
+         変わった行からだけやり直し、キャンバスは下層／常駐する行のビジュアル／上層の3層で本文の絵を作り置く。
+         ScrollChanged（＝ViewportScrolled）は実際にスクロールしたときだけ。Loomo の CSharpSyntaxLanguage も同じ契約。 -->
     <ProjectReference Include="..\..\..\Editor\src\Editor.Controls.Defaults\Editor.Controls.Defaults.csproj"
                       Condition="'$(UseLocalEditor)' != 'false'" />
     <!-- Defaults はパッケージ化時に Core/Controls を同梱する構成で、プロジェクト参照では

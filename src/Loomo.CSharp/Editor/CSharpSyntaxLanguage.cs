@@ -2,8 +2,11 @@ using Editor.Core.Syntax;
 
 namespace sk0ya.Loomo.CSharp.Editor;
 
-/// <summary>LoomoのC#向けsyntax language。C#固有の字句判定をEditor本体から差し替え可能にする。</summary>
-public sealed class CSharpSyntaxLanguage : ISyntaxLanguage
+/// <summary>LoomoのC#向けsyntax language。C#固有の字句判定をEditor本体から差し替え可能にする。
+/// <para>1行を「その行」と「前の行から持ち越す状態」だけで分ける（<see cref="ILineStateSyntaxLanguage"/>）。
+/// エディタは編集のたびに変わった行から先だけを分け直す——全体を分けていた頃は 7500 行の .cs で
+/// 1打鍵 30ms 近くをこれに使っていた。</para></summary>
+public sealed class CSharpSyntaxLanguage : ILineStateSyntaxLanguage
 {
     private static readonly HashSet<string> Keywords = new(StringComparer.Ordinal)
     {
@@ -29,19 +32,20 @@ public sealed class CSharpSyntaxLanguage : ISyntaxLanguage
     public string? BlockCommentPrefix => "/*";
     public string? BlockCommentSuffix => "*/";
 
-    public LineTokens[] Tokenize(string[] lines)
+    /// <summary>行をまたいで持ち越す状態。値で比べられる（差分の分け直しは、これが前回と一致した行で止まる）。</summary>
+    private readonly record struct LineState(bool BlockComment, StringState StringState, int AttributeDepth);
+
+    public object InitialState { get; } = new LineState(false, StringState.None, 0);
+
+    public LineTokens[] Tokenize(string[] lines) => LineStateTokenizer.TokenizeAll(this, lines);
+
+    public SyntaxToken[] TokenizeLine(string line, ref object state)
     {
-        var result = new LineTokens[lines.Length];
-        var blockComment = false;
-        var stringState = StringState.None;
-        var attributeDepth = 0;
-        for (var lineIndex = 0; lineIndex < lines.Length; lineIndex++)
-        {
-            var tokens = new List<SyntaxToken>();
-            TokenizeLine(lines[lineIndex], tokens, ref blockComment, ref stringState, ref attributeDepth);
-            result[lineIndex] = new LineTokens(lineIndex, [.. tokens]);
-        }
-        return result;
+        var (blockComment, stringState, attributeDepth) = (LineState)state;
+        var tokens = new List<SyntaxToken>();
+        TokenizeLine(line, tokens, ref blockComment, ref stringState, ref attributeDepth);
+        LineStateTokenizer.Advance(ref state, new LineState(blockComment, stringState, attributeDepth));
+        return [.. tokens];
     }
 
     private static void TokenizeLine(string line, List<SyntaxToken> tokens,

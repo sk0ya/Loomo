@@ -355,6 +355,10 @@ is **"build the plan on the thread that can read the state, run it on a writer t
 `PreparedFileLoad.Prepare` off-thread before `LoadEditorFileAsync` installs it. Read-after-write is **not** given up:
 `Save`, `Load`, `DeleteWorkspace` and the trail's reads flush first, and the workspace switch / window close still
 write synchronously. Don't add a disk write or a full-buffer copy (`VimEditorControl.Text`) to a per-keystroke path.
+A syntax language Loomo registers into the editor (`Loomo.CSharp`'s `CSharpSyntaxLanguage` replaces the built-in C#)
+must implement Editor's `ILineStateSyntaxLanguage` (tokenize one line from the state carried in from the line above):
+a plain `ISyntaxLanguage` makes the editor re-tokenize the whole file on every keystroke — that was 32ms/key on a
+7500-line `.cs` (§31.20).
 
 `%APPDATA%/Loomo/` holds `settings.json` (provider/model/`modelPath`/MaxTokens + Safety; legacy
 legacy `baseUrl`/`numGpu`/`thinking`/`thinkingEffort`/`SystemPrompt` fields are ignored), `models/` (downloaded
