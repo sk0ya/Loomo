@@ -10,6 +10,7 @@ using System.Windows.Media;
 using System.Windows.Threading;
 using sk0ya.Loomo.App.Services.Infrastructure;
 using sk0ya.Loomo.App.ViewModels;
+using sk0ya.Loomo.Core.Files;
 
 namespace sk0ya.Loomo.App.Views;
 
@@ -70,7 +71,7 @@ public partial class FolderTreeView : UserControl
         var dlg = new Microsoft.Win32.OpenFolderDialog { Title = "ワークスペースに追加するフォルダーを選択" };
         if (dlg.ShowDialog(OwnerWindow) == true && !vm.AddFolderToWorkspace(dlg.FolderName))
             Services.ToastService.Info(
-                $"「{Path.GetFileName(dlg.FolderName.TrimEnd('\\', '/'))}」は追加しませんでした（既にワークスペースに含まれるフォルダーです）。");
+                $"「{WorkspacePaths.FolderName(dlg.FolderName)}」は追加しませんでした（既にワークスペースに含まれるフォルダーです）。");
     }
 
     private void OnTreeMouseDoubleClick(object sender, MouseButtonEventArgs e)

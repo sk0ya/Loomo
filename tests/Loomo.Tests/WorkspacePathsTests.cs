@@ -82,6 +82,20 @@ public sealed class WorkspacePathsTests
     [Fact]
     public void ワークスペース外は絶対パスのまま()
         => Assert.Equal(@"E:\elsewhere\x.cs", WorkspacePaths.ToDisplayPath(Both, @"E:\elsewhere\x.cs"));
+
+    /// <summary>フォルダーの見出し名は末尾の区切りの有無に左右されず、名前の無いルートは空にせずパスで出す。</summary>
+    [Theory]
+    [InlineData(@"C:\work\app", "app")]
+    [InlineData(@"C:\work\app\", "app")]
+    [InlineData(@"C:\work\app/", "app")]
+    [InlineData(@"C:\", @"C:\")]
+    public void フォルダーの見出し名(string folder, string expected)
+        => Assert.Equal(expected, WorkspacePaths.FolderName(folder));
+
+    /// <summary>ルートがワークスペースのフォルダーでも、前置が区切りを二重にしない。</summary>
+    [Fact]
+    public void ルートのフォルダーも前置できる()
+        => Assert.Equal("D:/x.cs", WorkspacePaths.ToDisplayPath([Primary, @"D:\"], @"D:\x.cs"));
 }
 
 /// <summary>

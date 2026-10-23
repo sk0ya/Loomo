@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using System.Collections.Concurrent;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using sk0ya.Loomo.Core.Files;
 
 namespace sk0ya.Loomo.Services.ClaudeCode;
 
@@ -164,7 +165,7 @@ public sealed class ClaudeIdeTools(IClaudeIdeHost host, Func<IReadOnlyList<strin
         foreach (var folder in folders)
             array.Add(new JsonObject
             {
-                ["name"] = Path.GetFileName(folder.TrimEnd('\\', '/')),
+                ["name"] = WorkspacePaths.FolderName(folder),
                 ["uri"] = ToFileUri(folder),
                 ["path"] = folder,
             });

@@ -1,4 +1,4 @@
-using System.IO;
+using sk0ya.Loomo.Core.Files;
 
 namespace sk0ya.Loomo.App.Services;
 
@@ -27,7 +27,7 @@ internal static class OtherRoomOpen
     public static string Label(RelayInstance instance)
         => instance.Folders.Count == 0
             ? $"（フォルダーなし）· PID {instance.ProcessId}"
-            : string.Join("、", instance.Folders.Select(FolderName));
+            : string.Join("、", instance.Folders.Select(WorkspacePaths.FolderName));
 
     /// <summary>並べる部屋それぞれの見出し。名前がかぶる部屋（同じフォルダー・同名の別フォルダー）だけ
     /// プロセス番号を添えて見分けられるようにする。</summary>
@@ -44,11 +44,4 @@ internal static class OtherRoomOpen
     /// <summary>並び順：直近に前面へ来た部屋から。</summary>
     public static IReadOnlyList<RelayInstance> Order(IEnumerable<RelayInstance> instances)
         => instances.OrderByDescending(i => i.LastActiveUtc).ToList();
-
-    private static string FolderName(string folder)
-    {
-        var trimmed = Path.TrimEndingDirectorySeparator(folder);
-        var name = Path.GetFileName(trimmed);
-        return string.IsNullOrEmpty(name) ? folder : name;   // C:\ のようなルートはそのまま
-    }
 }

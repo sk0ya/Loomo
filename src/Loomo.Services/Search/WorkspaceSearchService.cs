@@ -425,11 +425,7 @@ public sealed class WorkspaceSearchService : IWorkspaceSearchService
         }
     }
 
-    private static string FolderPrefix(string folder)
-    {
-        var name = Path.GetFileName(folder.TrimEnd('\\', '/'));
-        return string.IsNullOrEmpty(name) ? folder : name;
-    }
+    private static string FolderPrefix(string folder) => WorkspacePaths.FolderName(folder);
 
     private static string WithPrefix(string relativePath, string? prefix)
         => prefix is null ? relativePath : prefix + "/" + relativePath;

@@ -9,6 +9,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using sk0ya.Loomo.CSharp.Debug;
 using sk0ya.Loomo.Core.Abstractions;
 using sk0ya.Loomo.Core.Debug;
+using sk0ya.Loomo.Core.Files;
 
 namespace sk0ya.Loomo.App.ViewModels;
 
@@ -344,7 +345,7 @@ public sealed partial class DebugProfilesViewModel : ObservableObject, IDisposab
                 continue;
             }
 
-            var folderName = Path.GetFileName(folder.TrimEnd('\\', '/'));
+            var folderName = WorkspacePaths.FolderName(folder);
             foreach (var p in entries)
                 AvailableProjects.Add(p with { RelativePath = folderName + "/" + p.RelativePath });
         }

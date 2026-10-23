@@ -70,11 +70,21 @@ public static class WorkspacePaths
         if (relative == ".") relative = "";
 
         if (folders!.Count > 1)
-        {
-            var name = Path.GetFileName(Path.TrimEndingDirectorySeparator(Path.GetFullPath(folder)));
-            relative = relative.Length == 0 ? name : $"{name}{Path.DirectorySeparatorChar}{relative}";
-        }
+            relative = Path.Join(FolderName(Normalize(folder)), relative);
         return relative.Replace(Path.DirectorySeparatorChar, '/');
+    }
+
+    /// <summary>
+    /// フォルダーの<b>見出し名</b>（末尾の区切りを無視した最後の要素）。<c>C:\</c> のような名前の無いルートは
+    /// パスそのものを返す——空の見出しで出所が消えないように。
+    /// <para>マルチルートの前置・検索の絞り込み・他の部屋の名前など、ワークスペースのフォルダーを名前で
+    /// 見せる所はすべてこれを通す。各所で書くとルートの扱い（空になる／<c>C:</c> になる）がばらつく。</para>
+    /// </summary>
+    public static string FolderName(string folder)
+    {
+        var trimmed = Path.TrimEndingDirectorySeparator(folder);
+        var name = Path.GetFileName(trimmed);
+        return name.Length > 0 ? name : trimmed;
     }
 
     /// <summary>パスの<b>等値比較用</b>の正規化（絶対化＋末尾区切りの除去）。解決できないパスは

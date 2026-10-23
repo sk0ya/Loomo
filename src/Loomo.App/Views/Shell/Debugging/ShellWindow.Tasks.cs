@@ -1,4 +1,5 @@
 using sk0ya.Loomo.Core.Tasks;
+using sk0ya.Loomo.Core.Files;
 
 namespace sk0ya.Loomo.App.Views;
 
@@ -63,7 +64,7 @@ public partial class ShellWindow
     private PaletteCommand TaskPaletteItem(WorkspaceTask task, IReadOnlyList<WorkspaceTask> all)
     {
         var multiRoot = _workspace.Folders.Count > 1;
-        var title = multiRoot ? $"{task.Label}（{Path.GetFileName(task.WorkspaceFolder.TrimEnd('\\', '/'))}）" : task.Label;
+        var title = multiRoot ? $"{task.Label}（{WorkspacePaths.FolderName(task.WorkspaceFolder)}）" : task.Label;
         return new PaletteCommand(TaskCategory, title, () => _ = RunWorkspaceTaskAsync(task, all))
         {
             Badge = task.IsDefaultBuild ? "既定ビルド"

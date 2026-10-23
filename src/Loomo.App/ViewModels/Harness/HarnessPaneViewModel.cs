@@ -13,6 +13,7 @@ using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.Core.Abstractions;
 using sk0ya.Loomo.Core.Harness;
 using sk0ya.Loomo.Services;
+using sk0ya.Loomo.Core.Files;
 
 namespace sk0ya.Loomo.App.ViewModels;
 
@@ -690,7 +691,7 @@ public sealed partial class HarnessPaneViewModel : ObservableObject
                 .ToList();
             // 版の無い Run（最初のハーネスのコミットより前・git 外）は「別の版」として数えない。
             var versionCount = runs.Select(r => snapshot.VersionOf(r)?.Commit).OfType<string>().Distinct(StringComparer.Ordinal).Count();
-            var label = folders.Count > 1 ? Path.GetFileName(Path.TrimEndingDirectorySeparator(folder)) : null;
+            var label = folders.Count > 1 ? WorkspacePaths.FolderName(folder) : null;
             foreach (var item in HarnessStructureCheck.Inspect(folder, runs, snapshot.Candidates, versionCount))
                 CheckRows.Add(new HarnessCheckRow(item, folder, label));
         }

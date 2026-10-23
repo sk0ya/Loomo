@@ -1,4 +1,5 @@
 using sk0ya.Loomo.Services.Lsp;
+using sk0ya.Loomo.Core.Files;
 
 namespace sk0ya.Loomo.App.Services;
 
@@ -107,7 +108,7 @@ internal static class RunningEntries
             if (server.State is LspServerRuntimeState.Stopped or LspServerRuntimeState.Unconfigured)
                 continue;
             var name = Path.GetFileNameWithoutExtension(server.Executable);
-            var folder = Path.GetFileName(Path.TrimEndingDirectorySeparator(server.Root));
+            var folder = WorkspacePaths.FolderName(server.Root);
             entries.Add(new RunningEntry(
                 $"lsp:{server.Executable}|{server.Root}", RunningEntryKind.LanguageServer,
                 name, $"{folder} · {StateLabel(server)}",

@@ -97,8 +97,7 @@ public static class TerminalTabSummary
             : "";
         if (display.Length > 0)
             return display;
-        var name = Path.GetFileName(Path.TrimEndingDirectorySeparator(cwd));
-        return name.Length > 0 ? name : cwd;
+        return WorkspacePaths.FolderName(cwd);
     }
 
     /// <summary>1 行に畳み、長ければ切る（複数行のコマンドは ⏎ で繋ぐ——§24.20 と同じ見せ方）。</summary>
