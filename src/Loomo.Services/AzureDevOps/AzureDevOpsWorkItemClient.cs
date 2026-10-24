@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
@@ -66,6 +67,7 @@ public sealed class AzureDevOpsWorkItemClient
     private const int BatchLimit = 200;
 
     private readonly HttpClient _http;
+    private readonly ConcurrentDictionary<(string OrganizationUrl, string Pat), string> _currentUserIds = new();
 
     public AzureDevOpsWorkItemClient(HttpClient? http = null)
     {
@@ -188,12 +190,30 @@ public sealed class AzureDevOpsWorkItemClient
         return ParsePullRequests(doc.RootElement, organizationUrl, target);
     }
 
+    /// <summary>
+    /// 自分のユーザー ID（<c>connectionData</c>）。<b>TaskAzure と同じく一度取ったら覚えて使い回す</b>——
+    /// TaskAzure は Configure（組織 URL・PAT の設定し直し）まで <c>_currentUserId</c> を持つ。この client は組織 URL と PAT を
+    /// 呼ぶたびに受け取るので、その組を鍵にする（どちらかが変われば取り直す＝TaskAzure の Configure に当たる）。
+    /// PAT が受け付けられなかったらその PAT の分は捨てる（<see cref="SendAsync"/>）——覚えたままだと、
+    /// 接続の確かめ（PAT の候補を順に試す）が覚えた値で素通りし、期限切れの PAT から次の候補へ移れない。
+    /// </summary>
     public async Task<string> GetCurrentUserIdAsync(
         string organizationUrl, AuthenticationHeaderValue auth, CancellationToken cancellationToken)
     {
+        var key = (organizationUrl, auth.Parameter ?? "");
+        if (_currentUserIds.TryGetValue(key, out var cached)) return cached;
         using var doc = await SendAsync(HttpMethod.Get, $"{organizationUrl}/_apis/connectionData",
             null, auth, cancellationToken).ConfigureAwait(false);
-        return doc.RootElement.GetProperty("authenticatedUser").GetProperty("id").GetString() ?? "";
+        var id = doc.RootElement.GetProperty("authenticatedUser").GetProperty("id").GetString() ?? "";
+        _currentUserIds[key] = id;
+        return id;
+    }
+
+    private void ForgetCurrentUserIds(AuthenticationHeaderValue auth)
+    {
+        foreach (var key in _currentUserIds.Keys)
+            if (key.Pat == (auth.Parameter ?? ""))
+                _currentUserIds.TryRemove(key, out _);
     }
 
     internal static IReadOnlyList<AzureDevOpsPullRequest> ParsePullRequests(
@@ -294,11 +314,19 @@ public sealed class AzureDevOpsWorkItemClient
         using var request = CreateRequest(method, url, body, auth);
         using var response = await _http.SendAsync(request, cancellationToken).ConfigureAwait(false);
         var text = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-        if (!response.IsSuccessStatusCode)
-            throw new AzureDevOpsException(
-                $"Azure DevOps が HTTP {(int)response.StatusCode} {response.ReasonPhrase} を返しました: {Shorten(text)}",
-                response.StatusCode is HttpStatusCode.Unauthorized);
-        return ParseJson(response, text, url);
+        try
+        {
+            if (!response.IsSuccessStatusCode)
+                throw new AzureDevOpsException(
+                    $"Azure DevOps が HTTP {(int)response.StatusCode} {response.ReasonPhrase} を返しました: {Shorten(text)}",
+                    response.StatusCode is HttpStatusCode.Unauthorized);
+            return ParseJson(response, text, url);
+        }
+        catch (AzureDevOpsException ex) when (ex.IsAuthentication)
+        {
+            ForgetCurrentUserIds(auth);
+            throw;
+        }
     }
 
     /// <summary>

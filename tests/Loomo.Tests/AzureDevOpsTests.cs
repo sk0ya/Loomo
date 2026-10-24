@@ -233,4 +233,51 @@ public sealed class AzureDevOpsTests
             WorkItemListEntryKind.PullRequest => $"P{e.PullRequest!.Id}",
             _ => "S",
         }).ToArray();
+
+    [Fact]
+    public async Task 自分のユーザーIDはTaskAzureと同じく覚えて使い回す_組織かPATが変われば取り直す()
+    {
+        var handler = new ConnectionDataHandler();
+        var client = new AzureDevOpsWorkItemClient(new System.Net.Http.HttpClient(handler));
+        var pat = AzureDevOpsPatStore.CreateHeader("a");
+
+        Assert.Equal("me", await client.GetCurrentUserIdAsync("https://dev.azure.com/org", pat, default));
+        Assert.Equal("me", await client.GetCurrentUserIdAsync("https://dev.azure.com/org", pat, default));
+        Assert.Equal(1, handler.Calls);
+
+        await client.GetCurrentUserIdAsync("https://dev.azure.com/other", pat, default);
+        await client.GetCurrentUserIdAsync("https://dev.azure.com/org", AzureDevOpsPatStore.CreateHeader("b"), default);
+        Assert.Equal(3, handler.Calls);
+    }
+
+    [Fact]
+    public async Task PATが受け付けられなくなったら覚えたユーザーIDを捨てる_次の確かめで素通りさせない()
+    {
+        var handler = new ConnectionDataHandler();
+        var client = new AzureDevOpsWorkItemClient(new System.Net.Http.HttpClient(handler));
+        var pat = AzureDevOpsPatStore.CreateHeader("a");
+        await client.GetCurrentUserIdAsync("https://dev.azure.com/org", pat, default);
+
+        handler.Status = System.Net.HttpStatusCode.Unauthorized;
+        await Assert.ThrowsAsync<AzureDevOpsException>(() =>
+            client.GetMyWorkItemsAsync("https://dev.azure.com/org", "p", pat, default));
+        await Assert.ThrowsAsync<AzureDevOpsException>(() =>
+            client.GetCurrentUserIdAsync("https://dev.azure.com/org", pat, default));
+    }
+
+    private sealed class ConnectionDataHandler : System.Net.Http.HttpMessageHandler
+    {
+        public int Calls;
+        public System.Net.HttpStatusCode Status = System.Net.HttpStatusCode.OK;
+
+        protected override Task<System.Net.Http.HttpResponseMessage> SendAsync(
+            System.Net.Http.HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            if (request.RequestUri!.AbsolutePath.EndsWith("/connectionData")) Calls++;
+            return Task.FromResult(new System.Net.Http.HttpResponseMessage(Status)
+            {
+                Content = new System.Net.Http.StringContent("""{"authenticatedUser":{"id":"me"}}"""),
+            });
+        }
+    }
 }
