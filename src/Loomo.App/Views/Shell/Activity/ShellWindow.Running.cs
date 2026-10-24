@@ -55,14 +55,17 @@ public partial class ShellWindow {
             var id = tab.Id;
             var agent = agents.TryGetValue(id, out var state) ? state : (ClaudeAgentState?)null;
             var status = TerminalStatusOf(id);
-            if (agent is null && !status.IsRunning)
+            var programs = _paneActivity.ProgramsOf(id);
+            if (agent is null && !status.IsRunning && programs.Count == 0)
                 continue;
-            terminals.Add(new RunningTerminalSource(id, TerminalTabTitle(id) ?? "Terminal", status, agent));
+            terminals.Add(new RunningTerminalSource(id, TerminalTabTitle(id) ?? "Terminal", status, agent, programs));
             var view = tab.View;
             Action go = () => GoToTerminalTab(id);
             Action stop = () => view.SendTerminalInput("\u0003");
             _runningActions[$"terminal:{id}"] = (go, stop);
             _runningActions[$"claude:{id}"] = (go, stop);
+            foreach (var program in programs)
+                _runningActions[$"program:{id}:{program.Id}"] = (go, stop);
         }
 
         var sessions = new List<RunningDebugSource>();

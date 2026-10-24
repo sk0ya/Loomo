@@ -138,6 +138,9 @@
     <!-- 1.0.48: 画面の1マスを 184 → 40 バイトに詰める（書式の色を WPF の Color ではなく ARGB の uint で持つ）。
          スクロールバック 1 万行が埋まったターミナル1本が 224MB → 57MB。常駐ホストと本体が同じ画面を
          二重に持つので、Loomo では1本あたり約 450MB → 約 115MB（2026-10-24 公開） -->
+    <!-- 1.0.49: OSC 7501（Program Status Protocol）を受けて TerminalTabView.ProgramStatusChanged / ProgramStatus で出す。
+         問い合わせ OSC 7501;? に答える（Claude Code は返事のある端末にだけ送る）。次のプロンプト・終了で
+         working/blocked/idle を落とし、VT スナップショットで常駐セッションへ付け直したビューにも届く（§24.61） -->
     <!-- 版は Directory.Build.props の TerminalPackageVersion（常駐ホストと共有するため一か所） -->
     <PackageReference Include="sk0ya.Terminal.Controls" Version="$(TerminalPackageVersion)" />
   </ItemGroup>

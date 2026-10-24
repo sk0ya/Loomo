@@ -22,8 +22,11 @@ public sealed record RunningEntry(
     string Group,
     string? ToolTip = null);
 
-/// <summary>ターミナルタブ 1 つの材料。<paramref name="Agent"/> は Claude Code が居るタブだけ。</summary>
-internal sealed record RunningTerminalSource(Guid TabId, string TabTitle, TerminalTabStatus Status, ClaudeAgentState? Agent);
+/// <summary>ターミナルタブ 1 つの材料。<paramref name="Agent"/> は Claude Code が居るタブだけ。
+/// <paramref name="Programs"/> は Claude 以外のプログラムが OSC 7501 で申告している、いま動いているもの（§24.61）。</summary>
+internal sealed record RunningTerminalSource(
+    Guid TabId, string TabTitle, TerminalTabStatus Status, ClaudeAgentState? Agent,
+    IReadOnlyList<Terminal.Tabs.ProgramStatusRecord>? Programs = null);
 
 /// <summary>デバッグ・実行のセッション 1 つの材料（IDE／TS IDE）。</summary>
 internal sealed record RunningDebugSource(string Pane, Guid SessionId, string Name, bool IsBusy, bool IsStopped, string Status);
@@ -54,6 +57,19 @@ internal static class RunningEntries
 
         foreach (var t in terminals)
         {
+            // プログラムが自分で言う状態（OSC 7501・§24.61）：人を待っているものは「あなたの番」、作業中は「実行中」。
+            foreach (var program in t.Programs ?? [])
+            {
+                var waiting = program.State == Terminal.Tabs.ProgramStatusState.Blocked;
+                entries.Add(new RunningEntry(
+                    $"program:{t.TabId}:{program.Id}", RunningEntryKind.Terminal,
+                    ProgramStatusPresentation.Name(program),
+                    $"{ProgramStatusPresentation.Detail(program)} · {t.TabTitle}",
+                    t.Status.RunningSinceUtc,
+                    waiting ? RunningEntryTone.Attention : RunningEntryTone.Normal,
+                    CanStop: false, waiting ? AttentionGroup : RunningGroup,
+                    program.Message));
+            }
             if (t.Agent is { } agent)
             {
                 var attention = agent is ClaudeAgentState.NeedsApproval or ClaudeAgentState.TurnEnded;

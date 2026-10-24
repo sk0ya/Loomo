@@ -1,4 +1,11 @@
+using Terminal.Tabs;
+
 namespace sk0ya.Loomo.App.Services;
+
+/// <summary>OSC 7501 の申告を取り込んだ結果（§24.61）。<see cref="Claude"/> はタイトルの印と同じ後始末に回す。
+/// <see cref="HumanTurnStarted"/> は Claude 以外のプログラムが見ていない間に人を待ち始めた（袖に印・タスクバーの点滅）。</summary>
+internal readonly record struct ProgramStatusTransition(
+    ClaudeCodeTitleTransition Claude, bool HumanTurnStarted, bool ProgramsChanged);
 
 /// <summary>Terminal・IDE・AI の未確認活動状態と遷移を保持する。</summary>
 internal sealed class PaneActivityTracker
@@ -19,6 +26,10 @@ internal sealed class PaneActivityTracker
         public TerminalProgress Progress;
         /// <summary>見ていない間に鳴ったベル（§24.35）。</summary>
         public bool UnseenBell;
+        /// <summary>Claude Code が OSC 7501 で状態を申告している（§24.61）。その間はタイトルの印で状態を動かさない。</summary>
+        public bool AgentReportsStatus;
+        /// <summary>Claude 以外のプログラムの、いま動いている申告（§24.61）。</summary>
+        public IReadOnlyList<ProgramStatusRecord> Programs = [];
     }
 
     private sealed class IdeState
@@ -81,6 +92,7 @@ internal sealed class PaneActivityTracker
             state.AgentUnseenTurn = false;
             state.AgentApproval = false;
             state.AgentTitle = null;
+            state.AgentReportsStatus = false;
         }
         return true;
     }
@@ -101,6 +113,13 @@ internal sealed class PaneActivityTracker
         // （TerminalCommandChanged）。
         if (status is null && state.Running)
             return default;
+        // 申告（OSC 7501）がある間は、状態は申告から決める。タイトルからは題だけ拾う（§24.61）。
+        if (state.AgentReportsStatus)
+        {
+            if (status is not null)
+                state.AgentTitle = ClaudeCodeTitle.Subject(title);
+            return default;
+        }
         var next = PaneActivityPresentation.ClaudeTitleChanged(
             state.Agent, state.AgentUnseenTurn, status, paneWatched);
         state.Agent = next.Agent;
@@ -117,6 +136,63 @@ internal sealed class PaneActivityTracker
         }
         return next;
     }
+
+    /// <summary>
+    /// ターミナルの中のプログラムが OSC 7501 で状態を申告した（§24.61）。Claude Code の申告は承認待ち・作業中・入力待ちの
+    /// 正本にし（タイトルの印・フックより正確）、Claude 以外の申告は動いているもの面のために持つ。
+    /// 承認待ちは、フックと同じく見ているペインでは残さない（ダイアログが目の前にある）。
+    /// </summary>
+    public ProgramStatusTransition TerminalProgramStatusChanged(
+        Guid tabId, IReadOnlyList<ProgramStatusRecord> records, bool paneWatched)
+    {
+        var claude = ProgramStatusPresentation.Claude(records);
+        var others = ProgramStatusPresentation.Others(records);
+        if (!_terminals.TryGetValue(tabId, out var state))
+        {
+            if (claude is null && others.Count == 0)
+                return default;
+            _terminals[tabId] = state = new TerminalState();
+        }
+
+        var wasWaiting = state.Programs.Any(r => r.State == ProgramStatusState.Blocked);
+        var programsChanged = !ProgramStatusPresentation.SameShape(state.Programs, others);
+        state.Programs = others;
+        var humanTurnStarted = !paneWatched && !wasWaiting && others.Any(r => r.State == ProgramStatusState.Blocked);
+
+        ClaudeCodeTitleTransition transition = default;
+        if (claude is { } c)
+        {
+            state.AgentReportsStatus = true;
+            var next = PaneActivityPresentation.ClaudeTitleChanged(state.Agent, state.AgentUnseenTurn, c.Status, paneWatched);
+            state.Agent = next.Agent;
+            state.AgentUnseenTurn = next.AgentUnseenTurn;
+            if (next.ShouldRefresh)
+                state.AgentStamp = ++_agentClock;   // 同じ申告の繰り返しでは並びを動かさない
+            if (c.Title is { } subject)
+                state.AgentTitle = subject;
+            var refresh = next.ShouldRefresh;
+            if (c.Blocked && !paneWatched && !state.AgentApproval)
+                (state.AgentApproval, refresh) = (true, true);
+            else if (!c.Blocked && state.AgentApproval)
+                (state.AgentApproval, refresh) = (false, true);   // 申告は正確なので、待ちが解けたら印も解く
+            transition = next with { ShouldRefresh = refresh };
+        }
+        else if (state.AgentReportsStatus)
+        {
+            // 申告が消えた（clear・次のプロンプト・プロセスの終了）＝ Claude は居なくなった。
+            state.AgentReportsStatus = false;
+            state.Agent = null;
+            state.AgentUnseenTurn = false;
+            state.AgentApproval = false;
+            state.AgentTitle = null;
+            transition = new ClaudeCodeTitleTransition(null, false, true, false);
+        }
+        return new ProgramStatusTransition(transition, humanTurnStarted, programsChanged);
+    }
+
+    /// <summary>そのタブの、Claude 以外のプログラムのいま動いている申告（§24.61）。</summary>
+    public IReadOnlyList<ProgramStatusRecord> ProgramsOf(Guid tabId)
+        => _terminals.TryGetValue(tabId, out var state) ? state.Programs : [];
 
     /// <summary>Claude Code のフックが「承認を待っている」と知らせてきた（§24.1.1）。見ているなら残さない。
     /// 状態が変わったら true。</summary>

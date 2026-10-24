@@ -58,6 +58,8 @@ public partial class ShellWindow {
         // コマンドが出す進捗（OSC 9;4）とベル（BEL）も袖へ（§24.35）。
         tab.View.TaskbarProgressChanged += (_, e) => OnTerminalProgressChanged(tab.Id, e);
         tab.View.BellRang += (_, _) => OnTerminalBellRang(tab.Id);
+        // プログラムが自分で言う状態（OSC 7501）。Claude Code は承認待ち・作業中・入力待ちを申告する（§24.61）。
+        tab.View.ProgramStatusChanged += (_, e) => OnTerminalProgramStatusChanged(tab.Id, e.Records);
         // コマンドが出す通知（OSC 9・OSC 777）はタブの中の 5 秒のトーストではなく、部屋の通知欄へ（§24.49）。
         tab.View.NotificationReceived += (_, e) => OnTerminalNotification(tab.Id, e);
     }
@@ -112,8 +114,21 @@ public partial class ShellWindow {
     }
     /// <summary>タイトルの印から Claude Code の作業中／入力待ちを拾う（§24.1.1）。ターンが終わったとき
     /// Loomo が裏に回っていれば、タスクバーを点滅させて呼び戻す（前面に出たら止まる）。</summary>
-    private void OnTerminalTitleChanged(Guid tabId, string title) {
-        var transition = _paneActivity.TerminalTitleChanged(tabId, title, IsTerminalPaneWatched());
+    private void OnTerminalTitleChanged(Guid tabId, string title)
+        => ApplyClaudeTransition(tabId, _paneActivity.TerminalTitleChanged(tabId, title, IsTerminalPaneWatched()));
+
+    /// <summary>プログラムが OSC 7501 で状態を申告した（§24.61）。Claude Code の申告はタイトルの印と同じ後始末へ。
+    /// Claude 以外のプログラムが見ていない間に人を待ち始めたら、ベルと同じく袖に印を残し、Loomo が裏ならタスクバーを点滅させる。</summary>
+    private void OnTerminalProgramStatusChanged(Guid tabId, IReadOnlyList<ProgramStatusRecord> records) {
+        var transition = _paneActivity.TerminalProgramStatusChanged(tabId, records, IsTerminalPaneWatched());
+        if (transition.ProgramsChanged)
+            RequestRunningRefresh();
+        if (transition.HumanTurnStarted)
+            OnTerminalBellRang(tabId);
+        ApplyClaudeTransition(tabId, transition.Claude);
+    }
+
+    private void ApplyClaudeTransition(Guid tabId, ClaudeCodeTitleTransition transition) {
         if (transition.ShouldRefresh)
             UpdatePaneActivityBadge(PaneKind.Terminal);
         if (!transition.TurnEnded)
