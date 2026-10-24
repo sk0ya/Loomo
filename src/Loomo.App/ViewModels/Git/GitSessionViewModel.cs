@@ -188,13 +188,13 @@ public sealed partial class GitSessionViewModel : ObservableObject
     /// 実際に見せる種類。<b>選択そのものは書き換えない</b>——サブモジュールを見ている最中に
     /// ワークスペースを切り替えて（サブモジュールの無いリポジトリになって）も、戻ってきたら
     /// 元の種類に戻ってほしい。消えたタブを選んだままにしておくと空の一覧が居座るので、
-    /// 表示だけタグへ落とす。
+    /// 表示だけ既定（ワークツリー）へ落とす。
     /// </summary>
     public GitReferenceTab EffectiveReferenceTab => Resolve(ReferenceTab, HasSubmodules);
 
     /// <summary>表示する種類を決める（純ロジック）。</summary>
     public static GitReferenceTab Resolve(GitReferenceTab desired, bool hasSubmodules) =>
-        desired is GitReferenceTab.Submodules && !hasSubmodules ? GitReferenceTab.Tags : desired;
+        desired is GitReferenceTab.Submodules && !hasSubmodules ? GitReferenceTab.Worktrees : desired;
 
     /// <summary>ブランチ一覧のツリー（ローカル／リモートの見出し、その中を "/" でフォルダ化）。</summary>
     [ObservableProperty] private IReadOnlyList<BranchTreeNode> _branchTree = Array.Empty<BranchTreeNode>();
@@ -287,7 +287,7 @@ public sealed partial class GitSessionViewModel : ObservableObject
         // 定義の無い値を返すため——どのタブにも一致せず、左列の下段が空白のまま操作不能になる。
         _referenceTab = Enum.TryParse<GitReferenceTab>(settings?.GitReferenceTab, out var tab)
             && Enum.IsDefined(tab)
-            ? tab : GitReferenceTab.Tags;
+            ? tab : GitReferenceTab.Worktrees;
         _mode = Enum.TryParse<GitSessionMode>(settings?.GitSessionMode, out var mode) && Enum.IsDefined(mode)
             ? mode : GitSessionMode.History;
         Reflog = new GitReflogViewModel(git);

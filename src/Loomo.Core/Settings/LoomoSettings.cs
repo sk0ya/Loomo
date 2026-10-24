@@ -68,11 +68,11 @@ public sealed class LoomoSettings
     /// 既定は表示。コミット一覧の見出し「コミット」の左の開閉ボタンからここへ書き戻され、次回起動でも保たれる。</summary>
     public bool GitBranchColumnVisible { get; set; } = true;
 
-    /// <summary>Git ペイン左列の下段で選んでいる参照の種類（"Tags" / "Remotes" / "Submodules"）。
-    /// 3つを縦に積むとブランチ一覧が潰れるので切替式にしてあり、その選択を次回起動へ持ち越す。
+    /// <summary>Git ペイン左列の下段で選んでいる参照の種類（"Worktrees" / "Tags" / "Submodules"）。
+    /// 縦に積むとブランチ一覧が潰れるので切替式にしてあり、その選択を次回起動へ持ち越す。
     /// 文字列で持つのは、列挙が増減しても古い settings.json が読めなくならないようにするため
-    /// （読めない値は既定＝タグに落とす）。</summary>
-    public string GitReferenceTab { get; set; } = "Tags";
+    /// （読めない値は既定＝ワークツリーに落とす）。</summary>
+    public string GitReferenceTab { get; set; } = "Worktrees";
 
     /// <summary>Git ペインの本体に出している面（"History"＝コミット履歴 / "Reflog"＝操作ログ）。
     /// ペインヘッダーの切替から書き戻され、次回起動でも同じ面で開く。文字列で持つ理由は

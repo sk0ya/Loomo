@@ -27,18 +27,18 @@ public sealed class GitReferenceTabTests
     }
 
     [Fact]
-    public void 既定はタグ()
+    public void 既定はワークツリー()
     {
-        Assert.Equal(GitReferenceTab.Tags, CreateVm().ReferenceTab);
+        Assert.Equal(GitReferenceTab.Worktrees, CreateVm().ReferenceTab);
     }
 
     [Fact]
     public void 保存された種類で初期化される()
     {
-        var vm = CreateVm(new LoomoSettings { GitReferenceTab = "Worktrees" });
+        var vm = CreateVm(new LoomoSettings { GitReferenceTab = "Tags" });
 
-        Assert.Equal(GitReferenceTab.Worktrees, vm.ReferenceTab);
-        Assert.Equal(GitReferenceTab.Worktrees, vm.EffectiveReferenceTab);
+        Assert.Equal(GitReferenceTab.Tags, vm.ReferenceTab);
+        Assert.Equal(GitReferenceTab.Tags, vm.EffectiveReferenceTab);
     }
 
     [Theory]
@@ -51,7 +51,7 @@ public sealed class GitReferenceTabTests
     public void 読めない値は既定へ落とす(string stored)
     {
         // ここで例外にすると、settings.json を1文字間違えただけで起動ごと落ちる。
-        Assert.Equal(GitReferenceTab.Tags, CreateVm(new LoomoSettings { GitReferenceTab = stored }).ReferenceTab);
+        Assert.Equal(GitReferenceTab.Worktrees, CreateVm(new LoomoSettings { GitReferenceTab = stored }).ReferenceTab);
     }
 
     [Fact]
@@ -78,14 +78,14 @@ public sealed class GitReferenceTabTests
     }
 
     [Fact]
-    public void サブモジュールが無いときは表示だけタグへ落として選択は覚えておく()
+    public void サブモジュールが無いときは表示だけ既定へ落として選択は覚えておく()
     {
         // 選択まで書き換えると、サブモジュールのあるワークスペースへ戻ったときに元へ戻らない。
         var vm = CreateVm(new LoomoSettings { GitReferenceTab = "Submodules" });
 
         Assert.Equal(GitReferenceTab.Submodules, vm.ReferenceTab);
         Assert.False(vm.HasSubmodules);
-        Assert.Equal(GitReferenceTab.Tags, vm.EffectiveReferenceTab);
+        Assert.Equal(GitReferenceTab.Worktrees, vm.EffectiveReferenceTab);
 
         vm.Submodules = new[]
         {
@@ -100,7 +100,7 @@ public sealed class GitReferenceTabTests
     [InlineData(GitReferenceTab.Tags, false, GitReferenceTab.Tags)]
     [InlineData(GitReferenceTab.Worktrees, true, GitReferenceTab.Worktrees)]
     [InlineData(GitReferenceTab.Worktrees, false, GitReferenceTab.Worktrees)]
-    [InlineData(GitReferenceTab.Submodules, false, GitReferenceTab.Tags)]
+    [InlineData(GitReferenceTab.Submodules, false, GitReferenceTab.Worktrees)]
     [InlineData(GitReferenceTab.Submodules, true, GitReferenceTab.Submodules)]
     public void 表示する種類の決め方(GitReferenceTab desired, bool hasSubmodules, GitReferenceTab expected)
     {

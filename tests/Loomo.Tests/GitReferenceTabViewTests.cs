@@ -27,16 +27,16 @@ public sealed class GitReferenceTabViewTests
         _host.Run(() =>
         {
             var view = CreateView(CreateVm());
-            var tags = FindTab(view, "Tags");
-            Assert.True(tags.IsChecked);   // 既定はタグ
+            var worktrees = FindTab(view, "Worktrees");
+            Assert.True(worktrees.IsChecked);   // 既定はワークツリー
 
             // 実物の押下と同じ順番・同じ書き方：ToggleButton.OnToggle は SetCurrentValue で反転して
             // から Click を飛ばす。ここを素の代入にするとバインディング自体が外れてしまい、
             // 結び直しで直るかどうかを確かめられない（＝実物より壊れた状況を試すことになる）。
-            tags.SetCurrentValue(ToggleButton.IsCheckedProperty, false);
-            tags.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            worktrees.SetCurrentValue(ToggleButton.IsCheckedProperty, false);
+            worktrees.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
 
-            Assert.True(tags.IsChecked);
+            Assert.True(worktrees.IsChecked);
         });
     }
 
@@ -50,12 +50,12 @@ public sealed class GitReferenceTabViewTests
             var tags = FindTab(view, "Tags");
             var worktrees = FindTab(view, "Worktrees");
 
-            worktrees.SetCurrentValue(ToggleButton.IsCheckedProperty, true);
-            worktrees.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            tags.SetCurrentValue(ToggleButton.IsCheckedProperty, true);
+            tags.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
 
-            Assert.Equal(GitReferenceTab.Worktrees, vm.ReferenceTab);
-            Assert.True(worktrees.IsChecked);
-            Assert.False(tags.IsChecked);
+            Assert.Equal(GitReferenceTab.Tags, vm.ReferenceTab);
+            Assert.True(tags.IsChecked);
+            Assert.False(worktrees.IsChecked);
         });
     }
 
