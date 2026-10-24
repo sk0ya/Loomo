@@ -110,6 +110,7 @@ public partial class ShellWindow {
             await _vm.Trail.SetWorkspaceAsync(workspace.Id.ToString());
             _vm.Trail.EnsureLoaded();
             _trailPaneCommit.Reset();   // ペイン切替のデデュープも新しいワークスペースで仕切り直す
+            _trailCaret?.Reset();
             profile?.Lap("trail");
             await SwitchWorkspaceCoreAsync(workspace, deferHydration, profile);
         } finally {

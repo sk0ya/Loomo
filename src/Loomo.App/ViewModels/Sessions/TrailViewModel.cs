@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
@@ -363,6 +363,10 @@ public sealed partial class TrailViewModel : ObservableObject
 
     public string? LatestFileTarget =>
         _recorder.LatestFileTarget;
+
+    /// <summary>最新地点がファイルか編集なら、その位置。</summary>
+    internal TrailFilePosition? LatestFilePosition =>
+        _recorder.LatestFilePosition;
 
     /// <summary>現在地を前後に動かし、移動後のエントリを返す。</summary>
     public TrailEntryViewModel? MoveCurrent(int delta)

@@ -1,4 +1,4 @@
-using System.Windows.Threading;
+﻿using System.Windows.Threading;
 using Editor.Controls;
 using sk0ya.Loomo.App.ViewModels;
 using sk0ya.Loomo.App.Views;
@@ -13,11 +13,13 @@ namespace sk0ya.Loomo.App.Services;
 /// <para>保存前処理（保存時の整形・C# の整理）が入れる変更は人の編集ではないので、
 /// <see cref="BeginSavePreparation"/>〜<see cref="EndSavePreparation"/> の間は数えない。</para>
 /// <para><paramref name="positionOf"/> はタブの「どのファイルのどこか」。既定はタブのファイルとキャレットで、
-/// 抜粋タブ（§35.3）なら元ファイルの位置に直したものを返す（仮想文書のままでは記録できない）。</para></summary>
+/// 抜粋タブ（§35.3）なら元ファイルの位置に直したものを返す（仮想文書のままでは記録できない）。</para>
+/// <para><paramref name="record"/> には編集の位置も渡す：軌跡の側はその位置を「これから立つ場所」として扱い、
+/// 同じ場所を File の点として二重に積まない（§27.3.3）。</para></summary>
 internal sealed class TrailEditCommitController(
     TrailViewModel trail,
     Func<bool> isSuppressed,
-    Action<Action<DisplayMode, PaneKind?, string?>> record,
+    Action<TrailFilePosition, Action<DisplayMode, PaneKind?, string?>> record,
     Func<EditorTab, TrailFilePosition?>? positionOf = null)
 {
     private TrailFilePosition? PositionOf(EditorTab tab)
@@ -74,7 +76,9 @@ internal sealed class TrailEditCommitController(
         _pendingTab = null;
     }
 
-    private void CommitPending()
+    /// <summary>待っている編集があれば今すぐ確定する。別の地点を積む直前に呼ぶ——後から確定させると、
+    /// 編集の点が移った先の点より後ろに並ぶ。</summary>
+    public void CommitPending()
     {
         _timer?.Stop();
         if (_pendingTab is not { } tab)
@@ -85,7 +89,7 @@ internal sealed class TrailEditCommitController(
 
         if (PositionOf(tab) is not { } position)
             return;
-        record((mode, stagePane, layout) =>
+        record(position, (mode, stagePane, layout) =>
             trail.RecordEdit(position.Path, position.Line, position.Column, mode, stagePane, layout));
     }
 }

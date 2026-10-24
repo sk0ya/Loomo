@@ -304,6 +304,11 @@ public partial class ShellWindow {
                 ScheduleEditorSupportUpdate();
             ScheduleStyleCopAnalysis(control);
         };
+        control.CaretMoved += (_, _) => {
+            // 同じファイルの中の遠い移動を軌跡へ（§27.3.3）。見ているタブのキャレットだけ数える。
+            if (ReferenceEquals(_activeEditorTab?.Control, control))
+                _trailCaret?.OnCaretMoved();
+        };
         control.LspDiagnosticsChanged += OnStyleCopLspDiagnosticsChanged;
         control.SaveRequested += (_, _) => {
             QueueEditorTabUpdate(tab);

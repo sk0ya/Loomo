@@ -29,6 +29,11 @@ public sealed class TrailRecordHandler
     public TrailEntryViewModel? Latest { get; private set; }
     public string? LatestFileTarget => Latest is { Kind: TrailEntryKind.File } entry ? entry.Target : null;
 
+    /// <summary>最新地点がファイルか編集なら、その位置（軌跡がいま「立っている」とみなす場所）。</summary>
+    internal TrailFilePosition? LatestFilePosition => Latest is { Kind: TrailEntryKind.File or TrailEntryKind.Edit } entry
+        ? new TrailFilePosition(entry.Target, entry.Line, entry.Column)
+        : null;
+
     public void SetWorkspace(string workspaceKey)
     {
         _workspaceKey = workspaceKey;
@@ -71,7 +76,8 @@ public sealed class TrailRecordHandler
         if (Latest is { } last && last.Kind == request.Kind
             && string.Equals(last.Target, request.Target, comparison)
             && last.Mode == request.DisplayMode && last.StagePane == request.StagePane
-            && (request.Kind is not TrailEntryKind.Edit || last.Line == request.Line))
+            // ファイルと編集は「近く（10 行未満）」だけ畳む：同じファイルでも遠くへ移ったら別の地点（§27.3.2）。
+            && (request.Kind is not (TrailEntryKind.File or TrailEntryKind.Edit) || TrailLogic.IsNearLine(last.Line, request.Line)))
         {
             last.Label = request.Label;
             last.Timestamp = now;

@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using Editor.Controls;
 using Microsoft.Data.Sqlite;
 using sk0ya.Loomo.App.Services;
@@ -139,7 +139,7 @@ public sealed class TrailEditCommitTests : IDisposable
     {
         var trail = new TrailViewModel(_store, () => new DateTime(2026, 10, 7, 9, 0, 0));
         var sut = new TrailEditCommitController(trail, () => false,
-            record => record(DisplayMode.Layout, null, null), positionOf);
+            (_, record) => record(DisplayMode.Layout, null, null), positionOf);
         return (trail, sut);
     }
 

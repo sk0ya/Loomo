@@ -14,6 +14,11 @@ public static class TrailLogic
 {
     private static readonly JsonSerializerOptions LayoutJson = new();
 
+    /// <summary>同じファイルの 2 つの行が「同じ場所」か。基準はエディタの戻る／進む（<see cref="EditorLocationHistory.JumpThresholdLines"/>）と
+    /// 揃える——軌跡と「戻る」で近さの物差しが違うと、戻れる場所が軌跡に残らない（§27.3.2）。行が分からない（-1）側は近いとみなす。</summary>
+    internal static bool IsNearLine(int a, int b)
+        => a < 0 || b < 0 || Math.Abs(a - b) < EditorLocationHistory.JumpThresholdLines;
+
     internal static string? SerializeLayout(PaneNodeSnapshot? snapshot)
         => snapshot is null ? null : JsonSerializer.Serialize(snapshot, LayoutJson);
 

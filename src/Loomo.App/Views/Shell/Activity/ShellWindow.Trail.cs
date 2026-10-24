@@ -6,6 +6,7 @@ public partial class ShellWindow {
     private bool _trailSuppressed;
     private TrailPaneCommitController _trailPaneCommit = null!;
     private TrailEditCommitController _trailEditCommit = null!;
+    private TrailCaretCommitController? _trailCaret;
     private TrailBarController _trailBar = null!;
     private bool _trailBrowsingPast {
         get => _trailBar.BrowsingPast;
@@ -15,7 +16,10 @@ public partial class ShellWindow {
     private void InitializeTrail() {
         RegisterTrailJumps();
         InitializeTrailBookmarks();
-        _trailEditCommit = new TrailEditCommitController(_vm.Trail, () => _trailSuppressed, RecordTrail, TrailFilePositionOf);
+        _trailEditCommit = new TrailEditCommitController(_vm.Trail, () => _trailSuppressed,
+            (position, record) => RecordTrail(position, record), TrailFilePositionOf);
+        _trailCaret = new TrailCaretCommitController(_vm.Trail, () => _trailSuppressed,
+            ActiveTrailFilePosition, TrailFilePositionOfOpenFile, CommitTrailCaret);
         _trailPaneCommit = new TrailPaneCommitController(
             () => _trailSuppressed,
             () => _stageActive,
@@ -43,15 +47,40 @@ public partial class ShellWindow {
         _ = Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(() => _vm.Trail.EnsureLoaded()));
     }
     private DispatcherTimer? _trailHourTicker;
-    private void RecordTrail(Action<DisplayMode, PaneKind?, string?> record) {
+    private void RecordTrail(Action<DisplayMode, PaneKind?, string?> record) => RecordTrail(null, record);
+
+    /// <param name="arriving">これから積む地点のファイル位置（分かるなら）。いま離れる場所がその近くなら、
+    /// 離れた場所を別の点にしない（§27.3.3）。</param>
+    private void RecordTrail(TrailFilePosition? arriving, Action<DisplayMode, PaneKind?, string?> record) {
         if (_trailSuppressed)
             return;
-        RefreshLatestTrailFilePosition();
+        // 待っている編集を先に確定する：後から確定すると、編集の点が移った先の点より後ろに並ぶ。
+        _trailEditCommit?.CommitPending();
         var mode = CurrentDisplayMode;
+        var stagePane = _stageActive ? _stagePane : (PaneKind?)null;
         var paneLayout = TrailLogic.SerializeLayout(_root is null ? null : ToSnapshot(_root));
+        if (_trailCaret?.TakeDeparture(arriving) is { } left) {
+            // 立っている場所から遠くで離れた：近くの点の行を書き換えず、離れた場所を別の点にする。
+            _vm.Trail.UpdateLatestPaneLayout(paneLayout);
+            _vm.Trail.RecordFile(left.Path, left.Line, left.Column, mode, stagePane, paneLayout);
+        }
+        else
+            RefreshLatestTrailFilePosition();
         _vm.Trail.UpdateLatestPaneLayout(paneLayout);
-        record(mode, _stageActive ? _stagePane : null, paneLayout);
+        record(mode, stagePane, paneLayout);
+        _trailCaret?.Recorded();
     }
+    /// <summary>同じファイルの遠くへ移ってとどまった（<see cref="TrailCaretCommitController"/>）。</summary>
+    private void CommitTrailCaret(TrailFilePosition here) {
+        // 待っていた編集がここで確定し、それが同じ場所を代表するなら File の点は要らない。
+        _trailEditCommit.CommitPending();
+        if (_trailCaret?.IsAwayFromAnchor(here) != true)
+            return;
+        RecordTrail(here, (mode, stagePane, layout) =>
+            _vm.Trail.RecordFile(here.Path, here.Line, here.Column, mode, stagePane, layout));
+    }
+    private TrailFilePosition? ActiveTrailFilePosition()
+        => _activeEditorTab is { IsRealized: true } tab ? TrailFilePositionOf(tab) : null;
     private void RefreshLatestTrailPaneLayout() {
         if (_trailSuppressed)
             return;
@@ -93,19 +122,21 @@ public partial class ShellWindow {
         RecordTrail((mode, stagePane, layout) =>
             _vm.Trail.RecordFile(position.Path, position.Line, position.Column, mode, stagePane, layout));
     }
+    /// <summary>離脱位置の上書き（§27.3.3）。近くで離れたときだけ——遠くで離れた分は <see cref="RecordTrail"/> が別の点にする。</summary>
     private void RefreshLatestTrailFilePosition() {
-        if (_vm.Trail.LatestFileTarget is not { } target)
+        if (_vm.Trail.LatestFilePosition is not { } latest || _vm.Trail.LatestFileTarget is not { } target)
             return;
-        // 抜粋タブを見ているなら、裏で開いている元タブのキャレットではなく抜粋の中の位置で更新する。
-        if (_activeEditorTab is { } active && ExcerptSourcePosition(active) is { } excerpt) {
-            if (string.Equals(excerpt.Path, target, StringComparison.OrdinalIgnoreCase))
-                _vm.Trail.UpdateLatestFilePosition(target, excerpt.Line, excerpt.Column);
-            return;
-        }
+        if (TrailFilePositionOfOpenFile(target) is { } here && TrailLogic.IsNearLine(latest.Line, here.Line))
+            _vm.Trail.UpdateLatestFilePosition(target, here.Line, here.Column);
+    }
+    /// <summary>開いているファイルのいまのキャレット位置。抜粋タブを見ているなら、裏で開いている元タブの
+    /// キャレットではなく抜粋の中の位置（そのときは他のファイルは分からない扱い）。</summary>
+    private TrailFilePosition? TrailFilePositionOfOpenFile(string path) {
+        if (_activeEditorTab is { } active && ExcerptSourcePosition(active) is { } excerpt)
+            return string.Equals(excerpt.Path, path, StringComparison.OrdinalIgnoreCase) ? excerpt : null;
         var tab = _editorTabs.FirstOrDefault(t => t.IsRealized
-            && string.Equals(t.PeekFilePath, target, StringComparison.OrdinalIgnoreCase));
-        if (tab is not null)
-            _vm.Trail.UpdateLatestFilePosition(target, tab.Control.Caret.Line, tab.Control.Caret.Column);
+            && string.Equals(t.PeekFilePath, path, StringComparison.OrdinalIgnoreCase));
+        return tab is null ? null : new(path, tab.Control.Caret.Line, tab.Control.Caret.Column);
     }
     private void RecordTrailGit(string command, bool success) {
         if (!success)
@@ -212,6 +243,7 @@ public partial class ShellWindow {
         FocusPane(PaneKind.Editor);
         if (entry.Line >= 0)
             _activeEditorTab?.Control.NavigateTo(entry.Line, Math.Max(0, entry.Column));
+        _trailCaret?.Land(ActiveTrailFilePosition());   // 過去の点に立った：ここからの遠い移動を新しい点にする
     }
     private async Task JumpToPreviewAsync(TrailEntryViewModel entry) {
         if (!File.Exists(entry.Target))
@@ -219,6 +251,7 @@ public partial class ShellWindow {
         await OpenFileInNewEditorTabAsync(entry.Target);
         if (_activeEditorTab is { } tab)
             OpenEditorSupport(tab);
+        _trailCaret?.Land(ActiveTrailFilePosition());
     }
     private void JumpToBrowser(TrailEntryViewModel entry) {
         EnsurePaneVisibleOrSwapTopLeft(PaneKind.Browser);

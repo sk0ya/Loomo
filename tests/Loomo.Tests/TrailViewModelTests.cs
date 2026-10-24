@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using Microsoft.Data.Sqlite;
 using sk0ya.Loomo.Ai;
 using sk0ya.Loomo.App.Layout;
@@ -59,12 +59,30 @@ public class TrailViewModelTests : IDisposable
         var sut = CreateSut();
 
         sut.RecordFile(@"C:\work\a.cs", 10, 2);
-        // タブ切替やフォーカス移動で同じファイルが再記録されても増殖しない（大文字小文字も同一視）。
-        sut.RecordFile(@"C:\work\A.CS", 20, 4);
+        // タブ切替やフォーカス移動で同じファイルの近くが再記録されても増殖しない（大文字小文字も同一視）。
+        sut.RecordFile(@"C:\work\A.CS", 15, 4);
 
         var entry = Assert.Single(sut.Entries);
-        Assert.Equal(20, entry.Line);
+        Assert.Equal(15, entry.Line);
         Assert.Equal(4, entry.Column);
+
+        // 行の分からない記録（実体化前のタブ）は近いとみなして畳み、位置は消さない。
+        sut.RecordFile(@"C:\work\a.cs");
+        Assert.Equal(15, Assert.Single(sut.Entries).Line);
+    }
+
+    [Fact]
+    public void RecordFile_same_file_far_away_appends_a_new_point()
+    {
+        var sut = CreateSut();
+
+        // 同じファイルでも 10 行以上離れたら別の地点（同じファイルの中のジャンプが軌跡に残る。§27.3.2）。
+        sut.RecordFile(@"C:\work\a.cs", 10, 0);
+        sut.RecordFile(@"C:\work\a.cs", 19, 0);
+        Assert.Single(sut.Entries);
+        sut.RecordFile(@"C:\work\a.cs", 29, 0);
+        Assert.Equal(2, sut.Entries.Count);
+        Assert.Equal(29, sut.Entries[1].Line);
     }
 
     [Fact]
@@ -355,7 +373,7 @@ public class TrailViewModelTests : IDisposable
     }
 
     [Fact]
-    public void RecordEdit_stacks_per_line_dedupes_same_line_and_is_distinct_from_file()
+    public void RecordEdit_dedupes_nearby_lines_stacks_far_ones_and_is_distinct_from_file()
     {
         var sut = CreateSut();
 
@@ -373,10 +391,15 @@ public class TrailViewModelTests : IDisposable
         sut.RecordEdit(@"C:\work\A.CS", 10, 8);
         Assert.Equal(2, sut.Entries.Count);
 
-        // 同じファイルでも別の行を編集したら新しい点を積む（要件）。
-        sut.RecordEdit(@"C:\work\a.cs", 25, 0);
+        // 近くの行（10 行未満）へ書き進めても 1 点のまま、位置だけ進む（間を置いて段落を書いても増殖しない）。
+        sut.RecordEdit(@"C:\work\a.cs", 14, 0);
+        Assert.Equal(2, sut.Entries.Count);
+        Assert.Equal(14, sut.Entries[1].Line);
+
+        // 同じファイルでも離れた場所を編集したら新しい点を積む。
+        sut.RecordEdit(@"C:\work\a.cs", 30, 0);
         Assert.Equal(3, sut.Entries.Count);
-        Assert.Equal(25, sut.Entries[2].Line);
+        Assert.Equal(30, sut.Entries[2].Line);
 
         // 別ファイルの編集も別の地点。
         sut.RecordEdit(@"C:\work\b.cs", 1, 0);
