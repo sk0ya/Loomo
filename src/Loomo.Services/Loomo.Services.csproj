@@ -91,7 +91,7 @@
          ScrollChanged（＝ViewportScrolled）は実際にスクロールしたときだけ。Loomo の CSharpSyntaxLanguage も同じ契約。 -->
     <!-- 1.0.107: 飛んだ先（NavigateTo・SelectRange・G/gg・検索・Ctrl+O・:行番号）が閉じた折りたたみの中なら開く。
          軌跡・定義へ・Problems から畳んだ行の中へ戻っても目的の行が見える（§24.43 の復元とぶつからない・§24.60）。
-         あわせて :行番号 が「Not an editor command」になっていたのを直した。 -->
+         あわせて :行番号 が「Not an editor command」になっていたのを直した（2026-10-25 公開）。 -->
     <ProjectReference Include="..\..\..\Editor\src\Editor.Controls.Defaults\Editor.Controls.Defaults.csproj"
                       Condition="'$(UseLocalEditor)' != 'false'" />
     <!-- Defaults はパッケージ化時に Core/Controls を同梱する構成で、プロジェクト参照では
@@ -142,7 +142,7 @@
          問い合わせ OSC 7501;? に答える（Claude Code は返事のある端末にだけ送る）。次のプロンプト・終了で
          working/blocked/idle を落とし、VT スナップショットで常駐セッションへ付け直したビューにも届く（§24.61）。
          新しい ConPTY（Microsoft.Windows.Console.ConPTY の conpty.dll と x64\OpenConsole.exe）を同梱して既定にした——受信箱の
-         conhost は DA1 に自分で即答し、Claude Code の問い合わせ（OSC 7501・XTVERSION・kitty キーボード）が端末に届く前に負けていた -->
+         conhost は DA1 に自分で即答し、Claude Code の問い合わせ（OSC 7501・XTVERSION・kitty キーボード）が端末に届く前に負けていた（2026-10-25 公開） -->
     <!-- 版は Directory.Build.props の TerminalPackageVersion（常駐ホストと共有するため一か所） -->
     <PackageReference Include="sk0ya.Terminal.Controls" Version="$(TerminalPackageVersion)" />
   </ItemGroup>
