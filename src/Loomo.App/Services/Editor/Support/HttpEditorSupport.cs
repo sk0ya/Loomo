@@ -39,6 +39,12 @@ public sealed class HttpEditorSupport : IEditorSupportVisualProvider, IDisposabl
     /// <summary>応答の本文をエディタの新しいタブで開きたい。</summary>
     public event EventHandler<HttpResponseMaterial>? OpenInEditorRequested;
 
+    /// <summary>応答の中の URL をブラウザペインで開きたい（§24.30.1）。</summary>
+    public event EventHandler<string>? OpenUrlRequested;
+
+    /// <summary>応答の中の URL を、同じ .http へ GET として書き足したい（§24.30.1）。</summary>
+    public event EventHandler<HttpAppendRequest>? AppendRequestRequested;
+
     /// <summary>リクエストを呼び分ける鍵。名前があれば名前、無ければメソッドと URL（同じものが並べば何番目か）。</summary>
     public static string KeyOf(HttpRequestDocument document, HttpRequestBlock block)
     {
@@ -103,6 +109,10 @@ public sealed class HttpEditorSupport : IEditorSupportVisualProvider, IDisposabl
 
     internal void RequestOpenInEditor(HttpResponseMaterial material) => OpenInEditorRequested?.Invoke(this, material);
 
+    internal void RequestOpenUrl(string url) => OpenUrlRequested?.Invoke(this, url);
+
+    internal void RequestAppend(HttpAppendRequest request) => AppendRequestRequested?.Invoke(this, request);
+
     /// <summary>キャレットの行のリクエストを送るよう、そのファイルを出している表示へ頼む（パレット・§24.30）。
     /// 表示がまだ無くても、この工場で送るので応答は残り、表示が作られたときに出る。</summary>
     public async Task<HttpExchangeResult?> SendAtLineAsync(string filePath, string text, int line)
@@ -159,6 +169,10 @@ public sealed class HttpEditorSupport : IEditorSupportVisualProvider, IDisposabl
 
 /// <summary>どのファイルのどのリクエストの状態が変わったか（<see cref="HttpEditorSupport.Normalize"/> 済みのパス）。</summary>
 public sealed record HttpRequestStateChanged(string File, string Key);
+
+/// <summary>どの .http の、どのリクエストの後ろへ、どの URL を足すか。</summary>
+/// <param name="Key">区画の鍵（<see cref="HttpEditorSupport.KeyOf"/>）。表示の行は打鍵に遅れうるので、書き足す側がいまの本文で引き直す。</param>
+public sealed record HttpAppendRequest(string File, string Key, HttpRequestBlock After, string Url);
 
 /// <summary>.http の1表示面。見た目は <see cref="Views.HttpRequestView"/>、状態は <see cref="HttpRequestPanelViewModel"/>。</summary>
 public sealed class HttpRequestVisual : IEditorSupportVisual

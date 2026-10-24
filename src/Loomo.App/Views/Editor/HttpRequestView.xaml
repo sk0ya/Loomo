@@ -168,7 +168,10 @@
                 </TextBlock.Style>
             </TextBlock>
             <Grid>
-                <TextBox Text="{Binding ResultText, Mode=OneWay}" IsReadOnly="True"
+                <!-- 本文の URL：Ctrl+クリックでブラウザペインへ、右クリックで .http へ GET を書き足す（§24.30.1）。 -->
+                <TextBox x:Name="ResponseBody" Text="{Binding ResultText, Mode=OneWay}" IsReadOnly="True"
+                         PreviewMouseLeftButtonUp="OnResponseBodyMouseUp"
+                         ContextMenuOpening="OnResponseBodyContextMenuOpening"
                          FontFamily="Consolas, Cascadia Mono, MS Gothic" FontSize="{DynamicResource Fs12}"
                          Background="{DynamicResource Bg}" Foreground="{DynamicResource Fg}"
                          BorderThickness="0,1,0,0" BorderBrush="{DynamicResource Border}" Padding="6,4"
@@ -176,6 +179,10 @@
                          AcceptsReturn="True"
                          Visibility="{Binding HasResult, Converter={StaticResource BoolVis}}"
                          AutomationProperties.AutomationId="HttpResponseBody">
+                    <!-- 中身は開くたびに OnResponseBodyContextMenuOpening が詰める（URL の上なら行き先を足す）。 -->
+                    <TextBox.ContextMenu>
+                        <ContextMenu />
+                    </TextBox.ContextMenu>
                     <!-- 本文は折り返さない（JSON の字下げを崩さない）。送れなかった理由の文は折り返す。 -->
                     <TextBox.Style>
                         <Style TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">

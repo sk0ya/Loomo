@@ -224,6 +224,16 @@ public sealed partial class HttpRequestPanelViewModel : ObservableObject
             _owner.RequestOpenInEditor(new HttpResponseMaterial(MaterialTitle(result), result.IsBinary ? result.DisplayBody : Formatted(result), result));
     }
 
+    /// <summary>応答の中の URL をブラウザペインで開く（Ctrl+クリック・右クリック、§24.30.1）。</summary>
+    public void OpenUrl(string url) => _owner.RequestOpenUrl(url);
+
+    /// <summary>応答の中の URL を、いま選んでいるリクエストの後ろへ GET として書き足す（§24.30.1）。</summary>
+    public void AppendUrlAsRequest(string url)
+    {
+        if (FilePath is { } path && Selected is { } row)
+            _owner.RequestAppend(new HttpAppendRequest(path, row.Key, row.Block, url));
+    }
+
     [RelayCommand]
     private void CopyBody()
     {
