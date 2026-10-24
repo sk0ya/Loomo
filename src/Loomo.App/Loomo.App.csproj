@@ -45,6 +45,12 @@
     </ItemGroup>
     <Copy SourceFiles="@(PtyHostFiles)" DestinationFolder="$(OutDir)ptyhost" SkipUnchangedFiles="true"
           Condition="Exists('%(PtyHostFiles.FullPath)')" />
+    <!-- 同梱の ConPTY（Terminal 1.0.49）は conpty.dll の隣の x64\OpenConsole.exe を起こすので、それも運ぶ（§24.61）。 -->
+    <ItemGroup>
+      <PtyHostConsoleFiles Include="$(MSBuildThisFileDirectory)../Loomo.Pty.Host/bin/$(Configuration)/x64/OpenConsole.exe" />
+    </ItemGroup>
+    <Copy SourceFiles="@(PtyHostConsoleFiles)" DestinationFolder="$(OutDir)ptyhost/x64" SkipUnchangedFiles="true"
+          Condition="Exists('%(PtyHostConsoleFiles.FullPath)')" />
   </Target>
 
   <!-- .NET Framework 用デバッグアダプタ（net48、64bit と 32bit の2本）。参照は「一緒にビルドさせる」ためで、

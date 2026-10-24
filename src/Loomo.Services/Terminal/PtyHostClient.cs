@@ -205,18 +205,21 @@ public sealed class PtyHostClient
         RemoveStaleInstalls(installed);
     }
 
-    /// <summary>同梱のホスト一式を内容ハッシュのフォルダーへ写す。既にあれば写さない。</summary>
+    /// <summary>同梱のホスト一式を内容ハッシュのフォルダーへ写す。既にあれば写さない。
+    /// サブフォルダーも運ぶ——同梱の ConPTY は <c>conpty.dll</c> の隣の <c>x64\OpenConsole.exe</c> を起こすので、
+    /// 直下だけ写すと新しい ConPTY が揃わず、ホストの端末だけ受信箱の ConPTY に戻ってしまう（§24.61）。</summary>
     internal string Install()
     {
-        var files = Directory.GetFiles(_bundledDirectory)
+        var files = Directory.GetFiles(_bundledDirectory, "*", SearchOption.AllDirectories)
             .Where(f => !f.EndsWith(".pdb", StringComparison.OrdinalIgnoreCase))
-            .OrderBy(f => Path.GetFileName(f), StringComparer.OrdinalIgnoreCase)
+            .Select(f => Path.GetRelativePath(_bundledDirectory, f))
+            .OrderBy(f => f, StringComparer.OrdinalIgnoreCase)
             .ToArray();
         using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         foreach (var file in files)
         {
-            hash.AppendData(Encoding.UTF8.GetBytes(Path.GetFileName(file).ToLowerInvariant()));
-            hash.AppendData(File.ReadAllBytes(file));
+            hash.AppendData(Encoding.UTF8.GetBytes(file.Replace('\\', '/').ToLowerInvariant()));
+            hash.AppendData(File.ReadAllBytes(Path.Combine(_bundledDirectory, file)));
         }
 
         var target = Path.Combine(_installRoot, Convert.ToHexString(hash.GetHashAndReset(), 0, 8).ToLowerInvariant());
@@ -231,7 +234,11 @@ public sealed class PtyHostClient
         var staging = target + ".tmp-" + Environment.ProcessId;
         Directory.CreateDirectory(staging);
         foreach (var file in files)
-            File.Copy(file, Path.Combine(staging, Path.GetFileName(file)), overwrite: true);
+        {
+            var destination = Path.Combine(staging, file);
+            Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+            File.Copy(Path.Combine(_bundledDirectory, file), destination, overwrite: true);
+        }
         try
         {
             Directory.Move(staging, target);

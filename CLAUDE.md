@@ -403,6 +403,13 @@ unanswered host keeps them all). The host is copied to `%LOCALAPPDATA%\Loomo\pty
 before launch (never run from `bin` — a resident process would lock the build). Both pipe ends **must** be
 `PipeOptions.Asynchronous`: a synchronous handle serializes read and write and deadlocks both sides.
 
+**Terminals run on the bundled ConPTY, not the inbox one** (§24.61). The Terminal package ships Microsoft's
+`conpty.dll` (as a native asset) plus `<arch>\OpenConsole.exe` (via its `buildTransitive` targets), and
+`Terminal.Sessions.ConPtyNative` uses them when both sit in the app folder (`TERMINAL_CONPTY=inbox` forces kernel32).
+The reason is query ordering: inbox conhost answers DA1 itself, so programs that probe and then send DA1 (Claude Code's
+OSC 7501 / XTVERSION / kitty keyboard) always concluded "unsupported". Anything that stages a copy of an exe folder
+must carry the `x64\` subfolder too — `PtyHostClient.Install` copies recursively for this reason.
+
 Terminal auto-injects OSC 133 shell integration into interactive pwsh, and exposes the
 `TerminalTabView.ShellCommandActivity` public event (command phase + exit code, for human-typed commands
 too) — Loomo's stage-wing activity badges (`ShellWindow.PaneActivity.cs`, 設計書 §24.1) are built on it.

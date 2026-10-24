@@ -309,11 +309,14 @@ public sealed class PtyHostSessionTests : IDisposable
         File.WriteAllText(Path.Combine(bundled, "sk0ya.Loomo.Pty.Host.exe"), "exe");
         File.WriteAllText(Path.Combine(bundled, "a.dll"), "one");
         File.WriteAllText(Path.Combine(bundled, "a.pdb"), "symbols");
+        Directory.CreateDirectory(Path.Combine(bundled, "x64"));
+        File.WriteAllText(Path.Combine(bundled, "x64", "OpenConsole.exe"), "console");   // 同梱の ConPTY（§24.61）
 
         var first = _client.Install();
         var again = _client.Install();
         Assert.Equal(first, again);
         Assert.True(File.Exists(Path.Combine(first, "a.dll")));
+        Assert.True(File.Exists(Path.Combine(first, "x64", "OpenConsole.exe")));   // サブフォルダーも運ぶ
         Assert.False(File.Exists(Path.Combine(first, "a.pdb")));
 
         // 中身が変われば別のフォルダー（古いホストが掴んでいる一式を上書きしない）。
