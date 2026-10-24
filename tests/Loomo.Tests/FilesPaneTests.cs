@@ -300,6 +300,30 @@ public sealed class FilesPaneTests : IDisposable
     }
 
     [Fact]
+    public void 場所のグループは畳めて読み直しでも復元でも畳んだまま()
+    {
+        var sut = CreateColumn();
+        _tree.PinFolder(_sub);
+        sut.LoadPlaces();
+        Assert.All(sut.Places, group => Assert.True(group.IsExpanded));
+
+        sut.Places.Single(group => group.Name == "クイックアクセス").IsExpanded = false;
+
+        // 中身が変わってグループを作り直しても、畳んだものは畳んだまま。
+        _tree.UnpinFolder(_sub);
+        sut.LoadPlaces();
+        Assert.False(sut.Places.Single(group => group.Name == "クイックアクセス").IsExpanded);
+        Assert.True(sut.Places.Single(group => group.Name == "PC").IsExpanded);
+
+        var snapshot = sut.Capture();
+        Assert.Equal(new[] { "クイックアクセス" }, snapshot.CollapsedPlaceGroups);
+        var restored = CreateColumn();
+        restored.Restore(snapshot, _root);
+        restored.LoadPlaces();
+        Assert.False(restored.Places.Single(group => group.Name == "クイックアクセス").IsExpanded);
+    }
+
+    [Fact]
     public void ピン留めはツリーと共有される()
     {
         var sut = CreateColumn();

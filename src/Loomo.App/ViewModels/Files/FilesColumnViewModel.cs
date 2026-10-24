@@ -45,6 +45,8 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
     private const int MaxFolderLayouts = 100;
     private List<FilesColumnSettingSnapshot> _legacyLayout = new();
     private bool _restoringLayout;
+    /// <summary>「場所」パネルで畳んでいるグループの見出し名。</summary>
+    private readonly HashSet<string> _collapsedPlaceGroups = new(StringComparer.Ordinal);
     private readonly FilesGroupDescription _groupDescription;
 
     public FilesColumnViewModel(
@@ -511,9 +513,27 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
             && groups.Zip(Places, (next, current) => next.Name == current.Name
                 && next.Items.SequenceEqual(current.Items)).All(same => same))
             return;
+        foreach (var group in Places)
+            group.PropertyChanged -= OnPlaceGroupPropertyChanged;
         Places.Clear();
         foreach (var group in groups)
+        {
+            // 畳んだかどうかは見出しの名前で覚える。作り直しても畳んだグループは畳んだまま。
+            group.IsExpanded = !_collapsedPlaceGroups.Contains(group.Name);
+            group.PropertyChanged += OnPlaceGroupPropertyChanged;
             Places.Add(group);
+        }
+    }
+
+    private void OnPlaceGroupPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (sender is not FilesPlaceGroup group || e.PropertyName != nameof(FilesPlaceGroup.IsExpanded))
+            return;
+        var changed = group.IsExpanded
+            ? _collapsedPlaceGroups.Remove(group.Name)
+            : _collapsedPlaceGroups.Add(group.Name);
+        if (changed && !_restoringLayout)
+            StateChanged?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>場所Expanderの項目を開く。最近使ったファイルだけは直接エディタへ渡す。</summary>
@@ -557,6 +577,13 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
                 TouchFolderLayout(pair.Key);
             }
         _legacyLayout = snapshot?.ColumnSettings?.ToList() ?? new();
+
+        _collapsedPlaceGroups.Clear();
+        foreach (var name in snapshot?.CollapsedPlaceGroups ?? [])
+            if (!string.IsNullOrEmpty(name))
+                _collapsedPlaceGroups.Add(name);
+        foreach (var group in Places)
+            group.IsExpanded = !_collapsedPlaceGroups.Contains(group.Name);
 
         _back.Clear();
         _forward.Clear();
@@ -621,6 +648,7 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
                 {
                     Columns = pair.Value.Columns.Select(CloneSetting).ToList(),
                 }, StringComparer.OrdinalIgnoreCase),
+            CollapsedPlaceGroups = _collapsedPlaceGroups.Order(StringComparer.Ordinal).ToList(),
         };
     }
 

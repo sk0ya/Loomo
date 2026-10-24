@@ -648,10 +648,53 @@
                                 <DataTemplate DataType="{x:Type vm:FilesPlaceGroup}">
                                     <StackPanel>
                                         <!-- 見出しは PopupSectionLabel（上余白16px）より詰める。ここは常設の
-                                             縦長パネルで、行ピッチ 20px に対して見出しだけ広いと隙間が目立つ。 -->
-                                        <TextBlock Text="{Binding Name}" Foreground="{DynamicResource FgDim}"
-                                                   FontSize="{DynamicResource Fs10}" Margin="4,8,4,1" />
-                                        <ItemsControl ItemsSource="{Binding Items}">
+                                             縦長パネルで、行ピッチ 20px に対して見出しだけ広いと隙間が目立つ。
+                                             見出し行ぜんたいが開閉ボタン（矢印はツリーと同じ ▸／▾）。 -->
+                                        <ToggleButton IsChecked="{Binding IsExpanded, Mode=TwoWay}"
+                                                      Focusable="False" Cursor="Hand" Margin="0,6,0,1"
+                                                      ToolTip="このグループを畳む／開く">
+                                            <ToggleButton.Template>
+                                                <ControlTemplate TargetType="ToggleButton">
+                                                    <Border x:Name="Bd" Background="Transparent" CornerRadius="3" Padding="0,2">
+                                                        <StackPanel Orientation="Horizontal">
+                                                            <Border Width="14" Height="12">
+                                                                <Path x:Name="Arrow" Width="6" Height="6" Stretch="Uniform"
+                                                                      HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                                      Fill="{DynamicResource FgDim}" Data="M0,0 L4,4 L0,8 Z"
+                                                                      RenderTransformOrigin="0.5,0.5" />
+                                                            </Border>
+                                                            <TextBlock x:Name="Label" Text="{Binding Name}"
+                                                                       Foreground="{DynamicResource FgDim}"
+                                                                       FontSize="{DynamicResource Fs10}" VerticalAlignment="Center" />
+                                                            <!-- 畳んでいる間も何件あるかは見える -->
+                                                            <TextBlock x:Name="Count" Text="{Binding Items.Count}"
+                                                                       Foreground="{DynamicResource FgDim}" Opacity="0.7"
+                                                                       FontSize="{DynamicResource Fs10}" VerticalAlignment="Center"
+                                                                       Margin="5,0,0,0" Visibility="Collapsed" />
+                                                        </StackPanel>
+                                                    </Border>
+                                                    <ControlTemplate.Triggers>
+                                                        <Trigger Property="IsChecked" Value="True">
+                                                            <Setter TargetName="Arrow" Property="RenderTransform">
+                                                                <Setter.Value>
+                                                                    <RotateTransform Angle="90" />
+                                                                </Setter.Value>
+                                                            </Setter>
+                                                        </Trigger>
+                                                        <Trigger Property="IsChecked" Value="False">
+                                                            <Setter TargetName="Count" Property="Visibility" Value="Visible" />
+                                                        </Trigger>
+                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource BgAlt}" />
+                                                            <Setter TargetName="Arrow" Property="Fill" Value="{DynamicResource Fg}" />
+                                                            <Setter TargetName="Label" Property="Foreground" Value="{DynamicResource Fg}" />
+                                                        </Trigger>
+                                                    </ControlTemplate.Triggers>
+                                                </ControlTemplate>
+                                            </ToggleButton.Template>
+                                        </ToggleButton>
+                                        <ItemsControl ItemsSource="{Binding Items}"
+                                                      Visibility="{Binding IsExpanded, Converter={StaticResource BoolToVis}}">
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate DataType="{x:Type vm:FilesPlace}">
                                                     <Button Style="{StaticResource FilesCrumbButton}"

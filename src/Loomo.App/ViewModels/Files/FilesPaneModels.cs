@@ -265,8 +265,15 @@ public sealed record FilesPlace(string Name, string FullPath, FilesPlaceKind Kin
         : "";
 }
 
-/// <summary>「場所」ポップアップの1グループ（見出し＋項目）。</summary>
-public sealed record FilesPlaceGroup(string Name, IReadOnlyList<FilesPlace> Items);
+/// <summary>「場所」パネルの1グループ（見出し＋項目）。見出しを押すと畳める——クイックアクセスや
+/// 最近使ったファイルは長くなり、下の PC まで届かなくなるので。</summary>
+public sealed partial class FilesPlaceGroup(string name, IReadOnlyList<FilesPlace> items) : ObservableObject
+{
+    public string Name { get; } = name;
+    public IReadOnlyList<FilesPlace> Items { get; } = items;
+
+    [ObservableProperty] private bool _isExpanded = true;
+}
 
 /// <summary>一覧の並べ替え・絞り込み（純関数）。ペインの表示計算はここに閉じるので、
 /// WPF 無しでそのまま検証できる。</summary>

@@ -604,6 +604,9 @@ public sealed class FilesColumnSnapshot
 
     /// <summary>このカラムで訪れたフォルダーごとの列レイアウト。</summary>
     public Dictionary<string, FilesColumnLayoutSnapshot> FolderColumnSettings { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>「場所」パネルで畳んでいたグループの見出し名。旧 workspaces.json には無いので空＝全部開く。</summary>
+    public List<string> CollapsedPlaceGroups { get; set; } = new();
 }
 
 /// <summary>ファイル一覧の並べ替え列。数値で永続化されるため末尾追加のみ可。</summary>
