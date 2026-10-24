@@ -132,6 +132,9 @@
          （HyperlinkDragStarting・Ctrl+クリックは離したときに開く・§24.52） -->
     <!-- 1.0.47: ConPtySession.ProcessId を公開（タブのシェルの PID から、そのタブの中の Claude Code を確かめる §39.4.2）・
          ShellCommandOutputEventArgs.StyledLines（コマンドの出力を描かれたときの色で見せ直す §39.8） -->
+    <!-- 1.0.48: 画面の1マスを 184 → 40 バイトに詰める（書式の色を WPF の Color ではなく ARGB の uint で持つ）。
+         スクロールバック 1 万行が埋まったターミナル1本が 224MB → 57MB。常駐ホストと本体が同じ画面を
+         二重に持つので、Loomo では1本あたり約 450MB → 約 115MB -->
     <!-- 版は Directory.Build.props の TerminalPackageVersion（常駐ホストと共有するため一か所） -->
     <PackageReference Include="sk0ya.Terminal.Controls" Version="$(TerminalPackageVersion)" />
   </ItemGroup>
