@@ -18,6 +18,8 @@ internal sealed record RelayInstance(int ProcessId, IReadOnlyList<string> Folder
 /// <item><b>ファイル</b>：そのファイルを含む部屋。含む部屋が無ければ<b>直近の部屋</b>でワークスペース外の
 ///   ファイルとして開く——ファイル1つ開くたびに部屋が増えたり切り替わったりはしない。</item>
 /// <item><b>URL</b>：直近の部屋のブラウザペイン。</item>
+/// <item><b>行付きの場所</b>（<c>loomo://</c>・§24.59）：ファイルと同じく含む部屋へ。含む部屋が無く、リンクが部屋の
+///   フォルダーを持っていれば、その部屋を新しく開いて（自分）そこで開く——リンクは「どの部屋の」場所かまで指しているので。</item>
 /// </list>
 /// 受け手が無いもの（起動中の部屋がゼロ・新しい部屋で開くフォルダー）は <c>null</c>＝自分が開く。</summary>
 internal static class ExternalOpenRouting
@@ -29,6 +31,7 @@ internal static class ExternalOpenRouting
         var folders = new Dictionary<int, string>();
         var files = new Dictionary<int, List<string>>();
         var urls = new Dictionary<int, List<string>>();
+        var locations = new Dictionary<int, List<ExternalOpenLocation>>();
         const int self = -1;
 
         if (request.WorkspaceFolder is { } folder)
@@ -48,8 +51,27 @@ internal static class ExternalOpenRouting
         foreach (var url in request.Urls)
             Add(urls, mostRecent?.ProcessId ?? self, url);
 
+        foreach (var location in request.AtLines)
+        {
+            if (OwnerOf(location.File, instances) is { } owner)
+            {
+                Add(locations, owner.ProcessId, location);
+                continue;
+            }
+            // 含む部屋が無い：リンクが指す部屋のフォルダーがあれば、自分がその部屋を開いてそこで。
+            // （フォルダーを開いている部屋があれば OwnerOf がそれを返しているので、ここへ来るのはどこも開いていないとき）
+            // 自分が別のフォルダーを開く役を既に持っていれば、そちらを優先して直近の部屋へ回す。
+            if (location.Folder is { } linkFolder && (!folders.TryGetValue(self, out var own) || SamePath(own, linkFolder)))
+            {
+                folders[self] = linkFolder;
+                Add(locations, self, location);
+                continue;
+            }
+            Add(locations, mostRecent?.ProcessId ?? self, location);
+        }
+
         // 渡す順は「自分」を最後に。中継で済むものを先に片付けてから自分の起動へ進む。
-        var targets = folders.Keys.Concat(files.Keys).Concat(urls.Keys)
+        var targets = folders.Keys.Concat(files.Keys).Concat(urls.Keys).Concat(locations.Keys)
             .Distinct()
             .OrderBy(pid => pid == self ? 1 : 0)
             .ToList();
@@ -59,7 +81,8 @@ internal static class ExternalOpenRouting
                 new ExternalOpenRequest(
                     folders.GetValueOrDefault(pid),
                     files.GetValueOrDefault(pid) ?? [],
-                    urls.GetValueOrDefault(pid) ?? [])))
+                    urls.GetValueOrDefault(pid) ?? [],
+                    locations.GetValueOrDefault(pid) ?? [])))
             .ToList();
     }
 
@@ -73,7 +96,7 @@ internal static class ExternalOpenRouting
             .Select(x => x.Instance)
             .FirstOrDefault();
 
-    private static void Add(Dictionary<int, List<string>> map, int key, string value)
+    private static void Add<T>(Dictionary<int, List<T>> map, int key, T value)
     {
         if (!map.TryGetValue(key, out var list))
             map[key] = list = [];

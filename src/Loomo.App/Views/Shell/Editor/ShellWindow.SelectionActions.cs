@@ -41,6 +41,7 @@ public partial class ShellWindow {
             AddMarkdownTableMenuItem(menu, control);
             AddOpenLinkInWindowMenuItem(menu, control);
             AddMarkdownPathRefactorMenuItem(menu, control);
+            AddCopyLocationLinkMenuItem(menu, control);
         });
         // ④ 版（Git）と実行（デバッグ）
         AddMenuGroup(e.Menu, menu => {
@@ -74,6 +75,28 @@ public partial class ShellWindow {
     /// <summary>右クリック位置（＝キャレット位置。エディタは右クリックでキャレットを移す）にリンクがあれば
     /// 「別ウィンドウで開く」を足す。URL はブラウザの、ファイルはエディタの切り離しウィンドウで開く
     /// ——素材を別の面へ渡す既存の動線（切り離し）に、本文中のリンクからも入れるようにする。</summary>
+    /// <summary>「この場所へのリンクをコピー」（§24.59）。ディスク上のファイルだけ（無題・ライブラリの定義は外から開けない）。</summary>
+    private void AddCopyLocationLinkMenuItem(ContextMenu menu, VimEditorControl? control) {
+        if (control?.FilePath is not { Length: > 0 } path || MetadataSourceFiles.IsMetadataAsSource(path))
+            return;
+        var item = new MenuItem { Header = "この場所へのリンクをコピー（Markdown / HTML）" };
+        item.Click += (_, _) => CopyLocationLink(control);
+        menu.Items.Add(item);
+    }
+
+    /// <summary>キャレットの行を指す <c>loomo://</c> のリンクを写す（パレット <c>editor.copyLocationLink</c> と共通）。</summary>
+    private void CopyLocationLink(VimEditorControl? control = null) {
+        control ??= _activeEditorTab?.Control;
+        if (control?.FilePath is not { Length: > 0 } path || MetadataSourceFiles.IsMetadataAsSource(path)) {
+            ToastService.Info("ディスク上のファイルを開いているときに使えます");
+            return;
+        }
+        var registered = LoomoLinkClipboard.Copy(_workspace, path, control.Caret.Line + 1, control.Caret.Column + 1);
+        ToastService.Info(registered
+            ? "この場所へのリンクをコピーしました"
+            : "リンクをコピーしました（loomo:// を Windows に登録できなかったので、踏んでも開きません）");
+    }
+
     private void AddOpenLinkInWindowMenuItem(ContextMenu menu, VimEditorControl? control) {
         if (control is null)
             return;

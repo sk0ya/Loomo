@@ -63,7 +63,7 @@ internal static class ExternalOpenStartup
     }
 
     /// <summary>フォルダーだけの要求は、受け手が無ければ新しい部屋で開くのが正しい動き——取り合わない。</summary>
-    private static bool NeedsReceiver(ExternalOpenRequest request) => request.Files.Count > 0 || request.Urls.Count > 0;
+    private static bool NeedsReceiver(ExternalOpenRequest request) => request.HasItems;
 
     private static bool TryWinElection()
     {
@@ -100,5 +100,5 @@ internal static class ExternalOpenStartup
     }
 
     private static ExternalOpenRequest Merge(ExternalOpenRequest a, ExternalOpenRequest b)
-        => new(a.WorkspaceFolder ?? b.WorkspaceFolder, [.. a.Files, .. b.Files], [.. a.Urls, .. b.Urls]);
+        => new(a.WorkspaceFolder ?? b.WorkspaceFolder, [.. a.Files, .. b.Files], [.. a.Urls, .. b.Urls], [.. a.AtLines, .. b.AtLines]);
 }

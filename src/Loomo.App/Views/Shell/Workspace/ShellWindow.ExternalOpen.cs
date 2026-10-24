@@ -10,7 +10,7 @@ public partial class ShellWindow {
             ContentRendered -= OnFirstRender;
             relay.MarkActive();
             // 起動引数のフォルダーは App がウィンドウ生成前に部屋として開いてある。ここで開くのはファイルと URL だけ。
-            if (startupRequest is { } request && (request.Files.Count > 0 || request.Urls.Count > 0))
+            if (startupRequest is { } request && request.HasItems)
                 _ = OpenExternalAsync(request with { WorkspaceFolder = null }, bringToFront: false);
             relay.SetHandler(r => Dispatcher.BeginInvoke(() => _ = OpenExternalAsync(r, bringToFront: true)));
         }
@@ -29,6 +29,15 @@ public partial class ShellWindow {
         foreach (var url in request.Urls) {
             try { await OpenBrowserLibraryUrlAsync(url, newTab: true); }
             catch (Exception ex) { ToastService.Error($"開けませんでした: {url} — {ex.Message}"); }
+        }
+        // loomo:// のリンク（§24.59）。消えたファイルは開かずに知らせる（リンクは古くなりうる）。
+        foreach (var location in request.AtLines) {
+            if (!File.Exists(location.File)) {
+                ToastService.Info($"リンクのファイルがありません: {location.File}");
+                continue;
+            }
+            try { await OpenPathInEditorAsync(location.File, location.Line, location.Column); }
+            catch (Exception ex) { ToastService.Error($"開けませんでした: {Path.GetFileName(location.File)} — {ex.Message}"); }
         }
     }
 

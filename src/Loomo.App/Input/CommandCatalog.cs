@@ -210,6 +210,7 @@ public static class CommandCatalog
 
         // ===== 文字コード（§23.3.4）=====
         // 既定キーは与えない（調べたいときにだけ引く）。パレットから。
+        new CommandDescriptor("editor.copyLocationLink", CatEdit, "この場所へのリンクをコピー（loomo://）", null),
         new CommandDescriptor("editor.inspectEncoding", CatEdit, "文字コードを調べる（BOM・改行・見えない文字・文字化け）", null),
 
         // ===== Claude Code（§24.1.1・§38）=====

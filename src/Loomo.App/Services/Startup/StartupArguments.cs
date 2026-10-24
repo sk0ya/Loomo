@@ -1,18 +1,31 @@
 using System.IO;
+using sk0ya.Loomo.Core.Files;
 
 namespace sk0ya.Loomo.App.Services;
 
 /// <summary>Windows（エクスプローラー・既定のアプリ・リンク）から渡された「開いてほしいもの」。
-/// フォルダーは部屋（ワークスペース）として、ファイルはエディタ／EditorSupport で、URL はブラウザペインで開く。</summary>
+/// フォルダーは部屋（ワークスペース）として、ファイルはエディタ／EditorSupport で、URL はブラウザペインで開く。
+/// <see cref="Locations"/> は <c>loomo://</c> のリンク（§24.59）から来た「このファイルのこの行」。</summary>
 internal sealed record ExternalOpenRequest(
     string? WorkspaceFolder,
     IReadOnlyList<string> Files,
-    IReadOnlyList<string> Urls)
+    IReadOnlyList<string> Urls,
+    IReadOnlyList<ExternalOpenLocation>? Locations = null)
 {
     public static ExternalOpenRequest Empty { get; } = new(null, [], []);
 
-    public bool IsEmpty => WorkspaceFolder is null && Files.Count == 0 && Urls.Count == 0;
+    /// <summary>行付きの場所（null のときも空として読む）。</summary>
+    public IReadOnlyList<ExternalOpenLocation> AtLines => Locations ?? [];
+
+    public bool IsEmpty => WorkspaceFolder is null && Files.Count == 0 && Urls.Count == 0 && AtLines.Count == 0;
+
+    /// <summary>ウィンドウを開いた後で開くもの（フォルダー以外）があるか。</summary>
+    public bool HasItems => Files.Count > 0 || Urls.Count > 0 || AtLines.Count > 0;
 }
+
+/// <summary>開いてほしい場所（ファイルの絶対パス・1 始まりの行と列。0 は指定なし）。</summary>
+/// <param name="Folder">リンクが指す部屋のフォルダー（実在するものだけ）。そのファイルを含む部屋がどこにも無いときに開く部屋。</param>
+internal sealed record ExternalOpenLocation(string File, int Line, int Column, string? Folder = null);
 
 /// <summary>起動引数から、ワークスペースフォルダー・ファイル・URL を取り出す。</summary>
 internal static class StartupArguments
@@ -35,6 +48,7 @@ internal static class StartupArguments
     /// <item><c>--workspace &lt;folder&gt;</c> または単独のフォルダー → ワークスペース（最初の1つだけ）。</item>
     /// <item>単独の既存ファイル → ファイル。</item>
     /// <item>単独の <c>http(s)://</c> URL、<c>--browser &lt;url|file&gt;</c> → URL（ファイルは file:/// にする）。</item>
+    /// <item><c>loomo://open?…</c>（§24.59）→ 行付きの場所。リンクのフォルダーはワークスペースの候補。</item>
     /// </list>
     /// 存在しないパスや解釈できない引数は黙って捨てる（関連付けから来る引数は利用者が打ったものではない）。
     /// </summary>
@@ -43,6 +57,7 @@ internal static class StartupArguments
         string? folder = null;
         var files = new List<string>();
         var urls = new List<string>();
+        var locations = new List<ExternalOpenLocation>();
 
         for (var i = 0; i < args.Count; i++)
         {
@@ -61,6 +76,16 @@ internal static class StartupArguments
             }
             if (arg.StartsWith("-", StringComparison.Ordinal))
                 continue;
+            if (LoomoLink.TryParse(arg, out var link))
+            {
+                // リンクのフォルダーは場所に持たせる（ワークスペース引数にはしない）——そのファイルを含む部屋が
+                // 既にあればそこで開けばよく、新しい部屋を立てるのは含む部屋がどこにも無いときだけ（振り分けが決める）。
+                // ファイルがあるかどうかは受け手が確かめる。
+                var linkFolder = link.Folder is { } lf && TryFullPath(lf) is { } fullFolder && Directory.Exists(fullFolder) ? fullFolder : null;
+                if (TryFullPath(link.File) is { } lfile)
+                    locations.Add(new ExternalOpenLocation(lfile, link.Line, link.Column, linkFolder));
+                continue;
+            }
 
             if (TryWebUrl(arg) is { } webUrl)
             {
@@ -75,7 +100,7 @@ internal static class StartupArguments
                 files.Add(full);
         }
 
-        return new ExternalOpenRequest(folder, files, urls);
+        return new ExternalOpenRequest(folder, files, urls, locations);
     }
 
     /// <summary>JumpTask の Arguments に入れるワークスペース引数。</summary>
