@@ -89,6 +89,9 @@
     <!-- 1.0.106: Vim の移動・挿入の打鍵あたりの費用（§31.20）。字句分けを行状態の契約 ILineStateSyntaxLanguage で
          変わった行からだけやり直し、キャンバスは下層／常駐する行のビジュアル／上層の3層で本文の絵を作り置く。
          ScrollChanged（＝ViewportScrolled）は実際にスクロールしたときだけ。Loomo の CSharpSyntaxLanguage も同じ契約。 -->
+    <!-- 1.0.107: 飛んだ先（NavigateTo・SelectRange・G/gg・検索・Ctrl+O・:行番号）が閉じた折りたたみの中なら開く。
+         軌跡・定義へ・Problems から畳んだ行の中へ戻っても目的の行が見える（§24.43 の復元とぶつからない・§24.60）。
+         あわせて :行番号 が「Not an editor command」になっていたのを直した。 -->
     <ProjectReference Include="..\..\..\Editor\src\Editor.Controls.Defaults\Editor.Controls.Defaults.csproj"
                       Condition="'$(UseLocalEditor)' != 'false'" />
     <!-- Defaults はパッケージ化時に Core/Controls を同梱する構成で、プロジェクト参照では
