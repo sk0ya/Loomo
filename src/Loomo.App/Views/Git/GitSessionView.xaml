@@ -1183,6 +1183,11 @@
                                               FontWeight="SemiBold" />
                                     <MenuItem Header="エディタで開く" Click="OnCommitFileOpen" />
                                     <MenuItem Header="パスをコピー" Click="OnCommitFileCopyPath" />
+                                    <!-- 履歴を書き換える操作なので区切って最後に置く（§24.62）。 -->
+                                    <Separator x:Name="CommitFileUncommitSeparator" />
+                                    <MenuItem x:Name="CommitFileUncommitMenuItem"
+                                              Header="このコミットから外す（作業ツリーへ戻す）…"
+                                              Click="OnCommitFileUncommit" />
                                 </ContextMenu>
                             </TreeView.ContextMenu>
                         </TreeView>

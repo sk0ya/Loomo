@@ -90,6 +90,78 @@ public sealed class GitServiceHistoryTests : IAsyncLifetime
         Assert.Equal(headBefore, (await MustRunAsync("rev-parse", "HEAD")).Output.Trim());
     }
 
+    [Fact]
+    public async Task 過去のコミットから外したファイルは作業ツリーへ戻り後続は残る()
+    {
+        await File.WriteAllTextAsync(Path.Combine(_root, "a.txt"), "a");
+        await File.WriteAllTextAsync(Path.Combine(_root, "b.txt"), "b");
+        await MustRunAsync("add", ".");
+        await MustRunAsync("commit", "-m", "first");
+        var first = (await MustRunAsync("rev-parse", "HEAD")).Output.Trim();
+        await CommitAsync("c.txt", "c", "second");
+
+        var result = await _git.UncommitPathsAsync(first, ["b.txt"]);
+
+        Assert.True(result.Success, result.Error);
+        Assert.Equal("2", (await MustRunAsync("rev-list", "--count", "HEAD")).Output.Trim());
+        Assert.Equal("a.txt", (await MustRunAsync("show", "--name-only", "--format=", "HEAD~1")).Output.Trim());
+        Assert.Equal("c.txt", (await MustRunAsync("show", "--name-only", "--format=", "HEAD")).Output.Trim());
+        Assert.Equal("?? b.txt", (await MustRunAsync("status", "--porcelain")).Output.Trim());
+        Assert.Equal("b", await File.ReadAllTextAsync(Path.Combine(_root, "b.txt")));
+    }
+
+    [Fact]
+    public async Task HEADから外した変更は未ステージの変更として残り他の変更も保たれる()
+    {
+        await CommitAsync("a.txt", "1", "first");
+        await File.WriteAllTextAsync(Path.Combine(_root, "a.txt"), "2");
+        await File.WriteAllTextAsync(Path.Combine(_root, "b.txt"), "b");
+        await MustRunAsync("add", ".");
+        await MustRunAsync("commit", "-m", "second");
+        var head = (await MustRunAsync("rev-parse", "HEAD")).Output.Trim();
+        // 外さないファイルの書きかけ（ステージ済み）は、そのまま戻ってくる。
+        await File.WriteAllTextAsync(Path.Combine(_root, "b.txt"), "b2");
+        await MustRunAsync("add", "b.txt");
+
+        var result = await _git.UncommitPathsAsync(head, ["a.txt"]);
+
+        Assert.True(result.Success, result.Error);
+        Assert.Equal("1", (await MustRunAsync("show", "HEAD:a.txt")).Output);
+        Assert.Equal("2", await File.ReadAllTextAsync(Path.Combine(_root, "a.txt")));
+        var status = (await MustRunAsync("status", "--porcelain")).Output.Replace("\r", "").Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        Assert.Equal([" M a.txt", "M  b.txt"], status.OrderBy(s => s[3..]).ToArray());
+    }
+
+    [Fact]
+    public async Task コミットの変更を全部外すことと書きかけのファイルを外すことは断る()
+    {
+        await CommitAsync("a.txt", "a", "first");
+        await File.WriteAllTextAsync(Path.Combine(_root, "b.txt"), "b");
+        await File.WriteAllTextAsync(Path.Combine(_root, "c.txt"), "c");
+        await MustRunAsync("add", ".");
+        await MustRunAsync("commit", "-m", "second");
+        var head = (await MustRunAsync("rev-parse", "HEAD")).Output.Trim();
+
+        var all = await _git.UncommitPathsAsync(head, ["b.txt", "c.txt"]);
+        Assert.False(all.Success);
+        Assert.Contains("すべて", all.Error);
+
+        await File.WriteAllTextAsync(Path.Combine(_root, "b.txt"), "dirty");
+        var dirty = await _git.UncommitPathsAsync(head, ["b.txt"]);
+        Assert.False(dirty.Success);
+        Assert.Contains("未コミット", dirty.Error);
+        Assert.Equal(head, (await MustRunAsync("rev-parse", "HEAD")).Output.Trim());
+    }
+
+    [Fact]
+    public void リネームはどちらの名前を選んでも両方外す()
+    {
+        var (all, selected) = GitRebaseService.ExpandUncommitPaths("M\tkeep.txt\nR100\told.txt\tnew.txt\n", ["new.txt"]);
+
+        Assert.Equal(["keep.txt", "old.txt", "new.txt"], all);
+        Assert.Equal(["old.txt", "new.txt"], selected);
+    }
+
     private async Task<string> CommitAsync(string path, string content, string message)
     {
         await File.WriteAllTextAsync(Path.Combine(_root, path), content);

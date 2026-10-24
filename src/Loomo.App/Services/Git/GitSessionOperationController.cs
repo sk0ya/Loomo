@@ -254,6 +254,28 @@ internal static class GitSessionOperationController
         }
     }
 
+    /// <summary>詳細に出しているコミットから、選んだファイルの変更を外して作業ツリーへ戻す（§24.62）。
+    /// 履歴が書き換わるので確認を取る。複数コミットを選んで範囲の詳細を出している間は対象が 1 つに決まらないので何もしない。</summary>
+    internal static async Task UncommitFilesAsync(
+        GitSessionViewModel? vm,
+        IReadOnlyList<string> paths,
+        Func<GitOperationConfirmation, bool> confirm)
+    {
+        if (vm is null || paths.Count == 0 || UncommitTarget(vm) is not { } row)
+            return;
+        var what = paths.Count == 1 ? paths[0] : $"{paths.Count} ファイル";
+        if (!confirm(new("このコミットから外す",
+                $"{what} の変更を {row.ShortHash} から外し、作業ツリーへ戻します（ステージはしません）。\n" +
+                $"{row.ShortHash} 以降のコミットは作り直されます（履歴が書き換わります）。\n\n実行しますか？",
+                GitConfirmationSeverity.Warning)))
+            return;
+        await vm.Commands.UncommitPathsAsync(row, paths);
+    }
+
+    /// <summary>「コミットから外す」の相手。1 コミットの詳細を出しているときだけ。</summary>
+    internal static GitLogRow? UncommitTarget(GitSessionViewModel vm)
+        => vm.History.SelectedRange is null && vm.History.SelectedLogRow is { Hash: not null } row ? row : null;
+
     internal static async Task ExecuteCommitAsync(
         GitSessionViewModel? vm,
         GitLogRow? row,

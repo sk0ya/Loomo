@@ -154,6 +154,194 @@ public sealed class GitRebaseService
     }
 
     /// <summary>
+    /// コミットから選んだファイルの変更だけを外し、外した変更を作業ツリーへ戻す（§24.62・GitButler 0.20.1 の「Uncommit changes」）。
+    /// <see cref="AmendCommitAsync"/> の逆向き：外すファイルのそのコミットでの差分をパッチに書き出し、逆に当てたものを
+    /// HEAD なら amend、過去のコミットなら fixup ＋ autosquash で畳み込み、最後にパッチを作業ツリー（ステージしない）へ当て直す。
+    /// 外すファイルに未コミットの変更があれば断る（作業ツリーで重なると戻し方が無い）。他の変更は一時退避して戻す。
+    /// </summary>
+    public async Task<GitCommandResult> UncommitPathsAsync(string targetHash, IReadOnlyList<string> paths)
+    {
+        try
+        {
+            return await UncommitPathsCoreAsync(targetHash, paths).ConfigureAwait(false);
+        }
+        finally
+        {
+            _mutations.NotifyRepositoryChanged();
+        }
+    }
+
+    private async Task<GitCommandResult> UncommitPathsCoreAsync(string targetHash, IReadOnlyList<string> paths)
+    {
+        if (string.IsNullOrWhiteSpace(targetHash) || paths.Count == 0)
+            return new GitCommandResult(-1, "", "外すファイルが選ばれていません。");
+
+        var resolved = await _runner.RunAsync(
+            "rev-parse", "--verify", $"{targetHash}^{{commit}}").ConfigureAwait(false);
+        if (!resolved.Success) return resolved;
+        var target = resolved.Output.Trim();
+        var headResult = await _runner.RunAsync("rev-parse", "HEAD").ConfigureAwait(false);
+        if (!headResult.Success) return headResult;
+        var head = headResult.Output.Trim();
+        var isHead = string.Equals(target, head, StringComparison.OrdinalIgnoreCase);
+        var hasParent = (await _runner.RunAsync(
+            "rev-parse", "--verify", "--quiet", $"{target}^").ConfigureAwait(false)).Success;
+
+        if (!isHead)
+        {
+            var onHead = await _runner.RunAsync("merge-base", "--is-ancestor", target, "HEAD").ConfigureAwait(false);
+            if (onHead.ExitCode != 0)
+                return onHead.ExitCode == 1
+                    ? new GitCommandResult(-1, "", "現在のブランチに含まれるコミットからのみ外せます。")
+                    : onHead;
+            var range = hasParent ? $"{target}^..HEAD" : "HEAD";
+            var merges = await _runner.RunAsync("rev-list", "--min-parents=2", range).ConfigureAwait(false);
+            if (!merges.Success) return merges;
+            if (SplitLines(merges.Output).Count > 0)
+                return new GitCommandResult(-1, "", "対象から HEAD までにマージコミットがあるため外せません。");
+        }
+
+        // リネームは片方だけ外すと「消した」か「足した」だけがコミットに残るので、両方の名前を一緒に外す。
+        var nameStatus = await _runner.RunAsync(
+            "diff-tree", "-r", "--no-commit-id", "--name-status", "-M", "--root", target).ConfigureAwait(false);
+        if (!nameStatus.Success) return nameStatus;
+        var (allPaths, selected) = ExpandUncommitPaths(nameStatus.Output, paths);
+        if (selected.Count == 0)
+            return new GitCommandResult(-1, "", "選んだファイルはこのコミットで変わっていません。");
+        if (selected.Count >= allPaths.Count)
+            return new GitCommandResult(-1, "",
+                "コミットの変更をすべて外すことになります。コミットごと取り消すなら「ここまでリセット」を使ってください。");
+
+        var pathArgs = new List<string> { "--" };
+        pathArgs.AddRange(selected);
+        var dirty = await _runner.RunAsync(["status", "--porcelain", .. pathArgs]).ConfigureAwait(false);
+        if (!dirty.Success) return dirty;
+        if (!string.IsNullOrWhiteSpace(dirty.Output))
+            return new GitCommandResult(-1, "",
+                "外すファイルに未コミットの変更があります。先にコミットするか退避してください。");
+
+        var patchFile = Path.Combine(Path.GetTempPath(), $"loomo-uncommit-{Guid.NewGuid():N}.patch");
+        try
+        {
+            // パッチは git に直接ファイルへ書かせる——標準出力を文字列で受けると UTF-8 以外の本文が化ける。
+            var diff = await _runner.RunAsync(
+                ["diff-tree", "-p", "--binary", "--no-commit-id", "--root", $"--output={patchFile}", target, .. pathArgs])
+                .ConfigureAwait(false);
+            if (!diff.Success) return diff;
+
+            var whole = await _runner.RunAsync("status", "--porcelain").ConfigureAwait(false);
+            if (!whole.Success) return whole;
+            var stashNeeded = !string.IsNullOrWhiteSpace(whole.Output);
+            string? previousStash = null;
+            if (stashNeeded)
+            {
+                previousStash = (await _runner.RunAsync(
+                    "stash", "list", "-1", "--format=%H").ConfigureAwait(false)).Output.Trim();
+                var stash = await _runner.RunAsync(
+                    "stash", "push", "-u", "-m", "Loomo: コミットから外す前の変更").ConfigureAwait(false);
+                if (!stash.Success) return stash;
+            }
+
+            var reverse = await _runner.RunAsync("apply", "-R", "--index", "--whitespace=nowarn", patchFile)
+                .ConfigureAwait(false);
+            GitCommandResult rewritten;
+            if (!reverse.Success)
+                rewritten = reverse;
+            else if (isHead)
+                rewritten = await _runner.RunAsync("commit", "--amend", "--no-edit").ConfigureAwait(false);
+            else
+            {
+                rewritten = await _runner.RunAsync("commit", "-m", $"fixup! {target}").ConfigureAwait(false);
+                if (rewritten.Success)
+                    rewritten = await _runner.RunAsync(
+                        "rebase", "-i", "--autosquash", hasParent ? $"{target}^" : "--root").ConfigureAwait(false);
+            }
+
+            if (!rewritten.Success)
+            {
+                // 外すファイルは未変更、他の変更は退避済みなので、元の HEAD へ hard で戻して失うものは無い。
+                var gitDirectory = await _runner.GetGitDirectoryAsync().ConfigureAwait(false);
+                if (gitDirectory is not null && IsRebaseInProgress(gitDirectory))
+                    await _runner.RunAsync("rebase", "--abort").ConfigureAwait(false);
+                await _runner.RunAsync("reset", "--hard", head).ConfigureAwait(false);
+                var note = stashNeeded ? await RestoreUncommitStashAsync(previousStash).ConfigureAwait(false) : "";
+                return WithNote(rewritten, note);
+            }
+
+            var forward = await _runner.RunAsync("apply", "--whitespace=nowarn", patchFile).ConfigureAwait(false);
+            var notes = new List<string>();
+            if (!forward.Success)
+                notes.Add($"外した変更を作業ツリーへ戻せませんでした（git apply \"{patchFile}\" で戻せます）。");
+            if (stashNeeded)
+            {
+                var stashNote = await RestoreUncommitStashAsync(previousStash).ConfigureAwait(false);
+                if (stashNote.Length > 0) notes.Add(stashNote);
+            }
+            // 履歴の書き換えは済んでいる。後始末で躓いても成功として返し、回収の仕方だけ添える。
+            return notes.Count == 0
+                ? rewritten
+                : new GitCommandResult(0, rewritten.Output, string.Join(Environment.NewLine, notes));
+        }
+        finally
+        {
+            // 作業ツリーへ戻せなかったときは、回収に使えるようパッチを残す。
+            if (File.Exists(patchFile) && !await PatchStillNeededAsync(patchFile).ConfigureAwait(false))
+                TryDelete(patchFile);
+        }
+    }
+
+    /// <summary>作業ツリーへ当て終わったパッチか（当てた後なら逆向きに当たる）。当てられずに終わったなら残す。</summary>
+    private async Task<bool> PatchStillNeededAsync(string patchFile)
+    {
+        var appliedAlready = await _runner.RunAsync("apply", "-R", "--check", "--whitespace=nowarn", patchFile)
+            .ConfigureAwait(false);
+        var appliesForward = await _runner.RunAsync("apply", "--check", "--whitespace=nowarn", patchFile)
+            .ConfigureAwait(false);
+        return !appliedAlready.Success && appliesForward.Success;
+    }
+
+    /// <summary>退避した変更を戻す（ステージ済みはステージ済みのまま。重なって戻せなければ素の pop）。</summary>
+    private async Task<string> RestoreUncommitStashAsync(string? previousStash)
+    {
+        var current = (await _runner.RunAsync(
+            "stash", "list", "-1", "--format=%H").ConfigureAwait(false)).Output.Trim();
+        if (string.IsNullOrWhiteSpace(current) || string.Equals(current, previousStash, StringComparison.Ordinal))
+            return "";
+        if ((await _runner.RunAsync("stash", "pop", "--index").ConfigureAwait(false)).Success)
+            return "";
+        return (await _runner.RunAsync("stash", "pop").ConfigureAwait(false)).Success
+            ? ""
+            : "退避した変更は stash に残っています（git stash pop で戻せます）。";
+    }
+
+    /// <summary>
+    /// <c>diff-tree --name-status -M</c> の出力から、コミットが触れた全パスと、選んだパスを外すときに一緒に外すパスを求める
+    /// （リネームは旧名・新名のどちらを選んでも両方）。
+    /// </summary>
+    internal static (IReadOnlyList<string> All, IReadOnlyList<string> Selected) ExpandUncommitPaths(
+        string nameStatus, IReadOnlyList<string> paths)
+    {
+        var wanted = new HashSet<string>(paths.Select(NormalizeGitPath), StringComparer.Ordinal);
+        var all = new List<string>();
+        var selected = new List<string>();
+        foreach (var line in SplitLines(nameStatus))
+        {
+            var fields = line.Split('\t');
+            if (fields.Length < 2) continue;
+            var names = fields.Skip(1).Select(NormalizeGitPath).ToList();
+            all.AddRange(names);
+            if (names.Any(wanted.Contains))
+                selected.AddRange(names);
+        }
+        // 1 件のリネームは旧名・新名で 2 つ数えるので、「全部か」は件数ではなく集合で比べる。
+        var allSet = all.Distinct(StringComparer.Ordinal).ToList();
+        var selectedSet = selected.Distinct(StringComparer.Ordinal).ToList();
+        return (allSet, selectedSet);
+    }
+
+    private static string NormalizeGitPath(string path) => path.Replace('\\', '/').Trim();
+
+    /// <summary>
     /// autosquash が失敗したときに amend 前の状態へ戻す。リベースを中断し、squash されずに残った
     /// fixup コミットを畳み（ステージ済みの内容はインデックスへ戻る）、退避した変更を戻す。
     /// 何もせずに返すと、進行中のリベース・宙に浮いた fixup コミット・黙って作った stash が

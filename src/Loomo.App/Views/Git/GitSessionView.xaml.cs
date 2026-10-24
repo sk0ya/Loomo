@@ -103,7 +103,16 @@ public partial class GitSessionView : UserControl
         => await _commitFilePresenter.OpenFileAsync();
 
     private void OnCommitFileContextMenuOpening(object sender, ContextMenuEventArgs e)
-        => _commitFilePresenter.OnContextMenuOpening(e);
+    {
+        _commitFilePresenter.OnContextMenuOpening(e);
+        var canUncommit = Vm is { } vm && GitSessionOperationController.UncommitTarget(vm) is not null;
+        CommitFileUncommitSeparator.Visibility = CommitFileUncommitMenuItem.Visibility =
+            canUncommit ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private async void OnCommitFileUncommit(object sender, RoutedEventArgs e) =>
+        await GitSessionOperationController.UncommitFilesAsync(
+            Vm, _commitFilePresenter.SelectedPaths(), ConfirmGitOperation);
 
     private void OnCommitFileCopyPath(object sender, RoutedEventArgs e) =>
         _commitFilePresenter.CopyPath();

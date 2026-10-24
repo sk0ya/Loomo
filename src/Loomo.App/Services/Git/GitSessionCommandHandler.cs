@@ -144,6 +144,11 @@ public sealed class GitSessionCommandHandler
         ? Task.FromResult<GitCommandResult?>(null)
         : RunAsync($"コミットメッセージ修正 {row.ShortHash}",
             () => _git.RewriteCommitMessageAsync(row.Hash, message));
+    /// <summary>コミットから選んだファイルの変更を外し、作業ツリーへ戻す（§24.62）。</summary>
+    public Task<GitCommandResult?> UncommitPathsAsync(GitLogRow row, IReadOnlyList<string> paths) => row.Hash is null
+        ? Task.FromResult<GitCommandResult?>(null)
+        : RunAsync($"コミットから外す {row.ShortHash}（{paths.Count} ファイル）",
+            () => _git.UncommitPathsAsync(row.Hash, paths));
     public Task<GitCommandResult?> SquashAsync(IReadOnlyList<GitLogRow> rows, string message)
     {
         var hashes = rows.Where(row => row.Hash is not null).Select(row => row.Hash!).ToList();

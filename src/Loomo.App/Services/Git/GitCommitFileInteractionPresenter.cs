@@ -55,6 +55,24 @@ internal sealed class GitCommitFileInteractionPresenter
             hasSelectedFile: SelectedFile?.NavigatePath is not null);
     }
 
+    /// <summary>選んでいる行のファイル。フォルダーなら、その下のファイル全部。</summary>
+    internal IReadOnlyList<string> SelectedPaths()
+    {
+        if (_fileList.SelectedItem is not CommitFileNode node)
+            return [];
+        var paths = new List<string>();
+        Collect(node);
+        return paths;
+
+        void Collect(CommitFileNode n)
+        {
+            if (n.NavigatePath is { } path)
+                paths.Add(path);
+            foreach (var child in n.Children)
+                Collect(child);
+        }
+    }
+
     internal void CopyPath()
         => ClipboardText.Set(SelectedFile?.NavigatePath);
 }

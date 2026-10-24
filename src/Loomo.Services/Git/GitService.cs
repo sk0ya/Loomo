@@ -539,6 +539,10 @@ public sealed class GitService
     public Task<GitCommandResult> RewriteCommitMessageAsync(string hash, string message) =>
         _rebase.RewriteCommitMessageAsync(hash, message);
 
+    /// <summary>コミットから選んだファイルの変更を外して作業ツリーへ戻す（§24.62）。</summary>
+    public Task<GitCommandResult> UncommitPathsAsync(string hash, IReadOnlyList<string> paths) =>
+        _rebase.UncommitPathsAsync(hash, paths);
+
     public Task<GitCommandResult> SquashAsync(IReadOnlyList<string> hashes, string? commitMessage = null) =>
         _rebase.SquashAsync(hashes, commitMessage);
 
