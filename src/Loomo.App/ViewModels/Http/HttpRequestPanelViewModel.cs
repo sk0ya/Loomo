@@ -92,7 +92,8 @@ public sealed partial class HttpRequestPanelViewModel : ObservableObject
             $"{r.Elapsed.TotalMilliseconds:0} ms",
             r.StatusCode is null ? null : HttpRequestRunner.FormatSize(r.BodyBytes),
             r.HttpVersion,
-            r.StartedAt.ToString("HH:mm:ss"),
+            // 前回の起動から戻した応答（§24.30.2）は日付まで出す——いつの答えかが一目で分かるように。
+            r.StartedAt.ToLocalTime().Date == DateTime.Today ? r.StartedAt.ToString("HH:mm:ss") : r.StartedAt.ToString("M/d HH:mm:ss"),
         }.Where(p => !string.IsNullOrEmpty(p)));
 
     /// <summary>欄の中身（本文かヘッダー。送れなかったときはその理由）。</summary>

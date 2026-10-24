@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using sk0ya.Loomo.App.ViewModels;
 using sk0ya.Loomo.Core.Http;
 
@@ -15,6 +17,10 @@ public sealed record HttpResponseMaterial(string Title, string Text, HttpExchang
 /// ペインを閉じて開き直しても（実体が作り直されても）最後の応答は残る。<c># @name</c> の応答を後の
 /// リクエストから引く（<c>{{login.response.body.$.token}}</c>）のもここが覚えている応答から。
 /// </para>
+/// <para>
+/// 最後の応答は .http ごとに <c>%APPDATA%/Loomo/http-responses/</c> へも残し、再起動の後に初めてそのファイルを
+/// 見たとき（表示の準備・送る直前）に背景で読み戻す（§24.30.2）。書き出しは送るたびに書き出し専用スレッドへ積む。
+/// </para>
 /// </summary>
 public sealed class HttpEditorSupport : IEditorSupportVisualProvider, IDisposable
 {
@@ -23,6 +29,21 @@ public sealed class HttpEditorSupport : IEditorSupportVisualProvider, IDisposabl
     private readonly HttpRequestRunner _runner = new();
     private readonly Dictionary<(string File, string Key), HttpExchangeResult> _results = new();
     private readonly Dictionary<(string File, string Key), CancellationTokenSource> _running = new();
+    private readonly string? _archiveFolder;
+    private readonly DeferredWriteQueue? _writer;
+    // 読み戻し済み（または読み戻し中）のファイル。同じファイルを二度読まない。
+    private readonly Dictionary<string, Task> _loads = new();
+
+    /// <summary>既定の置き場（<c>%APPDATA%/Loomo/http-responses</c>）へ応答を残す。</summary>
+    public HttpEditorSupport()
+        : this(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Loomo", "http-responses")) { }
+
+    /// <param name="archiveFolder">応答を残すフォルダー。null なら残さない（起動中だけ）。</param>
+    public HttpEditorSupport(string? archiveFolder)
+    {
+        _archiveFolder = archiveFolder;
+        _writer = archiveFolder is null ? null : new DeferredWriteQueue("Loomo.HttpResponses");
+    }
 
     public IReadOnlyCollection<string> SupportedExtensions => Extensions;
 
@@ -66,6 +87,8 @@ public sealed class HttpEditorSupport : IEditorSupportVisualProvider, IDisposabl
     {
         var file = Normalize(filePath);
         var key = KeyOf(document, block);
+        // 名前付きの応答を引く前に、前回の起動で残した応答を戻しておく（ログインを打ち直さずに続きが送れる）。
+        await EnsureLoadedAsync(filePath);
         Cancel(filePath, key);
         using var cts = new CancellationTokenSource();
         _running[(file, key)] = cts;
@@ -85,7 +108,10 @@ public sealed class HttpEditorSupport : IEditorSupportVisualProvider, IDisposabl
             var result = await _runner.SendAsync(prepared, cts.Token);
             // 取り消されて別の送信に置き換わったなら、古い結果で新しい方を上書きしない
             if (_running.TryGetValue((file, key), out var current) && ReferenceEquals(current, cts))
+            {
                 _results[(file, key)] = result;
+                Archive(file);
+            }
             return result;
         }
         finally
@@ -129,6 +155,53 @@ public sealed class HttpEditorSupport : IEditorSupportVisualProvider, IDisposabl
 
     private void Raise(string file, string key) => StateChanged?.Invoke(this, new HttpRequestStateChanged(file, key));
 
+    /// <summary>前回の起動で残した、このファイルの応答を戻す（§24.30.2）。読むのは背景、戻すのは呼んだスレッド（UI）。
+    /// いまの起動で既に送ったものは上書きしない。2 回目以降はすぐ終わる。</summary>
+    public Task EnsureLoadedAsync(string filePath)
+    {
+        if (_archiveFolder is null)
+            return Task.CompletedTask;
+        var file = Normalize(filePath);
+        if (!_loads.TryGetValue(file, out var load))
+            _loads[file] = load = LoadAsync(file);
+        return load;
+    }
+
+    private async Task LoadAsync(string file)
+    {
+        var path = ArchivePath(file);
+        var restored = await Task.Run(() =>
+        {
+            try { return File.Exists(path) ? HttpResponseArchive.Deserialize(File.ReadAllText(path)) : []; }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return []; }
+        });
+        foreach (var (key, result) in restored)
+        {
+            if (_results.TryAdd((file, key), result))
+                Raise(file, key);
+        }
+    }
+
+    // 組み立ては UI スレッド（辞書を読めるのはここ）、書くのは書き出しスレッド。新しい計画が古いものを追い越す。
+    private void Archive(string file)
+    {
+        if (_writer is null || _archiveFolder is null)
+            return;
+        var json = HttpResponseArchive.Serialize(file,
+            _results.Where(p => p.Key.File == file).Select(p => KeyValuePair.Create(p.Key.Key, p.Value)));
+        _writer.Enqueue(new FileWritePlan().EnsureDirectory(_archiveFolder).WriteAllText(ArchivePath(file), json));
+    }
+
+    /// <summary>ファイルのパス（正規化済み）から決まる保存先。パスをそのまま名前にしない（長さ・使えない文字）。</summary>
+    internal string ArchivePath(string normalizedFile)
+    {
+        var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(normalizedFile)))[..16].ToLowerInvariant();
+        return Path.Combine(_archiveFolder!, $"{Path.GetFileNameWithoutExtension(normalizedFile)}-{hash}.json");
+    }
+
+    /// <summary>積んである書き出しを済ませる（テスト・終了時）。</summary>
+    internal void FlushArchive() => _writer?.Flush();
+
     private static Dictionary<string, string> LoadDotEnv(string? folder)
     {
         if (folder is null)
@@ -164,6 +237,7 @@ public sealed class HttpEditorSupport : IEditorSupportVisualProvider, IDisposabl
         }
         _running.Clear();
         _runner.Dispose();
+        _writer?.Dispose();
     }
 }
 
@@ -202,6 +276,7 @@ public sealed class HttpRequestVisual : IEditorSupportVisual
     public async Task<Action> PrepareAsync(string filePath, string text, CancellationToken ct)
     {
         var document = await Task.Run(() => HttpRequestFile.Parse(text), ct);
+        await _owner.EnsureLoadedAsync(filePath);   // 前回の起動の応答を、一覧に出す前に戻す（§24.30.2）
         ct.ThrowIfCancellationRequested();
         return () => _vm.Update(filePath, document);
     }
