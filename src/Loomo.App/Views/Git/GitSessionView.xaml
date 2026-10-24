@@ -579,9 +579,10 @@
                     <GridSplitter Grid.Row="1" Height="6" HorizontalAlignment="Stretch"
                                   Background="{DynamicResource Border}" />
 
-                    <!-- 参照（タグ／リモート／サブモジュール）。3つを縦に積むと、190px の列の中で
-                         本命のブランチ一覧が潰れる——とくにリモートは滅多に触らないのに場所だけ取る。
-                         切替式にして、空いた高さはブランチ側へ回す。選んだ種類は設定へ持ち越す。 -->
+                    <!-- 参照（タグ／サブモジュール／ワークツリー）。縦に積むと、190px の列の中で
+                         本命のブランチ一覧が潰れる。切替式にして、空いた高さはブランチ側へ回す。
+                         選んだ種類は設定へ持ち越す。リモートはタブにしない——一覧はブランチツリーの
+                         見出し（origin 等）が既に兼ねていて、追加・URL 変更は滅多にしないので git で足りる。 -->
                     <DockPanel Grid.Row="2">
                         <!-- 種類の切替。EnumToBool で相互排他に振る舞わせる。押し直しで外れて見える
                              （ToggleButton は Click の前に自分で反転する）のは、押されたボタンを
@@ -598,17 +599,6 @@
                                         Foreground="{DynamicResource FgDim}" />
                                 </TextBlock>
                             </ToggleButton>
-                            <ToggleButton x:Name="RefTabRemotes" Style="{StaticResource ToolbarToggleButton}" Margin="0,0,3,0"
-                                          MinHeight="22" ToolTip="リモート"
-                                          IsChecked="{Binding EffectiveReferenceTab, Mode=OneWay,
-                                              Converter={StaticResource EnumToBool}, ConverterParameter=Remotes}"
-                                          Tag="Remotes" Click="OnReferenceTabClick">
-                                <TextBlock FontSize="{DynamicResource Fs11}">
-                                    <Run Text="リモート" /><Run Text=" " /><Run
-                                        Text="{Binding Remotes.Count, Mode=OneWay}"
-                                        Foreground="{DynamicResource FgDim}" />
-                                </TextBlock>
-                            </ToggleButton>
                             <!-- サブモジュールが無いワークスペースでは、そもそも選べるようにしない -->
                             <ToggleButton x:Name="RefTabSubmodules" Style="{StaticResource ToolbarToggleButton}" MinHeight="22"
                                           Margin="0,0,3,0" ToolTip="サブモジュール"
@@ -622,7 +612,7 @@
                                         Foreground="{DynamicResource FgDim}" />
                                 </TextBlock>
                             </ToggleButton>
-                            <!-- ワークツリー（git worktree）。件数はメイン以外の数。190px に4つ並べるので名前は詰める。 -->
+                            <!-- ワークツリー（git worktree）。件数はメイン以外の数。190px に並べるので名前は詰める。 -->
                             <ToggleButton x:Name="RefTabWorktrees" Style="{StaticResource ToolbarToggleButton}" MinHeight="22"
                                           ToolTip="ワークツリー（同じリポジトリの別ブランチを別の場所に置いて並行作業）"
                                           IsChecked="{Binding EffectiveReferenceTab, Mode=OneWay,
@@ -665,39 +655,6 @@
                                                        Foreground="{DynamicResource FgDim}" Margin="8,0,0,0"
                                                        FontFamily="Cascadia Mono, Consolas" />
                                             <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
-                                        </DockPanel>
-                                    </DataTemplate>
-                                </ListBox.ItemTemplate>
-                            </ListBox>
-                        </DockPanel>
-
-                        <!-- リモート一覧。行の右クリックで URL 変更・削除、見出しの「＋」で追加。
-                             リモートが1つも無いリポジトリでもこのタブは出す（＝「追加できる場所」がここだと分かる）。 -->
-                        <DockPanel Visibility="{Binding EffectiveReferenceTab, Converter={StaticResource EnumToVis},
-                                       ConverterParameter=Remotes}">
-                            <DockPanel DockPanel.Dock="Top" Margin="8,2,8,2" LastChildFill="False">
-                                <Button DockPanel.Dock="Right" Style="{StaticResource ToolbarButton}" Margin="0"
-                                        Content="＋ 追加" ToolTip="リモートを追加…" Click="OnRemoteAdd" />
-                            </DockPanel>
-                            <ListBox x:Name="RemoteList" Style="{StaticResource GitList}"
-                                     ItemsSource="{Binding Remotes}"
-                                     PreviewMouseRightButtonDown="OnListRightClickSelect">
-                                <ListBox.ContextMenu>
-                                    <ContextMenu>
-                                        <MenuItem Header="URL を変更…" Click="OnRemoteSetUrl" />
-                                        <MenuItem Header="URL をコピー" Click="OnRemoteCopyUrl" />
-                                        <Separator />
-                                        <MenuItem Header="削除…" Click="OnRemoteRemove" />
-                                    </ContextMenu>
-                                </ListBox.ContextMenu>
-                                <ListBox.ItemTemplate>
-                                    <DataTemplate>
-                                        <DockPanel LastChildFill="True" ToolTip="{Binding Url}">
-                                            <TextBlock DockPanel.Dock="Left" Text="{Binding Name}"
-                                                       FontWeight="SemiBold" Margin="0,0,8,0" />
-                                            <TextBlock Text="{Binding Url}" TextTrimming="CharacterEllipsis"
-                                                       FontSize="{DynamicResource Fs11}"
-                                                       Foreground="{DynamicResource FgDim}" />
                                         </DockPanel>
                                     </DataTemplate>
                                 </ListBox.ItemTemplate>

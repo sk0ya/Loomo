@@ -23,7 +23,6 @@ internal enum GitBranchOperation
 }
 
 internal enum GitTagOperation { Checkout, Push, Delete, PushAll }
-internal enum GitRemoteOperation { Add, SetUrl, Remove }
 internal enum GitSubmoduleOperation { Init, Update, Sync }
 internal enum GitCommitOperation
 {
@@ -251,41 +250,6 @@ internal static class GitSessionOperationController
                 break;
             case GitSubmoduleOperation.Sync:
                 await vm.Commands.SyncSubmodulesAsync();
-                break;
-        }
-    }
-
-    internal static async Task ExecuteRemoteAsync(
-        GitSessionViewModel? vm,
-        GitRemoteInfo? remote,
-        GitRemoteOperation operation,
-        Func<GitOperationPrompt, string?>? prompt = null,
-        Func<GitOperationConfirmation, bool>? confirm = null)
-    {
-        if (vm is null)
-            return;
-        switch (operation)
-        {
-            case GitRemoteOperation.Add:
-                var initialName = vm.Remotes.Count == 0 ? "origin" : "";
-                var name = prompt?.Invoke(new("リモートを追加", "リモート名を入力してください（例: origin）", initialName));
-                if (string.IsNullOrWhiteSpace(name))
-                    return;
-                var url = prompt?.Invoke(new("リモートを追加", $"{name} の URL を入力してください"));
-                if (!string.IsNullOrWhiteSpace(url))
-                    await vm.AddRemoteAsync(name, url);
-                break;
-            case GitRemoteOperation.SetUrl when remote is not null:
-                var newUrl = prompt?.Invoke(new("リモートの URL を変更", $"{remote.Name} の URL", remote.Url));
-                if (!string.IsNullOrWhiteSpace(newUrl) && newUrl != remote.Url)
-                    await vm.SetRemoteUrlAsync(remote.Name, newUrl);
-                break;
-            case GitRemoteOperation.Remove when remote is not null:
-                if (confirm?.Invoke(new("リモートの削除",
-                    $"リモート {remote.Name}（{remote.Url}）を削除しますか？\n" +
-                    "追跡ブランチと上流の設定も一緒に消えます（リモート側のリポジトリはそのままです）。",
-                    GitConfirmationSeverity.Warning)) == true)
-                    await vm.RemoveRemoteAsync(remote.Name);
                 break;
         }
     }

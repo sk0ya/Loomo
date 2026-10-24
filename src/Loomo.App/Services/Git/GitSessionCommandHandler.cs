@@ -46,15 +46,6 @@ public sealed class GitSessionCommandHandler
     public Task<GitCommandResult?> UnsetUpstreamAsync(GitBranchInfo branch) =>
         RunAsync($"{branch.Name} の上流を解除", () => _git.UnsetUpstreamAsync(branch.Name));
 
-    public Task<GitCommandResult?> AddRemoteAsync(string name, string url) =>
-        RunAsync($"リモート追加 {name}", () => _git.AddRemoteAsync(name, url));
-
-    public Task<GitCommandResult?> SetRemoteUrlAsync(string name, string url) =>
-        RunAsync($"リモート {name} の URL を変更", () => _git.SetRemoteUrlAsync(name, url));
-
-    public Task<GitCommandResult?> RemoveRemoteAsync(string name) =>
-        RunAsync($"リモート削除 {name}", () => _git.RemoveRemoteAsync(name));
-
     /// <summary>作業ツリーのファイルをそのコミット時点の内容へ戻す。</summary>
     public Task<GitCommandResult?> RestoreFileAtRevisionAsync(
         string hash, string shortHash, string relativePath, string? renamedTo = null) =>

@@ -422,28 +422,6 @@ public partial class GitSessionView : UserControl
             Vm, SelectedCommit,
             GitCommitOperation.RestoreFileRevision, confirm: ConfirmGitOperation);
 
-    // ===== リモート =====
-
-    private async void OnRemoteAdd(object sender, RoutedEventArgs e) =>
-        await GitSessionOperationController.ExecuteRemoteAsync(
-            Vm, null, GitRemoteOperation.Add,
-            prompt: PromptGitOperation);
-
-    private async void OnRemoteSetUrl(object sender, RoutedEventArgs e) =>
-        await GitSessionOperationController.ExecuteRemoteAsync(
-            Vm,
-            RemoteList.SelectedItem as GitRemoteInfo, GitRemoteOperation.SetUrl,
-            prompt: PromptGitOperation);
-
-    private void OnRemoteCopyUrl(object sender, RoutedEventArgs e) =>
-        ClipboardText.Set((RemoteList.SelectedItem as GitRemoteInfo)?.Url);
-
-    private async void OnRemoteRemove(object sender, RoutedEventArgs e) =>
-        await GitSessionOperationController.ExecuteRemoteAsync(
-            Vm,
-            RemoteList.SelectedItem as GitRemoteInfo, GitRemoteOperation.Remove,
-            confirm: ConfirmGitOperation);
-
     /// <summary>
     /// 選択コミットからHEADまでをインタラクティブリベースする。候補取得→確認→ダイアログ→実行の順。
     /// </summary>

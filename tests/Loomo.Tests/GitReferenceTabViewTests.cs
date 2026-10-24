@@ -48,13 +48,13 @@ public sealed class GitReferenceTabViewTests
             var vm = CreateVm();
             var view = CreateView(vm);
             var tags = FindTab(view, "Tags");
-            var remotes = FindTab(view, "Remotes");
+            var worktrees = FindTab(view, "Worktrees");
 
-            remotes.SetCurrentValue(ToggleButton.IsCheckedProperty, true);
-            remotes.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            worktrees.SetCurrentValue(ToggleButton.IsCheckedProperty, true);
+            worktrees.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
 
-            Assert.Equal(GitReferenceTab.Remotes, vm.ReferenceTab);
-            Assert.True(remotes.IsChecked);
+            Assert.Equal(GitReferenceTab.Worktrees, vm.ReferenceTab);
+            Assert.True(worktrees.IsChecked);
             Assert.False(tags.IsChecked);
         });
     }

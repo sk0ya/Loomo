@@ -8,7 +8,7 @@ using sk0ya.Loomo.Services.Settings;
 namespace sk0ya.Loomo.Tests;
 
 /// <summary>
-/// Git ペイン左列の下段（タグ／リモート／サブモジュール）の切替。3つを縦に積むと本命の
+/// Git ペイン左列の下段（タグ／サブモジュール／ワークツリー）の切替。3つを縦に積むと本命の
 /// ブランチ一覧が潰れるので切替式にした、その選択の持ち越しと、消えたタブの扱い。
 /// </summary>
 public sealed class GitReferenceTabTests
@@ -35,15 +35,16 @@ public sealed class GitReferenceTabTests
     [Fact]
     public void 保存された種類で初期化される()
     {
-        var vm = CreateVm(new LoomoSettings { GitReferenceTab = "Remotes" });
+        var vm = CreateVm(new LoomoSettings { GitReferenceTab = "Worktrees" });
 
-        Assert.Equal(GitReferenceTab.Remotes, vm.ReferenceTab);
-        Assert.Equal(GitReferenceTab.Remotes, vm.EffectiveReferenceTab);
+        Assert.Equal(GitReferenceTab.Worktrees, vm.ReferenceTab);
+        Assert.Equal(GitReferenceTab.Worktrees, vm.EffectiveReferenceTab);
     }
 
     [Theory]
     [InlineData("")]
     [InlineData("Branches")]      // 知らない値（手書き・将来の版）
+    [InlineData("Remotes")]       // 廃止したリモートのタブ（古い版の settings.json）
     // 数値文字列は Enum.TryParse が「成功」させて定義の無い値を返す。落とさないと
     // どのタブにも一致せず、左列の下段が空白のまま操作不能になる。
     [InlineData("7")]
@@ -97,8 +98,8 @@ public sealed class GitReferenceTabTests
 
     [Theory]
     [InlineData(GitReferenceTab.Tags, false, GitReferenceTab.Tags)]
-    [InlineData(GitReferenceTab.Remotes, true, GitReferenceTab.Remotes)]
-    [InlineData(GitReferenceTab.Remotes, false, GitReferenceTab.Remotes)]
+    [InlineData(GitReferenceTab.Worktrees, true, GitReferenceTab.Worktrees)]
+    [InlineData(GitReferenceTab.Worktrees, false, GitReferenceTab.Worktrees)]
     [InlineData(GitReferenceTab.Submodules, false, GitReferenceTab.Tags)]
     [InlineData(GitReferenceTab.Submodules, true, GitReferenceTab.Submodules)]
     public void 表示する種類の決め方(GitReferenceTab desired, bool hasSubmodules, GitReferenceTab expected)

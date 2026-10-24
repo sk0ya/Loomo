@@ -20,7 +20,6 @@ namespace sk0ya.Loomo.App.ViewModels;
 public enum GitReferenceTab
 {
     Tags,
-    Remotes,
     Submodules,
     Worktrees,
 }
@@ -680,14 +679,6 @@ public sealed partial class GitSessionViewModel : ObservableObject
     /// </summary>
     public IReadOnlyList<string> RemoteBranchNames =>
         _allBranches.Where(branch => branch.IsRemote).Select(branch => branch.Name).ToList();
-
-    public Task<GitCommandResult?> AddRemoteAsync(string name, string url) =>
-        Commands.AddRemoteAsync(name, url);
-
-    public Task<GitCommandResult?> SetRemoteUrlAsync(string name, string url) =>
-        Commands.SetRemoteUrlAsync(name, url);
-
-    public Task<GitCommandResult?> RemoveRemoteAsync(string name) => Commands.RemoveRemoteAsync(name);
 
     [RelayCommand]
     private void OpenPullRequests()
