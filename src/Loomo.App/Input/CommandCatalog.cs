@@ -127,6 +127,7 @@ public static class CommandCatalog
         new CommandDescriptor("pane.focus.down", CatPane, "下のペインへフォーカス", "Ctrl+W J"),
         new CommandDescriptor("pane.focus.up", CatPane, "上のペインへフォーカス", "Ctrl+W K"),
         new CommandDescriptor("pane.focus.right", CatPane, "右のペインへフォーカス", "Ctrl+W L"),
+        new CommandDescriptor("pane.focus.previous", CatPane, "直前のペインへフォーカス（もう一度で元へ）", "Ctrl+W W"),
         new CommandDescriptor("pane.resize.left", CatPane, "ペインを左へリサイズ", "Ctrl+W Shift+H", ResizeMode),
         new CommandDescriptor("pane.resize.down", CatPane, "ペインを下へリサイズ", "Ctrl+W Shift+J", ResizeMode),
         new CommandDescriptor("pane.resize.up", CatPane, "ペインを上へリサイズ", "Ctrl+W Shift+K", ResizeMode),

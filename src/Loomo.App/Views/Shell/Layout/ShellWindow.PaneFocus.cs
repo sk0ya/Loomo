@@ -9,6 +9,9 @@ public partial class ShellWindow {
     /// 挟んだあとの戻り先の起点になる（設計書 §31.8）。</summary>
     private (PaneFocusTarget Target, WeakReference<IInputElement> Element)? _lastInnerFocus;
 
+    /// <summary>「直前のペインへ」の戻り先（§24.58）。内部フォーカスの記録と同じ場所で積む。</summary>
+    private readonly PaneFocusHistory<IInputElement> _paneFocusHistory = new();
+
     private void OnWindowPreviewGotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e) {
         _keyboard?.OnExternalFocusChange(suppressModeExit: _suppressResizeExit);
         if (e.NewFocus is not DependencyObject d)
@@ -22,12 +25,23 @@ public partial class ShellWindow {
             else
                 _focusedRegion = PaneFocusTarget.Of(kind);
             _lastInnerFocus = (_focusedRegion.Value, new WeakReference<IInputElement>(e.NewFocus));
+            _paneFocusHistory.Record(_focusedRegion.Value, e.NewFocus);
             RecordTrailPane(kind);
         } else if (IsWithin(d, SidebarContainer)) {
             _focusedRegion = PaneFocusTarget.Sidebar;
             _lastSidebarFocus = new WeakReference<IInputElement>(e.NewFocus);
             _lastInnerFocus = (PaneFocusTarget.Sidebar, _lastSidebarFocus);
+            _paneFocusHistory.Record(PaneFocusTarget.Sidebar, e.NewFocus);
         }
+    }
+
+    /// <summary>直前に居たペイン（分割ならそのビューポート、またはサイドバー）へ戻る（<c>pane.focus.previous</c>・§24.58）。
+    /// 戻った先から押せば元へ戻る。戻り先が閉じられていれば、設定ウィンドウからの復帰と同じ規則で
+    /// 近いところ（同じペイン・サイドバー）へ落とす。</summary>
+    private void FocusPreviousPane() {
+        if (_paneFocusHistory.Previous is not { } previous)
+            return;
+        ApplyFocusReturn(new FocusReturnOrigin(previous.Target.Pane, previous.Target.ViewportId), previous.Element);
     }
 
     // ===== 設定ウィンドウ（本体の外で入力を受ける面）を挟んだときのフォーカス復帰（設計書 §31.8） =====
