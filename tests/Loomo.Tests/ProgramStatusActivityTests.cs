@@ -76,8 +76,28 @@ public sealed class ProgramStatusActivityTests
     }
 
     [Fact]
-    public void Done_or_error_only_means_claude_is_not_here()
-        => Assert.Null(ProgramStatusPresentation.Claude([Claude(ProgramStatusState.Done)]));
+    public void Done_ends_the_turn_like_idle()   // Claude Code 2.1.310 はターンの終わりに done を送る（実測）
+    {
+        var sut = new PaneActivityTracker();
+        sut.TerminalProgramStatusChanged(Tab, [Claude(ProgramStatusState.Working)], paneWatched: false);
+        var ended = sut.TerminalProgramStatusChanged(Tab, [Claude(ProgramStatusState.Done)], paneWatched: false);
+        Assert.True(ended.Claude.TurnEnded);
+        Assert.Equal(ClaudeAgentState.TurnEnded, sut.AgentTabs().Single().State);
+    }
+
+    [Fact]
+    public void A_done_left_behind_by_a_crashed_claude_is_ignored_after_the_command_ends()
+    {
+        var sut = new PaneActivityTracker();
+        var stale = new ProgramStatusRecord("", ProgramStatusState.Done, ProgramStatusKind.None, null, "claude-code", null, null,
+            DateTimeOffset.Now.AddMinutes(-1));
+        sut.TerminalCommandChanged(Tab, commandExecuted: true, commandDone: false, null, paneWatched: true);  // claude を起動（C）
+        sut.TerminalProgramStatusChanged(Tab, [stale], paneWatched: true);
+        sut.TerminalCommandChanged(Tab, commandExecuted: false, commandDone: true, 1, paneWatched: true);   // claude が落ちてプロンプトへ（D）
+
+        sut.TerminalProgramStatusChanged(Tab, [stale], paneWatched: true);   // done は端末に残っている
+        Assert.Empty(sut.AgentTabs());
+    }
 
     [Fact]
     public void A_blocked_subagent_makes_the_whole_session_wait()

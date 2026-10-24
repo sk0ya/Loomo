@@ -17,12 +17,15 @@ internal static class ProgramStatusPresentation
 {
     public const string ClaudeApp = "claude-code";
 
-    /// <summary>Claude Code の申告。居なければ null（<c>done</c>／<c>error</c> だけ残っているのは、終わった後なので居ない扱い）。
-    /// 複数のレコード（サブエージェント等）があれば、人の番 → 作業中 → 手が空いている の順で強いものを採る。</summary>
-    public static ClaudeProgramStatus? Claude(IReadOnlyList<ProgramStatusRecord> records)
+    /// <summary>Claude Code の申告。居なければ null。複数のレコード（サブエージェント等）があれば、人の番 → 作業中 →
+    /// 手が空いている の順で強いものを採る。<c>done</c>／<c>error</c> は「ターンが終わって入力を待っている」——Claude Code 2.1.310 は
+    /// ターンの終わりに <c>idle</c> ではなく <c>done</c>（終わった一言つき）を送り、終了時に <c>clear</c> する（2026-10-25 実測）。
+    /// <paramref name="notBefore"/> より前の申告は数えない（シェルのコマンドが終わった後に残っている <c>done</c> は、<c>clear</c> を
+    /// 送らずに落ちた Claude のもの）。</summary>
+    public static ClaudeProgramStatus? Claude(IReadOnlyList<ProgramStatusRecord> records, DateTimeOffset notBefore = default)
     {
         var live = records
-            .Where(r => r.App == ClaudeApp && r.State is ProgramStatusState.Idle or ProgramStatusState.Working or ProgramStatusState.Blocked)
+            .Where(r => r.App == ClaudeApp && r.UpdatedAt >= notBefore)
             .ToList();
         if (live.Count == 0)
             return null;

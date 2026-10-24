@@ -30,6 +30,8 @@ internal sealed class PaneActivityTracker
         public bool AgentReportsStatus;
         /// <summary>Claude 以外のプログラムの、いま動いている申告（§24.61）。</summary>
         public IReadOnlyList<ProgramStatusRecord> Programs = [];
+        /// <summary>シェルのコマンドが最後に終わった時刻（OSC 133 D）。これより前の Claude の申告（落ちた Claude の done）は数えない。</summary>
+        public DateTimeOffset LastCommandDoneAt;
     }
 
     private sealed class IdeState
@@ -93,6 +95,7 @@ internal sealed class PaneActivityTracker
             state.AgentApproval = false;
             state.AgentTitle = null;
             state.AgentReportsStatus = false;
+            state.LastCommandDoneAt = DateTimeOffset.Now;
         }
         return true;
     }
@@ -145,9 +148,10 @@ internal sealed class PaneActivityTracker
     public ProgramStatusTransition TerminalProgramStatusChanged(
         Guid tabId, IReadOnlyList<ProgramStatusRecord> records, bool paneWatched)
     {
-        var claude = ProgramStatusPresentation.Claude(records);
+        _terminals.TryGetValue(tabId, out var state);
+        var claude = ProgramStatusPresentation.Claude(records, state?.LastCommandDoneAt ?? default);
         var others = ProgramStatusPresentation.Others(records);
-        if (!_terminals.TryGetValue(tabId, out var state))
+        if (state is null)
         {
             if (claude is null && others.Count == 0)
                 return default;
