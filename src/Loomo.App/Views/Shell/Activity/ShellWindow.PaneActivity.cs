@@ -130,7 +130,12 @@ public partial class ShellWindow {
 
     private void ApplyClaudeTransition(Guid tabId, ClaudeCodeTitleTransition transition) {
         if (transition.ShouldRefresh)
+        {
             UpdatePaneActivityBadge(PaneKind.Terminal);
+            // 申告の変化は見出しのタイトルを動かさないので、印を付け直すにはこちらから組み直す（§24.61）。
+            if (_terminalTabs.FirstOrDefault(t => t.Id == tabId) is { } tab)
+                UpdateTerminalTab(tab, tab.View.HeaderTitle);
+        }
         if (!transition.TurnEnded)
             return;
         // Claude が書き換えたファイルを開いたままだと、古い本文のまま保存して Claude の変更を消しうる。

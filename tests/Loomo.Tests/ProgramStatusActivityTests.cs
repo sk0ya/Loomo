@@ -63,6 +63,37 @@ public sealed class ProgramStatusActivityTests
     }
 
     [Fact]
+    public void While_reporting_a_title_without_a_mark_is_still_the_subject()
+    {
+        // 申告できる端末では Claude Code はタイトルに印を付けない（2.1.310 を同梱の ConPTY 越しに採取・2026-10-25）
+        var sut = new PaneActivityTracker();
+        sut.TerminalCommandChanged(Tab, commandExecuted: true, commandDone: false, exitCode: null, paneWatched: true);
+        sut.TerminalProgramStatusChanged(Tab, [Claude(ProgramStatusState.Working)], paneWatched: true);
+
+        sut.TerminalTitleChanged(Tab, "Reply with OK", paneWatched: true);
+        Assert.Equal("Reply with OK", sut.AgentTabs().Single().Title);
+    }
+
+    [Fact]
+    public void The_header_gets_the_mark_back_from_the_report()
+    {
+        var sut = new PaneActivityTracker();
+        Assert.Null(sut.TerminalAgentHeaderStatus(Tab));   // 申告していなければ Claude が自分で印を付けている
+
+        sut.TerminalProgramStatusChanged(Tab, [Claude(ProgramStatusState.Working)], paneWatched: true);
+        Assert.Equal("◐ Reply with OK", ClaudeCodeTitle.WithMark("Reply with OK", sut.TerminalAgentHeaderStatus(Tab)!.Value));
+
+        sut.TerminalProgramStatusChanged(Tab, [Claude(ProgramStatusState.Done)], paneWatched: true);
+        Assert.Equal("✳ Reply with OK", ClaudeCodeTitle.WithMark("Reply with OK", sut.TerminalAgentHeaderStatus(Tab)!.Value));
+
+        // 印が既にあれば二重に付けない
+        Assert.Equal("◑ Fix", ClaudeCodeTitle.WithMark("◑ Fix", ClaudeCodeStatus.Working));
+
+        sut.TerminalProgramStatusChanged(Tab, [], paneWatched: true);
+        Assert.Null(sut.TerminalAgentHeaderStatus(Tab));
+    }
+
+    [Fact]
     public void When_the_report_disappears_claude_has_left()
     {
         var sut = new PaneActivityTracker();

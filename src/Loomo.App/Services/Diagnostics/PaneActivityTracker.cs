@@ -105,6 +105,14 @@ internal sealed class PaneActivityTracker
     public ClaudeCodeTitleTransition TerminalTitleChanged(Guid tabId, string? title, bool paneWatched)
     {
         var status = ClaudeCodeTitle.Parse(title);
+        // 申告（OSC 7501）がある間は、状態は申告から決める。タイトルからは題だけ拾う（§24.61）。申告できる端末だと
+        // Claude Code はタイトルに印を付けないので、印が無くてもタイトルそのものを題にする。
+        if (_terminals.TryGetValue(tabId, out var reporting) && reporting.AgentReportsStatus)
+        {
+            reporting.AgentTitle = ClaudeCodeTitle.Subject(title)
+                ?? (string.IsNullOrWhiteSpace(title) ? null : title.Trim());
+            return default;
+        }
         if (!_terminals.TryGetValue(tabId, out var state))
         {
             if (status is null)
@@ -116,13 +124,6 @@ internal sealed class PaneActivityTracker
         // （TerminalCommandChanged）。
         if (status is null && state.Running)
             return default;
-        // 申告（OSC 7501）がある間は、状態は申告から決める。タイトルからは題だけ拾う（§24.61）。
-        if (state.AgentReportsStatus)
-        {
-            if (status is not null)
-                state.AgentTitle = ClaudeCodeTitle.Subject(title);
-            return default;
-        }
         var next = PaneActivityPresentation.ClaudeTitleChanged(
             state.Agent, state.AgentUnseenTurn, status, paneWatched);
         state.Agent = next.Agent;
@@ -193,6 +194,11 @@ internal sealed class PaneActivityTracker
         }
         return new ProgramStatusTransition(transition, humanTurnStarted, programsChanged);
     }
+
+    /// <summary>タブの見出しに付け直す Claude の状態（§24.61）。OSC 7501 で申告している間だけ——申告しない Claude Code は
+    /// 自分でタイトルに印を付けている。</summary>
+    public ClaudeCodeStatus? TerminalAgentHeaderStatus(Guid tabId)
+        => _terminals.TryGetValue(tabId, out var state) && state.AgentReportsStatus ? state.Agent : null;
 
     /// <summary>そのタブの、Claude 以外のプログラムのいま動いている申告（§24.61）。</summary>
     public IReadOnlyList<ProgramStatusRecord> ProgramsOf(Guid tabId)

@@ -31,7 +31,7 @@ public partial class ShellWindow {
             tab.CustomName ?? "", allowEmpty: true);
         if (name is null)
             return;
-        tab.CustomName = _vm.Tabs.RenameTerminalTab(tab.Id, name, tab.View.HeaderTitle);
+        tab.CustomName = _vm.Tabs.RenameTerminalTab(tab.Id, name, TerminalHeaderWithAgentMark(tab.Id, tab.View.HeaderTitle));
     }
     private TerminalWorkspaceTabs CurrentTerminalWorkspace
         => _activeTerminalWorkspace ?? _scratchTerminalWorkspace;

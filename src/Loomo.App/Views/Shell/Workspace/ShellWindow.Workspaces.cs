@@ -60,7 +60,10 @@ public partial class ShellWindow {
     }
     // 見出しはコマンドのたびに変わるが、端末は保存しないのでスナップショットは書かない（表示だけ更新）。
     private void UpdateTerminalTab(TerminalTab tab, string? title)
-        => _vm.Tabs.UpdateTerminalTab(tab.Id, title);
+        => _vm.Tabs.UpdateTerminalTab(tab.Id, TerminalHeaderWithAgentMark(tab.Id, title));
+    /// <summary>OSC 7501 で状態を申告している Claude Code はタイトルに ◐／✳ を付けないので、見出しには申告から付け直す（§24.61）。</summary>
+    private string? TerminalHeaderWithAgentMark(Guid tabId, string? title)
+        => _paneActivity.TerminalAgentHeaderStatus(tabId) is { } status ? ClaudeCodeTitle.WithMark(title, status) : title;
     private void UpdateEditorTab(EditorTab tab) {
         if (ReferenceEquals(_previewEditorTab, tab) && tab.Control.IsModified)
             SetPreviewTab(null);
