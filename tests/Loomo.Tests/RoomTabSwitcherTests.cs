@@ -44,6 +44,9 @@ public sealed class RoomTabSwitcherTests
             var withFile = RoomTabSwitcherItems.Editor(entry, file, p => p, () => { });
             Assert.Equal(file, withFile.Target?.FullPath);
             Assert.StartsWith(RoomTabSwitcherItems.EditorCategory, withFile.Category);
+            // ワークスペース直下のファイルにはフォルダーを添えない（「エディタ · .」にしない）
+            var atRoot = RoomTabSwitcherItems.Editor(entry, file, Path.GetFileName, () => { });
+            Assert.Equal(RoomTabSwitcherItems.EditorCategory, atRoot.Category);
 
             var untitled = RoomTabSwitcherItems.Editor(entry, null, p => p, () => { });
             Assert.Null(untitled.Target);

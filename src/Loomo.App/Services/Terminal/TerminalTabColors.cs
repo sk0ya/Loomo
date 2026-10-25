@@ -40,12 +40,20 @@ internal static class TerminalTabColors
         foreach (var choice in All)
         {
             var key = choice.Key;
+            // 色見本は見出しの中に置く——Loomo のメニューのテンプレートにはアイコン欄が無く、Icon に入れても描かれない。
+            var swatch = new StackPanel { Orientation = Orientation.Horizontal };
+            swatch.Children.Add(new Ellipse
+            {
+                Width = 10, Height = 10, Fill = BrushFor(key),
+                Margin = new System.Windows.Thickness(0, 0, 8, 0),
+                VerticalAlignment = System.Windows.VerticalAlignment.Center,
+            });
+            swatch.Children.Add(new TextBlock { Text = choice.Label, VerticalAlignment = System.Windows.VerticalAlignment.Center });
             var item = new MenuItem
             {
-                Header = choice.Label,
+                Header = swatch,
                 IsCheckable = true,
                 IsChecked = key == current,
-                Icon = new Ellipse { Width = 10, Height = 10, Fill = BrushFor(key) },
             };
             item.Click += (_, _) => apply(key);
             menu.Items.Add(item);

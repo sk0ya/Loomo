@@ -30,8 +30,10 @@ internal static class RoomTabSwitcherItems
         TabEntryViewModel entry, string? filePath, Func<string, string> toDisplayPath, Action activate)
     {
         var hasFile = !string.IsNullOrEmpty(filePath) && File.Exists(filePath);
+        var folder = hasFile ? Path.GetDirectoryName(toDisplayPath(filePath!)) : null;
+        // ワークスペース直下のファイルはフォルダーを添えない（「エディタ · .」にしない）。
         return new PaletteCommand(
-            hasFile ? $"{EditorCategory} · {FolderOf(toDisplayPath(filePath!))}" : EditorCategory,
+            string.IsNullOrEmpty(folder) ? EditorCategory : $"{EditorCategory} · {folder}",
             entry.Title, activate)
         {
             Target = hasFile ? new PaletteTarget(filePath!) : null,
@@ -50,11 +52,5 @@ internal static class RoomTabSwitcherItems
         var text = string.Join(Environment.NewLine, lines.Where(l => !string.IsNullOrWhiteSpace(l)));
         return (text.Length == 0 ? "" : text + Environment.NewLine + Environment.NewLine)
             + "Ctrl を離すとこのタブへ・Esc でやめる";
-    }
-
-    private static string FolderOf(string displayPath)
-    {
-        var folder = Path.GetDirectoryName(displayPath);
-        return string.IsNullOrEmpty(folder) ? "." : folder;
     }
 }
