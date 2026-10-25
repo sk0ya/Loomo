@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Text;
+using sk0ya.Loomo.Core.Safety;
 
 namespace sk0ya.Loomo.App.Services;
 
@@ -16,6 +17,8 @@ public sealed record TerminalPegboardItem(string Content, string? Title, Pegboar
 /// <para><b>大きさに上限を持つ</b>（<see cref="MaxChars"/>）。ペグボードは workspaces.json に入るので、
 /// 出力を丸ごと入れると §23.3.1 の 72MB 事故（起動不能）と同じ形になる——§24.21 が「ペグボードへ直接送る」を
 /// 見送った理由そのもの。超えたら<b>末尾を残す</b>（テストの集計・ビルドのエラーは末尾に出る）。</para>
+/// <para><b>秘密を伏せてから残す</b>（§24.66・<see cref="SecretRedactor"/>）。本文もコマンド行も状態ファイルに入るので、
+/// トークンや鍵がそのまま再起動のあとまで残らないようにする。伏せた数は出典に持ってカードで言う。</para>
 /// </summary>
 public static class TerminalPegboardMaterial
 {
@@ -32,18 +35,21 @@ public static class TerminalPegboardMaterial
         var (text, clipped) = Clip(output.Text.Trim('\r', '\n'));
         if (string.IsNullOrWhiteSpace(text))
             return null;
+        text = SecretRedactor.Redact(text, out var maskedText);
+        var command = SecretRedactor.Redact(output.Command, out var maskedCommand);
         var source = new PegboardTerminalSource
         {
             TabId = output.TabId,
             TabTitle = NullIfBlank(tabTitle),
-            Command = output.Command,
+            Command = command,
+            MaskedSecrets = maskedText + maskedCommand,
             WorkingDirectory = NullIfBlank(output.WorkingDirectory),
             ExitCode = output.ExitCode,
             CapturedUtc = output.FinishedUtc,
             HeadOmitted = clipped || output.HeadOmitted,
         };
         // 見出しは出力の先頭行ではなく「どのコマンドの出力か」——先頭行は区切り線や空行のことが多く見分けがつかない。
-        return new TerminalPegboardItem(text, $"{RecentTerminalCommands.Title(output.Command)} の出力", source);
+        return new TerminalPegboardItem(text, $"{RecentTerminalCommands.Title(command)} の出力", source);
     }
 
     /// <summary>ターミナルの選択をペグボードの1枚にする。<paramref name="containing"/> は選択を含むコマンドの出力
@@ -56,11 +62,15 @@ public static class TerminalPegboardMaterial
         var (text, clipped) = Clip(selection.Trim());
         if (text.Length == 0)
             return null;
+        text = SecretRedactor.Redact(text, out var maskedText);
+        var maskedCommand = 0;
+        var command = containing?.Command is { } c ? SecretRedactor.Redact(c, out maskedCommand) : null;
         var source = new PegboardTerminalSource
         {
             TabId = tabId,
             TabTitle = NullIfBlank(tabTitle),
-            Command = containing?.Command,
+            Command = command,
+            MaskedSecrets = maskedText + maskedCommand,
             WorkingDirectory = NullIfBlank(containing?.WorkingDirectory) ?? NullIfBlank(workingDirectory),
             ExitCode = containing?.ExitCode,
             CapturedUtc = containing?.FinishedUtc ?? nowUtc,
@@ -129,6 +139,8 @@ public static class TerminalPegboardMaterial
         lines.Add(string.IsNullOrWhiteSpace(source.Command) ? $"残した時刻: {time}" : $"終了時刻: {time}");
         if (source.HeadOmitted)
             lines.Add("（先頭を省略）");
+        if (source.MaskedSecrets > 0)
+            lines.Add($"（秘密らしい文字列を {source.MaskedSecrets} か所伏せました）");
         return string.Join(Environment.NewLine, lines);
     }
 

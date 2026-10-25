@@ -75,9 +75,14 @@ public partial class ShellWindow {
 
     private void AddTerminalMaterialToPegboard(TerminalPegboardItem item, string what) {
         _vm.Pegboard.AddContent(item.Content, type: "text", title: item.Title, terminalSource: item.Source);
-        ToastService.Success(item.Source.HeadOmitted
-            ? $"{what}を出典付きでペグボードへ残しました（長いので先頭を省きました）。"
-            : $"{what}を出典付きでペグボードへ残しました。");
+        var notes = new List<string>();
+        if (item.Source.HeadOmitted)
+            notes.Add("長いので先頭を省きました");
+        if (item.Source.MaskedSecrets > 0)
+            notes.Add($"秘密らしい文字列を {item.Source.MaskedSecrets} か所伏せました");
+        ToastService.Success(notes.Count == 0
+            ? $"{what}を出典付きでペグボードへ残しました。"
+            : $"{what}を出典付きでペグボードへ残しました（{string.Join("・", notes)}）。");
     }
 
     /// <summary>パレット「コマンドの出力をペグボードへ残す」。覚えている各コマンドの今回の出力を新しい順に並べる。</summary>

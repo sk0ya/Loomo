@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using sk0ya.Loomo.Core.Safety;
 
 namespace sk0ya.Loomo.App.Services;
 
@@ -21,12 +22,15 @@ public static class RecentTerminalCommands
     /// <summary>
     /// <paramref name="run"/> を先頭へ積んだ新しい一覧を返す。同じコマンド行（序数比較）は1件にまとめ、
     /// 実行回数を足して終了コード・時刻を最新に差し替える。空のコマンドは記録しない（null を返す＝変更なし）。
+    /// <para><b>秘密を含む行も記録しない</b>（§24.66）。一覧は workspaces.json に入って再起動のあとも残るので、
+    /// <c>$env:GITHUB_TOKEN="ghp_…"</c> のような行をそこへ書かない。伏せて残すのではなく積まない——伏せた行を選び直して
+    /// 送っても、そのままでは動かないコマンドになるだけ。前の版で積んでしまった行も、ここを通るたびに落とす。</para>
     /// </summary>
     public static List<RecentTerminalCommandSnapshot>? Record(
         IReadOnlyList<RecentTerminalCommandSnapshot>? current, RecentTerminalCommandRun run)
     {
         var command = Normalize(run.Command);
-        if (command is null)
+        if (command is null || SecretRedactor.ContainsSecret(command))
             return null;
 
         current ??= Array.Empty<RecentTerminalCommandSnapshot>();
@@ -43,7 +47,8 @@ public static class RecentTerminalCommands
         };
         updated.AddRange(current
             .Where(c => !string.IsNullOrWhiteSpace(c.Command)
-                        && !string.Equals(c.Command, command, StringComparison.Ordinal))
+                        && !string.Equals(c.Command, command, StringComparison.Ordinal)
+                        && !SecretRedactor.ContainsSecret(c.Command))
             .Take(MaxCount - 1));
         return updated;
     }

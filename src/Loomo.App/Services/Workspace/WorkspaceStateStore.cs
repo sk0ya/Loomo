@@ -694,6 +694,8 @@ public sealed class PegboardTerminalSource
     public DateTime CapturedUtc { get; set; } = DateTime.UtcNow;
     /// <summary>本文の先頭を省いている（出力が上限を超えて頭を落とした・スクロールバックから押し出されていた）。</summary>
     public bool HeadOmitted { get; set; }
+    /// <summary>残す前に伏せた秘密らしい文字列の数（§24.66）。本文とコマンド行の合計。</summary>
+    public int MaskedSecrets { get; set; }
 }
 
 /// <summary>検索ペインのタブに残した検索結果1枚ぶん（<see cref="WorkspaceSnapshot.SearchTabs"/>）。</summary>
