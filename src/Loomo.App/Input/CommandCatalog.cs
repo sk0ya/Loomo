@@ -168,6 +168,8 @@ public static class CommandCatalog
         new CommandDescriptor("git.toggleCaretLineBlame", CatEdit, "カーソル行の最終更新（blame）の表示を切り替える", null),
         new CommandDescriptor("terminal.compareOutput", CatTerminal, "コマンドの出力を前回と比較", null),
         new CommandDescriptor("terminal.openOutput", CatTerminal, "コマンドの出力をエディタで開く", null),
+        // 閉じたターミナルの画面を書庫から読む（§24.72）。
+        new CommandDescriptor("terminal.openArchive", CatTerminal, "閉じたターミナルの画面を読む", null),
         // 出典付きでペグボードへ残す（§24.26）。右クリック（選択時）と同じ実装へ入る。
         new CommandDescriptor("terminal.pinOutput", CatTerminal, "コマンドの出力をペグボードへ残す", null),
         new CommandDescriptor("terminal.pinSelection", CatTerminal, "ターミナルの選択をペグボードへ残す", null),

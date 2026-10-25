@@ -17,6 +17,7 @@ public partial class ShellWindow {
             ["git.toggleCaretLineBlame"] = ToggleCaretLineBlame,
             ["terminal.compareOutput"] = OpenTerminalOutputComparisons,
             ["terminal.openOutput"] = OpenTerminalOutputs,
+            ["terminal.openArchive"] = OpenTerminalArchive,
             ["tasks.run"] = OpenWorkspaceTasks,
             ["tasks.runDefaultBuild"] = RunDefaultBuildTask,
             ["terminal.pinOutput"] = OpenTerminalOutputsToPin,

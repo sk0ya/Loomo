@@ -11,7 +11,8 @@ namespace sk0ya.Loomo.Pty.Host;
 /// <param name="pipeName">待ち受けるパイプ名。</param>
 /// <param name="idleExit">セッションが無く、誰も繋がっていない状態がこれだけ続いたら終わる。null なら終わらない（テスト用）。</param>
 /// <param name="lastClientLeft">最後の Loomo が終わり、全セッションを殺したあとに呼ぶ（本番はプロセスを終える）。</param>
-internal sealed class PtyHostServer(string pipeName, TimeSpan? idleExit, Action? lastClientLeft = null)
+/// <param name="archiveDirectory">終わったセッションの画面を書き残す書庫（§24.72）。null なら残さない（テストの既定）。</param>
+internal sealed class PtyHostServer(string pipeName, TimeSpan? idleExit, Action? lastClientLeft = null, string? archiveDirectory = null)
 {
     private readonly object _gate = new();
     private readonly Dictionary<Guid, HostSession> _sessions = new();
@@ -181,7 +182,7 @@ internal sealed class PtyHostServer(string pipeName, TimeSpan? idleExit, Action?
 
         // ConPTY とシェルの起動は数百 ms かかるので、表の鍵の外でやる。同じ ID の二重 Open は
         // 本体の作りでは起きない（1タブ1接続）が、起きたら後から来た方を捨てて先の方へ繋ぐ。
-        var session = HostSession.Start(request, OnSessionEnded);
+        var session = HostSession.Start(request, OnSessionEnded, archiveDirectory);
         lock (_gate)
         {
             if (_sessions.TryGetValue(request.SessionId, out var raced) && !raced.HasFinished)

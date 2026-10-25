@@ -26,9 +26,11 @@ internal sealed class HostSession
     private int _exitCode = -1;
     private int _finished;
     private volatile bool _killRequested;
+    private readonly string? _archiveDirectory;
 
-    private HostSession(PtyProtocol.Request request, Action<HostSession> ended)
+    private HostSession(PtyProtocol.Request request, Action<HostSession> ended, string? archiveDirectory)
     {
+        _archiveDirectory = archiveDirectory;
         Id = request.SessionId;
         WorkspaceId = request.WorkspaceId;
         CreatedUtc = DateTime.UtcNow;
@@ -57,11 +59,11 @@ internal sealed class HostSession
     /// 作り直しに来た Open にはもう渡さない）。</summary>
     public bool HasFinished => _killRequested || Volatile.Read(ref _finished) != 0;
 
-    public static HostSession Start(PtyProtocol.Request request, Action<HostSession> ended)
+    public static HostSession Start(PtyProtocol.Request request, Action<HostSession> ended, string? archiveDirectory = null)
     {
         if (string.IsNullOrWhiteSpace(request.CommandLine))
             throw new ArgumentException("起動コマンド行がありません。");
-        return new HostSession(request, ended);
+        return new HostSession(request, ended, archiveDirectory);
     }
 
     public PtyProtocol.SessionInfo Describe() =>
@@ -182,6 +184,7 @@ internal sealed class HostSession
         if (Interlocked.Exchange(ref _finished, 1) != 0)
             return;
         _exitCode = exitCode;
+        Archive();
         _client?.SendExited(exitCode);
         _client?.Close();
         _client = null;
@@ -194,6 +197,26 @@ internal sealed class HostSession
             try { _pty.Dispose(); }
             catch (Exception ex) { HostLog.Write($"破棄に失敗 {Id:N}: {ex.Message}"); }
         }, null);
+    }
+
+    /// <summary>
+    /// 終わるセッションの画面を書庫へ書く（§24.72）。閉じたタブ（Kill）・預かりの期限切れ・Loomo の正常終了（全部殺す）・
+    /// シェル自身の終了のどれでも書く——どれも、この画面はもう端末では戻らない。画面モデルを触るのでこのスレッド（Finish の中）でやる。
+    /// 書けなくてもセッションの後始末は止めない。
+    /// </summary>
+    private void Archive()
+    {
+        if (_archiveDirectory is null)
+            return;
+        try
+        {
+            TerminalArchive.Write(_archiveDirectory, Id, WorkspaceId, Title, WorkingDirectory,
+                _screen.CreatePlainTextSnapshot(), DateTime.UtcNow);
+        }
+        catch (Exception ex)
+        {
+            HostLog.Write($"画面を書庫へ残せなかった {Id:N}: {ex.Message}");
+        }
     }
 
     private bool Post(Action action)

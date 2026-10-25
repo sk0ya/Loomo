@@ -342,6 +342,8 @@ public partial class ShellWindow {
             Sc("terminal.compareOutput"), "terminal.compareOutput"));
         list.Add(new("ターミナル", "コマンドの出力をエディタで開く", OpenTerminalOutputs,
             Sc("terminal.openOutput"), "terminal.openOutput"));
+        list.Add(new("ターミナル", "閉じたターミナルの画面を読む", OpenTerminalArchive,
+            Sc("terminal.openArchive"), "terminal.openArchive"));
         list.Add(new("タスク", "タスクを実行…", OpenWorkspaceTasks, Sc("tasks.run"), "tasks.run"));
         // ローカル履歴と NuGet（§36）。
         list.Add(new("ローカル履歴", "ローカル履歴を表示（版 ↔ いまの差分）", ShowLocalHistory, Sc("localHistory.show"), "localHistory.show"));
