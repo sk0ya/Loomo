@@ -258,7 +258,7 @@
         <StackPanel DockPanel.Dock="Top" Margin="8,2,8,6"
                     Visibility="{Binding IsViewingTab, Converter={StaticResource InverseBoolToVis}}">
             <!-- 検索モード切替（検索ワード欄の上）＋ツールバー（すべて展開／すべて閉じる）を同じ行に。
-                 テキスト＝ファイル内を grep、ファイル＝名前で曖昧検索、ターミナル＝アクティブなターミナル内テキスト。
+                 テキスト＝ファイル内を grep、ファイル＝名前で曖昧検索、ターミナル＝この部屋のターミナルのタブ全部のテキスト（§24.67）。
                  Scope 列挙を EnumToBool で束ね、相互排他に振る舞わせる（既に選択中のボタンを
                  押しても外れない＝ConvertBack が DoNothing）。見出し（"SEARCH"）はホストするペインのタイトルバー側が
                  持つ（サイドバー専用パネルではなく舞台ペインとして表示するため）。 -->
@@ -278,7 +278,7 @@
                                   IsChecked="{Binding Scope, Converter={StaticResource EnumToBool}, ConverterParameter=FileName, Mode=TwoWay}" />
                     <ToggleButton Content="ターミナル" Height="22" Padding="10,0" FontSize="{DynamicResource Fs11}" Margin="4,0,0,0" Cursor="Hand"
                                   Style="{StaticResource SearchToggle}"
-                                  ToolTip="アクティブなターミナル内を検索"
+                                  ToolTip="この部屋のターミナルのタブを全部検索"
                                   IsChecked="{Binding Scope, Converter={StaticResource EnumToBool}, ConverterParameter=Terminal, Mode=TwoWay}" />
                     <ToggleButton Content="クラス" Height="22" Padding="10,0" FontSize="{DynamicResource Fs11}" Margin="4,0,0,0" Cursor="Hand"
                                   Style="{StaticResource SearchToggle}"

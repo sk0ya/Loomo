@@ -14,7 +14,10 @@ public readonly record struct SearchKindOption(SearchFileKind Value, string Labe
 /// （空＝ワークスペース全体）、<see cref="Detail"/> はメニューの右に添える同じ表記（全体のときは空）。</summary>
 public sealed record SearchRootChoice(string Label, string Detail, string Value, bool IsPin, bool IsCurrent);
 
-public readonly record struct TerminalSearchHit(int LineIndex, int Column, int Length, string LineText);
+/// <summary>ターミナル検索の1件。<see cref="TabId"/>／<see cref="TabTitle"/> はどのタブの一致か（§24.67 で全部のタブを
+/// 探すようになったので、行番号だけでは戻り先が決まらない）。</summary>
+public readonly record struct TerminalSearchHit(
+    int LineIndex, int Column, int Length, string LineText, Guid TabId = default, string? TabTitle = null);
 
 /// <summary>クラス／シンボル検索の結果。<see cref="HasConnection"/> が false なら
 /// 「言語サーバーが未接続」（開いているコードタブが無い／未接続）として扱う。</summary>

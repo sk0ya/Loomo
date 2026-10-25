@@ -17,7 +17,7 @@ namespace sk0ya.Loomo.App.ViewModels;
 /// 検索ペイン（Editor/Terminal 等と同格の舞台ペイン、<see cref="Services.PaneKind.Search"/>）の
 /// ViewModel。クエリ・オプション（大小区別／正規表現／include・exclude glob）で
 /// <see cref="IWorkspaceSearchService.GrepAsync"/>（内容検索）または <see cref="IWorkspaceSearchService.FindFilesAsync"/>
-/// （ファイル名検索）またはアクティブなターミナル内検索を走らせ、結果をファイル別にグルーピングして保持する。
+/// （ファイル名検索）またはターミナルのタブ全部の検索を走らせ、結果をファイル別にグルーピングして保持する。
 /// <see cref="Scope"/> でモードを切り替える。
 /// 入力はデバウンスし、直前の検索はキャンセルする。選択／確定はイベントで ShellWindow へ委ねる
 /// （プレビュータブ表示・行ジャンプは View 側の責務）。
@@ -47,7 +47,7 @@ public sealed partial class SearchPanelViewModel : ObservableObject
     /// ShellWindow がプレビューの WebView へ流す。</summary>
     public event EventHandler? SupportHighlightChanged;
 
-    /// <summary>アクティブなターミナル内テキストを検索する供給口（ShellWindow が実ターミナルを束ねる）。
+    /// <summary>この部屋のターミナルのタブ全部のテキストを検索する供給口（ShellWindow が実ターミナルを束ねる）。
     /// 引数＝(クエリ, 大小区別)、戻り＝一致一覧。未設定／ターミナル無しのときは null。</summary>
     public Func<string, bool, IReadOnlyList<TerminalSearchHit>>? TerminalSearchProvider { get; set; }
 
@@ -820,7 +820,7 @@ public sealed partial class SearchPanelViewModel : ObservableObject
         return true;
     }
 
-    /// <summary>アクティブなターミナル内テキストを検索し、1グループ「ターミナル」配下に一致を並べる。
+    /// <summary>この部屋のターミナルのタブ全部のテキストを検索し、タブごとのグループに一致を並べる（§24.67）。
     /// 供給口（<see cref="TerminalSearchProvider"/>）は ShellWindow が実ターミナルへ橋渡しする。</summary>
     private void RunTerminalSearch()
     {
@@ -841,10 +841,25 @@ public sealed partial class SearchPanelViewModel : ObservableObject
         }
 
         const int max = 1000;
-        var items = hits.Take(max).Select(SearchMatchItem.ForTerminal);
-        // ターミナルはフォルダー階層を持たないので、ルート直下の単一グループとして並べる。
-        ReplaceResults(_treeMapper.Map(new[] { new SearchFileGroup("", "ターミナル", items) }));
-        StatusMessage = hits.Count > max ? $"{max}+ 件" : $"{hits.Count} 件";
+        var groups = TerminalSearchGroups(hits.Take(max));
+        // ターミナルはフォルダー階層を持たないので、タブごとのグループをルート直下に並べる。
+        ReplaceResults(_treeMapper.Map(groups));
+        var tabs = groups.Count > 1 ? $"（{groups.Count} タブ）" : "";
+        StatusMessage = (hits.Count > max ? $"{max}+ 件" : $"{hits.Count} 件") + tabs;
+    }
+
+    /// <summary>ターミナル検索の一致をタブごとのグループにする。並びは供給口が返した順（前面のタブが先）を保つ——
+    /// 木の組み立ては名前で並べ替えるので、見出しの頭に順番を振って押さえる。見出しの「/」はフォルダーの区切りに
+    /// 読まれるので全角にする。</summary>
+    internal static IReadOnlyList<SearchFileGroup> TerminalSearchGroups(IEnumerable<TerminalSearchHit> hits)
+    {
+        var byTab = hits.GroupBy(h => h.TabId).ToList();
+        return byTab.Select((g, i) =>
+        {
+            var title = (g.First().TabTitle is { Length: > 0 } t ? $"ターミナル「{t}」" : "ターミナル").Replace('/', '／');
+            var label = byTab.Count > 1 ? $"{i + 1}. {title}" : title;
+            return new SearchFileGroup("", label, g.Select(SearchMatchItem.ForTerminal));
+        }).ToList();
     }
 
     /// <summary>接続中の言語サーバーへワークスペースシンボル検索を投げ、ファイル別にグルーピングして

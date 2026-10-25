@@ -368,19 +368,26 @@ public partial class ShellWindow : Window {
         vm.SearchPanel.TabsChanged += (_, _) => SaveActiveWorkspaceSnapshot();
         vm.SearchPanel.FilesReplacedOnDisk += async (_, paths) =>
             await ReloadEditorTabsAfterReplaceAsync(paths, vm.SearchPanel.HighlightTerm);
+        // この部屋のターミナルのタブを全部探す（§24.67）。前面のタブを先頭に、あとはタブの並び順。
+        // まだ一度も表示していないタブはスクロールバックを持っていない（常駐ホストにだけある）ので当たらない。
         vm.SearchPanel.TerminalSearchProvider = (query, caseSensitive) => {
-            if (_activeTerminalTab?.View is not { } view || string.IsNullOrWhiteSpace(query))
+            if (string.IsNullOrWhiteSpace(query))
                 return Array.Empty<TerminalSearchHit>();
-            return view.FindMatches(query, caseSensitive)
-                .Select(m => new TerminalSearchHit(m.LineIndex, m.Column, m.Length, m.LineText))
+            var tabs = _terminalTabs.OrderBy(t => t == _activeTerminalTab ? 0 : 1).ToList();
+            return tabs.SelectMany(tab => tab.View.FindMatches(query, caseSensitive)
+                    .Select(m => new TerminalSearchHit(m.LineIndex, m.Column, m.Length, m.LineText,
+                        tab.Id, TerminalTabTitle(tab.Id))))
                 .ToList();
         };
         vm.SearchPanel.TerminalRevealRequested += (_, h) => {
-            if (_activeTerminalTab?.View is not { } view)
+            var tab = _terminalTabs.FirstOrDefault(t => t.Id == h.TabId) ?? _activeTerminalTab;
+            if (tab is null)
                 return;
             EnsurePaneVisibleOrSwapTopLeft(PaneKind.Terminal);
-            view.SelectMatch(new TerminalMatch(h.LineIndex, h.Column, h.Length, h.LineText));
-            view.FocusTerminal();
+            if (tab != _activeTerminalTab)
+                ActivateTerminalTab(tab.Id);
+            tab.View.SelectMatch(new TerminalMatch(h.LineIndex, h.Column, h.Length, h.LineText));
+            tab.View.FocusTerminal();
         };
         vm.SearchPanel.SymbolSearchProvider = async (query, isClass, ct) => {
             // タブを1枚も開いていなくても効く：セッションが必要ならサーバーを起こす。
