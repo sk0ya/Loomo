@@ -127,3 +127,6 @@ public sealed class GitConflictForecastService
         return result.Success ? result.Output.Trim() : null;
     }
 }
+
+/// <summary>上流から取り込むコミット 1 件（プルの前の確認・§24.64）。</summary>
+public sealed record GitIncomingCommit(string ShortHash, string Subject, string Author);

@@ -371,7 +371,7 @@
                                 Command="{Binding PullCommand}">
                             <Button.ContextMenu>
                                 <ContextMenu>
-                                    <MenuItem Header="マージで取り込む（既定）" Command="{Binding PullCommand}" />
+                                    <MenuItem Header="マージで取り込む（既定）" Command="{Binding PullMergeCommand}" />
                                     <MenuItem Header="リベースで取り込む（--rebase）" Command="{Binding PullRebaseCommand}" />
                                     <MenuItem Header="早送りできるときだけ（--ff-only）" Command="{Binding PullFastForwardCommand}" />
                                 </ContextMenu>
@@ -419,6 +419,51 @@
                             </StackPanel>
                         </Button>
                     </StackPanel>
+
+                    <!-- プルの前の確認（§24.64）：上流と分かれているときだけ。何が来るか・ぶつかるかを読んでから取り込み方を選ぶ。 -->
+                    <Border Margin="0,6,0,0" Padding="7,6" CornerRadius="4" Background="{DynamicResource BgAlt}"
+                            DataContext="{Binding PullPreview}"
+                            Visibility="{Binding DataContext.HasPullPreview, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource BoolToVis}}">
+                        <StackPanel>
+                            <TextBlock Text="{Binding Summary}" FontSize="{DynamicResource Fs11}" FontWeight="SemiBold"
+                                       TextWrapping="Wrap" />
+                            <ItemsControl ItemsSource="{Binding CommitLines}" Margin="0,4,0,0">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding}" ToolTip="{Binding}" FontSize="{DynamicResource Fs11}"
+                                                   Foreground="{DynamicResource FgDim}" TextTrimming="CharacterEllipsis" />
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <TextBlock Text="{Binding MoreCommits}" FontSize="{DynamicResource Fs11}"
+                                       Foreground="{DynamicResource FgDim}"
+                                       Visibility="{Binding MoreCommits, Converter={StaticResource NonEmptyToVis}}" />
+                            <TextBlock Text="{Binding ConflictLabel}" ToolTip="{Binding ConflictFilesText}"
+                                       FontSize="{DynamicResource Fs11}" Margin="0,4,0,0" TextWrapping="Wrap">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding HasConflicts}" Value="True">
+                                                <Setter Property="Foreground" Value="#E2C08D" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                            <TextBlock Text="{Binding ConflictFilesText}" FontSize="{DynamicResource Fs11}"
+                                       Foreground="{DynamicResource FgDim}" TextTrimming="CharacterEllipsis"
+                                       Visibility="{Binding ConflictFilesText, Converter={StaticResource NonEmptyToVis}}" />
+                            <WrapPanel Margin="0,6,0,0">
+                                <Button Style="{StaticResource FlatButton}" Content="マージで取り込む" Margin="0,0,6,4"
+                                        Command="{Binding DataContext.PullMergeCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" />
+                                <Button Style="{StaticResource FlatButton}" Content="リベースで取り込む" Margin="0,0,6,4"
+                                        Command="{Binding DataContext.PullRebaseCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" />
+                                <Button Style="{StaticResource FlatButton}" Content="やめる" Margin="0,0,0,4"
+                                        Command="{Binding DataContext.CancelPullPreviewCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" />
+                            </WrapPanel>
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
             </Border>
 

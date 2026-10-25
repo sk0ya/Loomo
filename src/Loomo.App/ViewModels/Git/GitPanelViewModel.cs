@@ -492,6 +492,7 @@ public sealed partial class GitPanelViewModel : ObservableObject
     {
         FetchCommand.NotifyCanExecuteChanged();
         PullCommand.NotifyCanExecuteChanged();
+        PullMergeCommand.NotifyCanExecuteChanged();
         PullRebaseCommand.NotifyCanExecuteChanged();
         PullFastForwardCommand.NotifyCanExecuteChanged();
         PushCommand.NotifyCanExecuteChanged();
@@ -621,6 +622,7 @@ public sealed partial class GitPanelViewModel : ObservableObject
             Behind = 0;
             HasRemote = false;
             HasUpstream = false;
+            PullPreview = null;
             Staged.Clear();
             Changes.Clear();
             UnversionedFiles.Clear();
@@ -635,6 +637,11 @@ public sealed partial class GitPanelViewModel : ObservableObject
         Ahead = status.Ahead;
         Behind = status.Behind;
         HasUpstream = !string.IsNullOrWhiteSpace(status.Upstream);
+        _upstream = status.Upstream;
+        // 出している確認が今の状態と合わなくなった（取り込んだ・フェッチで数が変わった）ら下げる。
+        if (PullPreview is { } preview
+            && (preview.Incoming != Behind || preview.Outgoing != Ahead || preview.Upstream != status.Upstream))
+            PullPreview = null;
         HasRemote = (await _git.GetRemotesAsync()).Count > 0;
 
         // スタッシュは基準に依らず作業ツリーの退避なので、どちらの基準でも同じように出す。
@@ -999,17 +1006,64 @@ public sealed partial class GitPanelViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanFetch))]
     private Task FetchAsync() => RunOpAsync("フェッチ", () => _git.FetchAsync());
 
+    /// <summary>いまのブランチの上流（<c>origin/main</c> 等）。プルの前の確認で使う。</summary>
+    private string? _upstream;
+
+    /// <summary>プルの前の確認（§24.64）。上流と分かれているときにプルを押すと出る。null なら出していない。</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasPullPreview))]
+    private GitPullPreview? _pullPreview;
+
+    public bool HasPullPreview => PullPreview is not null;
+
+    /// <summary>
+    /// プルボタン。上流と分かれている（受け取るものも、こちらだけのものもある）ときは、すぐには取り込まず、
+    /// 何が来るか・ぶつかるかを見せてマージかリベースかを選ばせる（§24.64）。分かれていなければ今まで通りそのまま取り込む。
+    /// </summary>
     [RelayCommand(CanExecute = nameof(CanPull))]
-    private Task PullAsync() => RunOpAsync("プル", () => _git.PullAsync());
+    private async Task PullAsync()
+    {
+        if (Ahead > 0 && Behind > 0 && _upstream is { Length: > 0 } upstream)
+        {
+            var (incoming, ahead) = (Behind, Ahead);
+            var commits = await _git.GetIncomingCommitsAsync(upstream);
+            var forecast = await _git.ForecastUpstreamConflictsAsync(upstream);
+            // 待っている間に状態が変わった（フェッチ・他の操作）なら、古い数の確認は出さない。
+            if (incoming == Behind && ahead == Ahead)
+            {
+                PullPreview = new GitPullPreview(upstream, incoming, ahead, commits,
+                    forecast.Error is null ? forecast.Files : Array.Empty<string>(), forecast.Error);
+                return;
+            }
+        }
+        await PullMergeAsync();
+    }
+
+    /// <summary>確認を挟まずにマージで取り込む（右クリックの「マージで取り込む」・確認の「マージで取り込む」）。</summary>
+    [RelayCommand(CanExecute = nameof(CanPull))]
+    private Task PullMergeAsync()
+    {
+        PullPreview = null;
+        return RunOpAsync("プル", () => _git.PullAsync());
+    }
+
+    [RelayCommand]
+    private void CancelPullPreview() => PullPreview = null;
 
     /// <summary>取り込み方を選んでプルする（プルボタンの右クリックメニュー）。</summary>
     [RelayCommand(CanExecute = nameof(CanPull))]
-    private Task PullRebaseAsync() =>
-        RunOpAsync("プル（リベース）", () => _git.PullAsync(GitPullMode.Rebase));
+    private Task PullRebaseAsync()
+    {
+        PullPreview = null;
+        return RunOpAsync("プル（リベース）", () => _git.PullAsync(GitPullMode.Rebase));
+    }
 
     [RelayCommand(CanExecute = nameof(CanPull))]
-    private Task PullFastForwardAsync() =>
-        RunOpAsync("プル（早送りのみ）", () => _git.PullAsync(GitPullMode.FastForwardOnly));
+    private Task PullFastForwardAsync()
+    {
+        PullPreview = null;
+        return RunOpAsync("プル（早送りのみ）", () => _git.PullAsync(GitPullMode.FastForwardOnly));
+    }
 
     [RelayCommand(CanExecute = nameof(CanPush))]
     private Task PushAsync() => RunOpAsync("プッシュ", () => _git.PushAsync());

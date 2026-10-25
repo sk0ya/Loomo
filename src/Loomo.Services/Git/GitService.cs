@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using sk0ya.Loomo.Core.Abstractions;
@@ -24,6 +25,8 @@ public sealed class GitService
     private readonly GitMutationExecutor _mutations;
     private readonly GitPatchService _patches;
     private readonly GitConflictForecastService _forecasts;
+    /// <summary>上流との衝突の予告（§24.64）。分岐元の予告と前回の答えを取り合わないよう別に持つ。</summary>
+    private readonly GitConflictForecastService _upstreamForecasts;
     private readonly GitMergeService _merge;
     private readonly GitSubmoduleService _submodules;
     private readonly GitCommitService _commits;
@@ -73,6 +76,7 @@ public sealed class GitService
         _stashes = new GitStashService(_runner, _mutations);
         _patches = new GitPatchService(_runner, _mutations);
         _forecasts = new GitConflictForecastService(_runner);
+        _upstreamForecasts = new GitConflictForecastService(_runner);
         _diff = new GitDiffService(_rootState, _runner, _mutations);
         _rebase = new GitRebaseService(_runner, _mutations);
         _worktrees = new GitWorktreeService(_rootState, _runner, _mutations);
@@ -140,6 +144,22 @@ public sealed class GitService
 
     /// <summary>いまのブランチを <paramref name="target"/> へマージしたら衝突するファイル（§24.40）。作業ツリーには触らない。</summary>
     public Task<GitConflictForecast> ForecastConflictsAsync(string target) => _forecasts.ForecastAsync(target);
+
+    /// <summary>上流（<c>@{upstream}</c>）を取り込んだら衝突するファイル（§24.64）。作業ツリーには触らない。</summary>
+    public Task<GitConflictForecast> ForecastUpstreamConflictsAsync(string upstream) => _upstreamForecasts.ForecastAsync(upstream);
+
+    /// <summary>上流にあって手元に無いコミット（新しい順・最大 <paramref name="max"/> 件・§24.64）。</summary>
+    public async Task<IReadOnlyList<GitIncomingCommit>> GetIncomingCommitsAsync(string upstream, int max = 20)
+    {
+        var result = await _runner.RunAsync(
+            "log", $"-n{max}", "--format=%h%x1f%s%x1f%an", $"HEAD..{upstream}").ConfigureAwait(false);
+        if (!result.Success) return Array.Empty<GitIncomingCommit>();
+        return result.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Select(line => line.TrimEnd('\r').Split('\u001f'))
+            .Where(fields => fields.Length >= 3)
+            .Select(fields => new GitIncomingCommit(fields[0], fields[1], fields[2]))
+            .ToList();
+    }
 
     /// <summary>外から来たパッチを当てる前に確かめる（§24.38.1）。</summary>
     public Task<GitPatchPreview> PreviewPatchTextAsync(string patchText) => _patches.PreviewTextAsync(patchText);
