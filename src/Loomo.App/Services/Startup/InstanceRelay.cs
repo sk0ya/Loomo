@@ -30,7 +30,7 @@ internal static class InstanceRelay
         Location[]? Locations = null);
 
     /// <summary>行付きの場所（<c>loomo://</c>・§24.59）。古い受け手は知らない項目として読み飛ばす。</summary>
-    internal sealed record Location(string File, int Line, int Column, string? Folder = null);
+    internal sealed record Location(string File, int Line, int Column, string? Folder = null, string? Commit = null);
 
     internal sealed record Reply(
         bool Ok,
@@ -189,7 +189,7 @@ internal sealed class InstanceRelayServer : IDisposable
     private InstanceRelay.Reply Accept(InstanceRelay.Message message)
     {
         var request = new ExternalOpenRequest(message.Folder, message.Files ?? [], message.Urls ?? [],
-            message.Locations?.Select(l => new ExternalOpenLocation(l.File, l.Line, l.Column, l.Folder)).ToList());
+            message.Locations?.Select(l => new ExternalOpenLocation(l.File, l.Line, l.Column, l.Folder, l.Commit)).ToList());
         if (request.IsEmpty)
             return new InstanceRelay.Reply(true);
         Action<ExternalOpenRequest>? handler;
@@ -245,7 +245,7 @@ internal static class InstanceRelayClient
         var reply = await InstanceRelay.SendAsync(
             InstanceRelay.PipeName(processId),
             new InstanceRelay.Message("open", request.WorkspaceFolder, request.Files.ToArray(), request.Urls.ToArray(),
-                request.AtLines.Select(l => new InstanceRelay.Location(l.File, l.Line, l.Column, l.Folder)).ToArray()),
+                request.AtLines.Select(l => new InstanceRelay.Location(l.File, l.Line, l.Column, l.Folder, l.Commit)).ToArray()),
             OpenTimeout).ConfigureAwait(false);
         return reply is { Ok: true };
     }

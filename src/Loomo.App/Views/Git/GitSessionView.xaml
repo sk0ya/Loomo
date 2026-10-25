@@ -1139,6 +1139,8 @@
                                     <MenuItem Header="件名" Click="OnCommitCopySubject" />
                                     <MenuItem Header="作成者" Click="OnCommitCopyAuthor" />
                                     <MenuItem Header="ハッシュと件名" Click="OnCommitCopySummary" />
+                                    <!-- 踏むとこの部屋の Git ペインでこのコミットを選ぶリンク（§24.74）。 -->
+                                    <MenuItem Header="このコミットへのリンク（loomo://）" Click="OnCommitCopyLoomoLink" />
                                     <MenuItem x:Name="CopyHostingUrlMenuItem" Header="GitHub のリンク"
                                               Click="OnCommitCopyHostingUrl" />
                                 </MenuItem>

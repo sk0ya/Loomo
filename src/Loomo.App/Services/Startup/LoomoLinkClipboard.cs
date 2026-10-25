@@ -26,6 +26,26 @@ internal static class LoomoLinkClipboard
         return LoomoLinkProtocol.EnsureRegistered();
     }
 
+    /// <summary>コミットへのリンク（§24.74）。題は「リポジトリ名@短縮ハッシュ 件名」。</summary>
+    public static (string Url, string Markdown, string Html) FormatCommit(
+        IWorkspaceService workspace, string repository, string hash, string? subject)
+    {
+        var folder = workspace.Contains(repository) ? workspace.FolderFor(repository) : null;
+        var url = LoomoLink.BuildCommit(folder, repository, hash);
+        var name = WorkspacePaths.FolderName(repository);
+        var title = $"{name}@{hash[..Math.Min(hash.Length, 7)]}" + (string.IsNullOrWhiteSpace(subject) ? "" : $" {subject.Trim()}");
+        var markdown = $"[{EscapeText(title)}]({MarkdownLinkParser.EncodeDestination(url)})";
+        var html = $"<a href=\"{WebUtility.HtmlEncode(url)}\">{WebUtility.HtmlEncode(title)}</a>";
+        return (url, markdown, html);
+    }
+
+    public static bool CopyCommit(IWorkspaceService workspace, string repository, string hash, string? subject)
+    {
+        var (_, markdown, html) = FormatCommit(workspace, repository, hash, subject);
+        ClipboardText.SetLink(markdown, html);
+        return LoomoLinkProtocol.EnsureRegistered();
+    }
+
     private static string EscapeText(string title)
         => title.Replace("\\", "\\\\").Replace("[", "\\[").Replace("]", "\\]");
 }

@@ -458,6 +458,14 @@ public partial class ShellWindow : Window {
             await OpenPathInEditorAsync(Path.GetFullPath(target.Path), target.Line, column: 0);
             FocusPane(PaneKind.Editor);
         };
+        // コミットへのリンク（§24.74）。部屋（フォルダー）はここで決める。
+        vm.GitSession.CommitLinkCopyRequested += (hash, subject) => {
+            if (vm.GitSession.RepositoryRoot is not { Length: > 0 } repository)
+                return;
+            ToastService.Info(LoomoLinkClipboard.CopyCommit(_workspace, repository, hash, subject)
+                ? "このコミットへのリンクをコピーしました"
+                : "リンクをコピーしました（loomo:// を Windows に登録できなかったので、踏んでも開きません）");
+        };
         vm.DiffSession.CommitOpenInGitRequested += async (_, hash) => {
             EnsurePaneVisibleOrSwapTopLeft(PaneKind.Git);
             await vm.GitSession.SelectCommitAsync(hash);

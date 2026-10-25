@@ -525,6 +525,12 @@ public partial class GitSessionView : UserControl
     private void OnCommitCopyHash(object sender, RoutedEventArgs e) =>
         ClipboardText.Set(SelectedCommit?.Hash);
 
+    private void OnCommitCopyLoomoLink(object sender, RoutedEventArgs e)
+    {
+        if (SelectedCommit is { Hash: { } hash } commit)
+            Vm?.RequestCommitLinkCopy(hash, commit.Subject);
+    }
+
     private void OnCommitCopyShortHash(object sender, RoutedEventArgs e) =>
         ClipboardText.Set(SelectedCommit?.ShortHash);
 

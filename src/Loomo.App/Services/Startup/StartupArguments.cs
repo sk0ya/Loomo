@@ -25,7 +25,8 @@ internal sealed record ExternalOpenRequest(
 
 /// <summary>開いてほしい場所（ファイルの絶対パス・1 始まりの行と列。0 は指定なし）。</summary>
 /// <param name="Folder">リンクが指す部屋のフォルダー（実在するものだけ）。そのファイルを含む部屋がどこにも無いときに開く部屋。</param>
-internal sealed record ExternalOpenLocation(string File, int Line, int Column, string? Folder = null);
+/// <param name="Commit">コミットへのリンク（§24.74）ならそのハッシュ。このとき <paramref name="File"/> はリポジトリのフォルダー。</param>
+internal sealed record ExternalOpenLocation(string File, int Line, int Column, string? Folder = null, string? Commit = null);
 
 /// <summary>起動引数から、ワークスペースフォルダー・ファイル・URL を取り出す。</summary>
 internal static class StartupArguments
@@ -83,7 +84,7 @@ internal static class StartupArguments
                 // ファイルがあるかどうかは受け手が確かめる。
                 var linkFolder = link.Folder is { } lf && TryFullPath(lf) is { } fullFolder && Directory.Exists(fullFolder) ? fullFolder : null;
                 if (TryFullPath(link.File) is { } lfile)
-                    locations.Add(new ExternalOpenLocation(lfile, link.Line, link.Column, linkFolder));
+                    locations.Add(new ExternalOpenLocation(lfile, link.Line, link.Column, linkFolder, link.Commit));
                 continue;
             }
 

@@ -110,4 +110,57 @@ public sealed class LoomoLinkTests
         Assert.StartsWith("[src/a.cs:12](loomo://open?", markdown);
         Assert.Contains(">src/a.cs:12</a>", html);
     }
+
+    // ===== コミットへのリンク（§24.74） =====
+
+    [Fact]
+    public void Commit_link_round_trips_to_the_repository_and_hash()
+    {
+        var url = LoomoLink.BuildCommit(@"C:\work\app", @"C:\work\app", "4F9C1B2A7E8D3C6B5A49081726354F3E2D1C0B9A");
+
+        Assert.True(LoomoLink.TryParse(url, out var target));
+        Assert.Equal(@"C:\work\app", target.File);
+        Assert.Equal(@"C:\work\app", target.Folder);
+        Assert.Equal("4f9c1b2a7e8d3c6b5a49081726354f3e2d1c0b9a", target.Commit);
+        Assert.Equal(0, target.Line);
+    }
+
+    [Theory]
+    [InlineData("loomo://open?repo=C%3A%5Cwork%5Capp&commit=HEAD~3")]          // rev はリンクにしない
+    [InlineData("loomo://open?repo=C%3A%5Cwork%5Capp&commit=main")]
+    [InlineData("loomo://open?repo=relative%5Cpath&commit=abcdef1")]          // リポジトリは絶対パスだけ
+    [InlineData("loomo://open?commit=abcdef1")]
+    public void Commit_links_without_a_hash_or_an_absolute_repository_are_rejected(string url)
+        => Assert.False(LoomoLink.TryParse(url, out _));
+
+    [Fact]
+    public void Startup_argument_and_routing_carry_the_commit()
+    {
+        var repo = Path.Combine(Path.GetTempPath(), "loomo-commit-link-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(repo);
+        try
+        {
+            var request = StartupArguments.Parse([LoomoLink.BuildCommit(repo, repo, "abcdef1")]);
+            var location = Assert.Single(request.AtLines);
+            Assert.Equal("abcdef1", location.Commit);
+            Assert.Equal(repo, location.File);
+
+            var owner = new RelayInstance(10, [repo], T0);
+            var (pid, part) = Assert.Single(ExternalOpenRouting.Route(request, [owner]));
+            Assert.Equal(10, pid);
+            Assert.Equal("abcdef1", Assert.Single(part.AtLines).Commit);
+        }
+        finally { Directory.Delete(repo, recursive: true); }
+    }
+
+    [Fact]
+    public void Copied_commit_link_is_named_after_the_repository_and_subject()
+    {
+        var workspace = new FakeWorkspaceService(@"C:\work\app");
+        var (url, markdown, _) = LoomoLinkClipboard.FormatCommit(workspace, @"C:\work\app", "4f9c1b2a7e8d", "名前を直す");
+
+        Assert.True(LoomoLink.TryParse(url, out var target));
+        Assert.Equal("4f9c1b2a7e8d", target.Commit);
+        Assert.StartsWith("[app@4f9c1b2 名前を直す](loomo://open?", markdown);
+    }
 }

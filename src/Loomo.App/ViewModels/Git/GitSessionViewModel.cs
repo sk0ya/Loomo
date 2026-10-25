@@ -618,6 +618,25 @@ public sealed partial class GitSessionViewModel : ObservableObject
         await History.SelectCommitAsync(hash);
     }
 
+    /// <summary>「このコミットへのリンク」を写してほしい（§24.74）。写すのは部屋を知っている ShellWindow。</summary>
+    public event Action<string, string?>? CommitLinkCopyRequested;
+
+    public void RequestCommitLinkCopy(string hash, string? subject) => CommitLinkCopyRequested?.Invoke(hash, subject);
+
+    /// <summary>いま Git 操作の対象にしているリポジトリのフォルダー（コミットへのリンクを写すとき・§24.74）。</summary>
+    public string? RepositoryRoot => _git.RootPath;
+
+    /// <summary>コミットへのリンク（§24.74）を踏んだ：そのリポジトリへ対象を切り替えてコミットを選ぶ。選べたら true。</summary>
+    public async Task<bool> SelectCommitInRepositoryAsync(string repository, string hash)
+    {
+        _git.SetActiveRootForPath(repository);
+        if (string.IsNullOrEmpty(_git.RootPath)) return false;
+        _loaded = true;
+        await RefreshAsync();
+        await History.SelectCommitAsync(hash);
+        return History.SelectedLogRow?.Hash is { } selected && selected.StartsWith(hash, StringComparison.OrdinalIgnoreCase);
+    }
+
     /// <summary>
     /// コミット詳細（変更ファイル一覧）でクリックされた相対パスを、リポジトリルート基準で解決し
     /// エディタで開く。現在の作業ツリーに存在しない（削除済み・過去の名前）場合はメッセージのみ。

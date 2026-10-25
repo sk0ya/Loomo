@@ -32,6 +32,18 @@ public partial class ShellWindow {
         }
         // loomo:// のリンク（§24.59）。消えたファイルは開かずに知らせる（リンクは古くなりうる）。
         foreach (var location in request.AtLines) {
+            // コミットへのリンク（§24.74）：その部屋の Git ペインでそのコミットを選ぶ。
+            if (location.Commit is { } hash) {
+                if (!Directory.Exists(location.File)) {
+                    ToastService.Info($"リンクのリポジトリがありません: {location.File}");
+                    continue;
+                }
+                EnsurePaneVisibleOrSwapTopLeft(PaneKind.Git);
+                if (!await _vm.GitSession.SelectCommitInRepositoryAsync(location.File, hash))
+                    ToastService.Info($"コミット {hash[..Math.Min(hash.Length, 8)]} が見つかりません（まだ取得していないか、消えています）");
+                FocusPane(PaneKind.Git);
+                continue;
+            }
             if (!File.Exists(location.File)) {
                 ToastService.Info($"リンクのファイルがありません: {location.File}");
                 continue;
