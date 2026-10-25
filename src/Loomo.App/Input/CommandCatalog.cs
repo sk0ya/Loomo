@@ -138,6 +138,14 @@ public static class CommandCatalog
         new CommandDescriptor("pane.split.vertical", CatPane, "ペインを左右に分割", "Ctrl+W V"),
         new CommandDescriptor("pane.split.horizontal", CatPane, "ペインを上下に分割", "Ctrl+W S"),
         new CommandDescriptor("pane.split.closeView", CatPane, "分割ビューを畳む", "Ctrl+W Q"),
+        // ペインの配置全体を回す・裏返す・縦横を入れ替える・中身を巡回させる（§24.84）。比率と各ペインの中身はそのまま。
+        new CommandDescriptor("pane.layout.rotateClockwise", CatPane, "ペインの配置を時計回りに回す", "Ctrl+W R"),
+        new CommandDescriptor("pane.layout.rotateAnticlockwise", CatPane, "ペインの配置を反時計回りに回す", "Ctrl+W Shift+R"),
+        new CommandDescriptor("pane.layout.transpose", CatPane, "ペインの配置の縦横を入れ替える", "Ctrl+W T"),
+        new CommandDescriptor("pane.layout.flipLeftRight", CatPane, "ペインの配置の左右を入れ替える", null),
+        new CommandDescriptor("pane.layout.flipTopDown", CatPane, "ペインの配置の上下を入れ替える", null),
+        new CommandDescriptor("pane.layout.cycle", CatPane, "ペインの中身を次の枠へ送る（枠はそのまま）", null),
+        new CommandDescriptor("pane.layout.cycleBack", CatPane, "ペインの中身を前の枠へ送る（枠はそのまま）", null),
         // 検索だけは VS Code 流に既定キーを与える（全文検索の起点なので毎回使う）。
         new CommandDescriptor("pane.search", CatPane, "検索を開く", "Ctrl+Shift+F"),
         // ファイル一覧は既定キーを与えない（サイドバーのツリーと役割が違うだけで、

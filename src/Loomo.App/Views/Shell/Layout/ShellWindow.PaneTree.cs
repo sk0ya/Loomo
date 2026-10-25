@@ -17,6 +17,24 @@ public partial class ShellWindow {
         RebuildPaneLayout();
         SaveActiveWorkspaceSnapshot();
     }
+    /// <summary>ペインの配置全体を回す・裏返す・縦横を入れ替える・中身を巡回させる（§24.84）。タイル（分割・ドックの中央）に効く。
+    /// 集中（舞台＋袖）の間は配置の木が見えていないので何もしない。</summary>
+    private void TransformPaneLayout(Func<PaneNode, PaneNode> transform) {
+        if (_stageActive) {
+            ToastService.Info("ペインの配置は分割表示のときに変えられます");
+            return;
+        }
+        if (_root is null)
+            return;
+        BeginTrailLayoutChange();
+        CaptureLayoutSizes();
+        _root = PaneLayoutTree.Normalize(transform(_root));
+        if (_isSpanMaximized && _spanSavedRoot is { } savedRoot)
+            _spanSavedRoot = PaneLayoutTree.Normalize(transform(savedRoot));
+        MarkLayoutDirty();
+        RebuildPaneLayout();
+        SaveActiveWorkspaceSnapshot();
+    }
     private void PlaceWingPane(PaneKind dragged, PaneKind target, bool center, DropZone? zone, bool span = false) {
         if (dragged == target || FindLeaf(target) is null)
             return;
