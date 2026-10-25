@@ -155,6 +155,7 @@ internal static class LoomoServiceCollectionExtensions
         services.AddSingleton<IEditorSupportProvider, MediaEditorSupport>();
         services.AddSingleton<IEditorSupportProvider, FontEditorSupport>();
         services.AddSingleton<IEditorSupportProvider, LogEditorSupport>();
+        services.AddSingleton<IEditorSupportProvider, PatchEditorSupport>();
         services.AddSingleton<IEditorSupportProvider, FlowEditorSupport>();
         // .http は送受信と応答を工場が持つ（§24.30）。具象でも引けるよう同じ実体を2つの名前で登録する。
         services.AddSingleton<HttpEditorSupport>();
