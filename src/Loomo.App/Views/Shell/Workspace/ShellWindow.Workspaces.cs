@@ -101,12 +101,14 @@ public partial class ShellWindow {
             workspaceId, _terminalWorkspaces, _editorWorkspaces, _browserWorkspaces);
     }
     private async Task SwitchWorkspaceAsync(WorkspaceSnapshot workspace, bool captureCurrent, bool deferHydration = false) {
-        // 切替は await をまたぐ。その間に届いたファイルを開く要求を、前のワークスペースのタブ集合へ入れさせない。
-        using var transition = _workspaceTransition.Begin();
         using var profile = WorkspaceSwitchProfiler.Begin(workspace.Name);
+        // 出ていく部屋は、切替に入る<b>前</b>に捕まえる。切替の間の保存は SaveActiveWorkspaceSnapshotNow が捨てるので、
+        // ここで書いておかないと出ていく部屋の最後の状態が残らない。
         if (captureCurrent)
             SaveActiveWorkspaceSnapshot(immediate: true);
         profile?.Lap("save");
+        // 切替は await をまたぐ。その間に届いたファイルを開く要求を、前のワークスペースのタブ集合へ入れさせない。
+        using var transition = _workspaceTransition.Begin();
         var trailSaved = _trailSuppressed;
         _trailSuppressed = true;
         try {
@@ -225,6 +227,13 @@ public partial class ShellWindow {
     /// （実測 9〜10ms／回のほとんどはディスク。§31.15）。切替・終了時だけ同期で書き切る。</summary>
     private void SaveActiveWorkspaceSnapshotNow(bool immediate) {
         if (_activeWorkspace is null)
+            return;
+        // 切替の途中は捕まえない。SwitchWorkspaceCoreAsync は早くに _activeWorkspace を行き先へ差し替え、タブを戻す前に何度も
+        // 手を離す（Dispatcher.Yield・常駐ホストへの問い合わせ）。その隙に予約済みの保存（ApplicationIdle）が走ると、
+        // まだ前の部屋のままのタブ一覧を<b>行き先の部屋</b>のスナップショットへ書き、直後の RestoreEditorTabs がそれを読んで
+        // 前の部屋のタブが行き先に化けていた（2026-10-26 実機で再現：行き先が分割表示で保存され、起動し直して
+        // タブの実体がまだ無い部屋へ移るとき）。切替の最後に保存を予約し直すので、落ち着いた状態は必ず書かれる。
+        if (_workspaceTransition.IsSwitching)
             return;
         CaptureInto(_activeWorkspace);
         _vm.Workspaces.SaveSnapshot(_activeWorkspace, immediate);
