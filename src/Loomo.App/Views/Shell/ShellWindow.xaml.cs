@@ -367,6 +367,9 @@ public partial class ShellWindow : Window {
         vm.SearchPanel.SupportHighlightChanged += (_, _) => ApplyEditorSupportSearchHighlight();
         // 残した検索結果のタブ（§23.3.1）は部屋の状態として保存する。
         vm.SearchPanel.TabsChanged += (_, _) => SaveActiveWorkspaceSnapshot();
+        // 検索結果の書き戻し（§24.86）は、未保存の編集があるタブのファイルへは書かない。
+        vm.SearchPanel.HasUnsavedEdits = path => _editorTabs.Any(t =>
+            t.PeekIsModified && FilePathRelations.AreEqual(t.PeekFilePath, path));
         vm.SearchPanel.FilesReplacedOnDisk += async (_, paths) =>
             await ReloadEditorTabsAfterReplaceAsync(paths, vm.SearchPanel.HighlightTerm);
         // この部屋のターミナルのタブを全部探す（§24.67）。前面のタブを先頭に、あとはタブの並び順。

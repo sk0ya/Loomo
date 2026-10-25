@@ -225,6 +225,7 @@ public sealed partial class SearchPanelViewModel : ObservableObject
         Results.CollectionChanged += (_, _) =>
         {
             OnPropertyChanged(nameof(CanPinResults));
+            OnPropertyChanged(nameof(CanEditLines));
         };
         PinnedTabs.CollectionChanged += (_, _) =>
         {
@@ -264,6 +265,8 @@ public sealed partial class SearchPanelViewModel : ObservableObject
 
     partial void OnQueryChanged(string value)
     {
+        // 書き換えている途中で検索し直したら、並べていた行はもう今の結果ではない（§24.86）。
+        if (IsEditingLines) CancelEditLines();
         OnPropertyChanged(nameof(HighlightQuery));
         RaiseSupportHighlightChanged();
         ScheduleSearch();
@@ -336,7 +339,9 @@ public sealed partial class SearchPanelViewModel : ObservableObject
     {
         // 検索の種類を選び直した＝これから検索する。残したタブを見ていたら現在の検索へ戻る。
         ActiveTab = null;
+        if (IsEditingLines) CancelEditLines();
         OnPropertyChanged(nameof(CanPinResults));
+        OnPropertyChanged(nameof(CanEditLines));
         OnPropertyChanged(nameof(QueryPlaceholder));
         OnPropertyChanged(nameof(ShowSearchRoot));
         OnPropertyChanged(nameof(ShowRootRow));
@@ -347,6 +352,7 @@ public sealed partial class SearchPanelViewModel : ObservableObject
         OnPropertyChanged(nameof(HighlightQuery));
         OnPropertyChanged(nameof(FileNameHighlightQuery));
         OnPropertyChanged(nameof(CanReplace));
+        OnPropertyChanged(nameof(CanEditLines));
         RaiseSupportHighlightChanged();
         // grep 以外（ファイル名・ターミナル）はエディタのハイライト対象がないので、切替時に残りを消す。
         if (value != SearchScope.Text)
@@ -441,6 +447,117 @@ public sealed partial class SearchPanelViewModel : ObservableObject
             FilesReplacedOnDisk?.Invoke(this, new[] { match.FullPath });
         }
         return ok;
+    }
+
+    // ===== 検索結果をその場で書き換えて戻す（§24.86） =====
+
+    /// <summary>書き換えるモードで並べる行の上限。これを超える結果は書き換えには並べない（1 行ずつ見て直す量ではない）。</summary>
+    public const int MaxEditableLines = 2000;
+
+    /// <summary>書き換えるモードの行（ファイル順・行順）。</summary>
+    public ObservableCollection<SearchLineEditItem> LineEdits { get; } = new();
+
+    /// <summary>書き換えるモードか。結果ツリーの代わりに、一致した行を書ける欄の一覧を出す。</summary>
+    [ObservableProperty] private bool _isEditingLines;
+
+    /// <summary>未保存の編集があるタブのファイルか（ShellWindow がつなぐ）。そのファイルへは書き戻さない——ディスクへ書くと、
+    /// タブの未保存の編集と食い違う（置換はタブを読み直すが、未保存のタブは読み直さない）。</summary>
+    public Func<string, bool>? HasUnsavedEdits { get; set; }
+
+    /// <summary>いま書き換えた行の数（書き戻すボタンの文言）。</summary>
+    public int ChangedLineCount => LineEdits.Count(e => e.IsChanged);
+
+    /// <summary>書き換えるモードに入れるか。置換と同じく、テキスト検索の現在の結果だけ（残したタブ・ターミナル・文書の本文は除く）。</summary>
+    public bool CanEditLines => CanReplace && Results.Count > 0;
+
+    [RelayCommand]
+    private void BeginEditLines()
+    {
+        if (!CanEditLines) return;
+        foreach (var item in LineEdits) item.PropertyChanged -= OnLineEditChanged;
+        LineEdits.Clear();
+        var count = 0;
+        foreach (var group in ReplaceableFileGroups())
+        {
+            var first = true;
+            foreach (var match in group.Matches
+                         .Where(m => !m.IsTerminal && !m.IsDocumentHit && !m.IsReplaced)
+                         .GroupBy(m => m.Line).Select(g => g.First()).OrderBy(m => m.Line))
+            {
+                if (++count > MaxEditableLines)
+                {
+                    StatusMessage = $"一致した行が {MaxEditableLines} 行を超えるので、書き換えには並べません。絞り込んでから試してください。";
+                    foreach (var item in LineEdits) item.PropertyChanged -= OnLineEditChanged;
+                    LineEdits.Clear();
+                    return;
+                }
+                var edit = new SearchLineEditItem(group.FullPath, group.RelativePath, match.Line, match.LineText, first);
+                edit.PropertyChanged += OnLineEditChanged;
+                LineEdits.Add(edit);
+                first = false;
+            }
+        }
+        IsEditingLines = LineEdits.Count > 0;
+        OnPropertyChanged(nameof(ChangedLineCount));
+    }
+
+    private void OnLineEditChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(SearchLineEditItem.IsChanged))
+            OnPropertyChanged(nameof(ChangedLineCount));
+    }
+
+    [RelayCommand]
+    private void CancelEditLines()
+    {
+        IsEditingLines = false;
+        foreach (var item in LineEdits) item.PropertyChanged -= OnLineEditChanged;
+        LineEdits.Clear();
+    }
+
+    /// <summary>
+    /// 書き換えた行を元ファイルへ書き戻す（§24.86・Emacs 31.1 の grep-edit-mode）。一律の置換では書けない「行ごとに違う直し」を、
+    /// ファイルを 1 つずつ開かずに済ませる。元の行が検索したときから変わっていればその行は飛ばし、未保存のタブのファイルには書かない。
+    /// 書いたファイルは置換と同じく開いているタブを読み直させ（<see cref="FilesReplacedOnDisk"/>）、検索し直す。
+    /// 戻り値は（書いた行, 書いたファイル, 飛ばした行）。
+    /// </summary>
+    public (int Lines, int Files, int Skipped) ApplyLineEdits()
+    {
+        var changed = LineEdits.Where(e => e.IsChanged).ToList();
+        if (changed.Count == 0)
+        {
+            CancelEditLines();
+            return (0, 0, 0);
+        }
+        var lines = 0;
+        var skipped = 0;
+        var unsaved = 0;
+        var written = new List<string>();
+        foreach (var file in changed.GroupBy(e => e.FullPath, StringComparer.OrdinalIgnoreCase))
+        {
+            if (HasUnsavedEdits?.Invoke(file.Key) == true)
+            {
+                unsaved += file.Count();
+                continue;
+            }
+            var result = SearchLineEdits.ApplyToFile(file.Key,
+                file.Select(e => new SearchLineEdit(e.Line, e.Original, e.Edited)).ToList());
+            skipped += result.Stale;
+            if (result.Applied > 0)
+            {
+                lines += result.Applied;
+                written.Add(file.Key);
+            }
+        }
+        CancelEditLines();
+        var parts = new List<string> { $"{lines} 行を書き戻しました（{written.Count} ファイル）" };
+        if (skipped > 0) parts.Add($"検索した後に変わっていた {skipped} 行は飛ばしました");
+        if (unsaved > 0) parts.Add($"未保存の編集があるタブのファイルの {unsaved} 行は書いていません（保存してから）");
+        StatusMessage = string.Join("。", parts) + "。";
+        if (written.Count > 0)
+            FilesReplacedOnDisk?.Invoke(this, written);
+        ScheduleSearch();
+        return (lines, written.Count, skipped + unsaved);
     }
 
     /// <summary>現在の結果に含まれる全ファイルへ置換を適用する。
@@ -1008,6 +1125,7 @@ public sealed partial class SearchPanelViewModel : ObservableObject
         OnPropertyChanged(nameof(IsViewingTab));
         OnPropertyChanged(nameof(DisplayedResults));
         OnPropertyChanged(nameof(CanPinResults));
+        OnPropertyChanged(nameof(CanEditLines));
         OnPropertyChanged(nameof(CanReplace));
         OnPropertyChanged(nameof(HighlightQuery));
         OnPropertyChanged(nameof(FileNameHighlightQuery));

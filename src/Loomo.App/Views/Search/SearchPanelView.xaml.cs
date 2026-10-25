@@ -391,6 +391,43 @@ public partial class SearchPanelView : UserControl
             SearchReplacePresenter.ReplaceAll(Window.GetWindow(this), vm);
     }
 
+    /// <summary>「書き戻す」（§24.86）。ファイルを書き換えるので、何行・何ファイルかを見せて一度確かめる。</summary>
+    private void OnApplyLineEditsClick(object sender, RoutedEventArgs e)
+    {
+        if (Vm is not { } vm) return;
+        var changed = vm.LineEdits.Where(l => l.IsChanged).ToList();
+        if (changed.Count == 0)
+        {
+            vm.CancelEditLinesCommand.Execute(null);
+            return;
+        }
+        var files = changed.Select(l => l.FullPath).Distinct(StringComparer.OrdinalIgnoreCase).Count();
+        var owner = Window.GetWindow(this);
+        var message = $"書き換えた {changed.Count} 行を {files} ファイルへ書き戻しますか？\n" +
+                      "検索した後に変わっていた行は飛ばします（元に戻すにはファイルごとに Undo かローカル履歴を使ってください）。";
+        var answer = owner is null
+            ? MessageBox.Show(message, "検索結果を書き戻す", MessageBoxButton.OKCancel, MessageBoxImage.Question)
+            : MessageBox.Show(owner, message, "検索結果を書き戻す", MessageBoxButton.OKCancel, MessageBoxImage.Question);
+        if (answer == MessageBoxResult.OK)
+            vm.ApplyLineEdits();
+    }
+
+    /// <summary>書き換えるモードの Esc はやめる（書き換えを捨てる）。行の欄での Enter は次の行へ。</summary>
+    private void OnLineEditKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape && Vm is { IsEditingLines: true } vm)
+        {
+            vm.CancelEditLinesCommand.Execute(null);
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Enter && e.OriginalSource is TextBox box)
+        {
+            box.MoveFocus(new TraversalRequest(Keyboard.Modifiers.HasFlag(ModifierKeys.Shift)
+                ? FocusNavigationDirection.Previous : FocusNavigationDirection.Next));
+            e.Handled = true;
+        }
+    }
+
     /// <summary>クエリ欄のキー操作。Down で先頭ファイルへ移動、Esc でクエリをクリア（結果とエディタのハイライトも消える）。</summary>
     private void OnQueryKeyDown(object sender, KeyEventArgs e)
     {

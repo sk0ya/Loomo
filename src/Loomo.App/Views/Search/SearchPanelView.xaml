@@ -506,6 +506,12 @@
             <!-- 結果の見出し行：件数＋結果全体への操作（タブに残す）＋停止。 -->
             <DockPanel Margin="0,4,0,0" LastChildFill="True">
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                    <!-- 一致した行をその場で書き換えて元のファイルへ戻す（§24.86）。行ごとに違う直しは置換では書けない。 -->
+                    <Button Content="行を編集" Height="20" Padding="6,0" Margin="4,0,0,0" FontSize="{DynamicResource Fs10}"
+                            Style="{StaticResource FolderBarButton}"
+                            ToolTip="一致した行を書ける欄で並べ、書き換えた行だけを元のファイルへ戻す（検索した後に変わった行は飛ばす）"
+                            Visibility="{Binding CanEditLines, Converter={StaticResource BoolToVis}}"
+                            Command="{Binding BeginEditLinesCommand}" />
                     <Button Content="タブに残す" Height="20" Padding="6,0" Margin="4,0,0,0" FontSize="{DynamicResource Fs10}"
                             Style="{StaticResource FolderBarButton}"
                             ToolTip="いまの結果をタブとして残す（新しい検索をしても消えず、TABS・▾ から切り替えて見比べられる）"
@@ -559,122 +565,195 @@
              CanContentScroll=True＋VirtualizingStackPanel（各階層は SearchTreeItem 側）で
              見えている行しか生成させない。ScrollUnit=Pixel で行単位スクロールのガタつきも避ける。
              Recycling は既存コンテナを使い回す（IsExpanded・ハイライトは全部バインド経由なので安全）。 -->
-        <TreeView x:Name="ResultTree" BorderThickness="0" Background="Transparent"
-                  ItemsSource="{Binding DisplayedResults}"
-                  ItemContainerStyle="{StaticResource SearchTreeItem}"
-                  ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                  ScrollViewer.CanContentScroll="True"
-                  VirtualizingPanel.IsVirtualizing="True"
-                  VirtualizingPanel.VirtualizationMode="Recycling"
-                  VirtualizingPanel.ScrollUnit="Pixel"
-                  SelectedItemChanged="OnResultSelectionChanged"
-                  MouseDoubleClick="OnResultDoubleClick"
-                  PreviewKeyDown="OnResultKeyDown">
-            <TreeView.ItemsPanel>
-                <ItemsPanelTemplate>
-                    <VirtualizingStackPanel />
-                </ItemsPanelTemplate>
-            </TreeView.ItemsPanel>
-            <TreeView.Resources>
-                <!-- Foreground は明示せず TreeViewItem から継承させる（選択時に AccentFg へ切り替わる）。 -->
-                <!-- 件数バッジ（右端・VS Code 流のピル）。フォルダー／ファイル共通で使う。 -->
-                <DataTemplate x:Key="CountBadge">
-                    <Border Margin="6,0,2,0" Padding="5,0" MinWidth="18" Height="15"
-                            CornerRadius="7" VerticalAlignment="Center"
-                            Background="{DynamicResource Border}"
-                            Visibility="{Binding ShowCount, Converter={StaticResource BoolToVis}}">
-                        <TextBlock Text="{Binding Count}" FontSize="{DynamicResource Fs10}" FontWeight="SemiBold"
-                                   Foreground="{DynamicResource Fg}"
-                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
-                    </Border>
-                </DataTemplate>
+        <Grid>
+            <TreeView x:Name="ResultTree" BorderThickness="0" Background="Transparent"
+                      Visibility="{Binding IsEditingLines, Converter={StaticResource InverseBoolToVis}}"
+                      ItemsSource="{Binding DisplayedResults}"
+                      ItemContainerStyle="{StaticResource SearchTreeItem}"
+                      ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                      ScrollViewer.CanContentScroll="True"
+                      VirtualizingPanel.IsVirtualizing="True"
+                      VirtualizingPanel.VirtualizationMode="Recycling"
+                      VirtualizingPanel.ScrollUnit="Pixel"
+                      SelectedItemChanged="OnResultSelectionChanged"
+                      MouseDoubleClick="OnResultDoubleClick"
+                      PreviewKeyDown="OnResultKeyDown">
+                <TreeView.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <VirtualizingStackPanel />
+                    </ItemsPanelTemplate>
+                </TreeView.ItemsPanel>
+                <TreeView.Resources>
+                    <!-- Foreground は明示せず TreeViewItem から継承させる（選択時に AccentFg へ切り替わる）。 -->
+                    <!-- 件数バッジ（右端・VS Code 流のピル）。フォルダー／ファイル共通で使う。 -->
+                    <DataTemplate x:Key="CountBadge">
+                        <Border Margin="6,0,2,0" Padding="5,0" MinWidth="18" Height="15"
+                                CornerRadius="7" VerticalAlignment="Center"
+                                Background="{DynamicResource Border}"
+                                Visibility="{Binding ShowCount, Converter={StaticResource BoolToVis}}">
+                            <TextBlock Text="{Binding Count}" FontSize="{DynamicResource Fs10}" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource Fg}"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                    </DataTemplate>
 
-                <!-- フォルダー節点：フォルダーアイコン＋名前（圧縮で a/b）＋配下の総件数。
-                     行のどこをクリックしても配下を一気に開閉する（OnRowClick）。 -->
-                <HierarchicalDataTemplate DataType="{x:Type vm:SearchFolderNode}" ItemsSource="{Binding Children}">
-                    <Grid Background="Transparent" ToolTip="{Binding RelativePath}"
-                          MouseLeftButtonUp="OnRowClick">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <!-- 色ちがいの線 数本でできているので DrawingImage を 1 要素で描く（FileIcons）。 -->
-                        <Image Grid.Column="0" Source="{Binding IconImage}"
-                               Width="16" Height="16"
-                               VerticalAlignment="Center" Margin="0,0,5,0" />
-                        <TextBlock Grid.Column="1" Text="{Binding Name}" FontSize="{DynamicResource Fs12}"
-                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
-                        <ContentPresenter Grid.Column="2" Content="{Binding}"
-                                          ContentTemplate="{StaticResource CountBadge}" />
-                    </Grid>
-                </HierarchicalDataTemplate>
+                    <!-- フォルダー節点：フォルダーアイコン＋名前（圧縮で a/b）＋配下の総件数。
+                         行のどこをクリックしても配下を一気に開閉する（OnRowClick）。 -->
+                    <HierarchicalDataTemplate DataType="{x:Type vm:SearchFolderNode}" ItemsSource="{Binding Children}">
+                        <Grid Background="Transparent" ToolTip="{Binding RelativePath}"
+                              MouseLeftButtonUp="OnRowClick">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <!-- 色ちがいの線 数本でできているので DrawingImage を 1 要素で描く（FileIcons）。 -->
+                            <Image Grid.Column="0" Source="{Binding IconImage}"
+                                   Width="16" Height="16"
+                                   VerticalAlignment="Center" Margin="0,0,5,0" />
+                            <TextBlock Grid.Column="1" Text="{Binding Name}" FontSize="{DynamicResource Fs12}"
+                                       VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                            <ContentPresenter Grid.Column="2" Content="{Binding}"
+                                              ContentTemplate="{StaticResource CountBadge}" />
+                        </Grid>
+                    </HierarchicalDataTemplate>
 
-                <!-- ファイル見出し：ファイルアイコン＋ファイル名（強調）＋件数バッジ（右端）。フォルダーは親節点が示すので畳む。
-                     行にボタンを常設すると（件数バッジと合わせて）幅の狭いペインで見切れるので出さない
-                     （一致行と同じく、置換は右クリックメニューから。OnFileContextMenuOpened が開くたびに可否を判定する）。 -->
-                <HierarchicalDataTemplate DataType="{x:Type vm:SearchFileGroup}" ItemsSource="{Binding Matches}">
-                    <Grid Background="Transparent" ToolTip="{Binding RelativePath}"
-                          MouseLeftButtonUp="OnRowClick" ContextMenuOpening="OnResultRowContextMenuOpening">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <Grid.ContextMenu>
-                            <ContextMenu Opened="OnFileContextMenuOpened">
-                                <MenuItem Header="置換" Tag="ReplaceFileMenu" Click="OnReplaceInGroupClick" />
-                            </ContextMenu>
-                        </Grid.ContextMenu>
-                        <!-- 色ちがいの線 数本でできているので DrawingImage を 1 要素で描く（FileIcons）。 -->
-                        <Image Grid.Column="0" Source="{Binding IconImage}"
-                               Width="16" Height="16"
-                               VerticalAlignment="Center" Margin="0,0,5,0" />
-                        <StackPanel Grid.Column="1" Orientation="Horizontal">
-                            <TextBlock FontSize="{DynamicResource Fs12}" TextTrimming="CharacterEllipsis"
-                                       views:SearchHighlightBehavior.Text="{Binding FileName}"
-                                       views:SearchHighlightBehavior.Query="{Binding DataContext.FileNameHighlightQuery, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                    <!-- ファイル見出し：ファイルアイコン＋ファイル名（強調）＋件数バッジ（右端）。フォルダーは親節点が示すので畳む。
+                         行にボタンを常設すると（件数バッジと合わせて）幅の狭いペインで見切れるので出さない
+                         （一致行と同じく、置換は右クリックメニューから。OnFileContextMenuOpened が開くたびに可否を判定する）。 -->
+                    <HierarchicalDataTemplate DataType="{x:Type vm:SearchFileGroup}" ItemsSource="{Binding Matches}">
+                        <Grid Background="Transparent" ToolTip="{Binding RelativePath}"
+                              MouseLeftButtonUp="OnRowClick" ContextMenuOpening="OnResultRowContextMenuOpening">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.ContextMenu>
+                                <ContextMenu Opened="OnFileContextMenuOpened">
+                                    <MenuItem Header="置換" Tag="ReplaceFileMenu" Click="OnReplaceInGroupClick" />
+                                </ContextMenu>
+                            </Grid.ContextMenu>
+                            <!-- 色ちがいの線 数本でできているので DrawingImage を 1 要素で描く（FileIcons）。 -->
+                            <Image Grid.Column="0" Source="{Binding IconImage}"
+                                   Width="16" Height="16"
+                                   VerticalAlignment="Center" Margin="0,0,5,0" />
+                            <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                <TextBlock FontSize="{DynamicResource Fs12}" TextTrimming="CharacterEllipsis"
+                                           views:SearchHighlightBehavior.Text="{Binding FileName}"
+                                           views:SearchHighlightBehavior.Query="{Binding DataContext.FileNameHighlightQuery, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                           views:SearchHighlightBehavior.CaseSensitive="{Binding DataContext.HighlightCaseSensitive, RelativeSource={RelativeSource AncestorType=UserControl}}" />
+                                <TextBlock Text="{Binding MetadataText}" Margin="8,0,0,0" FontSize="{DynamicResource Fs10}"
+                                           Foreground="{DynamicResource FgDim}"
+                                           Visibility="{Binding HasMetadata, Converter={StaticResource BoolToVis}}" />
+                            </StackPanel>
+                            <ContentPresenter Grid.Column="2" Content="{Binding}"
+                                              ContentTemplate="{StaticResource CountBadge}" />
+                        </Grid>
+                    </HierarchicalDataTemplate>
+                    <DataTemplate DataType="{x:Type vm:SearchMatchItem}">
+                        <!-- 右クリックで1件だけ置換できる（項目は置換欄を出しているときだけ見せる。
+                             OnMatchContextMenuOpened が開くたびに可否を判定する）。置換済みは一覧から消さず、
+                             取り消し線で示す（次々処理していく途中で一覧が消えたり並び直ったりしないように）。 -->
+                        <Grid Background="Transparent" ContextMenuOpening="OnResultRowContextMenuOpening">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.ContextMenu>
+                                <ContextMenu Opened="OnMatchContextMenuOpened">
+                                    <MenuItem Header="置換" Tag="ReplaceOneMenu" Click="OnReplaceOneContextClick" />
+                                </ContextMenu>
+                            </Grid.ContextMenu>
+                            <TextBlock x:Name="LineNumText" Grid.Column="0" Text="{Binding LineLabel}"
+                                       FontSize="{DynamicResource Fs11}" MinWidth="34" Opacity="0.6" />
+                            <TextBlock x:Name="PreviewText" Grid.Column="1" FontSize="{DynamicResource Fs11}"
+                                       FontFamily="Consolas" TextTrimming="CharacterEllipsis"
+                                       views:SearchHighlightBehavior.Text="{Binding Preview}"
+                                       views:SearchHighlightBehavior.Query="{Binding DataContext.HighlightQuery, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                       views:SearchHighlightBehavior.UseRegex="{Binding DataContext.HighlightUseRegex, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                        views:SearchHighlightBehavior.CaseSensitive="{Binding DataContext.HighlightCaseSensitive, RelativeSource={RelativeSource AncestorType=UserControl}}" />
-                            <TextBlock Text="{Binding MetadataText}" Margin="8,0,0,0" FontSize="{DynamicResource Fs10}"
-                                       Foreground="{DynamicResource FgDim}"
-                                       Visibility="{Binding HasMetadata, Converter={StaticResource BoolToVis}}" />
-                        </StackPanel>
-                        <ContentPresenter Grid.Column="2" Content="{Binding}"
-                                          ContentTemplate="{StaticResource CountBadge}" />
-                    </Grid>
-                </HierarchicalDataTemplate>
-                <DataTemplate DataType="{x:Type vm:SearchMatchItem}">
-                    <!-- 右クリックで1件だけ置換できる（項目は置換欄を出しているときだけ見せる。
-                         OnMatchContextMenuOpened が開くたびに可否を判定する）。置換済みは一覧から消さず、
-                         取り消し線で示す（次々処理していく途中で一覧が消えたり並び直ったりしないように）。 -->
-                    <Grid Background="Transparent" ContextMenuOpening="OnResultRowContextMenuOpening">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-                        <Grid.ContextMenu>
-                            <ContextMenu Opened="OnMatchContextMenuOpened">
-                                <MenuItem Header="置換" Tag="ReplaceOneMenu" Click="OnReplaceOneContextClick" />
-                            </ContextMenu>
-                        </Grid.ContextMenu>
-                        <TextBlock x:Name="LineNumText" Grid.Column="0" Text="{Binding LineLabel}"
-                                   FontSize="{DynamicResource Fs11}" MinWidth="34" Opacity="0.6" />
-                        <TextBlock x:Name="PreviewText" Grid.Column="1" FontSize="{DynamicResource Fs11}"
-                                   FontFamily="Consolas" TextTrimming="CharacterEllipsis"
-                                   views:SearchHighlightBehavior.Text="{Binding Preview}"
-                                   views:SearchHighlightBehavior.Query="{Binding DataContext.HighlightQuery, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                   views:SearchHighlightBehavior.UseRegex="{Binding DataContext.HighlightUseRegex, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                   views:SearchHighlightBehavior.CaseSensitive="{Binding DataContext.HighlightCaseSensitive, RelativeSource={RelativeSource AncestorType=UserControl}}" />
-                    </Grid>
-                    <DataTemplate.Triggers>
-                        <DataTrigger Binding="{Binding IsReplaced}" Value="True">
-                            <Setter TargetName="PreviewText" Property="TextDecorations" Value="Strikethrough" />
-                            <Setter TargetName="PreviewText" Property="Opacity" Value="0.5" />
-                            <Setter TargetName="LineNumText" Property="Opacity" Value="0.35" />
-                        </DataTrigger>
-                    </DataTemplate.Triggers>
-                </DataTemplate>
-            </TreeView.Resources>
-        </TreeView>
+                        </Grid>
+                        <DataTemplate.Triggers>
+                            <DataTrigger Binding="{Binding IsReplaced}" Value="True">
+                                <Setter TargetName="PreviewText" Property="TextDecorations" Value="Strikethrough" />
+                                <Setter TargetName="PreviewText" Property="Opacity" Value="0.5" />
+                                <Setter TargetName="LineNumText" Property="Opacity" Value="0.35" />
+                            </DataTrigger>
+                        </DataTemplate.Triggers>
+                    </DataTemplate>
+                </TreeView.Resources>
+            </TreeView>
+            <!-- 書き換えるモード（§24.86）：一致した行を 1 行 1 欄で並べる（同じ行の一致は 1 欄）。書き換えた行は印を付け、
+                 「書き戻す」で書き換えた行だけを元のファイルへ戻す。Esc でやめる（OnLineEditKeyDown）。 -->
+            <DockPanel Visibility="{Binding IsEditingLines, Converter={StaticResource BoolToVis}}">
+                <DockPanel DockPanel.Dock="Top" Margin="0,2,0,4">
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                        <Button Height="22" Padding="8,0" Margin="4,0,0,0" FontSize="{DynamicResource Fs11}"
+                                Style="{StaticResource FolderBarButton}" Click="OnApplyLineEditsClick"
+                                ToolTip="書き換えた行だけを元のファイルへ戻す（元の文字コード・改行のまま）">
+                            <TextBlock>
+                                <Run Text="書き戻す（" /><Run Text="{Binding ChangedLineCount, Mode=OneWay}" /><Run Text=" 行）" />
+                            </TextBlock>
+                        </Button>
+                        <Button Content="やめる" Height="22" Padding="8,0" Margin="4,0,0,0" FontSize="{DynamicResource Fs11}"
+                                Style="{StaticResource FolderBarButton}" Command="{Binding CancelEditLinesCommand}"
+                                ToolTip="書き換えを捨てて結果へ戻る（Esc）" />
+                    </StackPanel>
+                    <TextBlock Text="行を書き換えて「書き戻す」" VerticalAlignment="Center"
+                               FontSize="{DynamicResource Fs11}" Foreground="{DynamicResource FgDim}" />
+                </DockPanel>
+                <ListBox ItemsSource="{Binding LineEdits}" BorderThickness="0" Background="Transparent"
+                         HorizontalContentAlignment="Stretch"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                         VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"
+                         VirtualizingPanel.ScrollUnit="Pixel"
+                         KeyboardNavigation.TabNavigation="Continue"
+                         PreviewKeyDown="OnLineEditKeyDown">
+                    <ListBox.ItemContainerStyle>
+                        <Style TargetType="ListBoxItem">
+                            <Setter Property="Padding" Value="0" />
+                            <Setter Property="Focusable" Value="False" />
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="ListBoxItem">
+                                        <ContentPresenter />
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+                    </ListBox.ItemContainerStyle>
+                    <ListBox.ItemTemplate>
+                        <DataTemplate DataType="{x:Type vm:SearchLineEditItem}">
+                            <StackPanel>
+                                <TextBlock Text="{Binding RelativePath}" Margin="0,6,0,2" FontSize="{DynamicResource Fs11}" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource FgDim}" TextTrimming="CharacterEllipsis"
+                                           Visibility="{Binding IsFirstOfFile, Converter={StaticResource BoolToVis}}" />
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock x:Name="LineLabel" Text="{Binding Line}" MinWidth="34" Opacity="0.6"
+                                               FontSize="{DynamicResource Fs11}" VerticalAlignment="Center" />
+                                    <TextBox x:Name="LineBox" Grid.Column="1" Text="{Binding Edited, UpdateSourceTrigger=PropertyChanged}"
+                                             FontFamily="Consolas" FontSize="{DynamicResource Fs11}" Padding="2,1"
+                                             Background="{DynamicResource Bg}" Foreground="{DynamicResource Fg}"
+                                             BorderBrush="{DynamicResource Border}" CaretBrush="{DynamicResource Fg}"
+                                             AcceptsReturn="False" />
+                                </Grid>
+                            </StackPanel>
+                            <DataTemplate.Triggers>
+                                <DataTrigger Binding="{Binding IsChanged}" Value="True">
+                                    <Setter TargetName="LineBox" Property="BorderBrush" Value="{DynamicResource Accent}" />
+                                    <Setter TargetName="LineLabel" Property="Opacity" Value="1" />
+                                    <Setter TargetName="LineLabel" Property="Foreground" Value="{DynamicResource Accent}" />
+                                </DataTrigger>
+                            </DataTemplate.Triggers>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </DockPanel>
+        </Grid>
     </DockPanel>
 </UserControl>
