@@ -96,6 +96,63 @@ public sealed class GitPatchService
             _ => Task.FromResult(new GitCommandResult(-1, "", preview.Error ?? "パッチが当たりません。")),
         };
 
+    /// <summary>
+    /// 作業ツリーの未コミットの変更（HEAD との差。ステージ済みか否かは問わず、未追跡・削除・バイナリも含む）を
+    /// <paramref name="paths"/> に絞ってパッチとして <paramref name="outputPath"/> へ書く（§24.79）。
+    /// 未追跡のファイルは素の <c>git diff</c> に出ないので、<b>使い捨てのインデックス</b>（<c>GIT_INDEX_FILE</c>）へ
+    /// HEAD を読み込んで <c>add -A</c> し、<c>diff --cached</c> を取る——人のインデックス（ステージ）には触らない。
+    /// git に直接書かせる（<c>--output</c>）のはスタッシュの保存と同じ理由（UTF-8 でない中身を化けさせない）。
+    /// <paramref name="root"/> を渡せばそのフォルダー（別のワークツリー）で取る。
+    /// </summary>
+    public async Task<GitCommandResult> WriteWorkingPatchAsync(
+        IReadOnlyList<string> paths, string outputPath, string? root = null)
+    {
+        if (paths.Count == 0)
+            return new GitCommandResult(-1, "", "パッチにするファイルがありません。");
+        var index = Path.Combine(Path.GetTempPath(), "loomo-index-" + Guid.NewGuid().ToString("N"));
+        var env = new Dictionary<string, string> { ["GIT_INDEX_FILE"] = index };
+        try
+        {
+            // 生まれたばかりのリポジトリ（HEAD がまだ無い）では空から始める。
+            var read = await RunAsync(root, env, "read-tree", "HEAD").ConfigureAwait(false);
+            if (!read.Success)
+                read = await RunAsync(root, env, "read-tree", "--empty").ConfigureAwait(false);
+            if (!read.Success)
+                return read;
+            var add = await RunAsync(root, env, ["add", "-A", "--", .. paths]).ConfigureAwait(false);
+            if (!add.Success)
+                return add;
+            return await RunAsync(root, env,
+                ["diff", "--cached", "--binary", "--no-color", "--no-ext-diff", "--no-textconv",
+                 $"--output={outputPath}", "--", .. paths]).ConfigureAwait(false);
+        }
+        finally
+        {
+            try { File.Delete(index); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+        }
+    }
+
+    /// <summary><see cref="WriteWorkingPatchAsync"/> を一時ファイルに書いて本文で返す（クリップボード用）。変更が無ければ空文字。
+    /// 失敗は <see cref="GitCommandResult"/> の理由で返す。</summary>
+    public async Task<(string? Text, GitCommandResult Result)> GetWorkingPatchTextAsync(IReadOnlyList<string> paths)
+    {
+        var path = Path.Combine(Path.GetTempPath(), "loomo-patch-" + Guid.NewGuid().ToString("N") + ".patch");
+        try
+        {
+            var result = await WriteWorkingPatchAsync(paths, path).ConfigureAwait(false);
+            return result.Success && File.Exists(path) ? (await File.ReadAllTextAsync(path).ConfigureAwait(false), result) : (null, result);
+        }
+        finally
+        {
+            try { File.Delete(path); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+        }
+    }
+
+    private Task<GitCommandResult> RunAsync(string? root, IReadOnlyDictionary<string, string> env, params string[] args)
+        => root is null
+            ? _runner.RunAsync(env, args)
+            : _runner.RunInAsync(root, env, null, System.Threading.CancellationToken.None, args);
+
     // 本文はバイト列のまま書く（BOM を付けない）。BOM が先頭に付くと git はパッチの始まりを読めない。
     private static string WriteTemp(string text)
     {

@@ -187,6 +187,14 @@ public sealed class GitService
 
     public Task<GitCommandResult> ApplyPatchAsync(GitPatchPreview preview) => _patches.ApplyAsync(preview);
 
+    /// <summary>作業ツリーの未コミットの変更（未追跡を含む）を選んだパスに絞ってパッチとして書く（§24.79）。</summary>
+    public Task<GitCommandResult> WriteWorkingPatchAsync(IReadOnlyList<string> paths, string outputPath) =>
+        _patches.WriteWorkingPatchAsync(paths, outputPath);
+
+    /// <summary><see cref="WriteWorkingPatchAsync"/> の本文（クリップボード用）。</summary>
+    public Task<(string? Text, GitCommandResult Result)> GetWorkingPatchTextAsync(IReadOnlyList<string> paths) =>
+        _patches.GetWorkingPatchTextAsync(paths);
+
     /// <summary>変更一覧に添える増減の行数（キャッシュしない。<see cref="GitStatusService.GetLineStatsAsync"/>）。</summary>
     public Task<IReadOnlyDictionary<string, GitLineStat>> GetLineStatsAsync(bool cached, string? baseRef = null)
         => _status.GetLineStatsAsync(cached, baseRef);

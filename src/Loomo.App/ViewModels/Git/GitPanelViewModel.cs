@@ -858,6 +858,82 @@ public sealed partial class GitPanelViewModel : ObservableObject
         await _editor.OpenFileAsync(path);
     }
 
+    /// <summary>右クリックした行から、パッチ・移す先に含めるパス（§24.79）。その行がチェックされていればチェックした全部、
+    /// そうでなければその行だけ（チェックが残ったまま別の行を右クリックしたときに、見えていない行まで巻き込まない）。
+    /// リネームは新旧の両方を含める（新しい側だけだと、古い側の削除が抜けたパッチになる）。</summary>
+    internal IReadOnlyList<string> PathsForChangesAction(GitChangeItem? item)
+    {
+        var picked = item is null || item.IsChecked
+            ? Changes.Concat(UnversionedFiles).Where(i => i.IsChecked).ToList()
+            : [item];
+        if (picked.Count == 0 && item is not null)
+            picked = [item];
+        return picked.SelectMany(i => PathsOf(i.Entry)).Distinct(StringComparer.Ordinal).ToList();
+    }
+
+    private static string FilesLabel(IReadOnlyList<string> paths)
+        => paths.Count == 1 ? Path.GetFileName(paths[0]) : $"{paths.Count} ファイル";
+
+    /// <summary>作業ツリーの変更をパッチとしてクリップボードへ（§24.79）。HEAD との差で、未追跡のファイルも含む。
+    /// 別の PC・リポジトリ・ノート・チャットへ「この変更だけ」を運ぶ素材——当てる側は §24.38.1 の「クリップボードのパッチを当てる」。</summary>
+    [RelayCommand]
+    private async Task CopyChangesPatchAsync(GitChangeItem? item)
+    {
+        var paths = PathsForChangesAction(item);
+        if (paths.Count == 0) return;
+        var (text, result) = await _git.GetWorkingPatchTextAsync(paths);
+        if (text is null)
+        {
+            StatusMessage = $"パッチを作れませんでした: {Truncate(result.Message)}";
+            StatusIsError = true;
+            return;
+        }
+        if (text.Length == 0)
+        {
+            StatusMessage = $"{FilesLabel(paths)} に HEAD との差がありません。";
+            return;
+        }
+        try { Clipboard.SetText(text); }
+        catch (System.Runtime.InteropServices.ExternalException)
+        {
+            StatusMessage = "クリップボードが使えませんでした。もう一度試してください。";
+            StatusIsError = true;
+            return;
+        }
+        StatusMessage = $"{FilesLabel(paths)} の変更をパッチとしてコピーしました。";
+        StatusIsError = false;
+    }
+
+    /// <summary>作業ツリーの変更をパッチとして保存し、エディタで開く（§24.79。スタッシュの保存と同じ形）。</summary>
+    [RelayCommand]
+    private async Task SaveChangesPatchAsync(GitChangeItem? item)
+    {
+        var paths = PathsForChangesAction(item);
+        if (paths.Count == 0) return;
+        var dialog = new Microsoft.Win32.SaveFileDialog
+        {
+            Title = "変更をパッチとして保存",
+            Filter = "パッチ (*.patch)|*.patch|すべてのファイル (*.*)|*.*",
+            FileName = paths.Count == 1 ? Path.GetFileNameWithoutExtension(paths[0]) + ".patch" : "changes.patch",
+        };
+        if (_git.RootPath is { Length: > 0 } root && Directory.Exists(root))
+            dialog.InitialDirectory = root;
+        var owner = Application.Current?.MainWindow;
+        if ((owner is null ? dialog.ShowDialog() : dialog.ShowDialog(owner)) != true) return;
+
+        var path = dialog.FileName;
+        var result = await _git.WriteWorkingPatchAsync(paths, path);
+        if (!result.Success)
+        {
+            StatusMessage = $"パッチの保存に失敗しました: {Truncate(result.Message)}";
+            StatusIsError = true;
+            return;
+        }
+        StatusMessage = $"{FilesLabel(paths)} の変更を {Path.GetFileName(path)} に保存しました。";
+        StatusIsError = false;
+        await _editor.OpenFileAsync(path);
+    }
+
     /// <summary>クリップボードのパッチを作業ツリーへ当てる（§24.38.1）。</summary>
     [RelayCommand]
     private async Task ApplyPatchFromClipboardAsync()

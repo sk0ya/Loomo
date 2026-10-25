@@ -265,6 +265,17 @@
                       Visibility="{Binding PlacementTarget.DataContext.Capabilities.CanDiscard, RelativeSource={RelativeSource AncestorType=ContextMenu}, Converter={StaticResource BoolToVis}}"
                       Command="{Binding PlacementTarget.DataContext.DiscardCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                       CommandParameter="{Binding PlacementTarget.SelectedItem.Change, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+            <!-- 未コミットの変更をパッチとして運ぶ（§24.79）。チェックした行を右クリックしたらチェックした全部。HEAD との差なので基準に依らず出せるが、
+                 作業ツリーの変更という概念はステージの操作と同じく基準が HEAD のときだけのものなので、同じ条件で出す。 -->
+            <MenuItem Header="パッチとして"
+                      Visibility="{Binding PlacementTarget.DataContext.Capabilities.CanStage, RelativeSource={RelativeSource AncestorType=ContextMenu}, Converter={StaticResource BoolToVis}}">
+                <MenuItem Header="クリップボードへコピー"
+                          Command="{Binding PlacementTarget.DataContext.CopyChangesPatchCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                          CommandParameter="{Binding PlacementTarget.SelectedItem.Change, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                <MenuItem Header="保存…"
+                          Command="{Binding PlacementTarget.DataContext.SaveChangesPatchCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                          CommandParameter="{Binding PlacementTarget.SelectedItem.Change, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+            </MenuItem>
         </ContextMenu>
 
         <!-- 変更行の右クリックメニュー（ステージ済みセクション用） -->
@@ -278,6 +289,15 @@
             <Separator />
             <MenuItem Header="選択をアンステージ"
                       Command="{Binding PlacementTarget.DataContext.UnstageSelectedCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+            <!-- §24.79。ステージ済みの行もその 1 ファイルの HEAD との差をパッチにする（ステージしていない分も含む）。 -->
+            <MenuItem Header="パッチとして">
+                <MenuItem Header="クリップボードへコピー"
+                          Command="{Binding PlacementTarget.DataContext.CopyChangesPatchCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                          CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                <MenuItem Header="保存…"
+                          Command="{Binding PlacementTarget.DataContext.SaveChangesPatchCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                          CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+            </MenuItem>
         </ContextMenu>
 
         <!-- 件数ピル（セクション見出しの右） -->
