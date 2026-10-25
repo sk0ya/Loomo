@@ -33,6 +33,14 @@ public partial class ShellWindow {
             return;
         tab.CustomName = _vm.Tabs.RenameTerminalTab(tab.Id, name, TerminalHeaderWithAgentMark(tab.Id, tab.View.HeaderTitle));
     }
+    /// <summary>ターミナルタブの色（§24.63）を生きたタブの側へ写して保存する。名前と同じく、ワークスペース切替で TABS の行が
+    /// 作り直されても残るように。</summary>
+    private void OnSidebarTabColorChanged(object? sender, TabEntryViewModel entry) {
+        if (_terminalTabs.FirstOrDefault(t => t.Id == entry.Id) is not { } tab)
+            return;
+        tab.ColorKey = entry.ColorKey;
+        SaveActiveWorkspaceSnapshot();
+    }
     private TerminalWorkspaceTabs CurrentTerminalWorkspace
         => _activeTerminalWorkspace ?? _scratchTerminalWorkspace;
     private EditorWorkspaceTabs CurrentEditorWorkspace

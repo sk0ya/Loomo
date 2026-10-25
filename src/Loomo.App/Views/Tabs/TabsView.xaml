@@ -187,6 +187,12 @@
                                   Visibility="{Binding CanRename, Converter={StaticResource BoolToVis}}"
                                   Command="{Binding PlacementTarget.Tag.RenameTabCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                   CommandParameter="{Binding}" />
+                        <!-- ターミナルだけ：色の印（§24.63）。子は開いたときに今の色へ合わせて作る。空の子は ▸ を出すための仮置き。 -->
+                        <MenuItem Header="色"
+                                  Visibility="{Binding CanRename, Converter={StaticResource BoolToVis}}"
+                                  SubmenuOpened="OnColorSubmenuOpened">
+                            <MenuItem IsEnabled="False" />
+                        </MenuItem>
                         <!-- ブラウザだけ：前に出さずに URL・リンクを写す（§24.46） -->
                         <Separator Visibility="{Binding BrowserUrl, Converter={StaticResource NonEmptyToVis}}" />
                         <MenuItem Header="URL をコピー"
@@ -231,8 +237,14 @@
                                    Width="16" Height="16" Margin="0,0,6,0"
                                    HorizontalAlignment="Center" VerticalAlignment="Center" />
                             <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                <TextBlock x:Name="EntryTitle" Text="{Binding Title}" FontSize="{DynamicResource Fs12_5}"
-                                           TextTrimming="CharacterEllipsis" />
+                                <DockPanel>
+                                    <!-- 人が付けた色（ターミナルだけ・§24.63）。文字を読まずにどのタブかを分ける。 -->
+                                    <Ellipse DockPanel.Dock="Left" Width="8" Height="8" Margin="0,0,5,0"
+                                             VerticalAlignment="Center" Fill="{Binding ColorBrush}"
+                                             Visibility="{Binding HasColor, Converter={StaticResource BoolToVis}}" />
+                                    <TextBlock x:Name="EntryTitle" Text="{Binding Title}" FontSize="{DynamicResource Fs12_5}"
+                                               TextTrimming="CharacterEllipsis" />
+                                </DockPanel>
                                 <!-- ターミナルの行だけの 2 行目（§24.53）：場所 (ブランチ) · 最後のコマンド ✓ · 3分前。
                                      見出しが同じシェル名で並んでも、どのタブで何を終えたかが一覧で分かる。 -->
                                 <TextBlock x:Name="EntrySummary" Text="{Binding TerminalSummary}"

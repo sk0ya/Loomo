@@ -315,7 +315,7 @@ public partial class ShellWindow {
     /// <summary>切り離しウィンドウから戻ってきたターミナルタブを帯へ迎える（生きたセッションのまま）。</summary>
     private void AdoptTerminalTab(TerminalTab tab) {
         _terminalTabs.Add(tab);
-        _vm.Tabs.AddTerminalTab(tab.Id, tab.View.HeaderTitle, false);
+        _vm.Tabs.AddTerminalTab(tab.Id, tab.View.HeaderTitle, false, tab.CustomName, tab.ColorKey);
         ActivateTerminalTab(tab.Id);
         FocusPane(PaneKind.Terminal);
         SaveActiveWorkspaceSnapshot();

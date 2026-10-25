@@ -92,6 +92,15 @@ public sealed partial class TabEntryViewModel : ObservableObject
     /// シェルが付けるタイトル（実行中のコマンド等）は名前を付けても見え続ける。</summary>
     [ObservableProperty] private string? _customName;
 
+    /// <summary>人が付けた色の鍵（Terminal タブのみ・§24.63）。色そのものは <see cref="TerminalTabColors"/> が持つ。</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ColorBrush))]
+    [NotifyPropertyChangedFor(nameof(HasColor))]
+    private string? _colorKey;
+
+    public Brush? ColorBrush => TerminalTabColors.BrushFor(ColorKey);
+    public bool HasColor => ColorBrush is not null;
+
     /// <summary>ターミナルの行の 2 行目（§24.53）：「場所 (ブランチ) · 最後のコマンド ✓ · 3分前」／走っている間は
     /// 「▶ コマンド · 経過」。ターミナル以外と、まだ何も分かっていないタブは null（1 行の行のまま）。</summary>
     [ObservableProperty]
@@ -312,6 +321,9 @@ public sealed partial class TabsViewModel : ObservableObject
     public event EventHandler<TabEntryViewModel>? TabDetachRequested;
     /// <summary>「名前を付ける…」：タブに人が付けた名前を設定・解除する（Terminal のみ）。</summary>
     public event EventHandler<TabEntryViewModel>? TabRenameRequested;
+
+    /// <summary>Terminal タブの色が変わった（§24.63）。</summary>
+    public event EventHandler<TabEntryViewModel>? TabColorChanged;
     /// <summary>「新しいタブ」：指定の種別で空のタブを1つ開く（見出しの＋・行の右クリック）。</summary>
     public event EventHandler<TabEntryKind>? TabNewRequested;
     /// <summary>行の右クリック「棚へ下げる」（§24.29）。</summary>
@@ -667,12 +679,13 @@ public sealed partial class TabsViewModel : ObservableObject
         _browserKind.Icon = _icons.GetBrowserDefaultIcon();
     }
 
-    public void AddTerminalTab(Guid id, string? title, bool isActive, string? customName = null)
+    public void AddTerminalTab(Guid id, string? title, bool isActive, string? customName = null, string? colorKey = null)
     {
         var name = NormalizeCustomName(customName);
         var tab = new TabEntryViewModel(id, TabEntryKind.Terminal, TerminalTitle(name, title), isActive)
         {
             CustomName = name,
+            ColorKey = TerminalTabColors.Normalize(colorKey),
         };
         tab.IsGroupShown = ShowTerminalTabs;
         WatchGroupState(tab);
@@ -701,6 +714,19 @@ public sealed partial class TabsViewModel : ObservableObject
         tab.CustomName = name;
         tab.Title = TerminalTitle(name, shellTitle);
         return name;
+    }
+
+    /// <summary>Terminal タブに色を付ける（null で外す・§24.63）。持ち主（ShellWindow）は <see cref="TabColorChanged"/> で
+    /// 生きたタブの側へ写して保存する。</summary>
+    public void SetTerminalTabColor(TabEntryViewModel tab, string? colorKey)
+    {
+        if (!tab.CanRename)
+            return;
+        var key = TerminalTabColors.Normalize(colorKey);
+        if (tab.ColorKey == key)
+            return;
+        tab.ColorKey = key;
+        TabColorChanged?.Invoke(this, tab);
     }
 
     /// <summary>ターミナルの行の 2 行目を差し替える（§24.53）。文言は <see cref="TerminalTabSummary"/> が組む。</summary>

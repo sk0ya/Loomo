@@ -340,6 +340,32 @@ public sealed class TabsViewModelTests
     }
 
     [Fact]
+    public void ターミナルタブの色は知っている鍵だけ付き_変わったときだけ知らせる()
+    {
+        var sut = Sut();
+        var shell = Guid.NewGuid();
+        sut.AddTerminalTab(shell, "pwsh", isActive: true, colorKey: "no-such-color");
+        var tab = sut.TerminalTabs[0];
+        Assert.Null(tab.ColorKey);   // 手で書き換えた設定など、知らない鍵は色なし
+        var changed = 0;
+        sut.TabColorChanged += (_, _) => changed++;
+
+        sut.SetTerminalTabColor(tab, "red");
+        sut.SetTerminalTabColor(tab, "red");
+        Assert.Equal("red", tab.ColorKey);
+        Assert.True(tab.HasColor);
+        Assert.Equal(1, changed);
+
+        sut.SetTerminalTabColor(tab, null);
+        Assert.False(tab.HasColor);
+        Assert.Equal(2, changed);
+
+        var editor = new TabEntryViewModel(TabEntryKind.Editor, "a.cs");
+        sut.SetTerminalTabColor(editor, "red");
+        Assert.Null(editor.ColorKey);   // 色を付けられるのはターミナルだけ
+    }
+
+    [Fact]
     public void 行を作り直しても名前を引き継ぐ_名前を付けられるのはターミナルだけ()
     {
         var sut = Sut();

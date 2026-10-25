@@ -35,6 +35,9 @@ public partial class ShellWindow {
             var rename = new MenuItem { Header = "名前を付ける…" };
             rename.Click += (_, _) => RenameTerminalTab(tab.Id);
             menu.Items.Add(rename);
+            var color = new MenuItem { Header = "色" };
+            TerminalTabColors.FillMenu(color, tab.ColorKey, key => _vm.Tabs.SetTerminalTabColor(tab, key));
+            menu.Items.Add(color);
         }
         if (tab.BrowserUrl is { Length: > 0 }) {
             menu.Items.Add(new Separator());

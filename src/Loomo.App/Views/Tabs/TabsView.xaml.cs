@@ -37,6 +37,15 @@ public partial class TabsView : UserControl
 
     // 右クリック「他の Loomo で開く」：開くたびに起動中の部屋へ問い合わせて並べ直す（部屋は増えたり減ったりする）。
     // 子の SubmenuOpened も上がってくるので、自分の分だけ扱う。
+    private void OnColorSubmenuOpened(object sender, RoutedEventArgs e)
+    {
+        if (!ReferenceEquals(e.OriginalSource, sender)
+            || sender is not MenuItem { DataContext: TabEntryViewModel tab } menu
+            || DataContext is not TabsViewModel vm)
+            return;
+        TerminalTabColors.FillMenu(menu, tab.ColorKey, key => vm.SetTerminalTabColor(tab, key));
+    }
+
     private async void OnOtherRoomSubmenuOpened(object sender, RoutedEventArgs e)
     {
         if (!ReferenceEquals(e.OriginalSource, sender)

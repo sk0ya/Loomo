@@ -1066,6 +1066,9 @@
                             <DockPanel HorizontalAlignment="Left" Margin="2,0,8,0">
                                 <Button Style="{StaticResource PaneHeaderTabClose}" ToolTip="このタブを閉じる（中クリックでも）"
                                         Tag="{Binding Tabs.ActiveTerminalTab}" Click="OnPaneHeaderCloseTab" />
+                                <Ellipse Width="8" Height="8" Margin="0,0,6,0" VerticalAlignment="Center"
+                                         Fill="{Binding Tabs.ActiveTerminalTab.ColorBrush}"
+                                         Visibility="{Binding Tabs.ActiveTerminalTab.HasColor, Converter={StaticResource BoolToVis}, FallbackValue=Collapsed}" />
                                 <TextBlock Text="{Binding Tabs.ActiveTerminalTab.Title}"
                                            ToolTip="{Binding Tabs.ActiveTerminalTab.Title}"
                                            VerticalAlignment="Center"

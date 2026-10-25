@@ -1000,6 +1000,8 @@ public sealed class TerminalTabSnapshot
     public Guid Id { get; set; }
     public string? CustomName { get; set; }
     public string? WorkingDirectory { get; set; }
+    /// <summary>人が付けた色の鍵（§24.63・<c>TerminalTabColors</c>）。</summary>
+    public string? ColorKey { get; set; }
 }
 
 public sealed class BrowserTabSnapshot
