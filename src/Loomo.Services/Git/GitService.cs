@@ -161,6 +161,25 @@ public sealed class GitService
             .ToList();
     }
 
+    /// <summary><paramref name="hash"/> を含むリモート追跡ブランチ（<c>origin/main</c> 等、<c>origin/HEAD</c> は除く・§24.78）。
+    /// 空なら、そのコミットはまだどこにもプッシュされていない。調べられなければ空（警告を出さないだけで、止めはしない）。</summary>
+    public async Task<IReadOnlyList<string>> GetRemoteBranchesContainingAsync(string hash)
+    {
+        var result = await _runner.RunAsync(
+            "branch", "-r", "--contains", hash, "--format=%(refname:short)").ConfigureAwait(false);
+        if (!result.Success) return Array.Empty<string>();
+        return GitPublishedHistory.ParseRemoteBranches(result.Output);
+    }
+
+    /// <summary>いまのブランチを <paramref name="onto"/> へリベースしたら作り直されるコミットのうち、いちばん古いもの（§24.78）。
+    /// 作り直すものが無ければ null。</summary>
+    public async Task<string?> GetOldestRewrittenByRebaseAsync(string onto)
+    {
+        var result = await _runner.RunAsync("rev-list", "--reverse", $"{onto}..HEAD", "--").ConfigureAwait(false);
+        if (!result.Success) return null;
+        return result.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).FirstOrDefault();
+    }
+
     /// <summary>外から来たパッチを当てる前に確かめる（§24.38.1）。</summary>
     public Task<GitPatchPreview> PreviewPatchTextAsync(string patchText) => _patches.PreviewTextAsync(patchText);
 

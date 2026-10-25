@@ -150,9 +150,12 @@ internal static class GitSessionOperationController
                 await vm.Commands.MergeAsync(branch, GitMergeStrategy.Squash);
                 break;
             case GitBranchOperation.Rebase:
+                var rebasePublished = await vm.Commands.PublishedWarningForRebaseAsync(branch.Name);
                 if (confirm?.Invoke(new(
                     "リベース",
-                    $"現在のブランチを {branch.Name} の上へリベースします。コミットは作り直されます（履歴が書き換わります）。\n実行しますか？")) == true)
+                    GitPublishedHistory.Prefix(rebasePublished,
+                        $"現在のブランチを {branch.Name} の上へリベースします。コミットは作り直されます（履歴が書き換わります）。\n実行しますか？"),
+                    rebasePublished is null ? GitConfirmationSeverity.Question : GitConfirmationSeverity.Warning)) == true)
                     await vm.Commands.RebaseAsync(branch);
                 break;
             case GitBranchOperation.CreateFrom:
@@ -264,9 +267,11 @@ internal static class GitSessionOperationController
         if (vm is null || paths.Count == 0 || UncommitTarget(vm) is not { } row)
             return;
         var what = paths.Count == 1 ? paths[0] : $"{paths.Count} ファイル";
+        var published = await vm.Commands.PublishedWarningAsync([row.Hash]);
         if (!confirm(new("このコミットから外す",
-                $"{what} の変更を {row.ShortHash} から外し、作業ツリーへ戻します（ステージはしません）。\n" +
-                $"{row.ShortHash} 以降のコミットは作り直されます（履歴が書き換わります）。\n\n実行しますか？",
+                GitPublishedHistory.Prefix(published,
+                    $"{what} の変更を {row.ShortHash} から外し、作業ツリーへ戻します（ステージはしません）。\n" +
+                    $"{row.ShortHash} 以降のコミットは作り直されます（履歴が書き換わります）。\n\n実行しますか？"),
                 GitConfirmationSeverity.Warning)))
             return;
         await vm.Commands.UncommitPathsAsync(row, paths);
@@ -307,8 +312,10 @@ internal static class GitSessionOperationController
                     current, Multiline: true));
                 if (message is null || string.Equals(message, current, StringComparison.Ordinal))
                     return;
+                var rewordPublished = await vm.Commands.PublishedWarningAsync([row.Hash]);
                 if (confirm?.Invoke(new("コミットメッセージを修正",
-                    $"{row.ShortHash} 以降のコミットは作り直されます（履歴が書き換わります）。\n実行しますか？",
+                    GitPublishedHistory.Prefix(rewordPublished,
+                        $"{row.ShortHash} 以降のコミットは作り直されます（履歴が書き換わります）。\n実行しますか？"),
                     GitConfirmationSeverity.Warning)) == true)
                     await vm.Commands.RewriteCommitMessageAsync(row, message);
                 break;
@@ -332,8 +339,10 @@ internal static class GitSessionOperationController
                     showError?.Invoke(error);
                     return;
                 }
+                var rebaseFromPublished = await vm.Commands.PublishedWarningAsync([row.Hash]);
                 if (confirm?.Invoke(new("インタラクティブリベース",
-                    $"{row.ShortHash} から HEAD までの履歴が書き換わります。実行しますか？")) != true)
+                    GitPublishedHistory.Prefix(rebaseFromPublished, $"{row.ShortHash} から HEAD までの履歴が書き換わります。実行しますか？"),
+                    rebaseFromPublished is null ? GitConfirmationSeverity.Question : GitConfirmationSeverity.Warning)) != true)
                     return;
                 var plan = showRebasePlan?.Invoke(entries);
                 if (plan is not null)
@@ -349,8 +358,11 @@ internal static class GitSessionOperationController
                     combinedMessage, Multiline: true));
                 if (squashMessage is null)
                     return;
+                var squashPublished = await vm.Commands.PublishedWarningAsync(rows.Select(r => r.Hash));
                 if (confirm?.Invoke(new("スカッシュ",
-                    $"選択した {rows.Count} 件のコミットを1つにまとめます。コミットは作り直されます（履歴が書き換わります）。\n実行しますか？")) == true)
+                    GitPublishedHistory.Prefix(squashPublished,
+                        $"選択した {rows.Count} 件のコミットを1つにまとめます。コミットは作り直されます（履歴が書き換わります）。\n実行しますか？"),
+                    squashPublished is null ? GitConfirmationSeverity.Question : GitConfirmationSeverity.Warning)) == true)
                     await vm.Commands.SquashAsync(rows, squashMessage);
                 break;
             case GitCommitOperation.CherryPick when row is not null:

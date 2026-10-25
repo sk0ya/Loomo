@@ -1156,6 +1156,12 @@ public sealed partial class GitPanelViewModel : ObservableObject
             StatusIsError = true;
             return;
         }
+        if (amend && await WarnPublishedBeforeAmendAsync(amendTarget!.Hash) is { } published)
+        {
+            StatusMessage = published;
+            StatusIsError = true;
+            return;
+        }
         await RunOpAsync(amend ? "コミット（amend）" : "コミット", async () =>
         {
             if (pathsToStage.Length > 0)
@@ -1187,6 +1193,28 @@ public sealed partial class GitPanelViewModel : ObservableObject
 
     /// <summary>「それでもコミットする」と一度見せた警告の中身。同じ中身のまま押し直されたら、そのまま通す。</summary>
     private string? _acknowledgedProblemWarning;
+
+    /// <summary>プッシュ済みと一度知らせた amend の対象（§24.78）。同じ対象のまま押し直されたら、そのまま通す。</summary>
+    private string? _acknowledgedPublishedAmend;
+
+    /// <summary>amend の対象がもうプッシュされていれば、1 回目は amend せずに知らせる（§24.78）。
+    /// エラーの警告（§24.34）と同じく、ダイアログは出さず同じ対象でもう一度押せばそのまま通す。</summary>
+    internal async Task<string?> WarnPublishedBeforeAmendAsync(string hash)
+    {
+        var remotes = await _git.GetRemoteBranchesContainingAsync(hash);
+        if (GitPublishedHistory.Describe(remotes) is not { } warning)
+        {
+            _acknowledgedPublishedAmend = null;
+            return null;
+        }
+        if (hash == _acknowledgedPublishedAmend)
+        {
+            _acknowledgedPublishedAmend = null;
+            return null;
+        }
+        _acknowledgedPublishedAmend = hash;
+        return warning + "もう一度コミットを押すと、そのまま amend します。";
+    }
 
     /// <summary>
     /// コミットするファイルにエラーが残っていれば、1 回目はコミットせずに知らせる（§24.34・VS Code 1.98 の

@@ -151,6 +151,22 @@ public sealed class GitSessionCommandHandler
         ? Task.FromResult<GitCommandResult?>(null)
         : RunAsync($"コミットから外す {row.ShortHash}（{paths.Count} ファイル）",
             () => _git.UncommitPathsAsync(row.Hash, paths));
+    /// <summary>書き換えるコミットがプッシュ済みなら、確認文の先頭に置く一文（§24.78）。どれもプッシュされていなければ null。
+    /// 子孫がリモートにあれば祖先も必ずあるので、範囲のうち古いものほど引っかかる——渡された全部を見て和を取る。</summary>
+    public async Task<string?> PublishedWarningAsync(IEnumerable<string?> hashes)
+    {
+        var remotes = new List<string>();
+        foreach (var hash in hashes.OfType<string>().Distinct(StringComparer.Ordinal).Take(20))
+            remotes.AddRange(await _git.GetRemoteBranchesContainingAsync(hash));
+        return GitPublishedHistory.Describe(remotes.Distinct(StringComparer.Ordinal).ToList());
+    }
+
+    /// <summary><paramref name="onto"/> へのリベースで作り直すコミットがプッシュ済みなら、その一文（§24.78）。</summary>
+    public async Task<string?> PublishedWarningForRebaseAsync(string onto)
+        => await _git.GetOldestRewrittenByRebaseAsync(onto) is { } oldest
+            ? await PublishedWarningAsync([oldest])
+            : null;
+
     public Task<GitCommandResult?> SquashAsync(IReadOnlyList<GitLogRow> rows, string message)
     {
         var hashes = rows.Where(row => row.Hash is not null).Select(row => row.Hash!).ToList();
