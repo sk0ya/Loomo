@@ -272,6 +272,16 @@ public partial class DiffSessionView : UserControl, IDisposable
     /// </summary>
     private void AddSideLineActions(DiffSessionViewModel vm, VimEditorControl editor, ContextMenu menu)
     {
+        if (vm.CanRevertCommitLines)
+        {
+            // コミットの差分：選んだ変更（選択が無ければキャレットのある変更）だけを作業ツリーで打ち消す（§24.83）。
+            var (fromRow, toRow, selected) = _sideEditors.SelectedRows(editor);
+            var lines = DiffSideBlockMapper.CollectSelectedChanges(vm.SideRows, fromRow, toRow, wholeBlock: !selected);
+            if (lines.IsEmpty) return;
+            AddRevertCommitLinesItem(menu, selected, () => _ = vm.RevertCommitLinesAsync(lines.OldLines, lines.NewLines));
+            menu.Items.Add(new Separator());
+            return;
+        }
         if (!vm.CanStageLines) return;
         var (startRow, endRow, hasSelection) = _sideEditors.SelectedRows(editor);
         var selection = DiffSideBlockMapper.CollectSelectedChanges(vm.SideRows, startRow, endRow, wholeBlock: !hasSelection);
@@ -283,6 +293,18 @@ public partial class DiffSessionView : UserControl, IDisposable
             stage => _ = vm.StageLinesAsync(selection.OldLines, selection.NewLines, stage),
             () => _ = vm.DiscardLinesAsync(selection.OldLines, selection.NewLines));
         menu.Items.Add(new Separator());
+    }
+
+    /// <summary>コミットの差分の「打ち消す」項目（§24.83・左右並び・統合表示で同じ見出し）。</summary>
+    private static void AddRevertCommitLinesItem(ItemsControl menu, bool hasSelection, Action revert)
+    {
+        var item = new MenuItem
+        {
+            Header = $"{(hasSelection ? "選択した行" : "この変更")}を作業ツリーで打ち消す",
+            ToolTip = "このコミットのその変更だけを逆向きに作業ツリーへ当てる（コミットは作らない）",
+        };
+        item.Click += (_, _) => revert();
+        menu.Items.Add(item);
     }
 
     /// <summary>ステージ／アンステージ／破棄の項目を足す（左右並び・統合表示で同じ見出しと並び）。</summary>
@@ -543,11 +565,21 @@ public partial class DiffSessionView : UserControl, IDisposable
         if (sender is not ContextMenu menu) return;
         foreach (var stale in menu.Items.OfType<FrameworkElement>().Where(i => Equals(i.Tag, LineActionTag)).ToList())
             menu.Items.Remove(stale);
-        if (Vm is not { CanStageLines: true } vm) return;
+        if (Vm is not { } current || (!current.CanStageLines && !current.CanRevertCommitLines)) return;
+        var vm = current;
 
         var rows = DiffRowLineMapper.SelectedRowIndices(UnifiedBox.Document, UnifiedBox.Selection);
         var changed = rows.Where(i => i >= 0 && i < vm.DiffRows.Count && vm.DiffRows[i].Kind is "Added" or "Removed").ToList();
         if (changed.Count == 0) return;
+        if (vm.CanRevertCommitLines)
+        {
+            var picked = changed.ToHashSet();
+            var revertMenu = new ContextMenu();
+            AddRevertCommitLinesItem(revertMenu, !UnifiedBox.Selection.IsEmpty, () => _ = RevertCommitUnifiedAsync(vm, picked));
+            revertMenu.Items.Add(new Separator());
+            InsertLineActions(menu, revertMenu);
+            return;
+        }
         var hasStaged = changed.Any(i => vm.DiffRows[i].Staged);
         var hasUnstaged = changed.Any(i => !vm.DiffRows[i].Staged);
         var selected = changed.ToHashSet();
@@ -558,7 +590,12 @@ public partial class DiffSessionView : UserControl, IDisposable
             stage => _ = StageUnifiedAsync(vm, selected, stage),
             () => _ = DiscardUnifiedAsync(vm, selected));
         temp.Items.Add(new Separator());
-        // 「コピー」などの後ろ、エディタへ素材を渡す項目の前に差し込む。
+        InsertLineActions(menu, temp);
+    }
+
+    /// <summary>「コピー」などの後ろ、エディタへ素材を渡す項目の前に差し込む（次に開くとき外せるよう印を付ける）。</summary>
+    private static void InsertLineActions(ContextMenu menu, ContextMenu temp)
+    {
         var insertAt = Math.Min(2, menu.Items.Count);
         foreach (var item in temp.Items.OfType<FrameworkElement>().ToList())
         {
@@ -569,6 +606,12 @@ public partial class DiffSessionView : UserControl, IDisposable
     }
 
     private const string LineActionTag = "diff-line-action";
+
+    private static async Task RevertCommitUnifiedAsync(DiffSessionViewModel vm, IReadOnlySet<int> rows)
+    {
+        var (oldLines, newLines) = await vm.UnifiedRowsToLinesAsync(rows);
+        await vm.RevertCommitLinesAsync(oldLines, newLines);
+    }
 
     private static async Task StageUnifiedAsync(DiffSessionViewModel vm, IReadOnlySet<int> rows, bool stage)
     {

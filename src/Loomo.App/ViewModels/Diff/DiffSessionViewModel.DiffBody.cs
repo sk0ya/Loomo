@@ -435,6 +435,43 @@ public sealed partial class DiffSessionViewModel
         SetStatus(result.Message, !result.Success);
     }
 
+    /// <summary>コミット（範囲）の差分で、選んだ変更を作業ツリーで打ち消せるか（§24.83）。通しで読んでいる間は行が複数のファイルに
+    /// またがるので出さない（行単位のステージと同じ理由・§24.50）。</summary>
+    public bool CanRevertCommitLines => SelectedFile is { CommitFile: not null } && _commitRange is not null && !IsContinuous;
+
+    /// <summary>
+    /// コミットの差分の選んだ変更だけを、作業ツリーで打ち消す（§24.83・Emacs 31.1 の <c>diff-revert-and-kill-hunk</c>）。
+    /// 「あのコミットのこの 1 行だけ戻したい」を、コミット全体の打ち消し（<c>revert --no-commit</c>）→ 要らない分の破棄、の 2 手でなく 1 手にする。
+    /// そのコミットの差分（親→コミット）から選んだ行だけのパッチを作り、作業ツリーへ<b>逆向きに</b>当てる。コミットは作らず、ステージにも触らない。
+    /// 行番号はファイルの行番号なので、表示が空白の無視（-w）でも空白込みのパッチで組む（-w のパッチは当たらない）。
+    /// その後の編集で周りが変わっていて当たらなければ、何も書き換えずに理由を言う。
+    /// </summary>
+    public async Task RevertCommitLinesAsync(IReadOnlySet<int> oldLines, IReadOnlySet<int> newLines)
+    {
+        if (!CanRevertCommitLines || SelectedFile is not { } item) return;
+        if (oldLines.Count == 0 && newLines.Count == 0) return;
+
+        var patch = await GetPatchTextAsync(item, 3);
+        var reduced = UnifiedPatchEditor.BuildReverseDiscardPatchForLines(patch, oldLines, newLines);
+        if (reduced.IsEmpty)
+        {
+            SetStatus("打ち消す変更がありません（変更の行を選んでください）。", isError: false);
+            return;
+        }
+        var answer = MessageBox.Show(
+            Application.Current?.MainWindow!,
+            $"{item.DisplayPath} の選んだ {reduced.LineCount} 行ぶんの変更を、作業ツリーで打ち消しますか？\n" +
+            "このコミットのその変更だけを逆向きに当てます（コミットは作らず、ステージにも触りません）。",
+            "コミットの変更を打ち消す", MessageBoxButton.YesNo, MessageBoxImage.Question);
+        if (answer != MessageBoxResult.Yes) return;
+
+        var result = await _git.ApplyReverseDiscardPatchAsync(reduced.Patch);
+        SetStatus(result.Success
+                ? $"{item.DisplayPath} の {reduced.LineCount} 行ぶんを作業ツリーで打ち消しました（作業ツリーの変更として残っています）。"
+                : $"打ち消せませんでした（その後の編集で周りが変わっているかもしれません）: {result.Message.Trim()}",
+            !result.Success);
+    }
+
     private static DiffSideRowVm SharedRow(string kind, string text) => new(kind, text, kind, text, "", "");
 
     private static List<DiffSideRowVm> ToSideRows(IReadOnlyList<SideBySideRow> source)
