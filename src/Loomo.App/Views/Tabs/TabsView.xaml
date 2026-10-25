@@ -182,6 +182,13 @@
                                   SubmenuOpened="OnOtherRoomSubmenuOpened">
                             <MenuItem Header="{x:Static local:TabsView.OtherRoomSearchingHeader}" IsEnabled="False" />
                         </MenuItem>
+                        <!-- エディタ（ファイル）：ほかのワークツリーにある同じ相対パスのファイルへ（§24.80）。子は開いたときに
+                             いまのワークツリー一覧から作る。空の子は ▸ を出すための仮置き。 -->
+                        <MenuItem Header="ほかのワークツリーで"
+                                  Visibility="{Binding HasRealFile, Converter={StaticResource BoolToVis}}"
+                                  SubmenuOpened="OnWorktreeSubmenuOpened">
+                            <MenuItem Header="{x:Static local:TabsView.OtherRoomSearchingHeader}" IsEnabled="False" />
+                        </MenuItem>
                         <!-- ターミナルだけ：人が付けた名前は「名前 · シェルのタイトル」として見出しに出る -->
                         <MenuItem Header="名前を付ける…"
                                   Visibility="{Binding CanRename, Converter={StaticResource BoolToVis}}"

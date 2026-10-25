@@ -92,6 +92,48 @@ public partial class TabsView : UserControl
         }
     }
 
+    // 右クリック「ほかのワークツリーで」（§24.80）：開くたびにいまのワークツリー一覧から作り直す（ワークツリーは増えたり減ったりする）。
+    // 相手の版にそのファイルが無ければ、行を残して「無い」と書く（黙って消すと、一覧から外れたのか無いのかが分からない）。
+    private async void OnWorktreeSubmenuOpened(object sender, RoutedEventArgs e)
+    {
+        if (!ReferenceEquals(e.OriginalSource, sender)
+            || sender is not MenuItem { DataContext: TabEntryViewModel { FilePath: { } path } tab } menu
+            || DataContext is not TabsViewModel vm)
+            return;
+        var probe = ++_otherRoomProbe;
+        menu.Items.Clear();
+        menu.Items.Add(new MenuItem { Header = OtherRoomSearchingHeader, IsEnabled = false });
+        var counterparts = vm.WorktreeCounterpartsFor is { } lookup ? await lookup(path) : [];
+        if (probe != _otherRoomProbe || !menu.IsSubmenuOpen)
+            return;   // 待っている間に閉じられた・開き直された
+        menu.Items.Clear();
+        if (counterparts.Count == 0)
+        {
+            menu.Items.Add(new MenuItem { Header = "ほかのワークツリーはありません", IsEnabled = false });
+            return;
+        }
+        foreach (var target in counterparts)
+        {
+            if (!target.Exists)
+            {
+                menu.Items.Add(new MenuItem { Header = $"{target.Label} — このファイルはありません", IsEnabled = false, ToolTip = target.FilePath });
+                continue;
+            }
+            var row = new MenuItem { Header = target.Label, ToolTip = target.FilePath };
+            row.Items.Add(Action("この部屋で開く", WorktreeCounterpartAction.OpenHere));
+            row.Items.Add(Action("差分で比べる", WorktreeCounterpartAction.Compare));
+            row.Items.Add(Action("その部屋へ移って開く", WorktreeCounterpartAction.OpenInRoom));
+            menu.Items.Add(row);
+
+            MenuItem Action(string header, WorktreeCounterpartAction action)
+            {
+                var item = new MenuItem { Header = header };
+                item.Click += (_, _) => vm.RequestWorktreeCounterpart(tab, target, action);
+                return item;
+            }
+        }
+    }
+
     // 渡す中身はクリックした時点のもの（問い合わせを待つ間にナビゲーションや名前を付けて保存で変わりうる）。
     // 消えたファイルは受け手の窓でしか知らせられないので、こちらで先に確かめる。
     private static async Task SendToOtherRoomAsync(TabEntryViewModel tab, int processId)

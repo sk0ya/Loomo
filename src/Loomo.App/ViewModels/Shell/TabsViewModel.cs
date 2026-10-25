@@ -83,7 +83,11 @@ public sealed partial class TabEntryViewModel : ObservableObject
     /// 「パスをコピー」「エクスプローラーで表示」の表示可否・対象に使う。</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanOpenInOtherRoom))]
+    [NotifyPropertyChangedFor(nameof(HasRealFile))]
     private string? _filePath;
+
+    /// <summary>実ファイルを開いているエディタタブか（右クリック「ほかのワークツリーで」の表示可否・§24.80）。</summary>
+    public bool HasRealFile => Kind == TabEntryKind.Editor && FilePath is { Length: > 0 } path && Path.IsPathRooted(path);
 
     /// <summary>このタブのファイルのエラー・警告の数（§24.33）。ファイルを持たないタブと問題の無いファイルは null。</summary>
     [ObservableProperty] private ProblemMark? _problemMark;
@@ -1054,6 +1058,15 @@ public sealed partial class TabsViewModel : ObservableObject
         if (tab is { CanShelve: true })
             TabPinToggled?.Invoke(this, tab);
     }
+
+    /// <summary>ファイルの、ほかのワークツリーでの同じ相対パス（§24.80）。ShellWindow が Git ペインのワークツリー一覧をつなぐ。</summary>
+    public Func<string, Task<IReadOnlyList<WorktreeCounterpart>>>? WorktreeCounterpartsFor { get; set; }
+
+    /// <summary>右クリック「ほかのワークツリーで ▸」の項目を選んだ（§24.80）。</summary>
+    public event EventHandler<WorktreeCounterpartRequest>? WorktreeCounterpartRequested;
+
+    internal void RequestWorktreeCounterpart(TabEntryViewModel tab, WorktreeCounterpart target, WorktreeCounterpartAction action)
+        => WorktreeCounterpartRequested?.Invoke(this, new(tab, target, action));
 
     /// <summary>行 <paramref name="id"/> を、同じ種別の行 <paramref name="targetId"/> の位置へ動かす（§24.77）。
     /// 一覧はコレクションの変更で組み直されるので、ここでは並びを変えるだけ。</summary>

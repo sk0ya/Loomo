@@ -16,6 +16,8 @@ public partial class ShellWindow {
         _vm.GitSession.WorktreeMoved += (_, moved) => _vm.Workspaces.MoveWorktreeRoom(
             moved.OldPath, moved.NewPath, p => System.IO.File.Exists(p) || System.IO.Directory.Exists(p));
         _vm.GitSession.WorktreeRoomLastUsed = _vm.Workspaces.LastUsedOfRoot;
+        _vm.Tabs.WorktreeCounterpartsFor = WorktreeCounterpartsForAsync;
+        _vm.Tabs.WorktreeCounterpartRequested += (_, request) => _ = OpenWorktreeCounterpartAsync(request);
         _vm.GitSession.PropertyChanged += (_, e) => {
             if (e.PropertyName == nameof(GitSessionViewModel.Worktrees)) RefreshWorktreeAgentMarks();
         };
@@ -79,6 +81,52 @@ public partial class ShellWindow {
             _vm.Workspaces.ActivateWorktree(request, _activeWorkspace, p => File.Exists(p) || Directory.Exists(p));
         } catch (Exception ex) {
             ToastService.Error($"ワークツリーへ切り替えられませんでした: {ex.Message}");
+        }
+    }
+
+    /// <summary>ファイルの、ほかのワークツリーでの同じ相対パス（§24.80）。Git ペインをまだ開いていなくて一覧が空なら、ここで読む。</summary>
+    private async Task<IReadOnlyList<WorktreeCounterpart>> WorktreeCounterpartsForAsync(string filePath) {
+        var git = _vm.GitSession;
+        if (git.Worktrees.Count <= 1 && git.IsRepository)
+            await git.RefreshWorktreesAsync();
+        return WorktreeCounterparts.For(filePath,
+            git.Worktrees.Where(w => !w.IsBare).Select(w => (w.Path, w.Branch)),
+            File.Exists);
+    }
+
+    /// <summary>TABS の「ほかのワークツリーで ▸」（§24.80）。開くときは、いま見ている行へ合わせる——
+    /// 「本線ではこの関数はどうなっていたか」を見たいので、ファイルの頭から探し直させない。</summary>
+    private async Task OpenWorktreeCounterpartAsync(WorktreeCounterpartRequest request) {
+        var target = request.Target;
+        if (!File.Exists(target.FilePath)) {
+            ToastService.Error($"{target.Label} にこのファイルはありません");
+            return;
+        }
+        var line = _editorTabs.FirstOrDefault(t => t.Id == request.Tab.Id) is { IsRealized: true } tab
+            ? tab.Control.Caret.Line + 1 : 0;
+        switch (request.Action) {
+            case WorktreeCounterpartAction.OpenHere:
+                await OpenPathInEditorAsync(target.FilePath, line, 0);
+                break;
+            case WorktreeCounterpartAction.Compare when request.Tab.FilePath is { } current:
+                // 左＝相手（比べる元）、右＝いまのファイル（行から飛ぶ先を手元の側にそろえる）。
+                CompareFilesInDiff(new FileCompareRequest(target.FilePath, current));
+                break;
+            case WorktreeCounterpartAction.OpenInRoom:
+                try {
+                    // 切替は列に積まれて Background で走るので、始まる（世代が進む）のを待ってから終わるのを待つ。
+                    // 行き先がいまの部屋そのもの等で切替が起きなければ、待ち切ってそのまま開く。
+                    await _workspaceTransition.WhenSettledAsync();
+                    var epoch = _workspaceTransition.Epoch;
+                    SwitchToWorktree(target.WorktreePath);
+                    for (var i = 0; i < 100 && !_workspaceTransition.HasSwitchedSince(epoch); i++)
+                        await Task.Delay(50);
+                    await _workspaceTransition.WhenSettledAsync();
+                    await OpenPathInEditorAsync(target.FilePath, line, 0);
+                } catch (Exception ex) {
+                    ToastService.Error($"その部屋で開けませんでした: {ex.Message}");
+                }
+                break;
         }
     }
 
