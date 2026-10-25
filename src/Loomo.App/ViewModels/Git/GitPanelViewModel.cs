@@ -862,13 +862,16 @@ public sealed partial class GitPanelViewModel : ObservableObject
     /// そうでなければその行だけ（チェックが残ったまま別の行を右クリックしたときに、見えていない行まで巻き込まない）。
     /// リネームは新旧の両方を含める（新しい側だけだと、古い側の削除が抜けたパッチになる）。</summary>
     internal IReadOnlyList<string> PathsForChangesAction(GitChangeItem? item)
+        => ItemsForChangesAction(item).SelectMany(i => PathsOf(i.Entry)).Distinct(StringComparer.Ordinal).ToList();
+
+    private List<GitChangeItem> ItemsForChangesAction(GitChangeItem? item)
     {
         var picked = item is null || item.IsChecked
             ? Changes.Concat(UnversionedFiles).Where(i => i.IsChecked).ToList()
             : [item];
         if (picked.Count == 0 && item is not null)
             picked = [item];
-        return picked.SelectMany(i => PathsOf(i.Entry)).Distinct(StringComparer.Ordinal).ToList();
+        return picked;
     }
 
     private static string FilesLabel(IReadOnlyList<string> paths)
@@ -902,6 +905,85 @@ public sealed partial class GitPanelViewModel : ObservableObject
         }
         StatusMessage = $"{FilesLabel(paths)} の変更をパッチとしてコピーしました。";
         StatusIsError = false;
+    }
+
+    /// <summary>運び先に選べるワークツリー（§24.81）。ShellWindow が Git ペインの一覧をつなぐ。いまのワークツリーは含めなくてよい（こちらで外す）。</summary>
+    public Func<Task<IReadOnlyList<GitWorktreeInfo>>>? WorktreesProvider { get; set; }
+
+    /// <summary>運び先の候補（いまのワークツリー・bare・フォルダーが無いものを除く）。</summary>
+    public async Task<IReadOnlyList<GitWorktreeInfo>> CarryTargetsAsync()
+    {
+        if (WorktreesProvider is null) return [];
+        var root = _git.RootPath;
+        return (await WorktreesProvider())
+            .Where(w => !w.IsBare && w.Exists && !w.IsSamePath(root ?? ""))
+            .ToList();
+    }
+
+    /// <summary>
+    /// 未コミットの変更を別のワークツリーへ写す／移す（§24.81・Emacs 31.1 の <c>C-x v w a</c>）。「main で書き始めてしまった変更を作業用の
+    /// ワークツリーへ逃がす」を、stash → 切替 → pop の 3 手でなく 1 手にする。中身は §24.79 のパッチ（HEAD との差・未追跡を含む）を、
+    /// §24.38.1 と同じ当て方（素の apply → 当たらなければ 3-way）で<b>相手の作業ツリーで</b>確かめてから当てる。
+    /// 移すときは、相手に当たったのを確かめてから、同じパッチを逆向きにこちらへ当てて消す（3-way で衝突したら消さない）。
+    /// </summary>
+    public async Task CarryChangesAsync(GitChangeItem? item, GitWorktreeInfo target, bool move)
+    {
+        if (IsBusy) return;
+        var items = ItemsForChangesAction(item);
+        var paths = items.SelectMany(i => PathsOf(i.Entry)).Distinct(StringComparer.Ordinal).ToList();
+        if (paths.Count == 0) return;
+        var verb = move ? "移す" : "写す";
+        var where = target.Branch is { Length: > 0 } branch ? $"{branch}（{Path.GetFileName(target.Path.TrimEnd('\\', '/'))}）" : target.Path;
+        var preview = await _git.PrepareCarryAsync(paths, target.Path);
+        try
+        {
+            if (preview.Mode == GitPatchApplyMode.None)
+            {
+                StatusMessage = $"{where} へ{verb}せません: {Truncate(preview.Error ?? "")}";
+                StatusIsError = true;
+                return;
+            }
+            var description = DescribePatch($"{FilesLabel(paths)} の変更を {where} へ{verb}", preview)
+                + (move ? "\n\n当たったら、この作業ツリーからは消します。" : "\n\nこの作業ツリーの変更はそのまま残します。");
+            if (ConfirmPatch is { } confirm && !confirm($"変更を別のワークツリーへ{verb}", description))
+                return;
+
+            GitCommandResult? applied = null;
+            await RunOpAsync($"変更を{verb}", async () => applied = await _git.ApplyCarryAsync(preview, target.Path));
+            if (applied is null) return;
+            var conflicted = !applied.Success && preview.Mode == GitPatchApplyMode.ThreeWay && IsConflictReport(applied.Message);
+            if (!applied.Success && !conflicted) return;   // RunOpAsync が理由を出している
+            if (conflicted)
+            {
+                StatusMessage = $"{where} へ当てましたが、衝突したファイルがあります（向こうで印の付いたところを直してください）。"
+                    + (move ? "こちらの変更は消していません。" : "");
+                StatusIsError = true;
+                return;
+            }
+            if (!move)
+            {
+                StatusMessage = $"{FilesLabel(paths)} の変更を {where} へ写しました。";
+                StatusIsError = false;
+                return;
+            }
+            var indexed = items.Where(i => !i.Entry.IsUntracked).SelectMany(i => PathsOf(i.Entry)).Distinct(StringComparer.Ordinal).ToList();
+            GitCommandResult? removed = null;
+            await RunOpAsync("運んだ変更を消す", async () => removed = await _git.RemoveCarriedAsync(preview, indexed));
+            if (removed is { Success: true })
+            {
+                StatusMessage = $"{FilesLabel(paths)} の変更を {where} へ移しました。";
+                StatusIsError = false;
+            }
+            else if (removed is not null)
+            {
+                StatusMessage = $"{where} へは当てましたが、こちらから消せませんでした（両方に残っています）: {Truncate(removed.Message)}";
+                StatusIsError = true;
+            }
+        }
+        finally
+        {
+            preview.Discard();
+        }
     }
 
     /// <summary>作業ツリーの変更をパッチとして保存し、エディタで開く（§24.79。スタッシュの保存と同じ形）。</summary>

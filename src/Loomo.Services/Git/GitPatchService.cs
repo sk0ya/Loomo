@@ -68,9 +68,10 @@ public sealed class GitPatchService
         return normalized;
     }
 
-    public async Task<GitPatchPreview> PreviewFileAsync(string patchFile)
+    /// <param name="root">確かめる作業ツリー。null ならいまのリポジトリ（別のワークツリーへ運ぶときに渡す・§24.81）。</param>
+    public async Task<GitPatchPreview> PreviewFileAsync(string patchFile, string? root = null)
     {
-        var numstat = await _runner.RunAsync("apply", "--numstat", "-z", patchFile).ConfigureAwait(false);
+        var numstat = await RunAsync(root, null, "apply", "--numstat", "-z", patchFile).ConfigureAwait(false);
         if (!numstat.Success)
             return new GitPatchPreview(new Dictionary<string, GitLineStat>(), GitPatchApplyMode.None,
                 FirstLine(numstat.Message) ?? "パッチとして読めません。", patchFile);
@@ -78,10 +79,10 @@ public sealed class GitPatchService
         if (files.Count == 0)
             return new GitPatchPreview(files, GitPatchApplyMode.None, "パッチに変更が含まれていません。", patchFile);
 
-        var direct = await _runner.RunAsync("apply", "--check", "--whitespace=nowarn", patchFile).ConfigureAwait(false);
+        var direct = await RunAsync(root, null, "apply", "--check", "--whitespace=nowarn", patchFile).ConfigureAwait(false);
         if (direct.Success)
             return new GitPatchPreview(files, GitPatchApplyMode.Direct, null, patchFile);
-        var threeWay = await _runner.RunAsync("apply", "--check", "--3way", "--whitespace=nowarn", patchFile).ConfigureAwait(false);
+        var threeWay = await RunAsync(root, null, "apply", "--check", "--3way", "--whitespace=nowarn", patchFile).ConfigureAwait(false);
         return threeWay.Success
             ? new GitPatchPreview(files, GitPatchApplyMode.ThreeWay, null, patchFile)
             : new GitPatchPreview(files, GitPatchApplyMode.None, FirstLine(direct.Message) ?? "パッチが当たりません。", patchFile);
@@ -148,10 +149,49 @@ public sealed class GitPatchService
         }
     }
 
-    private Task<GitCommandResult> RunAsync(string? root, IReadOnlyDictionary<string, string> env, params string[] args)
-        => root is null
-            ? _runner.RunAsync(env, args)
-            : _runner.RunInAsync(root, env, null, System.Threading.CancellationToken.None, args);
+    /// <summary>未コミットの変更を別のワークツリーへ運ぶ用意（§24.81）：選んだパスの変更をパッチにし、<b>相手の作業ツリーで</b>当たり方を確かめる。
+    /// 戻り値の一時パッチは使い終わったら <see cref="GitPatchPreview.Discard"/>。</summary>
+    public async Task<GitPatchPreview> PrepareCarryAsync(IReadOnlyList<string> paths, string targetRoot)
+    {
+        var patch = Path.Combine(Path.GetTempPath(), "loomo-carry-" + Guid.NewGuid().ToString("N") + ".patch");
+        var written = await WriteWorkingPatchAsync(paths, patch).ConfigureAwait(false);
+        if (!written.Success || !File.Exists(patch) || new FileInfo(patch).Length == 0)
+            return new GitPatchPreview(new Dictionary<string, GitLineStat>(), GitPatchApplyMode.None,
+                written.Success ? "運ぶ変更がありません（HEAD との差がありません）。" : FirstLine(written.Message) ?? "パッチを作れませんでした。", patch)
+                { IsTemporary = true };
+        return await PreviewFileAsync(patch, targetRoot).ConfigureAwait(false) with { IsTemporary = true };
+    }
+
+    /// <summary>確かめた方式で、別の作業ツリー <paramref name="root"/> へ当てる（§24.81）。こちらのリポジトリの監視は動かない（相手は別の作業ツリー）。</summary>
+    public Task<GitCommandResult> ApplyInAsync(GitPatchPreview preview, string root)
+        => preview.Mode switch
+        {
+            GitPatchApplyMode.Direct => RunAsync(root, null, "apply", "--whitespace=nowarn", preview.PatchFile),
+            GitPatchApplyMode.ThreeWay => RunAsync(root, null, "apply", "--3way", "--whitespace=nowarn", preview.PatchFile),
+            _ => Task.FromResult(new GitCommandResult(-1, "", preview.Error ?? "パッチが当たりません。")),
+        };
+
+    /// <summary>運び終えた変更をこちらから消す（§24.81 の「移す」）。ステージを HEAD へ戻してから（<paramref name="indexedPaths"/>＝インデックスに
+    /// 載っているパス）、同じパッチを逆向きに作業ツリーへ当てる——作った時点の作業ツリーそのものから取ったパッチなので、逆向きは必ず当たり、
+    /// 運んだもの以外（選ばなかったファイル・パッチを作った後の編集）には触らない。当たらなければ何も消さずに理由を返す。</summary>
+    public async Task<GitCommandResult> RemoveCarriedAsync(GitPatchPreview preview, IReadOnlyList<string> indexedPaths)
+    {
+        var check = await _runner.RunAsync("apply", "-R", "--check", "--whitespace=nowarn", preview.PatchFile).ConfigureAwait(false);
+        if (!check.Success)
+            return check;
+        if (indexedPaths.Count > 0)
+        {
+            var reset = await _runner.RunAsync(["reset", "-q", "--", .. indexedPaths]).ConfigureAwait(false);
+            if (!reset.Success)
+                return reset;
+        }
+        return await _mutations.ExecuteAsync("apply", "-R", "--whitespace=nowarn", preview.PatchFile).ConfigureAwait(false);
+    }
+
+    private Task<GitCommandResult> RunAsync(string? root, IReadOnlyDictionary<string, string>? env, params string[] args)
+        => root is not null
+            ? _runner.RunInAsync(root, env, null, System.Threading.CancellationToken.None, args)
+            : env is null ? _runner.RunAsync(args) : _runner.RunAsync(env, args);
 
     // 本文はバイト列のまま書く（BOM を付けない）。BOM が先頭に付くと git はパッチの始まりを読めない。
     private static string WriteTemp(string text)

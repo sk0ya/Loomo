@@ -191,6 +191,18 @@ public sealed class GitService
     public Task<GitCommandResult> WriteWorkingPatchAsync(IReadOnlyList<string> paths, string outputPath) =>
         _patches.WriteWorkingPatchAsync(paths, outputPath);
 
+    /// <summary>未コミットの変更を別のワークツリー <paramref name="targetRoot"/> へ運ぶ用意（§24.81）。相手の作業ツリーで当たり方を確かめる。</summary>
+    public Task<GitPatchPreview> PrepareCarryAsync(IReadOnlyList<string> paths, string targetRoot) =>
+        _patches.PrepareCarryAsync(paths, targetRoot);
+
+    /// <summary><see cref="PrepareCarryAsync"/> で確かめた方式で相手へ当てる（§24.81）。</summary>
+    public Task<GitCommandResult> ApplyCarryAsync(GitPatchPreview preview, string targetRoot) =>
+        _patches.ApplyInAsync(preview, targetRoot);
+
+    /// <summary>運び終えた変更をこちらから消す（§24.81 の「移す」）。</summary>
+    public Task<GitCommandResult> RemoveCarriedAsync(GitPatchPreview preview, IReadOnlyList<string> indexedPaths) =>
+        _patches.RemoveCarriedAsync(preview, indexedPaths);
+
     /// <summary><see cref="WriteWorkingPatchAsync"/> の本文（クリップボード用）。</summary>
     public Task<(string? Text, GitCommandResult Result)> GetWorkingPatchTextAsync(IReadOnlyList<string> paths) =>
         _patches.GetWorkingPatchTextAsync(paths);

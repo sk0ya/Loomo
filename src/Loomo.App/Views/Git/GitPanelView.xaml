@@ -276,6 +276,12 @@
                           Command="{Binding PlacementTarget.DataContext.SaveChangesPatchCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                           CommandParameter="{Binding PlacementTarget.SelectedItem.Change, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
             </MenuItem>
+            <!-- 未コミットの変更を別のワークツリーへ写す／移す（§24.81）。子は開いたときにワークツリー一覧から作る。空の子は ▸ を出すための仮置き。 -->
+            <MenuItem Header="別のワークツリーへ"
+                      Visibility="{Binding PlacementTarget.DataContext.Capabilities.CanStage, RelativeSource={RelativeSource AncestorType=ContextMenu}, Converter={StaticResource BoolToVis}}"
+                      SubmenuOpened="OnCarrySubmenuOpened">
+                <MenuItem Header="探しています…" IsEnabled="False" />
+            </MenuItem>
         </ContextMenu>
 
         <!-- 変更行の右クリックメニュー（ステージ済みセクション用） -->

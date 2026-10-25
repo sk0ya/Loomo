@@ -17,6 +17,13 @@ public partial class ShellWindow {
             moved.OldPath, moved.NewPath, p => System.IO.File.Exists(p) || System.IO.Directory.Exists(p));
         _vm.GitSession.WorktreeRoomLastUsed = _vm.Workspaces.LastUsedOfRoot;
         _vm.Tabs.WorktreeCounterpartsFor = WorktreeCounterpartsForAsync;
+        // 変更を別のワークツリーへ運ぶ先（§24.81）。Git ペインをまだ開いていなくて一覧が空なら、ここで読む。
+        _vm.GitPanel.WorktreesProvider = async () => {
+            var git = _vm.GitSession;
+            if (git.Worktrees.Count <= 1 && git.IsRepository)
+                await git.RefreshWorktreesAsync();
+            return git.Worktrees;
+        };
         _vm.Tabs.WorktreeCounterpartRequested += (_, request) => _ = OpenWorktreeCounterpartAsync(request);
         _vm.GitSession.PropertyChanged += (_, e) => {
             if (e.PropertyName == nameof(GitSessionViewModel.Worktrees)) RefreshWorktreeAgentMarks();
