@@ -183,6 +183,8 @@ public partial class DiffSessionView : UserControl, IDisposable
         // 左右並びへ切り替えた瞬間も、隠れていた間に届いた行へ合わせ直す。
         if (e.PropertyName is nameof(DiffSessionViewModel.SideRowsItem) or nameof(DiffSessionViewModel.ShowSideText))
             ScheduleSide();
+        if (e.PropertyName == nameof(DiffSessionViewModel.ActiveChangeFilter))
+            HighlightChangeFilter();
         if (e.PropertyName == nameof(DiffSessionViewModel.CurrentChangeAnchor) && sender is DiffSessionViewModel vm)
             OnCurrentChangeAnchorChanged(vm.CurrentChangeAnchor);
     }
@@ -216,6 +218,23 @@ public partial class DiffSessionView : UserControl, IDisposable
         _sideEditors.Sync();
         _sideBlockPresenter.SetRows(rows);
         _sideBlockPresenter.Render();
+        HighlightChangeFilter();
+    }
+
+    /// <summary>左右並びの本文で、変更に含む語（§24.85）を塗る。エディタの検索の塗りと同じ（文字どおりの一致・カーソルは動かさない）。</summary>
+    private void HighlightChangeFilter()
+    {
+        var term = Vm?.ActiveChangeFilter ?? "";
+        _sideEditors.Left?.HighlightSearch(term);
+        _sideEditors.Right?.HighlightSearch(term);
+    }
+
+    /// <summary>絞り込み欄の Esc で語を消す（欄にフォーカスがあるときだけ・ペインの Esc は奪わない）。</summary>
+    private void OnChangeFilterKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Escape || Vm is not { } vm || vm.ChangeFilter.Length == 0) return;
+        vm.ChangeFilter = "";
+        e.Handled = true;
     }
 
     /// <summary>行が「差分はありません」のような知らせだけなら、エディタの上に文面を出す。</summary>

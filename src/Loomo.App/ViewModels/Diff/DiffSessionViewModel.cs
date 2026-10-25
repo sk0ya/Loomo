@@ -586,9 +586,61 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
     /// （空でないと帯が出たままになり、git 差分を別の何かだと名乗ってしまう）。</summary>
     public string CompareCaption => CurrentComparison?.Caption ?? "";
 
-    /// <summary>一覧の見出し。比較モードだけストック数を出す（何件溜まっているかが一目で分かる）。</summary>
+    /// <summary>一覧の見出し。比較モードだけストック数を出す（何件溜まっているかが一目で分かる）。
+    /// 変更に含む語で絞っている間は「絞った数／元の数」を添える（§24.85）。</summary>
     public string FileListHeader
-        => Source == DiffSource.Compare ? $"比較（{_comparisons.Count}件）" : "変更ファイル";
+    {
+        get
+        {
+            var head = Source == DiffSource.Compare ? $"比較（{_comparisons.Count}件）" : "変更ファイル";
+            return ActiveChangeFilter is { } term ? $"{head}・「{term}」を含む {Files.Count}/{_unfilteredFileCount}" : head;
+        }
+    }
+
+    /// <summary>
+    /// 変更に含む語（§24.85・WinMerge 2.16.57 の display line filter）。入れると、追加・削除の行にその語を含むファイルだけを一覧に残し、
+    /// 本文（左右並び）ではその語を塗る。比べ方（<see cref="DiffOptions"/>）には触れない。打つたびに読み直さないよう少し待ってから効かせる。
+    /// 通しで読む（§24.50）は一覧の全ファイルを並べるので、「この語に触った変更だけを全ファイル分読む」になる。
+    /// </summary>
+    [ObservableProperty] private string _changeFilter = "";
+
+    /// <summary>効いている絞り込みの語（前後の空白を除く）。空なら null。</summary>
+    public string? ActiveChangeFilter => ChangeFilter.Trim() is { Length: > 0 } term ? term : null;
+
+    private int _unfilteredFileCount;
+    private int _changeFilterGeneration;
+
+    partial void OnChangeFilterChanged(string value) => _ = ApplyChangeFilterSoonAsync();
+
+    private async Task ApplyChangeFilterSoonAsync()
+    {
+        var generation = ++_changeFilterGeneration;
+        await Task.Delay(300);
+        if (generation != _changeFilterGeneration) return;
+        OnPropertyChanged(nameof(ActiveChangeFilter));
+        await RefreshAsync(force: true);
+        OnPropertyChanged(nameof(FileListHeader));
+    }
+
+    [RelayCommand]
+    private void ClearChangeFilter() => ChangeFilter = "";
+
+    /// <summary>そのファイルの変更（追加・削除の行）に語があるか。パッチは本文の表示と同じ引き方なのでキャッシュがそのまま効く。</summary>
+    private async Task<bool> ChangeMatchesAsync(DiffFileItem item, string term)
+    {
+        try
+        {
+            if (item.Comparison is { } comparison)
+                return DiffChangeFilter.TextsMatch(comparison.LeftText, comparison.RightText, term, DiffOptions);
+            if (item.OldContent is not null || item.NewContent is not null)
+                return DiffChangeFilter.TextsMatch(item.OldContent ?? "", item.NewContent ?? "", term, DiffOptions);
+            return DiffChangeFilter.PatchMatches(await GetPatchTextAsync(item, 3, IgnoreWhitespace), term);
+        }
+        catch (Exception)
+        {
+            return true;   // 調べられなかったものは隠さない（隠すと「無い」に見える）
+        }
+    }
 
     /// <summary>Git の差分を見ている間も比較が残っているか。ヘッダーに Git／比較の切り替えは置かない
     /// （見せるものは開いた側が決める）ので、残っている比較へ戻る口はこれが出す——無いと、Git パネルから
@@ -831,6 +883,23 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
         if (refreshGeneration != Volatile.Read(ref _refreshGeneration)) return;
         if (result.IsCanceled && OnCompareCanceled(result.EmptyMessage))
             return;
+        // 変更に含む語で絞る（§24.85）。絞る前の件数は見出しに出す（何件から絞ったかが分からないと、無いのか隠れているのかが分からない）。
+        _unfilteredFileCount = result.Items.Count;
+        if (ActiveChangeFilter is { } term && result.Items.Count > 0)
+        {
+            var kept = new List<DiffFileItem>();
+            foreach (var candidate in result.Items)
+            {
+                if (await ChangeMatchesAsync(candidate, term))
+                    kept.Add(candidate);
+                if (refreshGeneration != Volatile.Read(ref _refreshGeneration)) return;
+            }
+            result = result with
+            {
+                Items = kept,
+                EmptyMessage = kept.Count == 0 ? $"「{term}」を含む変更はありません（{result.Items.Count} ファイル中）。" : result.EmptyMessage,
+            };
+        }
         // 一覧はフォルダ階層で見せるので、フラットな Files も画面に並ぶ順（深さ優先）に揃える
         // ——「次／前のファイル」がツリーを上から下へ辿るように。
         var tree = DiffFileTreeNode.Build(result.Items);

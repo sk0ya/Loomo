@@ -442,6 +442,20 @@
             <DockPanel Grid.Column="0">
                 <TextBlock DockPanel.Dock="Top" Margin="8,2" FontSize="{DynamicResource Fs11}" FontWeight="SemiBold"
                            Foreground="{DynamicResource FgDim}" Text="{Binding FileListHeader}" />
+                <!-- 変更に含む語で絞る（§24.85）。追加・削除の行にその語を含むファイルだけを残し、左右並びの本文ではその語を塗る。
+                     空のうちは薄い案内だけ（場所は取るが 1 行・一覧の真上に置いて何を絞るのかを近くで分からせる）。 -->
+                <Grid DockPanel.Dock="Top" Margin="6,0,6,4">
+                    <TextBox x:Name="ChangeFilterBox" Text="{Binding ChangeFilter, UpdateSourceTrigger=PropertyChanged}"
+                             FontSize="{DynamicResource Fs12}" Padding="4,1,20,1"
+                             ToolTip="変更（追加・削除の行）にこの語を含むファイルだけを残す。大文字小文字は区別しない（Esc で消す）"
+                             KeyDown="OnChangeFilterKeyDown" />
+                    <TextBlock Text="変更に含む語で絞る" IsHitTestVisible="False" Margin="7,0,0,0" VerticalAlignment="Center"
+                               FontSize="{DynamicResource Fs12}" Foreground="{DynamicResource FgDim}"
+                               Visibility="{Binding ChangeFilter, Converter={StaticResource EmptyToVis}}" />
+                    <Button HorizontalAlignment="Right" Style="{StaticResource PaneHeaderGhostButton}" Content="×"
+                            ToolTip="絞り込みを外す" Command="{Binding ClearChangeFilterCommand}"
+                            Visibility="{Binding ChangeFilter, Converter={StaticResource NonEmptyToVis}}" />
+                </Grid>
                 <!-- 比較の照会が長引いているとき（大きなリポジトリで作業ツリーを固める・広い差分の列挙）だけ出る帯。
                      何をしているか・何秒待っているかを出し、いつでも止められるようにする（時間では刈らないため）。 -->
                 <Border DockPanel.Dock="Top" Margin="6,2,6,4" Padding="8,4" CornerRadius="3"
