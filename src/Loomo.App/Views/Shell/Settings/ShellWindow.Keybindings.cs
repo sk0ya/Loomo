@@ -15,6 +15,7 @@ public partial class ShellWindow {
             ["terminal.recentCommands"] = OpenRecentTerminalCommands,
             ["terminal.reopenClosed"] = ReopenClosedTerminalTab,
             ["git.toggleCaretLineBlame"] = ToggleCaretLineBlame,
+            ["git.findDeletedFiles"] = OpenDeletedFiles,
             ["terminal.compareOutput"] = OpenTerminalOutputComparisons,
             ["terminal.openOutput"] = OpenTerminalOutputs,
             ["terminal.openArchive"] = OpenTerminalArchive,

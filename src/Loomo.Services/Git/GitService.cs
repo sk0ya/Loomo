@@ -443,6 +443,9 @@ public sealed class GitService
 
     public Task<string> GetCommitSummaryAsync(string hash) => _history.GetCommitSummaryAsync(hash);
 
+    /// <summary>消したファイル（新しい順・パスごとにいちばん新しい削除・§24.94）。</summary>
+    public Task<IReadOnlyList<GitDeletedFile>> GetDeletedFilesAsync(int maxCommits = 300) => _history.GetDeletedFilesAsync(maxCommits);
+
     /// <summary>コミット範囲（起点は含まない）の <c>--numstat</c>。</summary>
     public Task<string> GetRangeNumstatAsync(string fromHash, string toHash) =>
         _history.GetRangeNumstatAsync(fromHash, toHash);

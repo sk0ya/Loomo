@@ -115,6 +115,18 @@ public sealed class GitHistoryService
         return hashes.Length > limit ? Array.Empty<string>() : hashes;
     }
 
+    /// <summary>
+    /// 消したファイル（§24.94）。いま HEAD から辿れる履歴のうち、ファイルを消したコミットを新しい順に <paramref name="maxCommits"/> 件まで見る。
+    /// 名前を変えただけのもの（rename）は消したことにしない（git log の既定の rename 検出に任せる）。パスごとにいちばん新しい削除だけ。
+    /// </summary>
+    public async Task<IReadOnlyList<GitDeletedFile>> GetDeletedFilesAsync(int maxCommits = 300)
+    {
+        var result = await _runner.RunAsync(
+            "log", "--diff-filter=D", "--name-only", $"--max-count={maxCommits}", GitDeletedFilesParser.Format, "HEAD", "--")
+            .ConfigureAwait(false);
+        return result.Success ? GitDeletedFilesParser.Parse(result.Output) : Array.Empty<GitDeletedFile>();
+    }
+
     public async Task<string> GetCommitPatchAsync(string hash)
     {
         var result = await _runner.RunAsync("show", hash).ConfigureAwait(false);
