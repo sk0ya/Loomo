@@ -171,6 +171,35 @@ public sealed class AzureDevOpsWorkItemClient
         return AzureDevOpsPullRequestJson.ParseDetail(pr.RootElement, threads.RootElement, organizationUrl, target);
     }
 
+    /// <summary>
+    /// このリポジトリの最近のビルド（新しい順・コミット一覧の CI の印・§24.93）。読むだけ。ビルドの API はリポジトリを ID で絞るので、
+    /// 名前から ID を引いてから問い合わせる（ID は覚えておく）。リポジトリが見つからなければ空。
+    /// </summary>
+    public async Task<IReadOnlyList<CommitBuild>> GetRecentBuildsAsync(
+        string organizationUrl, AzureDevOpsPrTarget target, AuthenticationHeaderValue auth, CancellationToken cancellationToken, int top = 100)
+    {
+        var project = Uri.EscapeDataString(target.Project);
+        var key = (organizationUrl, target.Project, target.Repository);
+        if (!_repositoryIds.TryGetValue(key, out var repositoryId))
+        {
+            using var request = CreateRequest(HttpMethod.Get,
+                $"{organizationUrl}/{project}/_apis/git/repositories/{Uri.EscapeDataString(target.Repository)}?api-version={ApiVersion}", null, auth);
+            using var response = await _http.SendAsync(request, cancellationToken).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode) return [];   // 別の組織・リポジトリ名の違い
+            var text = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+            using var repo = ParseJson(response, text, request.RequestUri?.ToString() ?? "");
+            repositoryId = repo.RootElement.TryGetProperty("id", out var id) ? id.GetString() ?? "" : "";
+            if (repositoryId.Length == 0) return [];
+            _repositoryIds[key] = repositoryId;
+        }
+        using var builds = await SendAsync(HttpMethod.Get,
+            $"{organizationUrl}/{project}/_apis/build/builds?repositoryId={Uri.EscapeDataString(repositoryId)}&repositoryType=TfsGit" +
+            $"&queryOrder=queueTimeDescending&$top={top}&api-version={ApiVersion}", null, auth, cancellationToken).ConfigureAwait(false);
+        return AzureDevOpsBuildJson.Parse(builds.RootElement);
+    }
+
+    private readonly ConcurrentDictionary<(string, string, string), string> _repositoryIds = new();
+
     private async Task<IReadOnlyList<AzureDevOpsPullRequest>> FetchPrsForTargetAsync(
         string organizationUrl, AzureDevOpsPrTarget target, string userId, AuthenticationHeaderValue auth,
         CancellationToken cancellationToken, string role = "creatorId")

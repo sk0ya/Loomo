@@ -27,12 +27,44 @@ public partial class ShellWindow
         _vm.GitSession.PullRequestSource = folder => GitHubCli.IsInstalled
             ? _gitHub.ListPullRequestsAsync(folder)
             : Task.FromResult<IReadOnlyList<GitHubPullRequest>>(Array.Empty<GitHubPullRequest>());
+        _vm.GitSession.CommitBuildSource = LoadCommitBuildsAsync;
+        _vm.GitSession.History.BuildOpenRequested += url => _ = OpenUrlInBrowserAsync(url, null);
         _vm.GitPanel.ConflictForecastOpenRequested += OpenConflictForecastPalette;
         _vm.GitSession.BranchPullRequestOpenRequested += pr => {
             if (_git.RootPath is { Length: > 0 } folder)
                 OpenGitHubPullRequestActions(folder, pr);
         };
     }
+    /// <summary>
+    /// コミット一覧のビルドの印（§24.93）。GitHub のリポジトリなら gh で Actions の実行を、Azure Repos なら Work Items と同じ接続
+    /// （設定の組織 URL・PAT の候補）で Pipelines のビルドを引く。どちらでもない・引けない（gh が無い・PAT が無い）なら空——
+    /// 添え物なので窓も知らせも出さない。
+    /// </summary>
+    private async Task<IReadOnlyList<CommitBuild>> LoadCommitBuildsAsync(string folder, IReadOnlyList<GitRemoteInfo> remotes)
+    {
+        var ordered = remotes.OrderBy(r => string.Equals(r.Name, "origin", StringComparison.OrdinalIgnoreCase) ? 0 : 1).ToList();
+        if (ordered.Any(r => GitHostingUrl.TryGetGitHubRepositoryUrl(r.Url, out _)))
+            return GitHubCli.IsInstalled ? await _gitHub.ListRecentRunsAsync(folder) : Array.Empty<CommitBuild>();
+        if (_vm.WorkItems is not { } workItems)
+            return Array.Empty<CommitBuild>();
+        foreach (var remote in ordered)
+        {
+            if (!GitHostingUrl.TryGetAzureReposTarget(remote.Url, out var project, out var repository))
+                continue;
+            try
+            {
+                var connection = await workItems.ConnectAsync(CancellationToken.None);
+                return await workItems.Client.GetRecentBuildsAsync(
+                    connection.OrganizationUrl, new AzureDevOpsPrTarget(project, repository), connection.Auth, CancellationToken.None);
+            }
+            catch (Exception ex) when (ex is AzureDevOpsException or System.Net.Http.HttpRequestException or TaskCanceledException)
+            {
+                return Array.Empty<CommitBuild>();   // 未設定・PAT 無し・ネットワーク。黙って印を出さない
+            }
+        }
+        return Array.Empty<CommitBuild>();
+    }
+
     private void OnGitHubIssuesMenu(object sender, RoutedEventArgs e) => OpenGitHubIssues();
 
     /// <summary>分岐元とぶつかりそうなファイル（§24.40）の一覧。選ぶとそのファイルを分岐元と比べる。</summary>

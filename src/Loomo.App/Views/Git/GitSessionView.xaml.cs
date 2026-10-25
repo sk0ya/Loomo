@@ -439,6 +439,14 @@ public partial class GitSessionView : UserControl
             LogList.ScrollIntoView(rows[^1]);
     }
 
+    /// <summary>コミットの行のビルドの印を押した（§24.93）。押下を食べて行は選ばず（詳細を読み替えない）、その実行のページを開く。</summary>
+    private void OnCommitBuildMarkClick(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: string hash }) return;
+        e.Handled = true;
+        Vm?.History.OpenBuild(hash);
+    }
+
     private void OnSelectBranchOwnCommits(object sender, RoutedEventArgs e)
         => Vm?.History.SelectBranchOwnCommitsCommand.Execute(null);
 

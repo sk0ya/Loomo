@@ -33,6 +33,11 @@ public sealed class GitHubCli
         => GitHubJson.ParsePullRequests(Ok(await RunAsync(folder,
             "pr", "list", "--state", "open", "--limit", "50", "--json", GitHubJson.PullRequestListFields)));
 
+    /// <summary>最近の GitHub Actions の実行（新しい順・コミット一覧の CI の印・§24.93）。</summary>
+    public async Task<IReadOnlyList<CommitBuild>> ListRecentRunsAsync(string folder, int limit = 100)
+        => GitHubJson.ParseRuns(Ok(await RunAsync(folder,
+            "run", "list", "--limit", Num(limit), "--json", GitHubJson.RunListFields)));
+
     public async Task<GitHubPullRequestDetail> GetPullRequestAsync(string folder, int number)
         => GitHubJson.ParsePullRequestDetail(Ok(await RunAsync(folder,
             "pr", "view", Num(number), "--json", GitHubJson.PullRequestViewFields)));

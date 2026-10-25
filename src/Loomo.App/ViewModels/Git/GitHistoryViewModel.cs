@@ -300,6 +300,39 @@ public sealed partial class GitHistoryViewModel : ObservableObject
         await RefreshBranchOwnAsync(generation);
     }
 
+    // ===== コミットのビルド（CI）の印（§24.93） =====
+
+    /// <summary>ハッシュ → 印（✓ ✗ ◌）。§24.76 の印と同じく、行は値で比べる record なので行には持たせずセルが引く。</summary>
+    [ObservableProperty] private IReadOnlyDictionary<string, string> _buildMarks = new Dictionary<string, string>();
+
+    /// <summary>ハッシュ → 印に添える説明（実行ごとに 1 行）。</summary>
+    [ObservableProperty] private IReadOnlyDictionary<string, string> _buildToolTips = new Dictionary<string, string>();
+
+    private IReadOnlyDictionary<string, CommitBuildSummary> _builds = new Dictionary<string, CommitBuildSummary>();
+
+    /// <summary>印を押した：その実行のページを開いてほしい。</summary>
+    public event Action<string>? BuildOpenRequested;
+
+    /// <summary>ビルドの様子を差し替える。同じなら差し替えない（行の再描画を起こさない）。</summary>
+    public void SetBuilds(IReadOnlyDictionary<string, CommitBuildSummary> builds)
+    {
+        var marks = builds.ToDictionary(kv => kv.Key, kv => CommitBuildMarks.Mark(kv.Value.State), StringComparer.OrdinalIgnoreCase);
+        var tips = builds.ToDictionary(kv => kv.Key, kv => CommitBuildMarks.Describe(kv.Value), StringComparer.OrdinalIgnoreCase);
+        _builds = builds;
+        if (marks.Count == BuildMarks.Count && marks.All(kv => BuildMarks.TryGetValue(kv.Key, out var m) && m == kv.Value)
+            && tips.All(kv => BuildToolTips.TryGetValue(kv.Key, out var t) && t == kv.Value))
+            return;
+        BuildMarks = marks;
+        BuildToolTips = tips;
+    }
+
+    /// <summary>行の印を押した（ハッシュ）。開く先が無ければ何もしない。</summary>
+    public void OpenBuild(string? hash)
+    {
+        if (hash is not null && _builds.TryGetValue(hash, out var summary) && summary.Url is { } url)
+            BuildOpenRequested?.Invoke(url);
+    }
+
     // ===== このブランチで入れたコミット（§24.76） =====
 
     /// <summary>いまのブランチが既定ブランチから分かれて入れたコミット（ハッシュ → 行の印）。行は値で比べる record なので

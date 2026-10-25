@@ -435,6 +435,7 @@ public sealed partial class GitSessionViewModel : ObservableObject
             .Select(remote => GitHostingUrl.TryGetGitHubRepositoryUrl(remote.Url, out var url) ? url : null)
             .FirstOrDefault(url => url is not null);
         _ = RefreshBranchPullRequestsAsync();
+        _ = RefreshCommitBuildsAsync(remoteUrls);
         Tags = overview.Tags;
         Submodules = overview.Submodules;
         await ReloadWorktreesAsync();
@@ -469,6 +470,50 @@ public sealed partial class GitSessionViewModel : ObservableObject
 
     /// <summary>オープンな PR を引く口（ShellWindow が gh をつなぐ）。null なら引かない。</summary>
     public Func<string, Task<IReadOnlyList<Loomo.Services.GitHub.GitHubPullRequest>>>? PullRequestSource { get; set; }
+
+    /// <summary>
+    /// コミットのビルド（CI）を引く口（§24.93。ShellWindow が gh／Azure DevOps をつなぐ）。リモートの一覧を渡すので、どちらで引くかは
+    /// 口の側が決める。null なら引かない。
+    /// </summary>
+    public Func<string, IReadOnlyList<GitRemoteInfo>, Task<IReadOnlyList<CommitBuild>>>? CommitBuildSource { get; set; }
+
+    private string? _buildsRoot;
+    private DateTime _buildsFetchedUtc;
+    private bool _buildsLoading;
+
+    /// <summary>間を空けてビルドの様子を引き直す（PR の印と同じ間隔）。失敗は黙って印を出さない——添え物なので一覧を止めない。</summary>
+    private async Task RefreshCommitBuildsAsync(IReadOnlyList<GitRemoteInfo> remotes, bool force = false)
+    {
+        var root = _git.RootPath;
+        if (CommitBuildSource is null || string.IsNullOrEmpty(root) || remotes.Count == 0)
+        {
+            History.SetBuilds(new Dictionary<string, CommitBuildSummary>());
+            _buildsRoot = root;
+            return;
+        }
+        var sameRoot = string.Equals(root, _buildsRoot, StringComparison.OrdinalIgnoreCase);
+        if (_buildsLoading || (!force && sameRoot && DateTime.UtcNow - _buildsFetchedUtc < PullRequestRefreshInterval))
+            return;
+        if (!sameRoot)
+            History.SetBuilds(new Dictionary<string, CommitBuildSummary>());
+        _buildsRoot = root;
+        _buildsLoading = true;
+        _buildsFetchedUtc = DateTime.UtcNow;
+        try
+        {
+            var builds = await CommitBuildSource(root, remotes);
+            if (string.Equals(_git.RootPath, root, StringComparison.OrdinalIgnoreCase))
+                History.SetBuilds(CommitBuildMarks.Summarize(builds));
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            System.Diagnostics.Debug.WriteLine($"[Git] ビルドの取得に失敗: {ex.Message}");
+        }
+        finally
+        {
+            _buildsLoading = false;
+        }
+    }
 
     /// <summary>PR の印を押した（§24.27 の操作を開く）。</summary>
     public event Action<Loomo.Services.GitHub.GitHubPullRequest>? BranchPullRequestOpenRequested;

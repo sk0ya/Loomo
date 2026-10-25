@@ -1059,6 +1059,42 @@
                                                         </DataTemplate>
                                                     </ItemsControl.ItemTemplate>
                                                 </ItemsControl>
+                                                <!-- ビルド（CI）の印（§24.93）。§24.76 の印と同じく、履歴の VM が持つハッシュの表から引く。
+                                                     押すとその実行のページをブラウザペインで開く。 -->
+                                                <TextBlock DockPanel.Dock="Left" Margin="6,0,0,0" VerticalAlignment="Center"
+                                                           Cursor="Hand" Tag="{Binding Hash, Mode=OneWay}"
+                                                           MouseLeftButtonDown="OnCommitBuildMarkClick">
+                                                    <TextBlock.Text>
+                                                        <MultiBinding Converter="{StaticResource DictionaryLookup}">
+                                                            <Binding Path="Hash" Mode="OneWay" />
+                                                            <Binding Path="DataContext.History.BuildMarks"
+                                                                     RelativeSource="{RelativeSource AncestorType=ListView}" />
+                                                        </MultiBinding>
+                                                    </TextBlock.Text>
+                                                    <TextBlock.ToolTip>
+                                                        <MultiBinding Converter="{StaticResource DictionaryLookup}">
+                                                            <Binding Path="Hash" Mode="OneWay" />
+                                                            <Binding Path="DataContext.History.BuildToolTips"
+                                                                     RelativeSource="{RelativeSource AncestorType=ListView}" />
+                                                        </MultiBinding>
+                                                    </TextBlock.ToolTip>
+                                                    <TextBlock.Style>
+                                                        <Style TargetType="TextBlock">
+                                                            <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
+                                                            <Style.Triggers>
+                                                                <Trigger Property="Text" Value="">
+                                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                                </Trigger>
+                                                                <Trigger Property="Text" Value="✓">
+                                                                    <Setter Property="Foreground" Value="{DynamicResource Success}" />
+                                                                </Trigger>
+                                                                <Trigger Property="Text" Value="✗">
+                                                                    <Setter Property="Foreground" Value="{DynamicResource Error}" />
+                                                                </Trigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </TextBlock.Style>
+                                                </TextBlock>
                                                 <TextBlock Text="{Binding Subject, Mode=OneWay}" Margin="6,0,0,0"
                                                            Foreground="{DynamicResource Fg}" VerticalAlignment="Center"
                                                            TextTrimming="CharacterEllipsis" />

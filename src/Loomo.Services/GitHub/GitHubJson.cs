@@ -26,6 +26,30 @@ public static class GitHubJson
     /// <summary><c>gh issue view</c> に渡す欄。</summary>
     public const string IssueViewFields = IssueListFields + ",body";
 
+    /// <summary><c>gh run list</c> に渡す欄（コミット一覧の CI の印・§24.93）。</summary>
+    public const string RunListFields = "headSha,status,conclusion,workflowName,url";
+
+    /// <summary><c>gh run list --json</c>（新しい順）をコミットごとのビルドとして読む。</summary>
+    public static IReadOnlyList<CommitBuild> ParseRuns(string json)
+    {
+        using var doc = JsonDocument.Parse(json);
+        if (doc.RootElement.ValueKind != JsonValueKind.Array)
+            return [];
+        return doc.RootElement.EnumerateArray().Select(run =>
+        {
+            var state = Str(run, "status").ToLowerInvariant() != "completed"
+                ? CommitBuildState.Pending
+                : Str(run, "conclusion").ToLowerInvariant() switch
+                {
+                    "success" or "neutral" or "skipped" => CommitBuildState.Success,
+                    "" => CommitBuildState.Pending,
+                    _ => CommitBuildState.Failure,   // failure / cancelled / timed_out / action_required / startup_failure
+                };
+            var url = Str(run, "url");
+            return new CommitBuild(Str(run, "headSha"), Str(run, "workflowName"), state, url.Length > 0 ? url : null);
+        }).Where(b => b.Sha.Length > 0).ToList();
+    }
+
     public static IReadOnlyList<GitHubPullRequest> ParsePullRequests(string json)
     {
         using var doc = JsonDocument.Parse(json);
