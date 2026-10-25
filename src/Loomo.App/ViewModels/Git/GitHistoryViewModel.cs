@@ -297,6 +297,59 @@ public sealed partial class GitHistoryViewModel : ObservableObject
         SelectedLogRow = ApplyPage(page, selectedHash);
         if (SelectedLogRow is null) CommitDetail = "";
         UpdateAuthorOptions();
+        await RefreshBranchOwnAsync(generation);
+    }
+
+    // ===== このブランチで入れたコミット（§24.76） =====
+
+    /// <summary>いまのブランチが既定ブランチから分かれて入れたコミット（ハッシュ → 行の印）。行は値で比べる record なので
+    /// 行には持たせず、ここに持ってセルが引く（<c>DictionaryLookup</c>）。</summary>
+    [ObservableProperty] private IReadOnlyDictionary<string, string> _branchOwnMarks = new Dictionary<string, string>();
+
+    /// <summary>印の基準（「origin/main から分かれて入れたコミット」の origin/main）。印が無ければ null。</summary>
+    [ObservableProperty] private string? _branchOwnBase;
+
+    /// <summary>このブランチで入れたコミットの数（右クリックの見出しに出す）。</summary>
+    public int BranchOwnCount => BranchOwnMarks.Count;
+
+    /// <summary>このブランチで入れたコミットを一覧で選んでほしい（ListView の複数選択は束縛できないのでビューが選ぶ）。</summary>
+    public event Action<IReadOnlyList<GitLogRow>>? SelectRowsRequested;
+
+    private async Task RefreshBranchOwnAsync(int generation)
+    {
+        IReadOnlyList<string> hashes;
+        string? baseRef;
+        try
+        {
+            (baseRef, hashes) = await _query.GetBranchOwnCommitsAsync();
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or System.IO.IOException)
+        {
+            (baseRef, hashes) = (null, Array.Empty<string>());
+        }
+        if (generation != _loadGeneration) return;
+        var marks = GitBranchOwnCommits.Marks(hashes);
+        if (marks.Count == BranchOwnMarks.Count && marks.Keys.All(BranchOwnMarks.ContainsKey) && baseRef == BranchOwnBase)
+            return;   // 同じなら差し替えない（行の再描画を起こさない）
+        BranchOwnMarks = marks;
+        BranchOwnBase = marks.Count == 0 ? null : baseRef;
+        OnPropertyChanged(nameof(BranchOwnCount));
+    }
+
+    /// <summary>このブランチで入れたコミットを選ぶ（選べば複数コミットの詳細＝まとめた変更が出る）。まだ読み込んでいない古いものは
+    /// ページを読み足して届くまで手繰る（上限つき）。</summary>
+    [RelayCommand]
+    private async Task SelectBranchOwnCommitsAsync()
+    {
+        if (BranchOwnMarks.Count == 0) return;
+        for (var pages = 0; pages < 20 && HasMoreLog
+             && LogRows.Count(r => r.Hash is { } h && BranchOwnMarks.ContainsKey(h)) < BranchOwnMarks.Count; pages++)
+        {
+            if (!await LoadMoreAsync()) break;
+        }
+        var rows = LogRows.Where(r => r.Hash is { } h && BranchOwnMarks.ContainsKey(h)).ToList();
+        if (rows.Count > 0)
+            SelectRowsRequested?.Invoke(rows);
     }
 
     /// <summary>次のページを足す。<b>一覧が伸びたかどうかを返す</b>——呼び直しても進まない状態

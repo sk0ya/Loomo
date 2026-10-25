@@ -408,6 +408,16 @@ public sealed class GitService
 
     public Task<string> GetCommitPatchAsync(string hash) => _history.GetCommitPatchAsync(hash);
 
+    /// <summary>いまのブランチが既定ブランチから分かれて入れたコミット（§24.76）。既定ブランチが決まらない・
+    /// いまのブランチが既定ブランチそのものなら空。<see cref="GetOwnCommitsAsync"/> の基準も返す。</summary>
+    public async Task<(string? BaseRef, IReadOnlyList<string> Hashes)> GetBranchOwnCommitsAsync(int limit = 500)
+    {
+        var baseRef = await GetDefaultBranchAsync().ConfigureAwait(false);
+        if (baseRef is not { Length: > 0 })
+            return (null, Array.Empty<string>());
+        return (baseRef, await _history.GetOwnCommitsAsync(baseRef, limit).ConfigureAwait(false));
+    }
+
     /// <summary>リネームを追った履歴の「コミットごとのパス」表。</summary>
     public Task<IReadOnlyDictionary<string, string>> GetRenameTrailAsync(string relativePath) =>
         _history.GetRenameTrailAsync(relativePath);

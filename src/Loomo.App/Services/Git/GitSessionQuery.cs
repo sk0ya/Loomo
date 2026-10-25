@@ -36,6 +36,8 @@ public sealed class GitSessionQuery
 
     public Task<string> GetCommitPatchAsync(string hash) => _git.GetCommitPatchAsync(hash);
 
+    public Task<(string? BaseRef, IReadOnlyList<string> Hashes)> GetBranchOwnCommitsAsync() => _git.GetBranchOwnCommitsAsync();
+
     public Task<IReadOnlyList<GitLogRow>> GetLogPageAsync(
         string? branch, int take, int skip, string? path) => _git.GetLogAsync(branch, take, skip, path);
 

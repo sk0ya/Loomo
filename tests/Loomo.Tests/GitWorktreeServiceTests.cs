@@ -408,6 +408,24 @@ public sealed class GitWorktreeServiceTests : IAsyncLifetime
         Assert.Contains(".git がありません", GitWorktreeArgs.RepairTargetProblem(plain));
     }
 
+    [Fact]
+    public async Task このブランチで入れたコミットは既定ブランチから分かれた後のものだけ()
+    {
+        Assert.Empty((await _git.GetBranchOwnCommitsAsync()).Hashes);   // main の上では何も無い
+
+        await MustRunAsync("checkout", "-b", "topic");
+        var first = await CommitAsync("t1.txt", "1", "topic 1");
+        var second = await CommitAsync("t2.txt", "2", "topic 2");
+
+        var (baseRef, hashes) = await _git.GetBranchOwnCommitsAsync();
+
+        Assert.Equal("main", baseRef);
+        Assert.Equal(new[] { second, first }, hashes);                  // 新しい順
+
+        var (_, capped) = await _git.GetBranchOwnCommitsAsync(limit: 1);
+        Assert.Empty(capped);                                           // 打ち切ったら一部だけに印を付けない
+    }
+
     private sealed class SyncProgress(Action<GitWorktreeUsage> report) : IProgress<GitWorktreeUsage>
     {
         public void Report(GitWorktreeUsage value) => report(value);

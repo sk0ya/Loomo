@@ -69,8 +69,16 @@ public partial class GitSessionView : UserControl
     // ===== コミット詳細（変更ファイル一覧）のリンク描画 =====
 
     /// <summary>DataContext（VM）の差し替えに追従し、CommitDetail の変化を購読し直す。</summary>
+    private GitHistoryViewModel? _ownCommitsSource;
+
     private void OnDataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
     {
+        // このブランチで入れたコミットを選ぶ（§24.76）。ListView の複数選択は束縛できないのでここで選ぶ。
+        if (_ownCommitsSource is not null)
+            _ownCommitsSource.SelectRowsRequested -= SelectLogRows;
+        _ownCommitsSource = Vm?.History;
+        if (_ownCommitsSource is not null)
+            _ownCommitsSource.SelectRowsRequested += SelectLogRows;
         _selectedLogRowPresenter.Attach(Vm?.History);
         _columnVisibilityController.Attach(Vm);
         AttachLogColumns(Vm);
@@ -422,8 +430,23 @@ public partial class GitSessionView : UserControl
     /// インタラクティブリベースとファイル履歴の「この版の…」は単一選択時だけ、GitHub の項目は
     /// GitHub リポジトリのときだけ、作者の絞り込みは既にその作者だけを見ていないときだけ。
     /// </summary>
+    private void SelectLogRows(IReadOnlyList<GitLogRow> rows)
+    {
+        LogList.SelectedItems.Clear();
+        foreach (var row in rows)
+            LogList.SelectedItems.Add(row);
+        if (rows.Count > 0)
+            LogList.ScrollIntoView(rows[^1]);
+    }
+
+    private void OnSelectBranchOwnCommits(object sender, RoutedEventArgs e)
+        => Vm?.History.SelectBranchOwnCommitsCommand.Execute(null);
+
     private void OnCommitContextMenuOpening(object sender, ContextMenuEventArgs e)
     {
+        var ownHeader = GitBranchOwnCommits.MenuHeader(Vm?.History.BranchOwnCount ?? 0, Vm?.History.BranchOwnBase);
+        SelectBranchOwnMenuItem.Header = ownHeader ?? "";
+        SelectBranchOwnMenuItem.Visibility = ownHeader is null ? Visibility.Collapsed : Visibility.Visible;
         GitSessionMenuPolicyMapper.ApplyCommitMenu(
             Vm, SelectedCommit, SelectedCommits.Count,
             SquashMenuItem, InteractiveRebaseMenuItem,

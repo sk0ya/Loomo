@@ -989,6 +989,28 @@
                                                      取れない）＝CommitGraphCell。 -->
                                                 <!-- グラフ右端の幅つまみは行ごとには持たない。一覧の全高にかかる
                                                      1本をオーバーレイに置く（GitSessionView.GraphWidth.cs）。 -->
+                                                <!-- このブランチで入れたコミットの印（§24.76）。行は値で比べる record なので行には持たせず、
+                                                     履歴の VM が持つハッシュの表から引く。 -->
+                                                <TextBlock DockPanel.Dock="Left" Foreground="{DynamicResource Accent}"
+                                                           Margin="-2,0,1,0" VerticalAlignment="Center"
+                                                           ToolTip="このブランチで入れたコミット（既定ブランチから分かれた後）">
+                                                    <TextBlock.Text>
+                                                        <MultiBinding Converter="{StaticResource DictionaryLookup}">
+                                                            <Binding Path="Hash" Mode="OneWay" />
+                                                            <Binding Path="DataContext.History.BranchOwnMarks"
+                                                                     RelativeSource="{RelativeSource AncestorType=ListView}" />
+                                                        </MultiBinding>
+                                                    </TextBlock.Text>
+                                                    <TextBlock.Style>
+                                                        <Style TargetType="TextBlock">
+                                                            <Style.Triggers>
+                                                                <Trigger Property="Text" Value="">
+                                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                                </Trigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </TextBlock.Style>
+                                                </TextBlock>
                                                 <local:CommitGraphCell DockPanel.Dock="Left" Margin="0,0,4,0" />
                                                 <!-- 参照が多い行で件名を押し出さないよう上限を置き、はみ出しは切る
                                                      （読みたいのは件名の方）。左の余白は各バッジが持つので、
@@ -1080,6 +1102,8 @@
                              出し入れするものは OnCommitContextMenuOpening が切り替える。 -->
                         <ListView.ContextMenu>
                             <ContextMenu>
+                                <!-- いまのブランチが既定ブランチから分かれて入れたコミットをまとめて選ぶ（§24.76）。選べば詳細がまとめた変更になる。 -->
+                                <MenuItem x:Name="SelectBranchOwnMenuItem" Click="OnSelectBranchOwnCommits" />
                                 <MenuItem Header="DIFF ペインで差分を表示（複数選択で範囲比較）" Click="OnCommitShowDiff"
                                           FontWeight="SemiBold" />
                                 <!-- 右側が作業ツリーそのもの＝このコミット以降の変更を見ながらその場で直せる。 -->

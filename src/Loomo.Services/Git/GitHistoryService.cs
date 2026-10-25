@@ -101,6 +101,20 @@ public sealed class GitHistoryService
         return result.Success && int.TryParse(result.Output.Trim(), out var count) ? count : null;
     }
 
+    /// <summary>
+    /// いまのブランチが <paramref name="baseRef"/> から分かれて入れたコミット（<c>git rev-list HEAD --not base</c>・§24.76）。
+    /// 新しい順。多すぎるもの（基準が古すぎる・関係の無い履歴）は <paramref name="limit"/> で打ち切り、そのときは空を返す——
+    /// 一部だけに印を付けると「ここから先はこのブランチではない」と読めてしまう。
+    /// </summary>
+    public async Task<IReadOnlyList<string>> GetOwnCommitsAsync(string baseRef, int limit)
+    {
+        var result = await _runner.RunAsync("rev-list", $"--max-count={limit + 1}", "HEAD", "--not", baseRef, "--").ConfigureAwait(false);
+        if (!result.Success)
+            return Array.Empty<string>();
+        var hashes = result.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return hashes.Length > limit ? Array.Empty<string>() : hashes;
+    }
+
     public async Task<string> GetCommitPatchAsync(string hash)
     {
         var result = await _runner.RunAsync("show", hash).ConfigureAwait(false);
