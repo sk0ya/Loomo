@@ -162,6 +162,20 @@ public sealed class GitSessionCommandHandler
     }
 
     /// <summary><paramref name="onto"/> へのリベースで作り直すコミットがプッシュ済みなら、その一文（§24.78）。</summary>
+    /// <summary>いまのブランチへ <paramref name="branch"/> を取り込んだら衝突するファイル（§24.88）。調べられなければ null。</summary>
+    public async Task<GitConflictForecast?> ForecastBranchConflictsAsync(string branch)
+    {
+        try
+        {
+            var forecast = await _git.ForecastBranchConflictsAsync(branch);
+            return forecast.Error is null ? forecast : null;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception or IOException)
+        {
+            return null;   // 予告は添え物。引けなくてもマージ・リベースそのものは止めない
+        }
+    }
+
     public async Task<string?> PublishedWarningForRebaseAsync(string onto)
         => await _git.GetOldestRewrittenByRebaseAsync(onto) is { } oldest
             ? await PublishedWarningAsync([oldest])

@@ -74,6 +74,20 @@ internal static class GitSessionOperationController
             await vm.PushForceAsync();
     }
 
+    /// <summary>
+    /// マージの前に衝突を予告する（§24.88）。衝突しないなら確認を挟まずに進める（今までどおり）。
+    /// 衝突するなら、ファイルを並べて続けるかを聞く。確認の口が無い呼び出し元では今までどおり進める。
+    /// </summary>
+    private static async Task<bool> ConfirmMergeForecastAsync(
+        GitSessionViewModel vm, GitBranchInfo branch, Func<GitOperationConfirmation, bool>? confirm)
+    {
+        if (confirm is null)
+            return true;
+        var message = GitMergeForecastMessage.MergeConfirmation(
+            branch.Name, await vm.Commands.ForecastBranchConflictsAsync(branch.Name));
+        return message is null || confirm(new("マージすると衝突します", message, GitConfirmationSeverity.Warning));
+    }
+
     internal static Task PullWithModeAsync(GitSessionViewModel? vm, GitPullMode mode)
         => vm?.PullWithModeAsync(mode) ?? Task.CompletedTask;
 
@@ -138,24 +152,33 @@ internal static class GitSessionOperationController
                     await vm.Commands.CheckoutBranchAsync(branch);
                 break;
             case GitBranchOperation.Merge:
-                await vm.Commands.MergeAsync(branch);
+                if (await ConfirmMergeForecastAsync(vm, branch, confirm))
+                    await vm.Commands.MergeAsync(branch);
                 break;
             case GitBranchOperation.MergeFastForwardOnly:
+                // 早送りだけなら衝突は起きない（できなければ git が止める）ので予告は引かない。
                 await vm.Commands.MergeAsync(branch, GitMergeStrategy.FastForwardOnly);
                 break;
             case GitBranchOperation.MergeNoFastForward:
-                await vm.Commands.MergeAsync(branch, GitMergeStrategy.NoFastForward);
+                if (await ConfirmMergeForecastAsync(vm, branch, confirm))
+                    await vm.Commands.MergeAsync(branch, GitMergeStrategy.NoFastForward);
                 break;
             case GitBranchOperation.MergeSquash:
-                await vm.Commands.MergeAsync(branch, GitMergeStrategy.Squash);
+                if (await ConfirmMergeForecastAsync(vm, branch, confirm))
+                    await vm.Commands.MergeAsync(branch, GitMergeStrategy.Squash);
                 break;
             case GitBranchOperation.Rebase:
                 var rebasePublished = await vm.Commands.PublishedWarningForRebaseAsync(branch.Name);
+                var rebaseConflicts = GitMergeForecastMessage.RebaseNote(
+                    await vm.Commands.ForecastBranchConflictsAsync(branch.Name));
+                var rebaseMessage = $"現在のブランチを {branch.Name} の上へリベースします。コミットは作り直されます（履歴が書き換わります）。";
+                if (rebaseConflicts is not null)
+                    rebaseMessage += "\n\n" + rebaseConflicts;
                 if (confirm?.Invoke(new(
                     "リベース",
-                    GitPublishedHistory.Prefix(rebasePublished,
-                        $"現在のブランチを {branch.Name} の上へリベースします。コミットは作り直されます（履歴が書き換わります）。\n実行しますか？"),
-                    rebasePublished is null ? GitConfirmationSeverity.Question : GitConfirmationSeverity.Warning)) == true)
+                    GitPublishedHistory.Prefix(rebasePublished, rebaseMessage + "\n実行しますか？"),
+                    rebasePublished is null && rebaseConflicts is null
+                        ? GitConfirmationSeverity.Question : GitConfirmationSeverity.Warning)) == true)
                     await vm.Commands.RebaseAsync(branch);
                 break;
             case GitBranchOperation.CreateFrom:

@@ -115,6 +115,25 @@ public sealed class GitConflictForecastTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task 選んだブランチとの予告は分岐元の予告と別に引け_互いの答えを取り違えない()
+    {
+        // §24.88：右クリックのマージ・リベースは相手ごとに引く。分岐元（§24.40）の前回の答えを返してはいけない。
+        await WriteAsync("a.txt", "1\nFEATURE\n3\n");
+        await MustRunAsync("commit", "-am", "feature");
+        await MustRunAsync("checkout", "-b", "other", "main");
+        await WriteAsync("a.txt", "1\nOTHER\n3\n");
+        await MustRunAsync("commit", "-am", "other");
+        await MustRunAsync("checkout", "feature");
+
+        var toMain = await _git.ForecastConflictsAsync("main");
+        var toOther = await _git.ForecastBranchConflictsAsync("other");
+
+        Assert.False(toMain.HasConflicts);
+        Assert.Equal(new[] { "a.txt" }, toOther.Files);
+        Assert.Equal("", (await MustRunAsync("status", "--porcelain")).Output.Trim());
+    }
+
+    [Fact]
     public void 新しい形式は1行目のtreeを飛ばし_重なりをまとめる()
         => Assert.Equal(new[] { "a.txt", "b.txt" },
             GitMergeTreeParser.ParseWriteTreeNames("0123abcd\na.txt\na.txt\nb.txt\n"));

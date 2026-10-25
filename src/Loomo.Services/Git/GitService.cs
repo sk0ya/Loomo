@@ -27,6 +27,8 @@ public sealed class GitService
     private readonly GitConflictForecastService _forecasts;
     /// <summary>上流との衝突の予告（§24.64）。分岐元の予告と前回の答えを取り合わないよう別に持つ。</summary>
     private readonly GitConflictForecastService _upstreamForecasts;
+    /// <summary>右クリックで選んだブランチとの衝突の予告（§24.88）。上の 2 つと前回の答えを取り合わないよう別に持つ。</summary>
+    private readonly GitConflictForecastService _branchForecasts;
     private readonly GitMergeService _merge;
     private readonly GitSubmoduleService _submodules;
     private readonly GitCommitService _commits;
@@ -77,6 +79,7 @@ public sealed class GitService
         _patches = new GitPatchService(_runner, _mutations);
         _forecasts = new GitConflictForecastService(_runner);
         _upstreamForecasts = new GitConflictForecastService(_runner);
+        _branchForecasts = new GitConflictForecastService(_runner);
         _diff = new GitDiffService(_rootState, _runner, _mutations);
         _rebase = new GitRebaseService(_runner, _mutations);
         _worktrees = new GitWorktreeService(_rootState, _runner, _mutations);
@@ -147,6 +150,9 @@ public sealed class GitService
 
     /// <summary>上流（<c>@{upstream}</c>）を取り込んだら衝突するファイル（§24.64）。作業ツリーには触らない。</summary>
     public Task<GitConflictForecast> ForecastUpstreamConflictsAsync(string upstream) => _upstreamForecasts.ForecastAsync(upstream);
+
+    /// <summary>いまのブランチへ <paramref name="branch"/> をマージ・リベースしたら衝突するファイル（§24.88）。作業ツリーには触らない。</summary>
+    public Task<GitConflictForecast> ForecastBranchConflictsAsync(string branch) => _branchForecasts.ForecastAsync(branch);
 
     /// <summary>上流にあって手元に無いコミット（新しい順・最大 <paramref name="max"/> 件・§24.64）。</summary>
     public async Task<IReadOnlyList<GitIncomingCommit>> GetIncomingCommitsAsync(string upstream, int max = 20)

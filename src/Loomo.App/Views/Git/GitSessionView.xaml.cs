@@ -208,7 +208,7 @@ public partial class GitSessionView : UserControl
 
     private async void OnBranchMerge(object sender, RoutedEventArgs e) =>
         await GitSessionOperationController.ExecuteBranchAsync(
-            Vm, SelectedBranch, GitBranchOperation.Merge);
+            Vm, SelectedBranch, GitBranchOperation.Merge, confirm: ConfirmGitOperation);
 
     private async void OnBranchMergeFastForwardOnly(object sender, RoutedEventArgs e) =>
         await GitSessionOperationController.ExecuteBranchAsync(
@@ -216,11 +216,11 @@ public partial class GitSessionView : UserControl
 
     private async void OnBranchMergeNoFastForward(object sender, RoutedEventArgs e) =>
         await GitSessionOperationController.ExecuteBranchAsync(
-            Vm, SelectedBranch, GitBranchOperation.MergeNoFastForward);
+            Vm, SelectedBranch, GitBranchOperation.MergeNoFastForward, confirm: ConfirmGitOperation);
 
     private async void OnBranchMergeSquash(object sender, RoutedEventArgs e) =>
         await GitSessionOperationController.ExecuteBranchAsync(
-            Vm, SelectedBranch, GitBranchOperation.MergeSquash);
+            Vm, SelectedBranch, GitBranchOperation.MergeSquash, confirm: ConfirmGitOperation);
 
     private async void OnBranchRebase(object sender, RoutedEventArgs e) =>
         await GitSessionOperationController.ExecuteBranchAsync(
