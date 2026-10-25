@@ -325,7 +325,7 @@ public partial class ShellWindow {
             return;
         }
         if (result.Comparisons.Count == 0) {
-            ToastService.Info(result.Skipped.Count == 0 && !result.Truncated
+            ToastService.Info(result.Skipped.Count == 0 && !result.Truncated && result.Moved.Count == 0
                 ? $"2つのフォルダーの中身は同じです（{result.Identical} 件）。" : summary);
             return;
         }

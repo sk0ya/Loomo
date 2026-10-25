@@ -146,4 +146,60 @@ public sealed class FolderComparisonTests : IDisposable
         Assert.Equal("削除", swapped.Badge);
         Assert.Equal("new.txt", swapped.DisplayPath);
     }
+    [Fact]
+    public void Moved_files_with_the_same_content_are_counted_not_listed()
+    {
+        Write(Left, "src/util.cs", "same body");
+        Write(Right, "lib/util.cs", "same body");
+        Write(Left, "a.txt", "x");
+        Write(Right, "renamed.txt", "x");
+
+        var result = FolderComparison.Build(Left, Right);
+
+        Assert.Empty(result.Comparisons);
+        Assert.Equal(["a.txt → renamed.txt", "src/util.cs → lib/util.cs"], result.Moved.Order());
+        Assert.Contains("動かしただけ 2 件", FolderComparison.Summarize(result));
+    }
+
+    [Fact]
+    public void A_file_moved_and_edited_becomes_one_comparison_when_its_name_is_unique()
+    {
+        Write(Left, "src/Program.cs", "old");
+        Write(Right, "app/Program.cs", "new");
+
+        var c = Assert.Single(FolderComparison.Build(Left, Right).Comparisons);
+
+        Assert.Equal("移動", c.Badge);
+        Assert.Equal("app/Program.cs（← src/Program.cs）", c.DisplayPath);
+        Assert.Equal(("old", "new"), (c.LeftText, c.RightText));
+        Assert.Equal("v1/src/Program.cs", c.LeftTitle);
+        Assert.Equal(Path.Combine(Right, "app", "Program.cs"), c.FilePath);
+    }
+
+    [Fact]
+    public void Edited_files_whose_name_is_not_unique_are_not_guessed()
+    {
+        Write(Left, "a/index.ts", "1");
+        Write(Left, "b/index.ts", "2");
+        Write(Right, "c/index.ts", "3");
+
+        var result = FolderComparison.Build(Left, Right);
+
+        Assert.Equal(["削除", "削除", "追加"], result.Comparisons.Select(c => c.Badge).Order());
+        Assert.Empty(result.Moved);
+    }
+
+    [Fact]
+    public void Exact_content_match_prefers_the_same_file_name()
+    {
+        Write(Left, "old/x.txt", "dup");
+        Write(Right, "new/y.txt", "dup");
+        Write(Right, "new/x.txt", "dup");
+
+        var result = FolderComparison.Build(Left, Right);
+
+        Assert.Equal(["old/x.txt → new/x.txt"], result.Moved);
+        var added = Assert.Single(result.Comparisons);
+        Assert.Equal("new/y.txt", added.DisplayPath);
+    }
 }

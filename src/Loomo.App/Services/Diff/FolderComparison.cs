@@ -17,7 +17,11 @@ namespace sk0ya.Loomo.App.Services;
 /// 数え残したファイルが「片側にしか無い」に化けるため、一部だけ見せることはしない。</param>
 internal sealed record FolderComparisonResult(
     IReadOnlyList<DiffComparison> Comparisons, int Identical, IReadOnlyList<string> Skipped, bool Truncated,
-    bool TooManyFiles = false);
+    bool TooManyFiles = false)
+{
+    /// <summary>名前を変えた・動かしただけで中身が同じだったファイル（<c>旧 → 新</c>・§24.82）。並べずに数える。</summary>
+    public IReadOnlyList<string> Moved { get; init; } = [];
+}
 
 /// <summary>
 /// フォルダー同士を比べる（§24.5.3、Zed 1.24 の <c>zed --diff</c> のディレクトリ版に当たる）。Git の外にある2つの版
@@ -52,10 +56,20 @@ internal static class FolderComparison
         if (string.Equals(leftName, rightName, StringComparison.OrdinalIgnoreCase))
             (leftName, rightName) = (leftRoot, rightRoot);   // 同名のフォルダー同士はパスで見分ける
 
+        // 片側にしか無いものどうしを先に組む（§24.82）：名前を変えた・別のフォルダーへ動かしただけのファイルを
+        // 「追加＋削除」の 2 行にせず 1 件にする。中身まで同じなら並べずに数え、名前が同じで中身が少し違うなら 1 件の比較にする。
+        var leftOnly = left.Keys.Where(k => !right.ContainsKey(k)).ToList();
+        var rightOnly = right.Keys.Where(k => !left.ContainsKey(k)).ToList();
+        var moves = PairMoves(leftOnly, rightOnly, left, right, ct);
+        var movedFrom = moves.ToDictionary(m => m.To, m => m.From, StringComparer.OrdinalIgnoreCase);
+        var pairedLeft = moves.Select(m => m.From).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
         var all = left.Keys.Union(right.Keys, StringComparer.OrdinalIgnoreCase)
+            .Where(rel => !pairedLeft.Contains(rel))
             .OrderBy(p => p, StringComparer.OrdinalIgnoreCase);
         var comparisons = new List<DiffComparison>();
         var skipped = new List<string>();
+        var moved = new List<string>();
         var identical = 0;
         foreach (var rel in all)
         {
@@ -65,8 +79,15 @@ internal static class FolderComparison
                 truncated = true;
                 break;
             }
-            var hasLeft = left.TryGetValue(rel, out var leftPath);
+            var from = movedFrom.GetValueOrDefault(rel);
+            var leftRel = from ?? rel;
+            var hasLeft = left.TryGetValue(leftRel, out var leftPath);
             var hasRight = right.TryGetValue(rel, out var rightPath);
+            if (from is not null && moves.First(m => m.To == rel).SameContent)
+            {
+                moved.Add($"{from} → {rel}");
+                continue;
+            }
             if (hasLeft && hasRight && SameBytes(leftPath!, rightPath!))
             {
                 identical++;
@@ -87,15 +108,16 @@ internal static class FolderComparison
                 var stat = DiffUtil.Stat(leftText, rightText);
                 if (hasLeft && hasRight && stat == (0, 0))
                 {
-                    identical++;
+                    if (from is null) identical++;
+                    else moved.Add($"{from} → {rel}");
                     continue;
                 }
                 comparisons.Add(new DiffComparison(
-                    $"{leftName}/{rel}", leftText, $"{rightName}/{rel}", rightText,
+                    $"{leftName}/{leftRel}", leftText, $"{rightName}/{rel}", rightText,
                     FilePath: hasRight ? rightPath! : leftPath!, FileIsLeft: !hasRight)
                 {
-                    Label = rel,
-                    Badge = !hasLeft ? "追加" : !hasRight ? "削除" : "",
+                    Label = from is null ? rel : $"{rel}（← {from}）",
+                    Badge = from is not null ? "移動" : !hasLeft ? "追加" : !hasRight ? "削除" : "",
                     Stat = stat,
                 });
             }
@@ -104,7 +126,7 @@ internal static class FolderComparison
                 skipped.Add(rel);
             }
         }
-        return new FolderComparisonResult(comparisons, identical, skipped, truncated);
+        return new FolderComparisonResult(comparisons, identical, skipped, truncated) { Moved = moved };
     }
 
     /// <summary>結果を一言で（トースト用）。</summary>
@@ -113,10 +135,61 @@ internal static class FolderComparison
         if (result.TooManyFiles)
             return $"ファイルが多すぎるため比較しませんでした（片側 {MaxFilesPerSide:N0} 件まで）。もっと下のフォルダー同士を選んでください。";
         var parts = new List<string> { $"違い {result.Comparisons.Count} 件", $"同一 {result.Identical} 件" };
+        if (result.Moved.Count > 0)
+            parts.Add($"動かしただけ {result.Moved.Count} 件（{string.Join("、", result.Moved.Take(3))}{(result.Moved.Count > 3 ? " ほか" : "")}）");
         if (result.Skipped.Count > 0)
             parts.Add($"テキストで並べられない違い {result.Skipped.Count} 件（{string.Join("、", result.Skipped.Take(3))}{(result.Skipped.Count > 3 ? " ほか" : "")}）");
         var text = string.Join("・", parts);
         return result.Truncated ? text + "。件数が多いため途中で打ち切りました" : text;
+    }
+
+    /// <summary>組んだ移動。<see cref="SameContent"/> は中身まで同じ（並べずに数える）。</summary>
+    private sealed record Move(string From, string To, bool SameContent);
+
+    /// <summary>片側にしか無いものの組み方：まず中身まで同じもの（大きさで候補を絞ってからバイト列で比べ、名前が同じものを先に取る）、
+    /// 残りは<b>名前が両側で 1 つずつしか無い</b>ものだけを「動かして書き換えた」として組む——名前の重なる
+    /// <c>index.ts</c> や <c>README.md</c> を当て推量で組むと、無関係なファイルどうしの差分を見せることになる。</summary>
+    private static List<Move> PairMoves(
+        List<string> leftOnly, List<string> rightOnly,
+        Dictionary<string, string> left, Dictionary<string, string> right, CancellationToken ct)
+    {
+        var moves = new List<Move>();
+        if (leftOnly.Count == 0 || rightOnly.Count == 0)
+            return moves;
+        var remainingRight = new HashSet<string>(rightOnly, StringComparer.OrdinalIgnoreCase);
+        var bySize = rightOnly.GroupBy(r => SizeOf(right[r])).ToDictionary(g => g.Key, g => g.ToList());
+        var remainingLeft = new List<string>();
+        foreach (var l in leftOnly)
+        {
+            ct.ThrowIfCancellationRequested();
+            var name = Path.GetFileName(l);
+            var candidates = bySize.GetValueOrDefault(SizeOf(left[l])) ?? [];
+            var match = candidates
+                .Where(remainingRight.Contains)
+                .OrderBy(r => string.Equals(Path.GetFileName(r), name, StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+                .FirstOrDefault(r => SameBytes(left[l], right[r]));
+            if (match is null)
+            {
+                remainingLeft.Add(l);
+                continue;
+            }
+            remainingRight.Remove(match);
+            moves.Add(new Move(l, match, SameContent: true));
+        }
+        var leftNames = remainingLeft.GroupBy(l => Path.GetFileName(l), StringComparer.OrdinalIgnoreCase)
+            .Where(g => g.Count() == 1).ToDictionary(g => g.Key, g => g.Single(), StringComparer.OrdinalIgnoreCase);
+        foreach (var group in remainingRight.GroupBy(r => Path.GetFileName(r), StringComparer.OrdinalIgnoreCase))
+        {
+            if (group.Count() == 1 && leftNames.TryGetValue(group.Key, out var l))
+                moves.Add(new Move(l, group.Single(), SameContent: false));
+        }
+        return moves;
+    }
+
+    private static long SizeOf(string path)
+    {
+        try { return new FileInfo(path).Length; }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return -1; }
     }
 
     /// <summary>相対パス（区切りは <c>/</c>）→ 実パス。</summary>
