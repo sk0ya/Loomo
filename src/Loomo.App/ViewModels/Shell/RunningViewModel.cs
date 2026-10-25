@@ -35,6 +35,9 @@ public sealed partial class RunningItemViewModel : ObservableObject
 
     public int GroupOrder => RunningEntries.GroupOrder(Group);
 
+    /// <summary>「あとで」に回してある（§24.71）。</summary>
+    public bool IsSnoozed => Group == RunningEntries.SnoozedGroup;
+
     internal void Apply(RunningEntry entry)
     {
         Entry = entry;
@@ -44,6 +47,7 @@ public sealed partial class RunningItemViewModel : ObservableObject
         Tone = entry.Tone;
         CanStop = entry.CanStop;
         Group = entry.Group;
+        OnPropertyChanged(nameof(IsSnoozed));
         Icon = entry.Kind switch
         {
             RunningEntryKind.Terminal => "▶",
@@ -90,9 +94,20 @@ public sealed partial class RunningViewModel : ObservableObject
     public event EventHandler<RunningItemViewModel>? ActivateRequested;
     public event EventHandler<RunningItemViewModel>? StopRequested;
 
+    /// <summary>「あとで」に回した行（鍵 → その時点の状態の鍵・§24.71）。保存はしない。</summary>
+    private readonly Dictionary<string, string> _snoozed = new(StringComparer.Ordinal);
+
+    /// <summary>最後に渡された一覧（「あとで」を切り替えたときに並べ直すため）。</summary>
+    private IReadOnlyList<RunningEntry> _lastEntries = Array.Empty<RunningEntry>();
+
+    /// <summary>人の番の数が変わった（「あとで」の切り替えでも変わる。ActivityBar の印を付け直す）。</summary>
+    public event EventHandler? AttentionChanged;
+
     /// <summary>引き直した一覧を入れる。鍵が同じ行は使い回し、並びは渡された順にそろえる。</summary>
     public void Apply(IReadOnlyList<RunningEntry> entries, DateTime nowUtc)
     {
+        _lastEntries = entries;
+        entries = RunningEntries.ApplySnooze(entries, _snoozed);
         var existing = Items.ToDictionary(i => i.Key, StringComparer.Ordinal);
         var wanted = new List<RunningItemViewModel>(entries.Count);
         var regrouped = false;
@@ -125,9 +140,13 @@ public sealed partial class RunningViewModel : ObservableObject
         if (regrouped)
             View.Refresh();
 
-        AttentionCount = Items.Count(i => i.Tone == RunningEntryTone.Attention);
+        var attention = Items.Count(i => i.Tone == RunningEntryTone.Attention);
+        var changed = attention != AttentionCount;
+        AttentionCount = attention;
         RunningCount = Items.Count(i => i.Entry.Kind != RunningEntryKind.LanguageServer);
         OnPropertyChanged(nameof(IsEmpty));
+        if (changed)
+            AttentionChanged?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>経過時間だけ進める。</summary>
@@ -142,6 +161,22 @@ public sealed partial class RunningViewModel : ObservableObject
     {
         if (item is not null)
             ActivateRequested?.Invoke(this, item);
+    }
+
+    /// <summary>「あとで」に回す。いまの状態を覚え、それが変わったら自動で戻す。</summary>
+    [RelayCommand]
+    private void Snooze(RunningItemViewModel? item)
+    {
+        if (item is null || item.IsSnoozed) return;
+        _snoozed[item.Key] = RunningEntries.SnoozeSignature(item.Entry);
+        Apply(_lastEntries, DateTime.UtcNow);
+    }
+
+    [RelayCommand]
+    private void Unsnooze(RunningItemViewModel? item)
+    {
+        if (item is null || !_snoozed.Remove(item.Key)) return;
+        Apply(_lastEntries, DateTime.UtcNow);
     }
 
     [RelayCommand]

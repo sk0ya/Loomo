@@ -32,7 +32,22 @@
             </Setter>
         </Style>
         <DataTemplate x:Key="RunningItemTemplate" DataType="{x:Type vm:RunningItemViewModel}">
-            <Grid x:Name="RowRoot" Margin="2,0">
+            <!-- Tag に面の VM を持たせ、右クリックのメニュー（視覚ツリーの外）から命令を引けるようにする。 -->
+            <Grid x:Name="RowRoot" Margin="2,0"
+                  Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=UserControl}}">
+                <Grid.ContextMenu>
+                    <!-- 行のテンプレートの中に置く（Style の Setter に置くと Click が結線されない）。 -->
+                    <ContextMenu>
+                        <MenuItem Header="あとで（状態が変わったら戻す）"
+                                  Visibility="{Binding IsSnoozed, Converter={StaticResource InverseBoolToVis}}"
+                                  Command="{Binding PlacementTarget.Tag.SnoozeCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                  CommandParameter="{Binding}" />
+                        <MenuItem Header="あとでをやめる"
+                                  Visibility="{Binding IsSnoozed, Converter={StaticResource RunningVisibility}}"
+                                  Command="{Binding PlacementTarget.Tag.UnsnoozeCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                  CommandParameter="{Binding}" />
+                    </ContextMenu>
+                </Grid.ContextMenu>
                 <Button Style="{StaticResource RunningRowButton}" ToolTip="{Binding ToolTip}"
                         AutomationProperties.Name="{Binding Title}"
                         Command="{Binding DataContext.ActivateCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
@@ -75,6 +90,10 @@
                 </DataTrigger>
                 <DataTrigger Binding="{Binding Tone}" Value="{x:Static svc:RunningEntryTone.Quiet}">
                     <Setter TargetName="Title" Property="Foreground" Value="{DynamicResource FgDim}" />
+                </DataTrigger>
+                <!-- 「あとで」の行は薄く（§24.71）。 -->
+                <DataTrigger Binding="{Binding IsSnoozed}" Value="True">
+                    <Setter TargetName="RowRoot" Property="Opacity" Value="0.55" />
                 </DataTrigger>
             </DataTemplate.Triggers>
         </DataTemplate>

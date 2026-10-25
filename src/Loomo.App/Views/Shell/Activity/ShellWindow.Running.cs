@@ -17,6 +17,8 @@ public partial class ShellWindow {
         _vm.Running.StopRequested += (_, item) => {
             if (_runningActions.TryGetValue(item.Key, out var actions)) actions.Stop?.Invoke();
         };
+        // 「あとで」（§24.71）で人の番の数が変わったら、ActivityBar の印も付け直す。
+        _vm.Running.AttentionChanged += (_, _) => UpdateRunningActivityMark();
         TerminalStatusChanged += RequestRunningRefresh;
         TerminalStatusTicked += now => _vm.Running.Tick(now);
         // 言語サーバーの状態は裏のスレッドから届く。

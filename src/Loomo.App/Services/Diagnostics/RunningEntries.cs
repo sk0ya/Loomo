@@ -44,6 +44,8 @@ internal static class RunningEntries
     public const string AttentionGroup = "あなたの番";
     public const string RunningGroup = "実行中";
     public const string ResidentGroup = "常駐";
+    /// <summary>人が「あとで」に回した行（§24.71）。区切りの下・一番最後に薄く並ぶ。</summary>
+    public const string SnoozedGroup = "あとで";
 
     public static IReadOnlyList<RunningEntry> Build(
         IEnumerable<RunningTerminalSource> terminals,
@@ -142,8 +144,42 @@ internal static class RunningEntries
     {
         AttentionGroup => 0,
         RunningGroup => 1,
+        SnoozedGroup => 3,
         _ => 2,
     };
+
+    /// <summary>「あとで」にした時点の状態の鍵。これが変わったら（入力待ち→作業中→また入力待ち、停止→再開…）自動で戻す。
+    /// 経過は入れない（時間が経つだけでは戻さない）。</summary>
+    public static string SnoozeSignature(RunningEntry entry) => $"{entry.Group}|{entry.Tone}|{entry.Detail}";
+
+    /// <summary>
+    /// 「あとで」に回した行を一番下の「あとで」へ移し、状態が変わった行は「あとで」から外す（§24.71・iTerm2 3.7 の Snooze）。
+    /// <paramref name="snoozed"/> は鍵 → あとでにした時点の <see cref="SnoozeSignature"/>。外したもの・もう居ないものはここから消す。
+    /// </summary>
+    public static IReadOnlyList<RunningEntry> ApplySnooze(IReadOnlyList<RunningEntry> entries, IDictionary<string, string> snoozed)
+    {
+        if (snoozed.Count == 0)
+            return entries;
+        var present = new HashSet<string>(StringComparer.Ordinal);
+        var result = new List<RunningEntry>(entries.Count);
+        foreach (var entry in entries)
+        {
+            present.Add(entry.Key);
+            if (snoozed.TryGetValue(entry.Key, out var signature))
+            {
+                if (signature == SnoozeSignature(entry))
+                {
+                    result.Add(entry with { Group = SnoozedGroup, Tone = RunningEntryTone.Quiet });
+                    continue;
+                }
+                snoozed.Remove(entry.Key);
+            }
+            result.Add(entry);
+        }
+        foreach (var gone in snoozed.Keys.Where(k => !present.Contains(k)).ToList())
+            snoozed.Remove(gone);
+        return result.OrderBy(e => GroupOrder(e.Group)).ToList();
+    }
 
     public static string StateLabel(LspServerRuntimeStatus server) => server.State switch
     {
