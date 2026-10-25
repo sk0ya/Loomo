@@ -148,6 +148,13 @@
                         <MenuItem Header="他のタブを閉じる"
                                   Command="{Binding PlacementTarget.Tag.CloseOtherTabsCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                   CommandParameter="{Binding}" />
+                        <!-- 並び（番号の並び・§24.47）で前後をまとめて閉じる（§24.89）。縦の一覧でも横の帯でも同じ意味になるよう「左右」とは言わない。 -->
+                        <MenuItem Header="これより後のタブを閉じる"
+                                  Command="{Binding PlacementTarget.Tag.CloseTabsAfterCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                  CommandParameter="{Binding}" />
+                        <MenuItem Header="これより前のタブを閉じる"
+                                  Command="{Binding PlacementTarget.Tag.CloseTabsBeforeCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                  CommandParameter="{Binding}" />
                         <MenuItem Header="すべて閉じる"
                                   Command="{Binding PlacementTarget.Tag.CloseAllTabsCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                   CommandParameter="{Binding}" />

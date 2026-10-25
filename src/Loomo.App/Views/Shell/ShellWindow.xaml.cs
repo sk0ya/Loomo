@@ -281,6 +281,8 @@ public partial class ShellWindow : Window {
         vm.Tabs.TabCloseRequested += OnSidebarTabCloseRequested;
         vm.Tabs.TabCloseOthersRequested += OnSidebarTabCloseOthersRequested;
         vm.Tabs.TabCloseAllRequested += OnSidebarTabCloseAllRequested;
+        vm.Tabs.TabCloseAfterRequested += OnSidebarTabCloseAfterRequested;
+        vm.Tabs.TabCloseBeforeRequested += OnSidebarTabCloseBeforeRequested;
         vm.Tabs.TabDetachRequested += OnSidebarTabDetachRequested;
         vm.Tabs.TabNewRequested += OnSidebarTabNewRequested;
         vm.Tabs.TabRenameRequested += OnSidebarTabRenameRequested;

@@ -49,6 +49,12 @@ public partial class ShellWindow {
     private async void OnSidebarTabCloseAllRequested(object? sender, TabEntryViewModel tab) {
         await CloseSidebarTabsAsync(tab, WorkspaceTabCloseScope.All);
     }
+    private async void OnSidebarTabCloseAfterRequested(object? sender, TabEntryViewModel tab) {
+        await CloseSidebarTabsAsync(tab, WorkspaceTabCloseScope.After);
+    }
+    private async void OnSidebarTabCloseBeforeRequested(object? sender, TabEntryViewModel tab) {
+        await CloseSidebarTabsAsync(tab, WorkspaceTabCloseScope.Before);
+    }
     private async Task CloseSidebarTabsAsync(TabEntryViewModel selected, WorkspaceTabCloseScope scope) {
         var plan = WorkspaceTabClosePolicy.CreatePlan(
             selected.Kind, selected.Id, scope,

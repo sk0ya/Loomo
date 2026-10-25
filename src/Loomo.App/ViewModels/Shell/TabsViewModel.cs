@@ -332,6 +332,10 @@ public sealed partial class TabsViewModel : ObservableObject
     public event EventHandler<TabEntryViewModel>? TabCloseOthersRequested;
     /// <summary>「すべて閉じる」：同じ Kind 内の全タブを閉じる。</summary>
     public event EventHandler<TabEntryViewModel>? TabCloseAllRequested;
+    /// <summary>「これより後のタブを閉じる」：同じ Kind の並び（番号の並び）で、このタブより後ろを閉じる（§24.89）。</summary>
+    public event EventHandler<TabEntryViewModel>? TabCloseAfterRequested;
+    /// <summary>「これより前のタブを閉じる」：同じ Kind の並びで、このタブより前を閉じる（§24.89）。</summary>
+    public event EventHandler<TabEntryViewModel>? TabCloseBeforeRequested;
     /// <summary>「別ウィンドウで開く」：このタブをフローティングウィンドウへ切り離す（複製／スピンオフ）。</summary>
     public event EventHandler<TabEntryViewModel>? TabDetachRequested;
     /// <summary>「名前を付ける…」：タブに人が付けた名前を設定・解除する（Terminal のみ）。</summary>
@@ -1026,6 +1030,20 @@ public sealed partial class TabsViewModel : ObservableObject
     {
         if (tab is not null)
             TabCloseAllRequested?.Invoke(this, tab);
+    }
+
+    [RelayCommand]
+    private void CloseTabsAfter(TabEntryViewModel? tab)
+    {
+        if (tab is not null)
+            TabCloseAfterRequested?.Invoke(this, tab);
+    }
+
+    [RelayCommand]
+    private void CloseTabsBefore(TabEntryViewModel? tab)
+    {
+        if (tab is not null)
+            TabCloseBeforeRequested?.Invoke(this, tab);
     }
 
     [RelayCommand]

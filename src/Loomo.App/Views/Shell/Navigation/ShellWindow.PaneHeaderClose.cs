@@ -20,15 +20,19 @@ public partial class ShellWindow {
         if (sender is not FrameworkElement { Tag: TabEntryViewModel tab } target)
             return;
         e.Handled = true;
-        var count = tab.Kind switch {
-            TabEntryKind.Terminal => _terminalTabs.Count,
-            TabEntryKind.Editor => _editorTabs.Count,
-            TabEntryKind.Browser => _browserTabs.Count,
-            _ => 0,
+        var ids = tab.Kind switch {
+            TabEntryKind.Terminal => _terminalTabs.Select(t => t.Id).ToList(),
+            TabEntryKind.Editor => _editorTabs.Select(t => t.Id).ToList(),
+            TabEntryKind.Browser => _browserTabs.Select(t => t.Id).ToList(),
+            _ => new List<Guid>(),
         };
+        var count = ids.Count;
+        var index = ids.IndexOf(tab.Id);
         var menu = new ContextMenu { PlacementTarget = target };
         AddPaneHeaderCloseItem(menu, "閉じる", tab, WorkspaceTabCloseScope.Selected, enabled: true);
         AddPaneHeaderCloseItem(menu, "他のタブを閉じる", tab, WorkspaceTabCloseScope.Others, enabled: count > 1);
+        AddPaneHeaderCloseItem(menu, "これより後のタブを閉じる", tab, WorkspaceTabCloseScope.After, enabled: index >= 0 && index < count - 1);
+        AddPaneHeaderCloseItem(menu, "これより前のタブを閉じる", tab, WorkspaceTabCloseScope.Before, enabled: index > 0);
         AddPaneHeaderCloseItem(menu, "すべて閉じる", tab, WorkspaceTabCloseScope.All, enabled: true);
         if (tab.CanRename) {
             menu.Items.Add(new Separator());

@@ -2,7 +2,8 @@ using sk0ya.Loomo.App.ViewModels;
 
 namespace sk0ya.Loomo.App.Services;
 
-internal enum WorkspaceTabCloseScope { Selected, Others, All }
+/// <summary>閉じる範囲。<see cref="After"/>／<see cref="Before"/> はタブの並び（番号の並び・§24.47）で、選んだタブより後ろ／前（§24.89）。</summary>
+internal enum WorkspaceTabCloseScope { Selected, Others, All, After, Before }
 
 internal sealed record WorkspaceTabClosePlan(TabEntryKind Kind, IReadOnlyList<Guid> TabIds);
 
@@ -32,7 +33,7 @@ internal static class WorkspaceTabCloseCoordinator
     }
 }
 
-/// <summary>サイドバーのタブ種別と「選択／他／すべて」から、閉じる ID のスナップショットを作る。</summary>
+/// <summary>サイドバーのタブ種別と「選択／他／すべて／後ろ／前」から、閉じる ID のスナップショットを作る。</summary>
 internal static class WorkspaceTabClosePolicy
 {
     public static WorkspaceTabClosePlan CreatePlan(
@@ -56,6 +57,9 @@ internal static class WorkspaceTabClosePolicy
             WorkspaceTabCloseScope.Selected => new[] { selectedId },
             WorkspaceTabCloseScope.Others => tabIds.Where(id => id != selectedId),
             WorkspaceTabCloseScope.All => tabIds,
+            WorkspaceTabCloseScope.After => tabIds.SkipWhile(id => id != selectedId).Skip(1),
+            // 選んだタブが並びに無いなら何も閉じない（前を全部閉じてしまわないように）。
+            WorkspaceTabCloseScope.Before => tabIds.Contains(selectedId) ? tabIds.TakeWhile(id => id != selectedId) : Array.Empty<Guid>(),
             _ => Array.Empty<Guid>(),
         };
         return new WorkspaceTabClosePlan(kind, closeIds.ToArray());
