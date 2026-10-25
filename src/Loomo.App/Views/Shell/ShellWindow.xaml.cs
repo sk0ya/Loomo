@@ -303,6 +303,7 @@ public partial class ShellWindow : Window {
         Closed += OnClosed;
         Loaded += OnLoaded;
         PreviewKeyDown += OnPaneNavKey;
+        PreviewKeyUp += OnTabSwitcherKeyUp;
         PreviewGotKeyboardFocus += OnWindowPreviewGotKeyboardFocus;
         Deactivated += OnWindowDeactivated;
         InitializeAwaySummary();

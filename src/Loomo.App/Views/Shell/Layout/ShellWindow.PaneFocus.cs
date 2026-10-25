@@ -26,6 +26,7 @@ public partial class ShellWindow {
                 _focusedRegion = PaneFocusTarget.Of(kind);
             _lastInnerFocus = (_focusedRegion.Value, new WeakReference<IInputElement>(e.NewFocus));
             _paneFocusHistory.Record(_focusedRegion.Value, e.NewFocus);
+            TouchTabMruForPane(kind);
             RecordTrailPane(kind);
         } else if (IsWithin(d, SidebarContainer)) {
             _focusedRegion = PaneFocusTarget.Sidebar;

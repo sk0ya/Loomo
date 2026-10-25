@@ -305,6 +305,7 @@ public partial class ShellWindow {
         foreach (var browserTab in _browserTabs)
             browserTab.View.Visibility = browserTab.Id == id ? Visibility.Visible : Visibility.Collapsed;
         tab.LastSeenUtc = DateTime.UtcNow;   // 見た（棚の判定・§24.29）
+        TouchTabMru(TabEntryKind.Browser, id);   // Ctrl+Tab の並び（§24.65）
         ScheduleShelveOverflow();
         _activeBrowserTab = tab;
         CurrentBrowserWorkspace.ActiveTabId = id;

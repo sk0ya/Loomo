@@ -16,7 +16,9 @@ public partial class ShellWindow {
             // 最近のファイル／最近の場所／ファイル構造もパレットの一覧を差し替えるだけなので通す
             // （最近のファイルを開いたままもう一度押すと最近の場所へ切り替わる）。
             _keyboard?.TryExecuteScoped(e, static id => id.StartsWith("palette.", StringComparison.Ordinal)
-                || id is "nav.recentFiles" or "nav.recentLocations" or "nav.fileStructure");
+                || id is "nav.recentFiles" or "nav.recentLocations" or "nav.fileStructure"
+                // 巡回（§24.65）は開いたまま Ctrl+Tab を押し続けて選択を動かす。
+                || id is "tab.switchRecent" or "tab.switchRecentBack");
             return;
         }
         // ブラウザ専用キー（Ctrl+L/F/D、F5、Alt+←→ 等）はペインにフォーカスがあるときだけ効かせる。

@@ -267,6 +267,9 @@ public static class CommandCatalog
         new CommandDescriptor("tab.newTerminal", CatTab, "新しいターミナルタブ", null),
         new CommandDescriptor("tab.newEditor", CatTab, "新しいエディタタブ", null),
         new CommandDescriptor("tab.newBrowser", CatTab, "新しいブラウザタブ", null),
+        // 部屋のタブを最近使った順に巡る（§24.65）。Ctrl を押したまま進み、離したらそのタブへ。
+        new CommandDescriptor("tab.switchRecent", CatTab, "最近使ったタブへ（押したまま巡る）", "Ctrl+Tab"),
+        new CommandDescriptor("tab.switchRecentBack", CatTab, "最近使ったタブへ（逆順に巡る）", "Ctrl+Shift+Tab"),
     }
     // 番号でタブを選ぶ（§24.47）。フォーカスのあるペイン（ターミナル／エディタ／ブラウザ）の N 番目へ。
     // ピン留めが先頭に並び、9 は最後のタブ（ブラウザと同じ）。

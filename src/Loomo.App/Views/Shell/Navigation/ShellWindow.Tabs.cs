@@ -53,6 +53,7 @@ public partial class ShellWindow {
         _terminalViews?.Activate(id, focusView);
         profile?.Lap("terminal.views");
         tab.LastSeenUtc = DateTime.UtcNow;   // 閉じたときの戻り先（§24.44）
+        TouchTabMru(TabEntryKind.Terminal, id);   // Ctrl+Tab の並び（§24.65）
         _activeTerminalTab = tab;
         CurrentTerminalWorkspace.ActiveTabId = id;
         _terminal.Attach(tab.View);
@@ -70,6 +71,7 @@ public partial class ShellWindow {
     }
     private void SetActiveTerminalTab(TerminalTab tab) {
         tab.LastSeenUtc = DateTime.UtcNow;
+        TouchTabMru(TabEntryKind.Terminal, tab.Id);
         _activeTerminalTab = tab;
         CurrentTerminalWorkspace.ActiveTabId = tab.Id;
         _terminal.Attach(tab.View);
@@ -123,6 +125,7 @@ public partial class ShellWindow {
         _editorViews?.Activate(id, focusView);
         profile?.Lap("editor.views");
         tab.LastSeenUtc = DateTime.UtcNow;   // 見た（棚の判定・§24.29）
+        TouchTabMru(TabEntryKind.Editor, id);   // Ctrl+Tab の並び（§24.65）
         ScheduleShelveOverflow();
         _activeEditorTab = tab;
         CurrentEditorWorkspace.ActiveTabId = id;
@@ -140,6 +143,7 @@ public partial class ShellWindow {
     }
     private void SetActiveEditorTab(EditorTab tab) {
         tab.LastSeenUtc = DateTime.UtcNow;
+        TouchTabMru(TabEntryKind.Editor, tab.Id);
         _activeEditorTab = tab;
         CurrentEditorWorkspace.ActiveTabId = tab.Id;
         _editor.Attach(tab.Control);
