@@ -79,6 +79,14 @@ public sealed class LoomoSettings
     /// <see cref="GitReferenceTab"/> と同じ（読めない値は既定＝履歴に落とす）。</summary>
     public string GitSessionMode { get; set; } = "History";
 
+    /// <summary>裏で <c>git fetch</c> するか（§24.92）。部屋を開いた・切り替えたときと、<see cref="GitAutoFetchIntervalMinutes"/> ごと。
+    /// 上流とのずれ（§24.64）・分岐元との衝突の予告（§24.40）・上流が消えたブランチ（§24.69）を、最後に手で取得した時点のまま
+    /// 止めないため。資格情報の窓は出さない（出せなければ黙って次の機会まで待つ）。既定は ON。</summary>
+    public bool GitAutoFetch { get; set; } = true;
+
+    /// <summary>裏での取得の間隔（分）。1 未満は 1 として扱う。設定画面には出さず settings.json で変える。</summary>
+    public int GitAutoFetchIntervalMinutes { get; set; } = 10;
+
     /// <summary>Git ペインのコミット一覧の列の並びと表示／非表示。列見出しの右クリック・見出しのドラッグから書き戻される。</summary>
     public GitLogColumnSettings GitLogColumns { get; set; } = new();
 

@@ -119,6 +119,8 @@ internal static class LoomoServiceCollectionExtensions
         // エディタのガターも同じ基準で比べる（§24.11.1）。
         services.AddSingleton<EditorGutterBaseTracker>();
         services.AddSingleton<GitPanelViewModel>();
+        // 裏での取得（§24.92）。Git パネルの実行中は譲るので、同じパネルの VM を見る。
+        services.AddSingleton<GitAutoFetchScheduler>();
         services.AddSingleton<GitSessionQuery>();
         services.AddSingleton<GitSessionCommandHandler>();
         services.AddSingleton<GitHistoryViewModel>();

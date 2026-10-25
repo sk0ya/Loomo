@@ -526,6 +526,26 @@ public sealed class GitService
         _rebase.AmendCommitAsync(targetHash, sign);
 
     public Task<GitCommandResult> FetchAsync() => _branches.FetchAsync();
+
+    /// <summary>裏での取得（§24.92）。資格情報の窓を出さず、遠隔の参照が変わったときだけ変更を知らせる。</summary>
+    public Task<GitCommandResult> FetchInBackgroundAsync() => _branches.FetchInBackgroundAsync();
+
+    /// <summary>
+    /// <c>FETCH_HEAD</c> の場所（§24.92）。更新時刻が「最後に取得した時刻」——Loomo の外（ターミナル）で fetch した分も入る。
+    /// ワークツリーでは git が決めた場所になる。リポジトリでないなら null。呼ぶ側は対象ごとに覚えて、時刻はファイルから読む
+    /// （毎回 git を起こさない）。
+    /// </summary>
+    public async Task<string?> GetFetchHeadPathAsync()
+    {
+        var root = _rootState.CurrentRoot;
+        var result = await _runner.RunAsync("rev-parse", "--git-path", "FETCH_HEAD").ConfigureAwait(false);
+        if (!result.Success || string.IsNullOrEmpty(root))
+            return null;
+        var path = result.Output.Trim();
+        if (path.Length == 0)
+            return null;
+        return System.IO.Path.IsPathRooted(path) ? path : System.IO.Path.GetFullPath(System.IO.Path.Combine(root, path));
+    }
     public Task<GitCommandResult> PullAsync() => _branches.PullAsync();
 
     /// <summary>取り込み方（マージ／リベース／早送りのみ）を指定してプルする。</summary>

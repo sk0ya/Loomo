@@ -397,7 +397,7 @@
 
                     <!-- 2行目：同期操作。プル/プッシュは件数を出して対象の有無を見える化する。 -->
                     <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                        <Button Style="{StaticResource SyncButton}" ToolTip="フェッチ（リモートの最新を取得）"
+                        <Button Style="{StaticResource SyncButton}" ToolTip="{Binding FetchToolTip}"
                                 Command="{Binding FetchCommand}">
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="⭮" Style="{StaticResource SyncArrow}" />

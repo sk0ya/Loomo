@@ -123,6 +123,34 @@ public sealed class GitBranchService
     public Task<GitCommandResult> FetchAsync() =>
         _mutations.ExecuteAsync("fetch", "--all", "--prune");
 
+    /// <summary>
+    /// 裏での取得（§24.92）。人の操作と違い、資格情報の窓（Git Credential Manager）も SSH の合言葉の問いも出さない——
+    /// 出せないなら黙って失敗にして、次の機会まで待つ。遠隔の参照が変わったときだけ変更を知らせる
+    /// （変わっていないのに知らせると、10 分ごとに Git パネルとペインが読み直しになる）。
+    /// </summary>
+    public async Task<GitCommandResult> FetchInBackgroundAsync()
+    {
+        var before = await RemoteRefsAsync().ConfigureAwait(false);
+        var result = await _runner.RunAsync(BackgroundFetchEnvironment, "fetch", "--all", "--prune", "--quiet")
+            .ConfigureAwait(false);
+        if (result.Success && !string.Equals(before, await RemoteRefsAsync().ConfigureAwait(false), StringComparison.Ordinal))
+            _mutations.NotifyRepositoryChanged();
+        return result;
+    }
+
+    private static readonly IReadOnlyDictionary<string, string> BackgroundFetchEnvironment = new Dictionary<string, string>
+    {
+        ["GCM_INTERACTIVE"] = "never",
+        ["SSH_ASKPASS_REQUIRE"] = "never",
+    };
+
+    private async Task<string> RemoteRefsAsync()
+    {
+        var refs = await _runner.RunAsync("for-each-ref", "--format=%(objectname) %(refname)", "refs/remotes")
+            .ConfigureAwait(false);
+        return refs.Success ? refs.Output : "";
+    }
+
     public Task<GitCommandResult> PullAsync() => PullAsync(GitPullMode.Merge);
 
     /// <summary>取り込み方を指定してプルする。</summary>

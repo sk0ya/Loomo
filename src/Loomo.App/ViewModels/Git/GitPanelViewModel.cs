@@ -266,6 +266,15 @@ public sealed partial class GitPanelViewModel : ObservableObject
     /// <summary>上流より遅れているコミット数（プル対象）。0 なら取り込むものなし。</summary>
     [ObservableProperty] private int _behind;
     [ObservableProperty] private bool _hasRemote;
+
+    /// <summary>最後に取得した時刻と自動の取得の様子（§24.92）。裏での取得（<c>GitAutoFetchScheduler</c>）が書く。</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(FetchToolTip))]
+    private string? _fetchSummary;
+
+    public string FetchToolTip => FetchSummary is { Length: > 0 } summary
+        ? "フェッチ（リモートの最新を取得）\n" + summary
+        : "フェッチ（リモートの最新を取得）";
     [ObservableProperty] private bool _hasUpstream;
     [ObservableProperty] private string _commitMessage = "";
     /// <summary>書きかけのメッセージの帳面（対象フォルダーごと・ワークスペースに保存・§24.32）。</summary>

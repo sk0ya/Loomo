@@ -87,6 +87,8 @@ public partial class App : Application
         shell.AttachFileMoveParticipant(_services.GetRequiredService<LspFileMoveParticipant>());
         StartupProfiler.Mark("ShellWindow 解決完了");
         shell.ContentRendered += (_, _) => StartupProfiler.Mark("ContentRendered（初フレーム）");
+        // 裏での取得（§24.92）は初フレームの後から。起動の重い時間に git を足さない。
+        shell.ContentRendered += (_, _) => _services.GetRequiredService<GitAutoFetchScheduler>().Start();
         shell.Show();
         StartupProfiler.Mark("Show() 呼び出し完了");
 

@@ -70,6 +70,8 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _showInlayHints;
     [ObservableProperty] private bool _showCaretLineBlame;
     [ObservableProperty] private bool _showDebugInlineValues = true;
+    /// <summary>裏で git fetch する（§24.92）。</summary>
+    [ObservableProperty] private bool _gitAutoFetch = true;
     [ObservableProperty] private int _tabWidth;
     [ObservableProperty] private bool _useSpacesForTab;
     [ObservableProperty] private string _imagePasteDirectory = "";
@@ -159,6 +161,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         AutoClosePairs = form.AutoClosePairs; ShowInlayHints = form.ShowInlayHints;
         ShowCaretLineBlame = form.ShowCaretLineBlame;
         ShowDebugInlineValues = form.ShowDebugInlineValues;
+        GitAutoFetch = form.GitAutoFetch;
         LinkedEditing = form.LinkedEditing;
         TabWidth = form.TabWidth; UseSpacesForTab = form.UseSpacesForTab;
         ImagePasteDirectory = form.ImagePasteDirectory; ImagePasteFileName = form.ImagePasteFileName;
@@ -225,6 +228,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     partial void OnShowInlayHintsChanged(bool value) => Persist();
     partial void OnShowCaretLineBlameChanged(bool value) => Persist();
     partial void OnShowDebugInlineValuesChanged(bool value) => Persist();
+    partial void OnGitAutoFetchChanged(bool value) => Persist();
     partial void OnTabWidthChanged(int value) => Persist();
     partial void OnUseSpacesForTabChanged(bool value) => Persist();
     partial void OnImagePasteDirectoryChanged(string value) => Persist();
@@ -263,6 +267,7 @@ public sealed partial class SettingsViewModel : ObservableObject
             AutoClosePairs = AutoClosePairs, ShowInlayHints = ShowInlayHints,
             ShowCaretLineBlame = ShowCaretLineBlame,
             ShowDebugInlineValues = ShowDebugInlineValues,
+            GitAutoFetch = GitAutoFetch,
             LinkedEditing = LinkedEditing,
             TabWidth = TabWidth, UseSpacesForTab = UseSpacesForTab,
             ImagePasteDirectory = ImagePasteDirectory, ImagePasteFileName = ImagePasteFileName,
