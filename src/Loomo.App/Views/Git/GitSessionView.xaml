@@ -463,6 +463,11 @@
 
                             <Border Style="{StaticResource BranchOpSeparator}" />
 
+                            <!-- 終わったブランチを理由つきで並べて、選んで消す（§24.69）。 -->
+                            <Button Style="{StaticResource BranchOpButton}" Content="🧹"
+                                    ToolTip="片付け…（取り込み済み・上流が消えた・しばらく動いていないブランチを、理由つきで並べて消す）"
+                                    AutomationProperties.Name="ブランチの片付け"
+                                    Click="OnBranchesCleanup" />
                             <Button Style="{StaticResource BranchOpButton}" Content="⊞"
                                     ToolTip="すべて展開" Click="OnBarExpandAll" />
                             <Button Style="{StaticResource BranchOpButton}" Content="⊟"

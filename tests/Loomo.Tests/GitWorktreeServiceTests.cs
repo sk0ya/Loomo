@@ -361,6 +361,25 @@ public sealed class GitWorktreeServiceTests : IAsyncLifetime
         Assert.True(DateTime.UtcNow - work.LastCommitUtc!.Value < TimeSpan.FromMinutes(5));
     }
 
+    [Fact]
+    public async Task ブランチの片付けは作業して取り込んだブランチだけを取り込み済みにする()
+    {
+        await MustRunAsync("checkout", "-b", "done");
+        await CommitAsync("d.txt", "d", "done work");
+        await MustRunAsync("checkout", "main");
+        await MustRunAsync("merge", "--ff-only", "done");               // 作業して main へ取り込んだ
+        await MustRunAsync("branch", "fresh");                          // 切っただけ（--merged には載る）
+        await MustRunAsync("checkout", "-b", "wip");
+        await CommitAsync("w.txt", "w", "wip work");                    // main に無い
+        await MustRunAsync("checkout", "main");
+
+        var (defaultBranch, merged) = await _git.InspectBranchMergesAsync(
+            ["done", "fresh", "wip", "main"], CancellationToken.None);
+
+        Assert.Equal("main", defaultBranch);
+        Assert.Equal(new[] { "done" }, merged.ToArray());
+    }
+
     private sealed class SyncProgress(Action<GitWorktreeUsage> report) : IProgress<GitWorktreeUsage>
     {
         public void Report(GitWorktreeUsage value) => report(value);

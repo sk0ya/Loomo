@@ -267,6 +267,30 @@ public sealed class GitWorktreeService
     }
 
     /// <summary>
+    /// ローカルブランチのうち、既定ブランチへ本当に取り込み済みのもの（§24.69 のブランチの片付け）。判定はワークツリーの片付けと同じ
+    /// ——<c>--merged</c> に載り、作業の跡がある（作っただけのブランチは数えない）。既定ブランチ自身は含めない。
+    /// </summary>
+    public async Task<IReadOnlySet<string>> GetMergedBranchesAsync(
+        IReadOnlyList<string> branches, string defaultBranch, CancellationToken cancellationToken)
+    {
+        var result = await _runner.RunAsync(cancellationToken,
+            "branch", "--merged", defaultBranch, "--format=%(refname:short)").ConfigureAwait(false);
+        if (!result.Success)
+            return new HashSet<string>(StringComparer.Ordinal);
+        var listed = GitWorktreeCleanup.ParseMergedBranches(result.Output);
+        var defaultLocal = GitBranchCleanup.LocalName(defaultBranch);
+        var merged = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var branch in branches)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (listed.Contains(branch) && !string.Equals(branch, defaultLocal, StringComparison.Ordinal)
+                && await HasOwnWorkAsync(branch, defaultBranch, cancellationToken).ConfigureAwait(false))
+                merged.Add(branch);
+        }
+        return merged;
+    }
+
+    /// <summary>
     /// <c>--merged</c> に載ったブランチが、本当に作業を終えて取り込まれたものか。作ったばかりで自前のコミットが無い
     /// ブランチ（§24.56 で課題から起こした直後など）も <c>--merged</c> には載るので、それを「取り込み済み」として
     /// 片付けの候補に出さない。reflog で作業の跡を見て、reflog が無ければ先端が既定ブランチと同じかで判断する。

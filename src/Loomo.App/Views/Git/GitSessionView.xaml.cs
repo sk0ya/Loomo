@@ -240,6 +240,25 @@ public partial class GitSessionView : UserControl
             Vm, SelectedBranch,
             GitBranchOperation.Delete, confirm: ConfirmGitOperation);
 
+    /// <summary>
+    /// ブランチの片付け（§24.69）。窓で選ばれたものを消す——取り込み済みは <c>-d</c>、取り込まれていないもの
+    /// （窓で「取り込まれていないものも消す」を付けたときだけ来る）は <c>-D</c>。消せなかったものは理由つきで知らせる。
+    /// </summary>
+    private async void OnBranchesCleanup(object sender, RoutedEventArgs e)
+    {
+        if (Vm is not { } vm) return;
+        await vm.RefreshWorktreesAsync();
+        var defaultLocal = GitBranchCleanup.LocalName(await vm.GetDefaultBranchAsync());
+        if (BranchCleanupDialog.Prompt(Window.GetWindow(this), vm, defaultLocal) is not { } result)
+            return;
+        var outcome = await vm.DeleteBranchesAsync(result.Branches, result.Force);
+        if (outcome.Failed.Count > 0)
+            MessageBox.Show(Window.GetWindow(this),
+                $"{outcome.Deleted} 本を削除しました。消せなかったもの：{Environment.NewLine}{Environment.NewLine}"
+                + string.Join(Environment.NewLine, outcome.Failed),
+                "ブランチの片付け", MessageBoxButton.OK, MessageBoxImage.Warning);
+    }
+
     // ===== 操作バー（ブランチ一覧の左の縦帯）=====
 
     /// <summary>

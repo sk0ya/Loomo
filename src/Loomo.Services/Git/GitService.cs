@@ -358,6 +358,16 @@ public sealed class GitService
         return await _worktrees.InspectAsync(worktrees, defaultBranch, progress, cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>ブランチの片付けの材料（§24.69）：既定ブランチと、そこへ取り込み済みのローカルブランチ。既定ブランチが決まらなければ空。</summary>
+    public async Task<(string? DefaultBranch, IReadOnlySet<string> Merged)> InspectBranchMergesAsync(
+        IReadOnlyList<string> branches, System.Threading.CancellationToken cancellationToken)
+    {
+        var defaultBranch = await GetDefaultBranchAsync().ConfigureAwait(false);
+        if (defaultBranch is not { Length: > 0 })
+            return (null, new HashSet<string>(StringComparer.Ordinal));
+        return (defaultBranch, await _worktrees.GetMergedBranchesAsync(branches, defaultBranch, cancellationToken).ConfigureAwait(false));
+    }
+
     public Task<GitCommandResult> LockWorktreeAsync(string path, string? reason) => _worktrees.LockAsync(path, reason);
 
     public Task<GitCommandResult> UnlockWorktreeAsync(string path) => _worktrees.UnlockAsync(path);
