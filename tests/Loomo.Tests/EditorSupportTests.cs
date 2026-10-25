@@ -238,6 +238,19 @@ public class EditorSupportTests
     }
 
     [Fact]
+    public void JsonSupport_絞り込みの横に一致した数の欄を出す()
+    {
+        // §24.90：0 件と「まだ絞っていない」を分ける。数は絞り込みのたびにページ側で .match を数えて入れる。
+        var support = new JsonEditorSupport(new LoomoSettings(), new JsonSchemaValidator());
+
+        var html = support.RenderHtml(@"C:\work\data.json", """{ "a": 1 }""");
+
+        Assert.Contains("id=\"json-filter-count\"", html);
+        Assert.Contains("一致なし", html);
+        Assert.Contains("querySelectorAll('.match').length", html);
+    }
+
+    [Fact]
     public void JsonSupport_各ノードにソース行番号を埋めエディタへ飛べる()
     {
         var support = new JsonEditorSupport(new LoomoSettings(), new JsonSchemaValidator());

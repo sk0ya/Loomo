@@ -409,6 +409,7 @@ internal static class JsonPreviewPage
             (() => {
                 const root = () => document.getElementById('json-root');
                 const filterInput = () => document.getElementById('json-filter');
+                const filterCount = () => document.getElementById('json-filter-count');
 
                 // --- クリップボードへコピー（https://page.loomo は secure context なので Clipboard API 可。失敗時は退避） ---
                 function copyText(text) {
@@ -518,17 +519,25 @@ internal static class JsonPreviewPage
                     const r = root();
                     if (!r) return;
                     const q = (filterInput()?.value || '').trim().toLowerCase();
+                    const count = filterCount();
                     if (!q) {
                         r.querySelectorAll('.node, .line').forEach(el => {
                             el.style.display = '';
                             el.classList.remove('match');
                         });
+                        if (count) count.textContent = '';
                         return;
                     }
                     r.querySelectorAll(':scope > .node, :scope > .line').forEach(el => {
                         if (el.classList.contains('node')) filterNode(el, q);
                         else filterLeaf(el, q);
                     });
+                    // 一致した数（値の行とキーの行）。0 件と「まだ絞っていない」を分ける（§24.90）。
+                    if (count) {
+                        const n = r.querySelectorAll('.match').length;
+                        count.textContent = n === 0 ? '一致なし' : `${n} 件`;
+                        count.classList.toggle('none', n === 0);
+                    }
                 }
                 document.addEventListener('input', e => {
                     if (e.target.id === 'json-filter') applyFilter();
@@ -550,6 +559,7 @@ internal static class JsonPreviewPage
             <body>
             <div class="toolbar">
                 <input id="json-filter" type="search" placeholder="キー・値で絞り込み…" autocomplete="off" spellcheck="false">
+                <span id="json-filter-count" class="count" aria-live="polite"></span>
                 <button data-act="expand">全展開</button>
                 <button data-act="collapse">全折りたたみ</button>
             </div>
@@ -622,6 +632,9 @@ internal static class JsonPreviewPage
             }
             .toolbar input::placeholder { color: {{muted}}; }
             .toolbar input:focus { border-color: {{muted}}; }
+            .toolbar .count { align-self: center; font-size: 11px; color: {{muted}}; white-space: nowrap; }
+            .toolbar .count:empty { display: none; }
+            .toolbar .count.none { color: {{fg}}; }
             #json-root { white-space: nowrap; }
             .line { white-space: pre; }
             .opening { cursor: pointer; }
