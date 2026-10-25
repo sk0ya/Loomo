@@ -443,6 +443,27 @@ public sealed class GitService
 
     public Task<string> GetCommitSummaryAsync(string hash) => _history.GetCommitSummaryAsync(hash);
 
+    /// <summary>
+    /// これからコミットする変更の差分（§24.95・コミットメッセージの補完の材料）。ステージ済みの全部（<c>diff --cached</c>）と、
+    /// コミット時にステージする作業ツリーのファイル（<paramref name="workingTreePaths"/>）の <c>diff</c>。文脈の行は要らないので <c>-U0</c>。
+    /// 読めなければ空（補完は添え物）。
+    /// </summary>
+    public async Task<string> GetPendingCommitDiffAsync(IReadOnlyList<string> workingTreePaths)
+    {
+        var staged = await _runner.RunAsync("--no-optional-locks", "diff", "--cached", "-U0", "--no-color", "--no-ext-diff")
+            .ConfigureAwait(false);
+        var text = staged.Success ? staged.Output : "";
+        if (workingTreePaths.Count > 0)
+        {
+            var args = new List<string> { "--no-optional-locks", "diff", "-U0", "--no-color", "--no-ext-diff", "--" };
+            args.AddRange(workingTreePaths);
+            var working = await _runner.RunAsync(args.ToArray()).ConfigureAwait(false);
+            if (working.Success)
+                text += working.Output;
+        }
+        return text;
+    }
+
     /// <summary>消したファイル（新しい順・パスごとにいちばん新しい削除・§24.94）。</summary>
     public Task<IReadOnlyList<GitDeletedFile>> GetDeletedFilesAsync(int maxCommits = 300) => _history.GetDeletedFilesAsync(maxCommits);
 

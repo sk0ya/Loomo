@@ -10,6 +10,9 @@ public partial class GitPanelView
         InitializeComponent();
         new GitPanelInteractionController(
             StagedList, WorkingTree, () => DataContext as GitPanelViewModel);
+        // コミットメッセージで、変えたファイル名・識別子を補完する（§24.95）。
+        new CommitMessageCompletionController(CommitMessageBox, () =>
+            DataContext is GitPanelViewModel vm ? vm.LoadCommitCompletionCandidatesAsync() : Task.FromResult<IReadOnlyList<string>>([]));
     }
 
     /// <summary>「⤒」は左クリックで当て方（クリップボード／ファイル）のメニューを開く（§24.38.1）。</summary>

@@ -1196,6 +1196,27 @@ public sealed partial class GitPanelViewModel : ObservableObject
     /// <summary>強制プッシュは「送るものが無い」ときも要る（リモートを巻き戻す用途）ので Ahead を見ない。</summary>
     private bool CanPushForce() => IsRepository && HasRemote && !IsBusy;
 
+    /// <summary>
+    /// コミットメッセージの補完の候補（§24.95）：これからコミットする変更（ステージ済み＋チェックした作業ツリーのファイル）の、
+    /// 変えた行の識別子とファイルの名前。未追跡のファイルは差分が無いので名前だけ。読めなければ名前だけ。
+    /// </summary>
+    public async Task<IReadOnlyList<string>> LoadCommitCompletionCandidatesAsync()
+    {
+        var tracked = Changes.Where(i => i.IsChecked).SelectMany(i => PathsOf(i.Entry)).Distinct(StringComparer.Ordinal).ToList();
+        var paths = Staged.Select(i => i.Entry.Path).Concat(tracked)
+            .Concat(UnversionedFiles.Where(i => i.IsChecked).Select(i => i.Entry.Path)).ToList();
+        string diff;
+        try
+        {
+            diff = await _git.GetPendingCommitDiffAsync(tracked);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception or IOException)
+        {
+            diff = "";
+        }
+        return CommitMessageCompletion.Build(diff, paths);
+    }
+
     [RelayCommand(CanExecute = nameof(CanFetch))]
     private Task FetchAsync() => RunOpAsync("フェッチ", () => _git.FetchAsync());
 
