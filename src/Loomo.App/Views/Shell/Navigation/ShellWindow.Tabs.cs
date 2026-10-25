@@ -33,6 +33,20 @@ public partial class ShellWindow {
             return;
         tab.CustomName = _vm.Tabs.RenameTerminalTab(tab.Id, name, TerminalHeaderWithAgentMark(tab.Id, tab.View.HeaderTitle));
     }
+    /// <summary>ターミナルタブにメモを付ける（§24.73・TABS／ペインヘッダーの右クリック）。空で OK すると外す。
+    /// 名前・色と同じく生きたタブの側に持って保存するので、切替・再起動・閉じて開き直す・切り離しのどれでも残る。</summary>
+    private void EditTerminalTabNote(Guid id) {
+        var tab = _terminalTabs.FirstOrDefault(t => t.Id == id);
+        if (tab is null)
+            return;
+        var note = InputDialog.Prompt(this, "ターミナルタブのメモ",
+            "このタブの覚え書き（何のためのタブか・何を待っているか）。空にするとメモを外します",
+            tab.Note ?? "", allowEmpty: true, multiline: true);
+        if (note is null)
+            return;
+        tab.Note = _vm.Tabs.SetTerminalTabNote(tab.Id, note);
+        SaveActiveWorkspaceSnapshot();
+    }
     /// <summary>ターミナルタブの色（§24.63）を生きたタブの側へ写して保存する。名前と同じく、ワークスペース切替で TABS の行が
     /// 作り直されても残るように。</summary>
     private void OnSidebarTabColorChanged(object? sender, TabEntryViewModel entry) {

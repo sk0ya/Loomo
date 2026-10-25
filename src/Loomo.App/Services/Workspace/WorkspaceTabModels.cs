@@ -42,6 +42,9 @@ internal sealed class TerminalTab(Guid id, TerminalTabView view)
     /// <summary>人が付けた色の鍵（§24.63）。名前と同じ理由で生きたタブの側に持つ。</summary>
     public string? ColorKey { get; set; }
 
+    /// <summary>人が付けたメモ（§24.73）。名前・色と同じ理由で生きたタブの側に持つ。</summary>
+    public string? Note { get; set; }
+
     /// <summary>最後に見た時刻。閉じたあとに直前に見ていたタブへ戻るため（§24.44）。保存はしない。</summary>
     public DateTime LastSeenUtc { get; set; }
 }

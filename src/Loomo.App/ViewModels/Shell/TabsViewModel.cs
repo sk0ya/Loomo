@@ -101,6 +101,17 @@ public sealed partial class TabEntryViewModel : ObservableObject
     public Brush? ColorBrush => TerminalTabColors.BrushFor(ColorKey);
     public bool HasColor => ColorBrush is not null;
 
+    /// <summary>人が付けたメモ（Terminal タブのみ・§24.73）。「このタブは本番の DB にトンネルを張っている」のような、名前には長すぎる覚え書き。</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasNote))]
+    [NotifyPropertyChangedFor(nameof(NoteFirstLine))]
+    private string? _note;
+
+    public bool HasNote => !string.IsNullOrEmpty(Note);
+
+    /// <summary>行に出すメモの 1 行目（全文はツールチップ）。</summary>
+    public string? NoteFirstLine => Note?.Split('\n')[0].TrimEnd('\r');
+
     /// <summary>ターミナルの行の 2 行目（§24.53）：「場所 (ブランチ) · 最後のコマンド ✓ · 3分前」／走っている間は
     /// 「▶ コマンド · 経過」。ターミナル以外と、まだ何も分かっていないタブは null（1 行の行のまま）。</summary>
     [ObservableProperty]
@@ -321,6 +332,9 @@ public sealed partial class TabsViewModel : ObservableObject
     public event EventHandler<TabEntryViewModel>? TabDetachRequested;
     /// <summary>「名前を付ける…」：タブに人が付けた名前を設定・解除する（Terminal のみ）。</summary>
     public event EventHandler<TabEntryViewModel>? TabRenameRequested;
+
+    /// <summary>「メモ…」：Terminal タブのメモを書く・消す（§24.73）。</summary>
+    public event EventHandler<TabEntryViewModel>? TabNoteRequested;
 
     /// <summary>Terminal タブの色が変わった（§24.63）。</summary>
     public event EventHandler<TabEntryViewModel>? TabColorChanged;
@@ -679,13 +693,15 @@ public sealed partial class TabsViewModel : ObservableObject
         _browserKind.Icon = _icons.GetBrowserDefaultIcon();
     }
 
-    public void AddTerminalTab(Guid id, string? title, bool isActive, string? customName = null, string? colorKey = null)
+    public void AddTerminalTab(Guid id, string? title, bool isActive, string? customName = null, string? colorKey = null,
+                               string? note = null)
     {
         var name = NormalizeCustomName(customName);
         var tab = new TabEntryViewModel(id, TabEntryKind.Terminal, TerminalTitle(name, title), isActive)
         {
             CustomName = name,
             ColorKey = TerminalTabColors.Normalize(colorKey),
+            Note = NormalizeNote(note),
         };
         tab.IsGroupShown = ShowTerminalTabs;
         WatchGroupState(tab);
@@ -728,6 +744,27 @@ public sealed partial class TabsViewModel : ObservableObject
         tab.ColorKey = key;
         TabColorChanged?.Invoke(this, tab);
     }
+
+    /// <summary>Terminal タブにメモを付ける（空なら外す・§24.73）。戻り値は正規化したメモで、呼び出し側（生きたタブ）はこれを持つ。</summary>
+    public string? SetTerminalTabNote(Guid id, string? note)
+    {
+        var normalized = NormalizeNote(note);
+        if (TerminalTabs.FirstOrDefault(t => t.Id == id) is { } tab)
+            tab.Note = normalized;
+        return normalized;
+    }
+
+    /// <summary>メモの正規化：前後の空白と空行を落とし、空は null。長すぎるもの（2000 字超）は切る——状態ファイルに入るので。</summary>
+    public static string? NormalizeNote(string? note)
+    {
+        var trimmed = note?.Replace("\r\n", "\n").Trim();
+        if (string.IsNullOrEmpty(trimmed))
+            return null;
+        return trimmed.Length <= MaxNoteChars ? trimmed : trimmed[..MaxNoteChars];
+    }
+
+    /// <summary>メモの上限（文字）。</summary>
+    public const int MaxNoteChars = 2000;
 
     /// <summary>ターミナルの行の 2 行目を差し替える（§24.53）。文言は <see cref="TerminalTabSummary"/> が組む。</summary>
     public void SetTerminalStatus(Guid id, TerminalTabStatus status, IReadOnlyList<string>? folders, DateTime nowUtc)
@@ -999,6 +1036,13 @@ public sealed partial class TabsViewModel : ObservableObject
     {
         if (tab is { CanRename: true })
             TabRenameRequested?.Invoke(this, tab);
+    }
+
+    [RelayCommand]
+    private void EditTabNote(TabEntryViewModel? tab)
+    {
+        if (tab is { CanRename: true })
+            TabNoteRequested?.Invoke(this, tab);
     }
 
     /// <summary>行の右クリック「ピン留め／ピン留めを外す」（§24.29）。</summary>

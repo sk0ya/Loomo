@@ -6,7 +6,7 @@ namespace sk0ya.Loomo.App.Services;
 
 /// <summary>手で閉じたターミナルのタブ。シェルは常駐ホストが <see cref="ClosedTerminalTabs.KeepFor"/> のあいだ預かっている（§24.41）。</summary>
 public sealed record ClosedTerminalTab(Guid Id, Guid WorkspaceId, string? CustomName, string? WorkingDirectory, DateTime ClosedUtc,
-    string? ColorKey = null);
+    string? ColorKey = null, string? Note = null);
 
 /// <summary>
 /// 閉じたターミナルを開き直すための控え（§24.41・Ghostty 1.2.0 の「undo terminal closure」）。新しいものから戻す。

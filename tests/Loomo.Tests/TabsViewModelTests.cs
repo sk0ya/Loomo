@@ -366,6 +366,36 @@ public sealed class TabsViewModelTests
     }
 
     [Fact]
+    public void ターミナルタブのメモは整えて持ち_1行目を行に出す()
+    {
+        var sut = Sut();
+        var shell = Guid.NewGuid();
+        sut.AddTerminalTab(shell, "pwsh", isActive: true, note: "  \r\n");
+        var tab = sut.TerminalTabs[0];
+        Assert.Null(tab.Note);   // 空白だけはメモなし
+        Assert.False(tab.HasNote);
+
+        var kept = sut.SetTerminalTabNote(shell, "\r\n本番 DB へのトンネル\r\n閉じない\r\n");
+        Assert.Equal("本番 DB へのトンネル\n閉じない", kept);
+        Assert.Equal(kept, tab.Note);
+        Assert.Equal("本番 DB へのトンネル", tab.NoteFirstLine);
+        Assert.True(tab.HasNote);
+
+        Assert.Null(sut.SetTerminalTabNote(shell, ""));
+        Assert.False(tab.HasNote);
+        Assert.Equal(TabsViewModel.MaxNoteChars, TabsViewModel.NormalizeNote(new string('x', 5000))!.Length);
+    }
+
+    [Fact]
+    public void ターミナルタブのメモはスナップショットに残る()
+    {
+        var snapshot = new WorkspaceSnapshot { TerminalTabs = [new TerminalTabSnapshot { Id = Guid.NewGuid(), Note = "メモ" }] };
+        var json = System.Text.Json.JsonSerializer.Serialize(snapshot);
+        var back = System.Text.Json.JsonSerializer.Deserialize<WorkspaceSnapshot>(json)!;
+        Assert.Equal("メモ", Assert.Single(back.TerminalTabs).Note);
+    }
+
+    [Fact]
     public void 行を作り直しても名前を引き継ぐ_名前を付けられるのはターミナルだけ()
     {
         var sut = Sut();

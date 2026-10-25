@@ -35,6 +35,9 @@ public partial class ShellWindow {
             var rename = new MenuItem { Header = "名前を付ける…" };
             rename.Click += (_, _) => RenameTerminalTab(tab.Id);
             menu.Items.Add(rename);
+            var note = new MenuItem { Header = tab.HasNote ? "メモを書き直す…" : "メモ…", ToolTip = tab.Note };
+            note.Click += (_, _) => EditTerminalTabNote(tab.Id);
+            menu.Items.Add(note);
             var color = new MenuItem { Header = "色" };
             TerminalTabColors.FillMenu(color, tab.ColorKey, key => _vm.Tabs.SetTerminalTabColor(tab, key));
             menu.Items.Add(color);

@@ -1004,6 +1004,8 @@ public sealed class TerminalTabSnapshot
     public string? WorkingDirectory { get; set; }
     /// <summary>人が付けた色の鍵（§24.63・<c>TerminalTabColors</c>）。</summary>
     public string? ColorKey { get; set; }
+    /// <summary>人が付けたメモ（§24.73）。名前・色と同じく鍵の側（生きたタブ）に持ってここへ書く。</summary>
+    public string? Note { get; set; }
 }
 
 public sealed class BrowserTabSnapshot

@@ -284,6 +284,7 @@ public partial class ShellWindow : Window {
         vm.Tabs.TabDetachRequested += OnSidebarTabDetachRequested;
         vm.Tabs.TabNewRequested += OnSidebarTabNewRequested;
         vm.Tabs.TabRenameRequested += OnSidebarTabRenameRequested;
+        vm.Tabs.TabNoteRequested += (_, entry) => EditTerminalTabNote(entry.Id);
         vm.Tabs.TabColorChanged += OnSidebarTabColorChanged;
         vm.Workspaces.WorkspaceActivated += OnWorkspaceActivated;
         vm.Workspaces.WorkspaceRemoved += OnWorkspaceRemoved;

@@ -187,6 +187,11 @@
                                   Visibility="{Binding CanRename, Converter={StaticResource BoolToVis}}"
                                   Command="{Binding PlacementTarget.Tag.RenameTabCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                   CommandParameter="{Binding}" />
+                        <!-- ターミナルだけ：覚え書き（§24.73）。行の 3 行目とツールチップに出る -->
+                        <MenuItem Header="メモ…"
+                                  Visibility="{Binding CanRename, Converter={StaticResource BoolToVis}}"
+                                  Command="{Binding PlacementTarget.Tag.EditTabNoteCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                  CommandParameter="{Binding}" />
                         <!-- ターミナルだけ：色の印（§24.63）。子は開いたときに今の色へ合わせて作る。空の子は ▸ を出すための仮置き。 -->
                         <MenuItem Header="色"
                                   Visibility="{Binding CanRename, Converter={StaticResource BoolToVis}}"
@@ -252,6 +257,11 @@
                                            FontSize="{DynamicResource Fs11}" Foreground="{DynamicResource FgDim}"
                                            Margin="0,0,0,3" TextTrimming="CharacterEllipsis"
                                            Visibility="{Binding HasTerminalSummary, Converter={StaticResource BoolToVis}}" />
+                                <!-- 人が付けたメモ（ターミナルだけ・§24.73）。1 行目だけ出し、全文はツールチップ。 -->
+                                <TextBlock Text="{Binding NoteFirstLine, StringFormat={}📝 {0}}" ToolTip="{Binding Note}"
+                                           FontSize="{DynamicResource Fs11}" Foreground="{DynamicResource Accent}"
+                                           Margin="0,0,0,3" TextTrimming="CharacterEllipsis"
+                                           Visibility="{Binding HasNote, Converter={StaticResource BoolToVis}}" />
                             </StackPanel>
                             <!-- 問題の数（§24.33）。ファイルツリーの行と同じ印。 -->
                             <TextBlock Grid.Column="2" Margin="4,0,0,0"

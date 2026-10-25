@@ -78,7 +78,7 @@ public partial class ShellWindow {
         if (!PersistentTerminalsEnabled || CurrentTerminalWorkspace.WorkspaceId is not { } workspaceId
             || !_remoteTerminalSessions.TryRemove(tab.Id, out var session))
             return false;
-        var entry = new ClosedTerminalTab(tab.Id, workspaceId, tab.CustomName, tab.View.WorkingDirectory, DateTime.UtcNow, tab.ColorKey);
+        var entry = new ClosedTerminalTab(tab.Id, workspaceId, tab.CustomName, tab.View.WorkingDirectory, DateTime.UtcNow, tab.ColorKey, tab.Note);
         // Park はホストが読み終えるまで待つ（ふつうは数 ms）。UI スレッドでは待たない。
         await Task.Run(() => session.Park(ClosedTerminalTabs.KeepFor));
         _closedTerminalTabs.Push(entry);
@@ -95,7 +95,7 @@ public partial class ShellWindow {
         }
         var cwd = Directory.Exists(closed.WorkingDirectory) ? closed.WorkingDirectory!
             : _activeWorkspace?.RootPath ?? _terminal.CurrentDirectory;
-        AddRestoredTerminalTab(cwd, closed.Id, closed.CustomName, closed.ColorKey);
+        AddRestoredTerminalTab(cwd, closed.Id, closed.CustomName, closed.ColorKey, closed.Note);
         if (!IsPaneVisible(PaneKind.Terminal))
             SetPaneVisible(PaneKind.Terminal, true);
         ActivateTerminalTab(closed.Id);
@@ -112,6 +112,7 @@ public partial class ShellWindow {
             return;
         snapshot.TerminalTabs = _terminalTabs.Select(tab => new TerminalTabSnapshot {
             Id = tab.Id, CustomName = tab.CustomName, WorkingDirectory = tab.View.WorkingDirectory, ColorKey = tab.ColorKey,
+            Note = tab.Note,
         }).ToList();
         snapshot.ActiveTerminalTabId = _activeTerminalTab?.Id;
         snapshot.TerminalViewLayout = _terminalViews?.Capture();
@@ -151,7 +152,7 @@ public partial class ShellWindow {
             return false;
         foreach (var saved in restorable) {
             var cwd = Directory.Exists(saved.WorkingDirectory) ? saved.WorkingDirectory! : fallbackDirectory;
-            AddRestoredTerminalTab(cwd, saved.Id, saved.CustomName, saved.ColorKey);
+            AddRestoredTerminalTab(cwd, saved.Id, saved.CustomName, saved.ColorKey, saved.Note);
         }
         terminalWorkspace.NextTabNumber = _terminalTabs.Count + 1;
         var active = workspace.ActiveTerminalTabId is { } id && _terminalTabs.Any(t => t.Id == id)
@@ -194,12 +195,13 @@ public partial class ShellWindow {
         SaveActiveWorkspaceSnapshot();
     }
 
-    private void AddRestoredTerminalTab(string cwd, Guid id, string? customName, string? colorKey = null) {
+    private void AddRestoredTerminalTab(string cwd, Guid id, string? customName, string? colorKey = null, string? note = null) {
         var tab = CreateTerminalTab(cwd, id);
         tab.CustomName = customName;
         tab.ColorKey = TerminalTabColors.Normalize(colorKey);
+        tab.Note = TabsViewModel.NormalizeNote(note);
         _terminalTabs.Add(tab);
-        _vm.Tabs.AddTerminalTab(tab.Id, tab.View.HeaderTitle, false, customName, tab.ColorKey);
+        _vm.Tabs.AddTerminalTab(tab.Id, tab.View.HeaderTitle, false, customName, tab.ColorKey, tab.Note);
     }
 
     /// <summary>

@@ -77,7 +77,7 @@ public partial class ShellWindow {
         _terminalViews?.Reset();
         _vm.Tabs.TerminalTabs.Clear();
         foreach (var tab in _terminalTabs)
-            _vm.Tabs.AddTerminalTab(tab.Id, tab.View.HeaderTitle, false, tab.CustomName, tab.ColorKey);
+            _vm.Tabs.AddTerminalTab(tab.Id, tab.View.HeaderTitle, false, tab.CustomName, tab.ColorKey, tab.Note);
     }
     private void DetachEditorTabs() {
         ResetEditorSupportForWorkspaceSwitch();
