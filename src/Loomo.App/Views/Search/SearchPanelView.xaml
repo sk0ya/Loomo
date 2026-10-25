@@ -686,7 +686,7 @@
             </TreeView>
             <!-- 書き換えるモード（§24.86）：一致した行を 1 行 1 欄で並べる（同じ行の一致は 1 欄）。書き換えた行は印を付け、
                  「書き戻す」で書き換えた行だけを元のファイルへ戻す。Esc でやめる（OnLineEditKeyDown）。 -->
-            <DockPanel Visibility="{Binding IsEditingLines, Converter={StaticResource BoolToVis}}">
+            <DockPanel Margin="8,0,8,0" Visibility="{Binding IsEditingLines, Converter={StaticResource BoolToVis}}">
                 <DockPanel DockPanel.Dock="Top" Margin="0,2,0,4">
                     <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
                         <Button Height="22" Padding="8,0" Margin="4,0,0,0" FontSize="{DynamicResource Fs11}"

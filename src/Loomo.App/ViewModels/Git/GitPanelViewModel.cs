@@ -896,13 +896,9 @@ public sealed partial class GitPanelViewModel : ObservableObject
             StatusMessage = $"{FilesLabel(paths)} に HEAD との差がありません。";
             return;
         }
-        try { Clipboard.SetText(text); }
-        catch (System.Runtime.InteropServices.ExternalException)
-        {
-            StatusMessage = "クリップボードが使えませんでした。もう一度試してください。";
-            StatusIsError = true;
-            return;
-        }
+        // ほかのコピーと同じ口で書く。Clipboard.SetText は書けた後でも（クリップボードの履歴などが掴んで）例外を投げることがあり、
+        // 失敗と言うと書けているのに「使えませんでした」になる（実機で確かめて分かった）。
+        ClipboardText.Set(text);
         StatusMessage = $"{FilesLabel(paths)} の変更をパッチとしてコピーしました。";
         StatusIsError = false;
     }
@@ -943,7 +939,10 @@ public sealed partial class GitPanelViewModel : ObservableObject
                 StatusIsError = true;
                 return;
             }
-            var description = DescribePatch($"{FilesLabel(paths)} の変更を {where} へ{verb}", preview)
+            // 「写す／移す」の確認。パッチを当てる確認（DescribePatch）の文頭は「〜を当てます」なので流用すると
+            // 「へ移すを作業ツリーへ当てます」になる（実機で確かめて分かった）。文頭だけ自分で書く。
+            var description = DescribePatchAs(
+                    $"{FilesLabel(paths)} の変更を {where} の作業ツリーへ{(move ? "移します" : "写します")}（{preview.Files.Count} ファイル）。", preview)
                 + (move ? "\n\n当たったら、この作業ツリーからは消します。" : "\n\nこの作業ツリーの変更はそのまま残します。");
             if (ConfirmPatch is { } confirm && !confirm($"変更を別のワークツリーへ{verb}", description))
                 return;
@@ -1098,6 +1097,10 @@ public sealed partial class GitPanelViewModel : ObservableObject
     public Func<string, string, bool>? ConfirmPatch { get; set; }
 
     internal static string DescribePatch(string source, GitPatchPreview preview)
+        => DescribePatchAs($"{source}を作業ツリーへ当てます（{preview.Files.Count} ファイル）。", preview);
+
+    /// <summary>当てる前の確認の本文：<paramref name="lead"/> の一文のあとに、ファイルごとの増減と当て方を並べる。</summary>
+    internal static string DescribePatchAs(string lead, GitPatchPreview preview)
     {
         const int shown = 12;
         var lines = preview.Files
@@ -1110,7 +1113,7 @@ public sealed partial class GitPanelViewModel : ObservableObject
         var mode = preview.Mode == GitPatchApplyMode.ThreeWay
             ? "\nそのままでは当たらないので 3-way で当てます。当たった変更はステージされ、衝突したところには印が付きます。"
             : "";
-        return $"{source}を作業ツリーへ当てます（{preview.Files.Count} ファイル）。\n\n{string.Join("\n", lines)}\n{mode}";
+        return $"{lead}\n\n{string.Join("\n", lines)}\n{mode}";
     }
 
     [RelayCommand]

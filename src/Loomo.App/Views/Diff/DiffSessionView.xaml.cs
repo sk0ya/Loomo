@@ -224,7 +224,10 @@ public partial class DiffSessionView : UserControl, IDisposable
     /// <summary>左右並びの本文で、変更に含む語（§24.85）を塗る。エディタの検索の塗りと同じ（文字どおりの一致・カーソルは動かさない）。</summary>
     private void HighlightChangeFilter()
     {
-        var term = Vm?.ActiveChangeFilter ?? "";
+        // 絞り込みは大文字小文字を区別しないが、エディタの塗りは smartcase（大文字を含む語は区別する）なので、
+        // 「NEW」で絞ると一覧には残るのに本文の new が塗られなかった（実機で確かめて分かった）。小文字にして渡せば
+        // smartcase／ignorecase の下では区別しない塗りになる。
+        var term = (Vm?.ActiveChangeFilter ?? "").ToLowerInvariant();
         _sideEditors.Left?.HighlightSearch(term);
         _sideEditors.Right?.HighlightSearch(term);
     }

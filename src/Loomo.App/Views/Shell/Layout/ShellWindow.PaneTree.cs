@@ -17,11 +17,12 @@ public partial class ShellWindow {
         RebuildPaneLayout();
         SaveActiveWorkspaceSnapshot();
     }
-    /// <summary>ペインの配置全体を回す・裏返す・縦横を入れ替える・中身を巡回させる（§24.84）。タイル（分割・ドックの中央）に効く。
-    /// 集中（舞台＋袖）の間は配置の木が見えていないので何もしない。</summary>
+    /// <summary>ペインの配置全体を回す・裏返す・縦横を入れ替える・中身を巡回させる（§24.84）。分割表示のときだけ効く——
+    /// 集中（舞台＋袖）では配置の木が見えておらず、ドックでは中央が 1 枚でほかのペインはドックの領域に出るので、
+    /// 木を変えても画面は変わらない（黙って木だけ変えると、分割へ戻したときに知らない配置が出てくる）。</summary>
     private void TransformPaneLayout(Func<PaneNode, PaneNode> transform) {
-        if (_stageActive) {
-            ToastService.Info("ペインの配置は分割表示のときに変えられます");
+        if (CurrentDisplayMode != DisplayMode.Layout) {
+            ToastService.Info("ペインの配置は分割表示のときに変えられます（Ctrl+Shift+T で表示を切り替え）");
             return;
         }
         if (_root is null)

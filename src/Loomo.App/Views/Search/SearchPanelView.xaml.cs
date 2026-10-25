@@ -408,8 +408,10 @@ public partial class SearchPanelView : UserControl
         var answer = owner is null
             ? MessageBox.Show(message, "検索結果を書き戻す", MessageBoxButton.OKCancel, MessageBoxImage.Question)
             : MessageBox.Show(owner, message, "検索結果を書き戻す", MessageBoxButton.OKCancel, MessageBoxImage.Question);
-        if (answer == MessageBoxResult.OK)
-            vm.ApplyLineEdits();
+        if (answer != MessageBoxResult.OK) return;
+        vm.ApplyLineEdits();
+        // 結果は状態欄に書くが、続く検索し直しがすぐ件数で上書きするので、トーストでも言う（実機で確かめて分かった）。
+        ToastService.Info(vm.StatusMessage);
     }
 
     /// <summary>書き換えるモードの Esc はやめる（書き換えを捨てる）。行の欄での Enter は次の行へ。</summary>
