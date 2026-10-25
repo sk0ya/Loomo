@@ -22,6 +22,11 @@ internal sealed class DiffFlowDocumentRenderer
     // 行内差分（行の中で実際に変わった文字）。行の背景と同じ色相をずっと濃くして、行の色の上に重ねる。
     private static readonly Brush AddedChangeBackground = FrozenBrush("#664CAF50");
     private static readonly Brush RemovedChangeBackground = FrozenBrush("#66E57373");
+    // 移動したブロック（§24.70）。赤／緑と見分けられる別の色相（移動元＝紫・移動先＝青）にし、左端に同じ色の帯を立てる。
+    private static readonly Brush MovedSourceBackground = FrozenBrush("#249575CD");
+    private static readonly Brush MovedTargetBackground = FrozenBrush("#244FA3F7");
+    private static readonly Brush MovedSourceBar = FrozenBrush("#FF9575CD");
+    private static readonly Brush MovedTargetBar = FrozenBrush("#FF4FA3F7");
     private static readonly Func<TokenKind, Brush?> ThemeForeground = EditorSyntaxColors.Foreground;
 
     private readonly FrameworkElement _owner;
@@ -31,19 +36,44 @@ internal sealed class DiffFlowDocumentRenderer
 
     internal DiffUnifiedDocumentBuild BuildUnified(
         IReadOnlyList<DiffRowVm> rows, IReadOnlyList<SyntaxToken[]?> syntax,
-        IReadOnlyList<IReadOnlyList<TextSpan>?>? inline = null)
+        IReadOnlyList<IReadOnlyList<TextSpan>?>? inline = null, IReadOnlyList<DiffMove?>? moves = null)
     {
         inline ??= DiffInlineHighlighter.None;
+        moves ??= DiffMoveHighlighter.None;
         // 左端のステージの帯（枠3＋余白3）のぶん広げる。足さないと最長の行が折り返す。
         var document = NewDocument(MeasureMaxWidth(rows.Select(row => row.Text)) + StagedBarWidth);
         var build = new ChunkedAppendState(rows.Count, (start, end) =>
         {
             for (var index = start; index < end; index++)
-                document.Blocks.Add(TextParagraph(
+            {
+                var paragraph = TextParagraph(
                     rows[index].Text, rows[index].Kind, TokensAt(syntax, index), rows[index].Staged,
-                    index < inline.Count ? inline[index] : null));
+                    index < inline.Count ? inline[index] : null);
+                if (index < moves.Count && moves[index] is { } move)
+                    MarkMoved(paragraph, move, rows[index].Staged, document);
+                document.Blocks.Add(paragraph);
+            }
         });
         return new DiffUnifiedDocumentBuild(document, build);
+    }
+
+    /// <summary>移動したブロックの行の見た目と、ダブルクリックで相手の側へ飛ぶ口（§24.70）。相手の段落は分割して組み立てる途中で
+    /// まだ無いことがあるので、押された時点で文書から引く（行と段落は 1 対 1・同じ順）。</summary>
+    private static void MarkMoved(Paragraph paragraph, DiffMove move, bool staged, FlowDocument document)
+    {
+        paragraph.Background = move.IsSource ? MovedSourceBackground : MovedTargetBackground;
+        if (!staged)
+            paragraph.BorderBrush = move.IsSource ? MovedSourceBar : MovedTargetBar;
+        paragraph.ToolTip = DiffMoveHighlighter.ToolTip(move);
+        paragraph.MouseLeftButtonDown += (_, e) =>
+        {
+            if (e.ClickCount != 2) return;
+            if (document.Blocks.ElementAtOrDefault(move.CounterpartRow) is { } target)
+            {
+                target.BringIntoView();
+                e.Handled = true;
+            }
+        };
     }
 
     internal static List<Run> SyntaxRuns(

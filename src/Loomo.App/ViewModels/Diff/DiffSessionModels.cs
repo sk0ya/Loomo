@@ -4,7 +4,12 @@ namespace sk0ya.Loomo.App.ViewModels;
 
 /// <param name="Staged">変更行（Added/Removed）がステージ済みか（作業ツリーの差分だけが持つ）。</param>
 /// <param name="Owner">通しで読む（§24.50）ときの、その行のファイル。1 ファイルの表示では null（＝選択中のファイル）。</param>
-public sealed record DiffRowVm(string Kind, string Text, bool Staged = false, DiffFileItem? Owner = null);
+public sealed record DiffRowVm(string Kind, string Text, bool Staged = false, DiffFileItem? Owner = null)
+{
+    /// <summary>行がパッチの 1 文字（<c>+</c>／<c>-</c>／空白）を頭に持つか（git の差分）。アドホック比較の行は本文そのもので false。
+    /// 本文だけを比べる判定（移動したブロック・§24.70）が剥がすかどうかを決める。</summary>
+    public bool Prefixed { get; init; }
+}
 
 /// <param name="LeftStaged">左の削除行がステージ済みか（作業ツリーの差分だけが持つ）。</param>
 /// <param name="RightStaged">右の追加行がステージ済みか（同上）。</param>

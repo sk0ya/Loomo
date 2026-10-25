@@ -35,6 +35,9 @@ public sealed partial class DiffSessionViewModel
     /// <see cref="UnifiedSyntax"/> と同じく、<b>行と必ず同時に差し替える</b>。</summary>
     public IReadOnlyList<IReadOnlyList<TextSpan>?> UnifiedInline { get; private set; } = DiffInlineHighlighter.None;
 
+    /// <summary>統合表示の各行と1対1の「移動したブロック」の印（§24.70。移動でない行は null）。行と必ず同時に差し替える。</summary>
+    public IReadOnlyList<DiffMove?> UnifiedMoves { get; private set; } = DiffMoveHighlighter.None;
+
     /// <summary>
     /// <see cref="SideRows"/> がどの項目の差分か。左右並びの本文はエディタ2つで出すので、どのファイルを
     /// 右で編集させるか・見出しを何にするかは<b>行と同じ項目</b>から決める——<see cref="SelectedFile"/> で
@@ -86,7 +89,18 @@ public sealed partial class DiffSessionViewModel
 
     /// <summary>統合表示の組み立て結果（行＋その行の構文トークン）。行と色付けを一組で運ぶための器。</summary>
     private sealed record UnifiedContent(
-        List<DiffRowVm> Rows, IReadOnlyList<SyntaxToken[]?> Syntax, IReadOnlyList<IReadOnlyList<TextSpan>?> Inline);
+        List<DiffRowVm> Rows, IReadOnlyList<SyntaxToken[]?> Syntax, IReadOnlyList<IReadOnlyList<TextSpan>?> Inline)
+    {
+        /// <summary>移動したブロックの印（§24.70）。行内差分は移動の行から外してある。</summary>
+        public IReadOnlyList<DiffMove?> Moves { get; init; } = DiffMoveHighlighter.None;
+
+        /// <summary>移動の印を付け、移動の行の行内差分を外した組（同じかたまりの無関係な行と対になった範囲を出さない）。</summary>
+        public UnifiedContent WithMoves()
+        {
+            var moves = DiffMoveHighlighter.ForUnified(Rows);
+            return this with { Moves = moves, Inline = DiffMoveHighlighter.WithoutMovedInline(Inline, moves) };
+        }
+    }
 
     /// <summary>左右並び表示の組み立て結果。構文の色はエディタ自身が付ける。</summary>
     private sealed record SideContent(List<DiffSideRowVm> Rows);
@@ -108,6 +122,7 @@ public sealed partial class DiffSessionViewModel
             MarkdownRenderHtml = null;
             UnifiedSyntax = continuous.Syntax;
             UnifiedInline = continuous.Inline;
+            UnifiedMoves = continuous.Moves;
             ReplaceIfChanged(DiffRows, continuous.Rows);
             return;
         }
@@ -147,6 +162,7 @@ public sealed partial class DiffSessionViewModel
                 return;
             UnifiedSyntax = content.Syntax;
             UnifiedInline = content.Inline;
+            UnifiedMoves = content.Moves;
             ReplaceIfChanged(DiffRows, rows);
         }
     }
@@ -228,7 +244,7 @@ public sealed partial class DiffSessionViewModel
                 // アドホック比較は全文2つから組み立てる経路で、行は本文そのもの（パッチの1文字プレフィックス無し）。
                 return new UnifiedContent(
                     rows, DiffSyntaxHighlighter.ForUnified(path, hasPatchPrefix: false, rows),
-                    DiffInlineHighlighter.ForUnified(rows, hasPatchPrefix: false));
+                    DiffInlineHighlighter.ForUnified(rows, hasPatchPrefix: false)).WithMoves();
             });
         }
 
@@ -238,10 +254,10 @@ public sealed partial class DiffSessionViewModel
         {
             var rows = new List<DiffRowVm>();
             foreach (var raw in text.Replace("\r\n", "\n").Split('\n'))
-                rows.Add(new DiffRowVm(SideBySideDiff.ClassifyPatchLine(raw).ToString(), raw));
+                rows.Add(new DiffRowVm(SideBySideDiff.ClassifyPatchLine(raw).ToString(), raw) { Prefixed = true });
             return new UnifiedContent(
                 rows, DiffSyntaxHighlighter.ForUnified(path, hasPatchPrefix: true, rows),
-                DiffInlineHighlighter.ForUnified(rows, hasPatchPrefix: true));
+                DiffInlineHighlighter.ForUnified(rows, hasPatchPrefix: true)).WithMoves();
         });
     }
 

@@ -77,7 +77,9 @@ public sealed partial class DiffSessionViewModel
             parts.Add(new ContinuousPart(item, content.Rows, content.Syntax, content.Inline));
             rowCount += content.Rows.Count + 1;
         }
-        return Join(parts, files.Count - parts.Count);
+        // 移動はファイルをまたいで探す（クラスへの抽出は別のファイルへ移る）ので、つないだ後の行で調べ直す。
+        var joined = Join(parts, files.Count - parts.Count);
+        return await Task.Run(() => joined.WithMoves());
     }
 
     /// <summary>1 ファイル分の行と、その行の構文・行内差分。</summary>
