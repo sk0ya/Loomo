@@ -62,7 +62,8 @@ internal static class SelectionActionMenuBuilder
     }
 
     public static void AddBlameCommitMenuItems(
-        ContextMenu menu, string? commitHash, Action showDiff, Action showHistory, Action closeBlame)
+        ContextMenu menu, string? commitHash, Action showDiff, Action showHistory, Action closeBlame,
+        Action? copyLink = null)
     {
         var shortHash = commitHash is { Length: > 7 } hash ? hash[..7] : commitHash;
         var diff = new MenuItem { Header = $"Diff で差分を表示（{shortHash}）" };
@@ -71,6 +72,13 @@ internal static class SelectionActionMenuBuilder
         var history = new MenuItem { Header = "Git ペインでこのファイルの履歴を表示" };
         history.Click += (_, _) => showHistory();
         menu.Items.Add(history);
+        // このコミットへの loomo:// のリンク（§24.74）。
+        if (copyLink is not null)
+        {
+            var link = new MenuItem { Header = "このコミットへのリンクをコピー（loomo://）" };
+            link.Click += (_, _) => copyLink();
+            menu.Items.Add(link);
+        }
         menu.Items.Add(new Separator());
         var close = new MenuItem { Header = "Blame を閉じる", InputGestureText = ":Gblame" };
         close.Click += (_, _) => closeBlame();

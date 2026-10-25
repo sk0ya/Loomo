@@ -210,7 +210,24 @@ public partial class ShellWindow {
                 _ = ShowGitHistoryAsync(p, blame.CommitHash);
         },
         // :Gblame はトグル。このメニューは blame カラム上でしか出ないので、実行すれば必ず閉じる側に倒れる。
-        () => control.ExecuteCommand("Gblame"));
+        () => control.ExecuteCommand("Gblame"),
+        CopyBlameCommitLinkAction(control.FilePath, blame.CommitHash));
+    }
+    /// <summary>blame の行のコミットへのリンクを写す動作（§24.74）。リポジトリはファイルから上へ .git を探して決める
+    /// （Git ペインが対象にしているリポジトリとは限らない）。未コミットの行・リポジトリの外では出さない。</summary>
+    private Action? CopyBlameCommitLinkAction(string? filePath, string? commitHash) {
+        if (filePath is not { Length: > 0 } || !LoomoLink.IsCommitHash(commitHash) || commitHash!.All(c => c == '0'))
+            return null;
+        for (var dir = Path.GetDirectoryName(filePath); dir is not null; dir = Path.GetDirectoryName(dir)) {
+            var dotGit = Path.Combine(dir, ".git");
+            if (!Directory.Exists(dotGit) && !File.Exists(dotGit))
+                continue;
+            var repository = dir;
+            return () => ToastService.Info(LoomoLinkClipboard.CopyCommit(_workspace, repository, commitHash, null)
+                ? "このコミットへのリンクをコピーしました"
+                : "リンクをコピーしました（loomo:// を Windows に登録できなかったので、踏んでも開きません）");
+        }
+        return null;
     }
     private void ShowBlameCommitDiff(VimEditorControl control, Editor.Controls.Git.EditorBlameLine blame) {
         if (blame.CommitHash is not { Length: > 0 } hash) return;
