@@ -153,6 +153,9 @@ public sealed class GitWorktreeService
     public Task<GitCommandResult> UnlockAsync(string path)
         => _mutations.ExecuteAsync(GitWorktreeArgs.UnlockArgs(path));
 
+    public Task<GitCommandResult> RepairAsync(string movedPath)
+        => _mutations.ExecuteAsync(GitWorktreeArgs.RepairArgs(movedPath));
+
     /// <summary>
     /// 作業ツリーの「いまの状態」（未コミットの編集・ステージ・<b>未追跡</b>を含む。ignore されたものは除く）を
     /// tree オブジェクトに固めて返す。<b>相手の作業ツリーにもインデックスにも一切書かない</b>——

@@ -380,6 +380,34 @@ public sealed class GitWorktreeServiceTests : IAsyncLifetime
         Assert.Equal(new[] { "done" }, merged.ToArray());
     }
 
+    [Fact]
+    public async Task 動かしたワークツリーは動かした先で繋ぎ直せる()
+    {
+        var path = await AddFeatureWorktreeAsync("moving");
+        var moved = Path.Combine(_base, "moved-here");
+        Directory.Move(path, moved);
+        var lost = Assert.Single(await _git.GetWorktreesAsync(), w => w.Branch == "moving");
+        Assert.True(lost.IsPrunable);                                   // git からは消えたように見える
+
+        Assert.Null(GitWorktreeArgs.RepairTargetProblem(moved));
+        var result = await _git.RepairWorktreeAsync(moved);
+
+        Assert.True(result.Success, result.Message);
+        var back = Assert.Single(await _git.GetWorktreesAsync(), w => w.Branch == "moving");
+        Assert.False(back.IsPrunable);
+        Assert.Equal(Path.GetFullPath(moved).TrimEnd('\\'), Path.GetFullPath(back.Path).TrimEnd('\\'), ignoreCase: true);
+    }
+
+    [Fact]
+    public void 繋ぎ直す先はワークツリーのフォルダーだけを受け付ける()
+    {
+        Assert.NotNull(GitWorktreeArgs.RepairTargetProblem(Path.Combine(_base, "no-such-folder")));
+        Assert.Contains("本体", GitWorktreeArgs.RepairTargetProblem(_root));   // .git がフォルダー＝リポジトリの本体
+        var plain = Path.Combine(_base, "plain");
+        Directory.CreateDirectory(plain);
+        Assert.Contains(".git がありません", GitWorktreeArgs.RepairTargetProblem(plain));
+    }
+
     private sealed class SyncProgress(Action<GitWorktreeUsage> report) : IProgress<GitWorktreeUsage>
     {
         public void Report(GitWorktreeUsage value) => report(value);

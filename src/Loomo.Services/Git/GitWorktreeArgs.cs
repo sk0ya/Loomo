@@ -69,6 +69,29 @@ public static class GitWorktreeArgs
 
     public static string[] UnlockArgs(string path) => new[] { "worktree", "unlock", path };
 
+    /// <summary>フォルダーを動かして見失ったワークツリーを、動かした先で繋ぎ直す（§24.75）。git は動かした先の <c>.git</c> ファイルから
+    /// 本体の管理領域を引き、双方向の参照を書き直す。</summary>
+    public static string[] RepairArgs(string movedPath) => new[] { "worktree", "repair", movedPath };
+
+    /// <summary>
+    /// 繋ぎ直す先として選んだフォルダーが、ワークツリーを動かしたものらしいか（§24.75）。らしくなければ理由を返す。
+    /// リンクされたワークツリーの根には <c>.git</c> という<b>ファイル</b>（<c>gitdir: …</c>）がある——フォルダーならそれは本体のリポジトリ。
+    /// </summary>
+    public static string? RepairTargetProblem(string? movedPath)
+    {
+        if (string.IsNullOrWhiteSpace(movedPath) || !Directory.Exists(movedPath))
+            return "フォルダーがありません。";
+        var dotGit = Path.Combine(movedPath, ".git");
+        if (Directory.Exists(dotGit))
+            return "これはワークツリーではなく、リポジトリの本体です（.git がフォルダー）。";
+        if (!File.Exists(dotGit))
+            return "このフォルダーには .git がありません。動かしたワークツリーのフォルダーそのものを選んでください。";
+        string first;
+        try { first = File.ReadLines(dotGit).FirstOrDefault() ?? ""; }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return $".git を読めません: {ex.Message}"; }
+        return first.StartsWith("gitdir:", StringComparison.Ordinal) ? null : ".git の中身がワークツリーのもの（gitdir: …）ではありません。";
+    }
+
     /// <summary>未コミットの変更（未追跡を含む）を数えるための引数（作業ツリーの中で実行する）。</summary>
     public static string[] StatusArgs() => new[] { "--no-optional-locks", "status", "--porcelain" };
 

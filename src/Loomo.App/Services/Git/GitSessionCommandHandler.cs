@@ -119,6 +119,8 @@ public sealed class GitSessionCommandHandler
     public Task<GitCommandResult?> PruneWorktreesAsync() => RunAsync("ワークツリーの掃除", _git.PruneWorktreesAsync);
     public Task<GitCommandResult?> LockWorktreeAsync(GitWorktreeInfo worktree, string? reason) =>
         RunAsync($"ワークツリーのロック {worktree.DisplayName}", () => _git.LockWorktreeAsync(worktree.Path, reason));
+    public Task<GitCommandResult?> RepairWorktreeAsync(GitWorktreeInfo worktree, string movedPath) =>
+        RunAsync($"ワークツリーを繋ぎ直す {worktree.DisplayName}", () => _git.RepairWorktreeAsync(movedPath));
     public Task<GitCommandResult?> UnlockWorktreeAsync(GitWorktreeInfo worktree) =>
         RunAsync($"ワークツリーのロック解除 {worktree.DisplayName}", () => _git.UnlockWorktreeAsync(worktree.Path));
 

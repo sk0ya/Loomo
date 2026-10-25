@@ -280,6 +280,34 @@ public class WorktreeRoomListTests
         Assert.Equal(2, sut.Workspaces.Count);
     }
 
+    /// <summary>§24.75 動かしたワークツリーを繋ぎ直したら、その部屋も新しい場所へ付け替わる（名前・畳み先は引き継ぐ）。</summary>
+    [Fact]
+    public void Moving_a_worktree_moves_its_room()
+    {
+        var main = NewDir();
+        var worktree = NewDir(main);
+        var movedTo = NewDir();
+        var sut = NewList();
+        var activated = new List<WorkspaceSnapshot>();
+        sut.WorkspaceActivated += (_, s) => activated.Add(s);
+        sut.ActivateFolder(main);
+        var mainRoom = activated[^1];
+        mainRoom.EditorTabs.Add(new EditorTabSnapshot { FilePath = Path.Combine(main, "a.txt") });
+        sut.ActivateWorktree(To(worktree, main, main), mainRoom, _ => true);
+        var oldRoom = activated[^1];
+        oldRoom.CustomName = "調査";
+        sut.ActivateWorktree(To(main, worktree, main), oldRoom, _ => true);   // 本体へ戻る（動かすのは開いていない部屋）
+
+        Assert.True(sut.MoveWorktreeRoom(worktree, movedTo, _ => true));
+
+        Assert.Equal(2, sut.Workspaces.Count);
+        var moved = Assert.Single(sut.Workspaces, w => w.RootPath == movedTo);
+        Assert.Equal(main, moved.WorktreeOf);
+        Assert.Equal("調査", moved.CustomName);
+        Assert.DoesNotContain(sut.Workspaces, w => w.RootPath == worktree);
+        Assert.False(sut.MoveWorktreeRoom(worktree, movedTo, _ => true));     // もう無い
+    }
+
     /// <summary>ワークツリーの部屋から先に開いた本体は、どこの「写し」でもない。</summary>
     [Fact]
     public void Main_worktree_seeded_from_a_worktree_room_is_not_nested()

@@ -441,6 +441,31 @@ public sealed partial class WorkspaceListViewModel : ObservableObject
     }
 
     /// <summary>
+    /// ワークツリーを動かして繋ぎ直した（§24.75）：旧い場所の部屋を新しい場所へ付け替える。中身（配置・タブ・ツリーの開き具合）は
+    /// ワークツリーへ切り替えるときと同じ写し方（<see cref="WorktreeRoomSeed"/>）で新しい場所へ読み替え、名前・ピン・畳み先・最後に使った時刻は引き継ぐ。
+    /// 旧い部屋は消す（そのままだとフォルダーが無いので、次の読み直しで外される）。開いている部屋そのものは動かさない。
+    /// </summary>
+    public bool MoveWorktreeRoom(string oldPath, string newPath, Func<string, bool> exists)
+    {
+        if (FindByRoot(Path.GetFullPath(oldPath)) is not { WorktreeOf: { } main } snapshot
+            || snapshot.Id == _state.ActiveWorkspaceId
+            || FindByRoot(Path.GetFullPath(newPath)) is not null
+            || Workspaces.FirstOrDefault(w => w.Id == snapshot.Id) is not { } entry)
+            return false;
+        var full = snapshot.IsDetailsLoaded ? snapshot : _store.LoadWorkspace(snapshot.Id) ?? snapshot;
+        var moved = WorktreeRoomSeed.Seed(full,
+            new WorktreeSwitchRequest(newPath, oldPath, main, [oldPath, newPath, main]), exists);
+        moved.WorktreeOf = main;
+        moved.CustomName = snapshot.CustomName;
+        moved.Pinned = snapshot.Pinned;
+        moved.LastUsedUtc = snapshot.LastUsedUtc;
+        _state.Workspaces.Add(moved);
+        Workspaces.Insert(Math.Max(0, Workspaces.IndexOf(entry)), new WorkspaceEntryViewModel(moved));
+        Drop([entry]);   // 保存と一覧の組み直しはここで 1 回
+        return true;
+    }
+
+    /// <summary>
     /// フォルダーが消えたワークツリーの部屋を一覧から外す。Claude Code などはセッションを閉じると
     /// ワークツリーを自分で消すので、Loomo の外で消えたものはここで拾う。普通の部屋は「見つかりません」の
     /// 警告で残す（ワークツリーの部屋は写しなので戻す意味がない）。<b>本体のワークツリーが見えているときだけ</b>

@@ -372,6 +372,9 @@ public sealed class GitService
 
     public Task<GitCommandResult> UnlockWorktreeAsync(string path) => _worktrees.UnlockAsync(path);
 
+    /// <summary>動かしたワークツリーを動かした先で繋ぎ直す（§24.75）。</summary>
+    public Task<GitCommandResult> RepairWorktreeAsync(string movedPath) => _worktrees.RepairAsync(movedPath);
+
     /// <summary>作業ツリーのいまの状態（未コミット・未追跡込み）を tree に固める。</summary>
     public Task<GitWorktreeSnapshot> SnapshotWorktreeAsync(string path) => _worktrees.SnapshotAsync(path);
 

@@ -13,6 +13,8 @@ public partial class ShellWindow {
         _vm.GitSession.WorktreeOpenRequested += (_, request) => OpenWorktree(request);
         _vm.GitSession.WorktreeRemoving += (_, path) => DetachWorktreeFolders(path);
         _vm.GitSession.WorktreeRemoved += (_, path) => _vm.Workspaces.RemoveWorktreeRoom(path);
+        _vm.GitSession.WorktreeMoved += (_, moved) => _vm.Workspaces.MoveWorktreeRoom(
+            moved.OldPath, moved.NewPath, p => System.IO.File.Exists(p) || System.IO.Directory.Exists(p));
         _vm.GitSession.WorktreeRoomLastUsed = _vm.Workspaces.LastUsedOfRoot;
         _vm.GitSession.PropertyChanged += (_, e) => {
             if (e.PropertyName == nameof(GitSessionViewModel.Worktrees)) RefreshWorktreeAgentMarks();

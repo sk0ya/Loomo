@@ -717,6 +717,8 @@
                                         <Separator />
                                         <MenuItem x:Name="WorktreeMenuLock" Header="ロック…（掃除・削除から守る）" Click="OnWorktreeLock" />
                                         <MenuItem x:Name="WorktreeMenuUnlock" Header="ロック解除" Click="OnWorktreeUnlock" />
+                                        <!-- フォルダーを動かして見失ったものを、動かした先で繋ぎ直す（§24.75）。消えたものだけに出す。 -->
+                                        <MenuItem x:Name="WorktreeMenuRepair" Header="動かした先を選んで繋ぎ直す…" Click="OnWorktreeRepair" />
                                         <MenuItem Header="掃除（フォルダーが消えたものを一覧から外す）" Click="OnWorktreesPrune" />
                                         <MenuItem x:Name="WorktreeMenuRemove" Header="削除…" Click="OnWorktreeRemove" />
                                     </ContextMenu>

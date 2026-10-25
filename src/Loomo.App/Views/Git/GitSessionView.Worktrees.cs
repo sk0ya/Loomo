@@ -189,6 +189,23 @@ public partial class GitSessionView
         await vm.LockWorktreeAsync(worktree, reason);
     }
 
+    /// <summary>フォルダーが消えた（動かした）ワークツリーを、動かした先を選んで繋ぎ直す（§24.75）。</summary>
+    private async void OnWorktreeRepair(object sender, RoutedEventArgs e)
+    {
+        if (Vm is not { } vm || SelectedWorktree is not { IsPrunable: true } worktree)
+            return;
+        var parent = System.IO.Path.GetDirectoryName(worktree.Path);
+        var picker = new Microsoft.Win32.OpenFolderDialog
+        {
+            Title = $"「{worktree.DisplayName}」を動かした先のフォルダーを選択",
+            InitialDirectory = parent is not null && System.IO.Directory.Exists(parent) ? parent : "",
+        };
+        if (picker.ShowDialog(Window.GetWindow(this)) != true)
+            return;
+        if (await vm.RepairWorktreeAsync(worktree, picker.FolderName) is { } problem)
+            MessageBox.Show(Window.GetWindow(this), problem, "ワークツリーを繋ぎ直す", MessageBoxButton.OK, MessageBoxImage.Warning);
+    }
+
     private async void OnWorktreeUnlock(object sender, RoutedEventArgs e)
     {
         if (Vm is { } vm && SelectedWorktree is { } worktree)
@@ -251,5 +268,6 @@ public partial class GitSessionView
         WorktreeMenuLock.Visibility = !worktree.IsLocked && !worktree.IsMain ? Visibility.Visible : Visibility.Collapsed;
         WorktreeMenuUnlock.Visibility = worktree.IsLocked ? Visibility.Visible : Visibility.Collapsed;
         WorktreeMenuRemove.IsEnabled = worktree.CanRemove && !worktree.IsCurrent;
+        WorktreeMenuRepair.Visibility = worktree.IsPrunable ? Visibility.Visible : Visibility.Collapsed;
     }
 }

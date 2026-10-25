@@ -197,6 +197,25 @@ public sealed partial class GitSessionViewModel
 
     public Task<GitCommandResult?> PruneWorktreesAsync() => Commands.PruneWorktreesAsync();
 
+    /// <summary>動かしたワークツリーを繋ぎ直した（旧パス → 新パス・§24.75）。部屋の付け替えは一覧を持つ ShellWindow。</summary>
+    public event EventHandler<(string OldPath, string NewPath)>? WorktreeMoved;
+
+    /// <summary>
+    /// フォルダーが消えた（動かした）ワークツリーを、動かした先で繋ぎ直す（§24.75・Tower 14.1 の Repair Worktree）。
+    /// 選んだフォルダーがワークツリーらしくなければ git を呼ばずに理由を返す。繋ぎ直したら一覧を読み直す。
+    /// </summary>
+    public async Task<string?> RepairWorktreeAsync(GitWorktreeInfo worktree, string movedPath)
+    {
+        if (GitWorktreeArgs.RepairTargetProblem(movedPath) is { } problem)
+            return problem;
+        var result = await Commands.RepairWorktreeAsync(worktree, movedPath);
+        if (result is not { Success: true })
+            return result?.Message.Trim() is { Length: > 0 } message ? message : "繋ぎ直せませんでした。";
+        await RefreshWorktreesAsync();
+        WorktreeMoved?.Invoke(this, (worktree.Path, System.IO.Path.GetFullPath(movedPath)));
+        return null;
+    }
+
     /// <summary>ワークツリーのパス → その部屋（ワークスペース）を最後に開いた時刻。部屋が無ければ null。
     /// 片付け（§24.55）の「最後に触った」に使う。部屋の一覧を持つ ShellWindow が入れる。</summary>
     public Func<string, DateTime?>? WorktreeRoomLastUsed { get; set; }
