@@ -272,6 +272,9 @@ public static class CommandCatalog
         // 部屋のタブを最近使った順に巡る（§24.65）。Ctrl を押したまま進み、離したらそのタブへ。
         new CommandDescriptor("tab.switchRecent", CatTab, "最近使ったタブへ（押したまま巡る）", "Ctrl+Tab"),
         new CommandDescriptor("tab.switchRecentBack", CatTab, "最近使ったタブへ（逆順に巡る）", "Ctrl+Shift+Tab"),
+        // タブをキーボードで並べ替える（§24.77）。番号（§24.47）の並びを手で整える口。
+        new CommandDescriptor("tab.moveLeft", CatTab, "タブを左（上）へ動かす", "Ctrl+Shift+PageUp"),
+        new CommandDescriptor("tab.moveRight", CatTab, "タブを右（下）へ動かす", "Ctrl+Shift+PageDown"),
     }
     // 番号でタブを選ぶ（§24.47）。フォーカスのあるペイン（ターミナル／エディタ／ブラウザ）の N 番目へ。
     // ピン留めが先頭に並び、9 は最後のタブ（ブラウザと同じ）。

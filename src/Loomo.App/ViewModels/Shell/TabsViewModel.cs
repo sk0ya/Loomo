@@ -1055,6 +1055,30 @@ public sealed partial class TabsViewModel : ObservableObject
             TabPinToggled?.Invoke(this, tab);
     }
 
+    /// <summary>行 <paramref name="id"/> を、同じ種別の行 <paramref name="targetId"/> の位置へ動かす（§24.77）。
+    /// 一覧はコレクションの変更で組み直されるので、ここでは並びを変えるだけ。</summary>
+    public void MoveTab(Guid id, Guid targetId)
+    {
+        foreach (var tabs in new[] { EditorTabs, BrowserTabs, TerminalTabs })
+        {
+            var from = IndexOf(tabs, id);
+            var to = IndexOf(tabs, targetId);
+            if (from >= 0 && to >= 0)
+            {
+                tabs.Move(from, to);
+                return;
+            }
+        }
+
+        static int IndexOf(ObservableCollection<TabEntryViewModel> tabs, Guid id)
+        {
+            for (var i = 0; i < tabs.Count; i++)
+                if (tabs[i].Id == id)
+                    return i;
+            return -1;
+        }
+    }
+
     /// <summary>行のピン留め表示を合わせる（復元・切替で行を作り直したとき）。</summary>
     public void SetTabPinned(Guid id, bool pinned)
     {

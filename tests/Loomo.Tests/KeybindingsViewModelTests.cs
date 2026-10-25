@@ -68,8 +68,11 @@ public class KeybindingsViewModelTests : IDisposable
     [Fact]
     public void Query_is_case_insensitive()
     {
+        // 「Ctrl+Shift+PageUp」（tab.moveLeft）も前方一致で拾うので、含まれることだけを見る。
         _sut.Query = "ctrl+shift+p";
-        Assert.Equal(new[] { "palette.open" }, VisibleIds());
+        var ids = VisibleIds();
+        Assert.Contains("palette.open", ids);
+        Assert.DoesNotContain("pane.zoom", ids);
     }
 
     [Fact]

@@ -58,6 +58,7 @@ public partial class ShellWindow {
             ["editor.selection.expand"] = ExpandSemanticSelection, ["editor.selection.shrink"] = ShrinkSemanticSelection, ["editor.test.debugAtCaret"] = DebugTestAtCaret, ["editor.test.runAtCaret"] = RunTestAtCaret, ["http.sendAtCaret"] = SendHttpRequestAtCaret,
             ["stage.cycle"] = () => CycleInActiveMode(1), ["mode.toggle"] = ToggleDisplayMode,
             ["tab.switchRecent"] = () => CycleRoomTabs(+1), ["tab.switchRecentBack"] = () => CycleRoomTabs(-1),
+            ["tab.moveLeft"] = () => MoveFocusedTab(-1), ["tab.moveRight"] = () => MoveFocusedTab(+1),
             ["tab.newTerminal"] = () => OnTerminalNewTab(this, new RoutedEventArgs()), ["tab.newEditor"] = () => OnEditorNewTab(this, new RoutedEventArgs()), ["tab.newBrowser"] = () => OnBrowserNewTab(this, new RoutedEventArgs()),
             ["sidebar.explorer"] = () => _vm.ShowExplorerCommand.Execute(null), ["sidebar.tabs"] = () => _vm.ShowTabsCommand.Execute(null), ["sidebar.sessions"] = () => _vm.Sessions.ToggleOpenCommand.Execute(null), ["sidebar.git"] = () => _vm.ShowGitCommand.Execute(null), ["sidebar.pegboard"] = () => _vm.ShowPegboardCommand.Execute(null), ["sidebar.solution"] = () => _vm.ShowSolutionCommand.Execute(null), ["sidebar.running"] = () => _vm.ShowRunningCommand.Execute(null), ["sidebar.settings"] = () => _vm.ShowSettingsCommand.Execute(null), ["sidebar.appearance"] = () => _vm.ShowAppearanceCommand.Execute(null), ["explorer.revealActiveFile"] = RevealActiveFileInFolderTree, };
         foreach (var command in CSharpEditorCommandCatalog.All)
@@ -94,6 +95,7 @@ public partial class ShellWindow {
         "editor.save" => IsEditorFocused(),
         // 番号のタブ（§24.47）はタブを持つペインにフォーカスがあるときだけ。ほかでは Ctrl+数字を内側へ通す。
         _ when id.StartsWith("tab.goto", StringComparison.Ordinal) => FocusedTabPane() is not null,
+        "tab.moveLeft" or "tab.moveRight" => FocusedTabPane() is not null,
         // 構造編集は本文を書き換えるので、エディタにフォーカスがあるときだけ。ターミナルで押した
         // Ctrl+Shift+↑ が、裏のC#タブの文を黙って動かす事故を防ぐ（キーは内側のペインへ届く）。
         _ when id.StartsWith("editor.csharp.structure.", StringComparison.Ordinal)
@@ -135,6 +137,31 @@ public partial class ShellWindow {
                     ActivateBrowserTab(_browserTabs[b].Id);
                 break;
         }
+    }
+
+    /// <summary>フォーカスのあるペインの、いま見ているタブを左右へ動かす（§24.77）。
+    /// 番号（§24.47）が数える並びと TABS の並びの両方を同じ相手と入れ替える。</summary>
+    private void MoveFocusedTab(int delta) {
+        var moved = FocusedTabPane() switch {
+            PaneKind.Editor => MoveTab(_editorTabs, _activeEditorTab, delta, t => t.IsPinned, t => t.Id),
+            PaneKind.Terminal => MoveTab(_terminalTabs, _activeTerminalTab, delta, _ => false, t => t.Id),
+            PaneKind.Browser => MoveTab(_browserTabs, _activeBrowserTab, delta, t => t.IsPinned, t => t.Id),
+            _ => false,
+        };
+        if (moved)
+            SaveActiveWorkspaceSnapshot();
+    }
+
+    private bool MoveTab<TTab>(List<TTab> tabs, TTab? active, int delta, Func<TTab, bool> isPinned, Func<TTab, Guid> idOf)
+        where TTab : class {
+        if (active is null || tabs.FindIndex(t => ReferenceEquals(t, active)) is not (>= 0 and var index))
+            return false;
+        if (TabMovePolicy.Target(tabs, index, delta, isPinned) is not (>= 0 and var target))
+            return false;
+        var targetId = idOf(tabs[target]);
+        TabMovePolicy.Move(tabs, index, target);
+        _vm.Tabs.MoveTab(idOf(active), targetId);
+        return true;
     }
 
     private bool IsEditorFocused()
