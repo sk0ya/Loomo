@@ -333,16 +333,30 @@
         <!-- リポジトリでないとき -->
         <StackPanel DockPanel.Dock="Top" Margin="10,4"
                     Visibility="{Binding IsRepository, Converter={StaticResource InverseBoolToVis}}">
-            <TextBlock Text="このフォルダは git リポジトリではありません。"
-                       TextWrapping="Wrap" Foreground="{DynamicResource FgDim}" />
-            <Button Margin="0,8,0,0" Content="リポジトリを初期化 (git init)"
-                    Style="{StaticResource FlatButton}" HorizontalAlignment="Stretch"
-                    Command="{Binding InitRepositoryCommand}" />
-            <!-- 「まだリポジトリが無い」場所には、作る（init）と持ってくる（clone）の2つの入口が要る。
-                 クローン先はワークスペースへ追加されるので、いまのフォルダーは閉じない。 -->
-            <Button Margin="0,4,0,0" Content="リポジトリをクローン…"
-                    Style="{StaticResource FlatButton}" HorizontalAlignment="Stretch"
-                    Command="{Binding CloneCommand}" />
+            <!-- 所有者が違うために git が拒否している（§24.91）。リポジトリは在るので init／clone は出さない
+                 （出すと、在るリポジトリの上で git init を勧めることになる）。 -->
+            <StackPanel Visibility="{Binding UntrustedRepositoryPath, Converter={StaticResource NonEmptyToVis}}">
+                <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource FgDim}"
+                           Text="このフォルダーのリポジトリは今のユーザーの持ち物ではないため、git が扱いを拒否しています。" />
+                <TextBlock Margin="0,4,0,0" TextWrapping="Wrap" FontFamily="Cascadia Mono, Consolas"
+                           Foreground="{DynamicResource FgDim}" Text="{Binding UntrustedRepositoryPath}" />
+                <Button Margin="0,8,0,0" Content="このリポジトリを信頼する…"
+                        Style="{StaticResource FlatButton}" HorizontalAlignment="Stretch"
+                        ToolTip="git config --global --add safe.directory を確認してから足します"
+                        Command="{Binding TrustRepositoryCommand}" />
+            </StackPanel>
+            <StackPanel Visibility="{Binding UntrustedRepositoryPath, Converter={StaticResource EmptyToVis}}">
+                <TextBlock Text="このフォルダは git リポジトリではありません。"
+                           TextWrapping="Wrap" Foreground="{DynamicResource FgDim}" />
+                <Button Margin="0,8,0,0" Content="リポジトリを初期化 (git init)"
+                        Style="{StaticResource FlatButton}" HorizontalAlignment="Stretch"
+                        Command="{Binding InitRepositoryCommand}" />
+                <!-- 「まだリポジトリが無い」場所には、作る（init）と持ってくる（clone）の2つの入口が要る。
+                     クローン先はワークスペースへ追加されるので、いまのフォルダーは閉じない。 -->
+                <Button Margin="0,4,0,0" Content="リポジトリをクローン…"
+                        Style="{StaticResource FlatButton}" HorizontalAlignment="Stretch"
+                        Command="{Binding CloneCommand}" />
+            </StackPanel>
         </StackPanel>
 
         <DockPanel Visibility="{Binding IsRepository, Converter={StaticResource BoolToVis}}">

@@ -56,6 +56,12 @@ public sealed partial class GitSessionViewModel : ObservableObject
     private IReadOnlyList<GitBranchInfo> _allBranches = Array.Empty<GitBranchInfo>();
 
     [ObservableProperty] private bool _isRepository = true;
+    /// <summary>リポジトリでないときの文面。所有者が違うために git が拒否しているなら、init ではなく信頼を勧める（§24.91）。</summary>
+    [ObservableProperty] private string _notRepositoryMessage = NotRepositoryText(null);
+
+    internal static string NotRepositoryText(string? untrustedPath) => untrustedPath is { Length: > 0 }
+        ? $"このワークスペースのリポジトリ（{untrustedPath}）は今のユーザーの持ち物ではないため、git が扱いを拒否しています。サイドバーの Git パネルから信頼できます。"
+        : "このワークスペースは git リポジトリではありません。サイドバーの Git パネルから初期化できます。";
     [ObservableProperty] private string _branchLabel = "";
     [ObservableProperty] private bool _isBusy;
     [ObservableProperty] private string _statusMessage = "";
@@ -371,6 +377,7 @@ public sealed partial class GitSessionViewModel : ObservableObject
         var overview = await _query.LoadOverviewAsync();
         _status = overview.Status;
         IsRepository = _status.IsRepository;
+        NotRepositoryMessage = NotRepositoryText(_status.UntrustedPath);
 
         if (!_status.IsRepository)
         {

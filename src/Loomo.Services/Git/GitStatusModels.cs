@@ -24,6 +24,10 @@ public sealed record GitStatusSnapshot
     /// 「リポジトリではない」ではなく「今は分からない」の意味）。rebase 中の index.lock 競合や
     /// git の一時的な失敗を、恒久的な答えとしてキャッシュしないための区別。</summary>
     public bool QueryFailed { get; init; }
+
+    /// <summary>所有者が違うために git が拒否したリポジトリ（§24.91）なら、<c>safe.directory</c> に足すべきパス。
+    /// このとき <see cref="IsRepository"/> は false だが、「リポジトリではない」ではない（init を勧めてはいけない）。</summary>
+    public string? UntrustedPath { get; init; }
     public string Branch { get; init; } = "";
     public string? Upstream { get; init; }
     public int Ahead { get; init; }

@@ -204,6 +204,8 @@ public sealed partial class GitPanelViewModel : ObservableObject
     private bool _loaded;
 
     [ObservableProperty] private bool _isRepository = true;
+    /// <summary>所有者が違うために git が拒否したリポジトリなら、そのパス（§24.91）。init ではなく「信頼する」を出す。</summary>
+    [ObservableProperty] private string? _untrustedRepositoryPath;
     [ObservableProperty] private string _branchLabel = "";
 
     /// <summary>分岐元へマージしたら衝突しそうなファイル（§24.40）。null なら衝突しない（か、まだ見ていない）。</summary>
@@ -614,6 +616,7 @@ public sealed partial class GitPanelViewModel : ObservableObject
         _loaded = true;
         var status = await _git.GetStatusAsync();
 
+        UntrustedRepositoryPath = status.UntrustedPath;
         IsRepository = status.IsRepository;
         if (!status.IsRepository)
         {
@@ -1118,6 +1121,26 @@ public sealed partial class GitPanelViewModel : ObservableObject
 
     [RelayCommand]
     private Task InitRepositoryAsync() => RunOpAsync("git init", () => _git.InitAsync());
+
+    /// <summary>
+    /// 所有者が違うために git が拒否したリポジトリを信頼する（§24.91）。ユーザー全体の git 設定（<c>~/.gitconfig</c>）へ
+    /// <c>safe.directory</c> を足すので、何をするかを示して確かめてから。足したら状態を読み直す（.git は変わらないので監視は鳴らない）。
+    /// </summary>
+    [RelayCommand]
+    private async Task TrustRepositoryAsync()
+    {
+        if (UntrustedRepositoryPath is not { Length: > 0 } path)
+            return;
+        var answer = MessageBox.Show(
+            $"このリポジトリは今のユーザーの持ち物ではないため、git が扱いを拒否しています。\n\n  {path}\n\n" +
+            "信頼すると、ユーザー全体の git 設定（~/.gitconfig）に次を足します：\n\n" +
+            $"  git config --global --add safe.directory {path}\n\n" +
+            "中身を確かめた自分のリポジトリだけを信頼してください。信頼しますか？",
+            "リポジトリを信頼する", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+        if (answer != MessageBoxResult.Yes) return;
+        await RunOpAsync("リポジトリの信頼", () => _git.TrustRepositoryAsync(path));
+        await RefreshSafeAsync();
+    }
 
     /// <summary>
     /// リポジトリをクローンして、そのフォルダーをワークスペースへ追加する（今のフォルダーは閉じない）。

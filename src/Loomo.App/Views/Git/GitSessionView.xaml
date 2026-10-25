@@ -278,7 +278,7 @@
     <DockPanel>
         <!-- リポジトリでないとき -->
         <TextBlock DockPanel.Dock="Top" Margin="12,8"
-                   Text="このワークスペースは git リポジトリではありません。サイドバーの Git パネルから初期化できます。"
+                   Text="{Binding NotRepositoryMessage}"
                    TextWrapping="Wrap" Foreground="{DynamicResource FgDim}"
                    Visibility="{Binding IsRepository, Converter={StaticResource InverseBoolToVis}}" />
 

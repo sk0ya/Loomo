@@ -48,6 +48,7 @@ public sealed class GitStatusService
             {
                 IsRepository = false,
                 QueryFailed = HasGitDirectory(_rootState.CurrentRoot),
+                UntrustedPath = GitSafeDirectory.ParseDubiousOwnership(result.Error),
             };
 
         var snapshot = GitStatusParser.Parse(result.Output);

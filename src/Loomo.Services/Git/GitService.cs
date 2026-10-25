@@ -488,6 +488,20 @@ public sealed class GitService
 
     public Task<GitCommandResult> InitAsync() => _commits.InitializeAsync();
 
+    /// <summary>
+    /// 所有者が違うために git が拒否したリポジトリを信頼する（<c>git config --global --add safe.directory</c>・§24.91）。
+    /// ユーザー全体の git 設定を書くので、確認は呼び出し側の責務。拒否されたリポジトリの中では git がまともに動かないので、
+    /// ホームフォルダーで走らせる（<c>--global</c> はどこから書いても同じ）。
+    /// </summary>
+    public async Task<GitCommandResult> TrustRepositoryAsync(string path)
+    {
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var result = await _runner.RunInAsync(home, null, null, CancellationToken.None, GitSafeDirectory.TrustArguments(path))
+            .ConfigureAwait(false);
+        InvalidateReadCache();
+        return result;
+    }
+
     public Task<GitCommandResult> StageAsync(string path) => _commits.StageAsync(path);
     public Task<GitCommandResult> StageAllAsync() => _commits.StageAllAsync();
     public Task<GitCommandResult> UnstageAsync(string path) => _commits.UnstageAsync(path);
