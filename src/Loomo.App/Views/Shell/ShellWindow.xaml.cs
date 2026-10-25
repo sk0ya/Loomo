@@ -380,13 +380,30 @@ public partial class ShellWindow : Window {
                         tab.Id, TerminalTabTitle(tab.Id))))
                 .ToList();
         };
-        vm.SearchPanel.TerminalRevealRequested += (_, h) => {
+        // まだ表示していないタブ（常駐ホストにだけ画面がある）は、ホストに探してもらう（§24.67）。
+        vm.SearchPanel.TerminalHostSearchProvider = async query => {
+            if (!PersistentTerminalsEnabled)
+                return Array.Empty<TerminalSearchHit>();
+            var unseen = _terminalTabs.Where(t => !_remoteTerminalSessions.ContainsKey(t.Id)).ToList();
+            if (unseen.Count == 0)
+                return Array.Empty<TerminalSearchHit>();
+            var matches = await _ptyHost.SearchAsync(query, unseen.Select(t => t.Id).ToList());
+            return matches.Select(m => new TerminalSearchHit(
+                    TerminalSearchHits.UnseenLine, m.Column, query.Length, m.LineText, m.SessionId, TerminalTabTitle(m.SessionId)))
+                .ToList();
+        };
+        vm.SearchPanel.TerminalRevealRequested += async (_, h) => {
             var tab = _terminalTabs.FirstOrDefault(t => t.Id == h.TabId) ?? _activeTerminalTab;
             if (tab is null)
                 return;
             EnsurePaneVisibleOrSwapTopLeft(PaneKind.Terminal);
             if (tab != _activeTerminalTab)
                 ActivateTerminalTab(tab.Id);
+            if (h.LineIndex == TerminalSearchHits.UnseenLine) {
+                // ホストの画面での行番号は端末とは揃わない。表示して繋ぎ直した画面（再生）が届くのを待って、同じ行の文字で探し直す。
+                await RevealUnseenTerminalHitAsync(tab, h);
+                return;
+            }
             tab.View.SelectMatch(new TerminalMatch(h.LineIndex, h.Column, h.Length, h.LineText));
             tab.View.FocusTerminal();
         };

@@ -51,6 +51,9 @@ public sealed partial class SearchPanelViewModel : ObservableObject
     /// 引数＝(クエリ, 大小区別)、戻り＝一致一覧。未設定／ターミナル無しのときは null。</summary>
     public Func<string, bool, IReadOnlyList<TerminalSearchHit>>? TerminalSearchProvider { get; set; }
 
+    /// <summary>まだ表示していないタブの画面を常駐ホストに探してもらう口（§24.67）。null なら頼まない。</summary>
+    public Func<string, Task<IReadOnlyList<TerminalSearchHit>>>? TerminalHostSearchProvider { get; set; }
+
     /// <summary>クラス／シンボル検索（LSP ワークスペースシンボル）の供給口
     /// （ShellWindow が接続中の言語サーバーへ橋渡しする）。引数＝(クエリ, isClass, キャンセル)。
     /// 未設定のときは「言語サーバーが未接続」として扱う。</summary>
@@ -621,7 +624,7 @@ public sealed partial class SearchPanelViewModel : ObservableObject
                     await RunAdvancedAsync(ct);
                     break;
                 case SearchScope.Terminal:
-                    RunTerminalSearch();
+                    await RunTerminalSearchAsync(ct);
                     break;
                 case SearchScope.Class:
                     await RunSymbolSearchAsync(isClass: true, ct);
@@ -822,7 +825,7 @@ public sealed partial class SearchPanelViewModel : ObservableObject
 
     /// <summary>この部屋のターミナルのタブ全部のテキストを検索し、タブごとのグループに一致を並べる（§24.67）。
     /// 供給口（<see cref="TerminalSearchProvider"/>）は ShellWindow が実ターミナルへ橋渡しする。</summary>
-    private void RunTerminalSearch()
+    private async Task RunTerminalSearchAsync(CancellationToken ct)
     {
         if (TerminalSearchProvider is not { } provider)
         {
@@ -832,7 +835,14 @@ public sealed partial class SearchPanelViewModel : ObservableObject
         }
 
         // 大小区別はターミナル検索では区別しない（コマンドパレットの $ 検索と揃える）。
-        var hits = provider(Query, false);
+        var hits = provider(Query, false).ToList();
+        // まだ表示していないタブは常駐ホストの画面を探してもらう（表示済みのタブの後ろに並ぶ）。
+        if (TerminalHostSearchProvider is { } host)
+        {
+            var more = await host(Query);
+            if (ct.IsCancellationRequested) return;
+            hits.AddRange(more);
+        }
         if (hits.Count == 0)
         {
             ReplaceResults(Array.Empty<object>());

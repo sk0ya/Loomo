@@ -112,6 +112,19 @@ public sealed class PtyHostClient
         return true;
     }
 
+    /// <summary>
+    /// ホストに頼んで、セッションの画面を語で探す（§24.67・まだ表示していないタブ用）。ホストが動いていない・古くて知らない・
+    /// 答えが遅いときは空——検索の添え物なので、待たせない（2 秒で切る）。
+    /// </summary>
+    public Task<IReadOnlyList<PtyProtocol.SearchMatch>> SearchAsync(string query, IReadOnlyList<Guid> sessionIds) =>
+        Task.Run<IReadOnlyList<PtyProtocol.SearchMatch>>(() =>
+        {
+            if (sessionIds.Count == 0 || string.IsNullOrWhiteSpace(query) || !IsHostRunning())
+                return Array.Empty<PtyProtocol.SearchMatch>();
+            return Ask(new PtyProtocol.Request(PtyProtocol.Operation.Search, Query: query, SessionIds: sessionIds.ToList()),
+                TimeSpan.FromSeconds(2))?.Matches ?? new List<PtyProtocol.SearchMatch>();
+        });
+
     public Task KillAsync(Guid sessionId) =>
         Task.Run(() => Ask(new PtyProtocol.Request(PtyProtocol.Operation.Kill, sessionId)));
 

@@ -141,6 +141,23 @@ internal sealed class HostSession
 
     public void Resize(short columns, short rows) => Post(() => ResizeOnThread(columns, rows));
 
+    /// <summary>
+    /// 画面（スクロールバック込み）を語で探す（§24.67・大文字小文字は区別しない）。画面モデルはこのセッションのスレッドでしか触れないので、
+    /// そこへ頼んで最大 2 秒待つ。終わったセッション・待ち切れなかったときは空。
+    /// </summary>
+    public IReadOnlyList<PtyProtocol.SearchMatch> Search(string query, int limit)
+    {
+        var done = new ManualResetEventSlim();
+        IReadOnlyList<PtyProtocol.SearchMatch> result = Array.Empty<PtyProtocol.SearchMatch>();
+        if (!Post(() =>
+            {
+                try { result = TerminalScreenSearch.Find(Id, _screen.CreatePlainTextSnapshot(), query, limit); }
+                finally { done.Set(); }
+            }))
+            return result;
+        return done.Wait(TimeSpan.FromSeconds(2)) ? result : Array.Empty<PtyProtocol.SearchMatch>();
+    }
+
     /// <summary>本体がタブを閉じた・作り直した。シェルごと殺す。</summary>
     public void Kill()
     {

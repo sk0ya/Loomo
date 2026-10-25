@@ -64,6 +64,11 @@ public static class PtyProtocol
         List,
         /// <summary>Loomo が正常に終わる。ほかに生きている Loomo がいなければ、ホストは全セッションを殺して終わる。</summary>
         Leave,
+        /// <summary>
+        /// セッションの画面（スクロールバック込み）を語で探す（§24.67）。まだ一度も表示していないタブは画面をホストにしか持っていないので、
+        /// 検索パネルの横断検索がここへ頼む。足しただけの種類なので版は上げない——知らない古いホストは答えずに切るので、本体は「何も無い」として扱う。
+        /// </summary>
+        Search,
     }
 
     /// <param name="Op">要求の種類。</param>
@@ -86,7 +91,9 @@ public static class PtyProtocol
         short Rows = 0,
         int ScrollbackLimit = 0,
         Dictionary<string, string?>? Environment = null,
-        int ClientProcessId = 0);
+        int ClientProcessId = 0,
+        string? Query = null,
+        List<Guid>? SessionIds = null);
 
     /// <param name="Created">新しく作ったなら true、生きていたものに繋いだなら false。</param>
     /// <param name="Sessions">一覧の要求への答え。</param>
@@ -94,7 +101,12 @@ public static class PtyProtocol
     /// <param name="ShellProcessId">開いたシェルの PID（ConPTY の上で起動したプロセス）。本体はタブの中で動いているもの
     /// （Claude Code 等）がこのタブのものかを、親をたどって確かめるのに使う（§39.4.2）。足しただけの欄なので版は上げない——
     /// 知らない古いホストは 0 を返し、本体はそのとき PID なしの確かめ方に戻る。</param>
-    public sealed record Response(bool Created = false, List<SessionInfo>? Sessions = null, bool InUse = false, int ShellProcessId = 0);
+    public sealed record Response(bool Created = false, List<SessionInfo>? Sessions = null, bool InUse = false, int ShellProcessId = 0,
+        List<SearchMatch>? Matches = null);
+
+    /// <summary>検索（<see cref="Operation.Search"/>）で当たった 1 行。<paramref name="LineIndex"/> はホストの画面の文字にしたときの行番号で、
+    /// 本体の端末の行番号とは揃わない——本体はタブを表示してから同じ行の文字で探し直す。</summary>
+    public sealed record SearchMatch(Guid SessionId, int LineIndex, string LineText, int Column);
 
     /// <param name="ParkedUntilUtc">閉じたタブとして預かっている期限（§24.41）。預かっていなければ null。
     /// 預かっているシェルは「持ち主のいないシェル」として拾わない（閉じたタブが勝手に戻ってくる）。</param>

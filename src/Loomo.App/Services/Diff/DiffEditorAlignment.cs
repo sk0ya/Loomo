@@ -46,8 +46,9 @@ public static class DiffEditorAlignment
         Func<DiffSideRowVm, InlineChange?>? inlineOf = null)
     {
         var inline = InlineChanges(rows, inlineOf ?? DiffInlineHighlighter.ForSideRow);
-        var left = BuildSide(rows, inline, left: true);
-        var right = BuildSide(rows, inline, left: false);
+        var (movedLeft, movedRight) = MovedRows(rows);
+        var left = BuildSide(rows, inline, movedLeft, left: true);
+        var right = BuildSide(rows, inline, movedRight, left: false);
         var leftExtra = Math.Max(0, leftEditorLineCount - left.Lines.Count);
         var rightExtra = Math.Max(0, rightEditorLineCount - right.Lines.Count);
         // 両側に同じだけ余りがあれば（どちらも末尾改行で終わる）、その行どうしが揃うので足さない。
@@ -118,10 +119,54 @@ public static class DiffEditorAlignment
     public static int LineOfRow(IReadOnlyList<DiffSideRowVm> rows, int rowIndex, bool left)
         => Math.Max(0, DiffRowLineMapper.LineForSideRow(rows, rowIndex, left) - 1);
 
-    private static DiffEditorSide BuildSide(IReadOnlyList<DiffSideRowVm> rows, InlineChange?[] inline, bool left)
+    /// <summary>
+    /// 移動したブロックの行（§24.70）：左の削除行のうち移動元のもの、右の追加行のうち移動先のものの行の添字。
+    /// 判定は統合表示と同じ <see cref="DiffMoveDetector"/>——行を「左の削除 → 右の追加」の順に 1 本へ並べて渡す
+    /// （同じ高さの書き換えは同じかたまりになるので、その場の字下げ直しは移動に数えない）。
+    /// </summary>
+    internal static (HashSet<int> Left, HashSet<int> Right) MovedRows(IReadOnlyList<DiffSideRowVm> rows)
+    {
+        var left = new HashSet<int>();
+        var right = new HashSet<int>();
+        if (rows.Count == 0 || rows.Count > DiffMoveDetector.MaxRows)
+            return (left, right);
+        var sequence = new List<(DiffMoveSide Side, string Body)>(rows.Count * 2);
+        var owners = new List<(int Row, bool Left)>(rows.Count * 2);
+        for (var i = 0; i < rows.Count; i++)
+        {
+            var removed = rows[i].LeftKind == nameof(SideCellKind.Removed);
+            var added = rows[i].RightKind == nameof(SideCellKind.Added);
+            if (removed)
+            {
+                sequence.Add((DiffMoveSide.Removed, rows[i].LeftText));
+                owners.Add((i, true));
+            }
+            if (added)
+            {
+                sequence.Add((DiffMoveSide.Added, rows[i].RightText));
+                owners.Add((i, false));
+            }
+            if (!removed && !added)
+            {
+                sequence.Add((DiffMoveSide.None, ""));
+                owners.Add((i, true));
+            }
+        }
+        var moves = DiffMoveDetector.Detect(sequence);
+        for (var k = 0; k < moves.Count; k++)
+        {
+            if (moves[k] is null) continue;
+            (owners[k].Left ? left : right).Add(owners[k].Row);
+        }
+        return (left, right);
+    }
+
+    private static DiffEditorSide BuildSide(
+        IReadOnlyList<DiffSideRowVm> rows, InlineChange?[] inline, HashSet<int> movedRows, bool left)
     {
         var lines = new List<string>();
         var kinds = new Dictionary<int, DiffDecorationKind>();
+        var moved = new Dictionary<int, bool>();
         var spacers = new Dictionary<int, int>();
         var changes = new Dictionary<int, IReadOnlyList<DiffInlineRange>>();
         var pending = 0;
@@ -143,6 +188,9 @@ public static class DiffEditorAlignment
             }
             if (kind == nameof(SideCellKind.Added)) kinds[lines.Count] = DiffDecorationKind.Added;
             else if (kind == nameof(SideCellKind.Removed)) kinds[lines.Count] = DiffDecorationKind.Removed;
+            // 移動の行は左＝移動元・右＝移動先（Editor が行内差分を描かずに移動の色で塗る）。
+            if (movedRows.Contains(index) && kinds.ContainsKey(lines.Count))
+                moved[lines.Count] = left;
             if (inline[index] is { } change && (left ? change.Left : change.Right) is { Count: > 0 } spans)
                 changes[lines.Count] = ToRanges(spans, lines.Count == 0 ? BomLength(text) : 0);
             lines.Add(text);
@@ -154,6 +202,7 @@ public static class DiffEditorAlignment
         return new DiffEditorSide(lines, new DiffDecorations(kinds, spacers, changes)
         {
             SpacerKind = left ? DiffDecorationKind.Added : DiffDecorationKind.Removed,
+            MovedLines = moved,
         });
     }
 
@@ -184,6 +233,7 @@ public static class DiffEditorAlignment
             Decorations = new DiffDecorations(side.Decorations.Lines, spacers, side.Decorations.InlineChanges)
             {
                 SpacerKind = side.Decorations.SpacerKind,
+                MovedLines = side.Decorations.MovedLines,
             },
         };
     }

@@ -147,4 +147,41 @@ public class DiffEditorAlignmentTests
         Assert.Equal(1, DiffEditorAlignment.LineOfRow(rows, 1, left: true));
         Assert.Equal(-1, DiffEditorAlignment.RowOfLine(rows, bufferLine: 9, left: true));
     }
+
+    /// <summary>§24.70 左右並びでも、移動したブロックの行に印を付ける（左＝移動元・右＝移動先）。</summary>
+    [Fact]
+    public void Moved_block_is_marked_on_both_sides()
+    {
+        var method = new[] { "int Compute(int value)", "{", "    return value * Factor + Offset;" };
+        var rows = new List<DiffSideRowVm>
+        {
+            Removed(1, method[0]), Removed(2, method[1]), Removed(3, method[2]),
+            Context(4, 1, "void Run() { }"),
+            Added(2, method[0]), Added(3, method[1]), Added(4, method[2]),
+        };
+
+        var (left, right) = DiffEditorAlignment.Build(rows);
+
+        Assert.Equal(new[] { 0, 1, 2 }, left.Decorations.MovedLines.Keys.OrderBy(k => k));
+        Assert.All(left.Decorations.MovedLines.Values, Assert.True);
+        Assert.Equal(new[] { 1, 2, 3 }, right.Decorations.MovedLines.Keys.OrderBy(k => k));
+        Assert.All(right.Decorations.MovedLines.Values, Assert.False);
+    }
+
+    /// <summary>同じ高さで書き換えた行（その場の字下げ直し）は移動にしない。</summary>
+    [Fact]
+    public void Rewriting_in_place_is_not_a_move()
+    {
+        var rows = new List<DiffSideRowVm>
+        {
+            Changed(1, "int Compute(int value)", 1, "  int Compute(int value)"),
+            Changed(2, "{", 2, "  {"),
+            Changed(3, "    return value * Factor + Offset;", 3, "      return value * Factor + Offset;"),
+        };
+
+        var (left, right) = DiffEditorAlignment.Build(rows);
+
+        Assert.Empty(left.Decorations.MovedLines);
+        Assert.Empty(right.Decorations.MovedLines);
+    }
 }

@@ -82,6 +82,9 @@ internal sealed class PtyHostServer(string pipeName, TimeSpan? idleExit, Action?
                 case PtyProtocol.Operation.List:
                     client.Send(PtyProtocol.FrameType.Response, Json(new PtyProtocol.Response(Sessions: List())));
                     return;
+                case PtyProtocol.Operation.Search:
+                    client.Send(PtyProtocol.FrameType.Response, Json(new PtyProtocol.Response(Matches: Search(request))));
+                    return;
                 case PtyProtocol.Operation.Kill:
                     // 外からの Kill は、誰も繋いでいないシェルにだけ効く。繋いでいる Loomo は自分の接続で殺す
                     // （タブを閉じた）ので、ここで繋がっているものを殺すと別の Loomo のシェルを奪うことになる。
@@ -326,6 +329,21 @@ internal sealed class PtyHostServer(string pipeName, TimeSpan? idleExit, Action?
         lock (_gate)
             return _sessions.Values.Where(s => workspaceId is { } id && s.WorkspaceId == id).ToList();
     }
+
+    /// <summary>頼まれたセッションの画面を語で探す（§24.67）。画面モデルは各セッションのスレッドでしか触れないので、そこへ頼んで待つ。</summary>
+    private List<PtyProtocol.SearchMatch> Search(PtyProtocol.Request request)
+    {
+        var matches = new List<PtyProtocol.SearchMatch>();
+        if (string.IsNullOrWhiteSpace(request.Query) || request.SessionIds is not { Count: > 0 } ids)
+            return matches;
+        foreach (var id in ids)
+            if (Find(id) is { } session)
+                matches.AddRange(session.Search(request.Query, TerminalSearchLimit));
+        return matches;
+    }
+
+    /// <summary>1 セッションから返す一致の上限（検索パネルは全体で 1000 件までしか並べない）。</summary>
+    private const int TerminalSearchLimit = 500;
 
     private List<PtyProtocol.SessionInfo> List()
     {

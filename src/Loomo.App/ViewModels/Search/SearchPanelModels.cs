@@ -19,6 +19,20 @@ public sealed record SearchRootChoice(string Label, string Detail, string Value,
 public readonly record struct TerminalSearchHit(
     int LineIndex, int Column, int Length, string LineText, Guid TabId = default, string? TabTitle = null);
 
+/// <summary>ターミナル検索の一致の決まりごと（§24.67）。</summary>
+public static class TerminalSearchHits
+{
+    /// <summary>まだ表示していないタブ（常駐ホストに探してもらった）の一致の行番号。端末の行番号と揃わないので、戻るときに探し直す印。</summary>
+    public const int UnseenLine = -1;
+
+    /// <summary>戻るときに探し直す目印：行の頭（前後の空白を除いて 40 字）。空なら null。</summary>
+    public static string? Anchor(string lineText)
+    {
+        var trimmed = lineText.Trim();
+        return trimmed.Length == 0 ? null : trimmed.Length <= 40 ? trimmed : trimmed[..40];
+    }
+}
+
 /// <summary>クラス／シンボル検索の結果。<see cref="HasConnection"/> が false なら
 /// 「言語サーバーが未接続」（開いているコードタブが無い／未接続）として扱う。</summary>
 public readonly record struct SymbolSearchResult(bool HasConnection, IReadOnlyList<LspSymbolInformation> Symbols)
