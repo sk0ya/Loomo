@@ -94,6 +94,8 @@
          あわせて :行番号 が「Not an editor command」になっていたのを直した（2026-10-25 公開）。 -->
     <!-- 1.0.108: DiffDecorations.MovedLines（バッファ行 → 移動元か）。左右並びの差分で、移動したブロックの行を移動の色
          （EditorTheme.DiffMovedSourceLineBg／DiffMovedTargetLineBg）で塗り、行内差分は描かない（§24.70・2026-10-25 公開）。 -->
+    <!-- 1.0.109: UndoManager.ExportHistory(TextBuffer, documentId, UndoExportOptions)（大きさの上限つきの書き出し）と
+         VimEditorControl.ExportUndoHistory／ImportUndoHistory。取り消しの履歴を閉じても残す（§24.96・2026-10-26 公開）。 -->
     <ProjectReference Include="..\..\..\Editor\src\Editor.Controls.Defaults\Editor.Controls.Defaults.csproj"
                       Condition="'$(UseLocalEditor)' != 'false'" />
     <!-- Defaults はパッケージ化時に Core/Controls を同梱する構成で、プロジェクト参照では
