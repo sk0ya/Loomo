@@ -152,6 +152,8 @@
          （Claude Code の Ctrl+V は画像貼り付け）。画像だけのとき・vim 等の代替画面では従来どおり ^V を送る（2026-10-26 公開） -->
     <!-- 1.0.51: 1.0.50 の「代替画面では ^V」の例外を外す。Claude Code（2.1.310 で確認）は全画面描画で代替画面にいるので、
          肝心の Claude Code で Win+V が効いていなかった。vim の矩形選択は Ctrl+Q を使う（Windows Terminal と同じ割り切り）（2026-10-26 公開） -->
+    <!-- 1.0.52: Claude Code を Ctrl+C で終えたあと、次のプロンプトが画面の先頭に描かれて古い出力に重なっていたのを直す。Claude Code はタイトルを先に送ってから ?1049h を送るので本物の代替画面の要求が疑似代替画面の下で素通しされ、
+         ?1049l で保存カーソル（未設定＝左上）に戻っていた。終了直後の ConPTY のカーソル位置問い合わせにその位置を答えていた -->
     <!-- 版は Directory.Build.props の TerminalPackageVersion（常駐ホストと共有するため一か所） -->
     <PackageReference Include="sk0ya.Terminal.Controls" Version="$(TerminalPackageVersion)" />
   </ItemGroup>
