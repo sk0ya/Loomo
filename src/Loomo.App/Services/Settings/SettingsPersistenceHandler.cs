@@ -36,6 +36,7 @@ public sealed record SettingsFormState
     public bool ShowCaretLineBlame { get; init; }
     public bool ShowDebugInlineValues { get; init; }
     public bool GitAutoFetch { get; init; }
+    public bool PersistUndoHistory { get; init; }
 
     /// <summary>入力の先読みそのものを使うか（内蔵の予測とローカル LLM の両方をまとめて切る）。</summary>
     public bool InlineSuggest { get; init; }
@@ -94,6 +95,7 @@ public sealed class SettingsPersistenceHandler
         ShowCaretLineBlame = _settings.Editor.ShowCaretLineBlame,
         ShowDebugInlineValues = _settings.Editor.ShowDebugInlineValues,
         GitAutoFetch = _settings.GitAutoFetch,
+        PersistUndoHistory = _settings.Editor.PersistUndoHistory,
         InlineSuggest = _settings.Editor.InlineSuggest,
         TabWidth = _settings.Editor.TabWidth,
         UseSpacesForTab = _settings.Editor.UseSpacesForTab,
@@ -137,6 +139,7 @@ public sealed class SettingsPersistenceHandler
         _settings.Editor.ShowCaretLineBlame = form.ShowCaretLineBlame;
         _settings.Editor.ShowDebugInlineValues = form.ShowDebugInlineValues;
         _settings.GitAutoFetch = form.GitAutoFetch;
+        _settings.Editor.PersistUndoHistory = form.PersistUndoHistory;
         _settings.Editor.InlineSuggest = form.InlineSuggest;
         _settings.Editor.TabWidth = form.TabWidth > 0 ? form.TabWidth : 2;
         _settings.Editor.UseSpacesForTab = form.UseSpacesForTab;

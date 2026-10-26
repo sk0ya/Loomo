@@ -377,6 +377,10 @@ public sealed class EditorSettings
     /// <summary>カーソル行の末尾に、その行を最後に変えたコミット（作者・日付・件名）を薄く出す（§24.42・Editor 1.0.103）。既定 OFF。</summary>
     public bool ShowCaretLineBlame { get; set; }
 
+    /// <summary>取り消しの履歴を、タブを閉じても・Loomo を閉じても残す（Vim の 'undofile'・§24.96）。開き直したとき本文が
+    /// 同じなら <c>u</c> で閉じる前へ戻れる。履歴は %APPDATA%/Loomo/undo/ に書く（本文の写しを含む）。既定 ON。</summary>
+    public bool PersistUndoHistory { get; set; } = true;
+
     /// <summary>デバッグで止まっている間、関数内の行末に変数の値を薄く表示する（VS Code の Inline Values）。既定 ON。</summary>
     public bool ShowDebugInlineValues { get; set; } = true;
 

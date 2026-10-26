@@ -150,6 +150,8 @@ public partial class ShellWindow {
             // セッション復元だけは LoadEditorFile を通らず editor.LoadFile を直に呼ぶ（未保存本文の復元があるため）。
             // そちらもグリフを捨てるので、ここで送り直す。
             WorkspaceSessionCoordinator.RestoreEditor(control, snapshot);
+            // 取り消しの履歴（§24.96）。未保存の本文を戻したタブでも、閉じたときの本文に結び付いた履歴なら戻る。
+            RestoreUndoHistory(control);
             // 逆コンパイルタブの読み取り専用とローカル履歴の起点も、こちらの経路で付け直す（§36）。
             // 未保存本文を復元したタブでも、起点はディスクの中身（RecordOpened はディスクを読む）。
             ApplyMetadataSourceReadOnly(control);
@@ -393,6 +395,7 @@ public partial class ShellWindow {
     /// テストグリフを捨てるのに <c>BufferChanged</c> を<b>発火しない</b>こと。個々の呼び出し側で
     /// 送り直していると、上のどれか（実際にブランチ切替で全タブ）が落ちる。</para></summary>
     private void LoadEditorFile(VimEditorControl control, string path) {
+        SaveUndoHistoryBeforeReplacing(control, path);
         control.LoadFile(path);
         AfterEditorFileLoaded(control);
     }
@@ -412,11 +415,18 @@ public partial class ShellWindow {
         var prepared = await Task.Run(() => PreparedFileLoad.Prepare(path));
         if (!_editorTabs.Contains(tab) || !tab.IsRealized || !ReferenceEquals(tab.Control, control))
             return;
+        SaveUndoHistoryBeforeReplacing(control, path);
         control.LoadFile(path, prepared);
         AfterEditorFileLoaded(control);
     }
+    /// <summary>同じエディタへ別のファイルを読む（プレビューのタブの使い回しなど）前に、今のファイルの取り消しの履歴を書き出す（§24.96）。</summary>
+    private void SaveUndoHistoryBeforeReplacing(VimEditorControl control, string nextPath) {
+        if (control.FilePath is { Length: > 0 } current && !string.Equals(current, nextPath, StringComparison.OrdinalIgnoreCase))
+            SaveUndoHistory(control);
+    }
     private void AfterEditorFileLoaded(VimEditorControl control) {
         ApplyMetadataSourceReadOnly(control);
+        RestoreUndoHistory(control);
         _localHistory.RecordOpened(control.FilePath);
         _appearance.ApplyUsingFoldingOnOpen(control);
         SyncEditorTestGlyphs(control);   // LoadFile はグリフを捨てるが BufferChanged を出さない

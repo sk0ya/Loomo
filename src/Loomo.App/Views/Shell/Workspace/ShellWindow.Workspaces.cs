@@ -283,6 +283,7 @@ public partial class ShellWindow {
     private void OnClosing(object? sender, CancelEventArgs e)
         => SaveActiveWorkspaceSnapshot(immediate: true);
     private void OnClosed(object? sender, EventArgs e) {
+        SaveAllUndoHistories();    // エディタを捨てる前に、取り消しの履歴を書き出して書き切る（§24.96）
         _localHistory.Dispose();   // 積んである版を書き切る（§36）
         DisposeClaudeIde();        // lock ファイルを消す（残すと claude が死んだポートへ繋ぎに来る）
         DisposeClaudeHooks();

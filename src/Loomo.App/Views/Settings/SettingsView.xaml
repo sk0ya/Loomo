@@ -728,6 +728,11 @@
                                     <TextBlock Text="デバッグ中に変数の値を行末に表示する" TextWrapping="Wrap" />
                                 </CheckBox>
                                 <CheckBox Margin="0,8,0,0"
+                                          IsChecked="{Binding Settings.PersistUndoHistory}"
+                                          ToolTip="タブを閉じても・Loomo を閉じても取り消しの履歴を残し、開き直したときに本文が同じなら u で閉じる前へ戻れます（Vim の undofile）。履歴は %APPDATA%/Loomo/undo に本文の写しごと書きます。外で書き換わったファイルには付けません。">
+                                    <TextBlock Text="取り消しの履歴を、閉じても残す（undofile）" TextWrapping="Wrap" />
+                                </CheckBox>
+                                <CheckBox Margin="0,8,0,0"
                                           IsChecked="{Binding Settings.GitAutoFetch}"
                                           ToolTip="部屋を開いた・切り替えたときと 10 分ごとに、Git パネルが見ているリポジトリを裏で git fetch します。上流とのずれ・衝突の予告・上流が消えたブランチが、最後に手で取得した時点のまま止まりません。資格情報の窓は出さず、取得できなければ黙って次の機会を待ちます。間隔は settings.json の GitAutoFetchIntervalMinutes で変えられます。">
                                     <TextBlock Text="Git：裏でリモートの最新を取得する（fetch）" TextWrapping="Wrap" />

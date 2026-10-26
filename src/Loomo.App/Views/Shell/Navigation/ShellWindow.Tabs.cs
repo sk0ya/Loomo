@@ -204,6 +204,7 @@ public partial class ShellWindow {
             // 外さないと解析中のタスクが Dispose 済みコントロールへ結果を書き戻し、
             // 閉じたファイルの問題も「問題」一覧に残り続ける。
             ClearStyleCopPresentation(tab.Control);
+            SaveUndoHistory(tab.Control);   // 開き直したとき u で戻れるように（§24.96）
             ViewportTree.Detach(tab.Control);
             tab.Control.Dispose();
         }
