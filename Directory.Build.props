@@ -1,4 +1,4 @@
-﻿<Project>
+<Project>
 
   <!-- 実行環境を win-x64 に固定する（ソリューション全体に横展開）。
 
@@ -29,7 +29,7 @@
     <EditorPackageVersion Condition="'$(EditorPackageVersion)' == ''">1.0.109</EditorPackageVersion>
     <!-- sk0ya.Terminal.Controls の版。本体（Loomo.Services）と端末の常駐ホスト（Loomo.Pty.Host、§34）が
          同じ版を参照するので、ここ一か所で決める。版ごとの変更点は Loomo.Services.csproj の注記にある。 -->
-    <TerminalPackageVersion Condition="'$(TerminalPackageVersion)' == ''">1.0.49</TerminalPackageVersion>
+    <TerminalPackageVersion Condition="'$(TerminalPackageVersion)' == ''">1.0.50</TerminalPackageVersion>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <!-- RID 指定は自己完結（ランタイム同梱）を意味しない。既定に頼らず明示する。 -->
     <SelfContained>false</SelfContained>

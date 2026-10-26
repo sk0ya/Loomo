@@ -147,6 +147,9 @@
          working/blocked/idle を落とし、VT スナップショットで常駐セッションへ付け直したビューにも届く（§24.61）。
          新しい ConPTY（Microsoft.Windows.Console.ConPTY の conpty.dll と x64\OpenConsole.exe）を同梱して既定にした——受信箱の
          conhost は DA1 に自分で即答し、Claude Code の問い合わせ（OSC 7501・XTVERSION・kitty キーボード）が端末に届く前に負けていた（2026-10-25 公開） -->
+    <!-- 1.0.50: Ctrl+V を、クリップボードに文字があり画像が無く代替画面でもないときは貼り付けにする。Win+V（クリップボード履歴）は
+         選んだ項目をクリップボードに置いて素の Ctrl+V を注入する（実測）ので、^V をシェルへ送るだけだった端末には貼れなかった
+         （Claude Code の Ctrl+V は画像貼り付け）。画像だけのとき・vim 等の代替画面では従来どおり ^V を送る -->
     <!-- 版は Directory.Build.props の TerminalPackageVersion（常駐ホストと共有するため一か所） -->
     <PackageReference Include="sk0ya.Terminal.Controls" Version="$(TerminalPackageVersion)" />
   </ItemGroup>
