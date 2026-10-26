@@ -151,7 +151,7 @@
          選んだ項目をクリップボードに置いて素の Ctrl+V を注入する（実測）ので、^V をシェルへ送るだけだった端末には貼れなかった
          （Claude Code の Ctrl+V は画像貼り付け）。画像だけのとき・vim 等の代替画面では従来どおり ^V を送る（2026-10-26 公開） -->
     <!-- 1.0.51: 1.0.50 の「代替画面では ^V」の例外を外す。Claude Code（2.1.310 で確認）は全画面描画で代替画面にいるので、
-         肝心の Claude Code で Win+V が効いていなかった。vim の矩形選択は Ctrl+Q を使う（Windows Terminal と同じ割り切り） -->
+         肝心の Claude Code で Win+V が効いていなかった。vim の矩形選択は Ctrl+Q を使う（Windows Terminal と同じ割り切り）（2026-10-26 公開） -->
     <!-- 版は Directory.Build.props の TerminalPackageVersion（常駐ホストと共有するため一か所） -->
     <PackageReference Include="sk0ya.Terminal.Controls" Version="$(TerminalPackageVersion)" />
   </ItemGroup>
