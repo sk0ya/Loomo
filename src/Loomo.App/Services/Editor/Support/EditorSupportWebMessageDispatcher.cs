@@ -4,7 +4,7 @@ namespace sk0ya.Loomo.App.Services;
 internal sealed class EditorSupportWebMessageDispatcher
 {
     private readonly Action<CoreWebView2, JsonElement, string?> _pochiBridge;
-    private readonly Action<double> _scrollSource;
+    private readonly Action<EditorSupportPageScroll> _scrollSource;
     private readonly Action<int?> _jumpToSource;
     private readonly Action<string> _openLink;
     private readonly Action<int> _toggleTaskCheckbox;
@@ -12,7 +12,7 @@ internal sealed class EditorSupportWebMessageDispatcher
 
     public EditorSupportWebMessageDispatcher(
         Action<CoreWebView2, JsonElement, string?> pochiBridge,
-        Action<double> scrollSource,
+        Action<EditorSupportPageScroll> scrollSource,
         Action<int?> jumpToSource,
         Action<string> openLink,
         Action<int> toggleTaskCheckbox,
@@ -48,7 +48,12 @@ internal sealed class EditorSupportWebMessageDispatcher
                 case "markdownPreviewScroll":
                     if (root.TryGetProperty("ratio", out var ratioElement)
                         && ratioElement.TryGetDouble(out var ratio))
-                        _scrollSource(ratio);
+                        _scrollSource(new EditorSupportPageScroll(
+                            ratio,
+                            root.TryGetProperty("line", out var scrollLineElement)
+                                && scrollLineElement.TryGetDouble(out var scrollLine) ? scrollLine : null,
+                            root.TryGetProperty("tail", out var tailElement)
+                                && tailElement.TryGetDouble(out var tail) ? tail : 0));
                     break;
                 case "jumpToSource":
                     var line = root.TryGetProperty("line", out var lineElement)
@@ -78,3 +83,8 @@ internal sealed class EditorSupportWebMessageDispatcher
         }
     }
 }
+
+/// <summary>ページ側のスクロール位置。<see cref="Line"/> は先頭に見えているソース行（小数）で、
+/// 行の目印を持たないページでは null（<see cref="Ratio"/> で合わせる）。<see cref="Tail"/> は末尾1画面での
+/// 終端への寄せ（<see cref="EditorSupportScrollSync.TailBlend"/>）。</summary>
+internal readonly record struct EditorSupportPageScroll(double Ratio, double? Line, double Tail);

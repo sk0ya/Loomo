@@ -170,7 +170,7 @@ public partial class ShellWindow : Window {
         _editorSupport = new EditorSupportController(editorSupportWebView, EditorSupportVisual_ContentEdited);
         editorSupportWebView.NavigationCompleted += (_, _) => {
             if (_editorSupport.Source is not null)
-                PostEditorSupportScrollRatio(_editorSupport.Source.Control.VerticalScrollRatio);
+                PostEditorSupportScrollPosition(_editorSupport.Source.Control);
             _ = CaptureWebThumbnailAsync(PaneKind.EditorSupport);
         };
         editorSupportWebView.ReloadRequested += OnEditorSupportReloadRequested;

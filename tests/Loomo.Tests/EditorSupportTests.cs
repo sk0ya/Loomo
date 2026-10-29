@@ -333,7 +333,7 @@ public class EditorSupportTests
 
         var html = support.RenderHtml(@"C:\work\README.md", "```mermaid\ngraph TD\n  A-->B\n```");
 
-        Assert.Contains("<pre class=\"mermaid\">", html);
+        Assert.Contains("<pre data-source-line=\"0\" data-source-end=\"4\" class=\"mermaid\">", html);   // 本文直下のブロックにはスクロール同期用のソース行が付く
         Assert.Contains("A--&gt;B", html);          // textContent として読まれるので HTML エンコードでよい
         // ページには mermaid ブートストラップが常駐し、.mermaid 要素があるときだけ遅延ロードする。
         Assert.Contains("https://assets.loomo/mermaid.min.js", html); // 同梱スクリプト（オフライン可）
@@ -351,7 +351,7 @@ public class EditorSupportTests
         // mermaid ランタイムは .mermaid 要素があるときだけ遅延ロードされる（ブートストラップは常駐するが
         // ここでは図が無いので run()/load は走らない）。通常のコードブロックとして描く。
         Assert.Contains("language-csharp", html);
-        Assert.DoesNotContain("<pre class=\"mermaid\">", html);
+        Assert.DoesNotContain("class=\"mermaid\"", html);
     }
 
     [Fact]

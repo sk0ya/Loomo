@@ -313,13 +313,13 @@ public sealed class MarkdownEditorSupport : IEditorSupportIncrementalHtmlProvide
         // marp 文書だけスライド表示。生 Markdown をページへ渡して marp-core が描く（本文は空のステージ）。
         return IsMarp(text)
             ? MarkdownPage.BuildPage("", title, theme, baseHref, PreviewMode.Marp, marpMarkdown: text, presentation: Presentation)
-            : MarkdownPage.BuildPage(MarkdownRenderer.RenderToBody(text), title, theme, baseHref, PreviewMode.Document,
+            : MarkdownPage.BuildPage(MarkdownRenderer.RenderToBody(text, sourceLines: true), title, theme, baseHref, PreviewMode.Document,
                                      outline: Outline);
     }
 
     public string RenderBody(string filePath, string text)
         => IsMarp(text) ? text                                 // ページ側 marp-core が描画する生 Markdown
-                        : MarkdownRenderer.RenderToBody(text);
+                        : MarkdownRenderer.RenderToBody(text, sourceLines: true);
 
     // ページの体裁が変わる要素（対象ファイル・テーマ・base href・描画モード・発表/縦並び・アウトライン）を
     // 鍵にする。本文そのものは含めない＝同じファイルを同じモードで編集している間は本文差し替えで更新できる。

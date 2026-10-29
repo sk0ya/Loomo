@@ -50,11 +50,13 @@ internal static class MarkdownPage
             <script>
             (() => {
                 let suppressScrollMessage = false;
-                let pendingApplyRatio = null;  // host(editor)→preview の最新要求（未適用）
+                let pendingApply = null;  // host(editor)→preview の最新要求（未適用）: ratio / line / tail
                 let applyScheduled = false;
                 let reportScheduled = false;
                 let resizeScheduled = false;
-                let lastRatio = 0;  // 最後に意図したスクロール比率（resize 時の貼り直し基準）
+                // 最後に意図したスクロール位置（resize 時の貼り直し基準）。line はソース行（小数）。
+                let lastPos = { ratio: 0, line: null, tail: 0 };
+                let sourceLineCount = 0;  // エディタのバッファ行数（最後の目印より後ろの補間に使う）
                 let markdownEditMode = false;
                 let markdownSource = '';
                 let latestBodyHtml = null;
@@ -179,6 +181,80 @@ internal static class MarkdownPage
                 function scrollRatio() {
                     const max = scrollMax();
                     return max <= 0 ? 0 : window.scrollY / max;
+                }
+
+                // --- ソース行で合わせるスクロール同期 ---
+                // 比率で合わせると、画像・図・表・長いコードのように描画の高さがソース行数と比例しない
+                // 箇所でエディタと見えている場所がずれていく。本文直下のブロックに C# が刻んだ
+                // data-source-line（0始まりのソース行）を目印に、目印の間は線形に補う。
+                // 目印の位置は毎フレーム測り直さず控えておく。本文の差し替え・画像の読込・図の描画・
+                // 幅の変更はどれも文書の高さか幅かブロック数を変えるので、それを鍵に測り直す。
+                let anchorCache = null, anchorKey = '';
+                function closedAnchors() {
+                    const doc = document.documentElement;
+                    const key = doc.scrollHeight + ':' + doc.clientWidth + ':' + document.body.childElementCount + ':' + sourceLineCount;
+                    if (key !== anchorKey) { anchorKey = key; anchorCache = measureAnchors(doc.scrollHeight); }
+                    return anchorCache;
+                }
+                // 先頭（0 行目＝ページ上端）と末尾（最後のブロックの data-source-end＝文書の下端）を足して両端を閉じる。
+                function measureAnchors(end) {
+                    const a = [];
+                    const top = window.scrollY;
+                    let endLine = 0;
+                    for (const el of document.body.children) {
+                        const v = el.getAttribute('data-source-line');
+                        if (v === null) continue;
+                        const e = el.getAttribute('data-source-end');
+                        if (e !== null) endLine = Number(e);
+                        const r = el.getBoundingClientRect();
+                        if (r.height === 0 && r.width === 0) continue;   // 非表示
+                        const line = Number(v), y = r.top + top;
+                        const last = a[a.length - 1];
+                        if (last && (line <= last.line || y < last.y)) continue;   // 単調でない目印は捨てる
+                        a.push({ line, y });
+                    }
+                    if (a.length === 0) return null;
+                    if (a[0].line > 0) a.unshift({ line: 0, y: 0 });
+                    const lastLine = Math.max(endLine, sourceLineCount, a[a.length - 1].line + 1);
+                    if (end > a[a.length - 1].y) a.push({ line: lastLine, y: end });
+                    return a;
+                }
+                function lineToY(line, a) {
+                    for (let i = a.length - 1; i >= 0; i--) {
+                        if (a[i].line > line) continue;
+                        const b = a[i + 1];
+                        if (!b) return a[i].y;
+                        return a[i].y + (line - a[i].line) / (b.line - a[i].line) * (b.y - a[i].y);
+                    }
+                    return 0;
+                }
+                function yToLine(y, a) {
+                    for (let i = a.length - 1; i >= 0; i--) {
+                        if (a[i].y > y) continue;
+                        const b = a[i + 1];
+                        if (!b || b.y <= a[i].y) return a[i].line;
+                        return a[i].line + (y - a[i].y) / (b.y - a[i].y) * (b.line - a[i].line);
+                    }
+                    return 0;
+                }
+                // 末尾の1画面では行の対応から終端へ寄せる（エディタ側 EditorSupportScrollSync.TailBlend と同じ式）。
+                function tailBlend(offset, max, viewport) {
+                    if (max <= 0 || viewport <= 0) return 0;
+                    const remaining = max - offset;
+                    return remaining >= viewport ? 0 : Math.min(1, Math.max(0, 1 - remaining / viewport));
+                }
+                function scrollYFor(pos) {
+                    const max = scrollMax();
+                    const a = pos.line === null ? null : closedAnchors();
+                    if (!a) return max * pos.ratio;
+                    const y = Math.min(max, lineToY(pos.line, a));
+                    return y + (max - y) * pos.tail;
+                }
+                function currentPos() {
+                    const a = closedAnchors();
+                    const ratio = scrollRatio();
+                    if (!a) return { ratio, line: null, tail: 0 };
+                    return { ratio, line: yToLine(window.scrollY, a), tail: tailBlend(window.scrollY, scrollMax(), window.innerHeight) };
                 }
 
                 // 本文に mermaid 図があるときだけ mermaid.min.js を遅延ロードして描画する（図の無い
@@ -366,8 +442,21 @@ internal static class MarkdownPage
                     return n.nodeType === 1 && (n.classList.contains('loomo-outline-panel')
                         || n.classList.contains('loomo-lightbox') || n.classList.contains('loomo-slide-indicator'));
                 }
+                // 行の目印（data-source-line / data-source-end）は比較から外す。上で1行足しただけで後ろの
+                // 全ブロックの目印がずれるので、含めると毎打鍵ほぼ全体を差し替えてしまう（目印は残した
+                // ブロックへ書き写す）。
                 function nodeSrc(n) {
-                    return n.nodeType === 1 ? n.outerHTML : n.nodeType + ':' + n.nodeValue;
+                    if (n.nodeType !== 1) return n.nodeType + ':' + n.nodeValue;
+                    const h = n.outerHTML, gt = h.indexOf('>');
+                    return h.slice(0, gt).replace(/ data-source-(?:line|end)="\d+"/g, '') + h.slice(gt);
+                }
+                function copySourceLine(from, to) {
+                    if (from.nodeType !== 1 || to.nodeType !== 1) return;
+                    for (const name of ['data-source-line', 'data-source-end']) {
+                        const v = from.getAttribute(name);
+                        if (v === null) to.removeAttribute(name);
+                        else if (to.getAttribute(name) !== v) to.setAttribute(name, v);
+                    }
                 }
                 function stampBody() {
                     for (const n of document.body.childNodes)
@@ -399,6 +488,9 @@ internal static class MarkdownPage
                     while (tail < cur.length - head && tail < next.length - head
                         && curSrc[cur.length - 1 - tail] === nextSrc[next.length - 1 - tail]) tail++;
                     const changed = head < cur.length - tail || head < next.length - tail;
+                    for (let i = 0; i < head; i++) copySourceLine(next[i], cur[i]);
+                    for (let i = 1; i <= tail; i++) copySourceLine(next[next.length - i], cur[cur.length - i]);
+                    anchorKey = '';   // 行番号だけ変わって高さは同じ、もあるので必ず測り直させる
                     if (changed) {
                         const ref = tail > 0 ? cur[cur.length - tail] : null;
                         for (let i = head; i < cur.length - tail; i++) cur[i].remove();
@@ -416,20 +508,26 @@ internal static class MarkdownPage
                 // 1 フレームに 1 回だけ scrollTo する。連続スクロールで殺到する要求は最新値へ畳む。
                 function applyPending() {
                     applyScheduled = false;
-                    if (pendingApplyRatio === null) return;
-                    const ratio = Math.min(1, Math.max(0, pendingApplyRatio));
-                    pendingApplyRatio = null;
-                    lastRatio = ratio;
+                    if (pendingApply === null) return;
+                    const pos = pendingApply;
+                    pendingApply = null;
+                    lastPos = pos;
                     suppressScrollMessage = true;
-                    window.scrollTo(0, scrollMax() * ratio);
+                    window.scrollTo(0, scrollYFor(pos));
                     // Re-enable only after the resulting 'scroll' event has been dispatched,
                     // so the echo is suppressed regardless of how slow layout/scroll is.
                     requestAnimationFrame(() => requestAnimationFrame(() => { suppressScrollMessage = false; }));
                 }
 
-                window.setMarkdownPreviewScrollRatio = ratio => {
+                // line（ソース行・小数）が無い呼び出しは比率だけで合わせる。
+                window.setMarkdownPreviewScrollRatio = (ratio, line, lines, tail) => {
                     if (presentation) return;   // 発表中は縦スクロール同期しない（ページ送りで操作）
-                    pendingApplyRatio = Number(ratio) || 0;
+                    if (Number(lines) > 0) sourceLineCount = Number(lines);
+                    pendingApply = {
+                        ratio: Math.min(1, Math.max(0, Number(ratio) || 0)),
+                        line: typeof line === 'number' && isFinite(line) ? Math.max(0, line) : null,
+                        tail: Math.min(1, Math.max(0, Number(tail) || 0))
+                    };
                     if (!applyScheduled) {
                         applyScheduled = true;
                         requestAnimationFrame(applyPending);
@@ -441,7 +539,7 @@ internal static class MarkdownPage
                     window.chrome.webview.addEventListener('message', e => {
                         const d = e.data;
                         if (!d) return;
-                        if (d.type === 'setScrollRatio') window.setMarkdownPreviewScrollRatio(d.ratio);
+                        if (d.type === 'setScrollRatio') window.setMarkdownPreviewScrollRatio(d.ratio, d.line, d.lines, d.tail);
                         else if (d.type === 'setBody') {
                             latestBodyHtml = d.html;
                             // marp は d.html に生 Markdown が載る。document は本文 HTML を差し替える。
@@ -603,11 +701,10 @@ internal static class MarkdownPage
                     requestAnimationFrame(() => {
                         reportScheduled = false;
                         if (suppressScrollMessage) return;
-                        lastRatio = scrollRatio();
-                        window.chrome.webview.postMessage({
-                            type: 'markdownPreviewScroll',
-                            ratio: lastRatio
-                        });
+                        lastPos = currentPos();
+                        const message = { type: 'markdownPreviewScroll', ratio: lastPos.ratio, tail: lastPos.tail };
+                        if (lastPos.line !== null) message.line = lastPos.line;
+                        window.chrome.webview.postMessage(message);
                     });
                 }, { passive: true });
 
@@ -848,7 +945,7 @@ internal static class MarkdownPage
                     resizeScheduled = true;
                     requestAnimationFrame(() => {
                         resizeScheduled = false;
-                        window.scrollTo(0, scrollMax() * lastRatio);
+                        window.scrollTo(0, scrollYFor(lastPos));
                         requestAnimationFrame(() => requestAnimationFrame(() => { suppressScrollMessage = false; }));
                     });
                 });

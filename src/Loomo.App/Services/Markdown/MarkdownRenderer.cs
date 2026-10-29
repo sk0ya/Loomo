@@ -108,7 +108,11 @@ internal static class MarkdownRenderer
     /// ドキュメント本文（&lt;body&gt; の中身）を生成する。フル再ナビゲートを避けてその場更新するとき、
     /// ページ側がこの文字列で <c>document.body.innerHTML</c> を差し替える。
     /// </summary>
-    public static string RenderToBody(string markdown)
+    /// <param name="sourceLines">true なら body 直下の各ブロックの開きタグに、そのブロックが始まる
+    /// ソース行（0始まり・フロントマター込みの元ファイル基準）を <c>data-source-line</c> として刻む。
+    /// プレビューとエディタのスクロールを行で合わせるための目印で、比率で合わせると画像・図・
+    /// コードブロックのように描画の高さがソース行数と比例しない箇所でずれていく。</param>
+    public static string RenderToBody(string markdown, bool sourceLines = false)
     {
         var body = new StringBuilder();
         // Normalize() が Inline() のコードスパン退避番兵（U+0001）を先に除去済みなので、ここでの再除去は不要。
@@ -116,7 +120,7 @@ internal static class MarkdownRenderer
         var ctx = new RenderContext();
         stripped = ExtractFootnoteDefinitions(stripped, ctx);
         ctx.Headings = CollectHeadings(stripped);
-        ProcessBlocks(stripped, body, lineOffset, ctx);
+        ProcessBlocks(stripped, body, lineOffset, ctx, sourceLines);
         AppendFootnotesSection(body, ctx);
         return body.ToString();
     }
@@ -207,12 +211,23 @@ internal static class MarkdownRenderer
         html.AppendLine("</ol></section>");
     }
 
-    private static void ProcessBlocks(string text, StringBuilder html, int lineOffset, RenderContext ctx)
+    private static void ProcessBlocks(string text, StringBuilder html, int lineOffset, RenderContext ctx, bool sourceLines = false)
     {
         var lines = text.Split('\n');
         var i = 0;
+        // 各分岐は continue で抜けるので、直前のブロックへの刻印は次の周回の頭（と末尾）でまとめて行う。
+        var blockStart = -1;
+        var blockLine = 0;
+        var lastStamped = -1;
         while (i < lines.Length)
         {
+            if (sourceLines)
+            {
+                if (StampSourceLine(html, blockStart, "data-source-line", blockLine))
+                    lastStamped = blockStart;
+                blockStart = html.Length;
+                blockLine = lineOffset + i;
+            }
             var line = lines[i];
 
             if (line.TrimStart().StartsWith("```") || line.TrimStart().StartsWith("~~~"))
@@ -350,6 +365,43 @@ internal static class MarkdownRenderer
             if (paraLines.Count > 0)
                 html.AppendLine($"<p>{Inline(JoinParagraph(paraLines), ctx)}</p>");
         }
+        if (sourceLines)
+        {
+            if (StampSourceLine(html, blockStart, "data-source-line", blockLine))
+                lastStamped = blockStart;
+            // 最後のブロックには文書の終わり（総行数）も刻む。末尾の長いコードブロックなどを
+            // 1行ぶんと見なさず、文書の下端までを最後の行まで線形に補えるように。
+            StampSourceLine(html, lastStamped, "data-source-end", lineOffset + lines.Length);
+        }
+    }
+
+    // start 以降に書かれたブロックの最初の開きタグへ属性を差し込む。各ブロックの出力は必ず
+    // レンダラ自身の開きタグで始まるので、最初の開きタグ＝そのブロックの要素。何も書かれていない
+    // （空行を読み飛ばしただけの）周回では何もせず false。
+    private static bool StampSourceLine(StringBuilder html, int start, string attribute, int line)
+    {
+        if (start < 0)
+            return false;
+        for (var p = start; p + 1 < html.Length; p++)
+        {
+            if (html[p] != '<' || !char.IsAsciiLetter(html[p + 1]))
+                continue;
+            var end = p + 1;
+            while (end < html.Length && char.IsAsciiLetterOrDigit(html[end]))
+                end++;
+            // 終わりの印は行の印の後ろへ（タグ名の直後は常に data-source-line、で揃える）。
+            const string lineMark = " data-source-line=\"";
+            if (end + lineMark.Length < html.Length && html.ToString(end, lineMark.Length) == lineMark)
+            {
+                end += lineMark.Length;
+                while (html[end] != '"')
+                    end++;
+                end++;
+            }
+            html.Insert(end, $" {attribute}=\"{line}\"");
+            return true;
+        }
+        return false;
     }
 
     // 段落内の行を連結する。文末がスペース2つ以上で終わる行はハード改行（<br>）にする

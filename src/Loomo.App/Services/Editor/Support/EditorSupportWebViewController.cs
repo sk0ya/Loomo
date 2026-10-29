@@ -510,14 +510,21 @@ public sealed class EditorSupportWebViewController : IDisposable
         catch { return false; }
     }
 
-    public void PostScrollRatio(double ratio)
+    /// <summary>
+    /// エディタの見えている位置をページへ送る。<paramref name="ratio"/> は行の目印を持たないページ向けの
+    /// 予備で、Markdown プレビューは <paramref name="line"/>（先頭に見えているソース行・小数）と
+    /// <paramref name="tail"/>（末尾1画面での終端への寄せ。<see cref="EditorSupportScrollSync.TailBlend"/>）で合わせる。
+    /// <paramref name="line"/> が null なら行を送らず、ページは比率で合わせる。
+    /// </summary>
+    public void PostScrollPosition(double ratio, double? line, int lineCount, double tail)
     {
         if (Core is not { } core)
             return;
         try
         {
+            var lineJson = line is { } l ? FormattableString.Invariant($",\"line\":{Math.Max(0, l):R}") : "";
             core.PostWebMessageAsJson(FormattableString.Invariant(
-                $"{{\"type\":\"setScrollRatio\",\"ratio\":{Math.Clamp(ratio, 0.0, 1.0):R}}}"));
+                $"{{\"type\":\"setScrollRatio\",\"ratio\":{Math.Clamp(ratio, 0.0, 1.0):R}{lineJson},\"lines\":{lineCount},\"tail\":{Math.Clamp(tail, 0.0, 1.0):R}}}"));
         }
         catch { }
     }

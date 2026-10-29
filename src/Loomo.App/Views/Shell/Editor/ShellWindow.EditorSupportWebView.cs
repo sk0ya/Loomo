@@ -98,7 +98,23 @@ public partial class ShellWindow {
         _activeEditorTab?.Control.NavigateTo(hit.Line - 1, Math.Max(0, hit.Column - 1));
         _activeEditorTab?.Control.HighlightSearch(hit.Highlight);
     }
-    private void PostEditorSupportScrollRatio(double ratio) => _editorSupport.WebView.PostScrollRatio(ratio);
+    /// <summary>エディタの見えている位置を EditorSupport へ送る。Markdown プレビューはソース行で、
+    /// それ以外のページは比率で合わせる（<see cref="EditorSupportScrollSync"/>）。</summary>
+    private void PostEditorSupportScrollPosition(VimEditorControl editor) {
+        var lineHeight = editor.LineHeight;
+        var lineCount = editor.DocumentInfo.LineCount;
+        if (lineHeight <= 0) {
+            // まだ測られていない（隠れている）エディタの行は出せない。比率だけで合わせてもらう。
+            _editorSupport.WebView.PostScrollPosition(editor.VerticalScrollRatio, null, lineCount, 0);
+            return;
+        }
+        var visualCount = editor.VisualLineCount;
+        var offset = editor.VerticalOffset;
+        var line = EditorSupportScrollSync.SourceLineAt(offset / lineHeight, lineCount, visualCount, editor.GetTextVisualLine);
+        var tail = EditorSupportScrollSync.TailBlend(
+            offset, visualCount * lineHeight - editor.TextViewportHeight, editor.TextViewportHeight);
+        _editorSupport.WebView.PostScrollPosition(editor.VerticalScrollRatio, line, lineCount, tail);
+    }
     private async Task OpenEditorSupportSnapshotInBrowserAsync(string html, string? mapFolder, string title) {
         if (!_editorSupportNavigation.TryWritePage(html, out var pageUrl))
             return;
@@ -174,13 +190,13 @@ public partial class ShellWindow {
     private void EditorSupportSource_ViewportScrolled(object? sender, EventArgs e) {
         if (_syncingEditorFromSupport || sender is not VimEditorControl editor)
             return;
-        _editorSupport.WebView.PostScrollRatio(editor.VerticalScrollRatio);
+        PostEditorSupportScrollPosition(editor);
     }
     private EditorSupportWebMessageDispatcher? _editorSupportMessageDispatcher;
     private EditorSupportWebMessageDispatcher EditorSupportMessageDispatcher
         => _editorSupportMessageDispatcher ??= new EditorSupportWebMessageDispatcher(
             HandlePochiBridgeMessage,
-            ScrollEditorSupportSourceToRatio,
+            ScrollEditorSupportSourceTo,
             line => FocusEditorSupportSource(line),
             href => _ = HandleEditorSupportLinkClickedAsync(href),
             ToggleMarkdownTaskCheckbox,
@@ -188,11 +204,23 @@ public partial class ShellWindow {
     private void EditorSupport_WebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
         => EditorSupportMessageDispatcher.Dispatch(
             e.WebMessageAsJson, sender, sourceAvailable: _editorSupport.Source is not null);
-    private void ScrollEditorSupportSourceToRatio(double ratio) {
+    private void ScrollEditorSupportSourceTo(EditorSupportPageScroll scroll) {
         if (_editorSupport.Source is not { } source)
             return;
+        var editor = source.Control;
         _syncingEditorFromSupport = true;
-        try { source.Control.ScrollToVerticalRatio(ratio); }
+        try {
+            if (scroll.Line is not { } line || editor.LineHeight <= 0) {
+                editor.ScrollToVerticalRatio(scroll.Ratio);
+                return;
+            }
+            var lineHeight = editor.LineHeight;
+            var visualCount = editor.VisualLineCount;
+            var y = EditorSupportScrollSync.VisualLineAt(line, editor.DocumentInfo.LineCount, visualCount, editor.GetTextVisualLine) * lineHeight;
+            var max = Math.Max(0, visualCount * lineHeight - editor.TextViewportHeight);
+            y += (max - y) * Math.Clamp(scroll.Tail, 0, 1);
+            editor.ScrollToOffset(Math.Clamp(y, 0, max), editor.HorizontalOffset);
+        }
         finally { _syncingEditorFromSupport = false; }
     }
     private void OnToggleEditorSupportEdit(object sender, RoutedEventArgs e) {
