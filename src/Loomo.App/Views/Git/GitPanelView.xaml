@@ -316,6 +316,52 @@
             <Setter Property="VerticalAlignment" Value="Center" />
             <Setter Property="Margin" Value="6,0,0,0" />
         </Style>
+
+        <!-- 変更／スタッシュの切り替え。下線で選択を示すフラットなタブ（HarnessPaneView・DebugView と同じ） -->
+        <Style x:Key="GitSectionTabItem" TargetType="TabItem">
+            <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
+            <Setter Property="FontSize" Value="{DynamicResource Fs11}" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TabItem">
+                        <Border x:Name="Bd" Padding="8,4" Margin="0,0,2,0" Background="Transparent"
+                                BorderBrush="Transparent" BorderThickness="0,0,0,2">
+                            <ContentPresenter ContentSource="Header" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Foreground" Value="{DynamicResource Fg}" />
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource Accent}" />
+                                <Setter Property="Foreground" Value="{DynamicResource Fg}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="GitSectionTabControl" TargetType="TabControl">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="ItemContainerStyle" Value="{StaticResource GitSectionTabItem}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TabControl">
+                        <DockPanel>
+                            <Border DockPanel.Dock="Top" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1">
+                                <TabPanel IsItemsHost="True" Background="Transparent" Margin="2,0" />
+                            </Border>
+                            <!-- 名前は PART_SelectedContentHost（UIA が選択中タブの中身を繋ぐため。DebugView 参照） -->
+                            <ContentPresenter x:Name="PART_SelectedContentHost" ContentSource="SelectedContent" Margin="0,2,0,0" />
+                        </DockPanel>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </UserControl.Resources>
 
     <DockPanel>
@@ -602,109 +648,90 @@
             <!-- 変更一覧。上はステージ済み（プレーンなリスト＝コミット対象）、下は作業ツリーを
                  ディレクトリツリーで表示し、チェックしたファイルをコミットに含める。
                  「変更」「バージョン管理外ファイル」をトップレベルのセクションに分ける。
-                 3セクションとも GridSplitter で高さを相互にドラッグ調整でき、各セクションは
-                 自前でスクロールする（多いときに一覧全体を押し出さない）。 -->
-            <Grid Margin="6,0">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="{Binding Staged.Count, Converter={StaticResource BoolToStarLength}, ConverterParameter=1}" MinHeight="0" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="3*" MinHeight="80" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="1*" MinHeight="28" />
-                </Grid.RowDefinitions>
+                 ステージ済みと作業ツリーは GridSplitter で高さを相互にドラッグ調整でき、各セクションは
+                 自前でスクロールする（多いときに一覧全体を押し出さない）。
+                 スタッシュは下に積まずタブで切り替える（積むと、どちらも狭い高さを取り合っていた）。 -->
+            <TabControl Style="{StaticResource GitSectionTabControl}" Margin="6,0">
+                <TabItem Header="変更">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="{Binding Staged.Count, Converter={StaticResource BoolToStarLength}, ConverterParameter=1}" MinHeight="0" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="3*" MinHeight="80" />
+                        </Grid.RowDefinitions>
 
-                <!-- ステージ済み。DockPanel で包み、見出しを Dock="Top"・ListBox を残り全域の
-                     fill 子にする（StackPanel だと子が欲しいだけの高さを取ってしまい、行の実高さを
-                     超えても ListBox 自身は「全部表示できている」と誤認してスクロールが効かない）。 -->
-                <DockPanel Grid.Row="0" Visibility="{Binding Staged.Count, Converter={StaticResource CountToVis}}">
-                    <DockPanel DockPanel.Dock="Top" Margin="4,2" Background="Transparent">
-                        <StackPanel DockPanel.Dock="Right" Style="{StaticResource HeaderActions}">
-                            <Button Style="{StaticResource RowActionButton}" Content="−"
-                                    ToolTip="すべてアンステージ" Command="{Binding UnstageAllCommand}" />
-                        </StackPanel>
-                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                            <TextBlock Text="ステージ済み" Foreground="{DynamicResource FgDim}"
-                                       FontSize="{DynamicResource Fs11}" FontWeight="SemiBold" VerticalAlignment="Center" />
-                            <Border Style="{StaticResource CountPill}">
-                                <TextBlock Text="{Binding Staged.Count, Mode=OneWay}" FontSize="{DynamicResource Fs10}"
-                                           Foreground="{DynamicResource Fg}"
-                                           HorizontalAlignment="Center" VerticalAlignment="Center" />
-                            </Border>
-                        </StackPanel>
-                    </DockPanel>
-                    <ListBox x:Name="StagedList" ItemsSource="{Binding Staged}" SelectionMode="Extended"
-                             Background="Transparent" BorderThickness="0" Padding="0"
-                             ItemContainerStyle="{StaticResource ChangeRowItem}"
-                             ScrollViewer.VerticalScrollBarVisibility="Auto"
-                             ContextMenu="{StaticResource StagedRowMenu}">
-                        <ListBox.InputBindings>
-                            <KeyBinding Key="Delete" Command="{Binding UnstageSelectedCommand}" />
-                        </ListBox.InputBindings>
-                        <ListBox.ItemTemplate>
-                            <DataTemplate>
-                                <DockPanel Background="Transparent" ToolTip="{Binding ToolTipText}">
-                                    <TextBlock DockPanel.Dock="Right" Text="{Binding Status}" Width="16" Margin="4,0,2,0"
-                                               Foreground="{Binding Status, Converter={StaticResource GitStatusBrush}}"
-                                               TextAlignment="Center" FontWeight="SemiBold" VerticalAlignment="Center"
-                                               FontFamily="Cascadia Mono, Consolas" />
-                                    <TextBlock DockPanel.Dock="Right" Margin="6,0,0,0" VerticalAlignment="Center"
-                                               FontSize="{DynamicResource Fs10}" FontFamily="Cascadia Mono, Consolas"
-                                               ToolTip="増えた行・減った行"
-                                               Visibility="{Binding LineStat.AddedText, Converter={StaticResource NonEmptyToVis}}">
-                                        <Run Text="{Binding LineStat.AddedText, Mode=OneWay}" Foreground="{Binding Source=A, Converter={StaticResource GitStatusBrush}}" /><Run Text="{Binding LineStat.DeletedText, Mode=OneWay}" Foreground="{Binding Source=D, Converter={StaticResource GitStatusBrush}}" />
-                                    </TextBlock>
-                                    <StackPanel Orientation="Horizontal">
-                                        <TextBlock Text="{Binding FileName}" TextTrimming="CharacterEllipsis"
-                                                   VerticalAlignment="Center" />
-                                        <TextBlock Text="{Binding Directory}" Foreground="{DynamicResource FgDim}"
-                                                   FontSize="{DynamicResource Fs11}" Margin="6,1,0,0" VerticalAlignment="Center"
-                                                   TextTrimming="CharacterEllipsis" />
-                                    </StackPanel>
-                                </DockPanel>
-                            </DataTemplate>
-                        </ListBox.ItemTemplate>
-                    </ListBox>
-                </DockPanel>
+                        <!-- ステージ済み。DockPanel で包み、見出しを Dock="Top"・ListBox を残り全域の
+                             fill 子にする（StackPanel だと子が欲しいだけの高さを取ってしまい、行の実高さを
+                             超えても ListBox 自身は「全部表示できている」と誤認してスクロールが効かない）。 -->
+                        <DockPanel Grid.Row="0" Visibility="{Binding Staged.Count, Converter={StaticResource CountToVis}}">
+                            <DockPanel DockPanel.Dock="Top" Margin="4,2" Background="Transparent">
+                                <StackPanel DockPanel.Dock="Right" Style="{StaticResource HeaderActions}">
+                                    <Button Style="{StaticResource RowActionButton}" Content="−"
+                                            ToolTip="すべてアンステージ" Command="{Binding UnstageAllCommand}" />
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBlock Text="ステージ済み" Foreground="{DynamicResource FgDim}"
+                                               FontSize="{DynamicResource Fs11}" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                    <Border Style="{StaticResource CountPill}">
+                                        <TextBlock Text="{Binding Staged.Count, Mode=OneWay}" FontSize="{DynamicResource Fs10}"
+                                                   Foreground="{DynamicResource Fg}"
+                                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                    </Border>
+                                </StackPanel>
+                            </DockPanel>
+                            <ListBox x:Name="StagedList" ItemsSource="{Binding Staged}" SelectionMode="Extended"
+                                     Background="Transparent" BorderThickness="0" Padding="0"
+                                     ItemContainerStyle="{StaticResource ChangeRowItem}"
+                                     ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                     ContextMenu="{StaticResource StagedRowMenu}">
+                                <ListBox.InputBindings>
+                                    <KeyBinding Key="Delete" Command="{Binding UnstageSelectedCommand}" />
+                                </ListBox.InputBindings>
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <DockPanel Background="Transparent" ToolTip="{Binding ToolTipText}">
+                                            <TextBlock DockPanel.Dock="Right" Text="{Binding Status}" Width="16" Margin="4,0,2,0"
+                                                       Foreground="{Binding Status, Converter={StaticResource GitStatusBrush}}"
+                                                       TextAlignment="Center" FontWeight="SemiBold" VerticalAlignment="Center"
+                                                       FontFamily="Cascadia Mono, Consolas" />
+                                            <TextBlock DockPanel.Dock="Right" Margin="6,0,0,0" VerticalAlignment="Center"
+                                                       FontSize="{DynamicResource Fs10}" FontFamily="Cascadia Mono, Consolas"
+                                                       ToolTip="増えた行・減った行"
+                                                       Visibility="{Binding LineStat.AddedText, Converter={StaticResource NonEmptyToVis}}">
+                                                <Run Text="{Binding LineStat.AddedText, Mode=OneWay}" Foreground="{Binding Source=A, Converter={StaticResource GitStatusBrush}}" /><Run Text="{Binding LineStat.DeletedText, Mode=OneWay}" Foreground="{Binding Source=D, Converter={StaticResource GitStatusBrush}}" />
+                                            </TextBlock>
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="{Binding FileName}" TextTrimming="CharacterEllipsis"
+                                                           VerticalAlignment="Center" />
+                                                <TextBlock Text="{Binding Directory}" Foreground="{DynamicResource FgDim}"
+                                                           FontSize="{DynamicResource Fs11}" Margin="6,1,0,0" VerticalAlignment="Center"
+                                                           TextTrimming="CharacterEllipsis" />
+                                            </StackPanel>
+                                        </DockPanel>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </DockPanel>
 
-                <GridSplitter Grid.Row="1" Height="6" HorizontalAlignment="Stretch"
-                              Background="{DynamicResource Border}"
-                              Visibility="{Binding Staged.Count, Converter={StaticResource CountToVis}}" />
+                        <GridSplitter Grid.Row="1" Height="6" HorizontalAlignment="Stretch"
+                                      Background="{DynamicResource Border}"
+                                      Visibility="{Binding Staged.Count, Converter={StaticResource CountToVis}}" />
 
-                <!-- 変更／バージョン管理外をトップレベルノードに持つコミット対象ツリー -->
-                <TreeView x:Name="WorkingTree" Grid.Row="2" ItemsSource="{Binding WorkingTreeSections}" Margin="0,2,0,0"
-                          ItemTemplate="{StaticResource GitChangeTreeTemplate}"
-                          ItemContainerStyle="{StaticResource GitChangeTreeItem}"
-                          Background="Transparent" BorderThickness="0" Padding="0"
-                          ScrollViewer.VerticalScrollBarVisibility="Auto"
-                          ContextMenu="{StaticResource WorkingTreeRowMenu}" />
+                        <!-- 変更／バージョン管理外をトップレベルノードに持つコミット対象ツリー -->
+                        <TreeView x:Name="WorkingTree" Grid.Row="2" ItemsSource="{Binding WorkingTreeSections}" Margin="0,2,0,0"
+                                  ItemTemplate="{StaticResource GitChangeTreeTemplate}"
+                                  ItemContainerStyle="{StaticResource GitChangeTreeItem}"
+                                  Background="Transparent" BorderThickness="0" Padding="0"
+                                  ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                  ContextMenu="{StaticResource WorkingTreeRowMenu}" />
 
-                <GridSplitter Grid.Row="3" Height="6" HorizontalAlignment="Stretch"
-                              Background="{DynamicResource Border}" />
+                    </Grid>
+                </TabItem>
 
-                <!-- スタッシュ（退避）。見出しの「⤓」で現在の変更を退避し、各行で 適用／取出／破棄。行を押すと中身を差分で見る（§24.31）。 -->
-                <DockPanel Grid.Row="4">
-                    <DockPanel DockPanel.Dock="Top" Margin="4,2" Background="Transparent">
-                        <StackPanel DockPanel.Dock="Right" Style="{StaticResource HeaderActions}">
-                            <!-- 外から来たパッチを当てる（§24.38.1）。当てる前に対象のファイルと方式を見せて確かめる。 -->
-                            <Button Style="{StaticResource RowActionButton}" Content="⤒"
-                                    ToolTip="パッチを当てる（クリップボード／ファイル）"
-                                    Click="OnApplyPatchMenuClick">
-                                <Button.ContextMenu>
-                                    <ContextMenu>
-                                        <MenuItem Header="クリップボードのパッチを当てる"
-                                                  Command="{Binding ApplyPatchFromClipboardCommand}" />
-                                        <MenuItem Header="ファイルのパッチを当てる…"
-                                                  Command="{Binding ApplyPatchFromFileCommand}" />
-                                    </ContextMenu>
-                                </Button.ContextMenu>
-                            </Button>
-                            <Button Style="{StaticResource RowActionButton}" Content="⤓"
-                                    ToolTip="現在の変更を退避（スタッシュ）"
-                                    Command="{Binding StashPushCommand}" />
-                        </StackPanel>
-                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                            <TextBlock Text="スタッシュ" Foreground="{DynamicResource FgDim}"
-                                       FontSize="{DynamicResource Fs11}" FontWeight="SemiBold" VerticalAlignment="Center" />
+                <TabItem>
+                    <TabItem.Header>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="スタッシュ" VerticalAlignment="Center" />
                             <Border Style="{StaticResource CountPill}"
                                     Visibility="{Binding Stashes.Count, Converter={StaticResource CountToVis}}">
                                 <TextBlock Text="{Binding Stashes.Count, Mode=OneWay}" FontSize="{DynamicResource Fs10}"
@@ -712,65 +739,88 @@
                                            HorizontalAlignment="Center" VerticalAlignment="Center" />
                             </Border>
                         </StackPanel>
+                    </TabItem.Header>
+                    <!-- スタッシュ（退避）。右上の「⤓」で現在の変更を退避し、各行で 適用／取出／破棄。行を押すと中身を差分で見る（§24.31）。 -->
+                    <DockPanel>
+                        <DockPanel DockPanel.Dock="Top" Margin="4,2" Background="Transparent">
+                            <StackPanel DockPanel.Dock="Right" Style="{StaticResource HeaderActions}">
+                                <!-- 外から来たパッチを当てる（§24.38.1）。当てる前に対象のファイルと方式を見せて確かめる。 -->
+                                <Button Style="{StaticResource RowActionButton}" Content="⤒"
+                                        ToolTip="パッチを当てる（クリップボード／ファイル）"
+                                        Click="OnApplyPatchMenuClick">
+                                    <Button.ContextMenu>
+                                        <ContextMenu>
+                                            <MenuItem Header="クリップボードのパッチを当てる"
+                                                      Command="{Binding ApplyPatchFromClipboardCommand}" />
+                                            <MenuItem Header="ファイルのパッチを当てる…"
+                                                      Command="{Binding ApplyPatchFromFileCommand}" />
+                                        </ContextMenu>
+                                    </Button.ContextMenu>
+                                </Button>
+                                <Button Style="{StaticResource RowActionButton}" Content="⤓"
+                                        ToolTip="現在の変更を退避（スタッシュ）"
+                                        Command="{Binding StashPushCommand}" />
+                            </StackPanel>
+                        </DockPanel>
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <ItemsControl ItemsSource="{Binding Stashes}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <!-- 説明の部分（ボタン）を押すと中身を差分で見る（適用しない）。右クリックにパッチの保存。
+                                             ContextMenu はこの行に直接置く（Style の Setter に置くと Click が結線されない）。
+                                             メニューはビジュアルツリーの外なので、パネルの VM は Tag 経由で渡す。 -->
+                                        <DockPanel Background="Transparent" Margin="4,1"
+                                                   Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=ItemsControl}}">
+                                            <DockPanel.ContextMenu>
+                                                <ContextMenu>
+                                                    <MenuItem Header="差分で見る"
+                                                              Command="{Binding PlacementTarget.Tag.OpenStashDiffCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                              CommandParameter="{Binding}" />
+                                                    <MenuItem Header="パッチとして保存…"
+                                                              Command="{Binding PlacementTarget.Tag.SaveStashPatchCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                              CommandParameter="{Binding}" />
+                                                    <Separator />
+                                                    <MenuItem Header="適用（退避は残す）"
+                                                              Command="{Binding PlacementTarget.Tag.StashApplyCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                              CommandParameter="{Binding}" />
+                                                    <MenuItem Header="取り出し（適用して退避を削除）"
+                                                              Command="{Binding PlacementTarget.Tag.StashPopCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                              CommandParameter="{Binding}" />
+                                                    <MenuItem Header="破棄…"
+                                                              Command="{Binding PlacementTarget.Tag.StashDropCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                              CommandParameter="{Binding}" />
+                                                </ContextMenu>
+                                            </DockPanel.ContextMenu>
+                                            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                                                <Button Style="{StaticResource RowActionButton}" Content="↧"
+                                                        ToolTip="適用（退避は残す）"
+                                                        Command="{Binding DataContext.StashApplyCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                        CommandParameter="{Binding}" />
+                                                <Button Style="{StaticResource RowActionButton}" Content="⤇"
+                                                        ToolTip="取り出し（適用して退避を削除）"
+                                                        Command="{Binding DataContext.StashPopCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                        CommandParameter="{Binding}" />
+                                                <Button Style="{StaticResource RowActionButton}" Content="×"
+                                                        ToolTip="破棄（復元しない）"
+                                                        Command="{Binding DataContext.StashDropCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                        CommandParameter="{Binding}" />
+                                            </StackPanel>
+                                            <Button Style="{StaticResource StashRowButton}"
+                                                    ToolTip="{Binding Description, StringFormat='{}{0}&#x0a;押すと中身を差分で見る（右クリックでパッチとして保存）'}"
+                                                    AutomationProperties.Name="{Binding Description}"
+                                                    Command="{Binding DataContext.OpenStashDiffCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                    CommandParameter="{Binding}">
+                                                <TextBlock Text="{Binding Description}" TextTrimming="CharacterEllipsis"
+                                                           VerticalAlignment="Center" FontSize="{DynamicResource Fs11}" />
+                                            </Button>
+                                        </DockPanel>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
                     </DockPanel>
-                    <ScrollViewer VerticalScrollBarVisibility="Auto">
-                        <ItemsControl ItemsSource="{Binding Stashes}">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <!-- 説明の部分（ボタン）を押すと中身を差分で見る（適用しない）。右クリックにパッチの保存。
-                                         ContextMenu はこの行に直接置く（Style の Setter に置くと Click が結線されない）。
-                                         メニューはビジュアルツリーの外なので、パネルの VM は Tag 経由で渡す。 -->
-                                    <DockPanel Background="Transparent" Margin="4,1"
-                                               Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=ItemsControl}}">
-                                        <DockPanel.ContextMenu>
-                                            <ContextMenu>
-                                                <MenuItem Header="差分で見る"
-                                                          Command="{Binding PlacementTarget.Tag.OpenStashDiffCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
-                                                          CommandParameter="{Binding}" />
-                                                <MenuItem Header="パッチとして保存…"
-                                                          Command="{Binding PlacementTarget.Tag.SaveStashPatchCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
-                                                          CommandParameter="{Binding}" />
-                                                <Separator />
-                                                <MenuItem Header="適用（退避は残す）"
-                                                          Command="{Binding PlacementTarget.Tag.StashApplyCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
-                                                          CommandParameter="{Binding}" />
-                                                <MenuItem Header="取り出し（適用して退避を削除）"
-                                                          Command="{Binding PlacementTarget.Tag.StashPopCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
-                                                          CommandParameter="{Binding}" />
-                                                <MenuItem Header="破棄…"
-                                                          Command="{Binding PlacementTarget.Tag.StashDropCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
-                                                          CommandParameter="{Binding}" />
-                                            </ContextMenu>
-                                        </DockPanel.ContextMenu>
-                                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
-                                            <Button Style="{StaticResource RowActionButton}" Content="↧"
-                                                    ToolTip="適用（退避は残す）"
-                                                    Command="{Binding DataContext.StashApplyCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                                    CommandParameter="{Binding}" />
-                                            <Button Style="{StaticResource RowActionButton}" Content="⤇"
-                                                    ToolTip="取り出し（適用して退避を削除）"
-                                                    Command="{Binding DataContext.StashPopCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                                    CommandParameter="{Binding}" />
-                                            <Button Style="{StaticResource RowActionButton}" Content="×"
-                                                    ToolTip="破棄（復元しない）"
-                                                    Command="{Binding DataContext.StashDropCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                                    CommandParameter="{Binding}" />
-                                        </StackPanel>
-                                        <Button Style="{StaticResource StashRowButton}"
-                                                ToolTip="{Binding Description, StringFormat='{}{0}&#x0a;押すと中身を差分で見る（右クリックでパッチとして保存）'}"
-                                                AutomationProperties.Name="{Binding Description}"
-                                                Command="{Binding DataContext.OpenStashDiffCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                                CommandParameter="{Binding}">
-                                            <TextBlock Text="{Binding Description}" TextTrimming="CharacterEllipsis"
-                                                       VerticalAlignment="Center" FontSize="{DynamicResource Fs11}" />
-                                        </Button>
-                                    </DockPanel>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                    </ScrollViewer>
-                </DockPanel>
-            </Grid>
+                </TabItem>
+            </TabControl>
         </DockPanel>
     </DockPanel>
 </UserControl>
