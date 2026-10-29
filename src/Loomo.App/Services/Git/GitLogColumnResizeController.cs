@@ -18,7 +18,8 @@ namespace sk0ya.Loomo.App.Services;
 /// <para>ドラッグ中の幅は<b>掴んだ瞬間の幅とマウスの位置</b>から決める（グラフ幅のつまみと同じ）。
 /// <c>DragDelta</c> の変化量を <c>ActualWidth</c> へ足し込むと、配置が追いつく前に次の変化量が来たときや
 /// 最小幅で止まった後に、境界がマウスから離れていく。広げられるのは余りを吸う列（コミット）が最小幅に
-/// 達するまで——それ以上は横スクロールが出て境界がマウスから逃げるだけなので止める。</para>
+/// 達するまで、かつその列の中身がちょうど収まる幅まで——日時・作成者・ID は中身より広げても空白が
+/// 増えるだけで、その分件名が削られる。前者を超えると横スクロールが出て境界がマウスから逃げる。</para>
 ///
 /// <para>手で決めた幅はドラッグを終えたときに設定へ残し、次に開いたときに戻す。境界のダブルクリックで
 /// その列を「中身に合わせる」に戻す。</para>
@@ -280,6 +281,8 @@ internal sealed class GitLogColumnResizeController : IDisposable
         var fillSlack = Math.Max(0,
             ColumnWidth(FillColumn(_gridView.Columns)) - GitLogColumnLayoutPolicy.FillColumnMinWidth);
         _dragMaxWidth = _dragStartWidth + fillSlack;
+        // 中身より広くしても空白が増えるだけなので、中身の幅で止める（縮めるのは自由）。
+        if (FitWidth(_dragColumn) is { } fit) _dragMaxWidth = Math.Min(_dragMaxWidth, fit);
     }
 
     private void OnLogColumnWidthChanged(object? sender, EventArgs e) => UpdateThumbPositions();
@@ -366,33 +369,42 @@ internal sealed class GitLogColumnResizeController : IDisposable
         }), DispatcherPriority.Background);
     }
 
+    /// <summary>中身に合わせた幅を当てる。手で決めた列はその幅を保つが、中身より広い分は削る
+    /// （日時・作成者・ID は中身の幅を超えて広げても空白が増えるだけ）。</summary>
     private void ApplyTailColumnWidths()
     {
-        if (_gridView is null || _fontProbe is not { } probe) return;
+        if (_gridView is null) return;
+        foreach (var column in _gridView.Columns)
+        {
+            if (FitWidth(column) is not { } fit) continue;
+            if (_userSizedColumns.Contains(column) && ColumnWidth(column) <= fit) continue;
+            if (Math.Abs(ColumnWidth(column) - fit) >= 1) column.Width = fit;
+        }
+    }
+
+    /// <summary>列の中身（先頭から <see cref="TailMeasureRows"/> 行と見出し）がちょうど収まる幅。
+    /// 中身合わせの対象でない列・まだ行が無いときは null。</summary>
+    private double? FitWidth(GridViewColumn column)
+    {
+        if (_gridView is null || _fontProbe is not { } probe) return null;
         var columns = _gridView.Columns;
-        if (columns.Count <= 1) return;
+        if (columns.Count <= 1 || TailColumnValue(column.Header) is not { } value) return null;
         var fontSize = probe.FontSize;
         var typeface = new Typeface(probe.FontFamily, probe.FontStyle, probe.FontWeight, probe.FontStretch);
         var pixelsPerDip = VisualTreeHelper.GetDpi(_owner).PixelsPerDip;
 
-        foreach (var column in columns)
+        var content = 0.0;
+        var rows = 0;
+        foreach (var item in MeasureRows)
         {
-            if (_userSizedColumns.Contains(column)) continue;
-            if (TailColumnValue(column.Header) is not { } value) continue;
-            var content = 0.0;
-            var rows = 0;
-            foreach (var item in MeasureRows)
-            {
-                if (item is not GitLogRow row || value(row) is not { Length: > 0 } text) continue;
-                content = Math.Max(content, Measure(text));
-                if (++rows >= TailMeasureRows) break;
-            }
-            if (rows == 0) continue;
-            var header = column.Header is string title && title.Length > 0 ? Measure(title) : 0;
-            var width = GitLogColumnLayoutPolicy.LogTailColumnWidth(
-                content, header, ReferenceEquals(column, columns[columns.Count - 1]), ColumnGapGridViewRowPresenter.ColumnGap);
-            if (Math.Abs(ColumnWidth(column) - width) >= 1) column.Width = width;
+            if (item is not GitLogRow row || value(row) is not { Length: > 0 } text) continue;
+            content = Math.Max(content, Measure(text));
+            if (++rows >= TailMeasureRows) break;
         }
+        if (rows == 0) return null;
+        var header = column.Header is string title && title.Length > 0 ? Measure(title) : 0;
+        return GitLogColumnLayoutPolicy.LogTailColumnWidth(
+            content, header, ReferenceEquals(column, columns[columns.Count - 1]), ColumnGapGridViewRowPresenter.ColumnGap);
 
         double Measure(string text) => new FormattedText(
             text, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, typeface, fontSize,
