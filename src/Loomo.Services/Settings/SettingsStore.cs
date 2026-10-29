@@ -270,7 +270,7 @@ public sealed class SettingsStore
     private sealed class PersistedGitPaneLayout
     {
         public double? BranchColumnWidth { get; set; }
-        public double? CommitDetailWidth { get; set; }
+        public double? CommitDetailRatio { get; set; }
         public double? ReflogDetailWidth { get; set; }
         public double? GraphWidth { get; set; }
         public Dictionary<string, double>? LogColumnWidths { get; set; }
@@ -278,7 +278,7 @@ public sealed class SettingsStore
         public static PersistedGitPaneLayout From(GitPaneLayoutSettings l) => new()
         {
             BranchColumnWidth = l.BranchColumnWidth,
-            CommitDetailWidth = l.CommitDetailWidth,
+            CommitDetailRatio = l.CommitDetailRatio,
             ReflogDetailWidth = l.ReflogDetailWidth,
             GraphWidth = l.GraphWidth,
             LogColumnWidths = new Dictionary<string, double>(l.LogColumnWidths),
@@ -289,7 +289,7 @@ public sealed class SettingsStore
         public void ApplyTo(GitPaneLayoutSettings l)
         {
             l.BranchColumnWidth = Valid(BranchColumnWidth);
-            l.CommitDetailWidth = Valid(CommitDetailWidth);
+            l.CommitDetailRatio = CommitDetailRatio is { } r && r > 0 && r < 1 ? r : null;
             l.ReflogDetailWidth = Valid(ReflogDetailWidth);
             l.GraphWidth = Valid(GraphWidth);
             l.LogColumnWidths = (LogColumnWidths ?? new())

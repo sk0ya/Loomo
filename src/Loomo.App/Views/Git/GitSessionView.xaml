@@ -877,9 +877,12 @@
                      表示/非表示を切り替えられる（非表示時は列の幅ごと畳む＝ApplyCommitDetailVisibility）。 -->
                 <Grid Grid.Column="2">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" MinWidth="160" />
+                        <!-- 一覧と詳細は比率で分ける（既定 3:1）。ペインを広げると両方が同じ比率で広がる
+                             ——一覧だけが広がると、件名が収まった後は日時の手前に空白が増えるだけになる。
+                             境界のドラッグで比率が変わり、設定へ残る（GitSessionColumnVisibilityController）。 -->
+                        <ColumnDefinition Width="3*" MinWidth="160" />
                         <ColumnDefinition x:Name="CommitDetailSplitterColumn" Width="6" />
-                        <ColumnDefinition x:Name="CommitDetailColumn" Width="300" MinWidth="140" />
+                        <ColumnDefinition x:Name="CommitDetailColumn" Width="1*" MinWidth="140" />
                     </Grid.ColumnDefinitions>
 
                     <!-- コミットグラフ本体（Column 0）。パス履歴の絞り込み帯を上に載せるため、一覧と列幅

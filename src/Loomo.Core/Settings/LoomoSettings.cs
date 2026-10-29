@@ -288,8 +288,9 @@ public sealed class GitPaneLayoutSettings
     /// <summary>左列（ブランチ一覧）の幅。</summary>
     public double? BranchColumnWidth { get; set; }
 
-    /// <summary>右列（選択コミットの詳細）の幅。</summary>
-    public double? CommitDetailWidth { get; set; }
+    /// <summary>右列（選択コミットの詳細）が「グラフ＋詳細」の幅に占める割合（0〜1）。px ではなく割合で持つので、
+    /// ペインを広げると一覧と詳細が同じ比率で広がる。</summary>
+    public double? CommitDetailRatio { get; set; }
 
     /// <summary>操作ログ（reflog）の面の右列（選んだ記録の詳細）の幅。</summary>
     public double? ReflogDetailWidth { get; set; }

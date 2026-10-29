@@ -24,7 +24,7 @@ public sealed class GitPaneLayoutTests
         {
             var vm = CreateVm(settings, store);
             vm.Layout.BranchColumnWidth = 260;
-            vm.Layout.CommitDetailWidth = 420;
+            vm.Layout.CommitDetailRatio = 0.3;
             vm.Layout.ReflogDetailWidth = 380;
             vm.Layout.GraphWidth = 48;
             vm.Layout.LogColumnWidths[GitLogColumnLayout.Author] = 150;
@@ -34,7 +34,7 @@ public sealed class GitPaneLayoutTests
             store.Load(reloaded);
             var again = CreateVm(reloaded, null);
             Assert.Equal(260, again.Layout.BranchColumnWidth);
-            Assert.Equal(420, again.Layout.CommitDetailWidth);
+            Assert.Equal(0.3, again.Layout.CommitDetailRatio);
             Assert.Equal(380, again.Layout.ReflogDetailWidth);
             Assert.Equal(48, again.Layout.GraphWidth);
             Assert.Equal(48, again.History.GraphWidth); // グラフ幅は開いた時点で一覧へ効いている
@@ -53,14 +53,14 @@ public sealed class GitPaneLayoutTests
         try
         {
             File.WriteAllText(path, """
-                { "gitLayout": { "branchColumnWidth": -5, "commitDetailWidth": 0, "graphWidth": 30,
+                { "gitLayout": { "branchColumnWidth": -5, "commitDetailRatio": 1.5, "graphWidth": 30,
                                  "logColumnWidths": { "Date": -1, "Id": 70 } } }
                 """);
             var settings = new LoomoSettings();
             new SettingsStore(path).Load(settings);
 
             Assert.Null(settings.GitLayout.BranchColumnWidth);
-            Assert.Null(settings.GitLayout.CommitDetailWidth);
+            Assert.Null(settings.GitLayout.CommitDetailRatio);
             Assert.Equal(30, settings.GitLayout.GraphWidth);
             Assert.Equal(new Dictionary<string, double> { ["Id"] = 70 }, settings.GitLayout.LogColumnWidths);
         }

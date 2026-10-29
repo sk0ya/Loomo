@@ -19,7 +19,6 @@ internal sealed class GitSessionColumnVisibilityController
 {
     private const double CollapsedBranchColumnWidth = 29;
     private const double BranchColumnMinWidth = 120;
-    private const double CommitDetailMinWidth = 140;
     private const double SplitterWidth = 6;
 
     private readonly ColumnDefinition _branchSplitterColumn;
@@ -33,7 +32,7 @@ internal sealed class GitSessionColumnVisibilityController
     private readonly GridSplitter _commitDetailSplitter;
     private readonly UIElement _commitDetailPanel;
     private GitSessionViewModel? _viewModel;
-    private GridLength _commitDetailWidth = new(300);
+    private GridLength _commitDetailWidth = new(1, GridUnitType.Star);
     private GridLength _branchColumnWidth = new(190);
     private bool? _branchColumnApplied;
 
@@ -80,8 +79,8 @@ internal sealed class GitSessionColumnVisibilityController
             _viewModel.PropertyChanged += OnViewModelPropertyChanged;
             if (_viewModel.Layout.BranchColumnWidth is { } branch)
                 _branchColumnWidth = new GridLength(Math.Max(BranchColumnMinWidth, branch));
-            if (_viewModel.Layout.CommitDetailWidth is { } detail)
-                _commitDetailWidth = new GridLength(Math.Max(CommitDetailMinWidth, detail));
+            if (_viewModel.Layout.CommitDetailRatio is { } ratio)
+                ApplyCommitDetailRatio(ratio);
         }
 
         ApplyCommitDetailVisibility();
@@ -120,7 +119,7 @@ internal sealed class GitSessionColumnVisibilityController
     {
         var visible = _viewModel?.CommitDetailVisible ?? true;
         _commitDetailWidth = GitSessionColumnVisibilityPresenter.ApplyCommitDetailColumn(
-            visible, _commitDetailWidth, RememberableWidth(_commitDetailColumn),
+            visible, _commitDetailWidth, _commitDetailColumn.Width,
             _commitDetailSplitterColumn, _commitDetailColumn, _commitDetailSplitter, _commitDetailPanel);
         QueueClampSideColumns();
     }
@@ -136,12 +135,29 @@ internal sealed class GitSessionColumnVisibilityController
 
     private void OnCommitDetailSplitterDragCompleted(object sender, DragCompletedEventArgs e)
     {
-        if (e.Canceled || !_commitDetailColumn.Width.IsAbsolute) return;
-        _commitDetailWidth = _commitDetailColumn.Width;
+        // GridSplitter は * 列どうしの境界を動かすと、両方の * の値を今の px 幅に置き換える＝比率はそのまま取れる。
+        if (e.Canceled || GraphColumn() is not { } graph) return;
+        var detailWidth = _commitDetailColumn.ActualWidth;
+        var total = graph.ActualWidth + detailWidth;
+        if (total <= 0) return;
+        var ratio = Math.Round(detailWidth / total, 4);
+        ApplyCommitDetailRatio(ratio);
         if (_viewModel is not { } vm) return;
-        vm.Layout.CommitDetailWidth = Math.Round(_commitDetailColumn.Width.Value);
+        vm.Layout.CommitDetailRatio = ratio;
         vm.SaveLayout();
     }
+
+    /// <summary>一覧と詳細の * の値を割合から当て直す（詳細を畳んでいる間は戻すときの値として覚えるだけ）。</summary>
+    private void ApplyCommitDetailRatio(double ratio)
+    {
+        _commitDetailWidth = new GridLength(ratio, GridUnitType.Star);
+        if (GraphColumn() is { } graph) graph.Width = new GridLength(1 - ratio, GridUnitType.Star);
+        if (_commitDetailPanel.Visibility == Visibility.Visible) _commitDetailColumn.Width = _commitDetailWidth;
+    }
+
+    private ColumnDefinition? GraphColumn()
+        => _commitDetailSplitter.Parent is Grid inner && inner.ColumnDefinitions.Count > 0
+            ? inner.ColumnDefinitions[0] : null;
 
     /// <summary>畳むときに覚えておく幅。上限で絞られている間の見かけの幅ではなく、人が決めた幅（Width）を取る。</summary>
     private static double RememberableWidth(ColumnDefinition column)

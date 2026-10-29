@@ -51,10 +51,11 @@ internal static class GitSessionColumnVisibilityPresenter
     public static double SideColumnMaxWidth(double gridWidth, double othersMinWidth, double columnMinWidth)
         => gridWidth > 0 ? Math.Max(columnMinWidth, gridWidth - othersMinWidth) : double.PositiveInfinity;
 
+    /// <summary>詳細列の表示。幅は一覧との比率（* の値）で持つので、畳むときは px ではなく今の * の値を覚える。</summary>
     public static GridLength ApplyCommitDetailColumn(
         bool visible,
         GridLength rememberedWidth,
-        double columnActualWidth,
+        GridLength currentWidth,
         ColumnDefinition splitterColumn,
         ColumnDefinition column,
         UIElement splitter,
@@ -70,8 +71,8 @@ internal static class GitSessionColumnVisibilityPresenter
             return rememberedWidth;
         }
 
-        if (columnActualWidth > 0)
-            rememberedWidth = new GridLength(columnActualWidth);
+        if (currentWidth.IsStar && currentWidth.Value > 0)
+            rememberedWidth = currentWidth;
         splitter.Visibility = Visibility.Collapsed;
         panel.Visibility = Visibility.Collapsed;
         splitterColumn.Width = new GridLength(0);
