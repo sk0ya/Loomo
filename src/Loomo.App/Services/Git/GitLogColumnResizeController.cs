@@ -153,8 +153,14 @@ internal sealed class GitLogColumnResizeController : IDisposable
 
         _fontProbe = new TextBlock { Visibility = Visibility.Collapsed, IsHitTestVisible = false };
         _fontProbe.SetResourceReference(TextBlock.FontSizeProperty, "Fs11");
+        // 書体は一覧から取る。プローブは一覧の外（オーバーレイ）にいるので継承では一覧の等幅書体が
+        // 届かず、UI の比例書体で測った幅では日時・作成者が末尾省略になっていた。
+        _fontProbe.SetBinding(TextBlock.FontFamilyProperty,
+            new System.Windows.Data.Binding(nameof(Control.FontFamily)) { Source = _logList });
         _overlay.Children.Add(_fontProbe);
         Watch(DependencyPropertyDescriptor.FromProperty(TextBlock.FontSizeProperty, typeof(TextBlock)),
+            _fontProbe, OnLogFontSizeChanged);
+        Watch(DependencyPropertyDescriptor.FromProperty(TextBlock.FontFamilyProperty, typeof(TextBlock)),
             _fontProbe, OnLogFontSizeChanged);
 
         BuildThumbs();
