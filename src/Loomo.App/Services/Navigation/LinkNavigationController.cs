@@ -12,6 +12,7 @@ internal static class TerminalLinkTargetResolver
         if (string.IsNullOrWhiteSpace(target))
             return LinkOpenTarget.None;
 
+        target = ExpandShellPath(target);
         if (Uri.TryCreate(target, UriKind.Absolute, out var uri))
         {
             if (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps)
@@ -30,6 +31,17 @@ internal static class TerminalLinkTargetResolver
                 workspace, target, workingDirectory, currentDocumentPath: null, out var location)
             ? new(LinkOpenTargetKind.File, location.Path, location.Line, location.Column)
             : LinkOpenTarget.None;
+    }
+
+    /// <summary>
+    /// 端末の出力に展開前のまま出てくる <c>%APPDATA%\…</c> と <c>~\…</c> を実パスへ。
+    /// 未定義の環境変数はそのまま残るので、存在しないパスとして開かれずに終わる。
+    /// </summary>
+    public static string ExpandShellPath(string target)
+    {
+        if (target.Length >= 2 && target[0] == '~' && target[1] is '\\' or '/')
+            return Environment.GetFolderPath(Environment.SpecialFolder.UserProfile) + target[1..];
+        return target.StartsWith('%') ? Environment.ExpandEnvironmentVariables(target) : target;
     }
 
     public static bool IsWindowsPathTarget(string target)

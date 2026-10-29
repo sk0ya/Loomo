@@ -19,4 +19,28 @@ public sealed class ShellWindowLinkTests
     [InlineData("https://example.com")]
     public void Windows絶対パス以外はパス扱いにしない(string target)
         => Assert.False(TerminalLinkTargetResolver.IsWindowsPathTarget(target));
+
+    [Fact]
+    public void 環境変数で始まるパスは展開してWindowsパスにする()
+    {
+        var expanded = TerminalLinkTargetResolver.ExpandShellPath("%APPDATA%/Loomo/editor-positions.json:3");
+
+        Assert.Equal(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData) + "/Loomo/editor-positions.json:3",
+            expanded);
+        Assert.True(TerminalLinkTargetResolver.IsWindowsPathTarget(expanded));
+    }
+
+    [Fact]
+    public void チルダで始まるパスはユーザーフォルダーへ展開する()
+        => Assert.Equal(
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile) + "\\.claude\\settings.json",
+            TerminalLinkTargetResolver.ExpandShellPath("~\\.claude\\settings.json"));
+
+    [Theory]
+    [InlineData("src/Foo.cs:12")]
+    [InlineData("%LOOMO_UNDEFINED_VAR_FOR_TEST%/a.txt")]
+    [InlineData("~user/a.txt")]
+    public void 展開できないものはそのまま残す(string target)
+        => Assert.Equal(target, TerminalLinkTargetResolver.ExpandShellPath(target));
 }
