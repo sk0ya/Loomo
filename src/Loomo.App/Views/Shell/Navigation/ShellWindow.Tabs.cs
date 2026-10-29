@@ -199,6 +199,7 @@ public partial class ShellWindow {
             UpdateEditorSupportPinToggle();
         }
         DisposeExcerptTab(id);
+        RememberEditorPosition(tab);   // 開き直したとき前回の行へ戻れるように
         if (tab.IsRealized) {
             // 破棄する前に C# 診断（StyleCop／compiler フォールバック）の購読と保持を外す。
             // 外さないと解析中のタスクが Dispose 済みコントロールへ結果を書き戻し、
@@ -240,6 +241,7 @@ public partial class ShellWindow {
             _vm.Recent.RecordFolder(e.NewPath);
         else
             _vm.Recent.RecordFile(e.NewPath);
+        _editorPositions.Move(e.OldPath, e.NewPath, e.IsDirectory);
         foreach (var tab in _editorTabs) {
             var path = tab.PeekFilePath;
             var newPath = EditorTabNavigationPolicy.PathAfterRename(

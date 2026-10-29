@@ -412,17 +412,23 @@ public partial class ShellWindow {
         if (!tab.IsRealized)
             _ = tab.Control;   // 実体化はここで済ませる（await の後に走らせない）
         var control = tab.Control;
+        var position = _editorPositions.GetAsync(path);   // 前回の位置は読み込みと並べて引く
         var prepared = await Task.Run(() => PreparedFileLoad.Prepare(path));
+        var lastPosition = await position;
         if (!_editorTabs.Contains(tab) || !tab.IsRealized || !ReferenceEquals(tab.Control, control))
             return;
         SaveUndoHistoryBeforeReplacing(control, path);
         control.LoadFile(path, prepared);
         AfterEditorFileLoaded(control);
+        RestoreEditorPosition(control, lastPosition);
     }
-    /// <summary>同じエディタへ別のファイルを読む（プレビューのタブの使い回しなど）前に、今のファイルの取り消しの履歴を書き出す（§24.96）。</summary>
+    /// <summary>同じエディタへ別のファイルを読む（プレビューのタブの使い回しなど）前に、今のファイルの取り消しの履歴を書き出し（§24.96）、
+    /// カーソル位置を覚える。</summary>
     private void SaveUndoHistoryBeforeReplacing(VimEditorControl control, string nextPath) {
-        if (control.FilePath is { Length: > 0 } current && !string.Equals(current, nextPath, StringComparison.OrdinalIgnoreCase))
+        if (control.FilePath is { Length: > 0 } current && !string.Equals(current, nextPath, StringComparison.OrdinalIgnoreCase)) {
             SaveUndoHistory(control);
+            RememberEditorPosition(control);
+        }
     }
     private void AfterEditorFileLoaded(VimEditorControl control) {
         ApplyMetadataSourceReadOnly(control);
