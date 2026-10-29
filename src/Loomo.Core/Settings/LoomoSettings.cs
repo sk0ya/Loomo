@@ -90,6 +90,9 @@ public sealed class LoomoSettings
     /// <summary>Git ペインのコミット一覧の列の並びと表示／非表示。列見出しの右クリック・見出しのドラッグから書き戻される。</summary>
     public GitLogColumnSettings GitLogColumns { get; set; } = new();
 
+    /// <summary>Git ペインの幅（左列・詳細列・グラフ・一覧の列）。境界をドラッグし終えたときに書き戻される。</summary>
+    public GitPaneLayoutSettings GitLayout { get; set; } = new();
+
     /// <summary>ActivityBar（左端の縦帯）の項目配置。上段バーと中段バーのどちらに何を置くかを持つ。</summary>
     public ActivityBarSettings ActivityBar { get; set; } = new();
 
@@ -277,6 +280,25 @@ public sealed class GitLogColumnSettings
 
     /// <summary>隠している列。</summary>
     public List<string> Hidden { get; set; } = new();
+}
+
+/// <summary>Git ペインで人が決めた幅（px）。null／未登録は「既定（中身に合わせる）」。</summary>
+public sealed class GitPaneLayoutSettings
+{
+    /// <summary>左列（ブランチ一覧）の幅。</summary>
+    public double? BranchColumnWidth { get; set; }
+
+    /// <summary>右列（選択コミットの詳細）の幅。</summary>
+    public double? CommitDetailWidth { get; set; }
+
+    /// <summary>操作ログ（reflog）の面の右列（選んだ記録の詳細）の幅。</summary>
+    public double? ReflogDetailWidth { get; set; }
+
+    /// <summary>コミットグラフの幅の上限。null は「全レーンが収まる幅」。</summary>
+    public double? GraphWidth { get; set; }
+
+    /// <summary>コミット一覧の列幅（列 ID → px）。手で広げ縮めした列だけ持つ。余りを吸う「コミット」列は持たない。</summary>
+    public Dictionary<string, double> LogColumnWidths { get; set; } = new();
 }
 
 /// <summary>エクスプローラー（フォルダーツリー）の表示設定。</summary>

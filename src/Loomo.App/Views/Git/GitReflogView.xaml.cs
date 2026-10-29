@@ -17,7 +17,15 @@ namespace sk0ya.Loomo.App.Views;
 /// </summary>
 public partial class GitReflogView : UserControl
 {
-    public GitReflogView() => InitializeComponent();
+    public GitReflogView()
+    {
+        InitializeComponent();
+        DataContextChanged += (_, _) =>
+        {
+            if (Vm?.Layout.ReflogDetailWidth is { } width)
+                DetailColumn.Width = new GridLength(Math.Max(DetailColumn.MinWidth, width));
+        };
+    }
 
     private GitSessionViewModel? Vm => DataContext as GitSessionViewModel;
     private GitReflogRow? Selected => Vm?.Reflog.SelectedRow;
@@ -31,6 +39,20 @@ public partial class GitReflogView : UserControl
             MessageBoxButton.YesNo,
             request.Severity == GitConfirmationSeverity.Warning
                 ? MessageBoxImage.Warning : MessageBoxImage.Question) == MessageBoxResult.Yes;
+
+    // ===== 幅 =====
+
+    /// <summary>詳細列の上限を、一覧が最小幅を保てる幅に絞る（Width＝人が決めた幅は残すので、広げ直せば戻る）。</summary>
+    private void OnRootSizeChanged(object sender, SizeChangedEventArgs e)
+        => DetailColumn.MaxWidth = GitSessionColumnVisibilityPresenter.SideColumnMaxWidth(
+            RootGrid.ActualWidth, ListColumn.MinWidth + DetailSplitterColumn.Width.Value, DetailColumn.MinWidth);
+
+    private void OnDetailSplitterDragCompleted(object sender, DragCompletedEventArgs e)
+    {
+        if (e.Canceled || !DetailColumn.Width.IsAbsolute || Vm is not { } vm) return;
+        vm.Layout.ReflogDetailWidth = Math.Round(DetailColumn.Width.Value);
+        vm.SaveLayout();
+    }
 
     // ===== 一覧 =====
 

@@ -42,6 +42,7 @@ public partial class GitSessionView
         };
         _graphGrip.DragStarted += OnGraphWidthDragStarted;
         _graphGrip.DragDelta += OnGraphWidthDragDelta;
+        _graphGrip.DragCompleted += (_, _) => SaveGraphWidth();
         _graphGrip.MouseDoubleClick += OnGraphWidthReset;
         LogColumnResizeOverlay.Children.Add(_graphGrip);
 
@@ -120,6 +121,15 @@ public partial class GitSessionView
     private void OnGraphWidthReset(object sender, MouseButtonEventArgs e)
     {
         if (Vm is { } vm) vm.History.GraphWidth = null;
+        SaveGraphWidth();
         e.Handled = true;
+    }
+
+    /// <summary>決めたグラフ幅を設定へ残す。ドラッグ中の毎回ではなく、終えたとき・戻したときだけ。</summary>
+    private void SaveGraphWidth()
+    {
+        if (Vm is not { } vm || vm.Layout.GraphWidth == vm.History.GraphWidth) return;
+        vm.Layout.GraphWidth = vm.History.GraphWidth;
+        vm.SaveLayout();
     }
 }

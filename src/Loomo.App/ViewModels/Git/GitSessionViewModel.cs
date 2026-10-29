@@ -144,6 +144,18 @@ public sealed partial class GitSessionViewModel : ObservableObject
         catch { /* 永続化に失敗しても表示切替自体は効かせる */ }
     }
 
+    /// <summary>人が決めた幅（左列・詳細列・グラフ・一覧の列）。ビューが境界のドラッグを終えたときに
+    /// 書き換え、<see cref="SaveLayout"/> で残す。設定が無い（テスト等）ときはこのインスタンス限りの入れ物。</summary>
+    public GitPaneLayoutSettings Layout { get; }
+
+    /// <summary><see cref="Layout"/> を設定へ書き出す。ドラッグ中の毎回ではなく、終えたときだけ呼ぶ。</summary>
+    public void SaveLayout()
+    {
+        if (_settings is null) return;
+        try { _settingsStore?.Save(_settings); }
+        catch { /* 永続化に失敗しても幅の変更自体は効かせる */ }
+    }
+
     /// <summary>コミット一覧の列の並び（隠している列も含む。<see cref="GitLogColumnLayout"/>）。</summary>
     public IReadOnlyList<string> LogColumnOrder { get; private set; } = GitLogColumnLayout.DefaultOrder;
 
@@ -288,6 +300,8 @@ public sealed partial class GitSessionViewModel : ObservableObject
         _branchColumnVisible = settings?.GitBranchColumnVisible ?? true;
         LogColumnOrder = GitLogColumnLayout.NormalizeOrder(settings?.GitLogColumns.Order);
         LogHiddenColumns = GitLogColumnLayout.NormalizeHidden(settings?.GitLogColumns.Hidden);
+        Layout = settings?.GitLayout ?? new GitPaneLayoutSettings();
+        History.GraphWidth = Layout.GraphWidth;
         // 読めない値（手書き・古い版）は既定へ落とす。ここで例外にすると起動ごと落ちる。
         // IsDefined まで見るのは、TryParse が "7" のような数値文字列を<b>成功させて</b>
         // 定義の無い値を返すため——どのタブにも一致せず、左列の下段が空白のまま操作不能になる。

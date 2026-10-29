@@ -46,6 +46,11 @@ internal static class GitSessionColumnVisibilityPresenter
         return new GitBranchColumnLayoutState(rememberedWidth, visible);
     }
 
+    /// <summary>脇の列の上限。Grid の幅から他の列が最低限要る幅を引いたもの（脇の列の最小幅は割らない）。
+    /// まだ測られていない（幅 0）間は上限を付けない。</summary>
+    public static double SideColumnMaxWidth(double gridWidth, double othersMinWidth, double columnMinWidth)
+        => gridWidth > 0 ? Math.Max(columnMinWidth, gridWidth - othersMinWidth) : double.PositiveInfinity;
+
     public static GridLength ApplyCommitDetailColumn(
         bool visible,
         GridLength rememberedWidth,

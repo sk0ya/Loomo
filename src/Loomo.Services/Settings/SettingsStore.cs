@@ -128,6 +128,9 @@ public sealed class SettingsStore
         /// <summary>Git ペインのコミット一覧の列の並びと表示。null=旧設定（未指定）→ 既定（全列を既定の並び）を維持。</summary>
         public PersistedGitLogColumns? GitLogColumns { get; set; }
 
+        /// <summary>Git ペインの幅。null=旧設定（未指定）→ 既定の幅を維持。</summary>
+        public PersistedGitPaneLayout? GitLayout { get; set; }
+
         /// <summary>ブラウザのブックマークバーの表示ON/OFF。null=旧設定（未指定）→ 既定（表示）を維持。</summary>
         public bool? BrowserBookmarkBarVisible { get; set; }
 
@@ -160,6 +163,7 @@ public sealed class SettingsStore
             GitReferenceTab = s.GitReferenceTab,
             GitSessionMode = s.GitSessionMode,
             GitLogColumns = PersistedGitLogColumns.From(s.GitLogColumns),
+            GitLayout = PersistedGitPaneLayout.From(s.GitLayout),
             BrowserBookmarkBarVisible = s.BrowserBookmarkBarVisible,
             Local = PersistedProvider.From(s.Local),
             Safety = PersistedSafety.From(s.Safety),
@@ -192,6 +196,7 @@ public sealed class SettingsStore
             if (GitReferenceTab is { Length: > 0 } gitRefTab) s.GitReferenceTab = gitRefTab;      // 同上
             if (GitSessionMode is { Length: > 0 } gitMode) s.GitSessionMode = gitMode;           // 同上
             GitLogColumns?.ApplyTo(s.GitLogColumns);                                              // 同上
+            GitLayout?.ApplyTo(s.GitLayout);                                                      // 同上
             if (BrowserBookmarkBarVisible is { } bookmarkBar) s.BrowserBookmarkBarVisible = bookmarkBar; // 同上
             Local.ApplyTo(s.Local);
             Safety.ApplyTo(s.Safety);
@@ -258,6 +263,42 @@ public sealed class SettingsStore
             c.Order = Order?.Where(id => !string.IsNullOrWhiteSpace(id)).ToList() ?? new();
             c.Hidden = Hidden?.Where(id => !string.IsNullOrWhiteSpace(id)).ToList() ?? new();
         }
+    }
+
+    // ===== Git ペインの幅。範囲外の値の扱い（列の最小幅など）は読む側（App）が行う。 =====
+
+    private sealed class PersistedGitPaneLayout
+    {
+        public double? BranchColumnWidth { get; set; }
+        public double? CommitDetailWidth { get; set; }
+        public double? ReflogDetailWidth { get; set; }
+        public double? GraphWidth { get; set; }
+        public Dictionary<string, double>? LogColumnWidths { get; set; }
+
+        public static PersistedGitPaneLayout From(GitPaneLayoutSettings l) => new()
+        {
+            BranchColumnWidth = l.BranchColumnWidth,
+            CommitDetailWidth = l.CommitDetailWidth,
+            ReflogDetailWidth = l.ReflogDetailWidth,
+            GraphWidth = l.GraphWidth,
+            LogColumnWidths = new Dictionary<string, double>(l.LogColumnWidths),
+        };
+
+        // 既存インスタンスを書き換える（DI シングルトンの参照を保つため置き換えない）。
+        // 手書きで壊れた値（0 以下・NaN）は既定へ落とす。
+        public void ApplyTo(GitPaneLayoutSettings l)
+        {
+            l.BranchColumnWidth = Valid(BranchColumnWidth);
+            l.CommitDetailWidth = Valid(CommitDetailWidth);
+            l.ReflogDetailWidth = Valid(ReflogDetailWidth);
+            l.GraphWidth = Valid(GraphWidth);
+            l.LogColumnWidths = (LogColumnWidths ?? new())
+                .Where(pair => !string.IsNullOrWhiteSpace(pair.Key) && Valid(pair.Value) is not null)
+                .ToDictionary(pair => pair.Key, pair => pair.Value);
+        }
+
+        private static double? Valid(double? value)
+            => value is { } v && double.IsFinite(v) && v > 0 ? v : null;
     }
 
     private sealed class PersistedTabsPanel

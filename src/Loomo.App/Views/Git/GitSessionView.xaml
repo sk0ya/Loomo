@@ -98,6 +98,65 @@
             </Setter>
         </Style>
 
+        <!-- 列・段の境界（GridSplitter）。6px の当たり判定は保ったまま、見た目は中央の 1px の線にし、
+             ホバー中・ドラッグ中だけアクセント色で太く光らせる——一覧の列境界のつまみ（LogColumnResizeThumb）と
+             同じ振る舞い。6px の灰色の帯だと境界が「仕切り」に見えて掴めることが伝わらず、掴んでも手応えが無かった。 -->
+        <Style x:Key="GitColumnSplitter" TargetType="GridSplitter">
+            <Setter Property="Width" Value="6" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="VerticalAlignment" Value="Stretch" />
+            <Setter Property="Cursor" Value="SizeWE" />
+            <Setter Property="Focusable" Value="False" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="GridSplitter">
+                        <Grid Background="Transparent">
+                            <Border x:Name="line" Width="1" HorizontalAlignment="Center"
+                                    Background="{DynamicResource Border}" />
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="line" Property="Width" Value="3" />
+                                <Setter TargetName="line" Property="Background" Value="{DynamicResource Accent}" />
+                            </Trigger>
+                            <Trigger Property="IsDragging" Value="True">
+                                <Setter TargetName="line" Property="Width" Value="3" />
+                                <Setter TargetName="line" Property="Background" Value="{DynamicResource Accent}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="GitRowSplitter" TargetType="GridSplitter">
+            <Setter Property="Height" Value="6" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="VerticalAlignment" Value="Stretch" />
+            <Setter Property="Cursor" Value="SizeNS" />
+            <Setter Property="Focusable" Value="False" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="GridSplitter">
+                        <Grid Background="Transparent">
+                            <Border x:Name="line" Height="1" VerticalAlignment="Center"
+                                    Background="{DynamicResource Border}" />
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="line" Property="Height" Value="3" />
+                                <Setter TargetName="line" Property="Background" Value="{DynamicResource Accent}" />
+                            </Trigger>
+                            <Trigger Property="IsDragging" Value="True">
+                                <Setter TargetName="line" Property="Height" Value="3" />
+                                <Setter TargetName="line" Property="Background" Value="{DynamicResource Accent}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <!-- ブランチ一覧の左に立てる操作バーのボタン。幅 26px の縦帯に収めるので、文字は1つだけ
              （名前はツールチップが持つ）。無効時はテンプレート側で薄くする＝押せないことを形で見せる。 -->
         <Style x:Key="BranchOpButton" TargetType="Button">
@@ -581,8 +640,7 @@
                         </TreeView>
                     </DockPanel>
 
-                    <GridSplitter Grid.Row="1" Height="6" HorizontalAlignment="Stretch"
-                                  Background="{DynamicResource Border}" />
+                    <GridSplitter Grid.Row="1" Style="{StaticResource GitRowSplitter}" />
 
                     <!-- 参照（ワークツリー／タグ／サブモジュール）。縦に積むと、190px の列の中で
                          本命のブランチ一覧が潰れる。切替式にして、空いた高さはブランチ側へ回す。
@@ -811,8 +869,7 @@
                     </Grid>
                 </DockPanel>
 
-                <GridSplitter x:Name="BranchSplitter" Grid.Column="1" Width="6" HorizontalAlignment="Stretch"
-                              Background="{DynamicResource Border}" />
+                <GridSplitter x:Name="BranchSplitter" Grid.Column="1" Style="{StaticResource GitColumnSplitter}" />
 
                 <!-- コミットグラフ＋詳細。詳細はグラフの「右」に縦に置く（変更ファイル一覧が上・
                      コミットコメントが下）。ファイルのパスは横に長いので、下段の横帯より
@@ -1218,9 +1275,7 @@
                     </Grid>
                     </DockPanel>
 
-                    <GridSplitter x:Name="CommitDetailSplitter" Grid.Column="1" Width="6"
-                                  HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
-                                  Background="{DynamicResource Border}" />
+                    <GridSplitter x:Name="CommitDetailSplitter" Grid.Column="1" Style="{StaticResource GitColumnSplitter}" />
 
                     <!-- 選択コミットの詳細（複数選択なら、選んだコミットぶん＝最古の親→最新の範囲。
                          GitHistoryViewModel.SelectedRange）。上＝変更ファイル一覧（フォルダ構造つき）、
@@ -1261,8 +1316,7 @@
                             </TreeView.ContextMenu>
                         </TreeView>
 
-                        <GridSplitter Grid.Row="1" Height="6" HorizontalAlignment="Stretch"
-                                      Background="{DynamicResource Border}" />
+                        <GridSplitter Grid.Row="1" Style="{StaticResource GitRowSplitter}" />
 
                         <!-- コミットの情報。上＝サマリ（「変更ファイル 12 ファイル +34 -5」）、
                              下＝コミットコメント（件名・本文と、その下にハッシュ／作者／日時の1行）。

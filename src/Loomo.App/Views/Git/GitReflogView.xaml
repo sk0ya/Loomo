@@ -98,11 +98,14 @@
         </Style>
     </UserControl.Resources>
 
-    <Grid>
+    <!-- 詳細列はペインが狭まっても画面の外へ押し出さず、一覧の最小幅を残せる幅まで縮める
+         （GitReflogView.xaml.cs の OnRootSizeChanged）。境界の見た目は履歴の面と同じ
+         （スタイルは GitSessionView 側にあるので、この面が載ってから引ける DynamicResource で参照する）。 -->
+    <Grid x:Name="RootGrid" SizeChanged="OnRootSizeChanged">
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="*" MinWidth="260" />
-            <ColumnDefinition Width="6" />
-            <ColumnDefinition Width="340" MinWidth="200" />
+            <ColumnDefinition x:Name="ListColumn" Width="*" MinWidth="260" />
+            <ColumnDefinition x:Name="DetailSplitterColumn" Width="6" />
+            <ColumnDefinition x:Name="DetailColumn" Width="340" MinWidth="200" />
         </Grid.ColumnDefinitions>
 
         <!-- ===== 一覧 ===== -->
@@ -255,7 +258,8 @@
             </Grid>
         </DockPanel>
 
-        <GridSplitter Grid.Column="1" Width="6" HorizontalAlignment="Stretch" Background="{DynamicResource Border}" />
+        <GridSplitter Grid.Column="1" Style="{DynamicResource GitColumnSplitter}"
+                      DragCompleted="OnDetailSplitterDragCompleted" />
 
         <!-- ===== 選んだ記録の詳細 ===== -->
         <Grid Grid.Column="2" Background="{DynamicResource BgAlt}">
@@ -349,7 +353,7 @@
                     </ListBox.ContextMenu>
                 </ListBox>
 
-                <GridSplitter Grid.Row="2" Height="6" HorizontalAlignment="Stretch" Background="{DynamicResource Border}" />
+                <GridSplitter Grid.Row="2" Style="{DynamicResource GitRowSplitter}" />
 
                 <TextBox Grid.Row="3" IsReadOnly="True" IsReadOnlyCaretVisible="False"
                          Text="{Binding Reflog.DetailMessage, Mode=OneWay}"

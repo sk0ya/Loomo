@@ -82,6 +82,7 @@ public partial class GitSessionView : UserControl
         _selectedLogRowPresenter.Attach(Vm?.History);
         _columnVisibilityController.Attach(Vm);
         AttachLogColumns(Vm);
+        _logColumnResizeController?.ApplySavedWidths();
     }
 
     /// <summary>

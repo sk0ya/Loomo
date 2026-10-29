@@ -9,7 +9,8 @@ public partial class GitSessionView
 
     private void SetupLogColumnResize()
     {
-        _logColumnResizeController = new GitLogColumnResizeController(this, LogList, LogColumnResizeOverlay);
+        _logColumnResizeController = new GitLogColumnResizeController(
+            this, LogList, LogColumnResizeOverlay, () => Vm?.Layout, () => Vm?.SaveLayout());
         _logColumnResizeController.Setup();
     }
 

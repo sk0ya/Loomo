@@ -5,6 +5,7 @@ using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
 using sk0ya.Loomo.App.Views;
@@ -12,10 +13,21 @@ using sk0ya.Loomo.Services;
 
 namespace sk0ya.Loomo.App.Services;
 
-/// <summary>Git コミット一覧の GridView 列幅、境界ドラッグ、幅計測を管理する。</summary>
+/// <summary>Git コミット一覧の GridView 列幅、境界ドラッグ、幅計測を管理する。
+///
+/// <para>ドラッグ中の幅は<b>掴んだ瞬間の幅とマウスの位置</b>から決める（グラフ幅のつまみと同じ）。
+/// <c>DragDelta</c> の変化量を <c>ActualWidth</c> へ足し込むと、配置が追いつく前に次の変化量が来たときや
+/// 最小幅で止まった後に、境界がマウスから離れていく。広げられるのは余りを吸う列（コミット）が最小幅に
+/// 達するまで——それ以上は横スクロールが出て境界がマウスから逃げるだけなので止める。</para>
+///
+/// <para>手で決めた幅はドラッグを終えたときに設定へ残し、次に開いたときに戻す。境界のダブルクリックで
+/// その列を「中身に合わせる」に戻す。</para>
+/// </summary>
 internal sealed class GitLogColumnResizeController : IDisposable
 {
     private const double UserSizeThresholdPx = 3;
+    private const double MinColumnWidth = 30;
+    private const double HeaderPaddingMinWidth = 2;
     private const int TailMeasureRows = 400;
     private const string FillColumnHeader = "コミット";
 
@@ -29,6 +41,8 @@ internal sealed class GitLogColumnResizeController : IDisposable
     private readonly FrameworkElement _owner;
     private readonly ListView _logList;
     private readonly Canvas _overlay;
+    private readonly Func<GitPaneLayoutSettings?> _layout;
+    private readonly Action _saveLayout;
     private readonly List<Thumb> _thumbs = new();
     private readonly HashSet<GridViewColumn> _userSizedColumns = new();
     private readonly HashSet<GridViewColumn> _watchedColumns = new();
@@ -44,13 +58,22 @@ internal sealed class GitLogColumnResizeController : IDisposable
     private bool _fillColumnUpdating;
     private bool _tailWidthsQueued;
     private bool _disposed;
-    private double _dragTotal;
+    private GridViewColumn? _dragColumn;
+    private bool _dragGrowsLeft;
+    private double _dragStartWidth;
+    private double _dragStartX;
+    private double _dragMaxWidth;
+    private bool _dragMoved;
 
-    internal GitLogColumnResizeController(FrameworkElement owner, ListView logList, Canvas overlay)
+    internal GitLogColumnResizeController(
+        FrameworkElement owner, ListView logList, Canvas overlay,
+        Func<GitPaneLayoutSettings?> layout, Action saveLayout)
     {
         _owner = owner;
         _logList = logList;
         _overlay = overlay;
+        _layout = layout;
+        _saveLayout = saveLayout;
     }
 
     internal void Setup()
@@ -140,9 +163,23 @@ internal sealed class GitLogColumnResizeController : IDisposable
         _logList.SizeChanged += OnLogListSizeChanged;
         Watch(DependencyPropertyDescriptor.FromProperty(ItemsControl.ItemsSourceProperty, typeof(ListView)),
             _logList, OnLogItemsSourceChanged);
+        ApplySavedWidths();
         HookMeasureSource();
         HideHeaderGrippers();
         UpdateThumbPositions();
+    }
+
+    /// <summary>設定に残っている手決めの列幅を当てる（そうした列は中身に合わせた幅の自動調整から外す）。</summary>
+    internal void ApplySavedWidths()
+    {
+        if (_disposed || _gridView is null || _layout() is not { } layout) return;
+        foreach (var column in _gridView.Columns)
+        {
+            if (TailColumnValue(column.Header) is null || ColumnId(column) is not { } id) continue;
+            if (!layout.LogColumnWidths.TryGetValue(id, out var width)) continue;
+            _userSizedColumns.Add(column);
+            column.Width = Math.Max(MinColumnWidth, width);
+        }
     }
 
     /// <summary>列境界ごとのつまみを今の列数ぶん作り直す。列の表示／非表示・並べ替えで列数や
@@ -155,10 +192,17 @@ internal sealed class GitLogColumnResizeController : IDisposable
         for (var index = 0; index < _gridView.Columns.Count; index++)
         {
             var column = _gridView.Columns[index];
-            var thumb = new Thumb { Width = 6, Style = thumbStyle };
+            var thumb = new Thumb
+            {
+                Width = 6,
+                Style = thumbStyle,
+                ToolTip = "ドラッグで列幅を変更（ダブルクリックで中身に合わせる）",
+            };
             if (index == _gridView.Columns.Count - 1) thumb.Visibility = Visibility.Collapsed;
             thumb.DragStarted += OnLogColumnDragStarted;
             thumb.DragDelta += OnLogColumnThumbDragDelta;
+            thumb.DragCompleted += OnLogColumnDragCompleted;
+            thumb.MouseDoubleClick += OnLogColumnThumbDoubleClick;
             _thumbs.Add(thumb);
             _overlay.Children.Add(thumb);
             if (_watchedColumns.Add(column))
@@ -173,6 +217,8 @@ internal sealed class GitLogColumnResizeController : IDisposable
         {
             thumb.DragStarted -= OnLogColumnDragStarted;
             thumb.DragDelta -= OnLogColumnThumbDragDelta;
+            thumb.DragCompleted -= OnLogColumnDragCompleted;
+            thumb.MouseDoubleClick -= OnLogColumnThumbDoubleClick;
             _overlay.Children.Remove(thumb);
         }
         _thumbs.Clear();
@@ -209,7 +255,32 @@ internal sealed class GitLogColumnResizeController : IDisposable
         _owner.Dispatcher.BeginInvoke(new Action(() => HideHeaderGrippers(false)), DispatcherPriority.Loaded);
     }
 
-    private void OnLogColumnDragStarted(object sender, DragStartedEventArgs e) => _dragTotal = 0;
+    /// <summary>つまみが幅を変える列。余りを吸う列（コミット）は幅を直接いじらない。境界がマウスに
+    /// 付いてくるのは、境界と吸う列の<b>反対側</b>の列を変えたとき——吸う列が左にあれば右隣を
+    /// （左へ引くと広がる）、右にあれば左隣を変える。</summary>
+    private GridViewColumn? ResizeTarget(Thumb thumb, out bool growsLeft)
+    {
+        growsLeft = false;
+        if (_gridView is null) return null;
+        var columns = _gridView.Columns;
+        var index = _thumbs.IndexOf(thumb);
+        if (index < 0 || index + 1 >= columns.Count) return null;
+        growsLeft = columns.IndexOf(FillColumn(columns)) <= index;
+        return columns[growsLeft ? index + 1 : index];
+    }
+
+    private void OnLogColumnDragStarted(object sender, DragStartedEventArgs e)
+    {
+        _dragColumn = ResizeTarget((Thumb)sender, out _dragGrowsLeft);
+        _dragMoved = false;
+        if (_dragColumn is null || _gridView is null) return;
+        _dragStartWidth = ColumnWidth(_dragColumn);
+        _dragStartX = Mouse.GetPosition(_logList).X;
+        // 広げてよいのは、吸う列が最小幅まで縮むぶんだけ。
+        var fillSlack = Math.Max(0,
+            ColumnWidth(FillColumn(_gridView.Columns)) - GitLogColumnLayoutPolicy.FillColumnMinWidth);
+        _dragMaxWidth = _dragStartWidth + fillSlack;
+    }
 
     private void OnLogColumnWidthChanged(object? sender, EventArgs e) => UpdateThumbPositions();
     private void OnLogScrollChanged(object sender, ScrollChangedEventArgs e) => UpdateThumbPositions();
@@ -219,19 +290,43 @@ internal sealed class GitLogColumnResizeController : IDisposable
 
     private void OnLogColumnThumbDragDelta(object sender, DragDeltaEventArgs e)
     {
-        if (_gridView is null) return;
-        var columns = _gridView.Columns;
-        var index = _thumbs.IndexOf((Thumb)sender);
-        if (index < 0 || index + 1 >= columns.Count) return;
-        // 余りを吸う列（コミット）は幅を直接いじらない。境界がマウスに付いてくるのは、境界と
-        // 吸う列の<b>反対側</b>の列を変えたとき——吸う列が左にあれば右隣を縮め、右にあれば左隣を広げる。
-        var fillIndex = columns.IndexOf(FillColumn(columns));
-        var resizeRight = fillIndex <= index;
-        var column = columns[resizeRight ? index + 1 : index];
-        var change = resizeRight ? -e.HorizontalChange : e.HorizontalChange;
-        _dragTotal += e.HorizontalChange;
-        if (Math.Abs(_dragTotal) >= UserSizeThresholdPx) _userSizedColumns.Add(column);
-        column.Width = Math.Max(30, column.ActualWidth + change);
+        if (_dragColumn is not { } column) return;
+        var moved = Mouse.GetPosition(_logList).X - _dragStartX;
+        // 押しただけ（ダブルクリックの1打目を含む）で中身合わせの幅から外さない。
+        if (!_dragMoved && Math.Abs(moved) < UserSizeThresholdPx) return;
+        _dragMoved = true;
+        _userSizedColumns.Add(column);
+        var width = GitLogColumnLayoutPolicy.DraggedColumnWidth(
+            _dragStartWidth, _dragGrowsLeft ? -moved : moved, MinColumnWidth, _dragMaxWidth);
+        if (Math.Abs(ColumnWidth(column) - width) >= 0.5) column.Width = width;
+    }
+
+    private void OnLogColumnDragCompleted(object sender, DragCompletedEventArgs e)
+    {
+        var column = _dragColumn;
+        _dragColumn = null;
+        if (column is null || !_dragMoved || ColumnId(column) is not { } id || _layout() is not { } layout) return;
+        layout.LogColumnWidths[id] = Math.Round(ColumnWidth(column));
+        _saveLayout();
+    }
+
+    /// <summary>境界のダブルクリック＝その列を「中身に合わせる」へ戻す（手決めの幅を忘れる）。</summary>
+    private void OnLogColumnThumbDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        e.Handled = true;
+        if (ResizeTarget((Thumb)sender, out _) is not { } column) return;
+        _userSizedColumns.Remove(column);
+        if (ColumnId(column) is { } id && _layout() is { } layout && layout.LogColumnWidths.Remove(id))
+            _saveLayout();
+        QueueTailColumnWidths();
+    }
+
+    /// <summary>列の ID（<see cref="GitLogColumnLayout"/>）。見出しの文言から引く。</summary>
+    private static string? ColumnId(GridViewColumn column)
+    {
+        foreach (var id in GitLogColumnLayout.DefaultOrder)
+            if (Equals(column.Header, GitLogColumnLayout.Title(id))) return id;
+        return null;
     }
 
     private static Func<GitLogRow, string?>? TailColumnValue(object? header)
@@ -311,10 +406,15 @@ internal sealed class GitLogColumnResizeController : IDisposable
         if (columns.Count == 0) return;
         var viewport = _scrollViewer.ViewportWidth;
         if (viewport <= 0) return;
-        var extent = 0.0;
+        // 見出し行は列の右に最低 2px の埋め草見出しを必ず置く（GridViewHeaderRowPresenter の既定）ので、
+        // 中身の幅は列幅の合計より 2px 広い。これを数えないと吸う列が 2px 広すぎ、休んでいる間も
+        // 横スクロールバーが出たままになる。
+        var extent = HeaderPaddingMinWidth;
         foreach (var column in columns) extent += ColumnWidth(column);
         var fillColumn = FillColumn(columns);
-        var current = fillColumn.ActualWidth;
+        // ActualWidth ではなく Width で比べる。ドラッグ中は配置より先に次の幅が来るので、ActualWidth は
+        // 1つ前の幅のまま＝他の列の新しい幅と混ぜると吸う量がずれて横スクロールバーが出る。
+        var current = ColumnWidth(fillColumn);
         var target = GitLogColumnLayoutPolicy.LogFillColumnWidth(current, viewport, extent);
         if (Math.Abs(current - target) < 1.5) return;
         _fillColumnUpdating = true;
