@@ -327,6 +327,15 @@ public sealed class GitService
         _runner.RunInAsync(repositoryFolder, null, null, CancellationToken.None,
             GitCompareArgs.LiteralPathspecs, "diff", "--no-ext-diff", "--no-color", baseRef, "--", filePath);
 
+    /// <summary>エディタの git（blame・ガター・ブランチ名・<c>:Git</c> 系）：<paramref name="folder"/> で git を動かす。
+    /// どのリポジトリかは git 自身に決めさせる——ワークツリーやサブモジュールの <c>.git</c> はファイルなので、
+    /// フォルダーを探して決めると「リポジトリの外」と誤る。</summary>
+    internal Task<GitCommandResult> RunInFolderAsync(string folder, params string[] args) =>
+        _runner.RunInAsync(folder, null, null, CancellationToken.None, args);
+
+    /// <summary>エディタからのコミット・ステージ・push/pull の後に、Git パネル等へ変わったことを知らせる。</summary>
+    internal void NotifyRepositoryChanged() => _mutations.NotifyRepositoryChanged();
+
     /// <summary>ワークツリーの「ブランチ元」（覚えていたもの → reflog → 既定ブランチ）。</summary>
     public Task<GitBranchOrigin?> ResolveBranchOriginAsync(GitWorktreeInfo worktree) =>
         _compare.ResolveBranchOriginAsync(worktree);
