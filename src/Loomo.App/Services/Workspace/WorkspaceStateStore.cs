@@ -374,6 +374,10 @@ public sealed class WorkspaceSnapshot
     public EditorSnapshot Editor { get; set; } = new();
     public List<EditorTabSnapshot> EditorTabs { get; set; } = new();
 
+    /// <summary>この部屋のエディタのタブを一度でも復元したか（§24.98）。初めての復元でタブが 1 枚も無いときだけ、
+    /// ルートの README を開いておく——戻ってきた部屋は復元が優先なので、タブを全部閉じた部屋に README を出し直さない。</summary>
+    public bool EditorTabsInitialized { get; set; }
+
     /// <summary>抜粋タブ（§35.3）。中身は持たず、元ファイルと行の範囲だけを残して開くときに組み直す。
     /// <see cref="EditorTabs"/> とは別の列にするのは、古い本体がこれを空の Untitled タブとして開かないため。</summary>
     public List<ExcerptTabSnapshot> ExcerptTabs { get; set; } = new();

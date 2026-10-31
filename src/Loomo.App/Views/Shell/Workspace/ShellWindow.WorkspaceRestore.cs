@@ -46,7 +46,8 @@ public partial class ShellWindow {
             return;
         }
         editorWorkspace.IsInitialized = true;
-        var restore = WorkspaceSessionCoordinator.ResolveEditorTabRestorePlan(workspace);
+        var restore = WorkspaceSessionCoordinator.ResolveEditorTabRestorePlan(workspace, RoomReadme.Find);
+        workspace.EditorTabsInitialized = true;
         foreach (var snapshot in restore.Snapshots)
             _editorTabs.Add(CreatePendingEditorTab(snapshot));
         var activeId = _editorTabs[restore.ActiveIndex].Id;

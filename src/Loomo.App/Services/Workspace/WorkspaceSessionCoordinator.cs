@@ -89,15 +89,23 @@ public static class WorkspaceSessionCoordinator
         return new(snapshots, activeIndex);
     }
 
+    /// <param name="findReadme">初めて開く部屋で、タブが無いときに開く README を探す（§24.98）。null なら探さない。</param>
     public static WorkspaceTabRestorePlan<EditorTabSnapshot> ResolveEditorTabRestorePlan(
-        WorkspaceSnapshot workspace)
-        => ResolveTabRestorePlan(workspace.EditorTabs, new EditorTabSnapshot
+        WorkspaceSnapshot workspace, Func<string, string?>? findReadme = null)
+    {
+        var fallback = new EditorTabSnapshot
         {
             FilePath = workspace.Editor.FilePath,
             Text = workspace.Editor.Text,
             IsModified = workspace.Editor.IsModified,
             IsActive = true,
-        }, snapshot => snapshot.IsActive);
+        };
+        if (workspace.EditorTabs.Count == 0 && !workspace.EditorTabsInitialized && findReadme is not null
+            && string.IsNullOrWhiteSpace(fallback.FilePath) && string.IsNullOrEmpty(fallback.Text) && !fallback.IsModified
+            && !string.IsNullOrWhiteSpace(workspace.RootPath) && findReadme(workspace.RootPath) is { } readme)
+            fallback.FilePath = readme;
+        return ResolveTabRestorePlan(workspace.EditorTabs, fallback, snapshot => snapshot.IsActive);
+    }
 
     public static WorkspaceTabRestorePlan<BrowserTabSnapshot> ResolveBrowserTabRestorePlan(
         WorkspaceSnapshot workspace, string defaultUrl)
