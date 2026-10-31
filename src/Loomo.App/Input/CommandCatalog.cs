@@ -217,6 +217,7 @@ public static class CommandCatalog
         // 既定キーは与えない（Rider も Local History に既定キーを持たない）。パレットから引く。
         new CommandDescriptor("localHistory.show", CatHistory, "ローカル履歴を表示（版 ↔ いまの差分）", null),
         new CommandDescriptor("localHistory.restore", CatHistory, "ローカル履歴から戻す…", null),
+        new CommandDescriptor("localHistory.label", CatHistory, "この時点に名前を付けて残す…（ローカル履歴）", null),
         new CommandDescriptor("localHistory.recent", CatHistory, "最近の変更（ローカル履歴・全ファイル）", null),
         new CommandDescriptor("localHistory.restoreDeleted", CatHistory, "削除したファイルを復元（ローカル履歴）", null),
 

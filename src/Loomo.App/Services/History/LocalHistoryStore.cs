@@ -16,17 +16,24 @@ public enum LocalHistoryKind
     /// <summary>文字コード・改行をディスク上で変換する直前の中身。いまは書かない（変換はエディタが保存時に行う・§23.3.4）が、
     /// その方式だった間に残った版を読めるよう残す——値を消すと、その版はファイル名を読めず一覧から黙って消える。</summary>
     BeforeConvert,
+    /// <summary>人が名前を付けて残した版（「リファクタリング前」など・§36.8）。保持期限と版数の刈り込みから外す。
+    /// 名前は版と同じ名前の <c>.label</c> ファイル。</summary>
+    Labeled,
 }
 
 /// <summary>ローカル履歴の 1 版。<see cref="StoragePath"/> は圧縮した中身の置き場所。</summary>
 public sealed record LocalHistoryEntry(string FilePath, DateTime TimestampUtc, LocalHistoryKind Kind, string StoragePath)
 {
+    /// <summary>名前付きの版の名前（<see cref="LocalHistoryKind.Labeled"/> のときだけ）。</summary>
+    public string? Label { get; init; }
+
     public string KindLabel => Kind switch
     {
         LocalHistoryKind.Opened => "開いた時点",
         LocalHistoryKind.Saved => "保存",
         LocalHistoryKind.BeforeRestore => "履歴から戻す前",
         LocalHistoryKind.BeforeConvert => "変換する前",
+        LocalHistoryKind.Labeled => string.IsNullOrWhiteSpace(Label) ? "名前付き" : $"「{Label}」",
         _ => Kind.ToString(),
     };
 }
@@ -94,6 +101,28 @@ public sealed class LocalHistoryStore : IDisposable
         Enqueue(() => Write(full, text, kind, at));
     }
 
+    /// <summary>中身を名前付きの 1 版として残す（§36.8）。直前の版と同じ中身でも積む——名前を付けること自体が目的なので。
+    /// 名前付きの版は <see cref="Retention"/> と <see cref="MaxEntriesPerFile"/> の刈り込みの対象にしない。</summary>
+    public void RecordLabeled(string? path, string? text, string label)
+    {
+        if (!ShouldTrack(path) || text is null || string.IsNullOrWhiteSpace(label)) return;
+        if (Encoding.UTF8.GetByteCount(text) > MaxFileBytes || text.Contains('\0')) return;
+        var full = Path.GetFullPath(path!);
+        var at = _utcNow();
+        var name = NormalizeLabel(label);
+        Enqueue(() => Write(full, text, LocalHistoryKind.Labeled, at, name));
+    }
+
+    /// <summary>名前は 1 行・前後の空白なし・80 文字まで。</summary>
+    internal static string NormalizeLabel(string label)
+    {
+        var line = string.Join(' ', label.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)).Trim();
+        return line.Length <= MaxLabelChars ? line : line[..MaxLabelChars];
+    }
+
+    private const int MaxLabelChars = 80;
+    private const string LabelExtension = ".label";
+
     /// <summary>そのファイルの版（新しい順）。</summary>
     public IReadOnlyList<LocalHistoryEntry> GetEntries(string path)
     {
@@ -158,7 +187,7 @@ public sealed class LocalHistoryStore : IDisposable
         catch (UnauthorizedAccessException) { return null; }
     }
 
-    private void Write(string fullPath, string text, LocalHistoryKind kind, DateTime atUtc)
+    private void Write(string fullPath, string text, LocalHistoryKind kind, DateTime atUtc, string? label = null)
     {
         text = text.Replace("\r\n", "\n");
         try
@@ -170,7 +199,7 @@ public sealed class LocalHistoryStore : IDisposable
                 File.WriteAllText(pathFile, fullPath);
 
             var existing = ReadEntries(folder, fullPath);
-            if (existing.Count > 0 && TryDecompress(existing[0].StoragePath) is { } latest &&
+            if (kind != LocalHistoryKind.Labeled && existing.Count > 0 && TryDecompress(existing[0].StoragePath) is { } latest &&
                 latest.Replace("\r\n", "\n") == text)
                 return;   // 直前の版と同じ中身は積まない（保存を連打しても版が増えない）
 
@@ -181,6 +210,8 @@ public sealed class LocalHistoryStore : IDisposable
                 var bytes = Encoding.UTF8.GetBytes(text);
                 gzip.Write(bytes, 0, bytes.Length);
             }
+            if (label is not null)
+                File.WriteAllText(Path.Combine(folder, Path.ChangeExtension(name, LabelExtension)), label);
             Prune(folder, fullPath);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException)
@@ -216,11 +247,14 @@ public sealed class LocalHistoryStore : IDisposable
     {
         var entries = ReadEntries(folder, fullPath);
         var cutoff = _utcNow() - Retention;
+        var automatic = 0;
         for (var i = 0; i < entries.Count; i++)
         {
+            // 名前付きの版は人が残したもの。期限でも版数でも刈らず、版数にも数えない。
+            if (entries[i].Kind == LocalHistoryKind.Labeled) continue;
             // 最新の 1 版は古くても残す（いまの中身に最も近い起点）。
-            if (i == 0) continue;
-            if (i >= MaxEntriesPerFile || entries[i].TimestampUtc < cutoff)
+            if (automatic++ == 0) continue;
+            if (automatic > MaxEntriesPerFile || entries[i].TimestampUtc < cutoff)
             {
                 try { File.Delete(entries[i].StoragePath); }
                 catch (IOException) { }
@@ -234,7 +268,10 @@ public sealed class LocalHistoryStore : IDisposable
         var entries = new List<LocalHistoryEntry>();
         foreach (var file in Directory.EnumerateFiles(folder, "*.gz"))
             if (TryParseName(Path.GetFileName(file), out var at, out var kind))
-                entries.Add(new LocalHistoryEntry(fullPath, at, kind, file));
+                entries.Add(new LocalHistoryEntry(fullPath, at, kind, file)
+                {
+                    Label = kind == LocalHistoryKind.Labeled ? ReadLabel(file) : null,
+                });
         entries.Sort((a, b) => b.TimestampUtc.CompareTo(a.TimestampUtc));
         return entries;
     }
@@ -252,6 +289,16 @@ public sealed class LocalHistoryStore : IDisposable
                    System.Globalization.DateTimeStyles.AdjustToUniversal | System.Globalization.DateTimeStyles.AssumeUniversal,
                    out atUtc)
                && Enum.TryParse(stem[(underscore + 1)..], out kind);
+    }
+
+    private static string? ReadLabel(string storagePath)
+    {
+        try
+        {
+            var file = Path.ChangeExtension(storagePath, LabelExtension);
+            return File.Exists(file) ? File.ReadAllText(file).Trim() : null;
+        }
+        catch (IOException) { return null; }
     }
 
     private static string? ReadOriginalPath(string folder)

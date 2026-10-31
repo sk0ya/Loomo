@@ -20,6 +20,23 @@ public partial class ShellWindow
         _localHistory.RecordContent(path, control.Text, LocalHistoryKind.Saved);
     }
 
+    /// <summary>「この時点に名前を付けて残す…」：いまの本文（未保存でも）を名前付きの版にする（§36.8）。
+    /// 名前付きの版は 14 日・200 版の刈り込みから外れ、一覧では名前で出る。</summary>
+    private void LabelLocalHistoryVersion()
+    {
+        if (_activeEditorTab is not { IsRealized: true } tab || tab.Control.FilePath is not { Length: > 0 } path
+            || tab.Control.IsVirtualDocument)
+        {
+            ShowRefactorStatus("ローカル履歴：ファイルを開いているエディタがありません。");
+            return;
+        }
+        var label = InputDialog.Prompt(this, "この時点に名前を付けて残す",
+            $"{Path.GetFileName(path)} のいまの本文を、名前付きの版としてローカル履歴に残します（期限で消えません）。", "");
+        if (string.IsNullOrWhiteSpace(label)) return;
+        _localHistory.RecordLabeled(path, tab.Control.Text, label);
+        tab.Control.ShowStatusMessage($"ローカル履歴に「{LocalHistoryStore.NormalizeLabel(label)}」として残しました");
+    }
+
     /// <summary>「ローカル履歴を表示」：いまのファイルの版を並べ、選ぶと差分ペインで「版 ↔ いま」。</summary>
     private void ShowLocalHistory() => OpenLocalHistoryList(restore: false);
 
@@ -55,7 +72,8 @@ public partial class ShellWindow
         if (items.Count == 0)
             items.Add(new PaletteCommand(LocalHistoryCategory, "このファイルの履歴はまだありません", () => { })
             {
-                Detail = "エディタで開いた時点と、保存のたびに残ります（14 日・1 ファイル 200 版まで）。",
+                Detail = "エディタで開いた時点と、保存のたびに残ります（14 日・1 ファイル 200 版まで）。" +
+                         "「この時点に名前を付けて残す…」で残した版は期限で消えません。",
             });
         OpenCommandPalette(PaletteMode.Command, items);
     }

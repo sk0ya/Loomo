@@ -56,6 +56,7 @@ public partial class ShellWindow {
             ["nav.fileStructure"] = () => { _ = OpenFileStructureAsync(); },
             ["nav.relatedTest"] = () => { _ = GoToRelatedTestAsync(); },
             ["localHistory.show"] = ShowLocalHistory, ["localHistory.restore"] = RestoreFromLocalHistory,
+            ["localHistory.label"] = LabelLocalHistoryVersion,
             ["localHistory.recent"] = ShowRecentLocalHistory, ["localHistory.restoreDeleted"] = RestoreDeletedFileFromLocalHistory,
             ["nuget.manage"] = () => OpenNuGetPackageManager(),
             ["claude.agents"] = OpenClaudeAgents, ["github.pullRequests"] = OpenGitHubPullRequests, ["github.issues"] = OpenGitHubIssues, ["azure.pullRequests"] = OpenAzurePullRequests, ["claude.resumeSession"] = OpenClaudeSessions, ["claude.installHooks"] = InstallClaudeHooks, ["claude.uninstallHooks"] = UninstallClaudeHooks,

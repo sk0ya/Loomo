@@ -243,6 +243,27 @@ public class RiderUsabilityTests
     }
 
     [Fact]
+    public void LocalHistory_LabeledVersionsSurvivePruning_AndKeepTheirName()
+    {
+        var root = TempDir();
+        var file = Path.Combine(TempDir(), "c.cs");
+        var now = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        var store = new LocalHistoryStore(root, () => now, synchronous: true);
+
+        store.RecordContent(file, "v1", LocalHistoryKind.Saved);
+        now = now.AddMinutes(1);
+        store.RecordLabeled(file, "v1", "リファクタリング前\n2 行目");   // 直前と同じ中身でも積む
+        now = now.AddDays(30);
+        store.RecordContent(file, "v2", LocalHistoryKind.Saved);
+
+        var entries = store.GetEntries(file);
+        Assert.Equal([LocalHistoryKind.Saved, LocalHistoryKind.Labeled], entries.Select(e => e.Kind));
+        Assert.Equal("リファクタリング前 2 行目", entries[1].Label);
+        Assert.Equal("「リファクタリング前 2 行目」", entries[1].KindLabel);
+        Assert.Equal("v1", store.ReadContent(entries[1]));
+    }
+
+    [Fact]
     public void LocalHistory_ListsDeletedFiles_AndIgnoresMetadataSources()
     {
         var root = TempDir();

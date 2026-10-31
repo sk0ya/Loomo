@@ -172,3 +172,16 @@ VS Code・Zed が内蔵している HTML の略記展開（`ul>li.item$*3` → �
   字下げは行の字下げ＋文書で最初に見つかった字下げ1段（無ければ 2 桁）。
 - 実装: `Loomo.Services/Editor/Emmet.cs`（切り出し・構文解析・出力。純粋）、`Views/Shell/Editor/ShellWindow.Emmet.cs`。
   テスト: `EmmetTests`。
+
+## §36.8 追補：ローカル履歴に名前を付けた版（2026-10-31）
+
+**動機**: Trilium v0.103.0（2026-05-13）の「手で作った版に説明を付ける」と、Rider／IntelliJ の Local History の Put Label。
+`docs/reports/feature-scout-2026-10-31.md` の推す 5。ローカル履歴は開いた時点・保存・戻す前の自動の版だけで、14 日・1 ファイル 200 版で一律に消えた——
+「大きく書き換える前」の起点を、人が自分で印して残す手が無かった。
+
+- パレット「この時点に名前を付けて残す…」（`localHistory.label`、既定キーなし）。名前を聞き、**いまのエディタの本文**（未保存でも）を
+  `LocalHistoryKind.Labeled` の版として残す。直前の版と同じ中身でも積む（名前を付けることが目的）。
+- 名前は 1 行・80 文字まで（改行は空白に）。版のファイル（`…_Labeled.gz`）と同じ名前の `.label` に書く——版のファイル名は時刻と種類で読む形のままにする。
+- 名前付きの版は**期限でも版数でも刈らず、版数にも数えない**。一覧（「ローカル履歴を表示」「戻す」「最近の変更」）では種類の代わりに「「名前」」で出る。
+- 実装: `LocalHistoryStore.RecordLabeled`・`NormalizeLabel`・`LocalHistoryEntry.Label`、`ShellWindow.LabelLocalHistoryVersion`。
+  テスト: `RiderUsabilityTests.LocalHistory_LabeledVersionsSurvivePruning_AndKeepTheirName`。

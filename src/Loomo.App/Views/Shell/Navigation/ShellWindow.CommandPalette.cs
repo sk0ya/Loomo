@@ -349,6 +349,7 @@ public partial class ShellWindow {
         // ローカル履歴と NuGet（§36）。
         list.Add(new("ローカル履歴", "ローカル履歴を表示（版 ↔ いまの差分）", ShowLocalHistory, Sc("localHistory.show"), "localHistory.show"));
         list.Add(new("ローカル履歴", "ローカル履歴から戻す…", RestoreFromLocalHistory, Sc("localHistory.restore"), "localHistory.restore"));
+        list.Add(new("ローカル履歴", "この時点に名前を付けて残す…", LabelLocalHistoryVersion, Sc("localHistory.label"), "localHistory.label"));
         list.Add(new("ローカル履歴", "最近の変更（全ファイル）", ShowRecentLocalHistory, Sc("localHistory.recent"), "localHistory.recent"));
         list.Add(new("ローカル履歴", "削除したファイルを復元", RestoreDeletedFileFromLocalHistory, Sc("localHistory.restoreDeleted"), "localHistory.restoreDeleted"));
         list.Add(new("GitHub", "GitHub: プルリクエスト（読む・差分・ワークツリー・レビュー）", OpenGitHubPullRequests,
