@@ -176,6 +176,8 @@ public partial class ShellWindow {
             UpdatePaneActivityBadge(PaneKind.Terminal);
     }
     private void OnTerminalShellActivity(Guid tabId, ShellCommandActivityEventArgs e) {
+        if (e.Phase == ShellCommandPhase.CommandDone)
+            NotifyLongCommandIfUnwatched(tabId, e);
         var shouldRefresh = _paneActivity.TerminalCommandChanged(
             tabId,
             e.Phase == ShellCommandPhase.CommandExecuted,
@@ -184,6 +186,20 @@ public partial class ShellWindow {
         if (!shouldRefresh)
             return; // PromptStart / CommandStart と実行中でない CommandDone は表示に影響しない
         UpdatePaneActivityBadge(PaneKind.Terminal);
+    }
+    /// <summary>時間のかかったコマンドが見ていない間に終わったら、通知欄へ（「そのタブへ」付き）。
+    /// Loomo が裏ならタスクバーも点滅させる（§24.97）。</summary>
+    private void NotifyLongCommandIfUnwatched(Guid tabId, ShellCommandActivityEventArgs e) {
+        var watched = IsActive && IsTerminalPaneWatched() && _activeTerminalTab?.Id == tabId;
+        if (!LongCommandNotice.ShouldNotify(_settings.NotifyLongTerminalCommands, e.Duration, watched))
+            return;
+        NotificationService.Post(
+            LongCommandNotice.Message(e.CommandLine, e.ExitCode, e.Duration!.Value),
+            LongCommandNotice.Kind(e.ExitCode),
+            TerminalNotificationPresentation.Source(TerminalTabTitle(tabId)),
+            new NotificationAction("そのタブへ", () => GoToTerminalTab(tabId)));
+        if (!IsActive)
+            FlashTaskbarUntilForeground();
     }
     private bool IsPaneWatched(PaneKind kind)
         => _stageActive ? _stagePane == kind && !_overviewActive

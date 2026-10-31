@@ -55,6 +55,10 @@ public sealed class LoomoSettings
     /// OFF にすると従来どおり Loomo の中で ConPTY を持ち、閉じればシェルも終わる（切替は新しいタブから効く）。</summary>
     public bool PersistentTerminalSessions { get; set; } = true;
 
+    /// <summary>ターミナルで 10 秒以上かかったコマンドが、見ていない間（別のタブ・ペイン・アプリ）に終わったら
+    /// 通知欄へ知らせ、Loomo が裏ならタスクバーを点滅させるか（§24.97）。既定は ON。</summary>
+    public bool NotifyLongTerminalCommands { get; set; } = true;
+
     /// <summary>Claude Code の IDE 連携（§38）。Loomo が VS Code 拡張と同じ口を開き、Loomo のターミナルで起動した
     /// claude が自動で繋ぐ——エディタの選択・問題一覧の診断が Claude に届き、編集の提案を差分で受け入れられる。
     /// 既定は ON。切り替えは Loomo の再起動後に効く（開いているターミナルの環境変数は変えられないため）。</summary>

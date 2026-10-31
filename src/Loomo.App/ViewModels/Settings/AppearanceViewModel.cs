@@ -96,6 +96,7 @@ public sealed partial class AppearanceViewModel : ObservableObject
     /// <summary>ターミナルのシェルを常駐ホストに持たせるか（§34）。外観ではないが、ターミナル設定の画面が
     /// この VM に載っているので同居させる。効くのは次に作るタブから（今のタブの持ち主は変えない）。</summary>
     [ObservableProperty] private bool _persistentTerminalSessions;
+    [ObservableProperty] private bool _notifyLongTerminalCommands;
     [ObservableProperty] private bool _claudeCodeIdeIntegration;
 
     /// <summary>アクセント上書きを反映中の再入を防ぐフラグ（コンボ選択 ⇄ AccentColor の往復ループ回避）。</summary>
@@ -277,6 +278,7 @@ public sealed partial class AppearanceViewModel : ObservableObject
         _terminalFontLigatures = ap.TerminalFontLigatures;
         _terminalLineTimeOnHover = ap.TerminalLineTimeOnHover;
         _persistentTerminalSessions = _settings.PersistentTerminalSessions;
+        _notifyLongTerminalCommands = _settings.NotifyLongTerminalCommands;
         _claudeCodeIdeIntegration = _settings.ClaudeCodeIdeIntegration;
     }
 
@@ -448,6 +450,15 @@ public sealed partial class AppearanceViewModel : ObservableObject
         Persist(value
             ? "Claude Code との IDE 連携を有効にしました（Loomo の再起動後に効きます）"
             : "Claude Code との IDE 連携を無効にしました（Loomo の再起動後に効きます）");
+    }
+
+    partial void OnNotifyLongTerminalCommandsChanged(bool value)
+    {
+        if (_settings.NotifyLongTerminalCommands == value) return;
+        _settings.NotifyLongTerminalCommands = value;
+        Persist(value
+            ? "時間のかかったコマンドが見ていない間に終わったら知らせます"
+            : "時間のかかったコマンドの終わりを知らせません");
     }
 
     partial void OnPersistentTerminalSessionsChanged(bool value)
