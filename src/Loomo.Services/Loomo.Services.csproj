@@ -157,6 +157,9 @@
     <!-- 1.0.53: Claude Code の中でも Ctrl+クリックでパスを開けるようにする。Claude Code はマウス報告（?1000h/?1006h）を有効にするので
          Ctrl+クリックもホバーもアプリへ送られていた。Ctrl を押してリンクの上にあるときだけ報告しない。%VAR%\… と ~\… で始まるパスも
          検出する（展開は TerminalLinkTargetResolver.ExpandShellPath）（2026-10-29 公開） -->
+    <!-- 1.0.54: ITerminalSession.SetOwnerWindow と、同梱 ConPTY の ConptyReparentPseudoConsole。TerminalTabView がセッションの開始時と
+         切り離しで自分の窓を渡し、端末から出たダイアログ（資格情報・サインイン）が端末の手前に出る。常駐ホスト経由は
+         RemotePtySession がフレーム OwnerWindow で運ぶ（§34.12・2026-10-31 公開） -->
     <!-- 版は Directory.Build.props の TerminalPackageVersion（常駐ホストと共有するため一か所）。参照は eng/LocalTerminal.props
          （-p:UseLocalTerminal=true でプロジェクト参照へ切り替わる）。 -->
   </ItemGroup>

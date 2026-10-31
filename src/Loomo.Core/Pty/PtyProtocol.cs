@@ -53,6 +53,12 @@ public static class PtyProtocol
         /// そのシェルは切り離しのまま Loomo の正常終了（<see cref="Operation.Leave"/>）まで残る。
         /// </summary>
         Park = 23,
+        /// <summary>
+        /// 本体→ホスト：このタブを映している Loomo のウィンドウ（int64 LE の HWND）。ホストは ConPTY の隠しコンソールウィンドウの
+        /// 持ち主にし、端末から出たダイアログ（資格情報の選択・サインイン）が Loomo の後ろに隠れないようにする（§34.12）。
+        /// これを知らない古いホストは読み捨てる。
+        /// </summary>
+        OwnerWindow = 24,
     }
 
     public enum Operation
@@ -180,6 +186,17 @@ public static class PtyProtocol
 
     public static (short Columns, short Rows) DecodeResize(byte[] payload) =>
         (BinaryPrimitives.ReadInt16LittleEndian(payload), BinaryPrimitives.ReadInt16LittleEndian(payload.AsSpan(2)));
+
+    public static byte[] EncodeOwnerWindow(IntPtr ownerWindow)
+    {
+        var payload = new byte[8];
+        BinaryPrimitives.WriteInt64LittleEndian(payload, ownerWindow.ToInt64());
+        return payload;
+    }
+
+    /// <summary>足りない長さのものは持ち主なし（<see cref="IntPtr.Zero"/>）。</summary>
+    public static IntPtr DecodeOwnerWindow(byte[] payload) =>
+        payload.Length >= 8 ? new IntPtr(BinaryPrimitives.ReadInt64LittleEndian(payload)) : IntPtr.Zero;
 
     public static byte[] EncodeExitCode(int exitCode)
     {

@@ -141,6 +141,10 @@ internal sealed class HostSession
 
     public void Resize(short columns, short rows) => Post(() => ResizeOnThread(columns, rows));
 
+    /// <summary>隠しコンソールウィンドウの持ち主を、Loomo でこのタブを映しているウィンドウにする（端末から出たダイアログを手前に）。
+    /// HWND はプロセスをまたいで有効。繋ぎ直し・切り離しのたびに本体が送り直す。</summary>
+    public void SetOwnerWindow(IntPtr ownerWindow) => Post(() => _pty.SetOwnerWindow(ownerWindow));
+
     /// <summary>
     /// 画面（スクロールバック込み）を語で探す（§24.67・大文字小文字は区別しない）。画面モデルはこのセッションのスレッドでしか触れないので、
     /// そこへ頼んで最大 2 秒待つ。終わったセッション・待ち切れなかったときは空。

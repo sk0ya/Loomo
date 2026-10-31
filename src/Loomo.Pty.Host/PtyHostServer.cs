@@ -162,6 +162,9 @@ internal sealed class PtyHostServer(string pipeName, TimeSpan? idleExit, Action?
                     var (columns, rows) = PtyProtocol.DecodeResize(frame.Payload);
                     session.Resize(columns, rows);
                     break;
+                case PtyProtocol.FrameType.OwnerWindow:
+                    session.SetOwnerWindow(PtyProtocol.DecodeOwnerWindow(frame.Payload));
+                    break;
                 case PtyProtocol.FrameType.Kill:
                     session.Kill();
                     return;

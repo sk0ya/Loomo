@@ -168,12 +168,13 @@
 
 ## 実装済み（2026-10-31）
 
-推した 7 件のうち 6 件を Loomo に入れ、残る 1 件（2）は Terminal 側だけ済ませた。テストは Loomo 5343 件・Terminal 1483 件がすべて通る。**どれも実機の目視はまだ**。
+推した 7 件をすべて入れた（2 は Terminal 1.0.54 を 2026-10-31 に公開してから Loomo 側を入れた）。テストは Loomo 5345 件・Terminal 1483 件がすべて通る。
+実機で見たのは 2 だけ（Terminal.App で、pwsh の隠しコンソールウィンドウの持ち主が端末の窓になる）。ほかは**実機の目視はまだ**。
 
 | 推す | 設計 | コミット | 確かめたこと |
 |---|---|---|---|
 | 1. ブレークポイントとウォッチ式を部屋に残す | §28.16 | `0b3b8407` | `DebugRoomStateTests`（条件ごと写して戻す・消えたファイルは戻さない・ウォッチ式がセッションをまたぐ・ワークツリーの種でパスを付け替える） |
-| 2. 端末から出たダイアログを手前に | （Terminal 側のみ） | Terminal `4af0c8c` | Terminal：`ITerminalSession.SetOwnerWindow`（既定で何もしない）・`ConPtySession` が `ConptyReparentPseudoConsole` を呼ぶ・ラッパーは中へ回す・`TerminalTabView` が開始時と読み込み直し（切り離し）で渡す。**Loomo 側は未着手**：常駐ホスト（§34）経由のタブは `RemotePtySession` → パイプ（新しいフレーム）→ `Pty.Host` の `ConPtySession` へ HWND を運ぶ必要があり、これは新しい Terminal パッケージの API に依存する。パッケージの公開待ち |
+| 2. 端末から出たダイアログを手前に | §34.12（Terminal 1.0.54） | Terminal `4af0c8c`・`f1c48e3`、Loomo は下のコミット | `PtyHostOwnerWindowTests`（本物の cmd・パイプ・同梱 ConPTY で、送った窓が `PseudoConsoleWindow` の持ち主になる。送る 1 行を外すと落ちる）、Terminal.App での実機確認。常駐ホストは、いま動いている古いホストが終わって新しいものが立ってから効く |
 | 3. 時間のかかったコマンドの終わりを知らせる | §24.97 | `b74e9e33` | `LongCommandNoticeTests` |
 | 4. bisect を Git ペインで | §24.100 | `820d69dc` | `GitBisectParserTests`、`GitBisectServiceTests`（実 git で 8 版から犯人を見つけて元へ戻る） |
 | 5. ローカル履歴に名前を付けた版 | §36.8 | `7ad4af9b` | `LocalHistory_LabeledVersionsSurvivePruning_AndKeepTheirName` |

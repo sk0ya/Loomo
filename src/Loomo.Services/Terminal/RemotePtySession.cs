@@ -66,6 +66,11 @@ public sealed class RemotePtySession : ITerminalSession
     public void Resize(short columns, short rows) =>
         Send(PtyProtocol.FrameType.Resize, PtyProtocol.EncodeResize(columns, rows));
 
+    /// <summary>ConPTY はホストのプロセスにあるので、持ち主のウィンドウ（このタブを映している Loomo の窓）をホストへ運ぶ。
+    /// これを知らない古いホストは読み捨てる（ダイアログが後ろに出るだけで、壊れはしない）。</summary>
+    public void SetOwnerWindow(IntPtr ownerWindow) =>
+        Send(PtyProtocol.FrameType.OwnerWindow, PtyProtocol.EncodeOwnerWindow(ownerWindow));
+
     /// <summary>ホストの向こうのシェルは止まって見えても読み取りは詰まらない（ホストが読み続ける）。</summary>
     public bool IsOutputStalled(TimeSpan initialOutputTimeout, TimeSpan idleOutputTimeout) => false;
 
