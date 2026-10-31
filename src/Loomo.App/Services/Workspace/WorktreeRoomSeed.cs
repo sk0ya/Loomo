@@ -116,6 +116,12 @@ public static class WorktreeRoomSeed
         foreach (var tab in seed.BrowserTabs)
             tab.Id = Guid.NewGuid();
 
+        // ===== デバッグの準備（§28.16）：ブレークポイントは同じファイルの同じ行へ。ウォッチ式はそのまま =====
+        if (seed.DebugState is { } debug)
+            foreach (var manager in new[] { debug.Dotnet, debug.TypeScript })
+                foreach (var bp in manager.Breakpoints)
+                    bp.Path = map.Rebase(bp.Path);
+
         // ===== ツリー・ファイル一覧 =====
         seed.TreeExpandedPaths = seed.TreeExpandedPaths.Select(map.Rebase).Where(exists).ToList();
         seed.TreeSelectedPath = seed.TreeSelectedPath is { } selected && map.Rebase(selected) is var movedSelection

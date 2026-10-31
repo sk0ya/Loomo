@@ -242,6 +242,16 @@ public sealed partial class DebugInspectionViewModel : ObservableObject
 
     partial void OnWatchExpressionChanged(string value) => AddWatchCommand.NotifyCanExecuteChanged();
 
+    /// <summary>ウォッチ式の一覧を入れ替える（管理側の正本から・§28.16）。同じ式の行は値ごと残す。</summary>
+    internal void ReplaceWatches(IReadOnlyList<string> expressions)
+    {
+        if (Watches.Select(w => w.Expression).SequenceEqual(expressions, StringComparer.Ordinal)) return;
+        var kept = Watches.ToDictionary(w => w.Expression, StringComparer.Ordinal);
+        Watches.Clear();
+        foreach (var e in expressions)
+            Watches.Add(kept.TryGetValue(e, out var item) ? item : new WatchItemViewModel(e));
+    }
+
     /// <summary>DataTip 用：停止中の現在フレームで式を評価し、表示値を返す。停止していない／値として意味のない結果なら null。</summary>
     public async Task<string?> EvaluateDataTipAsync(string expression)
     {

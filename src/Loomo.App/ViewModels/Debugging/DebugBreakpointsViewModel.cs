@@ -6,6 +6,7 @@ using System.Linq;
 using System.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.Core.Debug;
 
 namespace sk0ya.Loomo.App.ViewModels;
@@ -138,6 +139,64 @@ public sealed partial class DebugBreakpointsViewModel : ObservableObject
         foreach (var p in paths) { PushBreakpoints(p); _session.RaiseBreakpointsRefreshed(p); }
         RefreshFlags();
     }
+
+    /// <summary>部屋へ残す形（§28.16）。並びはファイル・行の順。</summary>
+    public List<BreakpointSnapshot> Capture()
+        => _breakpoints
+            .OrderBy(kv => kv.Key, StringComparer.OrdinalIgnoreCase)
+            .SelectMany(kv => kv.Value.OrderBy(b => b.Line0))
+            .Select(b => new BreakpointSnapshot
+            {
+                Path = b.Path,
+                Line0 = b.Line0,
+                Enabled = b.Enabled,
+                Condition = NullIfEmpty(b.Condition),
+                HitCondition = NullIfEmpty(b.HitCondition),
+                LogMessage = NullIfEmpty(b.LogMessage),
+            })
+            .ToList();
+
+    /// <summary>
+    /// 部屋のブレークポイントへ入れ替える（部屋を開いた・切り替えた・§28.16）。いまのものは全部外し、
+    /// 消えたファイルのものは戻さない。実行中のセッションのアダプタとエディタのガターも、外した分と入れた分を同期し直す。
+    /// </summary>
+    public void Load(IEnumerable<BreakpointSnapshot>? snapshots, Func<string, bool>? fileExists = null)
+    {
+        fileExists ??= File.Exists;
+        var touched = new HashSet<string>(_breakpoints.Keys, StringComparer.OrdinalIgnoreCase);
+        _breakpoints.Clear();
+        Breakpoints.Clear();
+        foreach (var s in snapshots ?? [])
+        {
+            if (string.IsNullOrWhiteSpace(s.Path) || s.Line0 < 0) continue;
+            string path;
+            try { path = Path.GetFullPath(s.Path); }
+            catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException) { continue; }
+            if (!fileExists(path)) continue;
+            if (!_breakpoints.TryGetValue(path, out var list))
+                _breakpoints[path] = list = new List<BreakpointViewModel>();
+            if (list.Any(b => b.Line0 == s.Line0)) continue;
+            var bp = new BreakpointViewModel(path, s.Line0)
+            {
+                Enabled = s.Enabled,
+                Condition = s.Condition ?? "",
+                HitCondition = s.HitCondition ?? "",
+                LogMessage = s.LogMessage ?? "",
+            };
+            bp.Changed += b => PushBreakpoints(b.Path);   // 値を入れ終えてから結ぶ（入れるたびに再送しない）
+            list.Add(bp);
+            Breakpoints.Add(bp);
+            touched.Add(path);
+        }
+        foreach (var path in touched)
+        {
+            PushBreakpoints(path);
+            _session.RaiseBreakpointsRefreshed(path);
+        }
+        RefreshFlags();
+    }
+
+    private static string? NullIfEmpty(string value) => string.IsNullOrWhiteSpace(value) ? null : value;
 
     private IReadOnlyList<int> Lines(string fullPath)
         => _breakpoints.TryGetValue(fullPath, out var list)

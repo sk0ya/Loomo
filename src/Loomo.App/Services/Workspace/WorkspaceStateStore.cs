@@ -475,6 +475,10 @@ public sealed class WorkspaceSnapshot
     /// <summary>ペグボード（§23.3）のアイテム。ワークスペース毎に持つ。</summary>
     public List<PegboardItemSnapshot> Pegboard { get; set; } = new();
 
+    /// <summary>デバッグの準備（ブレークポイントとウォッチ式・§28.16）。.NET と TS IDE で別々に持つ。
+    /// null は保存したことが無い部屋（この項目より前の state.json）。</summary>
+    public DebugRoomSnapshot? DebugState { get; set; }
+
     /// <summary>タブの棚（§24.29）。上限の枚数を超えたので自動で（または手で）帯から下げたエディタ／ブラウザのタブ。
     /// 新しい順。開いていたときの場所（キャレット・スクロール・URL）を持ち、棚から戻すとそこへ戻る。</summary>
     public List<ShelvedTabSnapshot> ShelvedTabs { get; set; } = new();
@@ -908,6 +912,31 @@ public sealed class DockPlacementSnapshot
 {
     public PaneKind Kind { get; set; }
     public DockRegion Region { get; set; }
+}
+
+/// <summary>部屋のデバッグの準備（§28.16）。</summary>
+public sealed class DebugRoomSnapshot
+{
+    public DebugManagerSnapshot Dotnet { get; set; } = new();
+    public DebugManagerSnapshot TypeScript { get; set; } = new();
+}
+
+/// <summary>1 つのデバッグペイン（.NET／TS IDE）のブレークポイントとウォッチ式。</summary>
+public sealed class DebugManagerSnapshot
+{
+    public List<BreakpointSnapshot> Breakpoints { get; set; } = new();
+    public List<string> Watches { get; set; } = new();
+}
+
+/// <summary>ブレークポイント 1 件。行は 0 始まり（エディタのバッファ行）。</summary>
+public sealed class BreakpointSnapshot
+{
+    public string Path { get; set; } = "";
+    public int Line0 { get; set; }
+    public bool Enabled { get; set; } = true;
+    public string? Condition { get; set; }
+    public string? HitCondition { get; set; }
+    public string? LogMessage { get; set; }
 }
 
 public sealed class EditorSnapshot

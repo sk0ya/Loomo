@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Linq;
@@ -189,6 +190,9 @@ public abstract partial class DebugManagerViewModelBase : ObservableObject, IDeb
         var debug = _sessionFactory.Create();
         var session = new DebugSessionViewModel(debug, this, DisambiguateSessionName(displayName)) { Kind = kind };
         Breakpoints.PrimeSession(debug);
+        // ウォッチ式はセッションをまたいで残す（§28.16）。新しいセッションは正本から始め、足し引きは正本へ書き戻す。
+        session.Inspection.ReplaceWatches(_watchExpressions);
+        session.Inspection.Watches.CollectionChanged += (_, _) => OnSessionWatchesChanged(session);
         session.SessionStateChanged += OnAnySessionStateChanged;
         Sessions.Add(session);
         ActiveSession = session;
@@ -196,6 +200,42 @@ public abstract partial class DebugManagerViewModelBase : ObservableObject, IDeb
     }
 
     private void OnAnySessionStateChanged() => SessionStateChanged?.Invoke();
+
+    /// <summary>ウォッチ式の正本（§28.16）。セッションごとの一覧はこれの写しで、どれかで足し引きすると全部へ揃える。</summary>
+    private readonly List<string> _watchExpressions = new();
+    private bool _syncingWatches;
+
+    public IReadOnlyList<string> WatchExpressions => _watchExpressions;
+
+    /// <summary>部屋のウォッチ式へ入れ替える（部屋を開いた・切り替えた）。開いているセッションの一覧も揃える。</summary>
+    public void LoadWatchExpressions(IEnumerable<string>? expressions)
+    {
+        _watchExpressions.Clear();
+        foreach (var e in expressions ?? [])
+            if (!string.IsNullOrWhiteSpace(e) && !_watchExpressions.Contains(e, StringComparer.Ordinal))
+                _watchExpressions.Add(e);
+        SyncWatchesToSessions(except: null);
+    }
+
+    private void OnSessionWatchesChanged(DebugSessionViewModel source)
+    {
+        if (_syncingWatches) return;
+        _watchExpressions.Clear();
+        _watchExpressions.AddRange(source.Inspection.Watches.Select(w => w.Expression));
+        SyncWatchesToSessions(except: source);
+    }
+
+    private void SyncWatchesToSessions(DebugSessionViewModel? except)
+    {
+        _syncingWatches = true;
+        try
+        {
+            foreach (var s in Sessions)
+                if (!ReferenceEquals(s, except))
+                    s.Inspection.ReplaceWatches(_watchExpressions);
+        }
+        finally { _syncingWatches = false; }
+    }
 
     /// <summary>同じ対象を2回起動した場合など、既存セッションと表示名が重なるならセッション切替コンボで
     /// 見分けられるよう連番を振る（"MarsThrusterDemo" → "MarsThrusterDemo (2)"）。</summary>
