@@ -212,7 +212,21 @@ public sealed class GitBranchService
                 string.IsNullOrWhiteSpace(defaultRemote) ? "origin" : defaultRemote, "HEAD"))
                 .ConfigureAwait(false);
         }
-        return result;
+        return await ExplainPushRefusalAsync(result, remote: null).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// リモートに手元に無いコミットがあって拒まれた push（§24.99）。そのリモートを取得して ↓ の数を今に合わせ、
+    /// git の文面の前に「先に取り込む」と言う一文を置いて返す。取得に失敗しても push の結果はそのまま返す。
+    /// </summary>
+    private async Task<GitCommandResult> ExplainPushRefusalAsync(GitCommandResult result, string? remote)
+    {
+        if (result.Success || !GitRefusal.IsPushBehind(result.Error)) return result;
+        await (remote is null
+                ? _mutations.ExecuteAsync("fetch")
+                : _mutations.ExecuteAsync("fetch", remote))
+            .ConfigureAwait(false);
+        return result with { Error = GitRefusal.PushBehindMessage + "\n\n" + result.Error.Trim() };
     }
 
     /// <summary>指定したローカルブランチを、その上流または既定リモートへプッシュする。</summary>
@@ -231,8 +245,8 @@ public sealed class GitBranchService
 
         var upstream = await ResolveUpstreamAsync(branch).ConfigureAwait(false);
         if (upstream is { } target)
-            return await _mutations.ExecuteAsync(WithLease(force, "push", target.Remote,
-                $"{branch.Name}:refs/heads/{target.Branch}")).ConfigureAwait(false);
+            return await ExplainPushRefusalAsync(await _mutations.ExecuteAsync(WithLease(force, "push", target.Remote,
+                $"{branch.Name}:refs/heads/{target.Branch}")).ConfigureAwait(false), target.Remote).ConfigureAwait(false);
         if (!string.IsNullOrWhiteSpace(defaultRemote))
             return await _mutations
                 .ExecuteAsync(WithLease(force, "push", "-u", defaultRemote, branch.Name))
@@ -355,6 +369,28 @@ public sealed class GitBranchService
 
     public Task<GitCommandResult> CheckoutTrackAsync(string remoteBranch) =>
         _mutations.ExecuteAsync("checkout", "--track", remoteBranch);
+
+    /// <summary>
+    /// ローカル変更を退避してから切り替える（§24.99）。追跡していないファイルも退避する（それがぶつかって止まることもある）。
+    /// 切り替えに失敗したら退避を戻す——変更が stash に置き去りになって「消えた」と見えないように。
+    /// </summary>
+    public async Task<GitCommandResult> CheckoutStashingAsync(string branch, bool track)
+    {
+        var stash = await _mutations.ExecuteAsync(
+            "stash", "push", "--include-untracked", "-m", GitRefusal.CheckoutStashMessage(branch)).ConfigureAwait(false);
+        if (!stash.Success) return stash;
+        var checkout = await (track ? CheckoutTrackAsync(branch) : CheckoutAsync(branch)).ConfigureAwait(false);
+        if (checkout.Success)
+            return checkout with { Output = $"変更をスタッシュ「{GitRefusal.CheckoutStashMessage(branch)}」に退避して切り替えました。" };
+        await _mutations.ExecuteAsync("stash", "pop").ConfigureAwait(false);
+        return checkout;
+    }
+
+    /// <summary>ローカル変更を持ったまま切り替える（<c>git checkout -m</c>）。切替先とぶつかる箇所は衝突として残る。
+    /// git 2.55 からは、ぶつかったときにローカル変更を stash にも残すので、解き損ねてもやり直せる。</summary>
+    public Task<GitCommandResult> CheckoutCarryingAsync(string branch, bool track) => track
+        ? _mutations.ExecuteAsync("checkout", "-m", "--track", branch)
+        : _mutations.ExecuteAsync("checkout", "-m", branch);
 
     public Task<GitCommandResult> CheckoutCommitAsync(string hash) =>
         _mutations.ExecuteAsync("checkout", "--detach", hash);

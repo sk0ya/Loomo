@@ -1279,8 +1279,18 @@ public sealed partial class GitPanelViewModel : ObservableObject
         return RunOpAsync("プル（早送りのみ）", () => _git.PullAsync(GitPullMode.FastForwardOnly));
     }
 
+    /// <summary>プッシュ。リモートに手元に無いコミットがあって拒まれたら（§24.99）、GitService が取得して ↓ を今に合わせ、
+    /// 文面を「先に取り込む」に置き換えて返す。ここではそこから取り込みへ進める知らせを出す（上流と分かれていれば
+    /// プルボタンと同じく予告が出る・§24.64）。</summary>
     [RelayCommand(CanExecute = nameof(CanPush))]
-    private Task PushAsync() => RunOpAsync("プッシュ", () => _git.PushAsync());
+    private async Task PushAsync()
+    {
+        GitCommandResult? result = null;
+        await RunOpAsync("プッシュ", async () => result = await _git.PushAsync());
+        if (result is { Success: false } && result.Error.StartsWith(GitRefusal.PushBehindMessage, StringComparison.Ordinal))
+            NotificationService.Post(GitRefusal.PushBehindMessage, NotificationKind.Warning, "Git",
+                new NotificationAction("取り込む（予告を見る）", () => PullCommand.Execute(null)));
+    }
 
     /// <summary>強制プッシュ（<c>--force-with-lease</c>）。リベース・amend の後に押し直すための入口。</summary>
     [RelayCommand(CanExecute = nameof(CanPushForce))]

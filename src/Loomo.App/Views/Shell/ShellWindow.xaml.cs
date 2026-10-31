@@ -468,6 +468,9 @@ public partial class ShellWindow : Window {
             FocusPane(PaneKind.Files);
         };
         vm.GitSession.DiffOpenRequested += (_, target) => ShowDiff(target);
+        // 切替がローカル変更で止まったら、退避して／持って切り替えるかを聞く（§24.99）。
+        vm.GitSession.Commands.LocalChangesBlockCheckout = (branch, files, untracked) =>
+            GitBranchDialogs.AskCheckoutWithLocalChanges(this, branch, files, untracked);
         WireWorktreeRequests();
         // コミット詳細のファイルをダブルクリック＝そのファイルの差分だけを別ウィンドウで開く
         // （ペインの DIFF は動かさないので、一覧と見比べたまま何枚でも開ける）。行き先は

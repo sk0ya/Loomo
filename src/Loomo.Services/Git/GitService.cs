@@ -619,6 +619,14 @@ public sealed class GitService
 
     public Task<GitCommandResult> CheckoutTrackAsync(string remoteBranch) =>
         _branches.CheckoutTrackAsync(remoteBranch);
+
+    /// <inheritdoc cref="GitBranchService.CheckoutStashingAsync"/>
+    public Task<GitCommandResult> CheckoutStashingAsync(string branch, bool track) =>
+        _branches.CheckoutStashingAsync(branch, track);
+
+    /// <inheritdoc cref="GitBranchService.CheckoutCarryingAsync"/>
+    public Task<GitCommandResult> CheckoutCarryingAsync(string branch, bool track) =>
+        _branches.CheckoutCarryingAsync(branch, track);
     public Task<GitCommandResult> CheckoutCommitAsync(string hash) => _branches.CheckoutCommitAsync(hash);
 
     public Task<GitCommandResult> CreateBranchAsync(string name, string? startPoint = null) =>

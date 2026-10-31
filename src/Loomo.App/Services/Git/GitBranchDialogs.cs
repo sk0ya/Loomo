@@ -19,6 +19,30 @@ internal static class GitBranchDialogs
             "最後に取得した位置からリモートが進んでいた場合は、上書きせずに中止します。\n\n実行しますか？",
             "強制プッシュ", MessageBoxButton.YesNo, MessageBoxImage.Warning) == MessageBoxResult.Yes;
 
+    /// <summary>切替がローカル変更とぶつかって止まったとき（§24.99）。はい＝退避して切り替える、いいえ＝変更を持って切り替える、
+    /// キャンセル＝やめる。ぶつかったファイルは先頭の数件だけ並べる。</summary>
+    public static CheckoutRefusalChoice AskCheckoutWithLocalChanges(
+        Window? owner, string branch, IReadOnlyList<string> files, bool untracked)
+    {
+        const int shown = 8;
+        var list = string.Join("\n", files.Take(shown).Select(f => "  " + f))
+                   + (files.Count > shown ? $"\n  ほか {files.Count - shown} 件" : "");
+        var what = untracked ? "追跡していないファイル" : "未コミットの変更";
+        var answer = MessageBox.Show(owner,
+            $"{branch} へ切り替えると、次の{what}が上書きされるため、git が切替を止めました。\n\n{list}\n\n" +
+            "［はい］変更をスタッシュに退避して切り替える（Git パネルのスタッシュから戻せます）\n" +
+            "［いいえ］変更を持ったまま切り替える（git checkout -m。ぶつかる箇所は衝突として残ります）\n" +
+            "［キャンセル］切り替えない",
+            "ローカル変更があるため切り替えられません", MessageBoxButton.YesNoCancel, MessageBoxImage.Warning,
+            MessageBoxResult.Cancel);
+        return answer switch
+        {
+            MessageBoxResult.Yes => CheckoutRefusalChoice.Stash,
+            MessageBoxResult.No => CheckoutRefusalChoice.Carry,
+            _ => CheckoutRefusalChoice.Cancel,
+        };
+    }
+
     /// <summary>ローカル削除と取り違えないよう、リモートブランチ削除を明示して確認する。</summary>
     public static bool ConfirmDeleteRemoteBranch(Window? owner, string remoteBranch) =>
         MessageBox.Show(owner,

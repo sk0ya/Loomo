@@ -5,6 +5,16 @@ namespace sk0ya.Loomo.App.Services;
 
 public sealed record GitOperationStatus(bool IsBusy, bool IsError, string Message);
 
+/// <summary>切替がローカル変更で止まったときの選択（§24.99）。</summary>
+public enum CheckoutRefusalChoice
+{
+    Cancel,
+    /// <summary>変更をスタッシュに退避して切り替える。</summary>
+    Stash,
+    /// <summary>変更を持ったまま切り替える（<c>git checkout -m</c>）。</summary>
+    Carry,
+}
+
 /// <summary>Git セッションの更新系操作と実行状態を扱う Command Handler。</summary>
 public sealed class GitSessionCommandHandler
 {
@@ -59,9 +69,32 @@ public sealed class GitSessionCommandHandler
         _ => "プル",
     };
 
-    public Task<GitCommandResult?> CheckoutBranchAsync(GitBranchInfo branch) => branch.IsRemote
-        ? RunAsync($"チェックアウト {branch.Name}", () => _git.CheckoutTrackAsync(branch.Name))
-        : RunAsync($"チェックアウト {branch.Name}", () => _git.CheckoutAsync(branch.Name));
+    /// <summary>
+    /// ブランチへ切り替える。ローカル変更が切替先とぶつかって止まったら、<see cref="LocalChangesBlockCheckout"/> に
+    /// 「退避して切り替える／持って切り替える／やめる」を聞いて、選ばれた方でやり直す（§24.99）。
+    /// </summary>
+    public async Task<GitCommandResult?> CheckoutBranchAsync(GitBranchInfo branch)
+    {
+        var label = $"チェックアウト {branch.Name}";
+        var track = branch.IsRemote;
+        var result = await RunAsync(label,
+            () => track ? _git.CheckoutTrackAsync(branch.Name) : _git.CheckoutAsync(branch.Name));
+        if (result is not { Success: false } || LocalChangesBlockCheckout is not { } ask
+            || GitRefusal.CheckoutBlockingFiles(result.Error, out var untracked) is not { } files)
+            return result;
+        return ask(branch.Name, files, untracked) switch
+        {
+            CheckoutRefusalChoice.Stash => await RunAsync($"{label}（変更を退避）",
+                () => _git.CheckoutStashingAsync(branch.Name, track)),
+            CheckoutRefusalChoice.Carry => await RunAsync($"{label}（変更を持っていく）",
+                () => _git.CheckoutCarryingAsync(branch.Name, track)),
+            _ => result,
+        };
+    }
+
+    /// <summary>切替がローカル変更で止まったときに人へ聞く口（ブランチ名・ぶつかったファイル・追跡していないファイルか）。
+    /// ダイアログは App の責務なので外から渡す。null なら聞かずに git の文面のまま返す。</summary>
+    public Func<string, IReadOnlyList<string>, bool, CheckoutRefusalChoice>? LocalChangesBlockCheckout { get; set; }
     public Task<GitCommandResult?> CreateBranchAsync(string name, string? startPoint = null) =>
         RunAsync($"ブランチ作成 {name}", () => _git.CreateBranchAsync(name, startPoint));
     public Task<GitCommandResult?> DeleteBranchAsync(GitBranchInfo branch, bool force) =>
