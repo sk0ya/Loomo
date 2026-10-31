@@ -5,6 +5,8 @@ namespace sk0ya.Loomo.App.Views;
 /// 未確認結果は対象ペインが舞台に立つと消える。</summary>
 public partial class ShellWindow {
     private readonly PaneActivityTracker _paneActivity = new();
+    /// <summary>ターミナルのどれかで最後に終わったコマンド（コマンド行・終了コード）。Git ペインの bisect が判定に使う（§24.100）。</summary>
+    private (string Command, int? ExitCode)? _lastTerminalCommand;
     private readonly Dictionary<PaneKind, (Border Chip, TextBlock Label)> _stageActivityBadges = new();
 
     private void HookAiActivity() {
@@ -176,8 +178,11 @@ public partial class ShellWindow {
             UpdatePaneActivityBadge(PaneKind.Terminal);
     }
     private void OnTerminalShellActivity(Guid tabId, ShellCommandActivityEventArgs e) {
-        if (e.Phase == ShellCommandPhase.CommandDone)
+        if (e.Phase == ShellCommandPhase.CommandDone) {
             NotifyLongCommandIfUnwatched(tabId, e);
+            if (!string.IsNullOrWhiteSpace(e.CommandLine))
+                _lastTerminalCommand = (e.CommandLine.Trim(), e.ExitCode);   // bisect の判定に使う（§24.100）
+        }
         var shouldRefresh = _paneActivity.TerminalCommandChanged(
             tabId,
             e.Phase == ShellCommandPhase.CommandExecuted,

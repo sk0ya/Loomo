@@ -241,6 +241,10 @@ public sealed class GitSessionCommandHandler
         ? Task.FromResult<GitCommandResult?>(null)
         : RunAsync($"{label} {row.ShortHash}", () => operation(row.Hash));
 
+    /// <summary>この Handler に無い操作（bisect・§24.100）も、同じ多重実行の抑止と実行中・結果の表示で走らせる。</summary>
+    public Task<GitCommandResult?> RunExternalAsync(string label, Func<Task<GitCommandResult>> operation)
+        => RunAsync(label, operation);
+
     private async Task<GitCommandResult?> RunAsync(string label, Func<Task<GitCommandResult>> operation)
     {
         if (Interlocked.CompareExchange(ref _busy, 1, 0) != 0) return null;

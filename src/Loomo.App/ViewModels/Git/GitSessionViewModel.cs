@@ -415,6 +415,8 @@ public sealed partial class GitSessionViewModel : ObservableObject
             History.Clear();
             Reflog.Clear();
             OperationInProgress = false;
+            BisectInProgress = false;
+            BisectLabel = "";
             return;
         }
 
@@ -434,6 +436,7 @@ public sealed partial class GitSessionViewModel : ObservableObject
             : _status.CherryPickInProgress ? "チェリーピックが進行中です（コンフリクトを解消してください）"
             : "";
         OperationCanSkip = _status.RebaseInProgress || _status.CherryPickInProgress;
+        await RefreshBisectStateAsync();
 
         // 構成が変わらなければ同一インスタンスが返り、ビュー（開閉・選択）はそのまま保たれる
         _allBranches = overview.Branches;

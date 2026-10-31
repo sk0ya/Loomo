@@ -421,6 +421,13 @@ public partial class GitSessionView : UserControl
         await GitSessionOperationController.ExecuteCommitAsync(
             Vm, SelectedCommit, GitCommitOperation.Checkout);
 
+    /// <summary>bisect を始める（§24.100）：選んだコミットを良い版、いまの HEAD を悪い版として。</summary>
+    private async void OnCommitStartBisect(object sender, RoutedEventArgs e)
+    {
+        if (Vm is { } vm && SelectedCommit is { Hash: { } hash })
+            await vm.StartBisectFromGoodAsync(hash);
+    }
+
     private async void OnCommitRewriteMessage(object sender, RoutedEventArgs e) =>
         await GitSessionOperationController.ExecuteCommitAsync(
             Vm, SelectedCommit,

@@ -627,6 +627,40 @@ public sealed class GitService
     /// <inheritdoc cref="GitBranchService.CheckoutCarryingAsync"/>
     public Task<GitCommandResult> CheckoutCarryingAsync(string branch, bool track) =>
         _branches.CheckoutCarryingAsync(branch, track);
+
+    // ── bisect（§24.100） ──────────────────────────────────────────────────
+
+    /// <summary>bisect を始める：<paramref name="bad"/> は悪い版（たいていは HEAD）、<paramref name="good"/> は良かった版。
+    /// 返す <see cref="GitBisectStep"/> は git が次に試すためにチェックアウトした版。</summary>
+    public async Task<(GitCommandResult Result, GitBisectStep Step)> BisectStartAsync(string bad, string good)
+    {
+        var result = await _mutations.ExecuteAsync("bisect", "start", bad, good).ConfigureAwait(false);
+        return (result, GitBisectParser.Parse(result.Output));
+    }
+
+    /// <summary>いまチェックアウトしている版を判定する。犯人が見つかれば <see cref="GitBisectStep.Found"/>。</summary>
+    public async Task<(GitCommandResult Result, GitBisectStep Step)> BisectMarkAsync(GitBisectVerdict verdict)
+    {
+        var word = verdict switch
+        {
+            GitBisectVerdict.Good => "good",
+            GitBisectVerdict.Bad => "bad",
+            _ => "skip",
+        };
+        var result = await _mutations.ExecuteAsync("bisect", word).ConfigureAwait(false);
+        return (result, GitBisectParser.Parse(result.Output));
+    }
+
+    /// <summary>bisect を終えて、始める前の場所（ブランチ）へ戻る。</summary>
+    public Task<GitCommandResult> BisectResetAsync() => _mutations.ExecuteAsync("bisect", "reset");
+
+    /// <summary>bisect の途中か（作業ツリーごとの <c>BISECT_START</c>）。</summary>
+    public async Task<bool> IsBisectingAsync()
+    {
+        var gitDir = await _runner.GetGitDirectoryAsync().ConfigureAwait(false);
+        return gitDir is not null && System.IO.File.Exists(System.IO.Path.Combine(gitDir, "BISECT_START"));
+    }
+
     public Task<GitCommandResult> CheckoutCommitAsync(string hash) => _branches.CheckoutCommitAsync(hash);
 
     public Task<GitCommandResult> CreateBranchAsync(string name, string? startPoint = null) =>

@@ -364,6 +364,28 @@
                 </DockPanel>
             </Border>
 
+            <!-- bisect 中の帯（§24.100）。判定はボタンか、ターミナルで最後に走らせたコマンドの成否で。 -->
+            <Border DockPanel.Dock="Top" Margin="8,4,8,4" Padding="8,6" CornerRadius="4"
+                    Background="#335B8DEF" BorderBrush="#FF5B8DEF" BorderThickness="1"
+                    Visibility="{Binding BisectInProgress, Converter={StaticResource BoolToVis}}">
+                <DockPanel LastChildFill="True">
+                    <Button DockPanel.Dock="Right" Style="{StaticResource ToolbarButton}" Margin="6,0,0,0"
+                            Content="やめる" Command="{Binding BisectResetCommand}"
+                            ToolTip="bisect を終えて、始める前の場所へ戻ります（git bisect reset）" />
+                    <Button DockPanel.Dock="Right" Style="{StaticResource ToolbarButton}" Margin="6,0,0,0"
+                            Content="ターミナルの結果で" Command="{Binding BisectByTerminalCommand}"
+                            ToolTip="ターミナルで最後に終わったコマンドの終了コードで判定します（0＝良い・125＝飛ばす・それ以外＝悪い。git bisect run と同じ決まり）" />
+                    <Button DockPanel.Dock="Right" Style="{StaticResource ToolbarButton}" Margin="6,0,0,0"
+                            Content="飛ばす" Command="{Binding BisectSkipCommand}"
+                            ToolTip="この版は試せない（ビルドできない等）ので飛ばします" />
+                    <Button DockPanel.Dock="Right" Style="{StaticResource ToolbarButton}" Margin="6,0,0,0"
+                            Content="悪い" Command="{Binding BisectBadCommand}" />
+                    <Button DockPanel.Dock="Right" Style="{StaticResource ToolbarButton}" Margin="6,0,0,0"
+                            Content="良い" Command="{Binding BisectGoodCommand}" />
+                    <TextBlock Text="{Binding BisectLabel}" VerticalAlignment="Center" TextWrapping="Wrap" />
+                </DockPanel>
+            </Border>
+
             <!-- 実行結果メッセージ -->
             <TextBlock DockPanel.Dock="Bottom" Margin="10,2,10,6" FontSize="{DynamicResource Fs11}"
                        Text="{Binding StatusMessage}" TextWrapping="Wrap" MaxHeight="60">
@@ -1220,6 +1242,8 @@
                                     <MenuItem Header="ワークツリー…（別の場所で作業）" Click="OnCommitCreateWorktree" />
                                 </MenuItem>
                                 <MenuItem Header="チェックアウト（detached HEAD）" Click="OnCommitCheckout" />
+                                <MenuItem Header="bisect：ここは良かった（いまは悪い）として始める" Click="OnCommitStartBisect"
+                                          ToolTip="この版といまの HEAD の間で、最初に悪くなったコミットを二分探索で探します（git bisect）" />
                                 <Separator />
                                 <MenuItem Header="現在のブランチへ取り込む">
                                     <MenuItem Header="チェリーピック" Click="OnCommitCherryPick" />

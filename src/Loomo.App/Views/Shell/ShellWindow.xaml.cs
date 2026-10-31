@@ -471,6 +471,7 @@ public partial class ShellWindow : Window {
         // 切替がローカル変更で止まったら、退避して／持って切り替えるかを聞く（§24.99）。
         vm.GitSession.Commands.LocalChangesBlockCheckout = (branch, files, untracked) =>
             GitBranchDialogs.AskCheckoutWithLocalChanges(this, branch, files, untracked);
+        vm.GitSession.LastTerminalCommand = () => _lastTerminalCommand;   // bisect の「ターミナルの結果で」（§24.100）
         WireWorktreeRequests();
         // コミット詳細のファイルをダブルクリック＝そのファイルの差分だけを別ウィンドウで開く
         // （ペインの DIFF は動かさないので、一覧と見比べたまま何枚でも開ける）。行き先は
