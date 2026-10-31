@@ -157,13 +157,15 @@
     <!-- 1.0.53: Claude Code の中でも Ctrl+クリックでパスを開けるようにする。Claude Code はマウス報告（?1000h/?1006h）を有効にするので
          Ctrl+クリックもホバーもアプリへ送られていた。Ctrl を押してリンクの上にあるときだけ報告しない。%VAR%\… と ~\… で始まるパスも
          検出する（展開は TerminalLinkTargetResolver.ExpandShellPath）（2026-10-29 公開） -->
-    <!-- 版は Directory.Build.props の TerminalPackageVersion（常駐ホストと共有するため一か所） -->
-    <PackageReference Include="sk0ya.Terminal.Controls" Version="$(TerminalPackageVersion)" />
+    <!-- 版は Directory.Build.props の TerminalPackageVersion（常駐ホストと共有するため一か所）。参照は eng/LocalTerminal.props
+         （-p:UseLocalTerminal=true でプロジェクト参照へ切り替わる）。 -->
   </ItemGroup>
 
   <ItemGroup>
     <!-- PDF 本文の検索（Search/PdfTextExtractor）。純 .NET（ネイティブ依存なし）・MIT。 -->
     <PackageReference Include="PdfPig" Version="0.1.16" />
   </ItemGroup>
+
+  <Import Project="..\..\eng\LocalTerminal.props" />
 
 </Project>

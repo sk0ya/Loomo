@@ -386,6 +386,9 @@ human-only. cwd is tracked via `cd` detection (`TrackChdir`). `SetWorkingDirecto
 The package versions are pinned in **one place only**: the root `Directory.Build.props`
 (`EditorPackageVersion`, `TerminalPackageVersion` — the Terminal one is shared with the pty host below); the
 per-version change notes live next to the `PackageReference` in `src/Loomo.Services/Loomo.Services.csproj`.
+To build against unpublished changes, `-p:UseLocalEditor=true` / `-p:UseLocalTerminal=true` switch to project references
+into `C:\Projects\Editor` / `C:\Projects\Terminal` (Terminal's is `eng/LocalTerminal.props`, which also carries the bundled
+ConPTY files that a project reference doesn't flow). Code that *needs* the new API still waits for the publish + pin bump.
 
 **Visible-terminal shells outlive Loomo (tmux-style, `docs/設計/34-端末の常駐セッション.md` = §34).** With
 `LoomoSettings.PersistentTerminalSessions` on (default), a workspace's terminal tab does not own its ConPTY:

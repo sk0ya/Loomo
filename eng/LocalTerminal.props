@@ -1,0 +1,21 @@
+<Project>
+  <!--
+    -p:UseLocalTerminal=true のときの Terminal への参照（Directory.Build.props の注記）。Terminal を参照するプロジェクト
+    （Loomo.Services と端末の常駐ホスト Loomo.Pty.Host）がこれを読み込み、公開パッケージの代わりにプロジェクト参照する。
+    Terminal.Controls は Terminal.Core を PrivateAssets で隠すので、Core も明示して参照する（Editor と同じ）。
+  -->
+  <ItemGroup Condition="'$(UseLocalTerminal)' != 'false'">
+    <ProjectReference Include="$(MSBuildThisFileDirectory)..\..\Terminal\src\Terminal.Controls\Terminal.Controls.csproj" />
+    <ProjectReference Include="$(MSBuildThisFileDirectory)..\..\Terminal\src\Terminal.Core\Terminal.Core.csproj" />
+    <!-- 同梱の ConPTY：conpty.dll は runtimes/win-x64/native から NuGet が出力の直下へ、OpenConsole.exe はここで x64\ へ。 -->
+    <PackageReference Include="Microsoft.Windows.Console.ConPTY" Version="$(LocalTerminalConPtyVersion)" GeneratePathProperty="true" />
+    <None Include="$(PkgMicrosoft_Windows_Console_ConPTY)\build\native\runtimes\x64\OpenConsole.exe" Link="x64\OpenConsole.exe"
+          Condition="'$(PkgMicrosoft_Windows_Console_ConPTY)' != ''">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
+  </ItemGroup>
+  <ItemGroup Condition="'$(UseLocalTerminal)' == 'false'">
+    <PackageReference Include="sk0ya.Terminal.Controls" Version="$(TerminalPackageVersion)" />
+  </ItemGroup>
+</Project>

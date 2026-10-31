@@ -14,8 +14,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- 版は Directory.Build.props の TerminalPackageVersion 一か所で決める（本体と同じ版を同梱するため）。 -->
-    <PackageReference Include="sk0ya.Terminal.Controls" Version="$(TerminalPackageVersion)" />
+    <!-- 版は Directory.Build.props の TerminalPackageVersion 一か所で決める（本体と同じ版を同梱するため）。
+         参照は eng/LocalTerminal.props（-p:UseLocalTerminal=true でプロジェクト参照へ切り替わる）。 -->
   </ItemGroup>
 
   <PropertyGroup>
@@ -34,5 +34,7 @@
   <ItemGroup>
     <InternalsVisibleTo Include="sk0ya.Loomo.Tests" />
   </ItemGroup>
+
+  <Import Project="..\..\eng\LocalTerminal.props" />
 
 </Project>
