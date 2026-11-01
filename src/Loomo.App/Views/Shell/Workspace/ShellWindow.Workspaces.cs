@@ -216,7 +216,11 @@ public partial class ShellWindow {
     // 「ワークスペースフォルダーが開かれていません」で空を返し、保存した枝が既定ブランチへすり替わる
     // （deferHydration の経路が本番の起動経路なので、そこでこそ踏む）。
     private void RestoreGitCompareBase(WorkspaceSnapshot workspace) {
-        _vm.GitPanel.CompareBase.Restore(workspace.GitCompare);
+        // 選んでいたリポジトリ（§40.9）を先に戻す——比較基準も下書きもリポジトリごとなので。無くなっていれば
+        // SetActiveRoot が受け付けず、プライマリのまま。
+        if (workspace.GitRepository is { Length: > 0 } repository)
+            _git.SetActiveRoot(repository);
+        _vm.GitPanel.CompareBase.RestoreAll(workspace.GitCompareByRepository, workspace.GitCompare);
         // 下書きも対象フォルダーが切り替わってから戻す（前の部屋の欄の中身を、この部屋の帳面へ書かない）。
         _vm.GitPanel.RestoreCommitDrafts(workspace.CommitDrafts);
     }
@@ -262,6 +266,8 @@ public partial class ShellWindow {
         snapshot.Files = _vm.Files.Capture();
         snapshot.Harness = _vm.Harness.Capture();
         snapshot.GitCompare = _vm.GitPanel.CompareBase.Capture();
+        snapshot.GitCompareByRepository = _vm.GitPanel.CompareBase.CaptureAll();
+        snapshot.GitRepository = _git.RootPath;
         snapshot.CommitDrafts = _vm.GitPanel.CaptureCommitDrafts();
         snapshot.ComposerText = CaptureComposerText();
         snapshot.ComposerVisible = IsComposerVisible;

@@ -145,6 +145,8 @@ public static class WorktreeRoomSeed
         seed.SearchTabs = new();
         seed.ComposerText = null;
         seed.GitCompare = null;
+        seed.GitCompareByRepository = null;
+        seed.GitRepository = null;
         seed.CommitDrafts = null;
 
         return seed;

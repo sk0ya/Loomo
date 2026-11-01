@@ -55,8 +55,13 @@ public sealed partial class GitCompareBaseViewModel : ObservableObject
     {
         _git = git;
         _selectedMode = ModeOptions[0];
+        _currentRepository = KeyOf(_git.RootPath);
         _git.ActiveRootChanged += (_, _) =>
         {
+            // 比較基準はリポジトリごと（§40.9）：ブランチ名はリポジトリごとに違うので、前のリポジトリの基準を預けて
+            // 次のリポジトリの基準を出す（初めて見るリポジトリは作業ツリー基準）。
+            if (SwapRepository(KeyOf(_git.RootPath)))
+                return; // Restore が候補の読み込みまで済ませる
             DispatchReloadBranches();
             // ワークツリー基準のときだけ引く（作業ツリー基準では git を起動しない約束を守る）。
             if (NeedsWorktree) DispatchReloadWorktrees();
@@ -266,6 +271,56 @@ public sealed partial class GitCompareBaseViewModel : ObservableObject
     {
         if (IsWorkingTree) return;
         SelectedMode = ModeOptions[0];
+    }
+
+    private readonly Dictionary<string, GitCompareSnapshot> _byRepository = new(StringComparer.OrdinalIgnoreCase);
+    private string _currentRepository;
+
+    private static string KeyOf(string? root) => sk0ya.Loomo.Core.Files.WorkspacePaths.Normalize(root);
+
+    /// <summary>対象のリポジトリが替わったら、今の基準を前のリポジトリに預けて次のリポジトリの基準を出す。替わったら true。
+    /// Git の対象の切替通知は背景から来ることがあるので、表示の差し替えは UI スレッドで。</summary>
+    private bool SwapRepository(string next)
+    {
+        if (string.Equals(next, _currentRepository, StringComparison.OrdinalIgnoreCase))
+            return false;
+        var previous = _currentRepository;
+        _currentRepository = next;
+        // 対象が「無し」からの切替（起動時の復元 → フォルダーを開く）は、今の基準がそのリポジトリのもの——預けずに引き継ぐ。
+        // 作業ツリー基準へ戻すと、復元したばかりの枝が失われる。
+        if (previous.Length == 0)
+            return false;
+        UiDispatch.Post(() =>
+        {
+            if (previous.Length > 0)
+                _byRepository[previous] = Capture();
+            Restore(_byRepository.TryGetValue(next, out var saved) ? saved : null);
+        });
+        return true;
+    }
+
+    /// <summary>ワークスペースへ保存する、リポジトリごとの比較基準（今のリポジトリのものを含む）。空なら null。</summary>
+    public Dictionary<string, GitCompareSnapshot>? CaptureAll()
+    {
+        var all = new Dictionary<string, GitCompareSnapshot>(_byRepository, StringComparer.OrdinalIgnoreCase);
+        if (_currentRepository.Length > 0)
+            all[_currentRepository] = Capture();
+        // 作業ツリー基準（既定）は覚えない——訪れたリポジトリの数だけ workspaces.json を太らせない。
+        foreach (var key in all.Where(p => p.Value.Kind == (int)GitCompareBaseKind.WorkingTree).Select(p => p.Key).ToList())
+            all.Remove(key);
+        return all.Count == 0 ? null : all;
+    }
+
+    /// <summary>ワークスペース復元（リポジトリごと）。<paramref name="legacy"/> はリポジトリ別に持つ前の保存（ワークスペースに1つ）で、
+    /// 今のリポジトリの分が無ければそれを今のリポジトリのものとして読む。</summary>
+    public void RestoreAll(IReadOnlyDictionary<string, GitCompareSnapshot>? byRepository, GitCompareSnapshot? legacy)
+    {
+        _byRepository.Clear();
+        if (byRepository is not null)
+            foreach (var pair in byRepository)
+                _byRepository[KeyOf(pair.Key)] = pair.Value;
+        _currentRepository = KeyOf(_git.RootPath);
+        Restore(_byRepository.TryGetValue(_currentRepository, out var current) ? current : legacy);
     }
 
     public GitCompareSnapshot Capture() => new()

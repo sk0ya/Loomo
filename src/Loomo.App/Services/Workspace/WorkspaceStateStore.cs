@@ -503,6 +503,13 @@ public sealed class WorkspaceSnapshot
     /// <summary>書きかけのコミットメッセージ（Git の対象フォルダーの絶対パス → 本文・§24.32）。null の旧データは下書きなし。</summary>
     public Dictionary<string, string>? CommitDrafts { get; set; }
 
+    /// <summary>リポジトリ（作業ツリーの根）ごとの比較基準（§40.9）。作業ツリー基準のリポジトリは持たない。
+    /// null の旧データは <see cref="GitCompare"/> を選んでいたリポジトリのものとして読む。</summary>
+    public Dictionary<string, GitCompareSnapshot>? GitCompareByRepository { get; set; }
+
+    /// <summary>リポジトリの帯で選んでいたリポジトリ（§40.9）。null の旧データはプライマリフォルダー。</summary>
+    public string? GitRepository { get; set; }
+
     /// <summary>ハーネスペイン（§37.7）の選んでいたタブと期間。候補の選択は持ち越さない（記録が変われば意味が変わる）。</summary>
     public HarnessPaneSnapshot? Harness { get; set; }
 }
