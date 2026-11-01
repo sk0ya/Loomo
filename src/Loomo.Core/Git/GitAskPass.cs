@@ -24,6 +24,9 @@ public static class GitAskPass
     /// <summary>どの git の操作の問いか（入力欄に出す。例 <c>git push</c>）。</summary>
     public const string ContextVariable = "LOOMO_ASKPASS_CONTEXT";
 
+    /// <summary>git の起動ごとの印。Loomo が「人が答えていた時間」を git の時間制限から外すのに使う。</summary>
+    public const string InvocationVariable = "LOOMO_ASKPASS_INVOCATION";
+
     /// <summary>ssh が問いの種類を伝える変数（OpenSSH 8.4+）。<c>confirm</c>＝はい／いいえ、<c>none</c>＝知らせるだけ。</summary>
     public const string SshPromptVariable = "SSH_ASKPASS_PROMPT";
 
@@ -40,7 +43,8 @@ public static class GitAskPass
     /// <param name="Prompt">git・ssh が渡した文面そのまま（例 <c>Password for 'https://user@host': </c>）。</param>
     /// <param name="SshPrompt"><see cref="SshPromptVariable"/> の値（無ければ null）。</param>
     /// <param name="Context">どの操作の問いか（<see cref="ContextVariable"/>）。</param>
-    public sealed record Request(string Prompt, string? SshPrompt = null, string? Context = null);
+    /// <param name="Invocation">どの git の起動の問いか（<see cref="InvocationVariable"/>）。</param>
+    public sealed record Request(string Prompt, string? SshPrompt = null, string? Context = null, string? Invocation = null);
 
     /// <summary>Loomo の答え。<paramref name="Answered"/> が false なら取り消し（exe は失敗で終わる）。</summary>
     public sealed record Reply(bool Answered, string? Answer = null);
@@ -54,10 +58,11 @@ public static class GitAskPass
         if (string.Equals(request.SshPrompt, "confirm", StringComparison.OrdinalIgnoreCase))
             return GitCredentialPromptKind.Confirm;
 
-        var prompt = request.Prompt ?? "";
         // 初めての接続先のホスト鍵（Are you sure you want to continue connecting (yes/no/[fingerprint])?）。
-        if (prompt.Contains("(yes/no", StringComparison.OrdinalIgnoreCase))
+        // 文面全体で見る——前置きの「can't be established」のアポストロフィで引用符の数え方が狂うので。
+        if ((request.Prompt ?? "").Contains("(yes/no", StringComparison.OrdinalIgnoreCase))
             return GitCredentialPromptKind.YesNo;
+        var prompt = OutsideQuotes(request.Prompt ?? "");
         if (prompt.Contains("password", StringComparison.OrdinalIgnoreCase)
             || prompt.Contains("passphrase", StringComparison.OrdinalIgnoreCase)
             || prompt.Contains("PIN", StringComparison.Ordinal)
@@ -67,6 +72,20 @@ public static class GitAskPass
             return GitCredentialPromptKind.Secret;
         // ユーザー名など。伏せずに見せる（打ち間違いに気づけるように）。
         return GitCredentialPromptKind.Text;
+    }
+
+    /// <summary>引用符の中（git の URL・ssh の鍵のパス）を除いた文面。<c>Username for 'https://token.example.com'</c> の
+    /// ホスト名に釣られてユーザー名を伏せないように、問いの種類は外側の語だけで決める。</summary>
+    private static string OutsideQuotes(string prompt)
+    {
+        var text = new StringBuilder(prompt.Length);
+        var quoted = false;
+        foreach (var c in prompt)
+        {
+            if (c == '\'') { quoted = !quoted; continue; }
+            if (!quoted) text.Append(c);
+        }
+        return text.ToString();
     }
 
     /// <summary>
@@ -101,8 +120,11 @@ public static class GitAskPass
         await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    /// <summary>1 行読む。行の前に相手が切れたら null。StreamReader を使わないのは、読み過ぎて
-    /// 次の読み（切断の検知）に渡すべきバイトを抱え込まないため。</summary>
+    /// <summary>1 行の上限。問いも答えも数百バイトなので、これを超えるものはやり取りの相手ではない。</summary>
+    public const int MaxLineBytes = 64 * 1024;
+
+    /// <summary>1 行読む。行の前に相手が切れたら・上限を超えたら null。StreamReader を使わないのは、読み過ぎて
+    /// 次の読み（切断の検知）に渡すべきバイトを抱え込まないため（1 バイトずつだが、1 往復は数百バイト）。</summary>
     public static async Task<string?> ReadLineAsync(Stream stream, CancellationToken cancellationToken)
     {
         var buffer = new MemoryStream();
@@ -114,6 +136,8 @@ public static class GitAskPass
                 return null;
             if (one[0] == (byte)'\n')
                 return Encoding.UTF8.GetString(buffer.ToArray()).TrimEnd('\r');
+            if (buffer.Length >= MaxLineBytes)
+                return null;
             buffer.WriteByte(one[0]);
         }
     }

@@ -21,6 +21,10 @@ public sealed class GitAskPassClassifyTests
         null, GitCredentialPromptKind.YesNo)]
     [InlineData("Allow use of key /c/Users/me/.ssh/id_ed25519?", "confirm", GitCredentialPromptKind.Confirm)]
     [InlineData("Confirm user presence for key ECDSA-SK SHA256:abc", "none", GitCredentialPromptKind.Notice)]
+    // 引用符の中（URL・ホスト名・鍵のパス）の語には釣られない。ユーザー名は見せたまま。
+    [InlineData("Username for 'https://token.example.com': ", null, GitCredentialPromptKind.Text)]
+    [InlineData("Username for 'https://passwords.corp.example': ", null, GitCredentialPromptKind.Text)]
+    [InlineData("Password for 'https://me@token.example.com': ", null, GitCredentialPromptKind.Secret)]
     public void 問いの文面とsshの申告から入力欄の形を決める(string prompt, string? sshPrompt, GitCredentialPromptKind expected)
         => Assert.Equal(expected, GitAskPass.Classify(new GitAskPass.Request(prompt, sshPrompt)));
 
@@ -32,6 +36,25 @@ public sealed class GitAskPassClassifyTests
         // URL には user:token が埋まっていることがある。
         Assert.Equal("git clone repo", GitCommandRunner.AskPassContext(["clone", "--progress", "https://me:tok@host/r.git", "repo"]));
         Assert.Equal("git clone repo", GitCommandRunner.AskPassContext(["clone", "git@github.com:me/r.git", "repo"]));
+    }
+
+    [Fact]
+    public void 資格情報を問いうる操作にだけ入力欄を付ける()
+    {
+        Assert.True(GitCommandRunner.CanPrompt(["push", "-u", "origin", "HEAD"]));
+        Assert.True(GitCommandRunner.CanPrompt(["fetch", "--all", "--prune"]));
+        Assert.True(GitCommandRunner.CanPrompt(["-c", "credential.helper=", "clone", "x"]));
+        Assert.True(GitCommandRunner.CanPrompt(["commit", "-m", "m"]));   // SSH 署名
+        Assert.False(GitCommandRunner.CanPrompt(["status", "--porcelain"]));
+        Assert.False(GitCommandRunner.CanPrompt(["--literal-pathspecs", "diff", "HEAD"]));
+        Assert.False(GitCommandRunner.CanPrompt(["-c", "push.default=simple", "log"]));
+    }
+
+    [Fact]
+    public async Task 上限を超える行は読まない()
+    {
+        using var stream = new MemoryStream(new byte[GitAskPass.MaxLineBytes + 10]);
+        Assert.Null(await GitAskPass.ReadLineAsync(stream, CancellationToken.None));
     }
 
     [Fact]
@@ -192,6 +215,27 @@ public sealed class GitAskPassGitTests : IAsyncLifetime
         Assert.Contains(expected, _remote.Authorizations);
         // 遠隔が受け付けなかったので、git の文面の前に次の一手が付く。
         Assert.StartsWith(GitRefusal.AuthenticationFailureMessage, result.Error);
+    }
+
+    [Fact]
+    public async Task 人が答えていた時間はgitの時間制限に数えない()
+    {
+        // 制限 2 秒の git に、入力欄で 4 秒かけて答える。数えていれば答える前に git ごと刈られる。
+        var slow = new FakePrompter(async (request, cancellationToken) =>
+        {
+            await Task.Delay(TimeSpan.FromSeconds(4), cancellationToken);
+            return request.Prompt.StartsWith("Username", StringComparison.Ordinal) ? "alice" : "s3cret pass";
+        });
+        using var askPass = new GitAskPassServer(slow, Path.Combine(AppContext.BaseDirectory, GitAskPass.ExecutableName));
+        var workspace = new FakeWorkspaceService();
+        workspace.OpenFolder(_root);
+        var runner = new GitCommandRunner(new GitRootState(workspace), TimeSpan.FromSeconds(2), askPass);
+
+        var result = await runner.RunAsync("fetch", "origin");
+
+        Assert.DoesNotContain("タイムアウト", result.Error);
+        Assert.Contains("Authentication failed", result.Error);
+        Assert.Contains("Basic " + Convert.ToBase64String(Encoding.UTF8.GetBytes("alice:s3cret pass")), _remote.Authorizations);
     }
 
     [Fact]

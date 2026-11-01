@@ -11,7 +11,8 @@ if (string.IsNullOrEmpty(pipe))
 var request = new GitAskPass.Request(
     args.Length > 0 ? args[0] : "",
     Environment.GetEnvironmentVariable(GitAskPass.SshPromptVariable),
-    Environment.GetEnvironmentVariable(GitAskPass.ContextVariable));
+    Environment.GetEnvironmentVariable(GitAskPass.ContextVariable),
+    Environment.GetEnvironmentVariable(GitAskPass.InvocationVariable));
 var reply = await GitAskPass.AskAsync(pipe, request);
 if (!reply.Answered)
     return 1;

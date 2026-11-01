@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.IO.Pipes;
 using System.Text.Json;
@@ -24,6 +26,8 @@ public sealed class GitAskPassServer : IDisposable
     private readonly CancellationTokenSource _stop = new();
     private readonly object _gate = new();
     private bool _started;
+    /// <summary>git の起動ごとの「人が答えるのに使った時間」。git の時間制限から外すため（入力中に刈られないように）。</summary>
+    private readonly ConcurrentDictionary<string, AskingTime> _asking = new();
 
     public GitAskPassServer(IGitCredentialPrompter prompter, string helperPath, string? pipeName = null)
     {
@@ -34,9 +38,10 @@ public sealed class GitAskPassServer : IDisposable
 
     public string PipeName { get; }
 
-    /// <summary>git に渡す環境変数。<paramref name="context"/> は入力欄に出す「どの操作か」（例 <c>git push</c>）。
+    /// <summary>git に渡す環境変数。<paramref name="context"/> は入力欄に出す「どの操作か」（例 <c>git push</c>）、
+    /// <paramref name="invocation"/> は git の起動ごとの印（<see cref="TimeSpentAsking"/> で引く）。
     /// exe が無ければ null（何も足さない）。初めて呼ばれたときに受け口を開く。</summary>
-    public IReadOnlyDictionary<string, string>? EnvironmentFor(string context)
+    public IReadOnlyDictionary<string, string>? EnvironmentFor(string context, string? invocation = null)
     {
         if (!File.Exists(_helperPath))
             return null;
@@ -49,8 +54,16 @@ public sealed class GitAskPassServer : IDisposable
             ["SSH_ASKPASS_REQUIRE"] = "force",
             [GitAskPass.PipeVariable] = PipeName,
             [GitAskPass.ContextVariable] = context,
+            [GitAskPass.InvocationVariable] = invocation ?? "",
         };
     }
+
+    /// <summary>その git の起動が、これまでに人へ聞いていた時間（いま聞いている最中ならその分も）。</summary>
+    public TimeSpan TimeSpentAsking(string invocation)
+        => _asking.TryGetValue(invocation, out var time) ? time.Total : TimeSpan.Zero;
+
+    /// <summary>git が終わったら、その起動の記録を捨てる。</summary>
+    public void Forget(string invocation) => _asking.TryRemove(invocation, out _);
 
     private void EnsureStarted()
     {
@@ -95,6 +108,7 @@ public sealed class GitAskPassServer : IDisposable
         }
     }
 
+
     private async Task ServeAsync(NamedPipeServerStream pipe, CancellationToken stopping)
     {
         await using var connection = pipe;
@@ -111,7 +125,23 @@ public sealed class GitAskPassServer : IDisposable
                 // exe は答えを待つあいだ何も送らない。読みが終わる＝相手が居なくなった（git が止められた）ので、入力欄を閉じる。
                 _ = WatchDisconnectAsync(pipe, asker);
                 var kind = GitAskPass.Classify(request);
-                var answer = await _prompter.AskAsync(request, kind, asker.Token).ConfigureAwait(false);
+                var time = string.IsNullOrEmpty(request.Invocation) ? null : _asking.GetOrAdd(request.Invocation, _ => new AskingTime());
+                string? answer;
+                time?.Begin();
+                try
+                {
+                    answer = await _prompter.AskAsync(request, kind, asker.Token).ConfigureAwait(false);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    // 入力欄が出せなかった（窓の破棄と競合など）。取り消しとして返し、git は今まで通りの止まり方をする。
+                    System.Diagnostics.Debug.WriteLine($"[askpass] 入力欄のエラー: {ex}");
+                    answer = null;
+                }
+                finally
+                {
+                    time?.End();
+                }
                 var reply = answer is null ? new GitAskPass.Reply(false) : new GitAskPass.Reply(true, answer);
                 await GitAskPass.WriteLineAsync(pipe, JsonSerializer.Serialize(reply, GitAskPass.Json), stopping)
                     .ConfigureAwait(false);
@@ -120,6 +150,11 @@ public sealed class GitAskPassServer : IDisposable
         catch (Exception ex) when (ex is IOException or OperationCanceledException or JsonException)
         {
             // 相手が途中で消えた。受け口は次の問いを待ち続ける。
+        }
+        catch (Exception ex)
+        {
+            // 投げっぱなしのタスクなので、ここで拾わないと誰にも見えない。
+            System.Diagnostics.Debug.WriteLine($"[askpass] 問いの処理のエラー: {ex}");
         }
         finally
         {
@@ -146,4 +181,34 @@ public sealed class GitAskPassServer : IDisposable
     }
 
     public void Dispose() => _stop.Cancel();
+
+    /// <summary>人が答えるのに使った時間。同じ git から問いが重なっても（ユーザー名→パスワード）足し合わせる。</summary>
+    private sealed class AskingTime
+    {
+        private readonly object _gate = new();
+        private TimeSpan _done;
+        private int _active;
+        private long _since;
+
+        public void Begin()
+        {
+            lock (_gate)
+                if (_active++ == 0) _since = Stopwatch.GetTimestamp();
+        }
+
+        public void End()
+        {
+            lock (_gate)
+                if (--_active == 0) _done += Stopwatch.GetElapsedTime(_since);
+        }
+
+        public TimeSpan Total
+        {
+            get
+            {
+                lock (_gate)
+                    return _active > 0 ? _done + Stopwatch.GetElapsedTime(_since) : _done;
+            }
+        }
+    }
 }

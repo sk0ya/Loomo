@@ -100,7 +100,7 @@ public sealed class GitCommandRunner
         if (string.IsNullOrEmpty(workingDirectory) || !Directory.Exists(workingDirectory))
             return new GitCommandResult(-1, "", $"フォルダーがありません: {workingDirectory}");
 
-        var startInfo = CreateStartInfo(workingDirectory, extraEnvironment, args);
+        var startInfo = CreateStartInfo(workingDirectory, extraEnvironment, args, out var invocation);
         var limit = timeout ?? _timeout;
         try
         {
@@ -112,25 +112,40 @@ public sealed class GitCommandRunner
             // TryKill が担う——パイプが閉じれば読みは EOF で終わる。
             var stdout = ChildProcessIo.ReadToEndAsync(process.StandardOutput, "git:stdout");
             var stderr = ChildProcessIo.ReadToEndAsync(process.StandardError, "git:stderr");
-            using var timeoutSource = limit == Timeout.InfiniteTimeSpan
-                ? new CancellationTokenSource()
-                : new CancellationTokenSource(limit);
-            using var linked = CancellationTokenSource.CreateLinkedTokenSource(
-                cancellationToken, timeoutSource.Token);
-            try
+            // 時間制限は git が自分で使った時間に掛ける。資格情報の入力欄（§24.101）で人が答えていた時間は数えない
+            // ——数えると、パスワードを打っている最中に git ごと刈られて入力欄が消える。
+            var started = Stopwatch.StartNew();
+            while (true)
             {
-                await process.WaitForExitAsync(linked.Token).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException) when (timeoutSource.IsCancellationRequested)
-            {
-                TryKill(process);
-                return new GitCommandResult(-1, "",
-                    $"git がタイムアウトしました（{limit.TotalSeconds:0}秒）。");
-            }
-            catch (OperationCanceledException)
-            {
-                TryKill(process);
-                throw;
+                var remaining = limit == Timeout.InfiniteTimeSpan
+                    ? Timeout.InfiniteTimeSpan
+                    : limit + AskingTime(invocation) - started.Elapsed;
+                if (remaining != Timeout.InfiniteTimeSpan && remaining <= TimeSpan.Zero)
+                {
+                    TryKill(process);
+                    return new GitCommandResult(-1, "",
+                        $"git がタイムアウトしました（{limit.TotalSeconds:0}秒）。");
+                }
+                using var timeoutSource = remaining == Timeout.InfiniteTimeSpan
+                    ? new CancellationTokenSource()
+                    : new CancellationTokenSource(remaining);
+                using var linked = CancellationTokenSource.CreateLinkedTokenSource(
+                    cancellationToken, timeoutSource.Token);
+                try
+                {
+                    await process.WaitForExitAsync(linked.Token).ConfigureAwait(false);
+                    break;
+                }
+                catch (OperationCanceledException) when (timeoutSource.IsCancellationRequested
+                                                          && !cancellationToken.IsCancellationRequested)
+                {
+                    // 残りを数え直す（その間に人が答えていれば、その分だけ延びる）。
+                }
+                catch (OperationCanceledException)
+                {
+                    TryKill(process);
+                    throw;
+                }
             }
 
             return new GitCommandResult(
@@ -143,12 +158,24 @@ public sealed class GitCommandRunner
             return new GitCommandResult(-1, "",
                 "git コマンドが見つかりません。Git for Windows をインストールして PATH を通してください。");
         }
+        finally
+        {
+            if (invocation is not null)
+                _askPass?.Forget(invocation);
+        }
     }
 
+    private TimeSpan AskingTime(string? invocation)
+        => invocation is null || _askPass is null ? TimeSpan.Zero : _askPass.TimeSpentAsking(invocation);
+
+    /// <param name="extraEnvironment">足す環境変数。<b>空の値はその変数を消す</b>（空を設定するのではない）——
+    /// 裏の取得が資格情報の入力欄（§24.101）を断るのに使う。</param>
+    /// <param name="invocation">資格情報の入力欄を付けたときの、この起動の印（付けなければ null）。</param>
     private ProcessStartInfo CreateStartInfo(
         string root,
         IReadOnlyDictionary<string, string>? extraEnvironment,
-        IReadOnlyList<string> args)
+        IReadOnlyList<string> args,
+        out string? invocation)
     {
         var startInfo = new ProcessStartInfo
         {
@@ -164,11 +191,20 @@ public sealed class GitCommandRunner
         startInfo.EnvironmentVariables["GIT_TERMINAL_PROMPT"] = "0";
         startInfo.EnvironmentVariables["GIT_EDITOR"] = "true";
         startInfo.EnvironmentVariables["GIT_SEQUENCE_EDITOR"] = "true";
-        // 資格情報の問いは Loomo の入力欄へ（§24.101）。呼び出し側の環境が後から上書きできる——裏の取得は
-        // 空の値で消して、問わずに失敗させる。
-        if (_askPass?.EnvironmentFor(AskPassContext(args)) is { } askPass)
-            foreach (var (key, value) in askPass)
-                startInfo.EnvironmentVariables[key] = value;
+        // 資格情報の問いは Loomo の入力欄へ（§24.101）。付けるのは問いうる操作だけ（遠隔・署名）——状態や履歴の照会に
+        // 付けると、思わぬ照会が入力欄を出しうるうえ、ポーリングのたびに無駄が乗る。呼び出し側の環境が後から上書きできる
+        // ——裏の取得は空の値で消して、問わずに失敗させる。
+        invocation = null;
+        if (_askPass is not null && CanPrompt(args))
+        {
+            var id = Guid.NewGuid().ToString("N");
+            if (_askPass.EnvironmentFor(AskPassContext(args), id) is { } askPass)
+            {
+                invocation = id;
+                foreach (var (key, value) in askPass)
+                    startInfo.EnvironmentVariables[key] = value;
+            }
+        }
         if (extraEnvironment is not null)
             foreach (var (key, value) in extraEnvironment)
             {
@@ -185,6 +221,26 @@ public sealed class GitCommandRunner
         foreach (var arg in args)
             startInfo.ArgumentList.Add(arg);
         return startInfo;
+    }
+
+    /// <summary>資格情報を問いうるサブコマンド：遠隔と話すもの、SSH 署名でコミット・タグを作りうるもの。</summary>
+    private static readonly HashSet<string> PromptingSubcommands = new(StringComparer.Ordinal)
+    {
+        "push", "pull", "fetch", "clone", "ls-remote", "remote", "submodule",
+        "commit", "tag", "merge", "rebase", "cherry-pick", "revert", "am",
+    };
+
+    /// <summary>この起動が資格情報を問いうるか（先頭の大域オプションを飛ばしてサブコマンドで決める）。</summary>
+    internal static bool CanPrompt(IReadOnlyList<string> args)
+    {
+        for (var i = 0; i < args.Count; i++)
+        {
+            var arg = args[i];
+            if (arg is "-c" or "-C") { i++; continue; }
+            if (arg.StartsWith('-')) continue;
+            return PromptingSubcommands.Contains(arg);
+        }
+        return false;
     }
 
     /// <summary>入力欄に出す「どの操作か」。サブコマンドと、その後ろの名前（リモート・ブランチ）まで——

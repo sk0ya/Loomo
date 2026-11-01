@@ -23,7 +23,7 @@ public sealed class GitCredentialPrompter : IGitCredentialPrompter
         // FIDO 鍵の「触れてください」は答えを要らない。通知欄に出して、すぐ返す（ssh は触れ終わったら askpass を止める）。
         if (kind == GitCredentialPromptKind.Notice)
         {
-            UiDispatch.Post(() => NotificationService.Info(request.Prompt.Trim(), "Git"));
+            UiDispatch.Post(() => NotificationService.Info((request.Prompt ?? "").Trim(), "Git"));
             return "";
         }
 

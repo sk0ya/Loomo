@@ -72,10 +72,11 @@ public static class GitRefusal
                || error.Contains("Host key verification failed", StringComparison.OrdinalIgnoreCase);
     }
 
-    /// <summary>認証で止まったときに、git の文面の前に置く一文。</summary>
+    /// <summary>認証で止まったときに、git の文面の前に置く一文。
+    /// 「もう一度やれば入力欄が出る」とは言わない——鍵が登録されていない（publickey）など、聞いても直らない止まり方も含むので。</summary>
     public const string AuthenticationFailureMessage =
-        "認証で止まりました：資格情報が無いか、違っています（入力を取り消したときもこうなります）。" +
-        "もう一度実行すると入力欄が出ます。ターミナルで同じ git の操作をして、問いにそこで答えることもできます。";
+        "認証で止まりました：資格情報が無いか、違っています（入力欄で取り消したときもこうなります）。" +
+        "Git Credential Manager・ssh-agent・SSH 鍵の登録を確かめるか、ターミナルで同じ git の操作をして問いにそこで答えてください。";
 
     /// <summary>切り替える前に退避する stash のメッセージ（スタッシュの一覧でそれと分かるように）。</summary>
     public static string CheckoutStashMessage(string branch) => $"Loomo: {branch} へ切り替える前の変更";
