@@ -199,8 +199,6 @@ public sealed class GitService
     /// フォルダー」で、<b>互換の口</b>——新しいコードは <see cref="ForPath"/> で対象を明示する（§40.3 規約2）。</summary>
     public string? RootPath => _rootState.CurrentRoot;
 
-    /// <summary>マルチルート：Git 操作の対象を選べるワークスペースフォルダー一覧。</summary>
-    public IReadOnlyList<string> AvailableRoots => _workspace.Folders;
 
     /// <summary>Git 操作の対象フォルダーを明示的に切り替える（ワークスペースフォルダーでなければ無視）。</summary>
     public void SetActiveRoot(string? path) => _rootState.SetRoot(path);
