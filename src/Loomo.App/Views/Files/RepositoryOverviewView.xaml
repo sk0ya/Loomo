@@ -1,0 +1,97 @@
+<UserControl x:Class="sk0ya.Loomo.App.Views.RepositoryOverviewView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:sk0ya.Loomo.App.ViewModels"
+             xmlns:local="clr-namespace:sk0ya.Loomo.App.Views"
+             Background="{DynamicResource Panel}">
+    <!-- リポジトリ一覧（§40.8.2）：全リポジトリを表で。列の見出しで並べ替え、複数選んで取得／取り込み、行の Enter／
+         ダブルクリックでそのリポジトリの根へ。各列の文字は印（RepositoryChipViewModel）に結ぶので、裏で読み直すと追従する。 -->
+    <UserControl.Resources>
+        <Style x:Key="OverviewHeader" TargetType="GridViewColumnHeader">
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+            <Setter Property="Padding" Value="6,2" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
+            <Setter Property="FontSize" Value="{DynamicResource Fs11}" />
+            <Setter Property="BorderThickness" Value="0,0,0,1" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Border}" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="GridViewColumnHeader">
+                        <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" />
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="Cell" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="{DynamicResource Fs12}" />
+            <Setter Property="Foreground" Value="{DynamicResource Fg}" />
+            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+    </UserControl.Resources>
+
+    <DockPanel>
+        <!-- 操作の帯：閉じる・取得・取り込み・更新と、今の様子。 -->
+        <DockPanel DockPanel.Dock="Top" Margin="6,4">
+            <Button DockPanel.Dock="Left" Style="{StaticResource PaneHeaderGhostButton}" Content="← 一覧へ戻る"
+                    Click="OnCloseClick" ToolTip="ファイルの一覧へ戻る（Esc）" />
+            <Button DockPanel.Dock="Left" Style="{StaticResource PaneHeaderGhostButton}" Content="取得" Margin="6,0,0,0"
+                    Click="OnFetchClick" ToolTip="選んだリポジトリで fetch（選んでいなければ全部）" />
+            <Button DockPanel.Dock="Left" Style="{StaticResource PaneHeaderGhostButton}" Content="取り込み" Margin="4,0,0,0"
+                    Click="OnPullClick" ToolTip="選んだリポジトリで pull（選んでいなければ全部）" />
+            <Button DockPanel.Dock="Left" Style="{StaticResource PaneHeaderGhostButton}" Content="更新" Margin="4,0,0,0"
+                    Click="OnRefreshClick" />
+            <TextBlock Text="{Binding Message}" Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs11}"
+                       VerticalAlignment="Center" Margin="10,0,0,0" TextTrimming="CharacterEllipsis" />
+        </DockPanel>
+
+        <ListView x:Name="Table" ItemsSource="{Binding Rows}" SelectionMode="Extended"
+                  Background="Transparent" BorderThickness="0" Foreground="{DynamicResource Fg}"
+                  MouseDoubleClick="OnRowDoubleClick" KeyDown="OnTableKeyDown"
+                  GridViewColumnHeader.Click="OnHeaderClick">
+            <ListView.View>
+                <GridView ColumnHeaderContainerStyle="{StaticResource OverviewHeader}">
+                    <GridViewColumn Header="名前" Width="150">
+                        <GridViewColumn.CellTemplate>
+                            <DataTemplate DataType="{x:Type vm:RepositoryOverviewRow}">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="{Binding Name}" Style="{StaticResource Cell}" FontWeight="SemiBold" />
+                                    <TextBlock Text="{Binding KindText}" Style="{StaticResource Cell}" Margin="6,0,0,0"
+                                               Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs10}" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </GridViewColumn.CellTemplate>
+                    </GridViewColumn>
+                    <GridViewColumn Header="ブランチ・状態" Width="240">
+                        <GridViewColumn.CellTemplate>
+                            <DataTemplate DataType="{x:Type vm:RepositoryOverviewRow}">
+                                <local:RepositoryChip DataContext="{Binding Chip}" />
+                            </DataTemplate>
+                        </GridViewColumn.CellTemplate>
+                    </GridViewColumn>
+                    <GridViewColumn Header="最終取得" Width="90">
+                        <GridViewColumn.CellTemplate>
+                            <DataTemplate DataType="{x:Type vm:RepositoryOverviewRow}">
+                                <TextBlock Text="{Binding LastFetchText}" Style="{StaticResource Cell}"
+                                           Foreground="{DynamicResource FgDim}" />
+                            </DataTemplate>
+                        </GridViewColumn.CellTemplate>
+                    </GridViewColumn>
+                    <GridViewColumn Header="場所" Width="260">
+                        <GridViewColumn.CellTemplate>
+                            <DataTemplate DataType="{x:Type vm:RepositoryOverviewRow}">
+                                <TextBlock Text="{Binding DisplayPath}" Style="{StaticResource Cell}"
+                                           Foreground="{DynamicResource FgDim}" ToolTip="{Binding Root}" />
+                            </DataTemplate>
+                        </GridViewColumn.CellTemplate>
+                    </GridViewColumn>
+                </GridView>
+            </ListView.View>
+        </ListView>
+    </DockPanel>
+</UserControl>

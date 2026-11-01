@@ -34,14 +34,17 @@ public sealed partial class FilesPaneViewModel : ObservableObject, IDisposable
         IFilePlacesProvider places,
         FolderTreeViewModel? folderTree = null,
         IFileThumbnailService? thumbnails = null,
-        RecentItemsViewModel? recent = null)
+        RecentItemsViewModel? recent = null,
+        GitWorkspaceStatus? gitStatus = null,
+        GitRepositoryChips? repositoryChips = null)
     {
+        _gitStatus = gitStatus;
         _workspace = workspace;
         _pins = pins;
         Recent = recent ?? new RecentItemsViewModel(new RecentUsageService());
         for (var i = 0; i < MaxColumns; i++)
         {
-            var column = new FilesColumnViewModel(workspace, commands, pins, places, folderTree, thumbnails, Recent);
+            var column = new FilesColumnViewModel(workspace, commands, pins, places, folderTree, thumbnails, Recent, gitStatus, repositoryChips);
             // カラムのイベントはペインで束ねて中継する（ShellWindow は列の数を知らなくてよい）。
             column.FileActivated += (_, path) => FileActivated?.Invoke(this, path);
             column.OpenInBrowserRequested += (_, path) => OpenInBrowserRequested?.Invoke(this, path);
@@ -168,7 +171,11 @@ public sealed partial class FilesPaneViewModel : ObservableObject, IDisposable
 
         var baseColumn = others.FirstOrDefault(c => c.CurrentFolder.Length > 0);
 
-        var candidate = FirstUnshown(_workspace.Folders, shown)
+        // ①リポジトリ（入れ子を含む・§40.8.2）——4 カラムを開けば 4 つのリポジトリが並ぶ。一覧は作り済みのものだけ。
+        // ①' 登録したフォルダー（リポジトリでないフォルダー・一覧がまだ無いとき）。
+        var repositories = _gitStatus?.Catalog.KnownRepositories?.Select(r => r.Root) ?? [];
+        var candidate = FirstUnshown(repositories, shown)
+            ?? FirstUnshown(_workspace.Folders, shown)
             ?? FirstUnshown(_pins.AllPins, shown)
             ?? FirstUnshown(
                 baseColumn?.Entries.Where(e => e.IsDirectory).Select(e => e.FullPath) ?? [], shown)
@@ -177,6 +184,8 @@ public sealed partial class FilesPaneViewModel : ObservableObject, IDisposable
         if (candidate is not null)
             _ = column.NavigateAsync(candidate);
     }
+
+    private readonly GitWorkspaceStatus? _gitStatus;
 
     private static string? FirstUnshown(IEnumerable<string> candidates, HashSet<string> shown)
         => candidates.FirstOrDefault(path => !shown.Contains(path) && Directory.Exists(path));

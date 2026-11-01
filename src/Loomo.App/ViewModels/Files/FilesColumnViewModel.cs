@@ -5,6 +5,7 @@ using CommunityToolkit.Mvvm.Input;
 using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.Core.Abstractions;
 using sk0ya.Loomo.Core.Files;
+using sk0ya.Loomo.Services;
 
 namespace sk0ya.Loomo.App.ViewModels;
 
@@ -56,8 +57,21 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
         IFilePlacesProvider places,
         FolderTreeViewModel? folderTree = null,
         IFileThumbnailService? thumbnails = null,
-        RecentItemsViewModel? recent = null)
+        RecentItemsViewModel? recent = null,
+        GitWorkspaceStatus? gitStatus = null,
+        GitRepositoryChips? repositoryChips = null)
     {
+        _gitStatus = gitStatus;
+        _repositoryChips = repositoryChips;
+        if (gitStatus is not null && repositoryChips is not null)
+        {
+            RepositoryOverview = new RepositoryOverviewViewModel(gitStatus, repositoryChips, workspace);
+            RepositoryOverview.OpenRequested += (_, root) =>
+            {
+                IsRepositoryOverviewOpen = false;
+                _ = NavigateAsync(root);
+            };
+        }
         _workspace = workspace;
         _commands = commands;
         _pins = pins;
@@ -66,7 +80,11 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
         _thumbnails = thumbnails;
         Recent = recent;
         _watcher = new DebouncedFolderWatcher(Refresh);
-        if (_folderTree is not null)
+        // Git の状態は全リポジトリの共有（§40.6）から直接受ける——ツリーがどの表示ルートで出しているか、
+        // そもそもサイドバーにツリーが出ているかに依らない（§40.8.2）。共有が無い（テスト）ときだけツリーから借りる。
+        if (_gitStatus is not null)
+            _gitStatus.StatusLoaded += OnRepositoryStatusLoaded;
+        else if (_folderTree is not null)
             _folderTree.GitStatusChanged += OnGitStatusChanged;
         EntriesView = CollectionViewSource.GetDefaultView(Entries);
         _groupDescription = new FilesGroupDescription(this);
@@ -86,6 +104,44 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
     }
 
     public ObservableCollection<FileEntryViewModel> Entries { get; } = new();
+
+    private readonly GitWorkspaceStatus? _gitStatus;
+    private readonly GitRepositoryChips? _repositoryChips;
+
+    /// <summary>「リポジトリ一覧」（§40.8.2）。全リポジトリの共有が無い（テスト）ときは null。</summary>
+    public RepositoryOverviewViewModel? RepositoryOverview { get; }
+
+    /// <summary>一覧の代わりにリポジトリ一覧の表を出しているか。どこかへ移れば閉じる（履歴には積まない）。</summary>
+    [ObservableProperty] private bool _isRepositoryOverviewOpen;
+
+    /// <summary>リポジトリ一覧を開く（場所の「リポジトリ一覧」から）。</summary>
+    public void OpenRepositoryOverview()
+    {
+        if (RepositoryOverview is null) return;
+        IsRepositoryOverviewOpen = true;
+        _ = RepositoryOverview.RefreshAsync();
+    }
+
+    /// <summary>リポジトリ一覧を閉じて一覧へ戻る。</summary>
+    public void CloseRepositoryOverview() => IsRepositoryOverviewOpen = false;
+
+    // 共有の状態がリポジトリを読み終えた：今見ている場所にかかるなら印を引き直す（UI へ回して、続けて来ても1回に）。
+    private int _statusRefreshQueued;
+    private void OnRepositoryStatusLoaded(object? sender, string repositoryRoot)
+    {
+        var folder = CurrentFolder;
+        if (folder.Length == 0
+            || !(sk0ya.Loomo.Core.Files.WorkspacePaths.IsWithin(repositoryRoot, folder)
+                 || sk0ya.Loomo.Core.Files.WorkspacePaths.IsWithin(folder, repositoryRoot)))
+            return;
+        if (Interlocked.Exchange(ref _statusRefreshQueued, 1) == 1) return;
+        UiDispatch.Post(() =>
+        {
+            Interlocked.Exchange(ref _statusRefreshQueued, 0);
+            if (CurrentFolder.Length > 0)
+                StartGitStatusLoad(_all, CurrentFolder);
+        });
+    }
 
     /// <summary>行は <see cref="Entries"/> のままにし、表示側だけをグループ化するビュー。
     /// ListBox の選択項目が常に <see cref="FileEntryViewModel"/> であることを保つ。</summary>
@@ -466,10 +522,34 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
     {
         var groups = new List<FilesPlaceGroup>();
 
-        var workspaceFolders = _workspace.Folders
-            .Where(Directory.Exists)
-            .Select(folder => new FilesPlace(NameOf(folder), folder, FilesPlaceKind.WorkspaceFolder))
-            .ToList();
+        // ワークスペース：フォルダーと、その下で見つけた入れ子のリポジトリ（字下げ）。末尾に「リポジトリ一覧」（§40.8.2）。
+        // 一覧は作り済みのものだけを見る（場所パネルは UI スレッドで組む）。
+        var known = _gitStatus?.Catalog.KnownRepositories ?? Array.Empty<GitRepositoryInfo>();
+        var workspaceFolders = new List<FilesPlace>();
+        foreach (var folder in _workspace.Folders.Where(Directory.Exists))
+        {
+            var enclosing = known
+                .Where(r => sk0ya.Loomo.Core.Files.WorkspacePaths.IsWithin(r.Root, folder))
+                .OrderByDescending(r => r.Root.Length)
+                .FirstOrDefault();
+            workspaceFolders.Add(new FilesPlace(NameOf(folder), folder, FilesPlaceKind.WorkspaceFolder)
+            {
+                Repository = enclosing is null ? null : _repositoryChips?.For(enclosing.Root),
+            });
+            foreach (var nested in known.Where(r => !PathsEqual(r.Root, folder)
+                         && sk0ya.Loomo.Core.Files.WorkspacePaths.IsWithin(folder, r.Root)))
+            {
+                workspaceFolders.Add(new FilesPlace(
+                    Path.GetRelativePath(folder, nested.Root).Replace(Path.DirectorySeparatorChar, '/'),
+                    nested.Root, FilesPlaceKind.Repository)
+                {
+                    Repository = _repositoryChips?.For(nested.Root),
+                    Indent = 1,
+                });
+            }
+        }
+        if (RepositoryOverview is not null && known.Count > 0)
+            workspaceFolders.Add(new FilesPlace("リポジトリ一覧", "", FilesPlaceKind.RepositoryOverview));
         if (workspaceFolders.Count > 0)
             groups.Add(new FilesPlaceGroup("ワークスペース", workspaceFolders));
 
@@ -541,6 +621,11 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
     {
         if (place is null)
             return;
+        if (place.Kind == FilesPlaceKind.RepositoryOverview)
+        {
+            OpenRepositoryOverview();
+            return;
+        }
         if (place.Kind == FilesPlaceKind.RecentFile)
         {
             if (File.Exists(place.FullPath))
@@ -659,6 +744,8 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
         CancelEntriesLoad();
         if (!_restoringLayout)
             SaveFolderLayout(CurrentFolder);
+        if (!PathsEqual(folder, CurrentFolder))
+            IsRepositoryOverviewOpen = false; // どこかへ移ったらリポジトリ一覧は閉じる（§40.8.2）
         CurrentFolder = folder;
         if (!_restoringLayout)
             ApplyFolderLayout(folder, resetIfMissing: !preserveWidthsDuringLoad);
@@ -1075,7 +1162,8 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
         for (var i = 0; i < segments.Count; i++)
         {
             var path = segments[i];
-            Breadcrumbs.Add(new FilesBreadcrumb(NameOf(path), path, i == segments.Count - 1));
+            Breadcrumbs.Add(new FilesBreadcrumb(NameOf(path), path, i == segments.Count - 1,
+                _repositoryChips?.ForKnownRootPath(path)));
         }
     }
 
@@ -1175,7 +1263,8 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
         // 変更状態は既に読み込まれているキャッシュだけをここで使う。ignore 判定を含む
         // git プロセスの起動は StartGitStatusLoad でバックグラウンドに分離する。
         foreach (var entry in result.Items)
-            entry.GitStatus = _folderTree?.GitStatusForPath(entry.FullPath, entry.IsDirectory)
+            entry.GitStatus = _gitStatus?.StatusForPath(entry.FullPath, entry.IsDirectory)
+                ?? _folderTree?.GitStatusForPath(entry.FullPath, entry.IsDirectory)
                 ?? GitChangeKind.None;
 
         _all = result.Items;
@@ -1185,7 +1274,7 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
 
     private void StartGitStatusLoad(IReadOnlyList<FileEntryViewModel> entries, string folder)
     {
-        if (_folderTree is null || entries.Count == 0)
+        if ((_folderTree is null && _gitStatus is null) || entries.Count == 0)
             return;
 
         CancelGitStatusLoad();
@@ -1199,15 +1288,34 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
     {
         try
         {
-            var statuses = await Task.Run(() => _folderTree!.GitStatusesForPaths(
-                entries.Select(entry => (entry.FullPath, entry.IsDirectory))), cts.Token);
+            var (statuses, chips) = await Task.Run(() =>
+            {
+                var pairs = entries.Select(entry => (entry.FullPath, entry.IsDirectory)).ToList();
+                var found = _gitStatus is not null
+                    ? _gitStatus.StatusesForPaths(pairs, cts.Token)
+                    : _folderTree!.GitStatusesForPaths(pairs);
+                // リポジトリの根のフォルダー行に印（§40.8.2）。一覧はここ（背景）で作ってよい。
+                var repoChips = new Dictionary<string, RepositoryChipViewModel>(StringComparer.OrdinalIgnoreCase);
+                if (_repositoryChips is not null)
+                {
+                    foreach (var entry in entries.Where(e => e.IsDirectory))
+                    {
+                        if (_repositoryChips.ForRootPath(entry.FullPath) is { } chip)
+                            repoChips[entry.FullPath] = chip;
+                    }
+                }
+                return (found, repoChips);
+            }, cts.Token);
             cts.Token.ThrowIfCancellationRequested();
             if (!ReferenceEquals(_gitStatusCts, cts) || !PathsEqual(CurrentFolder, folder))
                 return;
 
             foreach (var entry in entries)
+            {
                 entry.GitStatus = statuses.TryGetValue(entry.FullPath, out var status)
                     ? status : GitChangeKind.None;
+                entry.Repository = chips.TryGetValue(entry.FullPath, out var chip) ? chip : null;
+            }
             ApplyView(preserveSelection: true);
         }
         catch (OperationCanceledException) { }

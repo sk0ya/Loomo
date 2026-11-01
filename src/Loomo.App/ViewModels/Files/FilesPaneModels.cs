@@ -133,6 +133,9 @@ public sealed partial class FileEntryViewModel : ObservableObject
     public string Name { get; }
     public bool IsDirectory { get; }
 
+    /// <summary>リポジトリの根のフォルダー行なら、その印（§40.8.2）。</summary>
+    [ObservableProperty] private RepositoryChipViewModel? _repository;
+
     /// <summary>Git作業ツリー上の状態。リポジトリ外・未読込・クリーンは None。</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(GitStatusBadge))]
@@ -228,7 +231,8 @@ public sealed partial class FileEntryViewModel : ObservableObject
 }
 
 /// <summary>パンくずの1区切り。クリックすると、その階層のフォルダー候補を開く。</summary>
-public sealed record FilesBreadcrumb(string Name, string FullPath, bool IsLast);
+/// <param name="Repository">この区切りがリポジトリの根なら、その印（§40.8.2）。</param>
+public sealed record FilesBreadcrumb(string Name, string FullPath, bool IsLast, RepositoryChipViewModel? Repository = null);
 
 /// <summary>「場所」候補の出どころ。表示の並び順もこの順（近いものから遠いものへ）。</summary>
 public enum FilesPlaceKind
@@ -244,12 +248,25 @@ public enum FilesPlaceKind
     /// <summary>最近使ったファイル。</summary>
     RecentFile,
     /// <summary>頻繁に使うフォルダー。</summary>
-    FrequentFolder
+    FrequentFolder,
+    /// <summary>ワークスペースフォルダーの下で見つけた入れ子のリポジトリ（§40.8.2）。</summary>
+    Repository,
+    /// <summary>全リポジトリを表で見る「リポジトリ一覧」（§40.8.2）。開くと一覧の代わりに表を出す。</summary>
+    RepositoryOverview,
 }
 
 /// <summary>「場所」ポップアップの1項目。</summary>
 public sealed record FilesPlace(string Name, string FullPath, FilesPlaceKind Kind)
 {
+    /// <summary>リポジトリの根（または根を含むワークスペースフォルダー）なら、その印（§40.8.2）。</summary>
+    public RepositoryChipViewModel? Repository { get; init; }
+
+    /// <summary>字下げの段（ワークスペースフォルダーの下の入れ子のリポジトリは 1）。</summary>
+    public int Indent { get; init; }
+
+    /// <summary>字下げの余白（XAML 用）。</summary>
+    public System.Windows.Thickness IndentMargin => new(Indent * 14, 0, 0, 0);
+
     /// <summary>行頭のアイコン。ツリー・一覧と同じ <see cref="FileIcons"/> から引くので、
     /// 同じフォルダーが場所一覧とツリーで違う絵になることがない。名前だけが縦に並ぶ一覧は、
     /// フォルダーとファイルの区別が付かず走査しづらい。</summary>

@@ -268,6 +268,16 @@ public sealed class GitRepositoryChips
             : null;
     }
 
+    /// <summary><see cref="ForRootPath"/> の、作り済みの一覧だけで答える版（UI スレッドから呼んでよい）。</summary>
+    public RepositoryChipViewModel? ForKnownRootPath(string fullPath)
+    {
+        var repository = _status.Catalog.KnownRepositoryFor(fullPath);
+        return repository is not null
+               && string.Equals(repository.Root, WorkspacePaths.Normalize(fullPath), StringComparison.OrdinalIgnoreCase)
+            ? For(repository.Root)
+            : null;
+    }
+
     private void Refresh(string root)
     {
         RepositoryChipViewModel? chip;

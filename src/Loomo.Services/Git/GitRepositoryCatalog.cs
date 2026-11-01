@@ -103,6 +103,17 @@ public sealed class GitRepositoryCatalog
         }
     }
 
+    /// <summary>作り済みの一覧（作っていなければ null・探索は走らせない）。UI スレッドで「分かっている範囲で」答えたい
+    /// 場所（パンくず・場所パネル）のため。一覧はツリーの読み込みなど背景の問い合わせで作られる。</summary>
+    public IReadOnlyList<GitRepositoryInfo>? KnownRepositories
+    {
+        get { lock (_gate) return _repositories; }
+    }
+
+    /// <summary>作り済みの一覧だけで答える <see cref="RepositoryFor(string?)"/>（探索は走らせない）。</summary>
+    public GitRepositoryInfo? KnownRepositoryFor(string? path)
+        => KnownRepositories is { } known ? RepositoryFor(known, path) : null;
+
     /// <summary>一覧を捨てる。<c>.git</c> が現れた・消えた（クローン・<c>git init</c>・削除）ことを
     /// 呼び出し側が知ったときにも呼ぶ。</summary>
     public void Refresh()

@@ -246,7 +246,9 @@ internal static class LoomoServiceCollectionExtensions
             sp.GetRequiredService<IFilePlacesProvider>(),
             sp.GetRequiredService<FolderTreeViewModel>(),
             sp.GetRequiredService<IFileThumbnailService>(),
-            sp.GetRequiredService<RecentItemsViewModel>()));
+            sp.GetRequiredService<RecentItemsViewModel>(),
+            sp.GetRequiredService<GitWorkspaceStatus>(),
+            sp.GetRequiredService<GitRepositoryChips>()));
         services.AddSingleton<WorkflowToolRunner>();
         services.AddSingleton<WorkflowViewModel>();
         services.AddSingleton<AiBarViewModel>();

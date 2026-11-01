@@ -370,27 +370,42 @@ public sealed partial class FolderTreeViewModel
     /// 開いているエディタタブをディスクから読み直す）が自然に追従する。</summary>
     public void AddToGitignore(FileNodeViewModel node)
     {
-        var folderRoot = FolderRootFor(node.RootKey);
-        if (folderRoot is null || !IsGitRepositoryFor(node.RootKey))
+        // 書き先は<b>そのパスが属するリポジトリの根</b>の .gitignore（§40.8.1）。ワークスペースフォルダーの根に書くと、
+        // 親フォルダーの下の入れ子のリポジトリ（work/api）の中を無視しようとして work/.gitignore（どのリポジトリでもない
+        // 場所）に書いていた。
+        var repositoryRoot = RepositoryRootFor(node.FullPath, ResolveGitState(node.RootKey));
+        if (repositoryRoot is null)
             return;
-        // ワークスペースフォルダー自身は対象外（相対パスが "." になり、"./" という無意味な行が入る）。
-        if (PathsEqual(folderRoot, node.FullPath))
+        // リポジトリの根そのものは対象外（相対パスが "." になり、"./" という無意味な行が入る）。
+        if (PathsEqual(repositoryRoot, node.FullPath))
             return;
 
-        if (_fileCommands.AddToGitignore(folderRoot, node.FullPath, node.IsDirectory))
+        if (_fileCommands.AddToGitignore(repositoryRoot, node.FullPath, node.IsDirectory))
             RefreshWorkspace();
+    }
+
+    /// <summary><paramref name="fullPath"/> を<b>中に持つ</b>リポジトリ（表示ルートの状態が知っているうちいちばん深いもの）の根。
+    /// パスが入れ子のリポジトリの根そのもの（work/app/vendor/lib）なら、その外側のリポジトリ——「入れ子のリポジトリを
+    /// 外側で無視する」は外側の .gitignore に書く操作なので。</summary>
+    private static string? RepositoryRootFor(string fullPath, GitTreeState state)
+    {
+        var normalized = sk0ya.Loomo.Core.Files.WorkspacePaths.Normalize(fullPath);
+        return state.Repositories
+            .FirstOrDefault(r => sk0ya.Loomo.Core.Files.WorkspacePaths.IsWithin(r.Root, normalized)
+                                 && !PathsEqual(r.Root, normalized))?.Root;
     }
 
     /// <summary>ファイル一覧から選んだ項目を、所属ワークスペースの .gitignore に追加する。</summary>
     public void AddToGitignore(string fullPath, bool isDirectory)
     {
         var context = GitContextForPath(fullPath);
-        if (context is null
+        var repositoryRoot = context is null ? null : RepositoryRootFor(fullPath, context.Value.State);
+        if (repositoryRoot is null
             || !_fileCommands.EntryExists(fullPath, isDirectory)
-            || PathsEqual(context.Value.FolderRoot, fullPath))
+            || PathsEqual(repositoryRoot, fullPath))
             return;
 
-        if (_fileCommands.AddToGitignore(context.Value.FolderRoot, fullPath, isDirectory))
+        if (_fileCommands.AddToGitignore(repositoryRoot, fullPath, isDirectory))
             RefreshWorkspace();
     }
 
@@ -400,7 +415,8 @@ public sealed partial class FolderTreeViewModel
     /// <summary>指定パスを Git 操作へ送れるか（一覧のメニュー出し分け用）。</summary>
     public bool CanAddToGitignoreForPath(string fullPath)
         => GitContextForPath(fullPath) is { State.IsGitRepository: true } context
-            && !PathsEqual(context.FolderRoot, fullPath);
+            && RepositoryRootFor(fullPath, context.State) is { } repositoryRoot
+            && !PathsEqual(repositoryRoot, fullPath);
 
     private (string FolderRoot, GitTreeState State)? GitContextForPath(string fullPath)
     {

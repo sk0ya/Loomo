@@ -4,6 +4,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:vm="clr-namespace:sk0ya.Loomo.App.ViewModels"
     xmlns:local="clr-namespace:sk0ya.Loomo.App.Views"
+    xmlns:svc="clr-namespace:sk0ya.Loomo.App.Services"
     Background="{DynamicResource Panel}">
 
     <UserControl.Resources>
@@ -553,6 +554,15 @@
                                                 <TextBlock Text="{Binding Name}" FontSize="{DynamicResource Fs12}"
                                                            TextTrimming="CharacterEllipsis" MaxWidth="160" />
                                             </Button>
+                                            <!-- リポジトリの根の区切りに印（§40.8.2）。 -->
+                                            <ContentControl Content="{Binding Repository}" Focusable="False"
+                                                            Margin="0,0,2,0" VerticalAlignment="Center">
+                                                <ContentControl.Resources>
+                                                    <DataTemplate DataType="{x:Type svc:RepositoryChipViewModel}">
+                                                        <local:RepositoryChip />
+                                                    </DataTemplate>
+                                                </ContentControl.Resources>
+                                            </ContentControl>
                                             <TextBlock Text="›" Foreground="{DynamicResource FgDim}" VerticalAlignment="Center"
                                                        FontSize="{DynamicResource Fs12}"
                                                        Visibility="{Binding IsLast, Converter={StaticResource InverseBoolToVis}}" />
@@ -701,7 +711,16 @@
                                                             Padding="4,1" HorizontalContentAlignment="Stretch"
                                                             Click="OnPlaceClick" Tag="{Binding}"
                                                             ToolTip="{Binding FullPath}">
-                                                        <DockPanel LastChildFill="True">
+                                                        <DockPanel LastChildFill="True" Margin="{Binding IndentMargin}">
+                                                            <!-- リポジトリの印（§40.8.2）：ワークスペースフォルダーと入れ子のリポジトリ。 -->
+                                                            <ContentControl DockPanel.Dock="Right" Content="{Binding Repository}"
+                                                                            Focusable="False" Margin="6,0,0,0" VerticalAlignment="Center">
+                                                <ContentControl.Resources>
+                                                    <DataTemplate DataType="{x:Type svc:RepositoryChipViewModel}">
+                                                        <local:RepositoryChip />
+                                                    </DataTemplate>
+                                                </ContentControl.Resources>
+                                                            </ContentControl>
                                                             <Image DockPanel.Dock="Left" Source="{Binding IconImage}"
                                                                    Width="14" Height="14" Margin="0,0,5,0"
                                                                    VerticalAlignment="Center"
@@ -1031,6 +1050,15 @@
                                                Margin="0,0,6,0" VerticalAlignment="Center" SnapsToDevicePixels="True" />
                                         <TextBlock DockPanel.Dock="Right" Style="{StaticResource FilesGitBadge}"
                                                    Margin="6,0,2,0" />
+                                        <!-- リポジトリの根のフォルダー行の印（§40.8.2）。型で選ぶ DataTemplate なので null では何も描かない。 -->
+                                        <ContentControl DockPanel.Dock="Right" Content="{Binding Repository}" Focusable="False"
+                                                        Margin="6,0,0,0" VerticalAlignment="Center">
+                                                <ContentControl.Resources>
+                                                    <DataTemplate DataType="{x:Type svc:RepositoryChipViewModel}">
+                                                        <local:RepositoryChip />
+                                                    </DataTemplate>
+                                                </ContentControl.Resources>
+                                        </ContentControl>
                                         <TextBlock Text="{Binding Name}" Style="{StaticResource FilesGitName}"
                                                    FontSize="{DynamicResource Fs12}" />
                                     </DockPanel>
@@ -1156,6 +1184,9 @@
                            Visibility="{Binding IsEmpty, Converter={StaticResource BoolToVis}}" />
             </Grid>
                 </DockPanel>
+                <!-- リポジトリ一覧（§40.8.2）：開いている間は一覧の代わりに全リポジトリの表を出す。 -->
+                <local:RepositoryOverviewView Grid.Column="2" DataContext="{Binding RepositoryOverview}"
+                                              Visibility="{Binding DataContext.IsRepositoryOverviewOpen, RelativeSource={RelativeSource AncestorType=local:FilesColumnView}, Converter={StaticResource BoolToVis}}" />
             </Grid>
         </DockPanel>
     </Border>
