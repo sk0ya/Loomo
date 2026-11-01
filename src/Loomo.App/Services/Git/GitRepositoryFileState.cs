@@ -112,7 +112,8 @@ public sealed class GitRepositoryFileState
             return new GitRepositoryFileState(normalized, gitDirectory, loaded: false,
                 new Dictionary<string, GitChangeKind>(), BranchHeader.Empty, default, operation);
 
-        var parsed = ParseStatus(normalized, result.Output);
+        // 入れ子のリポジトリ（未追跡のフォルダー "api/" で、中に .git があるもの）は自分の変更として数えない（§40.8.1）。
+        var parsed = ParseStatus(normalized, result.Output, IsNestedRepository);
         return new GitRepositoryFileState(normalized, gitDirectory, loaded: true,
             parsed.Statuses, parsed.Header, parsed.Counts, operation);
     }
@@ -188,7 +189,8 @@ public sealed class GitRepositoryFileState
     }
 
     internal static (Dictionary<string, GitChangeKind> Statuses, BranchHeader Header,
-        (int Staged, int Unstaged, int Untracked, int Conflicts) Counts) ParseStatus(string root, string output)
+        (int Staged, int Unstaged, int Untracked, int Conflicts) Counts) ParseStatus(
+        string root, string output, Func<string, bool>? isNestedRepository = null)
     {
         var statuses = new Dictionary<string, GitChangeKind>(StringComparer.OrdinalIgnoreCase);
         var header = BranchHeader.Empty;
@@ -217,6 +219,9 @@ public sealed class GitRepositoryFileState
                 continue;
 
             var kind = MapStatus(xy);
+            var fullPath = WorkspacePaths.Normalize(Path.Combine(root, relativePath));
+            if (kind == GitChangeKind.Untracked && relativePath.EndsWith('/') && isNestedRepository?.Invoke(fullPath) == true)
+                continue;
             switch (kind)
             {
                 case GitChangeKind.Untracked: untracked++; break;
@@ -226,7 +231,7 @@ public sealed class GitRepositoryFileState
                     if (!IsClean(xy[1])) unstaged++;
                     break;
             }
-            statuses[WorkspacePaths.Normalize(Path.Combine(root, relativePath))] = kind;
+            statuses[fullPath] = kind;
         }
         return (statuses, header, (staged, unstaged, untracked, conflicts));
     }
@@ -328,6 +333,12 @@ public sealed class GitRepositoryFileState
             }
         }
         return directories;
+    }
+
+    private static bool IsNestedRepository(string directory)
+    {
+        var dotGit = Path.Combine(directory, ".git");
+        return Directory.Exists(dotGit) || File.Exists(dotGit);
     }
 
     internal static GitRepositoryOperation DetectOperation(string gitDirectory)

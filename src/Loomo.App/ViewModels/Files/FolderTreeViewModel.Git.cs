@@ -51,6 +51,7 @@ public sealed partial class FolderTreeViewModel
             if (!ReferenceEquals(_gitLoadCts, cts) || _currentRoot is null || !PathsEqual(_currentRoot, root))
                 return;
             _gitState = state;
+            RootRepository = RepositoryChipFor(root, "", isHeader: true);
             ApplyFilterStatus(state);
             ReloadNodes();
             GitStatusChanged?.Invoke(this, EventArgs.Empty);
@@ -100,6 +101,8 @@ public sealed partial class FolderTreeViewModel
             if (!ReferenceEquals(state.GitLoadCts, cts))
                 return;
             state.GitState = loaded;
+            RootRepository = null; // 複数フォルダーでは見出し行ごとに出す
+            state.HeaderNode?.RefreshGitStatus();
             ReconcileRootStateChildren(state);
             GitStatusChanged?.Invoke(this, EventArgs.Empty);
         }
@@ -127,6 +130,14 @@ public sealed partial class FolderTreeViewModel
     {
         if (state.HeaderNode is not { } header)
             return;
+
+        // 「変更のみ」では、変更の無いフォルダー（リポジトリ）の見出しを畳む（§40.8.1）——リポジトリが多い部屋で、
+        // 汚れているものだけが目に入るように。開けば中身は今どおり（変更のみの絞り込みで空）。
+        if (ShowChangedOnly && state.GitState.ChangedFiles.Count == 0)
+        {
+            header.IsExpanded = false;
+            return;
+        }
 
         if (!header.IsExpanded)
         {

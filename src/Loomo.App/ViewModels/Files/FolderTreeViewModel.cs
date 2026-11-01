@@ -12,6 +12,7 @@ using Microsoft.VisualBasic.FileIO;
 using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.Core.Abstractions;
 using sk0ya.Loomo.Core.Agent;
+using sk0ya.Loomo.Core.Files;
 using sk0ya.Loomo.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -25,6 +26,8 @@ public sealed partial class FolderTreeViewModel : ObservableObject
     private readonly WorkflowStore _workflows;
     private readonly FolderTreeCommandHandler _fileCommands;
     private readonly FolderTreeQuery _query;
+    /// <summary>リポジトリの印（§40.7）。null（テスト）なら印を出さない。</summary>
+    private readonly GitRepositoryChips? _repositoryChips;
     private readonly IShellFileOperations _shellOperations;
     private readonly IQuickAccessService _quickAccess;
     private readonly GitService? _gitService;
@@ -179,8 +182,10 @@ public sealed partial class FolderTreeViewModel : ObservableObject
         IQuickAccessService? quickAccess = null,
         GitService? gitService = null,
         LoomoSettings? settings = null,
-        SettingsStore? settingsStore = null)
+        SettingsStore? settingsStore = null,
+        GitRepositoryChips? repositoryChips = null)
     {
+        _repositoryChips = repositoryChips;
         _settings = settings;
         _settingsStore = settingsStore;
         _workspace = workspace;
@@ -193,8 +198,9 @@ public sealed partial class FolderTreeViewModel : ObservableObject
         _gitService = gitService;
         if (_gitService is not null)
         {
+            // Git パネルの対象の切替（ActiveRootChanged）では読み直さない——ツリーは全リポジトリを自分の表示ルートで
+            // 見ていて、パネルが何を見ているかに依らない（§40.6）。
             _gitService.RepositoryChanged += OnGitRepositoryChanged;
-            _gitService.ActiveRootChanged += OnGitRepositoryChanged;
         }
         // ターミナルでのコミット・チェックアウト・fetch は作業ツリーのファイルを変えないことがあるので、
         // git ディレクトリの変化（§40.6）でも読み直す。
@@ -637,6 +643,29 @@ public sealed partial class FolderTreeViewModel : ObservableObject
         var root = _workspace.PrimaryFolder;
         return root is not null && IsPathWithin(normalized, root) ? _gitState : null;
     }
+
+    /// <summary>
+    /// 行に添えるリポジトリの印（§40.8.1）。<paramref name="fullPath"/> がその表示ルートにかかるリポジトリの根なら
+    /// その印、見出し行（<paramref name="isHeader"/>）ならそのフォルダーを含むリポジトリの印。どちらでもなければ null。
+    /// 表示ルートの読み込み済みの状態（<see cref="GitTreeState.Repositories"/>）だけを見る——一覧を UI スレッドで
+    /// 作らせない。
+    /// </summary>
+    internal RepositoryChipViewModel? RepositoryChipFor(string fullPath, string rootKey, bool isHeader)
+    {
+        if (_repositoryChips is null || FolderTreeShellNamespaces.IsShellPath(fullPath))
+            return null;
+        var normalized = WorkspacePaths.Normalize(fullPath);
+        foreach (var repository in ResolveGitState(rootKey).Repositories) // 深い順
+        {
+            if (string.Equals(repository.Root, normalized, StringComparison.OrdinalIgnoreCase)
+                || (isHeader && WorkspacePaths.IsWithin(repository.Root, normalized)))
+                return _repositoryChips.For(repository.Root);
+        }
+        return null;
+    }
+
+    /// <summary>単一フォルダー時、表示ルートを含むリポジトリの印（ツリーの上の行に出す・§40.8.1）。</summary>
+    [ObservableProperty] private RepositoryChipViewModel? _rootRepository;
 
     /// <summary>rootKey が属するフォルダーが Git リポジトリ配下か（FileNodeViewModel の「Git」メニュー
     /// 出し分けに使う）。</summary>

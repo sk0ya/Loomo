@@ -62,9 +62,17 @@ internal sealed class GitTreeState
         FileStatuses = new Dictionary<string, GitChangeKind>(StringComparer.OrdinalIgnoreCase);
         // 浅い順に入れて深い方で上書きする（同じパスを両方が持つことは普通は無いが、入れ子の境目で
         // 外側が "api/" を未追跡として持つ等に備えて、所属＝深い方を正とする）。
+        // 境目（§40.8.1）：外側のリポジトリは入れ子のリポジトリを「未追跡のフォルダー（api/）」として数えるが、それは
+        // 外側の変更ではない。数えると、入れ子のリポジトリがあるだけで外側のフォルダーが「配下に変更あり」になる。
+        var roots = new HashSet<string>(_repositories.Select(r => r.Root), StringComparer.OrdinalIgnoreCase);
         foreach (var repository in _repositories.Reverse())
             foreach (var pair in repository.FileStatuses)
+            {
+                var path = Path.TrimEndingDirectorySeparator(pair.Key);
+                if (!string.Equals(path, repository.Root, StringComparison.OrdinalIgnoreCase) && roots.Contains(path))
+                    continue;
                 FileStatuses[pair.Key] = pair.Value;
+            }
         ChangedFiles = new HashSet<string>(FileStatuses.Keys, StringComparer.OrdinalIgnoreCase);
         ChangedDirectories = rootPath.Length == 0
             ? new HashSet<string>(StringComparer.OrdinalIgnoreCase)

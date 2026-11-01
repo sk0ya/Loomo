@@ -143,12 +143,13 @@ public sealed class GitWorkspaceStatusTests : IDisposable
         var first = Task.Run(() => status.Load(repo, fresh: true, CancellationToken.None));
         await Task.Delay(50);
         var second = Task.Run(() => status.Load(repo, fresh: true, CancellationToken.None));
-        await Task.WhenAll(first, second);
+        var firstState = await first;
+        var secondState = await second;
 
         // 2 本目は 1 本目の読み込み中に頼まれた（＝頼んだ時刻より後に読み終えた状態がある）ので読まない。
         Assert.Equal(1, loads);
-        Assert.Same(first.Result, second.Result);
-        Assert.Same(first.Result, status.Load(repo, fresh: false, CancellationToken.None));
+        Assert.Same(firstState, secondState);
+        Assert.Same(firstState, status.Load(repo, fresh: false, CancellationToken.None));
         Assert.Equal(1, loads);
 
         status.Load(repo, fresh: true, CancellationToken.None);

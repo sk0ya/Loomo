@@ -32,10 +32,12 @@ public sealed partial class FileNodeViewModel : ObservableObject
     /// を参照するため、ピン留めの増減がそのまま ComboBox に反映される。見出し以外では null。</summary>
     public ObservableCollection<FolderRootOption>? RootSwitchOptions { get; }
 
-    /// <summary>見出し行の per-folder ComboBox の選択項目（見出し以外では使わない）。ComboBox からの
-    /// 選択変更で <see cref="FolderTreeViewModel.SwitchRootOption(FileNodeViewModel, FolderRootOption)"/>
-    /// を呼び、表示中サブフォルダーを切替える。</summary>
-    [ObservableProperty] private FolderRootOption? _selectedRootSwitchOption;
+    /// <summary>見出し行の表示中のルート（自身かピン留めしたサブフォルダー・見出し以外では使わない）。見出し行の「▾」
+    /// からの選択で <see cref="FolderTreeViewModel.SwitchRootOption(FileNodeViewModel, FolderRootOption)"/>
+    /// を呼び、表示中サブフォルダーを切替える（§40.8.1：以前は見出し行そのものが ComboBox だった）。</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HeaderLabel))]
+    private FolderRootOption? _selectedRootSwitchOption;
 
     // 拡張子・ファイル名から引いたベクターアイコン（FileIcons）。実体はアイコン種別ごとの共有
     // インスタンスなので、都度引いてもコストは配列参照ぶんしかない。フォルダーは開閉で絵が変わり、
@@ -122,12 +124,16 @@ public sealed partial class FileNodeViewModel : ObservableObject
         IsWorkspaceFolderRoot = isWorkspaceFolderRoot;
         _owner = owner;
         GitStatus = owner.GitStatusFor(fullPath, isDirectory, rootKey);
+        if (isDirectory)
+            _repository = owner.RepositoryChipFor(fullPath, rootKey, isWorkspaceFolderRoot);
         _problemMark = IsShellItem ? null : owner.ProblemCounts.For(fullPath);
         IsGitRepository = owner.IsGitRepositoryFor(rootKey);
         if (isDirectory && !isWorkspaceFolderRoot && !IsShellItem)
             _isPinned = owner.IsPinnedPath(fullPath);
 
         RootSwitchOptions = rootSwitchOptions;
+        if (rootSwitchOptions is not null)
+            rootSwitchOptions.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasRootSwitchChoices));
         // ComboBox の初期選択はプロパティ経由で代入しない：生成された setter は
         // OnSelectedRootSwitchOptionChanged を発火し、構築中に owner.SwitchRootOption を
         // 呼んでしまう（不要な再切替・RootStateChanged の多重発火）。
@@ -153,7 +159,22 @@ public sealed partial class FileNodeViewModel : ObservableObject
             ? AggregateNestedGitStatus(own, Children.Select(c => c.GitStatus))
             : own;
         IsGitRepository = _owner.IsGitRepositoryFor(RootKey);
+        if (IsDirectory)
+            Repository = _owner.RepositoryChipFor(FullPath, RootKey, IsWorkspaceFolderRoot);
     }
+
+    /// <summary>
+    /// この行がリポジトリの根（見出し行ならそのフォルダーを含むリポジトリ）のとき、その印（§40.8.1）。
+    /// 入れ子のリポジトリのフォルダー行・ワークスペースフォルダーの見出し行に ⎇ ブランチ・↑↓・±変更を添える。
+    /// </summary>
+    [ObservableProperty] private RepositoryChipViewModel? _repository;
+
+    /// <summary>見出し行に出す名前。ピン留めしたサブフォルダーを表示しているときは「フォルダー/サブ」の形
+    /// （以前は見出し行のコンボボックスがこれを出していた）。</summary>
+    public string HeaderLabel => SelectedRootSwitchOption?.DisplayLabel ?? Name;
+
+    /// <summary>見出し行の「▾」（ピン留めしたサブフォルダーへの切替）を出すか。候補が自身だけなら出さない。</summary>
+    public bool HasRootSwitchChoices => RootSwitchOptions is { Count: > 1 };
 
     /// <summary>まとめ表示の親ファイルに出す git の印。親自身に印があればそれを優先し、親が無変更で
     /// 子のどれかに変更があれば、フォルダーと同じ「配下に変更あり（●）」を出す
@@ -223,7 +244,7 @@ public sealed partial class FileNodeViewModel : ObservableObject
         if (value) _owner.NotifySelected(FullPath);
     }
 
-    // 見出し行の ComboBox からの切替。旧 SwitchRootOption(FileNodeViewModel, FolderRootOption) を経由するのは
+    // 見出し行の「▾」からの切替。旧 SwitchRootOption(FileNodeViewModel, FolderRootOption) を経由するのは
     // 見出しの右クリックメニューと同じ経路にするため（Watcher/RootStateChanged を含め挙動を一本化する）。
     partial void OnSelectedRootSwitchOptionChanged(FolderRootOption? value)
     {

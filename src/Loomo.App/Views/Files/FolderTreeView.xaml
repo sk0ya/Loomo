@@ -2,6 +2,8 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:vm="clr-namespace:sk0ya.Loomo.App.ViewModels"
+    xmlns:views="clr-namespace:sk0ya.Loomo.App.Views"
+    xmlns:svc="clr-namespace:sk0ya.Loomo.App.Services"
     Background="{DynamicResource BgAlt}">
 
     <UserControl.Resources>
@@ -190,6 +192,15 @@
                           StrokeLineJoin="Round"
                           Data="M9,2 L14,7 L11,8 L8,11 L5,8 L8,5 Z M5,11 L2,14 M2,2 L14,14" />
                 </Button>
+                <!-- 表示ルートを含むリポジトリの印（単一フォルダー時・§40.8.1）。複数フォルダー時は見出し行ごとに出す。 -->
+                <ContentControl DockPanel.Dock="Right" Content="{Binding RootRepository}" Margin="6,0,0,0"
+                                Focusable="False" VerticalAlignment="Center">
+                    <ContentControl.Resources>
+                        <DataTemplate DataType="{x:Type svc:RepositoryChipViewModel}">
+                            <views:RepositoryChip />
+                        </DataTemplate>
+                    </ContentControl.Resources>
+                </ContentControl>
                 <ComboBox MinHeight="24"
                           ItemsSource="{Binding RootOptions}"
                           SelectedItem="{Binding SelectedRootOption, Mode=TwoWay}"
@@ -517,27 +528,41 @@
                                        Width="16" Height="16"
                                        VerticalAlignment="Center"
                                        Margin="0,0,6,0" />
-                                <TextBlock x:Name="GitName" Text="{Binding Name}" />
+                                <TextBlock x:Name="GitName" Text="{Binding Name}" VerticalAlignment="Center" />
+                                <!-- 見出し行（ワークスペースフォルダー）は名前を太字で、ピン留めしたサブフォルダーを表示中なら「フォルダー/サブ」。 -->
+                                <TextBlock x:Name="HeaderName" Text="{Binding HeaderLabel}" FontWeight="SemiBold"
+                                           VerticalAlignment="Center" ToolTip="{Binding FullPath}" Visibility="Collapsed" />
+                                <!-- リポジトリの印（§40.8.1）：入れ子のリポジトリの根の行と、見出し行。無ければ何も出さない。 -->
+                                <ContentControl Content="{Binding Repository}" Margin="8,0,0,0" Focusable="False"
+                                                VerticalAlignment="Center">
+                                    <!-- 型で選ぶ DataTemplate にする：ContentTemplate を直に置くと、中身が null でもテンプレートが
+                                         作られて行のノードを DataContext に受け、空の ⎇ と ✕ が全行に出る。 -->
+                                    <ContentControl.Resources>
+                                        <DataTemplate DataType="{x:Type svc:RepositoryChipViewModel}">
+                                            <views:RepositoryChip />
+                                        </DataTemplate>
+                                    </ContentControl.Resources>
+                                </ContentControl>
+                                <!-- ピン留めしたサブフォルダーへの切替（見出し行のホバーで出る・候補があるときだけ）。
+                                     以前は見出し行そのものが ComboBox で、ブランチなどを置く余地が無かった。 -->
+                                <Button x:Name="RootSwitchButton" Content="▾" Style="{StaticResource ExplorerIconButton}"
+                                        Width="18" Height="18" Margin="4,0,0,0" Padding="0"
+                                        Click="OnRootSwitchButtonClick" ToolTip="ピン留めしたフォルダーへ切替"
+                                        Visibility="Collapsed" />
                             </StackPanel>
-                            <!-- 複数フォルダーワークスペースの見出し行（ワークスペースフォルダー自身）だけ、
-                                 通常の行（アイコン＋名前）の代わりにこのフォルダー専用の ComboBox を出す。
-                                 候補は自身＋ピン留めしたサブフォルダー（FolderTreeRootState.RootOptions と
-                                 同一インスタンス）。GitBadge（●＝配下に変更あり）はそのフォルダーの状態表示
-                                 として右端にそのまま残す。 -->
-                            <ComboBox x:Name="RootSwitchCombo"
-                                      MinHeight="22"
-                                      Margin="0,1,0,1"
-                                      ItemsSource="{Binding RootSwitchOptions}"
-                                      SelectedItem="{Binding SelectedRootSwitchOption, Mode=TwoWay}"
-                                      DisplayMemberPath="DisplayLabel"
-                                      ToolTip="{Binding FullPath}"
-                                      Visibility="Collapsed" />
                         </DockPanel>
                         <HierarchicalDataTemplate.Triggers>
                             <DataTrigger Binding="{Binding IsWorkspaceFolderRoot}" Value="True">
-                                <Setter TargetName="NormalRow" Property="Visibility" Value="Collapsed" />
-                                <Setter TargetName="RootSwitchCombo" Property="Visibility" Value="Visible" />
+                                <Setter TargetName="GitName" Property="Visibility" Value="Collapsed" />
+                                <Setter TargetName="HeaderName" Property="Visibility" Value="Visible" />
                             </DataTrigger>
+                            <MultiDataTrigger>
+                                <MultiDataTrigger.Conditions>
+                                    <Condition Binding="{Binding HasRootSwitchChoices}" Value="True" />
+                                    <Condition Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=TreeViewItem}}" Value="True" />
+                                </MultiDataTrigger.Conditions>
+                                <Setter TargetName="RootSwitchButton" Property="Visibility" Value="Visible" />
+                            </MultiDataTrigger>
                             <DataTrigger Binding="{Binding GitStatus}" Value="Modified">
                                 <Setter TargetName="GitBadge" Property="Text" Value="M" />
                                 <Setter TargetName="GitBadge" Property="Foreground" Value="#E2C08D" />
