@@ -448,6 +448,9 @@ public sealed partial class ShellViewModel : ObservableObject
     /// 選択・表示する「同期」機能用。</summary>
     public void RevealExplorerPanel() => Reveal(SidebarPanel.Explorer);
 
+    /// <summary>Git パネルを必ず開く（リポジトリの印から・§40.7）。</summary>
+    public void RevealGitPanel() => Reveal(SidebarPanel.Git);
+
     /// <summary>そのパネルを、住んでいる段の区画で必ず開く（トグルしない）。</summary>
     private void Reveal(SidebarPanel panel)
     {

@@ -126,6 +126,9 @@ internal static class LoomoServiceCollectionExtensions
         services.AddSingleton<GitService>();
         // 全リポジトリの「いまの様子」の共有（§40.6）。エクスプローラー・ファイル一覧はここから受け取る。
         services.AddSingleton<GitWorkspaceStatus>();
+        // リポジトリの印（§40.7）：押したときの動作の唯一の受け口と、リポジトリごとに1つの印。
+        services.AddSingleton<RepositoryActions>();
+        services.AddSingleton<GitRepositoryChips>();
         services.AddSingleton<GitRootSwitchViewModel>();
         // 比較基準は Git パネルと Diff ペインで共有する一つの状態なので Singleton。
         services.AddSingleton<GitCompareBaseViewModel>();

@@ -79,7 +79,16 @@ public sealed class GitService
     /// <param name="askPass">資格情報の問いを部屋の中で受ける口（§24.101）。テストなど null なら、対話が要る操作はその場で失敗する。</param>
     /// <param name="catalog">ワークスペースのリポジトリ一覧（§40.4）。null なら自分で持つ（テスト用）。</param>
     public GitService(IWorkspaceService workspace, GitAskPassServer? askPass = null, GitRepositoryCatalog? catalog = null)
-        : this(workspace, new GitRootState(workspace), askPass, catalog ?? new GitRepositoryCatalog(workspace), owner: null)
+        : this(workspace, catalog ?? new GitRepositoryCatalog(workspace), askPass)
+    {
+    }
+
+    private GitService(IWorkspaceService workspace, GitRepositoryCatalog catalog, GitAskPassServer? askPass)
+        : this(workspace,
+            // 対象にはワークスペースフォルダーのほか、一覧が見つけたリポジトリの根（入れ子）も選べる（§40.8.3）。
+            new GitRootState(workspace, root => catalog.Repositories.Any(r =>
+                string.Equals(r.Root, root, StringComparison.OrdinalIgnoreCase))),
+            askPass, catalog, owner: null)
     {
     }
 

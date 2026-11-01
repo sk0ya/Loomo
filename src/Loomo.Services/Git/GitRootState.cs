@@ -16,11 +16,16 @@ public sealed class GitRootState
 {
     private readonly IWorkspaceService? _workspace;
     private readonly string? _fixedRoot;
+    /// <summary>ワークスペースフォルダー以外に対象にしてよい場所（一覧が見つけたリポジトリの根・§40.4）。</summary>
+    private readonly Func<string, bool>? _isKnownRepository;
     private string? _explicitRoot;
 
-    public GitRootState(IWorkspaceService workspace)
+    /// <param name="isKnownRepository">ワークスペースフォルダーでなくても対象にしてよい場所か（入れ子のリポジトリの根）。
+    /// 親フォルダーの下の <c>api/</c>・<c>web/</c> を Git パネルで選べるようにするため。</param>
+    public GitRootState(IWorkspaceService workspace, Func<string, bool>? isKnownRepository = null)
     {
         _workspace = workspace;
+        _isKnownRepository = isKnownRepository;
         _workspace.FoldersChanged += (_, _) => Reconcile();
     }
 
@@ -74,18 +79,24 @@ public sealed class GitRootState
         var full = Path.GetFullPath(path);
         if (string.Equals(full, _workspace.PrimaryFolder, StringComparison.OrdinalIgnoreCase))
             return null;
-        return _workspace.Folders.Any(f => string.Equals(f, full, StringComparison.OrdinalIgnoreCase))
-            ? full
-            : null;
+        return IsAllowed(full) ? full : null;
     }
 
     private void Reconcile()
     {
         if (_workspace is null) return;
-        if (_explicitRoot is not null
-            && !_workspace.Folders.Any(f => string.Equals(f, _explicitRoot, StringComparison.OrdinalIgnoreCase)))
+        if (_explicitRoot is not null && !IsAllowed(_explicitRoot))
             _explicitRoot = null;
         Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    private bool IsAllowed(string full)
+    {
+        if (_workspace is null) return false;
+        var normalized = WorkspacePaths.Normalize(full);
+        if (_workspace.Folders.Any(f => string.Equals(WorkspacePaths.Normalize(f), normalized, StringComparison.OrdinalIgnoreCase)))
+            return true;
+        return _workspace.Contains(normalized) && _isKnownRepository?.Invoke(normalized) == true;
     }
 
     private static bool IsWithin(string root, string candidate)
