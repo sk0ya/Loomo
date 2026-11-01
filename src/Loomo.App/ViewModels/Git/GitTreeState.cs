@@ -1,10 +1,9 @@
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Text;
 using System.Threading;
-using sk0ya.Loomo.Core.Processes;
+using sk0ya.Loomo.Core.Files;
+using sk0ya.Loomo.Services;
 
 namespace sk0ya.Loomo.App.Services;
 
@@ -24,350 +23,147 @@ public enum GitChangeKind
     DirectoryChanged,
 }
 
+/// <summary>
+/// エクスプローラーの<b>表示ルート1つぶん</b>の Git の状態。中身はその表示ルートにかかるリポジトリの状態
+/// （<see cref="GitRepositoryFileState"/>）の束で、ここは「表示ルートから見た」集約だけを持つ（§40.6）。
+///
+/// <para>表示ルートとリポジトリはずれる：表示ルートがリポジトリの一部（先祖が根）のことも、表示ルートの下に
+/// 複数のリポジトリがある（<c>C:\work\{api,web}</c>）こともある。以前はここで <c>rev-parse --show-toplevel</c> を
+/// 起こしてリポジトリを1つに決めていたので、後者は丸ごと「Git 管理外」になっていた。</para>
+///
+/// <para>ファイルの状態・無視対象は<b>いちばん深い</b>リポジトリに問う。配下に変更を含むフォルダーの集約は
+/// 表示ルートまで（入れ子のリポジトリの変更も外側のフォルダーへ伝わる——境目で止めるのは §40.8.1・P4）。</para>
+/// </summary>
 internal sealed class GitTreeState
 {
     private readonly string _rootPath;
-    private readonly string? _gitRootPath;
-    private readonly object _ignoredPathsGate = new();
+    /// <summary>この表示ルートにかかるリポジトリ（深い順）。</summary>
+    private readonly IReadOnlyList<GitRepositoryFileState> _repositories;
 
-    public static GitTreeState Empty { get; } = new("", null, new(), new(), new(), new());
+    public static GitTreeState Empty { get; } = new("", Array.Empty<GitRepositoryFileState>());
 
-    public bool IsGitRepository => _gitRootPath is not null;
+    public bool IsGitRepository => _repositories.Count > 0;
 
-    /// <summary>変更ファイルのフルパス → 変更種別。</summary>
+    /// <summary>この表示ルートにかかるリポジトリの状態（深い順）。</summary>
+    public IReadOnlyList<GitRepositoryFileState> Repositories => _repositories;
+
+    /// <summary>変更ファイルのフルパス → 変更種別（全リポジトリぶん）。</summary>
     public Dictionary<string, GitChangeKind> FileStatuses { get; }
     public HashSet<string> ChangedFiles { get; }
+    /// <summary>配下に変更を含むフォルダー（表示ルートより下だけ・表示ルート自身は含まない）。</summary>
     public HashSet<string> ChangedDirectories { get; }
-    /// <summary>この状態を使って列挙済みの無視対象。無視対象を表示する設定でも、同じ
-    /// バッチ照会の結果をノードのバッジへ再利用する。</summary>
-    public HashSet<string> IgnoredPaths { get; }
 
-    private GitTreeState(
-        string rootPath,
-        string? gitRootPath,
-        Dictionary<string, GitChangeKind> fileStatuses,
-        HashSet<string> changedFiles,
-        HashSet<string> changedDirectories,
-        HashSet<string> ignoredPaths)
+    private GitTreeState(string rootPath, IReadOnlyList<GitRepositoryFileState> repositories)
     {
         _rootPath = rootPath;
-        _gitRootPath = gitRootPath;
-        FileStatuses = fileStatuses;
-        ChangedFiles = changedFiles;
-        ChangedDirectories = changedDirectories;
-        IgnoredPaths = ignoredPaths;
+        _repositories = repositories
+            .OrderByDescending(r => r.Root.Length)
+            .ToArray();
+        FileStatuses = new Dictionary<string, GitChangeKind>(StringComparer.OrdinalIgnoreCase);
+        // 浅い順に入れて深い方で上書きする（同じパスを両方が持つことは普通は無いが、入れ子の境目で
+        // 外側が "api/" を未追跡として持つ等に備えて、所属＝深い方を正とする）。
+        foreach (var repository in _repositories.Reverse())
+            foreach (var pair in repository.FileStatuses)
+                FileStatuses[pair.Key] = pair.Value;
+        ChangedFiles = new HashSet<string>(FileStatuses.Keys, StringComparer.OrdinalIgnoreCase);
+        ChangedDirectories = rootPath.Length == 0
+            ? new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            : CollectChangedDirectories(ChangedFiles, rootPath);
+    }
+
+    /// <summary>表示ルート <paramref name="rootPath"/> の状態を、読み込み済みのリポジトリの状態から組む。</summary>
+    public static GitTreeState Compose(string rootPath, IEnumerable<GitRepositoryFileState> repositories)
+        => new(WorkspacePaths.Normalize(rootPath), repositories.ToArray());
+
+    /// <summary>
+    /// 表示ルート <paramref name="rootPath"/> にかかるリポジトリを探して読む（共有のキャッシュを使わない単独の読み込み）。
+    /// アプリは <see cref="GitWorkspaceStatus.TreeStateFor"/> を通す。
+    /// </summary>
+    public static GitTreeState Load(string rootPath, CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested();
+        var root = WorkspacePaths.Normalize(rootPath);
+        var repositories = new List<GitRepositoryFileState>();
+        foreach (var repository in GitRepositoryCatalog.Discover(new[] { root }))
+        {
+            token.ThrowIfCancellationRequested();
+            repositories.Add(GitRepositoryFileState.Load(repository.Root, token));
+        }
+        return new GitTreeState(root, repositories);
     }
 
     /// <summary>指定ファイルの変更種別（変更なしは None）。</summary>
     public GitChangeKind GetFileStatus(string fullPath)
-        => FileStatuses.TryGetValue(Path.GetFullPath(fullPath), out var kind) ? kind : GitChangeKind.None;
+        => FileStatuses.TryGetValue(WorkspacePaths.Normalize(fullPath), out var kind) ? kind : GitChangeKind.None;
 
-    public static GitTreeState Load(string rootPath, CancellationToken token)
-    {
-        var fullRoot = Path.GetFullPath(rootPath);
-        var gitRoot = FindGitRoot(fullRoot, token);
-        if (gitRoot is null)
-            return new GitTreeState(fullRoot, null, new(), new(), new(), new());
-
-        token.ThrowIfCancellationRequested();
-        var fileStatuses = LoadFileStatuses(gitRoot, token);
-        token.ThrowIfCancellationRequested();
-        var changedFiles = new HashSet<string>(fileStatuses.Keys, StringComparer.OrdinalIgnoreCase);
-        var changedDirectories = LoadChangedDirectories(changedFiles, fullRoot);
-        return new GitTreeState(fullRoot, gitRoot, fileStatuses, changedFiles, changedDirectories, new());
-    }
-
+    /// <summary>与えたパスのうち無視対象のもの。所属リポジトリごとに <c>check-ignore</c> を1回ずつ起こす（同期）。</summary>
     public HashSet<string> GetIgnoredPaths(IEnumerable<string> fullPaths)
     {
-        var ignoredPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var normalizedPaths = fullPaths.Select(Path.GetFullPath).ToArray();
-
-        foreach (var path in normalizedPaths.Where(IsInsideGitDirectory))
-            ignoredPaths.Add(path);
-
-        if (_gitRootPath is null)
-            return ignoredPaths;
-
-        var candidates = normalizedPaths
-            .Where(path => !ignoredPaths.Contains(path))
-            .Select(path => new
-            {
-                FullPath = path,
-                RelativePath = ToGitRelativePath(_gitRootPath, path)
-            })
-            .Where(x => !string.IsNullOrWhiteSpace(x.RelativePath))
-            .ToArray();
-
-        if (candidates.Length == 0)
+        var ignored = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var grouped = new Dictionary<GitRepositoryFileState, List<string>>();
+        foreach (var raw in fullPaths)
         {
-            lock (_ignoredPathsGate)
-                IgnoredPaths.UnionWith(ignoredPaths);
-            return ignoredPaths;
+            var path = WorkspacePaths.Normalize(raw);
+            if (path.Length == 0) continue;
+            if (RepositoryFor(path) is not { } repository)
+            {
+                // どのリポジトリにも属さない：表示ルートの .git の中だけは無視対象として扱う（従来どおり）。
+                if (_rootPath.Length > 0 && WorkspacePaths.IsWithin(Path.Combine(_rootPath, ".git"), path))
+                    ignored.Add(path);
+                continue;
+            }
+            if (!grouped.TryGetValue(repository, out var list))
+                grouped[repository] = list = new List<string>();
+            list.Add(path);
         }
-
-        var input = string.Join('\0', candidates.Select(x => x.RelativePath)) + '\0';
-        var result = RunGit(_gitRootPath, input, new[] { "check-ignore", "-z", "--stdin" });
-        if (result.ExitCode is not 0 and not 1)
-            return ignoredPaths;
-
-        foreach (var relativePath in result.Output.Split('\0', StringSplitOptions.RemoveEmptyEntries))
-            ignoredPaths.Add(Path.GetFullPath(Path.Combine(_gitRootPath, relativePath)));
-
-        lock (_ignoredPathsGate)
-            IgnoredPaths.UnionWith(ignoredPaths);
-        return ignoredPaths;
+        foreach (var pair in grouped)
+            ignored.UnionWith(pair.Key.GetIgnoredPaths(pair.Value));
+        return ignored;
     }
 
-    /// <summary>ファイル／フォルダーに表示する状態。無視対象は変更状態より前に判定し、
-    /// フォルダーは配下の変更を集約する。</summary>
+    /// <summary>ファイル／フォルダーに表示する状態。フォルダーは配下の変更を集約し、無視対象は
+    /// 読み込み済み（<see cref="GetIgnoredPaths"/>）のものだけ。</summary>
     public GitChangeKind GetStatus(string fullPath, bool isDirectory)
     {
+        var path = WorkspacePaths.Normalize(fullPath);
         if (isDirectory)
         {
-            var normalized = Path.GetFullPath(fullPath);
-            if (ChangedDirectories.Contains(normalized))
+            if (ChangedDirectories.Contains(path))
                 return GitChangeKind.DirectoryChanged;
-            lock (_ignoredPathsGate)
-                return IgnoredPaths.Contains(normalized) ? GitChangeKind.Ignored : GitChangeKind.None;
         }
-
-        var path = Path.GetFullPath(fullPath);
-        if (FileStatuses.TryGetValue(path, out var status))
-            return status;
-        lock (_ignoredPathsGate)
-            return IgnoredPaths.Contains(path) ? GitChangeKind.Ignored : GitChangeKind.None;
-    }
-
-    private bool IsInsideGitDirectory(string fullPath)
-    {
-        var gitDir = Path.Combine(_gitRootPath ?? _rootPath, ".git");
-        var normalizedGitDir = Path.GetFullPath(gitDir)
-            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-
-        return fullPath.Equals(normalizedGitDir, StringComparison.OrdinalIgnoreCase)
-            || fullPath.StartsWith(normalizedGitDir + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static string? FindGitRoot(string rootPath, CancellationToken token)
-    {
-        var result = RunGit(rootPath, null, token, ["rev-parse", "--show-toplevel"]);
-        if (result.ExitCode != 0)
-            return FindGitRootByDirectory(rootPath);
-
-        var path = result.Output.Trim();
-        return string.IsNullOrWhiteSpace(path)
-            ? FindGitRootByDirectory(rootPath)
-            : Path.GetFullPath(path);
-    }
-
-    private static string? FindGitRootByDirectory(string rootPath)
-    {
-        var directory = new DirectoryInfo(rootPath);
-        while (directory is not null)
+        else if (FileStatuses.TryGetValue(path, out var status))
         {
-            if (Directory.Exists(Path.Combine(directory.FullName, ".git"))
-                || File.Exists(Path.Combine(directory.FullName, ".git")))
-                return directory.FullName;
-
-            directory = directory.Parent;
+            return status;
         }
+        return RepositoryFor(path)?.IsKnownIgnored(path) == true ? GitChangeKind.Ignored : GitChangeKind.None;
+    }
 
+    private GitRepositoryFileState? RepositoryFor(string normalizedPath)
+    {
+        foreach (var repository in _repositories) // 深い順
+        {
+            if (WorkspacePaths.IsWithin(repository.Root, normalizedPath))
+                return repository;
+        }
         return null;
     }
 
-    private static Dictionary<string, GitChangeKind> LoadFileStatuses(string gitRoot, CancellationToken token)
-    {
-        var statuses = new Dictionary<string, GitChangeKind>(StringComparer.OrdinalIgnoreCase);
-
-        var result = RunGit(gitRoot, null, token,
-            ["status", "--porcelain", "-z", "--untracked-files=all"]);
-        if (result.ExitCode != 0)
-            return statuses;
-
-        var entries = result.Output.Split('\0', StringSplitOptions.RemoveEmptyEntries);
-
-        for (var i = 0; i < entries.Length; i++)
-        {
-            var entry = entries[i];
-            if (entry.Length < 4)
-                continue;
-
-            var status = entry[..2];
-            var relativePath = entry[3..];
-
-            // リネーム/コピーは -z 形式では「新パス\0旧パス」の順で出力される。
-            // 新パスは entry 側に含まれているので、続く旧パスのエントリを読み飛ばすだけにする
-            // （旧パスはディスク上に存在せず、新パス＝追加扱いのファイルが表示対象）。
-            if ((status[0] is 'R' or 'C' || status[1] is 'R' or 'C') && i + 1 < entries.Length)
-                i++;
-
-            if (string.IsNullOrWhiteSpace(relativePath))
-                continue;
-
-            statuses[Path.GetFullPath(Path.Combine(gitRoot, relativePath))] = MapStatus(status);
-        }
-
-        return statuses;
-    }
-
-    // git status --porcelain の XY 2 文字コードを表示用の種別へ落とす。
-    // 競合（U を含む、AA/DD）を最優先で判定する。作業ツリー側（Y）に差分が
-    // 残っている場合はその状態を表示し、作業ツリーがクリーンで index 側だけに
-    // 差分がある場合だけ Staged とする。これにより AM/MM の編集を Added や
-    // Staged に潰さず、現在の作業ツリー状態を優先できる。
-    private static GitChangeKind MapStatus(string xy)
-    {
-        if (xy == "??")
-            return GitChangeKind.Untracked;
-
-        var x = xy[0];
-        var y = xy[1];
-
-        if (x is 'U' || y is 'U' || xy is "AA" or "DD")
-            return GitChangeKind.Conflicted;
-        if (!IsCleanStatus(y))
-        {
-            if (y is 'R')
-                return GitChangeKind.Renamed;
-            if (y is 'A')
-                return GitChangeKind.Added;
-            if (y is 'D')
-                return GitChangeKind.Deleted;
-            return GitChangeKind.Modified;
-        }
-
-        // X のみが立っている項目は index にだけ差分がある。
-        if (!IsCleanStatus(x))
-            return GitChangeKind.Staged;
-        if (x is 'R' || y is 'R')
-            return GitChangeKind.Renamed;
-        if (x is 'A' || y is 'A')
-            return GitChangeKind.Added;
-        if (x is 'D' || y is 'D')
-            return GitChangeKind.Deleted;
-        return GitChangeKind.Modified;
-    }
-
-    // porcelain=v1 は未設定側を '.' ではなく空白で出す（-z でも同じ）。
-    private static bool IsCleanStatus(char status) => status is '.' or ' ';
-
-    private static HashSet<string> LoadChangedDirectories(HashSet<string> changedFiles, string visibleRoot)
+    private static HashSet<string> CollectChangedDirectories(HashSet<string> changedFiles, string visibleRoot)
     {
         var directories = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var normalizedRoot = Path.GetFullPath(visibleRoot)
-            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-
         foreach (var file in changedFiles)
         {
-            var directory = Path.GetDirectoryName(file);
+            var directory = Path.GetDirectoryName(Path.TrimEndingDirectorySeparator(file));
             while (!string.IsNullOrEmpty(directory))
             {
-                var normalizedDirectory = Path.GetFullPath(directory)
-                    .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-
-                if (normalizedDirectory.Equals(normalizedRoot, StringComparison.OrdinalIgnoreCase))
+                if (directory.Equals(visibleRoot, StringComparison.OrdinalIgnoreCase)
+                    || !WorkspacePaths.IsWithin(visibleRoot, directory))
                     break;
-
-                if (!normalizedDirectory.StartsWith(normalizedRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+                if (!directories.Add(directory))
                     break;
-
-                directories.Add(normalizedDirectory);
-                directory = Path.GetDirectoryName(normalizedDirectory);
+                directory = Path.GetDirectoryName(directory);
             }
         }
-
         return directories;
     }
-
-    private static string ToGitRelativePath(string gitRoot, string fullPath)
-    {
-        var relativePath = Path.GetRelativePath(gitRoot, fullPath);
-        return relativePath.Replace(Path.DirectorySeparatorChar, '/');
-    }
-
-    private static GitCommandResult RunGit(string workingDirectory, params string[] args)
-        => RunGit(workingDirectory, standardInput: null, args);
-
-    // 注意: stdin 版の args は params にしない。params にすると
-    // RunGit(wd, "status", "--porcelain", ...) のような呼び出しで "status" が
-    // standardInput に解決され（git のサブコマンドが渡らず exit 129 になる）。
-    // 明示的な string[] にすることで、可変長引数の呼び出しは必ず上の params 版へ振り分けられる。
-    private static GitCommandResult RunGit(string workingDirectory, string? standardInput, string[] args)
-        => RunGit(workingDirectory, standardInput, CancellationToken.None, args);
-
-    private static GitCommandResult RunGit(
-        string workingDirectory, string? standardInput, CancellationToken token, string[] args)
-    {
-        try
-        {
-            // 打ち切りは「読み取りに渡したトークン」任せにしない——読み取りが専用スレッドの
-            // ブロッキング読みになった以上、打ち切りはここで明示的に見る（起こす前と、待ったあと）。
-            token.ThrowIfCancellationRequested();
-            using var process = new Process();
-            process.StartInfo = new ProcessStartInfo
-            {
-                FileName = "git",
-                WorkingDirectory = workingDirectory,
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                RedirectStandardInput = standardInput is not null,
-                CreateNoWindow = true,
-                StandardOutputEncoding = Encoding.UTF8,
-                StandardErrorEncoding = Encoding.UTF8
-            };
-
-            foreach (var arg in args)
-                process.StartInfo.ArgumentList.Add(arg);
-
-            process.Start();
-            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(token, timeoutCts.Token);
-            var waitToken = linkedCts.Token;
-            using var registration = waitToken.Register(() =>
-            {
-                try
-                {
-                    if (!process.HasExited)
-                        process.Kill(entireProcessTree: true);
-                }
-                catch { /* 終了との競合 */ }
-            });
-
-            // 出力はプールではなく専用スレッドで読む（理由は ChildProcessIo）。打ち切りは上の
-            // Register が kill するので、パイプが閉じて読みは EOF で終わる。
-            // stderr も読み捨てる——誰も読まないとパイプが詰まって git 側が止まる。
-            // **読み手を立ててから stdin を書く**——check-ignore は stdin を食いながら一致した
-            // パスを吐くので、先に何千行も流し込むと git の stdout が詰まり、こちらは Write で
-            // 止まる（無視対象が空になり、無視ファイルが普通のファイルとして並ぶ）。
-            var outputTask = ChildProcessIo.ReadToEndAsync(process.StandardOutput, "gitツリー:stdout");
-            _ = ChildProcessIo.ReadToEndAsync(process.StandardError, "gitツリー:stderr");
-
-            if (standardInput is not null)
-            {
-                process.StandardInput.Write(standardInput);
-                process.StandardInput.Close();
-            }
-
-            try
-            {
-                process.WaitForExitAsync(waitToken).GetAwaiter().GetResult();
-            }
-            catch (OperationCanceledException) when (!token.IsCancellationRequested)
-            {
-                return new GitCommandResult(-1, "");
-            }
-            catch (OperationCanceledException) { throw; }
-
-            token.ThrowIfCancellationRequested();
-            return new GitCommandResult(process.ExitCode, outputTask.GetAwaiter().GetResult());
-        }
-        catch (OperationCanceledException) { throw; }
-        catch
-        {
-            return new GitCommandResult(-1, "");
-        }
-    }
-
-    private readonly record struct GitCommandResult(int ExitCode, string Output);
 }

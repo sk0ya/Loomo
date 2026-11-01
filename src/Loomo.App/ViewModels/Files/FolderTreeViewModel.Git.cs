@@ -39,6 +39,10 @@ public sealed partial class FolderTreeViewModel
         var token = cts.Token;
         try
         {
+            // 反映は<b>必ず次の順番</b>で（§40.6）。Git 管理外の表示ルートは git を起こさず一瞬で読み終わるので、
+            // 読み込みが await の時点で済んでいると続きがこの呼び出しの中で同期的に走り、LoadRoot →
+            // RestoreAdditionalFolders の間に単一フォルダーのツリーが組み上がって、復元する展開状態を先に食べてしまう。
+            await Task.Yield();
             // git を何本も起こして待つ仕事。プールのワーカーを git の寿命ぶん占有しないよう、
             // 専用スレッドで待つ（子プロセスの読み取りと同じ考え方＝ChildProcessIo）。
             var state = await ChildProcessIo.RunOffPoolAsync(
@@ -89,6 +93,7 @@ public sealed partial class FolderTreeViewModel
         var token = cts.Token;
         try
         {
+            await Task.Yield(); // 同期的に反映しない（上の LoadGitStateAndReloadAsync と同じ理由）
             var loaded = await ChildProcessIo.RunOffPoolAsync(
                 "gitツリー読込", () => _query.LoadGitState(state.DisplayedPath, token));
             token.ThrowIfCancellationRequested();

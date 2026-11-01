@@ -429,10 +429,13 @@ public sealed class FilesPaneTests : IDisposable
     }
 
     [Fact]
-    public void カラムを増やすとワークスペースに登録したフォルダーを先に開く()
+    public async Task カラムを増やすとワークスペースに登録したフォルダーを先に開く()
     {
         // 2カラム・4カラムを開く動機は「登録したフォルダーを並べて見る」なので、そこが最優先。
         _workspace.AddFolder(_outside);
+        // フォルダーを足すとツリーはフォルダーごとの状態を読み直す。dispatcher の無いテストでは読み込みの続きが
+        // プールで走り、ピン留め（ピンの候補の一覧の書き換え）とぶつかるので、読み終えてから留める。
+        await _tree.WhenTreeLoadedAsync();
         _tree.PinFolder(_sub);
         var pane = CreatePane();
         Assert.Equal(_root, pane.Columns[0].CurrentFolder);

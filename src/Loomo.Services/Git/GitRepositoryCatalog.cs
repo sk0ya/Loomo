@@ -143,7 +143,11 @@ public sealed class GitRepositoryCatalog
 
     // ===== 探索 =====
 
-    internal static IReadOnlyList<GitRepositoryInfo> Discover(IReadOnlyList<string> folders)
+    /// <summary>
+    /// フォルダーの集合からリポジトリを探す（純粋に .git の有無だけ・<see cref="Repositories"/> の中身）。一覧を持たない
+    /// 場所（エクスプローラーの表示ルートをその場で読む等）から直接呼ぶ。
+    /// </summary>
+    public static IReadOnlyList<GitRepositoryInfo> Discover(IReadOnlyList<string> folders)
     {
         var result = new List<GitRepositoryInfo>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);

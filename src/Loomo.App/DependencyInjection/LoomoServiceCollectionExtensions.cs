@@ -124,6 +124,8 @@ internal static class LoomoServiceCollectionExtensions
         // ワークスペースの全リポジトリの一覧（§40.4）。「このパスはどのリポジトリか」の唯一の問い合わせ先。
         services.AddSingleton<GitRepositoryCatalog>();
         services.AddSingleton<GitService>();
+        // 全リポジトリの「いまの様子」の共有（§40.6）。エクスプローラー・ファイル一覧はここから受け取る。
+        services.AddSingleton<GitWorkspaceStatus>();
         services.AddSingleton<GitRootSwitchViewModel>();
         // 比較基準は Git パネルと Diff ペインで共有する一つの状態なので Singleton。
         services.AddSingleton<GitCompareBaseViewModel>();
@@ -216,7 +218,7 @@ internal static class LoomoServiceCollectionExtensions
             settings => sp.GetRequiredService<SettingsStore>().Save(settings)));
         services.AddSingleton<IFileMoveParticipant>(sp => sp.GetRequiredService<LspFileMoveParticipant>());
         services.AddSingleton<FolderTreeCommandHandler>();
-        services.AddSingleton<FolderTreeQuery>();
+        services.AddSingleton(sp => new FolderTreeQuery(gitStatus: sp.GetRequiredService<GitWorkspaceStatus>()));
         services.AddSingleton<IShellFileOperations, ShellFileOperations>();
         services.AddSingleton<WorkspaceListViewModel>();
         services.AddSingleton<TaskbarWorkspaceRecentService>();

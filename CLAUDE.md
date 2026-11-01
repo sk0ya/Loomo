@@ -319,7 +319,11 @@ presence without spawning git, 2 levels below each workspace folder, submodules 
 `git.ForPath(path)` / `git.For(root)` — a `GitService` whose `GitRootState` is **fixed** to that work tree (same instance
 per repo, so read caches and the monitor are shared; `SetActiveRoot` is a no-op on it). `RootPath` / `SetActiveRoot` /
 `ActiveRootChanged` / `GitRootSwitchViewModel` are the compatibility path until §40.11 P7 removes them; don't add new
-callers.
+callers. A view that needs a repo's *state* (branch, ahead/behind, change counts, in-progress op, per-file marks) reads
+`GitWorkspaceStatus` (App, singleton) instead of spawning its own `git status`: one `--no-optional-locks status -z -b` per
+repo, shared across views (a load requested while another is in flight reuses it), and it watches only `HEAD`/`index`/
+`refs`/op markers in the git dir — never the whole `.git`, and never a status without `--no-optional-locks`, or the
+watcher re-fires on its own index write (the FolderTree git-watcher loop, again).
 
 ### Rider-parity entry points — `docs/設計/36-Rider相当の使い勝手.md` (§36) is the authority
 

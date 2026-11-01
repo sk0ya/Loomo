@@ -14,7 +14,7 @@ internal static class GitAutoFetchPolicy
     /// <summary>部屋を開いた・切り替えた直後は、これより新しく取得していれば取り直さない。</summary>
     public static readonly TimeSpan FreshOnOpen = TimeSpan.FromMinutes(1);
 
-    /// <summary>続けて失敗したら、この回数で今の対象についてはやめる（対象が変わるか、手で取得できたら戻る）。</summary>
+    /// <summary>続けて失敗したら、この回数でそのリポジトリについてはやめる（パネルの対象に選び直すか、手で取得できたら戻る）。</summary>
     public const int MaxConsecutiveFailures = 3;
 
     public static TimeSpan Interval(int minutes) => TimeSpan.FromMinutes(Math.Max(1, minutes));
@@ -53,8 +53,11 @@ internal static class GitAutoFetchPolicy
 }
 
 /// <summary>
-/// 裏で fetch する（§24.92）。Git パネルが見ている対象（部屋のフォルダー）について、開いた・切り替えたときと一定の間隔で。
-/// 人が Git を操作している最中（パネルが実行中）は譲る。資格情報の窓は出さず、失敗が続けばその対象ではやめる。
+/// 裏で fetch する（§24.92）。ワークスペースの<b>全リポジトリ</b>（§40.6）について、開いた・増えたときと一定の間隔で。
+/// 判定はリポジトリごとに数え（最後の取得・失敗の回数）、1 回の刻みで取得するのは 1 つだけ——リポジトリが
+/// 多い部屋で、開いた瞬間に fetch が一斉に走らないように。Git パネルが見ているリポジトリを先に見る。
+/// 人が Git を操作している最中（パネルが実行中）は譲る。資格情報の窓は出さず（§24.101）、失敗が続けばその
+/// リポジトリではやめる。
 /// </summary>
 public sealed class GitAutoFetchScheduler : IDisposable
 {
@@ -67,11 +70,9 @@ public sealed class GitAutoFetchScheduler : IDisposable
     private readonly LoomoSettings _settings;
     private readonly GitPanelViewModel _panel;
     private readonly DispatcherTimer _timer;
-    private string? _root;
-    private string? _fetchHeadPath;
-    private bool _justOpened = true;
-    private DateTime? _lastAttemptUtc;
-    private int _failures;
+    private readonly Dictionary<string, RepositoryFetchState> _states = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>Git パネルが見ているリポジトリ（作業ツリーの根）。パネルの「最後に取得」はこれのもの。</summary>
+    private string? _panelRepository;
     private bool _running;
 
     public GitAutoFetchScheduler(GitService git, LoomoSettings settings, GitPanelViewModel panel)
@@ -85,14 +86,15 @@ public sealed class GitAutoFetchScheduler : IDisposable
 
     public void Start()
     {
-        _git.ActiveRootChanged += OnActiveRootChanged;
+        _git.ActiveRootChanged += OnTargetsChanged;
+        _git.Repositories.Changed += OnTargetsChanged;
         _git.OperationExecuted += OnOperationExecuted;
         _timer.Start();
     }
 
-    private void OnActiveRootChanged(object? sender, EventArgs e)
+    private void OnTargetsChanged(object? sender, EventArgs e)
     {
-        // 部屋の切替・フォルダーの切替。次の判定は落ち着いてから、「開いた直後」の基準で。
+        // 部屋の切替・フォルダーの追加と削除・パネルの対象の切替。次の判定は落ち着いてから。
         _timer.Dispatcher.BeginInvoke(() =>
         {
             _timer.Stop();
@@ -106,8 +108,12 @@ public sealed class GitAutoFetchScheduler : IDisposable
         // 手で取得（フェッチ・プル）できたなら、認証は通っている——やめていた自動の取得を戻す。
         if (e.Success && (e.Command.StartsWith("fetch", StringComparison.Ordinal) || e.Command.StartsWith("pull", StringComparison.Ordinal)))
         {
-            _failures = 0;
-            _timer.Dispatcher.BeginInvoke(UpdateSummary);
+            _timer.Dispatcher.BeginInvoke(() =>
+            {
+                if (_panelRepository is { } root && _states.TryGetValue(root, out var state))
+                    state.Failures = 0;
+                UpdateSummary();
+            });
         }
     }
 
@@ -116,50 +122,57 @@ public sealed class GitAutoFetchScheduler : IDisposable
         _timer.Interval = Tick;
         if (_running)
             return;
-        var root = _git.RootPath;
-        if (!string.Equals(root, _root, StringComparison.OrdinalIgnoreCase))
-        {
-            _root = root;
-            _fetchHeadPath = null;
-            _justOpened = true;
-            _failures = 0;
-            _lastAttemptUtc = null;
-            UpdateSummary();   // 前の対象の時刻を出したままにしない
-        }
-        // 人が Git を操作している最中は譲る。「開いた直後」の取得は、空いた次の刻みへ持ち越す。
-        if (_panel.IsBusy || string.IsNullOrEmpty(root))
-            return;
-        if (!_panel.IsRepository || !_panel.HasRemote)
-        {
-            _justOpened = false;
-            return;
-        }
-
         _running = true;
         try
         {
-            _fetchHeadPath ??= await _git.GetFetchHeadPathAsync();
+            // 一覧の作り直し（ディレクトリ列挙）は UI スレッドの外で。
+            var panelRoot = _git.RootPath;
+            var (repositories, panelRepository) = await Task.Run(() =>
+            {
+                var all = _git.Repositories.Repositories;
+                return (all, panelRoot is null ? null : _git.Repositories.RepositoryFor(panelRoot));
+            });
+
+            SyncStates(repositories, panelRepository?.Root);
             UpdateSummary();
-            if (!_settings.GitAutoFetch)
+            // 人が Git を操作している最中は譲る。「開いた直後」の取得は、空いた次の刻みへ持ち越す。
+            if (_panel.IsBusy || !_settings.GitAutoFetch)
                 return;
-            var now = DateTime.UtcNow;
-            var lastFetch = LastFetchUtc();
+
             var interval = GitAutoFetchPolicy.Interval(_settings.GitAutoFetchIntervalMinutes);
-            var fetch = GitAutoFetchPolicy.ShouldFetch(now, lastFetch, _lastAttemptUtc, _failures, interval, _justOpened);
-            _justOpened = false;
-            if (!fetch)
-                return;
-            _lastAttemptUtc = now;
-            var result = await _git.FetchInBackgroundAsync();
-            // 取得している間に対象が変わったなら、結果は前の対象のもの。数えない。
-            if (!string.Equals(_git.RootPath, root, StringComparison.OrdinalIgnoreCase))
-                return;
-            _failures = result.Success ? 0 : _failures + 1;
-            UpdateSummary();
+            foreach (var repository in OrderForFetch(repositories, panelRepository?.Root))
+            {
+                var state = _states[repository.Root];
+                var git = GitFor(repository.Root);
+                state.HasRemote ??= (await git.GetRemotesAsync()).Count > 0;
+                if (state.HasRemote != true)
+                {
+                    state.JustOpened = false;
+                    continue;
+                }
+                state.FetchHeadPath ??= await git.GetFetchHeadPathAsync();
+                if (string.Equals(repository.Root, _panelRepository, StringComparison.OrdinalIgnoreCase))
+                    UpdateSummary();
+                var now = DateTime.UtcNow;
+                var fetch = GitAutoFetchPolicy.ShouldFetch(
+                    now, state.LastFetchUtc(), state.LastAttemptUtc, state.Failures, interval, state.JustOpened);
+                state.JustOpened = false;
+                if (!fetch)
+                    continue;
+
+                state.LastAttemptUtc = now;
+                var result = await git.FetchInBackgroundAsync();
+                // 取得している間に一覧から外れた（部屋を切り替えた）なら、結果は数えない。
+                if (!_states.TryGetValue(repository.Root, out var still) || !ReferenceEquals(still, state))
+                    return;
+                state.Failures = result.Success ? 0 : state.Failures + 1;
+                UpdateSummary();
+                return; // 1 回の刻みで 1 つだけ
+            }
         }
         catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception or System.IO.IOException)
         {
-            _failures++;   // git が起動できない等。黙って次の機会へ
+            // git が起動できない等。黙って次の機会へ
         }
         finally
         {
@@ -167,27 +180,75 @@ public sealed class GitAutoFetchScheduler : IDisposable
         }
     }
 
-    private DateTime? LastFetchUtc()
+    /// <summary>一覧に合わせて、リポジトリごとの状態を足し・捨てる。新しく見えたリポジトリとパネルの対象が
+    /// 替わった先は「開いた直後」として扱う。</summary>
+    private void SyncStates(IReadOnlyList<GitRepositoryInfo> repositories, string? panelRepository)
     {
-        try
+        var alive = new HashSet<string>(repositories.Select(r => r.Root), StringComparer.OrdinalIgnoreCase);
+        foreach (var root in _states.Keys.Where(k => !alive.Contains(k)).ToList())
+            _states.Remove(root);
+        foreach (var repository in repositories)
         {
-            return _fetchHeadPath is { } path && System.IO.File.Exists(path) ? System.IO.File.GetLastWriteTimeUtc(path) : null;
+            if (!_states.ContainsKey(repository.Root))
+                _states[repository.Root] = new RepositoryFetchState();
         }
-        catch (Exception ex) when (ex is System.IO.IOException or UnauthorizedAccessException)
+        if (!string.Equals(panelRepository, _panelRepository, StringComparison.OrdinalIgnoreCase))
         {
-            return null;
+            _panelRepository = panelRepository;
+            if (panelRepository is not null && _states.TryGetValue(panelRepository, out var state))
+            {
+                state.JustOpened = true;
+                state.Failures = 0;
+                state.LastAttemptUtc = null;
+            }
         }
     }
 
-    /// <summary>フェッチのボタンに添える「最後に取得した時刻」。ファイルの時刻を見るだけなので刻みごとに更新してよい。</summary>
+    /// <summary>パネルが見ているリポジトリを先に、残りは一覧の順。</summary>
+    internal static IEnumerable<GitRepositoryInfo> OrderForFetch(IReadOnlyList<GitRepositoryInfo> repositories, string? panelRepository)
+        => repositories
+            .OrderBy(r => string.Equals(r.Root, panelRepository, StringComparison.OrdinalIgnoreCase) ? 0 : 1);
+
+    /// <summary>パネルが見ているリポジトリはパネルと同じ窓口で取得する——取得後の読み直し（ahead/behind）が
+    /// パネルへ届くように。それ以外はリポジトリに固定した窓口（§40.5）。</summary>
+    private GitService GitFor(string repositoryRoot)
+        => string.Equals(repositoryRoot, _panelRepository, StringComparison.OrdinalIgnoreCase) ? _git : _git.For(repositoryRoot);
+
+    /// <summary>フェッチのボタンに添える「最後に取得した時刻」（パネルが見ているリポジトリのもの）。</summary>
     private void UpdateSummary()
-        => _panel.FetchSummary = _fetchHeadPath is null ? null
-            : GitAutoFetchPolicy.Describe(LastFetchUtc(), DateTime.UtcNow, _settings.GitAutoFetch, _settings.GitAutoFetchIntervalMinutes);
+    {
+        var state = _panelRepository is { } root && _states.TryGetValue(root, out var s) ? s : null;
+        _panel.FetchSummary = state?.FetchHeadPath is null ? null
+            : GitAutoFetchPolicy.Describe(state.LastFetchUtc(), DateTime.UtcNow, _settings.GitAutoFetch, _settings.GitAutoFetchIntervalMinutes);
+    }
 
     public void Dispose()
     {
         _timer.Stop();
-        _git.ActiveRootChanged -= OnActiveRootChanged;
+        _git.ActiveRootChanged -= OnTargetsChanged;
+        _git.Repositories.Changed -= OnTargetsChanged;
         _git.OperationExecuted -= OnOperationExecuted;
+    }
+
+    private sealed class RepositoryFetchState
+    {
+        public string? FetchHeadPath { get; set; }
+        public bool? HasRemote { get; set; }
+        public bool JustOpened { get; set; } = true;
+        public DateTime? LastAttemptUtc { get; set; }
+        public int Failures { get; set; }
+
+        /// <summary>「最後に取得した時刻」は FETCH_HEAD の更新時刻（ターミナルで手で取得した分も数える）。</summary>
+        public DateTime? LastFetchUtc()
+        {
+            try
+            {
+                return FetchHeadPath is { } path && System.IO.File.Exists(path) ? System.IO.File.GetLastWriteTimeUtc(path) : null;
+            }
+            catch (Exception ex) when (ex is System.IO.IOException or UnauthorizedAccessException)
+            {
+                return null;
+            }
+        }
     }
 }

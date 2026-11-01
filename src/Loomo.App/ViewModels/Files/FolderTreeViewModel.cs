@@ -196,6 +196,9 @@ public sealed partial class FolderTreeViewModel : ObservableObject
             _gitService.RepositoryChanged += OnGitRepositoryChanged;
             _gitService.ActiveRootChanged += OnGitRepositoryChanged;
         }
+        // ターミナルでのコミット・チェックアウト・fetch は作業ツリーのファイルを変えないことがあるので、
+        // git ディレクトリの変化（§40.6）でも読み直す。
+        _query.GitRepositoryChanged += (_, _) => OnGitRepositoryChanged(this, EventArgs.Empty);
         _workspace.FoldersChanged += OnWorkspaceFoldersChanged;
         // アプリと同じ寿命の ViewModel なので購読は解除しない。
         FileIcons.PaletteChanged += (_, _) => RefreshIcons();
@@ -571,6 +574,11 @@ public sealed partial class FolderTreeViewModel : ObservableObject
         catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
         { return GitChangeKind.None; }
 
+        // 全リポジトリの状態の共有（§40.6）があればそこから引く——ファイル一覧が見ている場所を、ツリーが
+        // どの表示ルートで出しているか（ピン留めの切替等）に左右されない。
+        if (_query.GitStatus is { } shared)
+            return shared.StatusForPath(normalized, isDirectory);
+
         var state = ResolveGitStateForPath(normalized);
         if (state is null)
             return GitChangeKind.None;
@@ -586,6 +594,9 @@ public sealed partial class FolderTreeViewModel : ObservableObject
     internal IReadOnlyDictionary<string, GitChangeKind> GitStatusesForPaths(
         IEnumerable<(string FullPath, bool IsDirectory)> entries)
     {
+        if (_query.GitStatus is { } shared)
+            return shared.StatusesForPaths(entries);
+
         var result = new Dictionary<string, GitChangeKind>(StringComparer.OrdinalIgnoreCase);
         var grouped = new Dictionary<GitTreeState, List<(string FullPath, bool IsDirectory)>>();
         foreach (var entry in entries)

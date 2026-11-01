@@ -145,7 +145,7 @@ public sealed class FolderTreeViewStateTests : IDisposable
 
     /// <summary>復元時に存在しなかった追加フォルダーぶんの保留は捨てる（保存のたびに書き戻され続けない）。</summary>
     [Fact]
-    public void Pending_state_for_a_folder_that_cannot_be_restored_is_dropped()
+    public void Pending_state_for_a_folder_that_cannot_be_restored_is_dropped() => OnDispatcher(() =>
     {
         var sut = CreateSut();
         var missing = Path.Combine(Path.GetTempPath(), $"loomo-viewstate-missing-{Guid.NewGuid():N}");
@@ -157,10 +157,11 @@ public sealed class FolderTreeViewStateTests : IDisposable
 
         Assert.Equal([_src], sut.CaptureExpandedPaths());
         Assert.Null(sut.CaptureSelectedPath());
-    }
+        return Task.CompletedTask;
+    });
 
     [Fact]
-    public async Task Pending_state_is_applied_per_folder_in_a_multi_root_workspace()
+    public void Pending_state_is_applied_per_folder_in_a_multi_root_workspace() => OnDispatcher(async () =>
     {
         var sut = CreateSut();
         var lib = Path.Combine(_secondary, "lib");
@@ -176,5 +177,36 @@ public sealed class FolderTreeViewStateTests : IDisposable
         Assert.True(Find(sut, libFile).IsSelected);
         // 見出しは自動展開なので保存対象外。
         Assert.Equal([_src, lib], sut.CaptureExpandedPaths(), StringComparer.OrdinalIgnoreCase);
+    });
+
+    /// <summary>
+    /// 本番と同じく、読み込みの続きが UI スレッド（dispatcher）へ回る中で走らせる。dispatcher が無いと続きは
+    /// プールで割り込み、<c>LoadRoot</c> → <c>RestoreAdditionalFolders</c> の間に単一フォルダーのツリーが組み上がる
+    /// ——本番では同じ UI スレッドの同期の並びなので起きない。以前は Git 管理外の表示ルートでも
+    /// <c>git rev-parse</c> を起こしていた（数十 ms）ので、たまたま間に合わなかっただけ（§40.6 で git を起こさなくなった）。
+    /// </summary>
+    private static void OnDispatcher(Func<Task> body)
+    {
+        Exception? error = null;
+        var thread = new Thread(() =>
+        {
+            var dispatcher = System.Windows.Threading.Dispatcher.CurrentDispatcher;
+            SynchronizationContext.SetSynchronizationContext(
+                new System.Windows.Threading.DispatcherSynchronizationContext(dispatcher));
+            var frame = new System.Windows.Threading.DispatcherFrame();
+            dispatcher.BeginInvoke(new Action(async () =>
+            {
+                try { await body(); }
+                catch (Exception exception) { error = exception; }
+                finally { frame.Continue = false; }
+            }));
+            System.Windows.Threading.Dispatcher.PushFrame(frame);
+            dispatcher.InvokeShutdown();
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        thread.Join();
+        if (error is not null)
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(error).Throw();
     }
 }
