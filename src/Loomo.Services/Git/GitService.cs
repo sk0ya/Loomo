@@ -12,6 +12,7 @@ namespace sk0ya.Loomo.Services;
 /// ワークスペースのプライマリフォルダー（<see cref="IWorkspaceService.PrimaryFolder"/>）をリポジトリとして扱う。
 /// 表示ターミナルには一切流さない（AI と同様、人間のターミナルを汚さない方針）。
 /// 認証プロンプト・エディタ起動で固まらないよう GIT_TERMINAL_PROMPT=0 / GIT_EDITOR=true を強制する
+/// （資格情報の問いは端末ではなく部屋の入力欄へ回す・§24.101）
 /// （rebase --continue 等のメッセージ編集は既定メッセージのまま確定される）。
 /// </summary>
 public sealed class GitService
@@ -63,11 +64,12 @@ public sealed class GitService
     private readonly Dictionary<string, Task<GitCompareChanges>> _cachedCompareChanges =
         new(StringComparer.Ordinal);
 
-    public GitService(IWorkspaceService workspace)
+    /// <param name="askPass">資格情報の問いを部屋の中で受ける口（§24.101）。テストなど null なら、対話が要る操作はその場で失敗する。</param>
+    public GitService(IWorkspaceService workspace, GitAskPassServer? askPass = null)
     {
         _workspace = workspace;
         _rootState = new GitRootState(workspace);
-        _runner = new GitCommandRunner(_rootState);
+        _runner = new GitCommandRunner(_rootState, askPass);
         _status = new GitStatusService(_runner, _rootState);
         _history = new GitHistoryService(_runner);
         _mutations = new GitMutationExecutor(_runner);

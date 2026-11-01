@@ -55,6 +55,28 @@ public static class GitRefusal
             || (line.Contains("上書き", StringComparison.Ordinal)
                 && (line.Contains("チェックアウト", StringComparison.Ordinal) || line.Contains("切り替え", StringComparison.Ordinal))));
 
+    /// <summary>
+    /// 遠隔との認証で止まった（§24.101）。資格情報が無い・違う・入力を取り消した・ホスト鍵を受け入れなかった、のどれか。
+    /// git の文面は「Authentication failed」「could not read Username」、ssh の文面は「Permission denied (publickey」
+    /// 「Host key verification failed」。ssh の文面は訳されない。git の訳は版で揺れるので英語だけを見る
+    /// （Loomo の git は既定の言語で走るが、この 2 つは訳されていない版が多い。読み分けられなければ今まで通り git の文面）。
+    /// </summary>
+    public static bool IsAuthenticationFailure(string? error)
+    {
+        if (string.IsNullOrEmpty(error)) return false;
+        return error.Contains("Authentication failed", StringComparison.OrdinalIgnoreCase)
+               || error.Contains("could not read Username", StringComparison.OrdinalIgnoreCase)
+               || error.Contains("could not read Password", StringComparison.OrdinalIgnoreCase)
+               || error.Contains("terminal prompts disabled", StringComparison.OrdinalIgnoreCase)
+               || error.Contains("Permission denied (publickey", StringComparison.OrdinalIgnoreCase)
+               || error.Contains("Host key verification failed", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>認証で止まったときに、git の文面の前に置く一文。</summary>
+    public const string AuthenticationFailureMessage =
+        "認証で止まりました：資格情報が無いか、違っています（入力を取り消したときもこうなります）。" +
+        "もう一度実行すると入力欄が出ます。ターミナルで同じ git の操作をして、問いにそこで答えることもできます。";
+
     /// <summary>切り替える前に退避する stash のメッセージ（スタッシュの一覧でそれと分かるように）。</summary>
     public static string CheckoutStashMessage(string branch) => $"Loomo: {branch} へ切り替える前の変更";
 }

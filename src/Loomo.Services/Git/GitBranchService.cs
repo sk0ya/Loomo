@@ -142,6 +142,10 @@ public sealed class GitBranchService
     {
         ["GCM_INTERACTIVE"] = "never",
         ["SSH_ASKPASS_REQUIRE"] = "never",
+        // 部屋の入力欄（§24.101）にも問わない。空の値は GitCommandRunner が環境から消す。
+        ["GIT_ASKPASS"] = "",
+        ["SSH_ASKPASS"] = "",
+        [Core.Git.GitAskPass.PipeVariable] = "",
     };
 
     private async Task<string> RemoteRefsAsync()

@@ -19,6 +19,9 @@ public sealed class GitMutationExecutor
         try
         {
             result = await _runner.RunAsync(args).ConfigureAwait(false);
+            // 認証で止まったら、git の文面の前に次の一手を置く（§24.101・§24.99 と同じ形）。
+            if (!result.Success && GitRefusal.IsAuthenticationFailure(result.Error))
+                result = result with { Error = GitRefusal.AuthenticationFailureMessage + "\n\n" + result.Error.Trim() };
             return result;
         }
         finally

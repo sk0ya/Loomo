@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    git・ssh の資格情報の問いを Loomo へ取り次ぐ小さな exe（設計 §24.101）。git は GIT_ASKPASS、ssh は SSH_ASKPASS が
+    指すプログラムを「問いの文面」を引数にして起こし、標準出力を答えとして読む。この exe は問いを名前付きパイプで
+    Loomo へ渡し、Loomo の入力欄で打たれた答えをそのまま標準出力へ書いて終わる。答えはどこにも残さない。
+
+    問いのたびに起きて数百ミリ秒で終わるので常駐しない（bin から起こしてもビルドを塞がない）。
+    依存はやり取りの約束（GitAskPass）のための Loomo.Core だけ。
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\Loomo.Core\Loomo.Core.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <!-- コンソールアプリ（標準出力で答えを返すため）。git が窓なしのコンソールで起こすので窓は出ない。 -->
+    <OutputType>Exe</OutputType>
+    <RootNamespace>sk0ya.Loomo.AskPass</RootNamespace>
+    <AssemblyName>sk0ya.Loomo.AskPass</AssemblyName>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <!-- 本体と同じ理由で出力パスを固定する（App の出力へ写すときに場所を組み立てるため）。 -->
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+</Project>

@@ -111,6 +111,11 @@ internal static class LoomoServiceCollectionExtensions
 
     public static IServiceCollection AddLoomoGit(this IServiceCollection services)
     {
+        // git・ssh の資格情報の問いを部屋の入力欄で受ける（§24.101）。exe は本体の出力に同梱される。
+        services.AddSingleton<sk0ya.Loomo.Core.Git.IGitCredentialPrompter, GitCredentialPrompter>();
+        services.AddSingleton(sp => new GitAskPassServer(
+            sp.GetRequiredService<sk0ya.Loomo.Core.Git.IGitCredentialPrompter>(),
+            System.IO.Path.Combine(AppContext.BaseDirectory, sk0ya.Loomo.Core.Git.GitAskPass.ExecutableName)));
         // git CLI の監視状態と各画面の選択状態を共有するため、Git 機能は Singleton で構成する。
         services.AddSingleton<GitService>();
         services.AddSingleton<GitRootSwitchViewModel>();

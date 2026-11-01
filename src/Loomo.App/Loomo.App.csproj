@@ -31,6 +31,20 @@
           Condition="Exists('%(CompletionHostApphost.FullPath)')" />
   </Target>
 
+  <!-- git・ssh の資格情報の問いを Loomo へ取り次ぐ exe（§24.101）。GIT_ASKPASS／SSH_ASKPASS がこれを指す。
+       参照は「一緒にビルドさせる」ためで、本体はそのアセンブリを使わない。apphost は先読みワーカーと同じく明示的に置く。 -->
+  <ItemGroup>
+    <ProjectReference Include="../Loomo.AskPass/Loomo.AskPass.csproj" />
+  </ItemGroup>
+
+  <Target Name="CopyAskPassApphost" AfterTargets="Build">
+    <ItemGroup>
+      <AskPassApphost Include="$(MSBuildThisFileDirectory)../Loomo.AskPass/bin/$(Configuration)/sk0ya.Loomo.AskPass.exe" />
+    </ItemGroup>
+    <Copy SourceFiles="@(AskPassApphost)" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true"
+          Condition="Exists('%(AskPassApphost.FullPath)')" />
+  </Target>
+
   <!-- 端末の常駐ホスト（§34）。参照は「一緒にビルドさせる」ためで、本体はそのアセンブリを使わない
        （やり取りは名前付きパイプだけ）。出力フォルダーごと $(OutDir)ptyhost\ へ置き、起動側
        （PtyHostLauncher）がそこから %LOCALAPPDATA% へ写して起こす——bin を掴ませないため。 -->

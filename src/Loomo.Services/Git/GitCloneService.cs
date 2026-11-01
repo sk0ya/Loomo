@@ -14,8 +14,8 @@ public sealed record GitCloneResult(bool Success, string TargetPath, string Mess
 /// （<see cref="GitRootState"/>）には一切触らない。
 ///
 /// <para>認証は他の操作と同じ扱い（<c>GIT_TERMINAL_PROMPT=0</c>）。資格情報ヘルパー
-/// （Git Credential Manager 等）が入っていれば通り、対話が要るとその場で失敗する
-/// ——端末のプロンプトを裏で待って固まるより、理由を返して終わる方を選んでいる。</para>
+/// （Git Credential Manager 等）が入っていればそれが答え、無ければ部屋の入力欄で聞く（§24.101）。
+/// 端末のプロンプトを裏で待って固まることはない。</para>
 /// </summary>
 public sealed class GitCloneService
 {
@@ -56,7 +56,9 @@ public sealed class GitCloneService
 
         return result.Success
             ? new GitCloneResult(true, target, $"{name} をクローンしました。")
-            : new GitCloneResult(false, target, result.Message);
+            : new GitCloneResult(false, target, GitRefusal.IsAuthenticationFailure(result.Error)
+                ? GitRefusal.AuthenticationFailureMessage + "\n\n" + result.Message
+                : result.Message);
     }
 
     /// <summary>

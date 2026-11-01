@@ -18,16 +18,19 @@ public sealed class GitCommandRunner
     private static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(120);
     private readonly GitRootState _rootState;
     private readonly TimeSpan _timeout;
+    private readonly GitAskPassServer? _askPass;
 
-    public GitCommandRunner(GitRootState rootState)
-        : this(rootState, DefaultTimeout)
+    /// <param name="askPass">資格情報の問いを部屋の中で受ける口（§24.101）。null なら今まで通り、対話が要る操作はその場で失敗する。</param>
+    public GitCommandRunner(GitRootState rootState, GitAskPassServer? askPass = null)
+        : this(rootState, DefaultTimeout, askPass)
     {
     }
 
-    internal GitCommandRunner(GitRootState rootState, TimeSpan timeout)
+    internal GitCommandRunner(GitRootState rootState, TimeSpan timeout, GitAskPassServer? askPass = null)
     {
         _rootState = rootState;
         _timeout = timeout;
+        _askPass = askPass;
     }
 
     public Task<GitCommandResult> RunAsync(params string[] args) =>
@@ -142,7 +145,7 @@ public sealed class GitCommandRunner
         }
     }
 
-    private static ProcessStartInfo CreateStartInfo(
+    private ProcessStartInfo CreateStartInfo(
         string root,
         IReadOnlyDictionary<string, string>? extraEnvironment,
         IReadOnlyList<string> args)
@@ -161,9 +164,19 @@ public sealed class GitCommandRunner
         startInfo.EnvironmentVariables["GIT_TERMINAL_PROMPT"] = "0";
         startInfo.EnvironmentVariables["GIT_EDITOR"] = "true";
         startInfo.EnvironmentVariables["GIT_SEQUENCE_EDITOR"] = "true";
+        // 資格情報の問いは Loomo の入力欄へ（§24.101）。呼び出し側の環境が後から上書きできる——裏の取得は
+        // 空の値で消して、問わずに失敗させる。
+        if (_askPass?.EnvironmentFor(AskPassContext(args)) is { } askPass)
+            foreach (var (key, value) in askPass)
+                startInfo.EnvironmentVariables[key] = value;
         if (extraEnvironment is not null)
             foreach (var (key, value) in extraEnvironment)
-                startInfo.EnvironmentVariables[key] = value;
+            {
+                if (value.Length == 0)
+                    startInfo.EnvironmentVariables.Remove(key);
+                else
+                    startInfo.EnvironmentVariables[key] = value;
+            }
 
         startInfo.ArgumentList.Add("-c");
         startInfo.ArgumentList.Add("core.quotepath=false");
@@ -172,6 +185,21 @@ public sealed class GitCommandRunner
         foreach (var arg in args)
             startInfo.ArgumentList.Add(arg);
         return startInfo;
+    }
+
+    /// <summary>入力欄に出す「どの操作か」。サブコマンドと、その後ろの名前（リモート・ブランチ）まで——
+    /// URL に資格情報が埋まっていることがあるので、<c>://</c> を含む引数は出さない。</summary>
+    internal static string AskPassContext(IReadOnlyList<string> args)
+    {
+        var parts = new List<string> { "git" };
+        foreach (var arg in args)
+        {
+            if (parts.Count >= 4) break;
+            if (arg.StartsWith('-')) continue;
+            if (arg.Contains("://", StringComparison.Ordinal) || arg.Contains('@')) continue;
+            parts.Add(arg);
+        }
+        return string.Join(' ', parts);
     }
 
     private static void TryKill(Process process)
