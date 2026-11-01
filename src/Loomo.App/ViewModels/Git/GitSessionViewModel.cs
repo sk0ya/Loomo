@@ -280,11 +280,12 @@ public sealed partial class GitSessionViewModel : ObservableObject
 
     /// <summary>Git 操作の対象フォルダーの切替 UI 状態。サイドバー Git パネル（<see cref="GitPanelViewModel"/>）
     /// と共有する（どちらから切り替えても両方に反映される）。</summary>
-    public GitRootSwitchViewModel RootSwitch { get; }
+    /// <summary>リポジトリの帯（§40.8.4）。Git パネル・ブランチ切替と同じインスタンス。</summary>
+    public GitRepositoryStripViewModel Repositories { get; }
 
     public GitSessionViewModel(GitService git, IEditorService editor,
         GitSessionQuery query, GitSessionCommandHandler commands, GitHistoryViewModel history,
-        GitRootSwitchViewModel rootSwitch,
+        GitRepositoryStripViewModel repositories,
         LoomoSettings? settings = null, SettingsStore? settingsStore = null)
     {
         _git = git;
@@ -292,7 +293,7 @@ public sealed partial class GitSessionViewModel : ObservableObject
         _query = query;
         Commands = commands;
         History = history;
-        RootSwitch = rootSwitch;
+        Repositories = repositories;
         _settings = settings;
         _settingsStore = settingsStore;
         // 保存された表示状態を初期反映する（field 直接代入なので OnCommitDetailVisibleChanged＝永続化は走らない）。

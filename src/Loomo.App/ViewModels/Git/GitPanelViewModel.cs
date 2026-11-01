@@ -346,19 +346,20 @@ public sealed partial class GitPanelViewModel : ObservableObject
 
     /// <summary>Git 操作の対象フォルダーの切替 UI 状態。サイドバー Git パネルとセッションペイン
     /// （<see cref="GitSessionViewModel"/>）で共有する（どちらから切り替えても両方に反映される）。</summary>
-    public GitRootSwitchViewModel RootSwitch { get; }
+    /// <summary>リポジトリの帯（§40.8.3）。Git ペイン・ブランチ切替と同じインスタンス。</summary>
+    public GitRepositoryStripViewModel Repositories { get; }
 
     /// <summary>比較基準（作業ツリー／ブランチ／分岐点）。Diff ペインと共有する Singleton。</summary>
     public GitCompareBaseViewModel CompareBase { get; }
 
     public GitPanelViewModel(
         GitService git, IEditorService editor, IWorkspaceService workspace,
-        GitRootSwitchViewModel rootSwitch, GitCompareBaseViewModel compareBase)
+        GitRepositoryStripViewModel repositories, GitCompareBaseViewModel compareBase)
     {
         _git = git;
         _editor = editor;
         _workspace = workspace;
-        RootSwitch = rootSwitch;
+        Repositories = repositories;
         CompareBase = compareBase;
         // 基準が変わったら一覧を組み直す（ポーリング署名は git status しか見ないので、
         // 基準の切替はそこには現れない＝自前で読み直さないと古い一覧が残る）。

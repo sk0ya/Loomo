@@ -146,7 +146,7 @@ public sealed class CommitDraftTests : IAsyncLifetime
     {
         var compareBase = new GitCompareBaseViewModel(_git);
         return new GitPanelViewModel(
-            _git, new FakeEditorService(), _workspace, new GitRootSwitchViewModel(_git, _workspace), compareBase);
+            _git, new FakeEditorService(), _workspace, new GitRepositoryStripViewModel(_git, _workspace), compareBase);
     }
 
     private async Task<GitCommandResult> MustRunAsync(params string[] args)

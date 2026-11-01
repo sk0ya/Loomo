@@ -83,6 +83,6 @@ public sealed class GitReferenceTabViewTests
         var query = new GitSessionQuery(git);
         return new GitSessionViewModel(git, new FakeEditorService(), query,
             new GitSessionCommandHandler(git), new GitHistoryViewModel(query),
-            new GitRootSwitchViewModel(git, workspace));
+            new GitRepositoryStripViewModel(git, workspace));
     }
 }

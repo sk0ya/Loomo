@@ -183,7 +183,7 @@ public sealed class GitSessionDiffWindowTests : IAsyncLifetime
         var editor = new FakeEditorService();
         var query = new GitSessionQuery(_git);
         return new GitSessionViewModel(_git, editor, query, new GitSessionCommandHandler(_git),
-            new GitHistoryViewModel(query), new GitRootSwitchViewModel(_git, _workspace), null, null);
+            new GitHistoryViewModel(query), new GitRepositoryStripViewModel(_git, _workspace), null, null);
     }
 
     /// <summary>HEAD のコミット行。<see cref="GitHistoryViewModel.ReloadAsync"/> は経由しない——

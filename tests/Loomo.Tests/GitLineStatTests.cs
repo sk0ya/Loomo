@@ -59,7 +59,7 @@ public sealed class GitLineStatTests : IAsyncLifetime
         await File.WriteAllTextAsync(Path.Combine(_root, "untracked.txt"), "new\n");
 
         var vm = new GitPanelViewModel(_git, new FakeEditorService(), _workspace,
-            new GitRootSwitchViewModel(_git, _workspace), new GitCompareBaseViewModel(_git));
+            new GitRepositoryStripViewModel(_git, _workspace), new GitCompareBaseViewModel(_git));
         await vm.RefreshCommand.ExecuteAsync(null);
 
         var staged = Assert.Single(vm.Staged);

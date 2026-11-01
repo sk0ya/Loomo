@@ -110,7 +110,7 @@ public sealed class GitWorkingPatchTests : IAsyncLifetime
         await File.WriteAllTextAsync(Path.Combine(_root, "keep.txt"), "k2\n");
         await File.WriteAllTextAsync(Path.Combine(_root, "new.txt"), "new\n");
         var vm = new GitPanelViewModel(_git, new FakeEditorService(), _workspace,
-            new GitRootSwitchViewModel(_git, _workspace), new GitCompareBaseViewModel(_git));
+            new GitRepositoryStripViewModel(_git, _workspace), new GitCompareBaseViewModel(_git));
         await vm.RefreshCommand.ExecuteAsync(null);
         var a = Assert.Single(vm.Changes, c => c.Entry.Path == "a.txt");
         var keep = Assert.Single(vm.Changes, c => c.Entry.Path == "keep.txt");

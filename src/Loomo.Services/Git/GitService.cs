@@ -86,8 +86,9 @@ public sealed class GitService
     private GitService(IWorkspaceService workspace, GitRepositoryCatalog catalog, GitAskPassServer? askPass)
         : this(workspace,
             // 対象にはワークスペースフォルダーのほか、一覧が見つけたリポジトリの根（入れ子）も選べる（§40.8.3）。
-            new GitRootState(workspace, root => catalog.Repositories.Any(r =>
-                string.Equals(r.Root, root, StringComparison.OrdinalIgnoreCase))),
+            new GitRootState(workspace,
+                root => catalog.Repositories.Any(r => string.Equals(r.Root, root, StringComparison.OrdinalIgnoreCase)),
+                path => catalog.RepositoryFor(path)?.Root),
             askPass, catalog, owner: null)
     {
     }
@@ -204,7 +205,7 @@ public sealed class GitService
     /// <summary>Git 操作の対象フォルダーを明示的に切り替える（ワークスペースフォルダーでなければ無視）。</summary>
     public void SetActiveRoot(string? path) => _rootState.SetRoot(path);
 
-    /// <summary>fullPath を含むワークスペースフォルダーへ Git 操作対象を切り替える（該当が無ければ何もしない）。
+    /// <summary>fullPath を含むリポジトリ（無ければワークスペースフォルダー）へ Git 操作対象を切り替える（該当が無ければ何もしない）。
     /// ブレーム・履歴などファイル起点の操作を、現在の対象と違うフォルダーのファイルに対して行うときに使う。</summary>
     public void SetActiveRootForPath(string fullPath) => _rootState.SelectForPath(fullPath);
 

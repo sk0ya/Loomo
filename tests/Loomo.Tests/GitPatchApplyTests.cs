@@ -102,7 +102,7 @@ public sealed class GitPatchApplyTests : IAsyncLifetime
         var clip = Path.Combine(_root, "x.patch");
         await File.WriteAllTextAsync(clip, patch);
         var vm = new GitPanelViewModel(_git, new FakeEditorService(), _workspace,
-            new GitRootSwitchViewModel(_git, _workspace), new GitCompareBaseViewModel(_git));
+            new GitRepositoryStripViewModel(_git, _workspace), new GitCompareBaseViewModel(_git));
 
         await vm.ApplyPatchFileAsync(clip);
 

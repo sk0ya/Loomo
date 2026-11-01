@@ -20,7 +20,7 @@ public sealed class GitSessionCommitDetailTests
         var editor = new FakeEditorService();
         var query = new GitSessionQuery(git);
         return new GitSessionViewModel(git, editor, query, new GitSessionCommandHandler(git),
-            new GitHistoryViewModel(query), new GitRootSwitchViewModel(git, workspace), settings, store);
+            new GitHistoryViewModel(query), new GitRepositoryStripViewModel(git, workspace), settings, store);
     }
 
     [Fact]

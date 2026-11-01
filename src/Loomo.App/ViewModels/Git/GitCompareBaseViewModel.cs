@@ -14,7 +14,7 @@ public sealed record GitCompareModeOption(GitCompareBaseKind Kind, string Label)
 
 /// <summary>
 /// 「何に対する差分として見るか」（作業ツリー／ブランチ／分岐点／ワークツリー／リビジョン）の選択状態。
-/// <see cref="GitRootSwitchViewModel"/> と同じく Singleton——サイドバー Git パネルと Diff ペインは
+/// <see cref="GitRepositoryStripViewModel"/> と同じく Singleton——サイドバー Git パネルと Diff ペインは
 /// 別々の画面領域だが<b>同じ一つの基準</b>を見ているので、どちらで切り替えても両方に反映される。
 ///
 /// <para>解決（ref の確定）は毎回実行する。分岐点は fetch でリモートが動けば変わり、

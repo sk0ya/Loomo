@@ -10,7 +10,7 @@ public sealed class GitPanelCommitTests : IAsyncLifetime
     private readonly string _root = Path.Combine(Path.GetTempPath(), "loomo-git-panel-tests", Guid.NewGuid().ToString("N"));
     private FakeWorkspaceService _workspace = null!;
     private GitService _git = null!;
-    private GitRootSwitchViewModel _rootSwitch = null!;
+    private GitRepositoryStripViewModel _rootSwitch = null!;
     // 実アプリでは Singleton の1つを Git パネルと Diff ペインが共有する。テストの配線でも共有にしないと
     // 「どちらで切り替えても両方に効く」という中心的な不変条件が守られない。
     private GitCompareBaseViewModel _compareBase = null!;
@@ -21,7 +21,7 @@ public sealed class GitPanelCommitTests : IAsyncLifetime
         _workspace = new FakeWorkspaceService();
         _workspace.OpenFolder(_root);
         _git = new GitService(_workspace);
-        _rootSwitch = new GitRootSwitchViewModel(_git, _workspace);
+        _rootSwitch = new GitRepositoryStripViewModel(_git, _workspace);
         _compareBase = new GitCompareBaseViewModel(_git);
         await MustRunAsync("init");
         await MustRunAsync("config", "user.name", "Loomo Test");

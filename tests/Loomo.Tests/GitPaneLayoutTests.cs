@@ -104,6 +104,6 @@ public sealed class GitPaneLayoutTests
         var git = new GitService(workspace);
         var query = new GitSessionQuery(git);
         return new GitSessionViewModel(git, new FakeEditorService(), query, new GitSessionCommandHandler(git),
-            new GitHistoryViewModel(query), new GitRootSwitchViewModel(git, workspace), settings, store);
+            new GitHistoryViewModel(query), new GitRepositoryStripViewModel(git, workspace), settings, store);
     }
 }

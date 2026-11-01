@@ -23,7 +23,7 @@ public sealed class GitReferenceTabTests
         var query = new GitSessionQuery(git);
         return new GitSessionViewModel(git, new FakeEditorService(), query,
             new GitSessionCommandHandler(git), new GitHistoryViewModel(query),
-            new GitRootSwitchViewModel(git, workspace), settings, store);
+            new GitRepositoryStripViewModel(git, workspace), settings, store);
     }
 
     [Fact]

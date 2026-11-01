@@ -684,6 +684,11 @@
                                     </Style>
                                 </TextBlock.Style>
                             </TextBlock>
+                            <!-- リポジトリが2つ以上の部屋では、どのリポジトリのブランチかを前に出す（§40.8.5）。 -->
+                            <TextBlock Text="{Binding GitSession.Repositories.SelectedLabel, StringFormat={}{0} ·}"
+                                       FontSize="{DynamicResource Fs12}" Foreground="{DynamicResource FgDim}"
+                                       VerticalAlignment="Center" Margin="0,0,4,0" MaxWidth="160" TextTrimming="CharacterEllipsis"
+                                       Visibility="{Binding GitSession.Repositories.IsMulti, Converter={StaticResource BoolToVis}}" />
                             <TextBlock Text="{Binding GitSession.BranchLabel}" FontSize="{DynamicResource Fs12}"
                                        VerticalAlignment="Center" MaxWidth="220"
                                        TextTrimming="CharacterEllipsis" />

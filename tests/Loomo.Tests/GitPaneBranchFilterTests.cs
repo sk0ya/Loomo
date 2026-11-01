@@ -147,7 +147,7 @@ public sealed class GitPaneBranchFilterTests : IAsyncLifetime
         var query = new GitSessionQuery(git);
         var vm = new GitSessionViewModel(git, new FakeEditorService(), query,
             new GitSessionCommandHandler(git), new GitHistoryViewModel(query),
-            new GitRootSwitchViewModel(git, workspace));
+            new GitRepositoryStripViewModel(git, workspace));
         vm.EnsureLoaded();
         await WaitAsync(() => vm.BranchTree.Count > 0);
         return vm;

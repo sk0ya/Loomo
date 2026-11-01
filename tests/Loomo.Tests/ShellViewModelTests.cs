@@ -131,7 +131,7 @@ public class ShellViewModelTests
         var workspacesVm = new WorkspaceListViewModel(workspaceStore);
 
         var git = new sk0ya.Loomo.Services.GitService(workspace);
-        var rootSwitch = new GitRootSwitchViewModel(git, workspace);
+        var rootSwitch = new GitRepositoryStripViewModel(git, workspace);
         var diffFiles = new DiffFileGateway();
         // 実アプリと同じく Git パネルと Diff ペインで1つを共有する（Singleton 相当）。
         var compareBase = new GitCompareBaseViewModel(git);

@@ -18,14 +18,20 @@ public sealed class GitRootState
     private readonly string? _fixedRoot;
     /// <summary>ワークスペースフォルダー以外に対象にしてよい場所（一覧が見つけたリポジトリの根・§40.4）。</summary>
     private readonly Func<string, bool>? _isKnownRepository;
+    /// <summary>パスが属するリポジトリの根（いちばん深いもの）。ファイル起点の切替（<see cref="SelectForPath"/>）で使う。</summary>
+    private readonly Func<string, string?>? _repositoryFor;
     private string? _explicitRoot;
 
     /// <param name="isKnownRepository">ワークスペースフォルダーでなくても対象にしてよい場所か（入れ子のリポジトリの根）。
     /// 親フォルダーの下の <c>api/</c>・<c>web/</c> を Git パネルで選べるようにするため。</param>
-    public GitRootState(IWorkspaceService workspace, Func<string, bool>? isKnownRepository = null)
+    /// <param name="repositoryFor">パスが属するリポジトリの根。ファイル起点の切替をワークスペースフォルダーではなく
+    /// リポジトリ単位にするため（§40.8.4）。</param>
+    public GitRootState(IWorkspaceService workspace, Func<string, bool>? isKnownRepository = null,
+        Func<string, string?>? repositoryFor = null)
     {
         _workspace = workspace;
         _isKnownRepository = isKnownRepository;
+        _repositoryFor = repositoryFor;
         _workspace.FoldersChanged += (_, _) => Reconcile();
     }
 
@@ -62,6 +68,13 @@ public sealed class GitRootState
     {
         if (_workspace is null) return;
         var full = Path.GetFullPath(fullPath);
+        // まず<b>リポジトリ</b>で引く（§40.8.4）：親フォルダーの下の入れ子のリポジトリ（work/api）のファイルの履歴を開くと、
+        // ワークスペースフォルダーで引いていた頃は対象が Git 管理外の work になって何も引けなかった。
+        if (_repositoryFor?.Invoke(full) is { } repository && IsAllowed(repository))
+        {
+            SetRoot(repository);
+            return;
+        }
         var folder = _workspace.Folders
             .Where(f => IsWithin(f, full))
             .OrderByDescending(f => f.Length)

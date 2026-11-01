@@ -349,7 +349,7 @@ public sealed class GitComparePanelTests : IAsyncLifetime
 
     private GitPanelViewModel CreatePanel()
         => new(_git, new FakeEditorService(), _workspace,
-            new GitRootSwitchViewModel(_git, _workspace), _compareBase);
+            new GitRepositoryStripViewModel(_git, _workspace), _compareBase);
 
     private DiffSessionViewModel CreateDiff()
         => new(_git, new FakeEditorService(), _workspace, new DiffFileGateway(),

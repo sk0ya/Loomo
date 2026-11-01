@@ -45,7 +45,7 @@ public sealed class GitCarryChangesTests : IAsyncLifetime
     private async Task<GitPanelViewModel> PanelAsync()
     {
         var vm = new GitPanelViewModel(_git, new FakeEditorService(), _workspace,
-            new GitRootSwitchViewModel(_git, _workspace), new GitCompareBaseViewModel(_git))
+            new GitRepositoryStripViewModel(_git, _workspace), new GitCompareBaseViewModel(_git))
         {
             WorktreesProvider = async () => await _git.GetWorktreesAsync(includeChangeCounts: false),
             ConfirmPatch = (_, _) => true,

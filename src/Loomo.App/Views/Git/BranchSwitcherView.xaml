@@ -80,15 +80,14 @@
                     </StackPanel>
 
                     <StackPanel Orientation="Horizontal">
-                        <!-- マルチルート（ワークスペースフォルダーが2つ以上）のときだけ：Git 操作の対象フォルダーを
-                             選ぶ。Git ペイン・サイドバー Git パネルと同じ GitRootSwitchViewModel を共有するので、
-                             どこで切り替えても全部に反映される。 -->
+                        <!-- リポジトリが2つ以上のときだけ：どのリポジトリのブランチを切り替えるか（§40.8.3）。Git パネル・
+                             Git ペインと同じリポジトリの帯（GitRepositoryStripViewModel）を共有するので、どこで選んでも全部に反映される。 -->
                         <ComboBox MinHeight="26" Margin="0,0,6,0"
-                                  ItemsSource="{Binding RootSwitch.RootOptions}"
-                                  SelectedItem="{Binding RootSwitch.SelectedRootOption, Mode=TwoWay}"
+                                  ItemsSource="{Binding Repositories.Items}"
+                                  SelectedItem="{Binding Repositories.SelectedItem, Mode=TwoWay}"
                                   DisplayMemberPath="Label"
-                                  ToolTip="{Binding RootSwitch.SelectedRootOption.FullPath}"
-                                  Visibility="{Binding RootSwitch.IsMultiRoot, Converter={StaticResource BoolToVis}}" />
+                                  ToolTip="{Binding Repositories.SelectedItem.Root}"
+                                  Visibility="{Binding Repositories.IsMulti, Converter={StaticResource BoolToVis}}" />
                         <StackPanel Orientation="Horizontal"
                                     IsEnabled="{Binding HasRemote}">
                         <Button Style="{StaticResource SyncOpButton}"

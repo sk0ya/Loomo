@@ -66,16 +66,19 @@ public partial class ShellWindow {
             return;
         try {
             var commands = workspace.RecentTerminalCommands?.ToList() ?? new List<RecentTerminalCommandSnapshot>();
-            IReadOnlyList<GitReflogEntry> reflog = Array.Empty<GitReflogEntry>();
-            IReadOnlyList<AwayFileChange> files = Array.Empty<AwayFileChange>();
-            if (_git.RootPath is { Length: > 0 } root) {
-                var page = await _git.GetReflogAsync("HEAD", 0, AwayReflogTake);
+            // 全リポジトリぶん（§40.8.5）。以前は Git パネルの対象のリポジトリだけで、もう一方のリポジトリで留守中に
+            // 進んだこと（ターミナルのコミット・変更）は知らせに出なかった。
+            var reflog = new List<GitReflogEntry>();
+            var files = new List<AwayFileChange>();
+            foreach (var git in await RepositoryWindowsAsync()) {
+                var page = await git.GetReflogAsync("HEAD", 0, AwayReflogTake);
                 if (page.Error is null)
-                    reflog = page.Entries;
-                var status = await _git.GetStatusAsync();
-                if (status.IsRepository)
-                    files = await Task.Run(() => StatChangedFiles(root, status));
+                    reflog.AddRange(page.Entries);
+                var status = await git.GetStatusAsync();
+                if (status.IsRepository && git.RootPath is { Length: > 0 } root)
+                    files.AddRange(await Task.Run(() => StatChangedFiles(root, status)));
             }
+            reflog.Sort((a, b) => Nullable.Compare(b.Time, a.Time));
             // 読んでいる間に別のワークスペースへ移ったら、前の部屋のまとめは出さない
             if (!ReferenceEquals(_activeWorkspace, workspace))
                 return;
@@ -86,6 +89,12 @@ public partial class ShellWindow {
         catch (Exception ex) when (ex is IOException or InvalidOperationException or UnauthorizedAccessException) {
             // 知らせは補助。読めなければ出さないだけで、戻ってきた人の操作は止めない
         }
+    }
+
+    /// <summary>ワークスペースの全リポジトリの、対象を固定した窓口（§40.5）。一覧は背景で作る。リポジトリが無ければ空。</summary>
+    private async Task<IReadOnlyList<sk0ya.Loomo.Services.GitService>> RepositoryWindowsAsync() {
+        var repositories = await Task.Run(() => _git.Repositories.Repositories);
+        return repositories.Select(r => _git.For(r)).ToList();
     }
 
     /// <summary>変更中のファイルの更新時刻（書き出しスレッドではなくプールで。ファイル数は上限で切る）。
@@ -158,22 +167,24 @@ public partial class ShellWindow {
             var trail = _vm.Trail;
             var (bookmarks, runs) = await Task.Run(() => (trail.ListBookmarks(), trail.LoadCommandRuns(day)));
             var reflog = new List<GitReflogEntry>();
-            IReadOnlyList<AwayFileChange> files = Array.Empty<AwayFileChange>();
-            if (_git.RootPath is { Length: > 0 } root) {
+            var files = new List<AwayFileChange>();
+            // 全リポジトリぶん（§40.8.5・留守中の知らせと同じ）。
+            foreach (var git in await RepositoryWindowsAsync()) {
                 // reflog は新しい順。その日の始まりより古い記録に届くまでページを読む
                 var dayStart = new DateTimeOffset(day.ToDateTime(TimeOnly.MinValue, DateTimeKind.Local));
                 for (int skip = 0; skip < DaySummaryReflogMax; skip += DaySummaryReflogPage) {
-                    var page = await _git.GetReflogAsync("HEAD", skip, DaySummaryReflogPage);
+                    var page = await git.GetReflogAsync("HEAD", skip, DaySummaryReflogPage);
                     if (page.Error is not null)
                         break;
                     reflog.AddRange(page.Entries);
                     if (!page.HasMore || page.Entries.Count == 0 || page.Entries[^1].Time is { } oldest && oldest < dayStart)
                         break;
                 }
-                var status = await _git.GetStatusAsync();
-                if (status.IsRepository)
-                    files = await Task.Run(() => StatChangedFiles(root, status));
+                var status = await git.GetStatusAsync();
+                if (status.IsRepository && git.RootPath is { Length: > 0 } root)
+                    files.AddRange(await Task.Run(() => StatChangedFiles(root, status)));
             }
+            reflog.Sort((a, b) => Nullable.Compare(b.Time, a.Time));
             if (!ReferenceEquals(_activeWorkspace, workspace))
                 return;
             var summary = DaySummaryBuilder.Build(day, bookmarks, runs, reflog, files);

@@ -335,6 +335,11 @@
     </UserControl.Resources>
 
     <DockPanel>
+        <!-- リポジトリのタブ（§40.8.4）：リポジトリが2つ以上あるとき、全リポジトリを印付きのタブで並べる。ファイル起点の操作
+             （履歴・コミットの中のファイル）はそのファイルのリポジトリのタブへ移り、帯の下に一言出る。 -->
+        <local:RepositoryStripView DockPanel.Dock="Top" IsHorizontal="True" Margin="4,2,4,0"
+                                   DataContext="{Binding Repositories}" />
+
         <!-- リポジトリでないとき -->
         <TextBlock DockPanel.Dock="Top" Margin="12,8"
                    Text="{Binding NotRepositoryMessage}"

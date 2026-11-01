@@ -129,7 +129,8 @@ internal static class LoomoServiceCollectionExtensions
         // リポジトリの印（§40.7）：押したときの動作の唯一の受け口と、リポジトリごとに1つの印。
         services.AddSingleton<RepositoryActions>();
         services.AddSingleton<GitRepositoryChips>();
-        services.AddSingleton<GitRootSwitchViewModel>();
+        // Git パネル・Git ペイン・ブランチ切替が共有するリポジトリの帯（§40.8.3）。どこで選んでも全部に反映される。
+        services.AddSingleton<GitRepositoryStripViewModel>();
         // 比較基準は Git パネルと Diff ペインで共有する一つの状態なので Singleton。
         services.AddSingleton<GitCompareBaseViewModel>();
         // エディタのガターも同じ基準で比べる（§24.11.1）。
