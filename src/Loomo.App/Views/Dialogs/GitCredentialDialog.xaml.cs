@@ -21,9 +21,10 @@ public partial class GitCredentialDialog : Window
     }
 
     /// <summary>モーダルで聞いて答えを返す（UI スレッドから）。取り消し・閉じられたら null。
-    /// 答えの形は <see cref="IGitCredentialPrompter.AskAsync"/> の約束どおり。</summary>
-    public static string? Show(Window? owner, GitAskPass.Request request, GitCredentialPromptKind kind,
-        CancellationToken cancellationToken)
+    /// 答えの形は <see cref="IGitCredentialPrompter.AskAsync"/> の約束どおり。<paramref name="remember"/> があれば
+    /// 「次から聞かれないようにする」を出す。</summary>
+    public static GitCredentialAnswer? Show(Window? owner, GitAskPass.Request request, GitCredentialPromptKind kind,
+        GitCredentialRemember? remember, CancellationToken cancellationToken)
     {
         if (cancellationToken.IsCancellationRequested)
             return null;
@@ -55,6 +56,13 @@ public partial class GitCredentialDialog : Window
                 dialog.CancelButton.Content = "いいえ";
                 break;
         }
+        if (RememberLabel(remember) is { } label)
+        {
+            dialog.RememberText.Text = label;
+            dialog.RememberBox.Visibility = Visibility.Visible;
+            // チェックの説明と同じことを繰り返さない。
+            dialog.NoteText.Text = "答えは git に渡すだけで、Loomo には残しません。";
+        }
         dialog.Loaded += (_, _) =>
         {
             // 裏で git が聞いてきたときも手前へ（OS が前面化を許さなければ、タスクバーで点滅する）。
@@ -66,8 +74,21 @@ public partial class GitCredentialDialog : Window
 
         using var registration = cancellationToken.Register(
             () => dialog.Dispatcher.BeginInvoke(() => { if (dialog.IsVisible) dialog.Close(); }));
-        return dialog.ShowDialog() == true ? dialog._answer : null;
+        return dialog.ShowDialog() == true && dialog._answer is { } answer
+            ? new GitCredentialAnswer(answer, dialog.RememberBox.Visibility == Visibility.Visible && dialog.RememberBox.IsChecked == true)
+            : null;
     }
+
+    /// <summary>チェックの文面。何をどこに書くか（管理者の確認が出ることも）を先に言う。</summary>
+    internal static string? RememberLabel(GitCredentialRemember? remember) => remember switch
+    {
+        GitCredentialRemember.Https https =>
+            $"次から聞かれないようにする — {https.Origin} の資格情報を Git Credential Manager に覚えさせます（git が通ったときだけ）。",
+        GitCredentialRemember.SshKey key =>
+            $"次から聞かれないようにする — 鍵 {System.IO.Path.GetFileName(key.KeyPath)} を Windows の ssh-agent に預けます。" +
+            "初めてのときは ssh-agent を起こすための管理者の確認が出て、git が Windows の OpenSSH を使うよう設定します。",
+        _ => null,
+    };
 
     private void OnOk(object sender, RoutedEventArgs e)
     {

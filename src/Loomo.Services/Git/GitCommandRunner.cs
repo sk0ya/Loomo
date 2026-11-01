@@ -101,6 +101,7 @@ public sealed class GitCommandRunner
             return new GitCommandResult(-1, "", $"フォルダーがありません: {workingDirectory}");
 
         var startInfo = CreateStartInfo(workingDirectory, extraEnvironment, args, out var invocation);
+        GitCommandResult? outcome = null;
         var limit = timeout ?? _timeout;
         try
         {
@@ -148,10 +149,11 @@ public sealed class GitCommandRunner
                 }
             }
 
-            return new GitCommandResult(
+            outcome = new GitCommandResult(
                 process.ExitCode,
                 await stdout.ConfigureAwait(false),
                 await stderr.ConfigureAwait(false));
+            return outcome;
         }
         catch (Win32Exception)
         {
@@ -160,8 +162,11 @@ public sealed class GitCommandRunner
         }
         finally
         {
+            // 入力欄で「次から聞かれないようにする」が選ばれていれば、ここで覚えさせる（§24.101）。認証が通ったか＝成功したか、
+            // 認証以外の理由（push の拒否など）で止まったか。時間切れ・中止は通ったと言えない。
             if (invocation is not null)
-                _askPass?.Forget(invocation);
+                _askPass?.Complete(invocation,
+                    outcome is { } done && (done.Success || !GitRefusal.IsAuthenticationFailure(done.Error)));
         }
     }
 

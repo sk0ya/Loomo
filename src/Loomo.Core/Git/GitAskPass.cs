@@ -4,6 +4,7 @@ using System.IO.Pipes;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -162,7 +163,63 @@ public enum GitCredentialPromptKind
 public interface IGitCredentialPrompter
 {
     /// <summary>答え。取り消されたら null。<see cref="GitCredentialPromptKind.Confirm"/> は「はい」で空文字、
-    /// <see cref="GitCredentialPromptKind.Notice"/> は知らせたら空文字を返す。<paramref name="cancellationToken"/> は
+    /// <see cref="GitCredentialPromptKind.Notice"/> は知らせたら空文字を返す。<paramref name="remember"/> が null でなければ
+    /// 入力欄に「次から聞かれないようにする」を出し、選ばれたかを答えに添える。<paramref name="cancellationToken"/> は
     /// 問うた側（git）が居なくなったときに倒れる——そのときは入力欄を閉じる。</summary>
-    Task<string?> AskAsync(GitAskPass.Request request, GitCredentialPromptKind kind, CancellationToken cancellationToken);
+    Task<GitCredentialAnswer?> AskAsync(GitAskPass.Request request, GitCredentialPromptKind kind,
+        GitCredentialRemember? remember, CancellationToken cancellationToken);
+
+    /// <summary>覚えさせた結果（できた・できなかった理由）を人に知らせる。どのスレッドからも呼ばれる。</summary>
+    void Report(string message, bool success);
+}
+
+/// <summary>入力欄の答え。<paramref name="Remember"/> は「次から聞かれないようにする」が選ばれたか。</summary>
+public sealed record GitCredentialAnswer(string Text, bool Remember = false);
+
+/// <summary>
+/// 「次から聞かれないようにする」の中身（§24.101）。Loomo は答えを持たず、Windows の正規の置き場へ渡す——
+/// HTTPS は Git Credential Manager、SSH の鍵の合言葉は ssh-agent。問いの文面から読み取れたときだけ出す。
+/// </summary>
+public abstract record GitCredentialRemember
+{
+    private GitCredentialRemember() { }
+
+    /// <summary>HTTPS の接続先（<paramref name="Origin"/> は <c>https://host[:port]</c>）。ユーザー名は git が問いに入れていればそれ。</summary>
+    public sealed record Https(string Origin, string? UserName) : GitCredentialRemember;
+
+    /// <summary>SSH の鍵（Windows のパス）。</summary>
+    public sealed record SshKey(string KeyPath) : GitCredentialRemember;
+
+    private static readonly Regex PasswordFor = new(
+        @"^\s*Password for '(?<scheme>https?)://(?:(?<user>[^@'/]+)@)?(?<host>[^/']+)", RegexOptions.CultureInvariant);
+
+    private static readonly Regex PassphraseForKey = new(
+        @"passphrase for key '(?<path>[^']+)'", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
+
+    /// <summary>問いから覚えさせ方を読む。読めなければ null（チェックを出さない）。純関数。</summary>
+    public static GitCredentialRemember? From(GitAskPass.Request request, GitCredentialPromptKind kind)
+    {
+        if (kind != GitCredentialPromptKind.Secret || string.IsNullOrEmpty(request.Prompt))
+            return null;
+        if (PasswordFor.Match(request.Prompt) is { Success: true } https)
+        {
+            var user = https.Groups["user"].Success ? Uri.UnescapeDataString(https.Groups["user"].Value) : null;
+            return new Https($"{https.Groups["scheme"].Value}://{https.Groups["host"].Value}", user);
+        }
+        if (PassphraseForKey.Match(request.Prompt) is { Success: true } key && ToWindowsPath(key.Groups["path"].Value) is { } path)
+            return new SshKey(path);
+        return null;
+    }
+
+    /// <summary>ssh が書いた鍵のパスを Windows のパスへ。Git 同梱の ssh は <c>/c/Users/me/.ssh/id</c>、
+    /// Windows の OpenSSH は <c>C:\Users\me/.ssh/id</c> と書く。読めなければ null。</summary>
+    public static string? ToWindowsPath(string path)
+    {
+        var p = path.Trim();
+        if (p.Length >= 3 && p[0] == '/' && char.IsLetter(p[1]) && p[2] == '/')
+            p = $"{char.ToUpperInvariant(p[1])}:{p[2..]}";
+        if (p.Length < 3 || !char.IsLetter(p[0]) || p[1] != ':')
+            return null;
+        return p.Replace('/', '\\');
+    }
 }

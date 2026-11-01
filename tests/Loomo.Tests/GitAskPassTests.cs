@@ -335,12 +335,27 @@ internal sealed class FakePrompter : IGitCredentialPrompter
 
     public FakePrompter(Func<GitAskPass.Request, CancellationToken, Task<string?>> answer) => _answer = answer;
 
-    public ConcurrentQueue<(GitAskPass.Request Request, GitCredentialPromptKind Kind)> Requests { get; } = new();
+    /// <summary>「次から聞かれないようにする」が出ていたら選ぶか。</summary>
+    public bool Remember { get; init; }
 
-    public Task<string?> AskAsync(GitAskPass.Request request, GitCredentialPromptKind kind, CancellationToken cancellationToken)
+    public ConcurrentQueue<(GitAskPass.Request Request, GitCredentialPromptKind Kind, GitCredentialRemember? Offer)> Requests { get; } = new();
+
+    public ConcurrentQueue<(string Message, bool Success)> Reports { get; } = new();
+
+    public TaskCompletionSource Reported { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    public async Task<GitCredentialAnswer?> AskAsync(GitAskPass.Request request, GitCredentialPromptKind kind,
+        GitCredentialRemember? remember, CancellationToken cancellationToken)
     {
-        Requests.Enqueue((request, kind));
-        return _answer(request, cancellationToken);
+        Requests.Enqueue((request, kind, remember));
+        var text = await _answer(request, cancellationToken);
+        return text is null ? null : new GitCredentialAnswer(text, Remember && remember is not null);
+    }
+
+    public void Report(string message, bool success)
+    {
+        Reports.Enqueue((message, success));
+        Reported.TrySetResult();
     }
 }
 
@@ -359,6 +374,12 @@ internal sealed class BasicAuthChallengeServer : IDisposable
     public int Port => ((IPEndPoint)_listener.LocalEndpoint).Port;
 
     public ConcurrentQueue<string> Authorizations { get; } = new();
+
+    /// <summary>通す Authorization（<c>Basic …</c>）。null ならどれも通さない。</summary>
+    public string? Accepts { get; init; }
+
+    public static string Basic(string user, string password)
+        => "Basic " + Convert.ToBase64String(Encoding.UTF8.GetBytes($"{user}:{password}"));
 
     private async Task AcceptLoopAsync()
     {
@@ -379,13 +400,16 @@ internal sealed class BasicAuthChallengeServer : IDisposable
             var stream = client.GetStream();
             var reader = new StreamReader(stream, Encoding.ASCII);
             string? line;
+            string? authorization = null;
             while (!string.IsNullOrEmpty(line = await reader.ReadLineAsync()))
             {
                 if (line.StartsWith("Authorization:", StringComparison.OrdinalIgnoreCase))
-                    Authorizations.Enqueue(line["Authorization:".Length..].Trim());
+                    Authorizations.Enqueue(authorization = line["Authorization:".Length..].Trim());
             }
-            var response = Encoding.ASCII.GetBytes(
-                "HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic realm=\"loomo\"\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+            // 正しい資格情報なら 404（認証は通った・リポジトリが無い）。それ以外は 401。
+            var response = Encoding.ASCII.GetBytes(Accepts is not null && authorization == Accepts
+                ? "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                : "HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic realm=\"loomo\"\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
             await stream.WriteAsync(response);
         }
         catch (IOException)

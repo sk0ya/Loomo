@@ -41,7 +41,7 @@ public sealed class GitCredentialDialogTests
             };
             timer.Start();
 
-            var answer = GitCredentialDialog.Show(null, new GitAskPass.Request(prompt, Context: "git push origin main"), kind, cancel.Token);
+            var answer = GitCredentialDialog.Show(null, new GitAskPass.Request(prompt, Context: "git push origin main"), kind, null, cancel.Token);
 
             Assert.Null(answer);
             Assert.NotNull(seen);
