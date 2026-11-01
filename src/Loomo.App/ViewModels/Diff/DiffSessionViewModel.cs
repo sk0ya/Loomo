@@ -268,12 +268,34 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
     {
         _git.InvalidateReadCache();
         _live ??= _git.TrackLiveChanges();
+        TrackOtherRepositories();
     }
 
     public void StopLiveTracking()
     {
         _live?.Dispose();
         _live = null;
+        foreach (var tracker in _liveOthers.Values) tracker.Dispose();
+        _liveOthers.Clear();
+    }
+
+    /// <summary>一覧に出ている、選んでいるリポジトリ以外のリポジトリの監視（§40.8.5）。作業ツリーの編集を拾うポーリングは
+    /// 窓口ごとなので、横断の一覧ではリポジトリごとに張る。変更は固定の窓口からワークスペースの窓口へ知らされる。</summary>
+    private readonly Dictionary<string, IDisposable> _liveOthers = new(StringComparer.OrdinalIgnoreCase);
+
+    private void TrackOtherRepositories()
+    {
+        if (_live is null) return;
+        var wanted = Files.Select(f => f.RepositoryRoot).OfType<string>()
+            .Where(root => !ReferenceEquals(_git.ForItem(Files.First(f => f.RepositoryRoot == root)), _git))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var root in _liveOthers.Keys.Where(k => !wanted.Contains(k)).ToList())
+        {
+            _liveOthers[root].Dispose();
+            _liveOthers.Remove(root);
+        }
+        foreach (var root in wanted.Where(r => !_liveOthers.ContainsKey(r)))
+            _liveOthers[root] = _git.For(root).TrackLiveChanges();
     }
 
     private void DispatchRefresh()
@@ -916,6 +938,7 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
         _pendingCompareSelect = null;
 
         ReplaceFileTree(tree);
+        TrackOtherRepositories();
         DiffFileItem? reselect = null;
         foreach (var item in items)
         {

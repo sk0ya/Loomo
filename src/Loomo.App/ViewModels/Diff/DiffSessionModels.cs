@@ -82,6 +82,10 @@ public sealed record DiffComparison(
 
 public sealed class DiffFileItem
 {
+    /// <summary>作業ツリーの変更の項目が属するリポジトリの根（§40.8.5）。差分・ステージ・破棄・競合の操作はこのリポジトリの
+    /// 窓口へ回す（<see cref="Services.DiffRepositoryRouting.ForItem"/>）。null は「選んでいるリポジトリ」（比較基準・コミット範囲の項目）。</summary>
+    public string? RepositoryRoot { get; init; }
+
     public required string FullPath { get; init; }
     public required string DisplayPath { get; init; }
     public required string Badge { get; init; }

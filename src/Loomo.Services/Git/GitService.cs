@@ -181,6 +181,9 @@ public sealed class GitService
             if (!_scoped.TryGetValue(root, out var scoped))
             {
                 scoped = new GitService(_workspace, new GitRootState(root), _askPass, _catalog, owner: this);
+                // 固定の窓口で起きた変更（差分ペインのステージ・印からの fetch）も、ワークスペースの窓口の購読者
+                // （差分ペイン・ツリー）へ知らせる——購読者は窓口ごとに購読し直さなくてよい（§40.8.5）。
+                scoped.RepositoryChanged += (_, _) => RepositoryChanged?.Invoke(this, EventArgs.Empty);
                 _scoped[root] = scoped;
             }
             return scoped;

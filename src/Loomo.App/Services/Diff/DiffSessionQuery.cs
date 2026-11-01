@@ -10,6 +10,20 @@ public sealed record DiffFileList(IReadOnlyList<DiffFileItem> Items, string Empt
     public static DiffFileList Canceled(string message) => new(Array.Empty<DiffFileItem>(), message, IsCanceled: true);
 }
 
+/// <summary>差分の項目を、その項目のリポジトリの窓口へ回す（§40.8.5）。</summary>
+public static class DiffRepositoryRouting
+{
+    /// <summary>項目のリポジトリが「選んでいるリポジトリ」ならその窓口（照会のキャッシュと変更の通知を Git パネルと
+    /// 共有する）、別のリポジトリならそのリポジトリに固定した窓口（§40.5）。</summary>
+    public static GitService ForItem(this GitService git, DiffFileItem? item)
+    {
+        if (item?.RepositoryRoot is not { } root)
+            return git;
+        var selected = git.RootPath is { } current ? git.Repositories.KnownRepositoryFor(current)?.Root ?? current : null;
+        return string.Equals(selected, root, StringComparison.OrdinalIgnoreCase) ? git : git.For(root);
+    }
+}
+
 /// <summary>作業ツリー、コミット範囲から Diff ファイル一覧を読み込む Query。</summary>
 public sealed class DiffSessionQuery
 {
@@ -65,6 +79,11 @@ public sealed class DiffSessionQuery
 
     private async Task<DiffFileList> LoadWorkingTreeAsync()
     {
+        // リポジトリが2つ以上の部屋では、全リポジトリの作業ツリーの変更を1つの一覧に（§40.8.5）。以前は Git パネルで
+        // 選んでいるリポジトリの分しか出ず、もう一方で直したファイルは差分ペインに出なかった。
+        var repositories = await Task.Run(() => _git.Repositories.Repositories);
+        if (repositories.Count > 1)
+            return await LoadAllWorkingTreesAsync(repositories);
         var status = await _git.GetStatusAsync();
         if (!status.IsRepository)
             return new DiffFileList(Array.Empty<DiffFileItem>(), "このワークスペースは git リポジトリではありません。");
@@ -89,6 +108,48 @@ public sealed class DiffSessionQuery
             .OrderBy(item => item.DisplayPath, StringComparer.OrdinalIgnoreCase)
             .ToList();
         return new DiffFileList(items, "Git の変更はありません。");
+    }
+
+    /// <summary>全リポジトリの作業ツリーの変更。表示はリポジトリ名を前に付け（<c>api/src/x.ts</c>）、並びはリポジトリの順→パス。</summary>
+    private async Task<DiffFileList> LoadAllWorkingTreesAsync(IReadOnlyList<GitRepositoryInfo> repositories)
+    {
+        var items = new List<DiffFileItem>();
+        foreach (var repository in repositories)
+        {
+            var probe = new DiffFileItem { FullPath = repository.Root, DisplayPath = "", Badge = "", RepositoryRoot = repository.Root };
+            var status = await _git.ForItem(probe).GetStatusAsync();
+            if (!status.IsRepository) continue;
+            items.AddRange(BuildWorkingTreeItems(status, repository.Root, repository.Name + "/")
+                .Select(item => WithRepository(item, repository.Root)));
+        }
+        return new DiffFileList(items, "Git の変更はありません。");
+    }
+
+    private static DiffFileItem WithRepository(DiffFileItem item, string root) => new()
+    {
+        RepositoryRoot = root, FullPath = item.FullPath, DisplayPath = item.DisplayPath,
+        Badge = item.Badge, Entry = item.Entry, Stage = item.Stage,
+    };
+
+    private static List<DiffFileItem> BuildWorkingTreeItems(GitStatusSnapshot status, string root, string displayPrefix)
+    {
+        var staged = status.Staged.Select(entry => entry.Path).ToHashSet(StringComparer.Ordinal);
+        var unstaged = status.Unstaged.Select(entry => entry.Path).ToHashSet(StringComparer.Ordinal);
+        return status.Unstaged.Concat(status.Staged.Where(entry => !unstaged.Contains(entry.Path)))
+            .Select(entry =>
+            {
+                var stage = entry.IsConflicted || entry.IsUntracked ? DiffStageState.None
+                    : !staged.Contains(entry.Path) ? DiffStageState.None
+                    : unstaged.Contains(entry.Path) ? DiffStageState.Partial
+                    : DiffStageState.All;
+                return new DiffFileItem
+                {
+                    FullPath = Path.Combine(root, entry.Path), DisplayPath = displayPrefix + entry.Path,
+                    Badge = Badge(entry, stage), Entry = entry, Stage = stage,
+                };
+            })
+            .OrderBy(item => item.DisplayPath, StringComparer.OrdinalIgnoreCase)
+            .ToList();
     }
 
     /// <summary>一覧の印：変更の種類（作業ツリー側を優先し、無ければインデックス側）と、ステージの進み具合。</summary>

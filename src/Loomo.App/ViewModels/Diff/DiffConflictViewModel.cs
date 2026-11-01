@@ -211,7 +211,7 @@ public sealed partial class DiffConflictViewModel : ObservableObject
         ConflictBlocks.Clear();
         IsWholeFileConflict = true;
         CanMarkResolved = false;
-        var (_, ours, theirs) = await _git.GetConflictSidesAsync(item.Entry!.Path);
+        var (_, ours, theirs) = await _git.ForItem(item).GetConflictSidesAsync(item.Entry!.Path);
         WholeFileOurs = ours;
         WholeFileTheirs = theirs;
     }
@@ -342,7 +342,7 @@ public sealed partial class DiffConflictViewModel : ObservableObject
     private async Task MarkResolvedAsync()
     {
         if (!CanMarkResolved || _selectedFile is not { Entry: not null } item) return;
-        var result = await _git.StageAsync(item.Entry.Path);
+        var result = await _git.ForItem(item).StageAsync(item.Entry.Path);
         SetStatus(result.Success
             ? $"{item.DisplayPath} を解決済みにしました。"
             : $"解決済みにできませんでした: {Truncate(result.Message)}", isError: !result.Success);
@@ -366,7 +366,7 @@ public sealed partial class DiffConflictViewModel : ObservableObject
             SetStatus($"書き込みに失敗しました: {ex.Message}", isError: true);
             return;
         }
-        var result = await _git.StageAsync(item.Entry.Path);
+        var result = await _git.ForItem(item).StageAsync(item.Entry.Path);
         SetStatus(result.Success
             ? $"{item.DisplayPath} を解決済みにしました。"
             : $"解決済みにできませんでした: {Truncate(result.Message)}", isError: !result.Success);
@@ -385,7 +385,7 @@ public sealed partial class DiffConflictViewModel : ObservableObject
             SetStatus($"削除に失敗しました: {ex.Message}", isError: true);
             return;
         }
-        var result = await _git.StageAsync(item.Entry.Path);
+        var result = await _git.ForItem(item).StageAsync(item.Entry.Path);
         SetStatus(result.Success
             ? $"{item.DisplayPath} を削除して解決済みにしました。"
             : $"解決済みにできませんでした: {Truncate(result.Message)}", isError: !result.Success);

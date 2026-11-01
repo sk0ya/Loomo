@@ -17,14 +17,14 @@ public sealed class DiffSessionCommandHandler
 
     public async Task<DiffCommandResult> DiscardAsync(DiffFileItem item)
     {
-        var result = await _git.DiscardAsync(item.Entry!);
+        var result = await _git.ForItem(item).DiscardAsync(item.Entry!);
         return result.Success ? new(true, $"{item.DisplayPath} の変更を破棄しました。")
             : new(false, $"破棄に失敗しました: {Truncate(result.Message)}");
     }
 
-    public async Task<DiffCommandResult> ApplyReverseAsync(string patch, string successMessage)
+    public async Task<DiffCommandResult> ApplyReverseAsync(string patch, string successMessage, DiffFileItem? item = null)
     {
-        var result = await _git.ApplyReverseDiscardPatchAsync(patch);
+        var result = await _git.ForItem(item).ApplyReverseDiscardPatchAsync(patch);
         return result.Success ? new(true, successMessage)
             : new(false, $"選択行の破棄に失敗しました: {Truncate(result.Message)}");
     }

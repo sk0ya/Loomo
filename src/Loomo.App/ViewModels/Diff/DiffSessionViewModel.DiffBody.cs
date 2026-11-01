@@ -214,7 +214,7 @@ public sealed partial class DiffSessionViewModel
             ? _git.GetRangeFileDiffAsync(range.From, range.To, commitFile, contextLines, ignoreWhitespace)
             : item.CompareBaseFile is { } compareFile
                 ? _git.GetCompareFileDiffAsync(compareFile.BaseRef, compareFile.Change, contextLines, ignoreWhitespace)
-                : _git.GetHeadDiffTextAsync(item.Entry!, contextLines, ignoreWhitespace));
+                : _git.ForItem(item).GetHeadDiffTextAsync(item.Entry!, contextLines, ignoreWhitespace));
         _patchCache[key] = text;
         return text;
     }
@@ -320,8 +320,8 @@ public sealed partial class DiffSessionViewModel
     /// 操作のたびに取り直す（キャッシュすると、別の場所でステージした後に古い行番号でパッチを作る）。</summary>
     private async Task<(string Staged, string Unstaged)> GetStagePatchesAsync(DiffFileItem item)
     {
-        var staged = await _git.GetDiffTextAsync(item.Entry!, staged: true, 3);
-        var unstaged = await _git.GetDiffTextAsync(item.Entry!, staged: false, 3);
+        var staged = await _git.ForItem(item).GetDiffTextAsync(item.Entry!, staged: true, 3);
+        var unstaged = await _git.ForItem(item).GetDiffTextAsync(item.Entry!, staged: false, 3);
         return (staged, unstaged);
     }
 
@@ -396,7 +396,7 @@ public sealed partial class DiffSessionViewModel
         }
 
         // 成功すると RepositoryChanged が RefreshAsync を呼び、行の印・一覧の印が付け直される（行は消えない）。
-        var result = await _git.ApplyCachedPatchAsync(reduced.Patch, reverse: !stage);
+        var result = await _git.ForItem(item).ApplyCachedPatchAsync(reduced.Patch, reverse: !stage);
         if (result.Success)
             SetStatus($"{item.DisplayPath} の {reduced.LineCount} 行を{verb}しました。", isError: false);
         else
@@ -431,7 +431,7 @@ public sealed partial class DiffSessionViewModel
 
         // 適用が成功すると GitService が RepositoryChanged を発火し、一覧・差分は自動で読み直される。
         var result = await _commands.ApplyReverseAsync(reduced.Patch,
-            $"{item.DisplayPath} の {reduced.LineCount} 行を破棄しました。");
+            $"{item.DisplayPath} の {reduced.LineCount} 行を破棄しました。", item);
         SetStatus(result.Message, !result.Success);
     }
 
