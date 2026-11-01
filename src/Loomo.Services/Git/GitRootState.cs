@@ -14,7 +14,8 @@ namespace sk0ya.Loomo.Services;
 /// </summary>
 public sealed class GitRootState
 {
-    private readonly IWorkspaceService _workspace;
+    private readonly IWorkspaceService? _workspace;
+    private readonly string? _fixedRoot;
     private string? _explicitRoot;
 
     public GitRootState(IWorkspaceService workspace)
@@ -23,17 +24,26 @@ public sealed class GitRootState
         _workspace.FoldersChanged += (_, _) => Reconcile();
     }
 
+    /// <summary>対象を<b>固定</b>した状態（§40.5）。<see cref="GitService.For"/> がリポジトリごとに作る
+    /// <see cref="GitService"/> はこれを持ち、切替（<see cref="SetRoot"/>／<see cref="SelectForPath"/>）を受け付けない
+    /// ——リポジトリを明示して得た窓口の対象が、よその操作で入れ替わってはいけないため。</summary>
+    internal GitRootState(string fixedRoot) => _fixedRoot = fixedRoot;
+
+    /// <summary>対象が固定されているか（<see cref="GitService.For"/> で得た窓口か）。</summary>
+    public bool IsFixed => _fixedRoot is not null;
+
     /// <summary>対象フォルダーが変わったとき（明示切替・フォルダー追加/削除でプライマリへ戻ったとき等）。</summary>
     public event EventHandler? Changed;
 
     /// <summary>現在の Git 操作対象フォルダー。明示選択が無い／無効になったらプライマリ。</summary>
-    public string? CurrentRoot => _explicitRoot ?? _workspace.PrimaryFolder;
+    public string? CurrentRoot => _fixedRoot ?? _explicitRoot ?? _workspace?.PrimaryFolder;
 
     /// <summary>対象フォルダーを明示的に切り替える。<paramref name="path"/> がワークスペースフォルダーで
     /// なければ無視する。プライマリを指定した場合は「明示選択なし」と同じ扱いにする（<see cref="OpenFolder"/>
     /// によるプライマリの入れ替えへ自然に追従させるため）。</summary>
     public void SetRoot(string? path)
     {
+        if (IsFixed) return;
         var normalized = NormalizeIfValid(path);
         if (string.Equals(normalized, _explicitRoot, StringComparison.OrdinalIgnoreCase))
             return;
@@ -45,6 +55,7 @@ public sealed class GitRootState
     /// ブレーム・履歴などファイル起点の Git 操作が、現在の対象と違うフォルダーのファイルを指したときに使う。</summary>
     public void SelectForPath(string fullPath)
     {
+        if (_workspace is null) return;
         var full = Path.GetFullPath(fullPath);
         var folder = _workspace.Folders
             .Where(f => IsWithin(f, full))
@@ -58,6 +69,8 @@ public sealed class GitRootState
     {
         if (string.IsNullOrWhiteSpace(path))
             return null;
+        if (_workspace is null)
+            return null;
         var full = Path.GetFullPath(path);
         if (string.Equals(full, _workspace.PrimaryFolder, StringComparison.OrdinalIgnoreCase))
             return null;
@@ -68,6 +81,7 @@ public sealed class GitRootState
 
     private void Reconcile()
     {
+        if (_workspace is null) return;
         if (_explicitRoot is not null
             && !_workspace.Folders.Any(f => string.Equals(f, _explicitRoot, StringComparison.OrdinalIgnoreCase)))
             _explicitRoot = null;

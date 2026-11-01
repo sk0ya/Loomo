@@ -121,6 +121,8 @@ internal static class LoomoServiceCollectionExtensions
             System.IO.Path.Combine(AppContext.BaseDirectory, sk0ya.Loomo.Core.Git.GitAskPass.ExecutableName),
             registrar: sp.GetRequiredService<IGitCredentialRegistrar>()));
         // git CLI の監視状態と各画面の選択状態を共有するため、Git 機能は Singleton で構成する。
+        // ワークスペースの全リポジトリの一覧（§40.4）。「このパスはどのリポジトリか」の唯一の問い合わせ先。
+        services.AddSingleton<GitRepositoryCatalog>();
         services.AddSingleton<GitService>();
         services.AddSingleton<GitRootSwitchViewModel>();
         // 比較基準は Git パネルと Diff ペインで共有する一つの状態なので Singleton。

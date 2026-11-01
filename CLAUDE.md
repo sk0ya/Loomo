@@ -309,6 +309,18 @@ Other `RootPath`s in the tree are **different concepts, deliberately left alone*
 is the Git target repo, `DebugLaunchProfileStore`'s is a JSON key. Being able to tell `_workspace.PrimaryFolder`
 from `_activeWorkspace?.RootPath` at a glance is the win.
 
+**Git has the same defect, one level down — ask which *repository*, don't use the ambient one**
+(`docs/設計/40-複数リポジトリ.md` = §40, the authority; migration in progress). The DI `GitService` singleton runs every
+git command against `GitService.RootPath` — *one* folder, picked in the Git panel's combo box or silently switched by
+file-origin actions (`SetActiveRootForPath`) — so with two repos in the room, everything built on it sees only one, and
+a parent folder holding several repos (`C:\work\{api,web}`) is "not a repository" at all. New code asks
+`GitService.Repositories` (`GitRepositoryCatalog`: `RepositoryFor(path)` = deepest containing repo, found by `.git`
+presence without spawning git, 2 levels below each workspace folder, submodules via `.gitmodules`) and runs against
+`git.ForPath(path)` / `git.For(root)` — a `GitService` whose `GitRootState` is **fixed** to that work tree (same instance
+per repo, so read caches and the monitor are shared; `SetActiveRoot` is a no-op on it). `RootPath` / `SetActiveRoot` /
+`ActiveRootChanged` / `GitRootSwitchViewModel` are the compatibility path until §40.11 P7 removes them; don't add new
+callers.
+
 ### Rider-parity entry points — `docs/設計/36-Rider相当の使い勝手.md` (§36) is the authority
 
 The gap to Rider was entry points, not features. Things that are easy to break without knowing they exist:

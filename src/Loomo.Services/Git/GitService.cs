@@ -4,12 +4,16 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using sk0ya.Loomo.Core.Abstractions;
+using sk0ya.Loomo.Core.Files;
 
 namespace sk0ya.Loomo.Services;
 
 /// <summary>
 /// git CLI を独立した非対話プロセスで実行する Git クライアントサービス。
-/// ワークスペースのプライマリフォルダー（<see cref="IWorkspaceService.PrimaryFolder"/>）をリポジトリとして扱う。
+/// DI のシングルトンは「ワークスペースの窓口」で、対象は <see cref="RootPath"/>（Git パネルで選んでいる
+/// ワークスペースフォルダー、無ければプライマリ）。<b>新しいコードは対象を明示する</b>：<see cref="For(string)"/>／
+/// <see cref="ForPath"/> でリポジトリに固定した窓口を得て使う（§40.5）。<see cref="RootPath"/>／
+/// <see cref="SetActiveRoot"/> は移行が済むまでの互換の口（§40.11 P7 で消す）。
 /// 表示ターミナルには一切流さない（AI と同様、人間のターミナルを汚さない方針）。
 /// 認証プロンプト・エディタ起動で固まらないよう GIT_TERMINAL_PROMPT=0 / GIT_EDITOR=true を強制する
 /// （資格情報の問いは端末ではなく部屋の入力欄へ回す・§24.101）
@@ -41,6 +45,14 @@ public sealed class GitService
     private readonly GitCloneService _clone;
     private readonly GitReflogService _reflog;
     private readonly GitRepositoryMonitor _monitor;
+    private readonly GitAskPassServer? _askPass;
+    private readonly GitRepositoryCatalog _catalog;
+    /// <summary>リポジトリ固定の窓口（<see cref="For(string)"/> で得たもの）なら、それを作ったワークスペースの
+    /// <see cref="GitService"/>。ワークスペースの窓口自身は null。</summary>
+    private readonly GitService? _owner;
+    /// <summary>リポジトリ固定の窓口（作業ツリーの根 → 窓口）。ワークスペースの窓口だけが持つ。
+    /// 同じリポジトリには同じインスタンスを返す——照会のキャッシュと監視を共有するため。</summary>
+    private readonly Dictionary<string, GitService> _scoped = new(StringComparer.OrdinalIgnoreCase);
 
     // GitService は Singleton なので、Git パネル・セッション・Diff が同じ照会結果を共有する。
     // 変更通知（または Git 対象ルート変更）でまとめて破棄する。
@@ -65,10 +77,24 @@ public sealed class GitService
         new(StringComparer.Ordinal);
 
     /// <param name="askPass">資格情報の問いを部屋の中で受ける口（§24.101）。テストなど null なら、対話が要る操作はその場で失敗する。</param>
-    public GitService(IWorkspaceService workspace, GitAskPassServer? askPass = null)
+    /// <param name="catalog">ワークスペースのリポジトリ一覧（§40.4）。null なら自分で持つ（テスト用）。</param>
+    public GitService(IWorkspaceService workspace, GitAskPassServer? askPass = null, GitRepositoryCatalog? catalog = null)
+        : this(workspace, new GitRootState(workspace), askPass, catalog ?? new GitRepositoryCatalog(workspace), owner: null)
+    {
+    }
+
+    private GitService(
+        IWorkspaceService workspace,
+        GitRootState rootState,
+        GitAskPassServer? askPass,
+        GitRepositoryCatalog catalog,
+        GitService? owner)
     {
         _workspace = workspace;
-        _rootState = new GitRootState(workspace);
+        _rootState = rootState;
+        _askPass = askPass;
+        _catalog = catalog;
+        _owner = owner;
         _runner = new GitCommandRunner(_rootState, askPass);
         _status = new GitStatusService(_runner, _rootState);
         _history = new GitHistoryService(_runner);
@@ -117,6 +143,50 @@ public sealed class GitService
 
     public IDisposable TrackLiveChanges() => _monitor.TrackLiveChanges();
 
+    // ===== リポジトリを明示する窓口（§40.5） =====
+
+    /// <summary>ワークスペースのリポジトリ一覧（§40.4）。「このパスはどのリポジトリか」はここに問う。</summary>
+    public GitRepositoryCatalog Repositories => _catalog;
+
+    /// <summary>対象が固定された窓口か（<see cref="For(string)"/> で得たものか）。固定の窓口では
+    /// <see cref="SetActiveRoot"/>／<see cref="SetActiveRootForPath"/> は何もしない。</summary>
+    public bool IsRepositoryScoped => _rootState.IsFixed;
+
+    /// <summary>
+    /// <paramref name="repositoryRoot"/>（作業ツリーの根）に<b>固定した</b>窓口。対象を暗黙の
+    /// 「いま選んでいるリポジトリ」（<see cref="RootPath"/>）に頼らず、明示して git を起こすための入口。
+    /// 同じリポジトリには同じインスタンスを返す（照会のキャッシュと変更の監視を共有する）。
+    /// <para>一覧（<see cref="Repositories"/>）に無い根でも作る——クローンした直後など、一覧の作り直しより
+    /// 先に操作したい場面があるため。</para>
+    /// </summary>
+    public GitService For(string repositoryRoot)
+    {
+        if (_owner is not null)
+            return _owner.For(repositoryRoot);
+        var root = WorkspacePaths.Normalize(repositoryRoot);
+        if (root.Length == 0)
+            throw new ArgumentException("リポジトリの根が空です。", nameof(repositoryRoot));
+        lock (_scoped)
+        {
+            if (!_scoped.TryGetValue(root, out var scoped))
+            {
+                scoped = new GitService(_workspace, new GitRootState(root), _askPass, _catalog, owner: this);
+                _scoped[root] = scoped;
+            }
+            return scoped;
+        }
+    }
+
+    /// <summary><paramref name="repository"/> に固定した窓口。</summary>
+    public GitService For(GitRepositoryInfo repository) => For(repository.Root);
+
+    /// <summary><paramref name="path"/> が属するリポジトリ（いちばん深いもの）に固定した窓口。
+    /// どのリポジトリにも属さなければ null。</summary>
+    public GitService? ForPath(string path)
+        => _catalog.RepositoryFor(path) is { } repository ? For(repository) : null;
+
+    /// <summary>この窓口の対象。リポジトリ固定の窓口ではその根。ワークスペースの窓口では「いま選んでいる
+    /// フォルダー」で、<b>互換の口</b>——新しいコードは <see cref="ForPath"/> で対象を明示する（§40.3 規約2）。</summary>
     public string? RootPath => _rootState.CurrentRoot;
 
     /// <summary>マルチルート：Git 操作の対象を選べるワークスペースフォルダー一覧。</summary>
