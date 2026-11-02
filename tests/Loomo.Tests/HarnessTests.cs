@@ -459,6 +459,45 @@ public sealed class HarnessTests : IDisposable
     }
 
     [Fact]
+    public void Candidate_that_does_not_occur_on_the_current_harness_is_superseded()
+    {
+        // ハーネスを直しただけ（ペインで扱いを付けない）でも、直した後に始まった Run で起きていなければ外れる（§37.5.2）。
+        var big = Call("Bash", command: "git log", chars: 30_000);
+        var runs = new[] { RunOf("old1", big), RunOf("old2", big), RunOf("new1", Call("Read", @"C:\ws\a.cs")) };
+        var candidate = Assert.Single(HarnessDetectors.Detect(runs), c => c.RuleId == HarnessDetectors.RuleLargeOutput);
+        var current = new HashSet<string>(["new1"]);
+        var none = new Dictionary<string, HarnessCandidateStatus>();
+
+        var superseded = Assert.Single(HarnessCandidateStore.Triage([candidate], none, current));
+        Assert.Equal(HarnessCandidateStanding.Superseded, superseded.Standing);
+        Assert.False(superseded.NeedsWork);
+
+        // 今のハーネスでもまだ起きているなら直す対象のまま。
+        var still = Assert.Single(HarnessCandidateStore.Triage([candidate], none, new HashSet<string>(["old2"])));
+        Assert.Equal(HarnessCandidateStanding.Open, still.Standing);
+
+        // ハーネスの変更が分からなければ従来どおり。
+        Assert.Equal(HarnessCandidateStanding.Open, Assert.Single(HarnessCandidateStore.Triage([candidate], none)).Standing);
+    }
+
+    [Fact]
+    public void Addressing_candidate_is_superseded_only_when_the_harness_changed_after_handing_it_over()
+    {
+        var call = Call("Bash", command: "git log", chars: 30_000);
+        var candidate = Assert.Single(HarnessDetectors.Detect([RunOf("old", call)]), c => c.RuleId == HarnessDetectors.RuleLargeOutput);
+        var handedOver = DateTimeOffset.Parse("2026-10-11T00:00:00Z");
+        var statuses = new Dictionary<string, HarnessCandidateStatus> { [candidate.Id] = new(HarnessCandidateState.Addressing, handedOver, null) };
+        var current = new HashSet<string>(["new"]);
+
+        // 渡した後にハーネスが変わった＝直しが入った。
+        Assert.Equal(HarnessCandidateStanding.Superseded,
+            Assert.Single(HarnessCandidateStore.Triage([candidate], statuses, current, handedOver.AddHours(1))).Standing);
+        // 渡しただけでハーネスはまだ変わっていない。
+        Assert.Equal(HarnessCandidateStanding.Addressing,
+            Assert.Single(HarnessCandidateStore.Triage([candidate], statuses, current, handedOver.AddHours(-1))).Standing);
+    }
+
+    [Fact]
     public void Candidate_statuses_round_trip_and_unreadable_file_is_left_alone()
     {
         var path = HarnessCandidateStore.PathFor(Path.Combine(_base, "ws"));

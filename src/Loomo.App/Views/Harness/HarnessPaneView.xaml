@@ -208,7 +208,7 @@
                                 <CheckBox DockPanel.Dock="Right" Margin="0,3,8,0" VerticalAlignment="Center"
                                           FontSize="{DynamicResource Fs11}" Foreground="{DynamicResource FgDim}"
                                           Content="対処済みも表示" IsChecked="{Binding ShowHandledCandidates}"
-                                          ToolTip="対処中・対処済み・見送りの候補も並べる（既定は未対処と再発だけ）" />
+                                          ToolTip="対処中・対処済み・見送り・前の版だけの候補も並べる（既定は未対処と再発だけ）" />
                                 <TextBlock Style="{StaticResource ColumnTitle}" Text="改善候補（頻度順・推定トークンは文字数÷4）" />
                             </DockPanel>
                             <WrapPanel DockPanel.Dock="Top" Margin="8,0,8,4">
@@ -219,6 +219,9 @@
                                         ToolTip="エージェントが直し終えたら押す。これより後に起きたものだけが「再発」として戻る"
                                         Command="{Binding ResolveAddressingCommand}" />
                             </WrapPanel>
+                            <TextBlock DockPanel.Dock="Top" Margin="8,0,8,4" Style="{StaticResource Dim}" TextWrapping="Wrap"
+                                       Text="{Binding CurrentHarnessNote}"
+                                       ToolTip="Claude Code は CLAUDE.md などをセッションの開始時に読むので、変えた後に始まったセッションだけが今のハーネスで動いている" />
                             <Grid>
                                 <ListBox x:Name="CandidateList" Style="{StaticResource HarnessList}"
                                          ItemsSource="{Binding Candidates}" SelectedItem="{Binding SelectedCandidate}">

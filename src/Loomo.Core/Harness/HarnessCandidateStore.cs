@@ -34,6 +34,11 @@ public enum HarnessCandidateStanding
     Recurred,
     /// <summary>見送った。</summary>
     Dismissed,
+    /// <summary>
+    /// 扱いは付いていないが、ハーネスを最後に変えた後に始まった Run では起きていない（§37.5.2）——今のハーネスでは
+    /// 起きていないので、直った見込み（推定）として直す対象から外す。
+    /// </summary>
+    Superseded,
 }
 
 /// <summary>候補と、その位置づけ。<see cref="Candidate"/> は再発なら<b>対処後の根拠だけ</b>に絞ったもの。</summary>
@@ -140,18 +145,24 @@ public static class HarnessCandidateStore
     /// <summary>
     /// 候補に状態を当てて位置づけを決める。対処済みは<b>対処済みにした時刻より後</b>の根拠があれば再発とし、
     /// 候補をその根拠だけに絞る（頻度・推定トークンも絞った根拠から数え直す）。
+    /// <para><paramref name="currentRuns"/>（今のハーネスで始まった Run、§37.5.2）を渡すと、扱いの無い候補と対処中の候補のうち
+    /// その Run に根拠が無いものを <see cref="HarnessCandidateStanding.Superseded"/> にする。対処中は、ハーネスを変えたのが
+    /// 対処中にした後（<paramref name="harnessChangedAt"/>）のときだけ——渡しただけでまだ直していないなら外さない。
+    /// null なら（ハーネスの変更が分からない）従来どおり。</para>
     /// <para>根拠は1候補あたり <see cref="HarnessDetectors.MaxEvidencePerCandidate"/> 件までだが、新しい Run から
     /// 集めるので、対処後の根拠が上限で落ちることは実質ない。</para>
     /// </summary>
     public static IReadOnlyList<HarnessTriagedCandidate> Triage(
-        IReadOnlyList<HarnessCandidate> candidates, IReadOnlyDictionary<string, HarnessCandidateStatus> statuses)
+        IReadOnlyList<HarnessCandidate> candidates, IReadOnlyDictionary<string, HarnessCandidateStatus> statuses,
+        IReadOnlySet<string>? currentRuns = null, DateTimeOffset? harnessChangedAt = null)
     {
         var result = new List<HarnessTriagedCandidate>(candidates.Count);
         foreach (var candidate in candidates)
         {
+            var quietNow = currentRuns is not null && !candidate.Evidence.Any(e => currentRuns.Contains(e.RunId));
             if (!statuses.TryGetValue(candidate.Id, out var status))
             {
-                result.Add(new(candidate, HarnessCandidateStanding.Open, null));
+                result.Add(new(candidate, quietNow ? HarnessCandidateStanding.Superseded : HarnessCandidateStanding.Open, null));
                 continue;
             }
             if (status.State == HarnessCandidateState.Dismissed)
@@ -163,7 +174,9 @@ public static class HarnessCandidateStore
             // 数えると渡した直後に「再発」へ戻ってしまう。数え始めは対処済みにした時刻から。
             if (status.State == HarnessCandidateState.Addressing)
             {
-                result.Add(new(candidate, HarnessCandidateStanding.Addressing, status));
+                // 渡した後にハーネスが変わり、変わった後の Run で起きていなければ、直しが入ったとみなす。
+                var landed = quietNow && harnessChangedAt is { } changed && changed > status.At;
+                result.Add(new(candidate, landed ? HarnessCandidateStanding.Superseded : HarnessCandidateStanding.Addressing, status));
                 continue;
             }
             var after = candidate.Evidence.Where(e => e.At is { } at && at > status.At).ToList();

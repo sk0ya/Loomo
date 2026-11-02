@@ -71,7 +71,7 @@ public sealed class HarnessComponentRow
     public string ToolTip => Component is null ? "すべての改善候補" : $"{Component.Path}\n使用（観測）: {Usage}";
 }
 
-public sealed class HarnessCandidateRow(HarnessTriagedCandidate triaged)
+public sealed class HarnessCandidateRow(HarnessTriagedCandidate triaged, DateTimeOffset? harnessChangedAt = null, int currentRunCount = 0)
 {
     private readonly HarnessCandidate candidate = triaged.Candidate;
 
@@ -90,11 +90,15 @@ public sealed class HarnessCandidateRow(HarnessTriagedCandidate triaged)
         HarnessCandidateStanding.Resolved => "対処済み",
         HarnessCandidateStanding.Recurred => "再発",
         HarnessCandidateStanding.Dismissed => "見送り",
+        HarnessCandidateStanding.Superseded => "前の版だけ",
         _ => "",
     };
 
     /// <summary>詳細に出す扱いの説明（いつ付けたか）。</summary>
-    public string StatusDetail => triaged.Status is { } s
+    public string StatusDetail => triaged.Standing == HarnessCandidateStanding.Superseded
+        ? $"前の版だけ——ハーネスを変えた {(harnessChangedAt is { } at ? HarnessFormat.Time(at) : "時点")} より後に始まった Run（{currentRunCount} 件）では起きていない。"
+          + "直った見込み（推定）。直っていなければ次のセッションでまた起きて一覧に戻る"
+        : triaged.Status is { } s
         ? $"{StandingLabel}（{HarnessFormat.Time(s.At)} に{(s.State switch
         {
             HarnessCandidateState.Addressing => "エージェントへ渡した",

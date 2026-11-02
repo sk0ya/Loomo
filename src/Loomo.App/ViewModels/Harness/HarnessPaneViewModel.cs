@@ -133,6 +133,8 @@ public sealed partial class HarnessPaneViewModel : ObservableObject
     /// <summary>対処中・対処済み・見送りの候補も並べる（§37.5.1）。既定は直す対象（未対処・再発）だけ。</summary>
     [ObservableProperty] private bool _showHandledCandidates;
     [ObservableProperty] private string _candidateStatusText = "";
+    /// <summary>どの Run から直す対象を数えているか（§37.5.2、ハーネスを変えた時刻）。</summary>
+    [ObservableProperty] private string _currentHarnessNote = "";
     [ObservableProperty] private HarnessCandidateRow? _selectedCandidate;
     [ObservableProperty] private HarnessEvidenceRow? _selectedEvidence;
     [ObservableProperty] private string _candidateObservation = "";
@@ -263,7 +265,13 @@ public sealed partial class HarnessPaneViewModel : ObservableObject
     private void Apply(HarnessSnapshot snapshot)
     {
         _snapshot = snapshot;
-        _triaged = HarnessCandidateStore.Triage(snapshot.Candidates, snapshot.CandidateStatuses);
+        _triaged = HarnessCandidateStore.Triage(snapshot.Candidates, snapshot.CandidateStatuses,
+            snapshot.CurrentRuns, snapshot.LatestHarnessChange);
+        var superseded = _triaged.Count(t => t.Standing == HarnessCandidateStanding.Superseded);
+        CurrentHarnessNote = snapshot.LatestHarnessChange is { } changed
+            ? $"ハーネスを変えた {HarnessFormat.Time(changed)} より後に始まった Run（{CurrentRunCount(snapshot)} 件）で起きたものだけを直す対象にしています"
+              + (superseded > 0 ? $"——前の版だけで起きた {superseded} 件は「対処済みも表示」で見られます。" : "。")
+            : "";
         var summary = HarnessMetrics.Summarize(snapshot.Runs, snapshot.Verdicts);
         RunsLabel = summary.RunCount.ToString();
         VerdictsLabel = $"{summary.Accepted} ／ {summary.Rejected}";
@@ -370,10 +378,12 @@ public sealed partial class HarnessPaneViewModel : ObservableObject
             // 再発は1 Run でも隠さない（直したはずのものがまた起きたのは偶然では片付けない）。
             if (HideSingleRunCandidates && candidate.RunCount < 2 && triaged.Standing != HarnessCandidateStanding.Recurred)
                 continue;
-            Candidates.Add(new HarnessCandidateRow(triaged));
+            Candidates.Add(new HarnessCandidateRow(triaged, _snapshot.LatestHarnessChange, CurrentRunCount(_snapshot)));
         }
         SelectedCandidate = Candidates.FirstOrDefault(c => c.Candidate.Id == previous) ?? Candidates.FirstOrDefault();
     }
+
+    private static int CurrentRunCount(HarnessSnapshot snapshot) => snapshot.CurrentRuns?.Count ?? snapshot.Runs.Count;
 
     partial void OnSelectedCandidateChanged(HarnessCandidateRow? value)
     {
