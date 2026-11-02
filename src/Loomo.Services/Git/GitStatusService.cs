@@ -39,8 +39,10 @@ public sealed class GitStatusService
 
     public async Task<GitStatusSnapshot> GetStatusAsync()
     {
+        // --untracked-files=all：既定（normal）だと中身がすべて未追跡のフォルダーは「dir/」の1行に畳まれ、
+        // 変更一覧に名前の無いフォルダー行だけが出て中のファイルが見えない。
         var result = await _runner.RunAsync(
-            "--no-optional-locks", "status", "--porcelain=v2", "--branch").ConfigureAwait(false);
+            "--no-optional-locks", "status", "--porcelain=v2", "--branch", "--untracked-files=all").ConfigureAwait(false);
         if (!result.Success)
             // 「リポジトリではない」と「今は読めない」を混ぜない。混ぜると、rebase 中などの
             // 一度の失敗が「リポジトリではない」として覚え込まれ、Git パネルが空のまま戻らない。

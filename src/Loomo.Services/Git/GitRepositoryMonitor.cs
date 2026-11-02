@@ -61,7 +61,7 @@ public sealed class GitRepositoryMonitor
             var root = _rootState.CurrentRoot;
             if (string.IsNullOrEmpty(root) || !Directory.Exists(root)) return;
             var result = await _runner.RunAsync(
-                "--no-optional-locks", "status", "--porcelain=v2", "--branch").ConfigureAwait(false);
+                "--no-optional-locks", "status", "--porcelain=v2", "--branch", "--untracked-files=all").ConfigureAwait(false);
             if (!result.Success) return;
             var signature = result.Output + BuildWorkingTreeStamp(root, result.Output);
             var previous = _lastSignature;
