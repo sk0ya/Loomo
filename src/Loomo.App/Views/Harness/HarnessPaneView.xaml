@@ -171,11 +171,11 @@
                 <TabItem Header="改善候補">
                     <Grid>
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="200" MinWidth="120" />
+                            <ColumnDefinition Width="160" MinWidth="110" />
                             <ColumnDefinition Width="6" />
-                            <ColumnDefinition Width="*" MinWidth="200" />
+                            <ColumnDefinition Width="*" MinWidth="240" />
                             <ColumnDefinition Width="6" />
-                            <ColumnDefinition Width="1.3*" MinWidth="240" />
+                            <ColumnDefinition Width="*" MinWidth="240" />
                         </Grid.ColumnDefinitions>
 
                         <DockPanel Grid.Column="0">
@@ -200,18 +200,18 @@
                         <GridSplitter Grid.Column="1" Width="6" HorizontalAlignment="Stretch" Background="{DynamicResource Border}" />
 
                         <DockPanel Grid.Column="2">
-                            <DockPanel DockPanel.Dock="Top">
-                                <CheckBox DockPanel.Dock="Right" Margin="0,3,8,0" VerticalAlignment="Center"
-                                          FontSize="{DynamicResource Fs11}" Foreground="{DynamicResource FgDim}"
-                                          Content="1 Run だけの候補を隠す" IsChecked="{Binding HideSingleRunCandidates}"
-                                          ToolTip="1回きりの出来事は、ハーネスの直し所というより偶然であることが多い（再発は隠さない）" />
-                                <CheckBox DockPanel.Dock="Right" Margin="0,3,8,0" VerticalAlignment="Center"
+                            <TextBlock DockPanel.Dock="Top" Style="{StaticResource ColumnTitle}" Text="改善候補（頻度順）"
+                                       ToolTip="何 Run で起きたかの多い順。推定トークンは文字数÷4" />
+                            <!-- 狭いと右寄せのチェックが見出しごと切れていたので、ボタンと同じ折り返し行に置く -->
+                            <WrapPanel DockPanel.Dock="Top" Margin="8,0,8,4">
+                                <CheckBox Margin="0,2,10,2" VerticalAlignment="Center"
                                           FontSize="{DynamicResource Fs11}" Foreground="{DynamicResource FgDim}"
                                           Content="対処済みも表示" IsChecked="{Binding ShowHandledCandidates}"
                                           ToolTip="対処中・対処済み・見送り・前の版だけの候補も並べる（既定は未対処と再発だけ）" />
-                                <TextBlock Style="{StaticResource ColumnTitle}" Text="改善候補（頻度順・推定トークンは文字数÷4）" />
-                            </DockPanel>
-                            <WrapPanel DockPanel.Dock="Top" Margin="8,0,8,4">
+                                <CheckBox Margin="0,2,10,2" VerticalAlignment="Center"
+                                          FontSize="{DynamicResource Fs11}" Foreground="{DynamicResource FgDim}"
+                                          Content="1 Run だけを隠す" IsChecked="{Binding HideSingleRunCandidates}"
+                                          ToolTip="1回きりの出来事は、ハーネスの直し所というより偶然であることが多い（再発は隠さない）" />
                                 <Button Style="{StaticResource SmallButton}" Content="まとめて改善プロンプトをコピー"
                                         ToolTip="一覧に出ている未対処・再発の候補を1つのプロンプトにしてコピーし「対処中」にする。Claude Code に貼って直させる"
                                         Command="{Binding CopyBulkPromptCommand}" />
@@ -227,18 +227,20 @@
                                          ItemsSource="{Binding Candidates}" SelectedItem="{Binding SelectedCandidate}">
                                     <ListBox.ItemTemplate>
                                         <DataTemplate>
-                                            <DockPanel>
+                                            <!-- 題と数字を1行に並べると、狭い列では題が「過…」まで削られた。題を1行目に全幅で出し、数字は2行目へ -->
+                                            <DockPanel Margin="0,1" ToolTip="{Binding Title}">
                                                 <Border x:Name="mark" DockPanel.Dock="Left" Width="3" Margin="0,1,6,1"
                                                         Background="{DynamicResource Accent}" />
-                                                <TextBlock DockPanel.Dock="Right" Text="{Binding EstimateLabel}"
-                                                           Style="{StaticResource Dim}" Margin="8,0,0,0" />
-                                                <TextBlock DockPanel.Dock="Right" Text="{Binding RunCountLabel}"
-                                                           Style="{StaticResource Dim}" Margin="8,0,0,0" />
-                                                <TextBlock DockPanel.Dock="Right" Text="{Binding CategoryLabel}"
-                                                           Style="{StaticResource Dim}" Margin="8,0,0,0" />
-                                                <TextBlock x:Name="standing" DockPanel.Dock="Right" Text="{Binding StandingLabel}"
-                                                           Style="{StaticResource Dim}" Margin="8,0,0,0" />
-                                                <TextBlock x:Name="title" Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
+                                                <StackPanel>
+                                                    <TextBlock x:Name="title" Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <TextBlock x:Name="standing" Text="{Binding StandingLabel}"
+                                                                   Style="{StaticResource Dim}" Margin="0,0,8,0" />
+                                                        <TextBlock Text="{Binding CategoryLabel}" Style="{StaticResource Dim}" Margin="0,0,8,0" />
+                                                        <TextBlock Text="{Binding RunCountLabel}" Style="{StaticResource Dim}" Margin="0,0,8,0" />
+                                                        <TextBlock Text="{Binding EstimateLabel}" Style="{StaticResource Dim}" />
+                                                    </StackPanel>
+                                                </StackPanel>
                                             </DockPanel>
                                             <DataTemplate.Triggers>
                                                 <DataTrigger Binding="{Binding IsHandled}" Value="True">
@@ -246,6 +248,9 @@
                                                 </DataTrigger>
                                                 <DataTrigger Binding="{Binding IsRecurred}" Value="True">
                                                     <Setter TargetName="standing" Property="Foreground" Value="{DynamicResource Error}" />
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding StandingLabel}" Value="">
+                                                    <Setter TargetName="standing" Property="Visibility" Value="Collapsed" />
                                                 </DataTrigger>
                                                 <DataTrigger Binding="{Binding IsRework}" Value="True">
                                                     <Setter TargetName="mark" Property="Background" Value="{DynamicResource Error}" />
