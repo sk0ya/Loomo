@@ -105,6 +105,37 @@ public sealed class HarnessTests : IDisposable
     }
 
     [Fact]
+    public void Persisted_error_output_with_leading_whitespace_is_still_a_persisted_result()
+    {
+        // 失敗したコマンドの巨大な出力も逃がされる。印の前に空白・改行が付いても見落とさない。
+        var run = Parse(
+            User("見て"),
+            Assistant("m", [ToolUse("t1", "Bash", new { command = "dotnet test" })]),
+            Result("t1", "\n  <persisted-output>\nOutput too large (1.5MB). Full output saved to: C:\\x.txt\n\nPreview (first 2KB):\n…",
+                isError: true));
+
+        var call = Assert.Single(run.ToolCalls);
+        Assert.True(call.OutputPersisted);
+        Assert.True(call.IsError);
+        Assert.Equal((int)(1.5 * 1024 * 1024), call.ResultChars);
+    }
+
+    [Fact]
+    public void Persisted_output_marker_quoted_inside_file_text_is_not_a_persisted_result()
+    {
+        // 逃がしの印について書いたファイル（ハーネスの memory など）を読んだだけで、過大な出力と取り違えない。
+        var text = "1\t---\n15\t- `<persisted-output>Output too large (40.4KB)` は括弧内の大きさを使う。";
+        var run = Parse(
+            User("見て"),
+            Assistant("m", [ToolUse("t1", "Read", new { file_path = "C:\\m\\harness-pane.md" })]),
+            Result("t1", text));
+
+        var call = Assert.Single(run.ToolCalls);
+        Assert.False(call.OutputPersisted);
+        Assert.Equal(text.Length, call.ResultChars);
+    }
+
+    [Fact]
     public void Prompts_skip_meta_lines_and_slash_command_records()
     {
         var run = Parse(

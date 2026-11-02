@@ -285,7 +285,10 @@ public static class ClaudeTranscriptParser
         }
         call.IsError = isError;
         call.ResultChars = text.Length;
-        if (text.Contains("<persisted-output>", StringComparison.Ordinal))
+        // 逃がしの印は Claude Code が結果の先頭に置く。本文の途中にあるのは、印について書いたファイルを読んだだけ
+        // （ハーネスの memory を読んで「過大な出力」と数えていた）。先頭の空白・改行は飛ばす——前に改行が
+        // 1つ付いただけで本物の逃がしを見落とし、「過大なツール出力」の検出から黙って漏れないように。
+        if (text.AsSpan().TrimStart().StartsWith("<persisted-output>", StringComparison.Ordinal))
         {
             call.OutputPersisted = true;
             if (PersistedSize.Match(text) is { Success: true } m
