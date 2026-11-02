@@ -2,17 +2,17 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
-    <!-- 比較基準（何に対する差分として見るか）。サイドバー Git パネルと Diff ペインの両方が
-         同じ GitCompareBaseViewModel を DataContext に取るので、どちらで切り替えても両方に効く。
-         対象の選択は種別ごとに1つだけ出す（ブランチ／ワークツリー／リビジョン）。作業ツリー基準では
-         何も出さない（選ぶ意味が無く、出しても押せるのに何も起きない項目になる）。 -->
+    <!-- 比較基準（何に対する差分として見るか）。サイドバー Git パネルの「比較」タブに置く。VM は Diff ペイン・
+         エディタのガターと共有する Singleton なので、ここで切り替えると両方に効く。
+         種別に作業ツリーは並べない（作業ツリーは「変更」タブそのもの）。対象の選択は種別ごとに1つだけ出す
+         （ブランチ／ワークツリー／リビジョン）。 -->
     <StackPanel>
         <DockPanel>
             <ComboBox DockPanel.Dock="Left" MinHeight="24"
                       VerticalAlignment="Center" VerticalContentAlignment="Center"
                       ToolTip="変更一覧と差分を何に対して見るか"
-                      ItemsSource="{Binding ModeOptions}"
-                      SelectedItem="{Binding SelectedMode, Mode=TwoWay}"
+                      ItemsSource="{Binding CompareModeOptions}"
+                      SelectedItem="{Binding CompareMode, Mode=TwoWay}"
                       DisplayMemberPath="Label" />
             <Grid Margin="4,0,0,0">
                 <ComboBox MinWidth="120" MinHeight="24"

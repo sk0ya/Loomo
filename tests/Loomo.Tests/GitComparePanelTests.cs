@@ -347,6 +347,43 @@ public sealed class GitComparePanelTests : IAsyncLifetime
 
     // ===== ヘルパー =====
 
+    [Fact]
+    public async Task 見出しのタブと比較基準は同じ状態を指す()
+    {
+        await CommitAsync("a.txt", "a\n", "first");
+        var panel = CreatePanel();
+        Assert.Equal(GitPanelSection.Changes, panel.Section);
+
+        // 「比較」タブを開くと作業ツリー以外（初めては分岐点）になり、コミットはできない。
+        panel.Section = GitPanelSection.Compare;
+        Assert.Equal(GitCompareBaseKind.MergeBase, _compareBase.SelectedMode.Kind);
+        Assert.False(_compareBase.Capabilities.CanCommit);
+
+        // 種別を変えてから「変更」へ戻ると作業ツリー基準、また「比較」へ来ると最後の種別に戻る。
+        _compareBase.CompareMode = _compareBase.CompareModeOptions.First(o => o.Kind == GitCompareBaseKind.Revision);
+        panel.Section = GitPanelSection.Changes;
+        Assert.True(_compareBase.IsWorkingTree);
+        Assert.Equal(GitCompareBaseKind.Revision, _compareBase.CompareMode.Kind); // 箱は最後の種別を見せたまま
+        panel.Section = GitPanelSection.Compare;
+        Assert.Equal(GitCompareBaseKind.Revision, _compareBase.SelectedMode.Kind);
+
+        // スタッシュは基準に触らない。外から作業ツリーへ戻されてもスタッシュを見たまま。
+        panel.Section = GitPanelSection.Stash;
+        Assert.Equal(GitCompareBaseKind.Revision, _compareBase.SelectedMode.Kind);
+        _compareBase.ResetToWorkingTree();
+        Assert.Equal(GitPanelSection.Stash, panel.Section);
+
+        // 外（Git ペインの「このワークツリーと比較」など）で比較を頼まれたら、タブが付いてくる。
+        _compareBase.Apply(new GitCompareBaseSelection(GitCompareBaseKind.Branch, "main"));
+        Assert.Equal(GitPanelSection.Compare, panel.Section);
+        _compareBase.ResetToWorkingTree();
+        Assert.Equal(GitPanelSection.Changes, panel.Section);
+
+        // ComboBox が候補外で null を書き戻しても基準は動かない。
+        _compareBase.CompareMode = null!;
+        Assert.True(_compareBase.IsWorkingTree);
+    }
+
     private GitPanelViewModel CreatePanel()
         => new(_git, new FakeEditorService(), _workspace,
             new GitRepositoryStripViewModel(_git, _workspace), _compareBase);

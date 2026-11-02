@@ -317,7 +317,7 @@
             <Setter Property="Margin" Value="6,0,0,0" />
         </Style>
 
-        <!-- 変更／スタッシュの切り替え。下線で選択を示すフラットなタブ（HarnessPaneView・DebugView と同じ） -->
+        <!-- 見出しのタブ（変更／比較／スタッシュ）。下線で選択を示すフラットなタブ（HarnessPaneView・DebugView と同じ） -->
         <Style x:Key="GitSectionTabItem" TargetType="TabItem">
             <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
             <Setter Property="FontSize" Value="{DynamicResource Fs11}" />
@@ -343,7 +343,9 @@
             </Setter>
         </Style>
 
-        <Style x:Key="GitSectionTabControl" TargetType="TabControl">
+        <!-- 見出しのタブ帯。中身は持たない（タブは面の切替だけで、中身は下の要素が IsXxxSection で出し分ける——
+             リポジトリの帯・ブランチのカード・変更一覧は「変更」と「比較」の両方に出るので、タブの中に入れられない）。 -->
+        <Style x:Key="GitHeaderTabStrip" TargetType="TabControl">
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="Padding" Value="0" />
@@ -351,21 +353,40 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="TabControl">
-                        <DockPanel>
-                            <Border DockPanel.Dock="Top" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1">
-                                <TabPanel IsItemsHost="True" Background="Transparent" Margin="2,0" />
-                            </Border>
-                            <!-- 名前は PART_SelectedContentHost（UIA が選択中タブの中身を繋ぐため。DebugView 参照） -->
-                            <ContentPresenter x:Name="PART_SelectedContentHost" ContentSource="SelectedContent" Margin="0,2,0,0" />
-                        </DockPanel>
+                        <TabPanel IsItemsHost="True" Background="Transparent" Margin="4,0,4,2" />
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
         </Style>
+
     </UserControl.Resources>
 
     <DockPanel>
-        <TextBlock DockPanel.Dock="Top" Style="{StaticResource PanelHeader}" Text="GIT" />
+        <!-- 見出しはタブ（変更／比較／スタッシュ）。「GIT」の文字だけの帯は何も選べない1行だったので、そこを面の切替に使う。
+             「変更」＝作業ツリー基準でコミットする面、「比較」＝ブランチ／分岐点などと比べて見直す面で、タブと比較基準は
+             同じ1つの状態（GitPanelViewModel.Section）。以前は比較基準のコンボボックスをコミット欄の上に置いていて、
+             切り替えるとコミット欄ごと消える＝同じ面が別の道具に化けていた。リポジトリでないときは選ぶ面が無いので文字の見出しに戻す。 -->
+        <TabControl DockPanel.Dock="Top" Style="{StaticResource GitHeaderTabStrip}"
+                    SelectedIndex="{Binding SectionIndex, Mode=TwoWay}"
+                    Visibility="{Binding IsRepository, Converter={StaticResource BoolToVis}}">
+            <TabItem Header="変更" ToolTip="作業ツリーの変更（ステージ・コミット）" />
+            <TabItem Header="比較" ToolTip="ブランチ・分岐点・ワークツリー・リビジョンと比べる（変更一覧・Diff ペイン・エディタのガターが同じ基準になる）" />
+            <TabItem>
+                <TabItem.Header>
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="スタッシュ" VerticalAlignment="Center" />
+                        <Border Style="{StaticResource CountPill}"
+                                Visibility="{Binding Stashes.Count, Converter={StaticResource CountToVis}}">
+                            <TextBlock Text="{Binding Stashes.Count, Mode=OneWay}" FontSize="{DynamicResource Fs10}"
+                                       Foreground="{DynamicResource Fg}"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                    </StackPanel>
+                </TabItem.Header>
+            </TabItem>
+        </TabControl>
+        <TextBlock DockPanel.Dock="Top" Style="{StaticResource PanelHeader}" Text="GIT"
+                   Visibility="{Binding IsRepository, Converter={StaticResource InverseBoolToVis}}" />
 
         <!-- リポジトリの帯（§40.8.3）：リポジトリが2つ以上あるとき、コンボボックスで選ぶ。閉じた箱にも選んでいるリポジトリの
              印（ブランチ・ahead/behind・変更数）が出て、開けば全リポジトリを印付きで並べる。縦の一覧は狭いサイドバーで
@@ -404,42 +425,17 @@
 
         <DockPanel Visibility="{Binding IsRepository, Converter={StaticResource BoolToVis}}">
 
-            <!-- 比較基準：作業ツリー（既定）／ブランチと比較／分岐点と比較。
-                 切り替えると下の変更一覧と Diff ペインの差分本体が同じ基準になる（VM は Singleton 共有）。 -->
-            <views:GitCompareBaseView DockPanel.Dock="Top" Margin="8,2,8,4"
-                                      DataContext="{Binding CompareBase}" />
-
-            <!-- ブランチ＋同期操作（カード・2行）。フェッチ／プル／プッシュは比較基準に依らない。 -->
-            <Border DockPanel.Dock="Top" Margin="8,2,8,6" Padding="8,6" CornerRadius="5"
-                    Background="{DynamicResource Bg}">
+            <!-- ブランチ＋同期操作（カード・1行）。「変更」タブだけに出す——コミットしてそのままプッシュする流れの続きで、
+                 フェッチ／プル／プッシュは比較基準に依らない（「比較」「スタッシュ」には関係が無い）。ブランチ名と同期はタイトルバーの
+                 ブランチ切替にもあるが、ぶつかりそうの知らせ（§24.40）とプル前の確認（§24.64）はここにしか無いので消さない。
+                 以前は「ブランチ名」と「同期ボタン」の2行だった：ブランチ名を残りの幅で省略表示し、同期ボタンを右に寄せて1行にする。 -->
+            <Border DockPanel.Dock="Top" Margin="8,2,8,6" Padding="8,3" CornerRadius="5"
+                    Background="{DynamicResource Bg}"
+                    Visibility="{Binding IsChangesSection, Converter={StaticResource BoolToVis}}">
                 <StackPanel>
-                    <!-- 1行目：ブランチ名（全幅。長くてもここで省略表示） -->
-                    <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="⎇" FontSize="{DynamicResource Fs14}" Foreground="{DynamicResource Accent}"
-                                   VerticalAlignment="Center" Margin="0,0,6,0" />
-                        <TextBlock Text="{Binding BranchLabel}" FontWeight="SemiBold"
-                                   VerticalAlignment="Center"
-                                   TextTrimming="CharacterEllipsis"
-                                   ToolTip="{Binding BranchLabel}" />
-                    </StackPanel>
-
-                    <!-- 分岐元とぶつかりそうなら知らせる（§24.40）。マージを試す前に、並行作業のどれが衝突し始めたかが見える。 -->
-                    <Button Margin="0,4,0,0" Padding="0" HorizontalAlignment="Left"
-                            Background="Transparent" BorderThickness="0" Cursor="Hand"
-                            Command="{Binding OpenConflictForecastCommand}"
-                            ToolTip="{Binding ConflictForecastToolTip}"
-                            Visibility="{Binding HasConflictForecast, Converter={StaticResource BoolToVis}}">
-                        <Button.Template>
-                            <ControlTemplate TargetType="Button">
-                                <ContentPresenter />
-                            </ControlTemplate>
-                        </Button.Template>
-                        <TextBlock Text="{Binding ConflictForecastLabel}" FontSize="{DynamicResource Fs11}"
-                                   Foreground="#E2C08D" TextTrimming="CharacterEllipsis" />
-                    </Button>
-
-                    <!-- 2行目：同期操作。プル/プッシュは件数を出して対象の有無を見える化する。 -->
-                    <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                    <DockPanel>
+                        <!-- 同期操作（右寄せ）。プル/プッシュは件数を出して対象の有無を見える化する。 -->
+                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Margin="6,0,0,0">
                         <Button Style="{StaticResource SyncButton}" ToolTip="{Binding FetchToolTip}"
                                 Command="{Binding FetchCommand}">
                             <StackPanel Orientation="Horizontal">
@@ -501,7 +497,32 @@
                                            Visibility="{Binding Ahead, Converter={StaticResource CountToVis}}" />
                             </StackPanel>
                         </Button>
-                    </StackPanel>
+                        </StackPanel>
+                        <!-- ブランチ名（残りの幅。長ければ省略表示——横の StackPanel だと幅が無限で省略されない） -->
+                        <DockPanel VerticalAlignment="Center">
+                            <TextBlock DockPanel.Dock="Left" Text="⎇" FontSize="{DynamicResource Fs14}" Foreground="{DynamicResource Accent}"
+                                       VerticalAlignment="Center" Margin="0,0,6,0" />
+                            <TextBlock Text="{Binding BranchLabel}" FontWeight="SemiBold"
+                                       VerticalAlignment="Center"
+                                       TextTrimming="CharacterEllipsis"
+                                       ToolTip="{Binding BranchLabel}" />
+                        </DockPanel>
+                    </DockPanel>
+
+                    <!-- 分岐元とぶつかりそうなら知らせる（§24.40）。マージを試す前に、並行作業のどれが衝突し始めたかが見える。 -->
+                    <Button Margin="0,4,0,0" Padding="0" HorizontalAlignment="Left"
+                            Background="Transparent" BorderThickness="0" Cursor="Hand"
+                            Command="{Binding OpenConflictForecastCommand}"
+                            ToolTip="{Binding ConflictForecastToolTip}"
+                            Visibility="{Binding HasConflictForecast, Converter={StaticResource BoolToVis}}">
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <ContentPresenter />
+                            </ControlTemplate>
+                        </Button.Template>
+                        <TextBlock Text="{Binding ConflictForecastLabel}" FontSize="{DynamicResource Fs11}"
+                                   Foreground="#E2C08D" TextTrimming="CharacterEllipsis" />
+                    </Button>
 
                     <!-- プルの前の確認（§24.64）：上流と分かれているときだけ。何が来るか・ぶつかるかを読んでから取り込み方を選ぶ。 -->
                     <Border Margin="0,6,0,0" Padding="7,6" CornerRadius="4" Background="{DynamicResource BgAlt}"
@@ -550,9 +571,17 @@
                 </StackPanel>
             </Border>
 
+            <!-- 比較基準（「比較」タブのときだけ）。切り替えると下の変更一覧と Diff ペインの差分本体が同じ基準になる
+                 （VM は Singleton 共有）。今いるブランチはタイトルバーのブランチボタンで見える。 -->
+            <views:GitCompareBaseView DockPanel.Dock="Top" Margin="8,2,8,6"
+                                      DataContext="{Binding CompareBase}"
+                                      Visibility="{Binding DataContext.IsCompareSection, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource BoolToVis}}" />
+
             <!-- コミットメッセージ＋コミット。コミットはインデックスの内容を確定する操作なので、
                  基準がブランチ／分岐点のときは出さない（そこにステージという概念が無い）。 -->
-            <StackPanel DockPanel.Dock="Top" Margin="8,0,8,6"
+            <Border DockPanel.Dock="Top"
+                    Visibility="{Binding IsChangesSection, Converter={StaticResource BoolToVis}}">
+            <StackPanel Margin="8,0,8,6"
                         Visibility="{Binding Capabilities.CanCommit, Converter={StaticResource BoolToVis}}">
                 <Grid>
                     <TextBox x:Name="CommitMessageBox"
@@ -613,6 +642,7 @@
                         ToolTip="チェックしたファイルだけをコミットします。"
                         Command="{Binding CommitCommand}" />
             </StackPanel>
+            </Border>
 
             <!-- 実行結果メッセージ -->
             <TextBlock DockPanel.Dock="Bottom" Margin="10,4,10,8" FontSize="{DynamicResource Fs11}"
@@ -647,9 +677,9 @@
                  「変更」「バージョン管理外ファイル」をトップレベルのセクションに分ける。
                  ステージ済みと作業ツリーは GridSplitter で高さを相互にドラッグ調整でき、各セクションは
                  自前でスクロールする（多いときに一覧全体を押し出さない）。
-                 スタッシュは下に積まずタブで切り替える（積むと、どちらも狭い高さを取り合っていた）。 -->
-            <TabControl Style="{StaticResource GitSectionTabControl}" Margin="6,0">
-                <TabItem Header="変更">
+                 スタッシュは下に積まず見出しのタブで切り替える（積むと、どちらも狭い高さを取り合っていた）。 -->
+            <Grid Margin="6,0">
+                <Border Visibility="{Binding IsStashSection, Converter={StaticResource InverseBoolToVis}}">
                     <Grid>
                         <Grid.RowDefinitions>
                             <RowDefinition Height="{Binding Staged.Count, Converter={StaticResource BoolToStarLength}, ConverterParameter=1}" MinHeight="0" />
@@ -723,20 +753,9 @@
                                   ContextMenu="{StaticResource WorkingTreeRowMenu}" />
 
                     </Grid>
-                </TabItem>
+                </Border>
 
-                <TabItem>
-                    <TabItem.Header>
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="スタッシュ" VerticalAlignment="Center" />
-                            <Border Style="{StaticResource CountPill}"
-                                    Visibility="{Binding Stashes.Count, Converter={StaticResource CountToVis}}">
-                                <TextBlock Text="{Binding Stashes.Count, Mode=OneWay}" FontSize="{DynamicResource Fs10}"
-                                           Foreground="{DynamicResource Fg}"
-                                           HorizontalAlignment="Center" VerticalAlignment="Center" />
-                            </Border>
-                        </StackPanel>
-                    </TabItem.Header>
+                <Border Visibility="{Binding IsStashSection, Converter={StaticResource BoolToVis}}">
                     <!-- スタッシュ（退避）。右上の「⤓」で現在の変更を退避し、各行で 適用／取出／破棄。行を押すと中身を差分で見る（§24.31）。 -->
                     <DockPanel>
                         <DockPanel DockPanel.Dock="Top" Margin="4,2" Background="Transparent">
@@ -816,8 +835,8 @@
                             </ItemsControl>
                         </ScrollViewer>
                     </DockPanel>
-                </TabItem>
-            </TabControl>
+                </Border>
+            </Grid>
         </DockPanel>
     </DockPanel>
 </UserControl>

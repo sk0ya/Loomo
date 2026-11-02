@@ -180,6 +180,17 @@ public sealed class GitChangeTreeNode : ObservableObject
     }
 }
 
+/// <summary>サイドバー Git パネルの見出しのタブ。並び順＝タブの並び順（<see cref="GitPanelViewModel.SectionIndex"/>）。</summary>
+public enum GitPanelSection
+{
+    /// <summary>作業ツリーの変更（ステージ・コミット）。</summary>
+    Changes,
+    /// <summary>ブランチ／分岐点／ワークツリー／リビジョンとの比較（見直し）。</summary>
+    Compare,
+    /// <summary>スタッシュ（退避）。</summary>
+    Stash,
+}
+
 /// <summary>サイドバーの amend 対象として選べるコミット。</summary>
 public sealed record GitAmendCommitOption(string Hash, string ShortHash, string Subject, string Date)
 {
@@ -364,11 +375,53 @@ public sealed partial class GitPanelViewModel : ObservableObject
         // 基準が変わったら一覧を組み直す（ポーリング署名は git status しか見ないので、
         // 基準の切替はそこには現れない＝自前で読み直さないと古い一覧が残る）。
         CompareBase.Changed += OnCompareBaseChanged;
+        CompareBase.PropertyChanged += OnCompareBasePropertyChanged;
+        _section = CompareBase.IsWorkingTree ? GitPanelSection.Changes : GitPanelSection.Compare;
         _git.RepositoryChanged += OnRepositoryChanged;
         _git.ActiveRootChanged += OnActiveRootChanged;
         Staged.CollectionChanged += OnCommitCandidatesChanged;
         Changes.CollectionChanged += OnCommitCandidatesChanged;
         UnversionedFiles.CollectionChanged += OnCommitCandidatesChanged;
+    }
+
+    /// <summary>
+    /// 見出しのタブ（変更／比較／スタッシュ）。「変更」は作業ツリー基準（コミットする面）、「比較」はそれ以外の基準
+    /// （見直す面）で、<b>タブと基準は同じ1つの状態</b>——タブを替えれば基準が替わり、外（Git ペインの「このワークツリーと比較」・
+    /// リポジトリの切替）で基準が替わればタブが付いてくる。スタッシュは基準に依らないので、開いても基準は触らない。
+    /// </summary>
+    [ObservableProperty] private GitPanelSection _section;
+
+    /// <summary>TabControl.SelectedIndex 用（enum は TwoWay で int に変換されない）。</summary>
+    public int SectionIndex
+    {
+        get => (int)Section;
+        set { if (Enum.IsDefined(typeof(GitPanelSection), value)) Section = (GitPanelSection)value; }
+    }
+
+    partial void OnSectionChanged(GitPanelSection value)
+    {
+        OnPropertyChanged(nameof(IsChangesSection));
+        OnPropertyChanged(nameof(IsCompareSection));
+        OnPropertyChanged(nameof(IsStashSection));
+        OnPropertyChanged(nameof(SectionIndex));
+        switch (value)
+        {
+            case GitPanelSection.Changes: CompareBase.ResetToWorkingTree(); break;
+            case GitPanelSection.Compare: CompareBase.EnterCompare(); break;
+        }
+    }
+
+    public bool IsChangesSection => Section == GitPanelSection.Changes;
+    public bool IsCompareSection => Section == GitPanelSection.Compare;
+    public bool IsStashSection => Section == GitPanelSection.Stash;
+
+    private void OnCompareBasePropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(GitCompareBaseViewModel.IsWorkingTree)) return;
+        if (!CompareBase.IsWorkingTree)
+            Section = GitPanelSection.Compare;          // 外から比較を頼まれた＝スタッシュを見ていても比較へ
+        else if (Section == GitPanelSection.Compare)
+            Section = GitPanelSection.Changes;          // 作業ツリーへ戻った（スタッシュを見ているならそのまま）
     }
 
     private bool CanCommit() =>

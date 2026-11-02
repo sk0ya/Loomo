@@ -89,6 +89,38 @@ public sealed partial class GitCompareBaseViewModel : ObservableObject
 
     [ObservableProperty] private GitCompareModeOption _selectedMode;
 
+    /// <summary>Git パネルの「比較」タブで選べる種別（作業ツリーを除く——作業ツリーは「変更」タブそのもの）。</summary>
+    public IReadOnlyList<GitCompareModeOption> CompareModeOptions => _compareModeOptions ??= ModeOptions.Skip(1).ToArray();
+    private GitCompareModeOption[]? _compareModeOptions;
+
+    /// <summary>最後に使った作業ツリー以外の種別。「変更」タブへ行って「比較」タブへ戻ったとき、これに戻す。
+    /// 初めては分岐点（このブランチで自分が入れた変更＝レビューで一番見たいもの）。</summary>
+    private GitCompareModeOption? _lastCompareMode;
+
+    /// <summary>
+    /// 「比較」タブの種別 ComboBox が掴む値。<see cref="SelectedMode"/> を直接掴ませると、作業ツリー基準のとき
+    /// 候補に無い値になり、WPF の Selector が TwoWay で null を書き戻す。ここは作業ツリーのとき最後の比較種別を見せ、
+    /// null／作業ツリーの書き込みは無視する。
+    /// </summary>
+    public GitCompareModeOption CompareMode
+    {
+        get => IsWorkingTree ? LastCompareMode : SelectedMode;
+        set
+        {
+            if (value is null || value.Kind == GitCompareBaseKind.WorkingTree) return;
+            SelectedMode = value;
+        }
+    }
+
+    private GitCompareModeOption LastCompareMode =>
+        _lastCompareMode ?? CompareModeOptions.First(o => o.Kind == GitCompareBaseKind.MergeBase);
+
+    /// <summary>「比較」タブを開いた：作業ツリー基準なら最後に使った比較種別へ切り替える。</summary>
+    public void EnterCompare()
+    {
+        if (IsWorkingTree) SelectedMode = LastCompareMode;
+    }
+
     /// <summary>比較先に選べるブランチ（ローカル＋リモート追跡）。</summary>
     [ObservableProperty] private IReadOnlyList<string> _branchOptions = Array.Empty<string>();
 
@@ -450,6 +482,8 @@ public sealed partial class GitCompareBaseViewModel : ObservableObject
 
     private void NotifyModeDependents()
     {
+        if (!IsWorkingTree) _lastCompareMode = SelectedMode;
+        OnPropertyChanged(nameof(CompareMode));
         OnPropertyChanged(nameof(Selection));
         OnPropertyChanged(nameof(IsWorkingTree));
         OnPropertyChanged(nameof(NeedsBranch));
