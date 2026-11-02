@@ -96,6 +96,8 @@
          （EditorTheme.DiffMovedSourceLineBg／DiffMovedTargetLineBg）で塗り、行内差分は描かない（§24.70・2026-10-25 公開）。 -->
     <!-- 1.0.109: UndoManager.ExportHistory(TextBuffer, documentId, UndoExportOptions)（大きさの上限つきの書き出し）と
          VimEditorControl.ExportUndoHistory／ImportUndoHistory。取り消しの履歴を閉じても残す（§24.96・2026-10-26 公開）。 -->
+    <!-- 1.0.110: 色見本を後ろの文字をズラして空けた所に描く（文字に被らない）。色の判定は '#' の前も見て、Markdown の
+         リンク先（](#add)・doc.md#bed）・href="#fed"・issue#123・#add-feature の頭を色と取り違えない（2026-11-02 公開）。 -->
     <ProjectReference Include="..\..\..\Editor\src\Editor.Controls.Defaults\Editor.Controls.Defaults.csproj"
                       Condition="'$(UseLocalEditor)' != 'false'" />
     <!-- Defaults はパッケージ化時に Core/Controls を同梱する構成で、プロジェクト参照では
