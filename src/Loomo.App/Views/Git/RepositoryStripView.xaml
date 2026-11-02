@@ -5,15 +5,19 @@
              xmlns:local="clr-namespace:sk0ya.Loomo.App.Views"
              xmlns:svc="clr-namespace:sk0ya.Loomo.App.Services"
              x:Name="Root" Focusable="False">
-    <!-- リポジトリの帯（§40.8.3・§40.8.4）：ワークスペースの全リポジトリを印付きで並べ、今見ているものを常に見せる。
-         Git パネルでは縦の一覧（IsHorizontal=False）、Git ペインでは横のタブ（IsHorizontal=True）。項目が1つなら出さない。 -->
+    <!-- リポジトリを選ぶ部品（§40.8.3・§40.8.4）。Git パネル・Git ペインのヘッダー・ブランチ切替の3か所で<b>同じ形</b>
+         （コンボボックス）にする：閉じていても選んでいるリポジトリの印（ブランチ・ahead/behind・変更数）が見え、開けば全リポジトリが
+         印付きで並ぶ。項目が1つ（ふつうの1リポジトリの部屋）なら出さない。
+         以前はパネルが縦の一覧・ペインが横のタブで、同じ選択に別々の形があり、縦の一覧は狭いサイドバーでコミット欄を押し下げていた。 -->
     <UserControl.Resources>
-        <DataTemplate x:Key="StripItem" DataType="{x:Type vm:GitRepositoryStripItem}">
-            <StackPanel Orientation="Horizontal" Margin="{Binding IndentMargin}">
+        <!-- 印は押せない（項目を押す＝そのリポジトリを選ぶ、の1つだけにする。閉じた箱の上の印が押せると、開くつもりで
+             ブランチ切替が開く）。 -->
+        <DataTemplate x:Key="PickerItem" DataType="{x:Type vm:GitRepositoryStripItem}">
+            <StackPanel Orientation="Horizontal">
                 <TextBlock Text="{Binding Label}" VerticalAlignment="Center" FontSize="{DynamicResource Fs12}"
-                           Foreground="{DynamicResource Fg}" MaxWidth="180" TextTrimming="CharacterEllipsis"
-                           ToolTip="{Binding Root}" />
-                <ContentControl Content="{Binding Chip}" Margin="6,0,0,0" Focusable="False" VerticalAlignment="Center">
+                           Foreground="{DynamicResource Fg}" MaxWidth="200" TextTrimming="CharacterEllipsis" />
+                <ContentControl Content="{Binding Chip}" Margin="6,0,0,0" Focusable="False" VerticalAlignment="Center"
+                                IsHitTestVisible="False">
                     <ContentControl.Resources>
                         <DataTemplate DataType="{x:Type svc:RepositoryChipViewModel}">
                             <local:RepositoryChip />
@@ -22,35 +26,13 @@
                 </ContentControl>
             </StackPanel>
         </DataTemplate>
-        <Style x:Key="StripItemContainer" TargetType="ListBoxItem">
-            <Setter Property="Padding" Value="6,2" />
-            <Setter Property="Margin" Value="0" />
-            <Setter Property="Cursor" Value="Hand" />
-            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="ListBoxItem">
-                        <Border x:Name="Bd" Background="Transparent" Padding="{TemplateBinding Padding}"
-                                BorderBrush="{DynamicResource Accent}" BorderThickness="0">
-                            <ContentPresenter />
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource BgAlt}" />
-                            </Trigger>
-                            <Trigger Property="IsSelected" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource SelectionBg}" />
-                                <Setter TargetName="Bd" Property="BorderThickness"
-                                        Value="{Binding SelectedBorder, ElementName=Root}" />
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
+        <!-- 入れ子のリポジトリの字下げは開いた一覧の行だけに付ける（閉じた箱の中では要らない）。 -->
+        <Style x:Key="PickerItemContainer" TargetType="ComboBoxItem" BasedOn="{StaticResource {x:Type ComboBoxItem}}">
+            <Setter Property="Margin" Value="{Binding IndentMargin}" />
         </Style>
     </UserControl.Resources>
 
-    <StackPanel>
+    <StackPanel x:Name="Host">
         <StackPanel.Style>
             <Style TargetType="StackPanel">
                 <Setter Property="Visibility" Value="Collapsed" />
@@ -61,12 +43,12 @@
                 </Style.Triggers>
             </Style>
         </StackPanel.Style>
-        <ListBox x:Name="List" ItemsSource="{Binding Items}" SelectedItem="{Binding SelectedItem, Mode=TwoWay}"
-                 ItemTemplate="{StaticResource StripItem}" ItemContainerStyle="{StaticResource StripItemContainer}"
-                 Background="Transparent" BorderThickness="0" Padding="0"
-                 ScrollViewer.HorizontalScrollBarVisibility="Auto" ScrollViewer.VerticalScrollBarVisibility="Disabled" />
+        <ComboBox x:Name="Picker" ItemsSource="{Binding Items}" SelectedItem="{Binding SelectedItem, Mode=TwoWay}"
+                  ItemTemplate="{StaticResource PickerItem}" ItemContainerStyle="{StaticResource PickerItemContainer}"
+                  MinHeight="26" MinWidth="140"
+                  VerticalAlignment="Center" ToolTip="{Binding SelectedItem.Root}" />
         <TextBlock Text="{Binding SwitchNotice}" Margin="8,1,8,2" FontSize="{DynamicResource Fs11}"
-                   Foreground="{DynamicResource Accent}" TextTrimming="CharacterEllipsis">
+                   Foreground="{DynamicResource Accent}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center">
             <TextBlock.Style>
                 <Style TargetType="TextBlock">
                     <Style.Triggers>

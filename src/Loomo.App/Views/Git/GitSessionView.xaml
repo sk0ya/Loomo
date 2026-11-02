@@ -335,10 +335,7 @@
     </UserControl.Resources>
 
     <DockPanel>
-        <!-- リポジトリのタブ（§40.8.4）：リポジトリが2つ以上あるとき、全リポジトリを印付きのタブで並べる。ファイル起点の操作
-             （履歴・コミットの中のファイル）はそのファイルのリポジトリのタブへ移り、帯の下に一言出る。 -->
-        <local:RepositoryStripView DockPanel.Dock="Top" IsHorizontal="True" Margin="4,2,4,0"
-                                   DataContext="{Binding Repositories}" />
+        <!-- リポジトリの選択（§40.8.4）はペインのヘッダー（ShellWindow.xaml の GitPane）にある。中身の上に専用の行を取らない。 -->
 
         <!-- リポジトリでないとき -->
         <TextBlock DockPanel.Dock="Top" Margin="12,8"
@@ -963,7 +960,7 @@
                             </Grid>
 
                             <!-- 作者で絞り込み（先頭の「すべて」で解除） -->
-                            <ComboBox x:Name="LogAuthorFilter" Width="140" MinHeight="24" Margin="0,1,6,1"
+                            <ComboBox x:Name="LogAuthorFilter" Width="160" MinHeight="24" Margin="0,1,6,1"
                                       VerticalAlignment="Center" VerticalContentAlignment="Center" Cursor="Arrow"
                                       ToolTip="作者で絞り込み"
                                       ItemsSource="{Binding History.AuthorOptions}"

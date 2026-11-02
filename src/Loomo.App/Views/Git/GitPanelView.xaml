@@ -367,11 +367,11 @@
     <DockPanel>
         <TextBlock DockPanel.Dock="Top" Style="{StaticResource PanelHeader}" Text="GIT" />
 
-        <!-- リポジトリの帯（§40.8.3）：リポジトリが2つ以上あるとき、全リポジトリを印付きの見出しで並べる。選んだリポジトリの
-             中身（変更の一覧・コミット欄）が下に出る。以前の「対象フォルダーの ComboBox」は、どれを見ているか・他が汚れているか
-             が見えなかった。 -->
-        <views:RepositoryStripView DockPanel.Dock="Top" Margin="0,2,0,4" DataContext="{Binding Repositories}"
-                                   MaxHeight="220" />
+        <!-- リポジトリの帯（§40.8.3）：リポジトリが2つ以上あるとき、コンボボックスで選ぶ。閉じた箱にも選んでいるリポジトリの
+             印（ブランチ・ahead/behind・変更数）が出て、開けば全リポジトリを印付きで並べる。縦の一覧は狭いサイドバーで
+             コミット欄と変更の一覧を下へ押し出していた。以前の「対象フォルダーの ComboBox」は名前だけで、他が汚れているかが見えなかった。 -->
+        <views:RepositoryStripView DockPanel.Dock="Top" Margin="8,2,8,4"
+                                   DataContext="{Binding Repositories}" />
 
         <!-- リポジトリでないとき -->
         <StackPanel DockPanel.Dock="Top" Margin="10,4"

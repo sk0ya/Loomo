@@ -2123,6 +2123,12 @@
                                 </MultiBinding>
                             </ToggleButton.Visibility>
                         </ToggleButton>
+                        <!-- リポジトリの選択（§40.8.4）：リポジトリが2つ以上あるとき、GIT の直後（中身全体の範囲を決める選択なので、
+                             面の切替より前）に、Git パネル・ブランチ切替と同じコンボボックスで置く。中身の上に専用の行を取らない。
+                             ファイル起点の操作で切り替わると箱の右に一言出る。押してもペインのドラッグにはならない（IsWithinButton）。 -->
+                        <views:RepositoryStripView DockPanel.Dock="Left" Margin="10,0,0,0" IsInline="True"
+                                                   VerticalAlignment="Center" Cursor="Arrow"
+                                                   DataContext="{Binding GitSession.Repositories}" />
                         <!-- 本体の面の切替（履歴／操作ログ）。2つで1つを選ぶので RadioButton にする
                              （ToggleButton だと押し直しで両方外れる）。選んだ面は設定へ持ち越す
                              （GitSessionViewModel.Mode）。 -->

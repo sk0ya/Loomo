@@ -485,14 +485,18 @@
                             </ToggleButton.Template>
                         </ToggleButton>
 
-                        <ContentPresenter x:Name="ContentSite"
-                                          IsHitTestVisible="False"
-                                          Content="{TemplateBinding SelectionBoxItem}"
-                                          ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
-                                          ContentTemplateSelector="{TemplateBinding ItemTemplateSelector}"
-                                          Margin="{TemplateBinding Padding}"
-                                          VerticalAlignment="Center"
-                                          HorizontalAlignment="Left" />
+                        <!-- 選んだ項目の表示は右端の矢印（24px）の手前まで。以前は全幅に重ねていて、幅を中身に合わせた箱
+                             （HorizontalAlignment=Left 等）では中身の右端が矢印と重なり、箱も矢印ぶん狭く測られていた。 -->
+                        <Border Margin="0,0,24,0" IsHitTestVisible="False">
+                            <ContentPresenter x:Name="ContentSite"
+                                              IsHitTestVisible="False"
+                                              Content="{TemplateBinding SelectionBoxItem}"
+                                              ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+                                              ContentTemplateSelector="{TemplateBinding ItemTemplateSelector}"
+                                              Margin="{TemplateBinding Padding}"
+                                              VerticalAlignment="Center"
+                                              HorizontalAlignment="Left" />
+                        </Border>
 
                         <!-- 編集可能モード（IsEditable=True）の入力欄。WPF はこの名前を要求する。
                              右端のドロップダウン矢印（約24px）を覆わないよう右マージンを確保。 -->

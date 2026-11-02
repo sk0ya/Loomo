@@ -3,34 +3,29 @@ using System.Windows.Controls;
 
 namespace sk0ya.Loomo.App.Views;
 
-/// <summary>リポジトリの帯（§40.8.3）。DataContext は <see cref="ViewModels.GitRepositoryStripViewModel"/>。</summary>
+/// <summary>リポジトリを選ぶ部品（§40.8.3）。DataContext は <see cref="ViewModels.GitRepositoryStripViewModel"/>。</summary>
 public partial class RepositoryStripView : UserControl
 {
-    public static readonly DependencyProperty IsHorizontalProperty = DependencyProperty.Register(
-        nameof(IsHorizontal), typeof(bool), typeof(RepositoryStripView),
-        new PropertyMetadata(false, (d, _) => ((RepositoryStripView)d).ApplyOrientation()));
+    public static readonly DependencyProperty IsInlineProperty = DependencyProperty.Register(
+        nameof(IsInline), typeof(bool), typeof(RepositoryStripView),
+        new PropertyMetadata(false, (d, _) => ((RepositoryStripView)d).ApplyInline()));
 
     public RepositoryStripView()
     {
         InitializeComponent();
-        ApplyOrientation();
+        ApplyInline();
     }
 
-    /// <summary>横のタブ（Git ペイン）か、縦の一覧（Git パネル）か。</summary>
-    public bool IsHorizontal
+    /// <summary>ヘッダー・ツールバーの中に置くか。置くなら切替の一言を箱の右に並べ、行の高さを変えない（既定は箱の下）。</summary>
+    public bool IsInline
     {
-        get => (bool)GetValue(IsHorizontalProperty);
-        set => SetValue(IsHorizontalProperty, value);
+        get => (bool)GetValue(IsInlineProperty);
+        set => SetValue(IsInlineProperty, value);
     }
 
-    /// <summary>選んでいる項目の印の線：タブは下、一覧は左。</summary>
-    public Thickness SelectedBorder => IsHorizontal ? new Thickness(0, 0, 0, 2) : new Thickness(2, 0, 0, 0);
-
-    private void ApplyOrientation()
+    private void ApplyInline()
     {
-        var factory = new FrameworkElementFactory(typeof(StackPanel));
-        factory.SetValue(StackPanel.OrientationProperty, IsHorizontal ? Orientation.Horizontal : Orientation.Vertical);
-        List.ItemsPanel = new ItemsPanelTemplate(factory);
-        ScrollViewer.SetHorizontalScrollBarVisibility(List, IsHorizontal ? ScrollBarVisibility.Auto : ScrollBarVisibility.Disabled);
+        Host.Orientation = IsInline ? Orientation.Horizontal : Orientation.Vertical;
+        Picker.MinHeight = IsInline ? 22 : 26;
     }
 }

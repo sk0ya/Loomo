@@ -63,7 +63,8 @@ public partial class ShellWindow {
     private static bool IsWithinButton(object? source) {
         var current = source as DependencyObject;
         while (current is not null) {
-            if (current is System.Windows.Controls.Primitives.ButtonBase)
+            // ヘッダーに置いた選択の箱（Git ペインのリポジトリ、§40.8.4）も押す場所であってドラッグの取っ手ではない。
+            if (current is System.Windows.Controls.Primitives.ButtonBase or System.Windows.Controls.ComboBox)
                 return true;
             current = current is Visual or System.Windows.Media.Media3D.Visual3D
                 ? VisualTreeHelper.GetParent(current)
