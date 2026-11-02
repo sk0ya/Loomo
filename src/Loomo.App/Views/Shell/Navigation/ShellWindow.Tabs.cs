@@ -183,6 +183,7 @@ public partial class ShellWindow {
             SyncEditorCodeActionBulb(tab.Control);
         }
         _editorLspNotices.ShowForFile(filePath);
+        OnEditorOutlineFileChanged();   // Editor ペインのアウトラインを見ているファイルへ
         SeedEditorLocationHistory(tab);
         ForgetShelvedFile(filePath);   // 棚にあるファイルを別の道から開き直した（§24.29）
     }

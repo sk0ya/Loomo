@@ -1162,6 +1162,14 @@
                         </Button>
                         <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="30" Height="24"
                                 Content="+" FontSize="{DynamicResource Fs15}" ToolTip="新しいタブ" Click="OnEditorNewTab" />
+                        <!-- アウトライン：見ているファイルの構造（Markdown は見出し、それ以外は言語サーバーのシンボル）を右端に出す -->
+                        <ToggleButton x:Name="EditorOutlineToggle" DockPanel.Dock="Right"
+                                      Style="{StaticResource PaneToggle}" Width="30" Height="24"
+                                      ToolTip="アウトラインを表示（Markdown は見出し・コードは言語サーバーの宣言／クリックでその位置へ移動）"
+                                      Click="OnToggleEditorOutline">
+                            <Path Style="{StaticResource PaneToggleIcon}"
+                                  Data="M3,4 H13 M3,7.5 H10 M3,11 H12 M3,14.5 H8" />
+                        </ToggleButton>
                         <!-- タブ一覧。ヘッダーにタブ帯は置かない（タブはサイドバーの TABS で見る）が、TABS を畳んでいる／
                              ステージ・切り離し中でも、このペインのタブへ直接飛べる口として残す -->
                         <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="24" Height="24"
@@ -1246,6 +1254,25 @@
                     <!-- 分割しても下端に1つだけ表示する共有ステータスバー。各エディタは SetSharedStatusBar で
                          自前のバーを隠してここへ状態を流す（フォーカス中のエディタの mode/file/cursor を表示）。 -->
                     <editor:VimStatusBar x:Name="EditorSharedStatusBar" DockPanel.Dock="Bottom" />
+                    <!-- アウトライン（見出し／宣言の一覧）。クリックでその行へ -->
+                    <Border x:Name="EditorOutlineHost" DockPanel.Dock="Right" Width="240" Visibility="Collapsed"
+                            BorderBrush="{DynamicResource Border}" BorderThickness="1,0,0,0">
+                        <Grid>
+                            <TextBlock x:Name="EditorOutlineEmpty" Margin="8,6" TextWrapping="Wrap"
+                                       Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs12}" />
+                            <ListBox x:Name="EditorOutlineList" BorderThickness="0" Background="Transparent"
+                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                     VirtualizingPanel.IsVirtualizing="True"
+                                     PreviewMouseLeftButtonUp="OnEditorOutlineClick">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding Text}" Margin="{Binding Indent}" ToolTip="{Binding Text}"
+                                                   FontSize="{DynamicResource Fs12}" TextTrimming="CharacterEllipsis" />
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </Grid>
+                    </Border>
                     <Grid x:Name="EditorContentHost" />
                 </DockPanel>
 

@@ -304,6 +304,7 @@ public partial class ShellWindow {
                 _trailEditCommit.Request(tab);
             if (ReferenceEquals(_editorSupport.Source, tab))
                 ScheduleEditorSupportUpdate();
+            OnEditorOutlineBufferChanged(control);
             ScheduleStyleCopAnalysis(control);
         };
         control.CaretMoved += (_, _) => {
@@ -441,6 +442,7 @@ public partial class ShellWindow {
         ScheduleStyleCopAnalysis(control);
         // 同じく BufferChanged が出ないので、この文書を別のエディタに映している側へ知らせる。
         _editorDocumentEvents.RaiseLoaded(control);
+        OnEditorOutlineBufferChanged(control);   // 読み直し（同じタブへ別ファイル）でも組み直す
     }
     /// <summary>ここで読み取り専用にしたエディタ。同じエディタへ普通のファイルを読み直したら戻す
     /// （差分ビュー等、別の理由で読み取り専用にしている相手には触らない）。</summary>

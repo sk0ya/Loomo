@@ -471,6 +471,12 @@ public sealed class AppearanceSettings
     /// </summary>
     public bool MarkdownOutlineVisible { get; set; }
 
+    /// <summary>
+    /// Editor ペインの右端に<b>アウトライン</b>（見出し／宣言の一覧）を出すか。既定 OFF。
+    /// Markdown は見出しから、それ以外は言語サーバーの documentSymbol から組む。
+    /// </summary>
+    public bool EditorOutlineVisible { get; set; }
+
     /// <summary>ターミナルの配色テーマ（背景/文字色のプリセット）。<c>Dark / Light / Dracula / Nord / SolarizedDark</c>。</summary>
     public string TerminalTheme { get; set; } = "Dark";
 
