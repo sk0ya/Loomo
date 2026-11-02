@@ -28,6 +28,8 @@ drop the prefix (`Loomo.Core`, `Loomo.Ai`, `Loomo.Services`, `Loomo.App`, `Loomo
 The authoritative design doc is `docs/設計/` (Japanese; start at `docs/設計/README.md` for the index + §→file
 map). It was split out of the old single `docs/設計書.md` (now a thin redirect), but section numbers (§N) are
 preserved across the split, so existing "§21"/"§25"-style cross-references still resolve via the README map.
+Chapters and many source files are large (30–80KB; XAML and `MarkdownPage.cs` have very long lines, so even
+`limit` 300–450 lines exceeds 50KB): Grep the heading/symbol first, then Read only that range with `offset`/`limit`.
 Comments, commit messages, and UI strings are in Japanese — match that when editing.
 
 ## Commands
