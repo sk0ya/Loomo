@@ -83,19 +83,26 @@ public static class HarnessDetectors
             if (count == RereadThreshold)
             {
                 foreach (var r in repeats)
-                    Get(aggs, RuleReread, path.ToLowerInvariant(), () => RereadAgg(path)).Add(run, r, r.ResultChars);
+                    Get(aggs, RuleReread, ReadKey, RereadAgg).Add(run, r, r.ResultChars);
             }
             else if (count > RereadThreshold)
             {
-                Get(aggs, RuleReread, path.ToLowerInvariant(), () => RereadAgg(path)).Add(run, call, call.ResultChars);
+                Get(aggs, RuleReread, ReadKey, RereadAgg).Add(run, call, call.ResultChars);
             }
         }
     }
 
-    private static Agg RereadAgg(string path) => new(
-        RuleReread, path.ToLowerInvariant(), $"同じファイルの繰り返し読込：{Path.GetFileName(path)}",
+    /// <summary>
+    /// Read の候補はファイルごとに分けず、規則で1つに束ねる鍵。直す先（読み方の指示）はファイルによらず同じで、
+    /// ファイルごとに分けると読んだファイルの数だけ「1 Run だけ」の候補が増え続けた（30日で 86 件中 72 件）。
+    /// どのファイルかは根拠の行に残る。
+    /// </summary>
+    private const string ReadKey = "read";
+
+    private static Agg RereadAgg() => new(
+        RuleReread, ReadKey, "同じファイルの繰り返し読込",
         HarnessCandidateCategory.Tokens,
-        $"1 Run の中で {path} を、書き換えを挟まずに {RereadThreshold} 回以上読んでいる。",
+        $"1 Run の中で同じファイルを、書き換えを挟まずに {RereadThreshold} 回以上読んでいる（どのファイルかは根拠に出る）。",
         "読んだ内容を引き継ぐ手順（調査結果を小さくまとめて持つ・必要な範囲だけ読む）を指示に書く。",
         [HarnessComponentKind.Instructions]);
 
@@ -105,12 +112,15 @@ public static class HarnessDetectors
         {
             if (!call.HasResult || call.IsRejected || (call.ResultChars < LargeOutputChars && !call.OutputPersisted))
                 continue;
+            // 逃がされた出力（persisted-output）を読み直したものは、元の呼び出しで数えてある。
+            if (call.Tool == "Read" && IsPersistedToolResult(call.FilePath))
+                continue;
             string key, label, direction;
             HarnessComponentKind[] related;
-            if (call.Tool == "Read" && call.FilePath is { } path)
+            if (call.Tool == "Read" && call.FilePath is not null)
             {
-                key = "read:" + path.ToLowerInvariant();
-                label = Path.GetFileName(path);
+                key = ReadKey;
+                label = "Read（ファイル全体の読込）";
                 direction = "ファイル全体ではなく、検索で位置を絞ってから offset／limit で必要な範囲だけ読む。";
                 related = [HarnessComponentKind.Instructions];
             }
@@ -209,24 +219,91 @@ public static class HarnessDetectors
             [HarnessComponentKind.Workflow, HarnessComponentKind.Instructions])).Add(run, edit, 0);
     }
 
-    /// <summary>コマンドを束ねる鍵：先頭の2語（<c>cd x &amp;&amp;</c> の前置きは外す）。</summary>
+    /// <summary>2語目がサブコマンドになる道具。これ以外の2語目はファイル名や引数なので鍵に入れない。</summary>
+    private static readonly HashSet<string> SubcommandTools = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "git", "dotnet", "npm", "pnpm", "yarn", "npx", "bun", "deno", "cargo", "go", "gh", "docker", "kubectl",
+        "pip", "uv", "az", "winget", "rustup", "gradle", "gradlew", "mvn",
+    };
+
+    /// <summary>
+    /// コマンドを束ねる鍵：実際に何をしたかを表す最初の1つのコマンドの名前（サブコマンドを持つ道具なら2語目まで）。
+    /// <c>cd x &amp;&amp;</c>・<c>X=…;</c>・<c>export</c> のような場所合わせ・変数の用意は飛ばす。
+    /// </summary>
     public static string CommandKey(string command)
     {
-        var text = Normalize(command);
-        // 「cd C:/x && dotnet build」の cd は場所合わせで、何をしたかではない。
-        var chained = Regex.Match(text, @"^cd\s+\S+\s*(&&|;)\s*(?<rest>.+)$");
-        if (chained.Success)
-            text = chained.Groups["rest"].Value;
-        // 先頭が引用符つきの実行ファイル（"C:\Program Files\…\git.exe" status）なら、閉じ引用符までを1語にする。
-        if (text.Length > 1 && text[0] is '"' or '\'' && text.IndexOf(text[0], 1) is var close and > 0)
-            text = Path.GetFileName(text[1..close]) + text[(close + 1)..];
-        var words = text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        if (words.Length == 0)
-            return "";
-        var first = Path.GetFileName(words[0].Trim('"', '\''));
-        return words.Length > 1 && !words[1].StartsWith('-') && !words[1].Contains('/') && !words[1].Contains('\\')
-            ? $"{first} {words[1]}"
-            : first;
+        foreach (var segment in SplitTopLevel(Normalize(command)))
+        {
+            var text = segment;
+            // 「FOO=bar cmd」の前置きの代入は外す。
+            while (Regex.Match(text, @"^[A-Za-z_][A-Za-z0-9_]*=(""[^""]*""|'[^']*'|\S*)\s*") is { Success: true } assign)
+                text = text[assign.Length..];
+            // PowerShell の呼び出し演算子（& "C:\…\x.exe" …）は何をしたかではない。
+            if (text.StartsWith("& ", StringComparison.Ordinal))
+                text = text[2..].TrimStart();
+            if (text.Length == 0 || IsSetupOnly(text))
+                continue;
+            // 先頭が引用符つきの実行ファイル（"C:\Program Files\…\git.exe" status）なら、閉じ引用符までを1語にする。
+            if (text.Length > 1 && text[0] is '"' or '\'' && text.IndexOf(text[0], 1) is var close and > 0)
+                text = Path.GetFileName(text[1..close]) + text[(close + 1)..];
+            var words = text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (words.Length == 0)
+                continue;
+            var first = Path.GetFileName(words[0].Trim('"', '\'', '(', '{'));
+            return words.Length > 1 && SubcommandTools.Contains(Path.GetFileNameWithoutExtension(first))
+                   && !words[1].StartsWith('-') && !words[1].Contains('/') && !words[1].Contains('\\')
+                ? $"{first} {words[1]}"
+                : first;
+        }
+        return "";
+    }
+
+    /// <summary>何かをする前の準備だけの区切り（場所合わせ・変数の用意）か。</summary>
+    private static bool IsSetupOnly(string segment)
+        => Regex.IsMatch(segment, @"^(cd|pushd|Set-Location|sl|export|set|source|\.)(\s|$)", RegexOptions.IgnoreCase)
+           || Regex.IsMatch(segment, @"^\$[A-Za-z_][\w:]*\s*=");
+
+    /// <summary><c>;</c>・<c>&amp;&amp;</c>・<c>||</c> で区切る（引用符の中は区切らない）。</summary>
+    private static IEnumerable<string> SplitTopLevel(string text)
+    {
+        var start = 0;
+        char? quote = null;
+        for (var i = 0; i < text.Length; i++)
+        {
+            var ch = text[i];
+            if (quote is { } q)
+            {
+                if (ch == q)
+                    quote = null;
+                continue;
+            }
+            if (ch is '"' or '\'')
+            {
+                quote = ch;
+                continue;
+            }
+            var width = ch == ';' ? 1
+                : i + 1 < text.Length && (ch, text[i + 1]) is ('&', '&') or ('|', '|') ? 2
+                : 0;
+            if (width == 0)
+                continue;
+            if (text[start..i].Trim() is { Length: > 0 } part)
+                yield return part;
+            start = i + width;
+            i += width - 1;
+        }
+        if (text[start..].Trim() is { Length: > 0 } last)
+            yield return last;
+    }
+
+    /// <summary>Claude Code が大きな結果を逃がした先（<c>~/.claude/projects/&lt;slug&gt;/&lt;session&gt;/tool-results/</c>）か。</summary>
+    public static bool IsPersistedToolResult(string? path)
+    {
+        if (path is null)
+            return false;
+        var p = path.Replace('/', '\\');
+        return p.Contains(@"\tool-results\", StringComparison.OrdinalIgnoreCase)
+               && p.Contains(@"\.claude\projects\", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string Normalize(string command) => Regex.Replace(command, @"\s+", " ").Trim();

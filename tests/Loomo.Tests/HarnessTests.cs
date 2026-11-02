@@ -260,8 +260,42 @@ public sealed class HarnessTests : IDisposable
     [InlineData("cd C:/Projects/Loomo && git log --oneline", "git log")]
     [InlineData("cat docs/a.md | head", "cat")]
     [InlineData("\"C:\\Program Files\\Git\\bin\\git.exe\" status", "git.exe status")]
-    public void Command_key_is_the_first_two_words_without_cd(string command, string expected)
+    // 2語目はサブコマンドを持つ道具のときだけ（cat のファイル名ごとに候補が割れない）。
+    [InlineData("cat CLAUDE.md", "cat")]
+    [InlineData("find 0e7bb2f3-284b -name x", "find")]
+    // 変数の用意・場所合わせ・呼び出し演算子は飛ばす。
+    [InlineData("tmp=\"$(mktemp)\"; grep -rn foo src > \"$tmp\"", "grep")]
+    [InlineData("PYTHONIOENCODING=utf-8 python -c 'print(1)'", "python")]
+    [InlineData("S=\"a;b\"; cd \"$S\"; dotnet run -c Release", "dotnet run")]
+    [InlineData("$p = 'x'; & \"C:\\tools\\gh.exe\" pr list", "gh.exe pr")]
+    public void Command_key_is_the_command_that_did_the_work(string command, string expected)
         => Assert.Equal(expected, HarnessDetectors.CommandKey(command));
+
+    [Fact]
+    public void Read_candidates_are_one_per_rule_not_one_per_file()
+    {
+        // ファイルごとに分けると、読んだファイルの数だけ「1 Run だけ」の候補が増え続ける。
+        var r1 = RunOf("r1", Call("Read", @"C:\ws\a.cs", chars: 30_000));
+        var r2 = RunOf("r2", Call("Read", @"C:\ws\b.cs", chars: 30_000));
+        var large = Assert.Single(HarnessDetectors.Detect([r1, r2]), c => c.RuleId == HarnessDetectors.RuleLargeOutput);
+        Assert.Equal(2, large.RunCount);
+        Assert.Equal([@"C:\ws\a.cs", @"C:\ws\b.cs"], large.Evidence.Select(e => e.FilePath).Order());
+
+        var rereads = RunOf("r3",
+            Call("Read", @"C:\ws\a.cs"), Call("Read", @"C:\ws\a.cs"), Call("Read", @"C:\ws\a.cs"),
+            Call("Read", @"C:\ws\b.cs"), Call("Read", @"C:\ws\b.cs"), Call("Read", @"C:\ws\b.cs"));
+        Assert.Single(HarnessDetectors.Detect([rereads]), c => c.RuleId == HarnessDetectors.RuleReread);
+    }
+
+    [Fact]
+    public void Reading_back_a_persisted_tool_result_is_not_counted_twice()
+    {
+        var run = RunOf("r1",
+            Call("Bash", command: "git diff", chars: 50_000),
+            Call("Read", @"C:\Users\u\.claude\projects\C--ws\s1\tool-results\b123.txt", chars: 40_000));
+        var candidate = Assert.Single(HarnessDetectors.Detect([run]), c => c.RuleId == HarnessDetectors.RuleLargeOutput);
+        Assert.Equal("cmd:git diff", candidate.Key);
+    }
 
     // ===== 指標・版（§37.4・§37.6） =====
 
