@@ -411,10 +411,8 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
 
     partial void OnIsSideBySideChanged(bool value)
     {
-        NotifyLayoutChoice();
-        ResetChangeCursor();
-        NotifyMarkdownRenderState();
-        _ = LoadAndAutoJumpAsync(SelectedFile);
+        if (_switchingLayout) return;   // 表示形式の 3 択から切り替えている途中（SetLayout が最後にまとめて済ませる）
+        OnLayoutChanged();
     }
 
     /// <summary>差分を読み込み、最初の変更への自動ジャンプを要求する。</summary>

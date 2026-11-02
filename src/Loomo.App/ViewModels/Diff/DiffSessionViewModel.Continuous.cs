@@ -23,27 +23,84 @@ public sealed partial class DiffSessionViewModel
     /// <summary>通しで読む（統合表示の一種。左右並びとは同時に効かない）。</summary>
     [ObservableProperty] private bool _isContinuous;
 
-    // 表示形式の 3 択（左右／統合／通し）のラジオボタン用。true を書いたものへ切り替え、false は捨てる
+    /// <summary>
+    /// 統合表示を折りたたまずにファイルの最初から最後まで出す（「全文」）。左右並びの全文表示の 1 列版で、
+    /// 変更の周り数行だけでは前後の流れが読めないときに使う。通しには効かない（全ファイルを全文でつなぐと際限なく長い）。
+    /// </summary>
+    [ObservableProperty] private bool _isFullFileUnified;
+
+    /// <summary>統合表示の行を組み立てるときの前後の行数。行の印・行番号の対応も必ずこれと同じパッチで数える。</summary>
+    private int UnifiedContext => IsFullFileUnified && !IsSideBySide && !IsContinuous ? FullFileContext : 3;
+
+    // 表示形式の 4 択（左右／統合／全文／通し）のラジオボタン用。true を書いたものへ切り替え、false は捨てる
     // （RadioButton は選択が移るとき旧選択に false を書くので、ここで捨てないと二重に切り替わる）。
     public bool IsLayoutSide
     {
         get => IsSideBySide && !IsContinuous;
-        set { if (value) { IsContinuous = false; IsSideBySide = true; } }
+        set { if (value) SetLayout(sideBySide: true, continuous: false, fullFile: false); }
     }
 
     public bool IsLayoutUnified
     {
-        get => !IsSideBySide && !IsContinuous;
-        set { if (value) { IsContinuous = false; IsSideBySide = false; } }
+        get => !IsSideBySide && !IsContinuous && !IsFullFileUnified;
+        set { if (value) SetLayout(sideBySide: false, continuous: false, fullFile: false); }
+    }
+
+    public bool IsLayoutFullFile
+    {
+        get => !IsSideBySide && !IsContinuous && IsFullFileUnified;
+        set { if (value) SetLayout(sideBySide: false, continuous: false, fullFile: true); }
     }
 
     public bool IsLayoutContinuous
     {
         get => IsContinuous;
-        set { if (value) { IsSideBySide = false; IsContinuous = true; } }
+        set { if (value) SetLayout(sideBySide: false, continuous: true, fullFile: false); }
+    }
+
+    /// <summary>複数の値を切り替えている途中か。途中の組み合わせを通知・読込しないための印。</summary>
+    private bool _switchingLayout;
+
+    /// <summary>
+    /// 表示形式を<b>まとめて</b>切り替える。左右→通しは「左右をやめる」「通しにする」の 2 つの値の変更で、1 つずつ
+    /// 書くと間に「統合」の状態が挟まる——その通知で「統合」のラジオボタンが選ばれ、押した「通し」の選択が外れて
+    /// 左右／統合のまま残ったり、途中の形式で読込が走ったりした。全部を書き終えてから 1 回だけ知らせて読み込む。
+    /// </summary>
+    private void SetLayout(bool sideBySide, bool continuous, bool fullFile)
+    {
+        if (IsSideBySide == sideBySide && IsContinuous == continuous && IsFullFileUnified == fullFile)
+        {
+            NotifyLayoutChoice();   // 選択だけ揃え直す（押したボタンと値がずれていても戻す）
+            return;
+        }
+        _switchingLayout = true;
+        try
+        {
+            IsSideBySide = sideBySide;
+            IsContinuous = continuous;
+            IsFullFileUnified = fullFile;
+        }
+        finally
+        {
+            _switchingLayout = false;
+        }
+        OnLayoutChanged();
     }
 
     partial void OnIsContinuousChanged(bool value)
+    {
+        if (_switchingLayout) return;
+        OnLayoutChanged();
+    }
+
+    partial void OnIsFullFileUnifiedChanged(bool value)
+    {
+        if (_switchingLayout) return;
+        OnLayoutChanged();
+    }
+
+    /// <summary>表示形式（左右・統合・全文・通し）が変わった後始末。どの値が変わっても同じ。</summary>
+    private void OnLayoutChanged()
     {
         NotifyLayoutChoice();
         UpdateCanDiscard();
@@ -56,6 +113,7 @@ public sealed partial class DiffSessionViewModel
     {
         OnPropertyChanged(nameof(IsLayoutSide));
         OnPropertyChanged(nameof(IsLayoutUnified));
+        OnPropertyChanged(nameof(IsLayoutFullFile));
         OnPropertyChanged(nameof(IsLayoutContinuous));
     }
 
@@ -73,7 +131,7 @@ public sealed partial class DiffSessionViewModel
         {
             if (parts.Count >= ContinuousMaxFiles || rowCount >= ContinuousMaxRows)
                 break;
-            var content = await BuildUnifiedContentAsync(item);
+            var content = await BuildUnifiedContentAsync(item, context: 3);   // 通しは常に折りたたむ
             parts.Add(new ContinuousPart(item, content.Rows, content.Syntax, content.Inline));
             rowCount += content.Rows.Count + 1;
         }

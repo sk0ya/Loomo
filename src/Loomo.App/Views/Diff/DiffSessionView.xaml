@@ -370,6 +370,10 @@
                             <RadioButton Style="{StaticResource SourceToggle}" Content="統合"
                                          ToolTip="差分を1列で表示（unified）"
                                          IsChecked="{Binding IsLayoutUnified}" />
+                            <!-- 統合を折りたたまず、ファイルの最初から最後まで 1 列で（左右の全文表示の 1 列版）。 -->
+                            <RadioButton Style="{StaticResource SourceToggle}" Content="全文"
+                                         ToolTip="選んだファイルの差分を、変更の周りだけでなく最初から最後まで 1 列で表示"
+                                         IsChecked="{Binding IsLayoutFullFile}" />
                             <!-- 一覧の全ファイルを見出しを挟んで 1 本に（§24.50）。一覧で選ぶとそのファイルの見出しへ移る。 -->
                             <RadioButton Style="{StaticResource SourceToggle}" Content="通し"
                                          ToolTip="一覧の全ファイルの差分を 1 本に並べて、切り替えずに上から読む（一覧で選ぶとそのファイルへ移る）"

@@ -154,10 +154,11 @@ public sealed partial class DiffSessionViewModel
         }
         else
         {
-            var content = await BuildUnifiedContentAsync(item);
+            var context = UnifiedContext;
+            var content = await BuildUnifiedContentAsync(item, context);
             var rows = stageMap is null
                 ? content.Rows
-                : MarkStaged(content.Rows, await GetPatchTextAsync(item!, 3, IgnoreWhitespace), stageMap);
+                : MarkStaged(content.Rows, await GetPatchTextAsync(item!, context, IgnoreWhitespace), context, stageMap);
             if (version != _diffLoadVersion)
                 return;
             UnifiedSyntax = content.Syntax;
@@ -225,7 +226,8 @@ public sealed partial class DiffSessionViewModel
     // 重い（数千行で数百ms〜）。UI スレッドで走らせるとその間ペインごと固まるので Task.Run へ逃がす。
     // 逃がせるのはここまで——この後の FlowDocument 構築とレイアウトは UI スレッドでしかできない。
 
-    private async Task<UnifiedContent> BuildUnifiedContentAsync(DiffFileItem? item)
+    /// <param name="context">変更の前後に残す行数。<see cref="FullFileContext"/> なら全文（「全文」の形式）。</param>
+    private async Task<UnifiedContent> BuildUnifiedContentAsync(DiffFileItem? item, int context)
     {
         if (item is null)
             return new UnifiedContent(new List<DiffRowVm>(), DiffSyntaxHighlighter.None, DiffInlineHighlighter.None);
@@ -239,7 +241,7 @@ public sealed partial class DiffSessionViewModel
             return await Task.Run(() =>
             {
                 var rows = new List<DiffRowVm>();
-                foreach (var line in DiffUtil.Compute(oldText, newText, options: options))
+                foreach (var line in DiffUtil.Compute(oldText, newText, context, options))
                     rows.Add(new DiffRowVm(line.Kind.ToString(), line.Text));
                 // アドホック比較は全文2つから組み立てる経路で、行は本文そのもの（パッチの1文字プレフィックス無し）。
                 return new UnifiedContent(
@@ -248,17 +250,35 @@ public sealed partial class DiffSessionViewModel
             });
         }
 
-        var text = await GetPatchTextAsync(item, 3, options.IgnoreWhitespace);
+        var text = await GetPatchTextAsync(item, context, options.IgnoreWhitespace);
         if (text.Length == 0) return UnifiedMessage(NoDiffMessage);
+        var hidden = HiddenPatchRows(text, context);
         return await Task.Run(() =>
         {
             var rows = new List<DiffRowVm>();
-            foreach (var raw in text.Replace("\r\n", "\n").Split('\n'))
+            foreach (var raw in text.Replace("\r\n", "\n").Split('\n').Skip(hidden))
                 rows.Add(new DiffRowVm(SideBySideDiff.ClassifyPatchLine(raw).ToString(), raw) { Prefixed = true });
             return new UnifiedContent(
                 rows, DiffSyntaxHighlighter.ForUnified(path, hasPatchPrefix: true, rows),
                 DiffInlineHighlighter.ForUnified(rows, hasPatchPrefix: true)).WithMoves();
         });
+    }
+
+    /// <summary>
+    /// 全文の統合表示で隠すパッチ先頭の行数（<c>diff --git</c>・<c>index</c>・<c>---</c>/<c>+++</c>・唯一の <c>@@</c> まで）。
+    /// 全文はハンクが 1 つでファイルの 1 行目から始まるので、これらはファイルを読む邪魔でしかない（左右の全文表示も隠している）。
+    /// 行番号は @@ が無ければ 1 行目から数える（<see cref="DiffRowLineMapper.LineForUnifiedRow"/>）ので消してよい。
+    /// 行の添字をパッチの行へ戻す所（ステージの印・選んだ行の行番号）は、必ずこの数だけずらして数える。
+    /// 折りたたむ統合表示はハンクの切れ目に @@ が要るので隠さない（0）。
+    /// </summary>
+    internal static int HiddenPatchRows(string patch, int context)
+    {
+        if (context != FullFileContext) return 0;
+        var lines = patch.Replace("\r\n", "\n").Split('\n');
+        for (var i = 0; i < lines.Length; i++)
+            if (lines[i].StartsWith("@@", StringComparison.Ordinal))
+                return i + 1;
+        return 0;   // ハンクの無いパッチ（バイナリ・モード変更だけ）は見出しが中身なので残す
     }
 
     private async Task<SideContent> BuildSideContentAsync(DiffFileItem? item)
@@ -342,10 +362,11 @@ public sealed partial class DiffSessionViewModel
         }).ToList();
 
     /// <summary>統合表示の行（パッチを改行で分割したものと1対1）へ印を付ける。</summary>
-    private static List<DiffRowVm> MarkStaged(List<DiffRowVm> rows, string patch, StagedChangeMap map)
+    private static List<DiffRowVm> MarkStaged(List<DiffRowVm> rows, string patch, int context, StagedChangeMap map)
     {
         var lines = UnifiedPatchEditor.DescribeLines(patch);
-        return rows.Select((row, i) => i < lines.Count && lines[i] is { Marker: not '\0' } line
+        var hidden = HiddenPatchRows(patch, context);   // 全文で隠した先頭の行ぶん、行の添字とパッチの行がずれる
+        return rows.Select((row, i) => i + hidden < lines.Count && lines[i + hidden] is { Marker: not '\0' } line
             ? row with
             {
                 Staged = line.Marker == '-' ? map.IsStagedRemoval(line.OldLine) : map.IsStagedAddition(line.NewLine),
@@ -360,11 +381,15 @@ public sealed partial class DiffSessionViewModel
         var head = new HashSet<int>();
         var worktree = new HashSet<int>();
         if (SelectedFile is not { } item) return (head, worktree);
-        // 統合表示の行と同じ取り方（-w の有無）のパッチで数える——行の添字はそのパッチの行。
-        var lines = UnifiedPatchEditor.DescribeLines(await GetPatchTextAsync(item, 3, IgnoreWhitespace));
-        foreach (var index in rowIndices)
+        // 統合表示の行と同じ取り方（前後の行数・-w の有無）のパッチで数える——行の添字はそのパッチの行。
+        var context = UnifiedContext;
+        var patch = await GetPatchTextAsync(item, context, IgnoreWhitespace);
+        var lines = UnifiedPatchEditor.DescribeLines(patch);
+        var hidden = HiddenPatchRows(patch, context);   // 全文で隠した先頭の行ぶんずらす
+        foreach (var row in rowIndices)
         {
-            if (index < 0 || index >= lines.Count) continue;
+            var index = row + hidden;
+            if (row < 0 || index >= lines.Count) continue;
             if (lines[index].Marker == '-') head.Add(lines[index].OldLine);
             else if (lines[index].Marker == '+') worktree.Add(lines[index].NewLine);
         }

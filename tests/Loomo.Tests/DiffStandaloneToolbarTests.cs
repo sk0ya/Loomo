@@ -65,6 +65,7 @@ public sealed class DiffStandaloneToolbarTests
                 .Select(r => BindingOperations.GetBinding(r, ToggleButton.IsCheckedProperty)?.Path.Path)
                 .ToList();
             Assert.Contains("IsLayoutSide", toggles);
+            Assert.Contains("IsLayoutFullFile", toggles);     // 統合の全文
             Assert.Contains("IsLayoutContinuous", toggles);   // 通しで読む（§24.50）
             Assert.Contains("IsMarkdownRender", toggles);
 
