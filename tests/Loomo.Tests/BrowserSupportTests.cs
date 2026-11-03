@@ -98,8 +98,9 @@ public class BrowserSupportTests
         Assert.Equal(BrowserSupportCatalog.AzureDevOpsSite, page!.Site);
         Assert.Equal("PR 12", page.Heading);
         Assert.Equal(
-            [BrowserSupportActionKind.PullRequestDiff, BrowserSupportActionKind.PullRequestDocument],
+            [BrowserSupportActionKind.PullRequestDiff, BrowserSupportActionKind.PullRequestToClaude],
             page.Actions.Select(a => a.Kind));
+        Assert.True(page.Actions[1].NeedsClaude);
     }
 
     [Fact]
@@ -129,14 +130,21 @@ public class BrowserSupportTests
         var vm = new BrowserSupportViewModel();
         const string url = "https://dev.azure.com/org/Proj/_git/Repo/pullrequest/12";
         var page = BrowserSupportCatalog.Describe(url);
+        vm.SetClaudeAvailable(true);
         Assert.True(vm.Show(page, url));
-        // クローンが分かる前は、要らない道具（会話を読む）だけ。
-        Assert.Equal([BrowserSupportActionKind.PullRequestDocument], vm.Actions.Select(a => a.Action.Kind));
+        // クローンが分かる前は、要らない道具（Claude Code へ渡す）だけ。
+        Assert.Equal([BrowserSupportActionKind.PullRequestToClaude], vm.Actions.Select(a => a.Action.Kind));
 
         vm.SetRepository(page!, @"C:\work\repo", "手元のクローン");
         Assert.Equal(2, vm.Actions.Count);
 
         vm.SetRepository(page!, null, "ありません");
+        Assert.Single(vm.Actions);
+
+        // Claude Code が居なければ渡す道具は出さない（起きれば出し直す）。
+        vm.SetClaudeAvailable(false);
+        Assert.Empty(vm.Actions);
+        vm.SetClaudeAvailable(true);
         Assert.Single(vm.Actions);
     }
 
@@ -178,7 +186,7 @@ public class BrowserSupportTests
         Assert.Equal(("https://dev.azure.com/org", "Proj", 4567), (page.OrganizationUrl, page.Project, page.BuildId));
         var described = BrowserSupportCatalog.Describe("https://dev.azure.com/org/Proj/_build/results?buildId=4567")!;
         Assert.False(described.HasRepository);
-        Assert.Equal(BrowserSupportActionKind.BuildLog, Assert.Single(described.Actions).Kind);
+        Assert.Empty(described.Actions);   // ログはページに出ている：本体は節「エラー」（手元の行へ）
     }
 
     [Fact]
@@ -376,8 +384,9 @@ public class BrowserSupportTests
         var gh = BrowserSupportCatalog.Describe("https://github.com/o/r/pull/3")!;
         Assert.True(gh.HasRepository);
         Assert.False(gh.ShowsCode);
-        Assert.Equal([BrowserSupportActionKind.PullRequestDiff, BrowserSupportActionKind.PullRequestDocument],
+        Assert.Equal([BrowserSupportActionKind.PullRequestDiff, BrowserSupportActionKind.PullRequestToClaude],
             gh.Actions.Select(a => a.Kind));
+        Assert.Empty(BrowserSupportCatalog.Describe("https://github.com/o/r/commit/abcdef1234567")!.Actions);
     }
 
     [Fact]
@@ -422,11 +431,13 @@ public class BrowserSupportTests
     }
 
     [Fact]
-    public void Row_SingleButtonGoesInline_CodeKeepsButtonsBelow()
+    public void Row_SingleButtonGoesInline_SeveralGoBelow()
     {
         BrowserSupportButton[] one = [new("開く", () => { })];
+        BrowserSupportButton[] two = [new("開く", () => { }), new("1.0 にする", () => { })];
         Assert.True(new BrowserSupportRow("a", "", one, BrowserSupportRowLook.Path).ButtonInline);
-        Assert.True(new BrowserSupportRow("a", "", one, BrowserSupportRowLook.Code).ButtonsBelow);
+        Assert.True(new BrowserSupportRow("a", "", two, BrowserSupportRowLook.Path).ButtonsBelow);
+        Assert.Null(new BrowserSupportRow("a", "", two).InlineButton);
         Assert.False(new BrowserSupportRow("a", "", []).ButtonsBelow);
     }
 

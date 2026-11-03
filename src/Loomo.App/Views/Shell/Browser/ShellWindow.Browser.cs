@@ -268,7 +268,8 @@ public partial class ShellWindow {
         core.DownloadStarting += BrowserDownloads.OnStarting;
         core.ContextMenuRequested += (_, e) => {
             OnBrowserContextMenuRequested(core, e);
-            AddReviewThreadMenuItems(core, e);   // PR のページ：コメント → 手元で開く（§42.3）
+            AddReviewThreadMenuItems(tab, core, e);   // PR のページ：コメント → 手元で開く（§42.3）
+            AddPageCodeMenuItems(tab, core, e);       // 記事のコードブロック → 調べ始めた場所・ターミナル・エディタ（§41.8）
         };
         BrowserFind.Hook(core);
     }

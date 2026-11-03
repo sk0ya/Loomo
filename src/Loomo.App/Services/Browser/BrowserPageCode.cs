@@ -15,26 +15,21 @@ public sealed record BrowserCodeBlock(string Language, string Text)
 /// </summary>
 public static class BrowserPageCode
 {
-    public const int MaxBlocks = 60;
-
-    /// <summary><c>pre</c> を順に拾う。言語は <c>language-xx</c>／<c>lang-xx</c>／<c>highlight-source-xx</c> の class か
-    /// <c>data-lang</c>。同じ中身は1つにする。結果は JSON の文字列（<c>ExecuteScriptAsync</c> がさらに JSON で包む）。</summary>
-    public const string ExtractScript = """
-(function(){
-  var out=[], seen={};
-  var pres=document.querySelectorAll('pre');
-  for(var i=0;i<pres.length && out.length<60;i++){
-    var pre=pres[i], code=pre.querySelector('code')||pre;
-    var text=(code.innerText||code.textContent||'').replace(/\u00a0/g,' ').replace(/\s+$/,'');
-    if(!text.trim() || text.length>20000 || seen[text]) continue;
-    seen[text]=1;
-    var cls=[code.className, pre.className, pre.parentElement ? pre.parentElement.className : ''].join(' ');
-    if(typeof cls!=='string') cls='';
-    var m=cls.match(/(?:language|lang|highlight-source|highlight)-([A-Za-z0-9_+#-]+)/);
-    out.push({lang: m ? m[1] : (pre.getAttribute('data-lang')||code.getAttribute('data-lang')||''), text: text});
-  }
-  return JSON.stringify(out);
-})()
+    /// <summary>右クリックした所（ページの CSS 座標 <c>%X%</c>・<c>%Y%</c>）の <c>pre</c> を1つ拾う。言語は <c>language-xx</c>／
+    /// <c>lang-xx</c>／<c>highlight-source-xx</c> の class か <c>data-lang</c>。結果は <see cref="Parse"/> が読む形（0 か 1 個の配列）。
+    /// ページからの合図は受けない——こちらが走らせたスクリプトの戻り値をデータとして読むだけ（§41.2）。</summary>
+    public const string ExtractAtScript = """
+(function(x,y){
+  var el=document.elementFromPoint(x,y), pre=el && el.closest ? el.closest('pre') : null;
+  if(!pre) return JSON.stringify([]);
+  var code=pre.querySelector('code')||pre;
+  var text=(code.innerText||code.textContent||'').replace(/ /g,' ').replace(/\s+$/,'');
+  if(!text.trim() || text.length>20000) return JSON.stringify([]);
+  var cls=[code.className, pre.className, pre.parentElement ? pre.parentElement.className : ''].join(' ');
+  if(typeof cls!=='string') cls='';
+  var m=cls.match(/(?:language|lang|highlight-source|highlight)-([A-Za-z0-9_+#-]+)/);
+  return JSON.stringify([{lang: m ? m[1] : (pre.getAttribute('data-lang')||code.getAttribute('data-lang')||''), text: text}]);
+})(%X%,%Y%)
 """;
 
     public static readonly HashSet<string> ShellLanguages = new(StringComparer.OrdinalIgnoreCase)
@@ -66,7 +61,6 @@ public static class BrowserPageCode
                     e.TryGetProperty("lang", out var l) ? l.GetString() ?? "" : "",
                     e.TryGetProperty("text", out var t) ? t.GetString() ?? "" : ""))
                 .Where(b => b.Text.Trim().Length > 0)
-                .Take(MaxBlocks)
                 .ToList();
         }
         catch (Exception ex) when (ex is JsonException or InvalidOperationException) { return []; }
@@ -93,10 +87,4 @@ public static class BrowserPageCode
         }
     }
 
-    /// <summary>行の頭の短い見出し（一覧の題）。</summary>
-    public static string Preview(string text, int lines = 3)
-    {
-        var head = text.Replace("\r\n", "\n").Split('\n').Take(lines).Select(l => l.Length > 120 ? l[..120] + "…" : l);
-        return string.Join('\n', head);
-    }
 }

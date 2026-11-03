@@ -29,19 +29,15 @@ public enum BrowserSupportRowLook
     Text,
     /// <summary>ファイル・プロジェクトの場所（等幅の1行）。</summary>
     Path,
-    /// <summary>ページのコード（枠の中に等幅で。<see cref="BrowserSupportRow.Detail"/> は枠の見出し＝言語・行数）。</summary>
-    Code,
-    /// <summary>ページから取った抜き書き（引用の縦線付き）。</summary>
-    Quote,
 }
 
-/// <summary>節の1行（CI のエラー・パッケージを使っている場所・ページのコード・抜き書き…）。</summary>
+/// <summary>節の1行（PR の指摘・CI のエラー・パッケージを使っている場所・ポートを開いているもの…）。</summary>
 public sealed record BrowserSupportRow(string Title, string Detail, IReadOnlyList<BrowserSupportButton> Buttons,
     BrowserSupportRowLook Look = BrowserSupportRowLook.Text)
 {
     public bool HasDetail => Detail.Length > 0;
-    /// <summary>ボタンが1つなら行の右に並べる（「開く」「戻る」だけのために1段使わない）。コードの行は枠の下に並べる。</summary>
-    public bool ButtonInline => Buttons.Count == 1 && Look != BrowserSupportRowLook.Code;
+    /// <summary>ボタンが1つなら行の右に並べる（「開く」「戻る」だけのために1段使わない）。</summary>
+    public bool ButtonInline => Buttons.Count == 1;
     public bool ButtonsBelow => Buttons.Count > 0 && !ButtonInline;
     public BrowserSupportButton? InlineButton => ButtonInline ? Buttons[0] : null;
 }
@@ -60,6 +56,10 @@ public sealed partial class BrowserSupportSection(string key, string title, int 
     public int Order { get; } = order;
     /// <summary>目立たせる節（調べ始めた場所：このタブが何のために開かれたか）。</summary>
     public bool Emphasis { get; } = emphasis;
+    /// <summary>道具より上に出す節（並びが <see cref="LeadOrderLimit"/> より前：調べ始めた場所・PR の未解決の指摘）。
+    /// そのページで一番知りたいことは、決まった道具の列の下に埋めない。</summary>
+    public bool Leads => Order < LeadOrderLimit;
+    public const int LeadOrderLimit = 10;
     /// <summary>見出しの横の件数（空なら出さない）。</summary>
     [ObservableProperty] private string _count = "";
     public bool HasCount => Count.Length > 0;
@@ -86,6 +86,9 @@ public sealed partial class BrowserSupportViewModel : ObservableObject
     /// <summary>手元のクローン（無い・まだ探している間は null）。</summary>
     public string? RepositoryRoot { get; private set; }
 
+    /// <summary>ターミナルに Claude Code が居るか（居ないときは Claude Code へ渡す道具を出さない）。</summary>
+    public bool HasClaude { get; private set; }
+
     [ObservableProperty] private bool _hasPage;
     [ObservableProperty] private string _site = "";
     [ObservableProperty] private string _heading = "";
@@ -97,12 +100,11 @@ public sealed partial class BrowserSupportViewModel : ObservableObject
 
     /// <summary>ページが無いときに並べる、ページごとの道具の案内。</summary>
     public IReadOnlyList<BrowserSupportGuideItem> Guide { get; } = [
-        new("Azure DevOps", "PR・ファイル・コミット・パイプラインの実行"),
-        new("GitHub", "PR・Issue・ファイル・コミット・Actions の実行"),
+        new("Azure DevOps", "PR の指摘を手元の行で・ファイルを手元で・パイプラインのエラーを手元の行で"),
+        new("GitHub", "PR・Issue を Claude Code へ・ファイルを手元で・Actions のエラーを手元の行で"),
         new("npm／NuGet", "このワークスペースでの使われ方と追加"),
         new("localhost", "そのポートを動かしているターミナル"),
-        new("記事・ドキュメント", "ページのコードの一覧"),
-        new("どのページでも", "そのページからペグボードへ取った抜き書き"),
+        new("記事・ドキュメント", "コードブロックを右クリック → エディタ・ターミナル・コンポーザへ"),
         new("「ブラウザへ送る」で来たタブ", "調べ始めた場所へ戻る・ページのコードをそこへ貼る"),
     ];
 
@@ -191,6 +193,15 @@ public sealed partial class BrowserSupportViewModel : ObservableObject
             Sections.Remove(section);
     }
 
+    /// <summary>Claude Code の居る・居ないが変わった（ページを開き直さずに道具を出し入れする）。</summary>
+    public void SetClaudeAvailable(bool available)
+    {
+        if (HasClaude == available)
+            return;
+        HasClaude = available;
+        Rebuild();
+    }
+
     /// <summary>押した道具の結果・失敗を、手元のクローンの行の場所に出す。</summary>
     public void ReportStatus(string message) => Status = message;
 
@@ -203,7 +214,7 @@ public sealed partial class BrowserSupportViewModel : ObservableObject
         if (Page is null)
             return;
         foreach (var action in Page.Actions)
-            if (!action.NeedsLocalRepository || RepositoryRoot is not null)
+            if ((!action.NeedsLocalRepository || RepositoryRoot is not null) && (!action.NeedsClaude || HasClaude))
                 Actions.Add(new BrowserSupportActionRow(action, a => ActionRequested?.Invoke(a)));
     }
 }

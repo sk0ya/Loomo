@@ -134,6 +134,7 @@ public partial class ShellWindow {
         if (transition.ShouldRefresh)
         {
             UpdatePaneActivityBadge(PaneKind.Terminal);
+            UpdateBrowserSupportClaude();   // Claude Code が起きた・終わった：「Claude Code へ渡す」を出し入れする（§41）
             // 申告の変化は見出しのタイトルを動かさないので、印を付け直すにはこちらから組み直す（§24.61）。
             if (_terminalTabs.FirstOrDefault(t => t.Id == tabId) is { } tab)
                 UpdateTerminalTab(tab, tab.View.HeaderTitle);
@@ -174,8 +175,10 @@ public partial class ShellWindow {
     [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
     private static extern bool FlashWindowEx(ref FlashWindowInfo info);
     private void ForgetTerminalActivity(Guid tabId) {
-        if (_paneActivity.ForgetTerminal(tabId))
+        if (_paneActivity.ForgetTerminal(tabId)) {
             UpdatePaneActivityBadge(PaneKind.Terminal);
+            UpdateBrowserSupportClaude();
+        }
     }
     private void OnTerminalShellActivity(Guid tabId, ShellCommandActivityEventArgs e) {
         if (e.Phase == ShellCommandPhase.CommandDone) {

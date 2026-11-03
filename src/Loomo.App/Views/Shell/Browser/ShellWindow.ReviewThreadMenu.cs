@@ -34,17 +34,17 @@ public partial class ShellWindow {
 """;
 
     /// <summary>PR のページなら、右クリックのメニューに「手元で開く」を足す（ほかのページでは何もしない）。</summary>
-    private void AddReviewThreadMenuItems(CoreWebView2 core, CoreWebView2ContextMenuRequestedEventArgs e) {
+    private void AddReviewThreadMenuItems(BrowserTab tab, CoreWebView2 core, CoreWebView2ContextMenuRequestedEventArgs e) {
         if (AzureDevOpsWebUrl.TryParse(core.Source) is not { Kind: AzureDevOpsWebPageKind.PullRequest } page)
             return;
         var deferral = e.GetDeferral();
-        _ = FillReviewThreadMenuAsync(core, e, page, deferral);
+        _ = FillReviewThreadMenuAsync(tab, core, e, page, deferral);
     }
 
-    private async Task FillReviewThreadMenuAsync(CoreWebView2 core, CoreWebView2ContextMenuRequestedEventArgs e,
+    private async Task FillReviewThreadMenuAsync(BrowserTab tab, CoreWebView2 core, CoreWebView2ContextMenuRequestedEventArgs e,
         AzureDevOpsWebPage page, CoreWebView2Deferral deferral) {
         try {
-            var work = BuildReviewThreadItemsAsync(core, e, page);
+            var work = BuildReviewThreadItemsAsync(tab, core, e, page);
             if (await Task.WhenAny(work, Task.Delay(ReviewMenuBudget)) != work)
                 return;   // 間に合わなければ出さない（メニューを待たせ続けない）
             var items = await work;
@@ -60,10 +60,10 @@ public partial class ShellWindow {
     }
 
     private async Task<List<CoreWebView2ContextMenuItem>> BuildReviewThreadItemsAsync(
-        CoreWebView2 core, CoreWebView2ContextMenuRequestedEventArgs e, AzureDevOpsWebPage page) {
+        BrowserTab tab, CoreWebView2 core, CoreWebView2ContextMenuRequestedEventArgs e, AzureDevOpsWebPage page) {
         var items = new List<CoreWebView2ContextMenuItem>();
-        // WebView2 の座標は DIP、elementFromPoint は CSS px（ページの拡大率で割る）。
-        var zoom = ActiveBrowserView?.ZoomFactor is > 0 and var z ? z : 1.0;
+        // WebView2 の座標は DIP、elementFromPoint は CSS px（右クリックされたタブの拡大率で割る。前面のタブとは限らない）。
+        var zoom = tab.View.ZoomFactor is > 0 and var z ? z : 1.0;
         var script = ReviewAncestorTextsScript
             .Replace("%X%", ((int)(e.Location.X / zoom)).ToString(System.Globalization.CultureInfo.InvariantCulture))
             .Replace("%Y%", ((int)(e.Location.Y / zoom)).ToString(System.Globalization.CultureInfo.InvariantCulture));
@@ -124,10 +124,12 @@ public partial class ShellWindow {
             ToastService.Info("PR の版のその行が手元に見つからなかったので、行番号のまま開きました（手元の版と違うかもしれません）。");
     }
 
-    /// <summary>PR の中身（スレッド込み）。右クリックのたびに問い合わせない（少しの間覚えておく）。</summary>
-    private Task<AzureDevOpsPullRequestDetail?> ReviewDetailAsync(AzureDevOpsWebPage page) {
+    /// <summary>PR の中身（スレッド込み）。右クリックのたびに問い合わせない（少しの間覚えておく）。
+    /// <para><paramref name="refresh"/> なら覚えを使わず読み直す（ブラウザサポートの「未解決の指摘」：ページで解決した
+    /// スレッドを残して見せない）。読み直したものは右クリックの覚えにもなる。</para></summary>
+    private Task<AzureDevOpsPullRequestDetail?> ReviewDetailAsync(AzureDevOpsWebPage page, bool refresh = false) {
         var key = $"{page.OrganizationUrl}|{page.Project}|{page.Repository}|{page.PullRequestId}";
-        if (_reviewDetails.TryGetValue(key, out var cached) && DateTime.UtcNow - cached.At < ReviewDetailTtl)
+        if (!refresh && _reviewDetails.TryGetValue(key, out var cached) && DateTime.UtcNow - cached.At < ReviewDetailTtl)
             return cached.Task;
         var task = LoadAsync();
         _reviewDetails[key] = (DateTime.UtcNow, task);

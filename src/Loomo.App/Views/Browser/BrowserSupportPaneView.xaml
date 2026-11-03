@@ -106,10 +106,10 @@
             </Setter>
         </Style>
 
-        <!-- 見出しの右のボタン（読み直す 等）：面も持たない、文字だけの控えめなボタン。 -->
+        <!-- 見出しの右のボタン（ワークツリーを作る 等）：面を持たない文字だけのボタン。節の行を全部に効かせる操作なので、アクセント色。 -->
         <Style x:Key="HeaderButton" TargetType="Button" BasedOn="{StaticResource ChipButton}">
             <Setter Property="BorderBrush" Value="Transparent" />
-            <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
+            <Setter Property="Foreground" Value="{DynamicResource AccentHover}" />
             <Setter Property="Padding" Value="6,1" />
             <Setter Property="Margin" Value="4,0,0,0" />
         </Style>
@@ -118,7 +118,7 @@
             <Button Style="{StaticResource ChipButton}" Content="{Binding Label}" ToolTip="{Binding Tip}" Command="{Binding Command}" />
         </DataTemplate>
 
-        <!-- 節の1行。見え方（Look）で中身の器だけ替える：場所は等幅の1行、コードは枠の中、抜き書きは引用の縦線。 -->
+        <!-- 節の1行。場所（Look=Path）は等幅の1行で、はみ出しは省略してツールチップに。 -->
         <DataTemplate x:Key="RowTemplate" DataType="{x:Type vm:BrowserSupportRow}">
             <StackPanel Margin="12,0,10,8">
                 <DockPanel LastChildFill="True">
@@ -128,33 +128,12 @@
                             Visibility="{Binding ButtonInline, Converter={StaticResource BoolToVis}}">
                         <ContentPresenter Content="{Binding InlineButton}" ContentTemplate="{StaticResource ChipTemplate}" />
                     </Border>
-                    <Grid>
-                        <!-- ふつう・場所 -->
-                        <StackPanel x:Name="Plain">
-                            <TextBlock x:Name="RowTitle" Text="{Binding Title}" FontSize="{DynamicResource Fs12}"
-                                       Foreground="{DynamicResource Fg}" TextWrapping="Wrap" />
-                            <TextBlock Text="{Binding Detail}" Style="{StaticResource Dim}" Margin="0,2,0,0"
-                                       Visibility="{Binding HasDetail, Converter={StaticResource BoolToVis}}" />
-                        </StackPanel>
-                        <!-- コード -->
-                        <Border x:Name="CodeBox" Visibility="Collapsed" Background="{DynamicResource BgAlt}"
-                                BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="5">
-                            <StackPanel>
-                                <TextBlock Margin="9,5,9,0" Text="{Binding Detail}" FontSize="{DynamicResource Fs10}"
-                                           Foreground="{DynamicResource FgDim}" TextTrimming="CharacterEllipsis"
-                                           Visibility="{Binding HasDetail, Converter={StaticResource BoolToVis}}" />
-                                <TextBlock Margin="9,3,9,7" Text="{Binding Title}" FontFamily="{StaticResource MonoFont}"
-                                           FontSize="{DynamicResource Fs12}" Foreground="{DynamicResource Fg}" TextWrapping="NoWrap"
-                                           TextTrimming="CharacterEllipsis" />
-                            </StackPanel>
-                        </Border>
-                        <!-- 抜き書き -->
-                        <Border x:Name="QuoteBox" Visibility="Collapsed" BorderBrush="{DynamicResource Border}"
-                                BorderThickness="3,0,0,0" Padding="9,1,0,1">
-                            <TextBlock Text="{Binding Title}" FontSize="{DynamicResource Fs12}" FontStyle="Italic"
-                                       Foreground="{DynamicResource Fg}" TextWrapping="Wrap" />
-                        </Border>
-                    </Grid>
+                    <StackPanel>
+                        <TextBlock x:Name="RowTitle" Text="{Binding Title}" FontSize="{DynamicResource Fs12}"
+                                   Foreground="{DynamicResource Fg}" TextWrapping="Wrap" />
+                        <TextBlock Text="{Binding Detail}" Style="{StaticResource Dim}" Margin="0,2,0,0"
+                                   Visibility="{Binding HasDetail, Converter={StaticResource BoolToVis}}" />
+                    </StackPanel>
                 </DockPanel>
                 <ItemsControl ItemsSource="{Binding Buttons}" Focusable="False" Margin="0,6,0,-4"
                               ItemTemplate="{StaticResource ChipTemplate}"
@@ -171,13 +150,48 @@
                     <Setter TargetName="RowTitle" Property="TextTrimming" Value="CharacterEllipsis" />
                     <Setter TargetName="RowTitle" Property="ToolTip" Value="{Binding Title}" />
                 </DataTrigger>
-                <DataTrigger Binding="{Binding Look}" Value="{x:Static vm:BrowserSupportRowLook.Code}">
-                    <Setter TargetName="Plain" Property="Visibility" Value="Collapsed" />
-                    <Setter TargetName="CodeBox" Property="Visibility" Value="Visible" />
-                </DataTrigger>
-                <DataTrigger Binding="{Binding Look}" Value="{x:Static vm:BrowserSupportRowLook.Quote}">
-                    <Setter TargetName="Plain" Property="Visibility" Value="Collapsed" />
-                    <Setter TargetName="QuoteBox" Property="Visibility" Value="Visible" />
+            </DataTemplate.Triggers>
+        </DataTemplate>
+
+        <!-- 節。並びの前の方（調べ始めた場所・PR の指摘）は道具より上に出る（BrowserSupportPaneView.xaml.cs）。 -->
+        <DataTemplate x:Key="SectionTemplate" DataType="{x:Type vm:BrowserSupportSection}">
+            <Border x:Name="Card" Margin="0,6,0,4" Padding="0,0,0,0">
+                <StackPanel>
+                    <DockPanel Margin="12,0,10,6" LastChildFill="True" MinHeight="22">
+                        <ItemsControl DockPanel.Dock="Right" ItemsSource="{Binding Buttons}" Focusable="False" VerticalAlignment="Center">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate DataType="{x:Type vm:BrowserSupportButton}">
+                                    <Button Style="{StaticResource HeaderButton}" Content="{Binding Label}" ToolTip="{Binding Tip}" Command="{Binding Command}" />
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock x:Name="SectionTitle" Style="{StaticResource Caption}" Text="{Binding Title}" />
+                            <Border Margin="6,0,0,0" Padding="6,0" CornerRadius="7" Background="{DynamicResource BgAlt}"
+                                    VerticalAlignment="Center"
+                                    Visibility="{Binding HasCount, Converter={StaticResource BoolToVis}}">
+                                <TextBlock Text="{Binding Count}" FontSize="{DynamicResource Fs10}" Foreground="{DynamicResource FgDim}" />
+                            </Border>
+                        </StackPanel>
+                    </DockPanel>
+                    <TextBlock Margin="12,0,10,8" Style="{StaticResource Dim}" Text="{Binding Note}"
+                               Visibility="{Binding HasNote, Converter={StaticResource BoolToVis}}" />
+                    <ItemsControl ItemsSource="{Binding Rows}" Focusable="False" ItemTemplate="{StaticResource RowTemplate}" />
+                </StackPanel>
+            </Border>
+            <DataTemplate.Triggers>
+                <!-- 調べ始めた場所：このタブが何のために開かれたか。名札のすぐ下に、アクセントの縁の付いた面で。 -->
+                <DataTrigger Binding="{Binding Emphasis}" Value="True">
+                    <Setter TargetName="Card" Property="Margin" Value="8,0,8,8" />
+                    <Setter TargetName="Card" Property="Padding" Value="0,8,0,0" />
+                    <Setter TargetName="Card" Property="Background" Value="{DynamicResource BgAlt}" />
+                    <Setter TargetName="Card" Property="BorderBrush" Value="{DynamicResource AccentHover}" />
+                    <Setter TargetName="Card" Property="BorderThickness" Value="3,0,0,0" />
+                    <Setter TargetName="Card" Property="CornerRadius" Value="4" />
+                    <Setter TargetName="SectionTitle" Property="Foreground" Value="{DynamicResource Fg}" />
                 </DataTrigger>
             </DataTemplate.Triggers>
         </DataTemplate>
@@ -224,6 +238,9 @@
                     </Border>
                 </StackPanel>
 
+                <!-- 先に出す節：調べ始めた場所（このタブが何のためか）・PR の未解決の指摘（このページで一番知りたいこと） -->
+                <ItemsControl x:Name="LeadSectionsList" Focusable="False" ItemTemplate="{StaticResource SectionTemplate}" />
+
                 <!-- 道具：ページ1つにつき決まったボタン -->
                 <ItemsControl Margin="4,0,4,6" ItemsSource="{Binding Actions}" Focusable="False">
                     <ItemsControl.ItemTemplate>
@@ -238,52 +255,8 @@
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
 
-                <!-- 節：ページから読み出した、数の決まっていない行（CI のエラー・使っている場所・コード・抜き書き） -->
-                <ItemsControl ItemsSource="{Binding Sections}" Focusable="False">
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate DataType="{x:Type vm:BrowserSupportSection}">
-                            <Border x:Name="Card" Margin="0,6,0,4" Padding="0,0,0,0">
-                                <StackPanel>
-                                    <DockPanel Margin="12,0,10,6" LastChildFill="True" MinHeight="22">
-                                        <ItemsControl DockPanel.Dock="Right" ItemsSource="{Binding Buttons}" Focusable="False" VerticalAlignment="Center">
-                                            <ItemsControl.ItemsPanel>
-                                                <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
-                                            </ItemsControl.ItemsPanel>
-                                            <ItemsControl.ItemTemplate>
-                                                <DataTemplate DataType="{x:Type vm:BrowserSupportButton}">
-                                                    <Button Style="{StaticResource HeaderButton}" Content="{Binding Label}" ToolTip="{Binding Tip}" Command="{Binding Command}" />
-                                                </DataTemplate>
-                                            </ItemsControl.ItemTemplate>
-                                        </ItemsControl>
-                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                            <TextBlock x:Name="SectionTitle" Style="{StaticResource Caption}" Text="{Binding Title}" />
-                                            <Border Margin="6,0,0,0" Padding="6,0" CornerRadius="7" Background="{DynamicResource BgAlt}"
-                                                    VerticalAlignment="Center"
-                                                    Visibility="{Binding HasCount, Converter={StaticResource BoolToVis}}">
-                                                <TextBlock Text="{Binding Count}" FontSize="{DynamicResource Fs10}" Foreground="{DynamicResource FgDim}" />
-                                            </Border>
-                                        </StackPanel>
-                                    </DockPanel>
-                                    <TextBlock Margin="12,0,10,8" Style="{StaticResource Dim}" Text="{Binding Note}"
-                                               Visibility="{Binding HasNote, Converter={StaticResource BoolToVis}}" />
-                                    <ItemsControl ItemsSource="{Binding Rows}" Focusable="False" ItemTemplate="{StaticResource RowTemplate}" />
-                                </StackPanel>
-                            </Border>
-                            <DataTemplate.Triggers>
-                                <!-- 調べ始めた場所：このタブが何のために開かれたか。名札のすぐ下に、アクセントの縁の付いた面で。 -->
-                                <DataTrigger Binding="{Binding Emphasis}" Value="True">
-                                    <Setter TargetName="Card" Property="Margin" Value="8,0,8,8" />
-                                    <Setter TargetName="Card" Property="Padding" Value="0,8,0,0" />
-                                    <Setter TargetName="Card" Property="Background" Value="{DynamicResource BgAlt}" />
-                                    <Setter TargetName="Card" Property="BorderBrush" Value="{DynamicResource AccentHover}" />
-                                    <Setter TargetName="Card" Property="BorderThickness" Value="3,0,0,0" />
-                                    <Setter TargetName="Card" Property="CornerRadius" Value="4" />
-                                    <Setter TargetName="SectionTitle" Property="Foreground" Value="{DynamicResource Fg}" />
-                                </DataTrigger>
-                            </DataTemplate.Triggers>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
+                <!-- 節：ページから読み出した、数の決まっていない行（CI のエラー・使っている場所・ポート） -->
+                <ItemsControl x:Name="TrailSectionsList" Focusable="False" ItemTemplate="{StaticResource SectionTemplate}" />
             </StackPanel>
         </Grid>
     </ScrollViewer>

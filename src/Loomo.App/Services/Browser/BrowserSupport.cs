@@ -7,22 +7,20 @@ public enum BrowserSupportActionKind
 {
     /// <summary>PR の差分を Diff ペインで（分岐点から。§24.27・§24.27.1 と同じ部品）。</summary>
     PullRequestDiff,
-    /// <summary>PR の概要と会話を Markdown の写しでエディタへ（§24.27・§24.27.1 と同じ）。</summary>
-    PullRequestDocument,
-    /// <summary>Issue の本文と会話を Markdown の写しでエディタへ（§24.27 と同じ）。</summary>
-    IssueDocument,
+    /// <summary>PR の説明・レビュー・会話を、ターミナルの Claude Code のプロンプトへ @参照 で渡す（送信はしない）。</summary>
+    PullRequestToClaude,
+    /// <summary>Issue の本文と会話を、ターミナルの Claude Code のプロンプトへ @参照 で渡す（送信はしない）。</summary>
+    IssueToClaude,
     /// <summary>ページのファイルを手元のクローンで開く（その行へ）。</summary>
     OpenLocalFile,
-    /// <summary>ページのコミットを Diff ペインで。</summary>
-    CommitDiff,
-    /// <summary>CI の失敗したログをエディタで読む。</summary>
-    BuildLog,
     /// <summary>ブラウザで開いているローカルの HTML の元ファイルをエディタで開く（§24.45）。</summary>
     OpenSourceFile,
 }
 
-/// <summary>道具1つ。<paramref name="NeedsLocalRepository"/> は手元のクローンが要るもの（無ければ出さない）。</summary>
-public sealed record BrowserSupportAction(BrowserSupportActionKind Kind, string Label, string Detail, bool NeedsLocalRepository);
+/// <summary>道具1つ。<paramref name="NeedsLocalRepository"/> は手元のクローンが要るもの（無ければ出さない）。
+/// <paramref name="NeedsClaude"/> はターミナルに Claude Code が居るときだけ出すもの。</summary>
+public sealed record BrowserSupportAction(BrowserSupportActionKind Kind, string Label, string Detail, bool NeedsLocalRepository,
+    bool NeedsClaude = false);
 
 /// <summary>前に出ているタブのページに合った道具の一式。ページが指すもの（Azure DevOps・GitHub・パッケージ・
 /// 手元のサーバー・ローカルの HTML）はどれか1つだけが入る。どれでもない普通のページは <see cref="IsGeneric"/>。</summary>
@@ -44,8 +42,8 @@ public sealed record BrowserSupportPage(
     /// <summary>手元のクローンを探すページか（リポジトリに属するもの）。</summary>
     public bool HasRepository => AzureDevOps is { Repository.Length: > 0 } || GitHub is not null;
 
-    /// <summary>ページのコードの一覧を出すか。記事・ドキュメント・パッケージの README のように、コードを写して使うページだけ。
-    /// GitHub のファイルや PR のページはページ全体がコードで、一覧にしても同じものが並ぶだけ。</summary>
+    /// <summary>ページのコードブロックの右クリックに「〜へ貼る・送る」を出すか。記事・ドキュメント・パッケージの README のように、
+    /// コードを写して使うページだけ。GitHub のファイルや PR のページはページ全体がコードで、手元のファイルを開く方が早い。</summary>
     public bool ShowsCode => IsGeneric || Package is not null;
 
     /// <summary>同じページかの鍵（道具の並びは毎回作り直した別の列なので、URL から読んだ中身で比べる）。
@@ -96,8 +94,7 @@ public static class BrowserSupportCatalog
     {
         if (page.Kind == AzureDevOpsWebPageKind.Build)
             return new BrowserSupportPage(AzureDevOpsSite, $"パイプラインの実行 {page.BuildId}", page.Project,
-                [new(BrowserSupportActionKind.BuildLog, "失敗したログをエディタで読む", "失敗した段のログをまとめて1枚の写しに", NeedsLocalRepository: false)],
-                page);
+                [], page);
         var where = $"{page.Project} / {page.Repository}";
         return page.Kind switch
         {
@@ -105,13 +102,11 @@ public static class BrowserSupportCatalog
             [
                 new(BrowserSupportActionKind.PullRequestDiff, "差分を Diff ペインで見る",
                     "入れ先から分かれたあとの変更だけ（Azure Repos の「ファイル」と同じ）。元と入れ先のブランチを手元へ取ってくる", NeedsLocalRepository: true),
-                new(BrowserSupportActionKind.PullRequestDocument, "概要と会話をエディタで読む",
-                    "説明・レビュアーと投票・スレッドを Markdown の写しに（保存しても Azure DevOps へは戻さない）", NeedsLocalRepository: false),
+                ToClaude(BrowserSupportActionKind.PullRequestToClaude, "この PR を Claude Code へ渡す", "説明・レビュアーと投票・スレッド"),
             ], page),
             AzureDevOpsWebPageKind.File => new BrowserSupportPage(AzureDevOpsSite, FileHeading(page.FilePath, page.Line), Annotate(where, page),
                 [OpenLocalFile(page.Line)], page),
-            AzureDevOpsWebPageKind.Commit => new BrowserSupportPage(AzureDevOpsSite, $"コミット {Short(page.CommitHash)}", where,
-                [CommitDiff()], page),
+            AzureDevOpsWebPageKind.Commit => new BrowserSupportPage(AzureDevOpsSite, $"コミット {Short(page.CommitHash)}", where, [], page),
             _ => new BrowserSupportPage(AzureDevOpsSite, page.Repository, where, [], page),
         };
     }
@@ -124,19 +119,15 @@ public static class BrowserSupportCatalog
             [
                 new(BrowserSupportActionKind.PullRequestDiff, "差分を Diff ペインで見る",
                     "基準から分かれたあとの変更だけ（GitHub の Files changed と同じ）。PR の先頭（refs/pull/N/head）を手元へ取ってくる", NeedsLocalRepository: true),
-                new(BrowserSupportActionKind.PullRequestDocument, "概要と会話をエディタで読む",
-                    "状態・チェック・変わったファイル・会話を Markdown の写しに（gh。保存しても GitHub へは戻さない）", NeedsLocalRepository: false),
+                ToClaude(BrowserSupportActionKind.PullRequestToClaude, "この PR を Claude Code へ渡す", "状態・チェック・変わったファイル・会話（gh）"),
             ], GitHub: page),
             GitHubWebPageKind.Issue => new BrowserSupportPage(GitHubSite, $"#{page.Number}", page.Slug,
-                [new(BrowserSupportActionKind.IssueDocument, "本文と会話をエディタで読む", "Markdown の写しに（gh）", NeedsLocalRepository: false)],
+                [ToClaude(BrowserSupportActionKind.IssueToClaude, "この Issue を Claude Code へ渡す", "本文と会話（gh）")],
                 GitHub: page),
             GitHubWebPageKind.File => new BrowserSupportPage(GitHubSite, FileHeading(page.FileName, page.Line), $"{page.Slug}\n{page.BlobPath}",
                 [OpenLocalFile(page.Line)], GitHub: page),
-            GitHubWebPageKind.Commit => new BrowserSupportPage(GitHubSite, $"コミット {Short(page.CommitSha)}", page.Slug,
-                [CommitDiff()], GitHub: page),
-            GitHubWebPageKind.ActionsRun => new BrowserSupportPage(GitHubSite, $"Actions の実行 {page.RunId}", page.Slug,
-                [new(BrowserSupportActionKind.BuildLog, "失敗したログをエディタで読む", "gh run view --log-failed", NeedsLocalRepository: false)],
-                GitHub: page),
+            GitHubWebPageKind.Commit => new BrowserSupportPage(GitHubSite, $"コミット {Short(page.CommitSha)}", page.Slug, [], GitHub: page),
+            GitHubWebPageKind.ActionsRun => new BrowserSupportPage(GitHubSite, $"Actions の実行 {page.RunId}", page.Slug, [], GitHub: page),
             _ => new BrowserSupportPage(GitHubSite, page.Repository, page.Slug, [], GitHub: page),
         };
     }
@@ -145,8 +136,9 @@ public static class BrowserSupportCatalog
         line > 0 ? $"手元のファイルを開く（{line} 行目）" : "手元のファイルを開く",
         "ワークスペースにあるクローンの同じパス。手元の版はページの版と違うことがある", NeedsLocalRepository: true);
 
-    private static BrowserSupportAction CommitDiff() => new(BrowserSupportActionKind.CommitDiff,
-        "このコミットを Diff ペインで見る", "手元に無ければリモートから取ってくる", NeedsLocalRepository: true);
+    /// <summary>ページのものを Claude Code へ。ページに書いてあることをエディタへ写し直すのではなく、それを材料に頼む相手へ渡す。</summary>
+    private static BrowserSupportAction ToClaude(BrowserSupportActionKind kind, string label, string what) => new(kind, label,
+        $"{what}を @参照 でプロンプトへ（送信はしない）", NeedsLocalRepository: false, NeedsClaude: true);
 
     private static string FileHeading(string path, int line)
     {

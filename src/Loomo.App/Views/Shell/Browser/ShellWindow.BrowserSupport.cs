@@ -6,7 +6,8 @@ namespace sk0ya.Loomo.App.Views;
 /// <summary>
 /// ShellWindow: ブラウザサポートペイン（§41）。前に出ているブラウザのタブのページを追従元にして、そのサイトに合った
 /// 道具（<see cref="BrowserSupportCatalog"/>）と、ページから読み出した行の節を出す。道具は<b>ページを部屋の中へつなぐ</b>もの——
-/// PR を Diff ペインで、ファイルを手元のクローンのその行で、CI のエラーを手元のファイルで、記事のコードをエディタ・ターミナルへ。
+/// PR の指摘を手元の行で、ファイルを手元のクローンのその行で、CI のエラーを手元のファイルで、PR・Issue を Claude Code へ。
+/// 記事のコードはペインに並べ直さず、ページのコードブロックの右クリックから送る（ShellWindow.BrowserPageCodeMenu.cs）。
 /// <para>引き直しは合図をまとめて 1 回にし、<b>ペインが見えていないときは何もしない</b>（見えた瞬間に追いつく。§39.2 と同じ）。</para>
 /// <para>サイトごとの中身は ShellWindow.BrowserSupportSites.cs（Azure DevOps・GitHub・CI・パッケージ）。</para>
 /// </summary>
@@ -15,29 +16,19 @@ public partial class ShellWindow {
     private bool _browserSupportRefreshQueued;
     /// <summary>いま見せているページの手元のクローンのリモート名（コミット・PR を取ってくるとき）。</summary>
     private string? _browserSupportRemote;
-    /// <summary>ページの読み込みが終わった合図のあとの引き直しか（同じページでもコードを読み直す）。</summary>
-    private bool _browserSupportLoaded;
 
-    private const int SectionOrigin = 0, SectionProblems = 10, SectionFailedSteps = 20, SectionUsages = 30, SectionOtherProjects = 40,
-        SectionPort = 50, SectionCode = 60, SectionClips = 70;
+    private const int SectionOrigin = 0, SectionReview = 5, SectionProblems = 10, SectionUsages = 30, SectionOtherProjects = 40,
+        SectionPort = 50;
 
     private void InitializeBrowserSupport() {
         BrowserSupportPane.DataContext = _browserSupport;
         BrowserSupportPaneHost.DataContext = _browserSupport;
         _browserSupport.ActionRequested += action => _ = RunBrowserSupportActionAsync(action);
         _vm.Browser.CurrentPageChanged += (_, _) => RequestBrowserSupportRefresh();
-        // ページの読み込みが終わってからでないとコードブロックが揃わない（遷移の合図はまだ前のページの DOM のうちに来る）。
-        // 題もこの頃に確定する（普通のページの見出し）。
+        // 題は読み込みが終わる頃に確定する（普通のページの見出し）。
         _vm.Browser.PropertyChanged += (_, e) => {
-            if (e.PropertyName == nameof(BrowserViewModel.IsLoading) && !_vm.Browser.IsLoading) {
-                _browserSupportLoaded = true;
+            if (e.PropertyName == nameof(BrowserViewModel.IsLoading) && !_vm.Browser.IsLoading)
                 RequestBrowserSupportRefresh();
-            }
-        };
-        // ペグボードに取った・消した抜き書きを、いま見ているページの節へ。
-        _vm.Pegboard.Changed += (_, _) => {
-            if (BrowserSupportPane.IsVisible && _browserSupport.Page is { } page)
-                ShowBrowserSupportClips(page);
         };
         // フォルダーの出し入れでクローンの有無・パッケージの使われ方が変わる：同じページでも作り直す。
         _workspace.FoldersChanged += (_, _) => Dispatcher.BeginInvoke(() => RequestBrowserSupportRefresh(force: true));
@@ -48,6 +39,10 @@ public partial class ShellWindow {
     }
 
     private void RequestBrowserSupportRefresh() => RequestBrowserSupportRefresh(force: false);
+
+    /// <summary>Claude Code が動いているタブがあるか（「Claude Code へ渡す」を出すか）。ページの引き直しのほか、タブのタイトルの印が
+    /// 変わったとき（起きた・終わった）とタブを閉じたときにも呼ぶ——ページを移るまで古いままにしない。</summary>
+    private void UpdateBrowserSupportClaude() => _browserSupport.SetClaudeAvailable(ClaudeTerminalTab() is not null);
 
     private void RequestBrowserSupportRefresh(bool force) {
         if (force)
@@ -64,21 +59,17 @@ public partial class ShellWindow {
         var page = BrowserSupportCatalog.Describe(url);
         if (page is { IsGeneric: true, Heading.Length: 0 } generic && _vm.Browser.CurrentTitle is { Length: > 0 } title)
             page = generic with { Heading = title, Detail = generic.Site, Site = "このページ" };
-        var loaded = _browserSupportLoaded;
-        _browserSupportLoaded = false;
+        UpdateBrowserSupportClaude();
         if (!_browserSupport.Show(page, url)) {
             // 同じページでも別のタブかもしれない（調べ始めた場所はタブのもの）。
             if (_browserSupport.Page is { } current)
                 ShowBrowserSupportOrigin(current);
-            if (loaded && _browserSupport.Page is { ShowsCode: true } same)
-                _ = LoadBrowserSupportCodeAsync(same);
             return;
         }
         if (page is null)
             return;
         ShowBrowserSupportOrigin(page);
         _browserSupportRemote = null;
-        _browserSupportLog = null;
         if (page.HasRepository)
             _ = FindBrowserSupportCloneAsync(page);
         else if (page.AzureDevOps is { Kind: AzureDevOpsWebPageKind.Build })
@@ -87,9 +78,6 @@ public partial class ShellWindow {
             _ = LoadPackageUsagesAsync(page, package);
         if (page.LocalPort > 0)
             _ = LoadLocalPortOwnersAsync(page);
-        if (page.ShowsCode && !_vm.Browser.IsLoading)
-            _ = LoadBrowserSupportCodeAsync(page);
-        ShowBrowserSupportClips(page);
     }
 
     /// <summary>ページのリポジトリの手元のクローンを探す（§41.3.1）。見つかったあとに要る節（Actions の失敗）もここから読む。</summary>
@@ -115,6 +103,8 @@ public partial class ShellWindow {
             : $"ワークスペースに {label} のクローンがありません。差分・ファイルを開くには、そのリポジトリのフォルダーを開いてください。");
         if (page.GitHub is { Kind: GitHubWebPageKind.ActionsRun })
             _ = LoadGitHubRunFailuresAsync(page);
+        if (page.AzureDevOps is { Kind: AzureDevOpsWebPageKind.PullRequest } && clone is { } local)
+            _ = LoadPullRequestReviewAsync(page, local.Root, local.Remote);
     }
 
     /// <summary>クローンの呼び名。ワークスペースのフォルダーそのものだと表示パスは空になる（フォルダーが1つのとき）ので、フォルダー名にする。</summary>
@@ -139,77 +129,6 @@ public partial class ShellWindow {
             await RunGitHubSupportAsync(action.Kind, page, github, root);
     }
 
-    // ── どのページでも：抜き書き ───────────────────────────────────────
-
-    /// <summary>このページからペグボードへ取った抜き書き（§24.24 の出典付き）。押すとこのタブのまま、その一節へ
-    /// Text Fragment で戻る。無ければ節ごと出さない。</summary>
-    private void ShowBrowserSupportClips(BrowserSupportPage page) {
-        var url = _vm.Browser.CurrentUrl;
-        var clips = _vm.Pegboard.Items
-            .Where(item => item.HasWebSource && BrowserLibrary.SameUrl(item.Snapshot.SourceUrl, url))
-            .ToList();
-        if (clips.Count == 0) {
-            _browserSupport.RemoveSection(page, "clips");
-            return;
-        }
-        var rows = clips.Select(item => new BrowserSupportRow(BrowserPageCode.Preview(item.Content, 4), "", [
-            new BrowserSupportButton("この箇所へ", () => {
-                if (item.SourceLink is { } link)
-                    ActiveBrowserView.TryCore()?.Navigate(link);
-            }, "このタブのまま、取った一節までスクロールして強調する"),
-            new BrowserSupportButton("コンポーザへ", () => InsertIntoComposer(item.Content)),
-        ], BrowserSupportRowLook.Quote)).ToList();
-        _browserSupport.SetSection(page, "clips", "このページの抜き書き", SectionClips, rows, count: rows.Count);
-    }
-
-    // ── 記事・ドキュメント：ページのコード ─────────────────────────────
-
-    /// <summary>ページのコードブロックを読み、エディタ・コンポーザ・ターミナル・ペグボードへ送れる行にする。
-    /// 読むのはページの中で走らせる自前のスクリプトの<b>戻り値</b>だけ（ページからの合図は受けない）。</summary>
-    private async Task LoadBrowserSupportCodeAsync(BrowserSupportPage page) {
-        if (ActiveBrowserView.TryCore() is not { } core)
-            return;
-        var url = _vm.Browser.CurrentUrl;
-        var title = _vm.Browser.CurrentTitle;
-        string? result;
-        try {
-            result = await core.ExecuteScriptAsync(BrowserPageCode.ExtractScript);
-        }
-        catch (Exception ex) when (ex is InvalidOperationException or System.Runtime.InteropServices.COMException) {
-            return;   // タブが閉じた・作り直された
-        }
-        if (!ReferenceEquals(_browserSupport.Page, page) || _vm.Browser.CurrentUrl != url)
-            return;
-        var blocks = BrowserPageCode.Parse(result);
-        if (blocks.Count == 0) {
-            _browserSupport.RemoveSection(page, "code");
-            return;
-        }
-        var rows = blocks.Select(block => {
-            var origin = CurrentSearchOrigin;
-            var buttons = new List<BrowserSupportButton>();
-            // 調べ始めた所がファイルなら、そこへ貼るのが一番の行き先（§41.12）。
-            if (origin is BrowserSearchOrigin.Editor editor)
-                buttons.Add(new($"{Path.GetFileName(editor.FilePath)} へ貼る", () => _ = PasteCodeAtSearchOriginAsync(block),
-                    "調べ始めた所の下の行へ差し込む（字下げを揃える。Ctrl+Z で戻せる）"));
-            buttons.Add(new("エディタへ", () => _ = OpenCodeBlockInEditorAsync(block), "新しいタブに写す（保存先は自分で決める）"));
-            buttons.Add(new("コンポーザへ", () => InsertIntoComposer(block.Text)));
-            if (block.LooksLikeCommand)
-                buttons.Add(origin is BrowserSearchOrigin.Terminal terminal
-                    ? new($"「{TerminalTabTitle(terminal.TabId) ?? "Terminal"}」へ", () => SendCodeToSearchOriginTerminal(terminal, block),
-                        "調べ始めたターミナルのタブのプロンプトへ入れる（Enter は押さない。複数行はコンポーザへ）")
-                    : new("ターミナルへ", () => SendRecentCommandToTerminal(BrowserPageCode.AsCommand(block.Text)),
-                        "見えるターミナルのプロンプトへ入れる（Enter は押さない。複数行はコンポーザへ）"));
-            buttons.Add(new("ペグボードへ", () => _vm.Pegboard.AddContent(block.Text, type: "text", sourceUrl: url, sourceTitle: title),
-                "出典付きで残す（§24.24）"));
-            var language = block.Language.Length > 0 ? block.Language : "言語の指定なし";
-            return new BrowserSupportRow(BrowserPageCode.Preview(block.Text), $"{language} · {block.LineCount} 行", buttons, BrowserSupportRowLook.Code);
-        }).ToList();
-        var section = _browserSupport.SetSection(page, "code", "このページのコード", SectionCode, rows, count: rows.Count);
-        if (section is { Buttons.Count: 0 })
-            section.Buttons.Add(new BrowserSupportButton("読み直す", () => _ = LoadBrowserSupportCodeAsync(page), "ページが後から書き足したコードも拾う"));
-    }
-
     private async Task OpenCodeBlockInEditorAsync(BrowserCodeBlock block) {
         EnsurePaneVisibleOrSwapTopLeft(PaneKind.Editor);
         await _editor.OpenDocumentAsync(new EditorDocument {
@@ -222,7 +141,10 @@ public partial class ShellWindow {
     // ── どのページでも：調べ始めた場所（§41.12） ───────────────────────
 
     /// <summary>前面のブラウザのタブの調べ始めた場所。ファイルが消えた・ターミナルのタブを閉じたなら無いものとする。</summary>
-    private BrowserSearchOrigin? CurrentSearchOrigin => _activeBrowserTab?.SearchOrigin switch {
+    private BrowserSearchOrigin? CurrentSearchOrigin => SearchOriginOf(_activeBrowserTab);
+
+    /// <summary>そのタブの調べ始めた場所（右クリックされたタブは前面のタブとは限らない）。</summary>
+    private BrowserSearchOrigin? SearchOriginOf(BrowserTab? tab) => tab?.SearchOrigin switch {
         BrowserSearchOrigin.Editor e when File.Exists(e.FilePath) => e,
         BrowserSearchOrigin.Terminal t when _terminalTabs.Any(tab => tab.Id == t.TabId) => t,
         _ => null,
@@ -262,8 +184,8 @@ public partial class ShellWindow {
 
     /// <summary>ページのコードを、調べ始めた所の下の行へ差し込む（1 回の取り消せる編集）。続けて貼ったものは前に貼ったものの
     /// 下へ並ぶよう、タブの出所の「最後の行」を貼った末尾へ進める（戻る先の行は変えない）。</summary>
-    private async Task PasteCodeAtSearchOriginAsync(BrowserCodeBlock block) {
-        if (_activeBrowserTab is not { } browserTab || CurrentSearchOrigin is not BrowserSearchOrigin.Editor origin) {
+    private async Task PasteCodeAtSearchOriginAsync(BrowserTab browserTab, BrowserCodeBlock block) {
+        if (SearchOriginOf(browserTab) is not BrowserSearchOrigin.Editor origin) {
             ToastService.Info("調べ始めたファイルが見つかりません");
             return;
         }

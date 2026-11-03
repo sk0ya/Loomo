@@ -39,6 +39,16 @@ public partial class ShellWindow
             new GitCompareEndpoint(GitCompareEndpointKind.Ref, fetched.HeadHash, headLabel),
             FromMergeBase: true, headLabel));
 
+    /// <summary>既にある <paramref name="branch"/> を PR の先頭 <paramref name="headHash"/> へ動かしてよいか。PR の先頭の祖先
+    /// （PR に含まれるコミットだけ）なら null、PR に無いコミットを持っていれば止める理由。</summary>
+    private static async Task<string?> PullRequestBranchBlockerAsync(GitService git, string branch, string headHash)
+    {
+        var ancestor = await git.RunAsync("merge-base", "--is-ancestor", $"refs/heads/{branch}", headHash);
+        return ancestor.Success ? null
+            : $"ブランチ {branch} に PR に無いコミットがあります（手元で直したもの？）。動かすと消えるので止めました。" +
+              $"残すなら別の名前を付けてから（git branch -m {branch} <新しい名前>）、もう一度押してください。";
+    }
+
     /// <summary><paramref name="branch"/> を PR の先頭から作ってワークツリーに置き、その部屋へ移る。今の作業ツリーには触らない。</summary>
     private async Task OpenPullRequestWorktreeAsync(
         string branch, string folderName, string headHash, Action<string, string> showError)
@@ -53,7 +63,13 @@ public partial class ShellWindow
         var exists = git.BranchInfos.Any(b => !b.IsRemote && b.Name == branch);
         if (exists)
         {
-            // どこにも置かれていない古いブランチは PR の今の先頭へ合わせ直す（置かれていないので誰の作業も消さない）。
+            // どこにも置かれていない古いブランチは PR の今の先頭へ合わせ直す。ただし PR に無いコミットを持っていれば
+            // 動かさない（置かれていなくても、そのブランチで直したコミットが reflog にしか残らなくなる）。
+            if (await PullRequestBranchBlockerAsync(_git, branch, headHash) is { } blocked)
+            {
+                showError($"ブランチ {branch} を PR の先頭へ動かしませんでした", blocked);
+                return;
+            }
             var moved = await _git.RunAsync("branch", "-f", branch, headHash);
             if (!moved.Success)
             {
