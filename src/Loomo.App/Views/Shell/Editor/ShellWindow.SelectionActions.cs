@@ -64,7 +64,7 @@ public partial class ShellWindow {
                 EnsurePaneVisibleOrSwapTopLeft(PaneKind.Ai);
                 _vm.AiBar.AskAbout(e.SelectedText);
             },
-            text => _ = SearchSelectionInBrowserAsync(text),
+            text => _ = SearchSelectionInBrowserAsync(text, EditorSearchOrigin(control, text)),
             AddWorkflowMenuItems);
 
     /// <summary>1つの束を足す。中身が1つでも入ったときだけ、束の<b>前</b>に区切り線を1本入れる。
@@ -278,7 +278,9 @@ public partial class ShellWindow {
                 EnsurePaneVisibleOrSwapTopLeft(PaneKind.Ai);
                 _vm.AiBar.AskAbout(e.SelectedText);
             },
-            text => _ = SearchSelectionInBrowserAsync(text),
+            text => _ = SearchSelectionInBrowserAsync(text,
+                _terminalTabs.FirstOrDefault(t => ReferenceEquals(t.View, sender)) is { } tab
+                    ? new BrowserSearchOrigin.Terminal(text, tab.Id) : null),
             AddWorkflowMenuItems));
     private async Task SendLocationToEditorAsync(SourceLocation location) {
         await OpenPathInEditorAsync(location.Path, location.Line, location.Column);
@@ -379,10 +381,27 @@ public partial class ShellWindow {
         _vm.AiBar.IsExpanded = true;
         _vm.AiBar.Workflow.RunWithInput(workflowId, input);
     }
-    private async Task SearchSelectionInBrowserAsync(string selectedText) {
+    /// <summary>選んだ語を内蔵ブラウザで調べる。できたタブに<b>調べ始めた場所</b>を付ける（§41.12）——ブラウザサポートが
+    /// 「戻る」と、ページのコードを「そこへ貼る」を出す。</summary>
+    private async Task SearchSelectionInBrowserAsync(string selectedText, BrowserSearchOrigin? origin) {
         if (SelectionActionPresentation.BrowserSearchTarget(selectedText) is not { } target)
             return;
         EnsurePaneVisibleOrSwapTopLeft(PaneKind.Browser);
-        await OpenUrlInBrowserAsync(target.Url, target.Title);
+        var tab = CreateBrowserTab(target.Url, requestedTitle: target.Title);
+        tab.SearchOrigin = origin;
+        await EnsureBrowserRealizedAsync(tab);
+        SaveActiveWorkspaceSnapshot();
+        RequestBrowserSupportRefresh(force: true);
+    }
+
+    /// <summary>エディタの選んだ所を出所にする。戻れるのはディスク上のファイルだけ（無題・ライブラリの定義は外す）。</summary>
+    private static BrowserSearchOrigin? EditorSearchOrigin(VimEditorControl? control, string query) {
+        if (control?.FilePath is not { Length: > 0 } path || MetadataSourceFiles.IsMetadataAsSource(path))
+            return null;
+        if (control.HasSelection && control.SelectionAsLspRange() is { } selection) {
+            var (start0, end0) = ClaudeCodeReference.LinesOfSelection(selection.Start.Line, selection.End.Line, selection.End.Character);
+            return new BrowserSearchOrigin.Editor(query, path, start0, start0 == selection.Start.Line ? selection.Start.Character : 0, end0);
+        }
+        return new BrowserSearchOrigin.Editor(query, path, control.Caret.Line, control.Caret.Column, control.Caret.Line);
     }
 }

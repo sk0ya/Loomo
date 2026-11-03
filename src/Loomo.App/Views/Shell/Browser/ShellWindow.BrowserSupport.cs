@@ -18,7 +18,7 @@ public partial class ShellWindow {
     /// <summary>ページの読み込みが終わった合図のあとの引き直しか（同じページでもコードを読み直す）。</summary>
     private bool _browserSupportLoaded;
 
-    private const int SectionProblems = 10, SectionFailedSteps = 20, SectionUsages = 30, SectionOtherProjects = 40,
+    private const int SectionOrigin = 0, SectionProblems = 10, SectionFailedSteps = 20, SectionUsages = 30, SectionOtherProjects = 40,
         SectionPort = 50, SectionCode = 60, SectionClips = 70;
 
     private void InitializeBrowserSupport() {
@@ -67,12 +67,16 @@ public partial class ShellWindow {
         var loaded = _browserSupportLoaded;
         _browserSupportLoaded = false;
         if (!_browserSupport.Show(page, url)) {
+            // 同じページでも別のタブかもしれない（調べ始めた場所はタブのもの）。
+            if (_browserSupport.Page is { } current)
+                ShowBrowserSupportOrigin(current);
             if (loaded && _browserSupport.Page is { ShowsCode: true } same)
                 _ = LoadBrowserSupportCodeAsync(same);
             return;
         }
         if (page is null)
             return;
+        ShowBrowserSupportOrigin(page);
         _browserSupportRemote = null;
         _browserSupportLog = null;
         if (page.HasRepository)
@@ -180,13 +184,20 @@ public partial class ShellWindow {
             return;
         }
         var rows = blocks.Select(block => {
-            var buttons = new List<BrowserSupportButton> {
-                new("エディタへ", () => _ = OpenCodeBlockInEditorAsync(block), "新しいタブに写す（保存先は自分で決める）"),
-                new("コンポーザへ", () => InsertIntoComposer(block.Text)),
-            };
+            var origin = CurrentSearchOrigin;
+            var buttons = new List<BrowserSupportButton>();
+            // 調べ始めた所がファイルなら、そこへ貼るのが一番の行き先（§41.12）。
+            if (origin is BrowserSearchOrigin.Editor editor)
+                buttons.Add(new($"{Path.GetFileName(editor.FilePath)} へ貼る", () => _ = PasteCodeAtSearchOriginAsync(block),
+                    "調べ始めた所の下の行へ差し込む（字下げを揃える。Ctrl+Z で戻せる）"));
+            buttons.Add(new("エディタへ", () => _ = OpenCodeBlockInEditorAsync(block), "新しいタブに写す（保存先は自分で決める）"));
+            buttons.Add(new("コンポーザへ", () => InsertIntoComposer(block.Text)));
             if (block.LooksLikeCommand)
-                buttons.Add(new("ターミナルへ", () => SendRecentCommandToTerminal(BrowserPageCode.AsCommand(block.Text)),
-                    "見えるターミナルのプロンプトへ入れる（Enter は押さない。複数行はコンポーザへ）"));
+                buttons.Add(origin is BrowserSearchOrigin.Terminal terminal
+                    ? new($"「{TerminalTabTitle(terminal.TabId) ?? "Terminal"}」へ", () => SendCodeToSearchOriginTerminal(terminal, block),
+                        "調べ始めたターミナルのタブのプロンプトへ入れる（Enter は押さない。複数行はコンポーザへ）")
+                    : new("ターミナルへ", () => SendRecentCommandToTerminal(BrowserPageCode.AsCommand(block.Text)),
+                        "見えるターミナルのプロンプトへ入れる（Enter は押さない。複数行はコンポーザへ）"));
             buttons.Add(new("ペグボードへ", () => _vm.Pegboard.AddContent(block.Text, type: "text", sourceUrl: url, sourceTitle: title),
                 "出典付きで残す（§24.24）"));
             var language = block.Language.Length > 0 ? block.Language : "言語の指定なし";
@@ -204,6 +215,91 @@ public partial class ShellWindow {
             Content = block.Text.Replace("\r\n", "\n").Replace("\n", Environment.NewLine),
             OnSaved = _ => { },   // ページからの写し：どこにも書き戻さない
         });
+    }
+
+    // ── どのページでも：調べ始めた場所（§41.12） ───────────────────────
+
+    /// <summary>前面のブラウザのタブの調べ始めた場所。ファイルが消えた・ターミナルのタブを閉じたなら無いものとする。</summary>
+    private BrowserSearchOrigin? CurrentSearchOrigin => _activeBrowserTab?.SearchOrigin switch {
+        BrowserSearchOrigin.Editor e when File.Exists(e.FilePath) => e,
+        BrowserSearchOrigin.Terminal t when _terminalTabs.Any(tab => tab.Id == t.TabId) => t,
+        _ => null,
+    };
+
+    /// <summary>節「調べ始めた場所」：右クリック「ブラウザへ送る」で来たタブなら、その場所と「戻る」。
+    /// タブの中でリンクを辿っても・子のタブへ移っても出続ける。</summary>
+    private void ShowBrowserSupportOrigin(BrowserSupportPage page) {
+        if (CurrentSearchOrigin is not { } origin) {
+            _browserSupport.RemoveSection(page, "origin");
+            return;
+        }
+        // 見出しはファイル名:行だけ（ワークスペースの外のファイルだと表示パスが何行にも折り返す）。場所は押す前にツールチップで。
+        var (title, tip) = origin switch {
+            BrowserSearchOrigin.Editor e => ($"{Path.GetFileName(e.FilePath)}:{e.Line + 1}", $"エディタのその行へ戻る（{_workspace.ToDisplayPath(e.FilePath)}）"),
+            BrowserSearchOrigin.Terminal t => ($"ターミナル「{TerminalTabTitle(t.TabId) ?? "Terminal"}」", "そのターミナルのタブへ戻る"),
+            _ => ("", ""),
+        };
+        var row = new BrowserSupportRow(title, $"「{origin.QueryPreview}」を調べています",
+            [new BrowserSupportButton("戻る", () => _ = ReturnToSearchOriginAsync(origin), tip)],
+            Mono: origin is BrowserSearchOrigin.Editor);
+        _browserSupport.SetSection(page, "origin", "調べ始めた場所", SectionOrigin, [row]);
+    }
+
+    private async Task ReturnToSearchOriginAsync(BrowserSearchOrigin origin) {
+        switch (origin) {
+            case BrowserSearchOrigin.Editor e:
+                EnsurePaneVisibleOrSwapTopLeft(PaneKind.Editor);
+                await OpenPathInEditorAsync(e.FilePath, e.Line + 1, e.Column + 1);
+                FocusPane(PaneKind.Editor);
+                break;
+            case BrowserSearchOrigin.Terminal t:
+                GoToTerminalTab(t.TabId);
+                break;
+        }
+    }
+
+    /// <summary>ページのコードを、調べ始めた所の下の行へ差し込む（1 回の取り消せる編集）。続けて貼ったものは前に貼ったものの
+    /// 下へ並ぶよう、タブの出所の「最後の行」を貼った末尾へ進める（戻る先の行は変えない）。</summary>
+    private async Task PasteCodeAtSearchOriginAsync(BrowserCodeBlock block) {
+        if (_activeBrowserTab is not { } browserTab || CurrentSearchOrigin is not BrowserSearchOrigin.Editor origin) {
+            ToastService.Info("調べ始めたファイルが見つかりません");
+            return;
+        }
+        EnsurePaneVisibleOrSwapTopLeft(PaneKind.Editor);
+        await OpenPathInEditorAsync(origin.FilePath, 0, 0);
+        if (_activeEditorTab is not { IsRealized: true } tab
+            || !string.Equals(tab.PeekFilePath, origin.FilePath, StringComparison.OrdinalIgnoreCase)) {
+            ToastService.Info("調べ始めたファイルを開けませんでした");
+            return;
+        }
+        var paste = BrowserSearchOrigin.PasteBelow(tab.Control.Text, origin.EndLine, block.Text);
+        var at = new LspPosition(paste.Line, paste.Column);
+        if (!tab.Control.TryApplyLspTextEdits([new LspTextEdit(new LspRange(at, at), paste.Text)], expectedVersion: null, out var error)) {
+            ToastService.Info($"貼れませんでした: {error}");
+            return;
+        }
+        browserTab.SearchOrigin = origin with { EndLine = paste.LastInsertedLine };
+        // 貼ったところを選んで見せる（調べたときの選択——ビジュアルモードのまま——もこれで置き換わる）。
+        tab.Control.SelectRange(paste.FirstInsertedLine, 0, paste.LastInsertedLine, int.MaxValue);
+        FocusPane(PaneKind.Editor);
+    }
+
+    /// <summary>コマンドを調べ始めたターミナルのタブへ入れる（Enter は押さない）。前面で何か動いているタブには打たない
+    /// ——Claude Code が居れば頼みごととして送られてしまう（§38）。</summary>
+    private void SendCodeToSearchOriginTerminal(BrowserSearchOrigin.Terminal origin, BrowserCodeBlock block) {
+        var command = BrowserPageCode.AsCommand(block.Text);
+        if (RecentTerminalCommands.IsMultiline(command)) {
+            InsertIntoComposer(command);
+            return;
+        }
+        if (_terminalTabs.FirstOrDefault(t => t.Id == origin.TabId) is not { } tab)
+            return;
+        if (_paneActivity.IsTerminalBusy(tab.Id)) {
+            ToastService.Info("そのタブは何かを動かしているので入れませんでした");
+            return;
+        }
+        GoToTerminalTab(tab.Id);
+        tab.View.SendTerminalInput(command);
     }
 
     // ── localhost：このポートを動かしているターミナル ──────────────────

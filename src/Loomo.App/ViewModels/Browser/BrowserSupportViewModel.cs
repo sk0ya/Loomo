@@ -103,7 +103,8 @@ public sealed partial class BrowserSupportViewModel : ObservableObject
             ? (string.IsNullOrWhiteSpace(url) ? "ブラウザのタブがありません。" : "このページに合う道具はありません。") +
               "\n\nページごとの道具:\n・Azure DevOps：PR・ファイル・コミット・パイプラインの実行\n・GitHub：PR・Issue・ファイル・コミット・Actions の実行" +
               "\n・npm／NuGet のパッケージ：このワークスペースでの使われ方と追加\n・localhost：そのポートを動かしているターミナル" +
-              "\n・記事・ドキュメント：ページのコードの一覧\n・どのページでも：そのページからペグボードへ取った抜き書き"
+              "\n・記事・ドキュメント：ページのコードの一覧\n・どのページでも：そのページからペグボードへ取った抜き書き" +
+              "\n・右クリック「ブラウザへ送る」で来たタブ：調べ始めた場所へ戻る・ページのコードをそこへ貼る"
             : "";
         Sections.Clear();
         Rebuild();

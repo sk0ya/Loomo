@@ -116,6 +116,9 @@ internal sealed record BrowserTab(Guid Id, WebView2CompositionControl InitialVie
         /// <summary>ピン留め（§24.29）。</summary>
         public bool IsPinned { get; set; }
 
+        /// <summary>このタブで何を調べ始めたか（§41.12。右クリック「ブラウザへ送る」で付き、子のタブへ引き継ぐ）。</summary>
+        public BrowserSearchOrigin? SearchOrigin { get; set; }
+
         /// <summary>最後に得たページタイトル。WebView2未実体化時の保存・復元にも使用する。</summary>
         public string? Title { get; set; }
 

@@ -8,7 +8,8 @@ internal sealed class BrowserNewWindowController(
     Func<BrowserTab, Task> ensureRealized,
     Func<Guid, Task> closeTab)
 {
-    public async Task HandleAsync(CoreWebView2NewWindowRequestedEventArgs e)
+    /// <param name="opened">新しいタブができた直後に呼ぶ（開いた元のタブから引き継ぐもの：調べ始めた場所 §41.12）。</param>
+    public async Task HandleAsync(CoreWebView2NewWindowRequestedEventArgs e, Action<BrowserTab>? opened = null)
     {
         var deferral = e.GetDeferral();
         var uri = e.Uri;
@@ -17,6 +18,7 @@ internal sealed class BrowserNewWindowController(
         {
             e.Handled = true;
             created = createTab(uri);
+            opened?.Invoke(created);
             await ensureRealized(created);
             if (created.View.TryCore() is { } core)
             {

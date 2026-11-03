@@ -224,7 +224,8 @@ public partial class ShellWindow {
     private void ConfigureBrowserCore(BrowserTab tab, CoreWebView2 core) {
         BrowserWebViewDefaults.Configure(core);
         core.ProcessFailed += (_, e) => OnBrowserProcessFailed(tab, e);
-        core.NewWindowRequested += (_, e) => _ = BrowserNewWindowController.HandleAsync(e);
+        core.NewWindowRequested += (_, e) => _ = BrowserNewWindowController.HandleAsync(
+            e, created => created.SearchOrigin = tab.SearchOrigin);
         // window.close()。閉じると WebView2 を Dispose するので、通知の中から同期に呼ばない
         // （自分のイベントを配っている最中に足元を壊すことになる）。次のディスパッチへ回す。
         core.WindowCloseRequested += (_, _) =>

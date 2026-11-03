@@ -404,4 +404,45 @@ public class BrowserSupportTests
         Assert.Null(vm.SetSection(page, "code", "コード", 60, []));   // 前のページの答えは捨てる
         Assert.Empty(vm.Sections);
     }
+
+    // ── 調べ始めた場所へ貼る（§41.12） ──
+
+    [Fact]
+    public void PasteBelow_IndentsToAnchorLine_AndStripsCommonIndent()
+    {
+        var doc = "class A {\n    void M() {\n        Foo();\n    }\n}";
+        var paste = BrowserSearchOrigin.PasteBelow(doc, 2, "    var x = 1;\n    if (x > 0)\n        Bar();\n");
+        Assert.Equal(2, paste.Line);
+        Assert.Equal("        Foo();".Length, paste.Column);   // 行末に差し込む
+        Assert.Equal("\n        var x = 1;\n        if (x > 0)\n            Bar();", paste.Text);
+        Assert.Equal(3, paste.FirstInsertedLine);
+        Assert.Equal(5, paste.LastInsertedLine);
+    }
+
+    [Fact]
+    public void PasteBelow_UsesDocumentNewline_AndKeepsBlankLinesEmpty()
+    {
+        var paste = BrowserSearchOrigin.PasteBelow("a\r\n\tb\r\nc", 1, "x\n\ny");
+        Assert.Equal(2, paste.Column);   // 行末の CR は数えない
+        Assert.Equal("\r\n\tx\r\n\r\n\ty", paste.Text);
+    }
+
+    [Fact]
+    public void PasteBelow_ClampsLineOutsideDocument()
+    {
+        var paste = BrowserSearchOrigin.PasteBelow("one\ntwo", 10, "z");
+        Assert.Equal(1, paste.Line);
+        Assert.Equal("\nz", paste.Text);
+    }
+
+    [Fact]
+    public void SearchOrigin_QueryPreview_IsOneLineAndShort()
+    {
+        var origin = new BrowserSearchOrigin.Terminal("error CS0103:\n" + new string('x', 100), Guid.NewGuid());
+        Assert.DoesNotContain("\n", origin.QueryPreview);
+        Assert.Equal(60, origin.QueryPreview.Length);
+        Assert.EndsWith("…", origin.QueryPreview);
+    }
+
 }
+
