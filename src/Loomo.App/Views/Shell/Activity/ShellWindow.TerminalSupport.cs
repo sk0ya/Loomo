@@ -38,6 +38,10 @@ public partial class ShellWindow {
         TerminalSupportPaneHost.DataContext = _terminalSupport;
         _terminalSupport.SetDisplayPath(path => _workspace.ToDisplayPath(path));
         _terminalSupport.SetWorkspaceFilter(path => _workspace.Contains(path));
+        // 画像はページと同じ一時フォルダーの下に置く（§39.10）。古いものの片付けは裏で。
+        var images = new TerminalSupportImageStore(EditorSupportPreviewFolder);
+        _ = Task.Run(images.CleanStale);
+        _terminalSupport.SetImageStore(images);
         // 出力の中の相対パス（ビルドの診断）は、その回を実行した場所と、そこを持つワークスペースのフォルダーから解く。
         // tasks.json のタスクから打ち込んだ行なら、そのタスクの matcher と基準（§31.17）。
         _terminalSupport.SetOutputMatching(output => {

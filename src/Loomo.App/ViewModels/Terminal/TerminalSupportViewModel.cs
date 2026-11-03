@@ -72,6 +72,7 @@ public sealed partial class TerminalSupportViewModel : ObservableObject
     private ClaudeSessionDigest? _digest;
     private int _bodyGeneration;
     private ClaudeConversationDocument.RenderCache _renderCache = new();
+    private TerminalSupportImageStore? _imageStore;
 
     [ObservableProperty] private bool _hasTab;
     [ObservableProperty] private bool _isClaude;
@@ -172,6 +173,9 @@ public sealed partial class TerminalSupportViewModel : ObservableObject
     /// <summary>ワークスペースの中か（<c>workspace.Contains</c>、マルチルート）。外で書き換えたファイル——Claude の
     /// 一時ファイル・作業メモ——は数だけ出す。</summary>
     internal void SetWorkspaceFilter(Func<string, bool> inWorkspace) => _inWorkspace = inWorkspace;
+
+    /// <summary>ページに画像を出すための置き場（§39.10）。無ければ画像は出さない。</summary>
+    internal void SetImageStore(TerminalSupportImageStore store) => _imageStore = store;
 
     /// <summary>出力の診断の読み方（相対パスの基準・tasks.json のタスクならその matcher）。</summary>
     internal void SetOutputMatching(Func<TerminalCommandOutput, TerminalOutputMatching> matching) => _matching = matching;
@@ -275,7 +279,9 @@ public sealed partial class TerminalSupportViewModel : ObservableObject
             return;
         }
         var matching = _matching(output);
-        var presentation = await Task.Run(() => TerminalOutputPresenter.Present(output, matching));
+        var store = _imageStore;
+        var presentation = await Task.Run(() =>
+            TerminalOutputImagePresentation.With(TerminalOutputPresenter.Present(output, matching), output, store));
         if (generation != _outputGeneration)
             return;
         OutputLabel = presentation.Label;
@@ -450,10 +456,12 @@ public sealed partial class TerminalSupportViewModel : ObservableObject
             return;
         var generation = ++_bodyGeneration;
         var matching = _matching;
+        var store = _imageStore;
         var context = new ClaudeConversationDocument.NodeContext(
             _inWorkspace, _displayPath, working, WorkingDirectory.Length > 0 ? WorkingDirectory : null,
             ClaudeTranscriptLookup.ReadResult, ClaudeTranscriptLookup.ReadInput,
-            output => TerminalOutputPresenter.Present(output, matching(output)), _renderCache);
+            output => TerminalOutputImagePresentation.With(TerminalOutputPresenter.Present(output, matching(output)), output, store),
+            _renderCache, store is null ? null : store.ForTranscript);
         var body = await Task.Run(() => ClaudeConversationDocument.BuildNodeBody(node, digest, context));
         if (generation != _bodyGeneration)
             return;

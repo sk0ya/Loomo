@@ -23,8 +23,12 @@ public sealed record ClaudeTurn(
     IReadOnlyList<ClaudeTouchedFile> Files,
     IReadOnlyList<string> Replies,
     DateTimeOffset? LastAt,
-    IReadOnlyList<ClaudeSubagent>? AgentList = null)
+    IReadOnlyList<ClaudeSubagent>? AgentList = null,
+    IReadOnlyList<ClaudeImage>? ImageList = null)
 {
+    /// <summary>このターンの画像：頼みごとに貼った画像と、Claude が読んだ（Read の結果に載った）画像。記録の順。</summary>
+    public IReadOnlyList<ClaudeImage> Images => ImageList ?? [];
+
     /// <summary>このターンで動いたサブエージェント（記録のファイルごと、現れた順）。<see cref="Calls"/> にも
     /// サブエージェントの操作は入っている——こちらは「どのエージェントの操作か」で束ねたもの（§39.9）。</summary>
     public IReadOnlyList<ClaudeSubagent> Agents => AgentList ?? [];
@@ -73,6 +77,18 @@ public sealed class ClaudeSubagentText
     public string? Prompt { get; set; }
     public DateTimeOffset? StartedAt { get; set; }
     public List<string> Replies { get; } = new();
+}
+
+/// <summary>
+/// 記録の中の画像1枚の在りか（§39.10.1）。中身（base64、1枚で数百 KB〜数 MB）は持たない——記録を追いかけ続ける digest が
+/// 何百枚ぶんを抱えないよう、描くときに <see cref="ClaudeTranscriptLookup.ReadImage"/> で引き直す。
+/// <paramref name="Index"/> はその行の中で何枚目か（0始まり、文書順）。<paramref name="ToolUseId"/> は Read などの結果に
+/// 載った画像なら、その呼び出しの id（頼みごとに貼った画像は null）。
+/// </summary>
+public sealed record ClaudeImage(string TranscriptPath, int Line, int Index, string MediaType, string? ToolUseId)
+{
+    /// <summary>人間が頼みごとに貼った画像か（でなければ Claude がツールで見た画像）。</summary>
+    public bool FromPrompt => ToolUseId is null;
 }
 
 /// <summary>assistant の本文1つ（本体の記録の1始まりの行番号つき）。</summary>
@@ -133,7 +149,7 @@ public sealed record ClaudeSessionDigest(
     internal static ClaudeSessionDigest Compose(
         string sessionId, string transcriptPath, DateTime lastWriteUtc,
         HarnessRun run, ClaudeSessionSummary summary, IReadOnlyList<ClaudeReplyText> replies,
-        IReadOnlyList<ClaudeSubagentText>? subagentTexts = null)
+        IReadOnlyList<ClaudeSubagentText>? subagentTexts = null, IReadOnlyList<ClaudeImage>? images = null)
     {
         var agents = Subagents(run, subagentTexts ?? []);
         var turns = new List<ClaudeTurn>();
@@ -155,8 +171,11 @@ public sealed record ClaudeSessionDigest(
                     ? launch.LineNumber > start.LineNumber && (end is null || launch.LineNumber < end.Value.LineNumber)
                     : agent.StartedAt is { } began && (start.At is null || began >= start.At) && (end?.At is not { } stop || began < stop))
                 .ToList();
+            // 貼った画像は頼みごとの行そのものに載るので、その行から数える。
+            var turnImages = (images ?? []).Where(image => image.Line >= start.LineNumber
+                && (end is null || image.Line < end.Value.LineNumber)).ToList();
             turns.Add(new ClaudeTurn(run.Prompts[i], start.LineNumber, start.At, calls, TouchedFiles(calls),
-                texts.Select(r => r.Text).ToList(), lastAt, turnAgents));
+                texts.Select(r => r.Text).ToList(), lastAt, turnAgents, turnImages));
         }
 
         // 結果がまだ無い最後の操作＝いま実行中か、人間の承認を待っているもの。最後の1つに限る——途中の結果欠けは
@@ -259,6 +278,55 @@ public sealed record ClaudeSessionDigest(
             return null;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException) { return null; }
+    }
+
+    /// <summary>user の行に載った画像（頼みごとに貼ったもの・ツールの結果に載ったもの）の在りか。無ければ空。
+    /// 画像を持つ行は大きいので、印（<c>"type":"image"</c>）の無い行は開かない。</summary>
+    internal static IReadOnlyList<ClaudeImage> ReadImages(string line, int lineNumber, string transcriptPath)
+    {
+        if (!line.Contains("\"type\":\"image\"", StringComparison.Ordinal) || !line.Contains("\"user\"", StringComparison.Ordinal))
+            return [];
+        try
+        {
+            using var doc = JsonDocument.Parse(line);
+            var root = doc.RootElement;
+            if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("type", out var type) || type.GetString() != "user"
+                || !root.TryGetProperty("message", out var message) || message.ValueKind != JsonValueKind.Object
+                || !message.TryGetProperty("content", out var content) || content.ValueKind != JsonValueKind.Array)
+                return [];
+            var found = new List<ClaudeImage>();
+            foreach (var block in content.EnumerateArray())
+            {
+                if (block.ValueKind != JsonValueKind.Object || !block.TryGetProperty("type", out var kind))
+                    continue;
+                if (kind.GetString() == "image")
+                    AddImage(found, block, transcriptPath, lineNumber, null);
+                else if (kind.GetString() == "tool_result" && block.TryGetProperty("content", out var inner)
+                         && inner.ValueKind == JsonValueKind.Array)
+                {
+                    var id = block.TryGetProperty("tool_use_id", out var tid) && tid.ValueKind == JsonValueKind.String ? tid.GetString() : null;
+                    foreach (var item in inner.EnumerateArray())
+                    {
+                        if (item.ValueKind == JsonValueKind.Object && item.TryGetProperty("type", out var t) && t.GetString() == "image")
+                            AddImage(found, item, transcriptPath, lineNumber, id ?? "");
+                    }
+                }
+            }
+            return found;
+        }
+        catch (JsonException) { return []; }
+
+        static void AddImage(List<ClaudeImage> found, JsonElement block, string path, int line, string? toolUseId)
+        {
+            // 何枚目か：読めない（base64 でない）画像も1枚と数える——引き直す側と数え方をそろえる。
+            var index = found.Count;
+            var mediaType = block.TryGetProperty("source", out var source) && source.ValueKind == JsonValueKind.Object
+                            && source.TryGetProperty("type", out var st) && st.GetString() == "base64"
+                            && source.TryGetProperty("media_type", out var mt) && mt.ValueKind == JsonValueKind.String
+                ? mt.GetString()
+                : null;
+            found.Add(new ClaudeImage(path, line, index, mediaType ?? "", toolUseId));
+        }
     }
 
     /// <summary>assistant の本文（text ブロック）。思考（thinking）とツール呼び出しは含めない。本文を持たない行は null。</summary>

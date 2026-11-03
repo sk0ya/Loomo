@@ -28,6 +28,7 @@ public sealed class ClaudeSessionFollower
     private ClaudeSessionCatalog.SummaryAccumulator _summary = new();
     private List<ClaudeReplyText> _replies = new();
     private List<ClaudeSubagentText> _subagentTexts = new();
+    private List<ClaudeImage> _images = new();
     private readonly Dictionary<string, long> _offsets = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<string> _subagentPaths = new();
     private (long Length, DateTime WriteUtc, long SubagentStamp)? _stamp;
@@ -104,7 +105,7 @@ public sealed class ClaudeSessionFollower
         {
             var run = _reader.Snapshot(_sessionId, TranscriptPath);
             return ClaudeSessionDigest.Compose(_sessionId, TranscriptPath, lastWriteUtc, run,
-                _summary.ToSummary(_sessionId, TranscriptPath, lastWriteUtc), _replies, _subagentTexts);
+                _summary.ToSummary(_sessionId, TranscriptPath, lastWriteUtc), _replies, _subagentTexts, _images);
         }
     }
 
@@ -118,6 +119,8 @@ public sealed class ClaudeSessionFollower
                 _summary.Add(lines[i]);
                 if (ClaudeSessionDigest.ReadReply(lines[i], baseLine + i + 1) is { } reply)
                     _replies.Add(reply);
+                else
+                    _images.AddRange(ClaudeSessionDigest.ReadImages(lines[i], baseLine + i + 1, path));
             }
         }
         else
@@ -239,6 +242,7 @@ public sealed class ClaudeSessionFollower
         _summary = new ClaudeSessionCatalog.SummaryAccumulator();
         _replies = new List<ClaudeReplyText>();
         _subagentTexts = new List<ClaudeSubagentText>();
+        _images = new List<ClaudeImage>();
         _offsets.Clear();
         _subagentPaths.Clear();
         _stamp = null;

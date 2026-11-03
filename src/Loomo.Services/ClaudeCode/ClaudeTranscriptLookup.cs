@@ -62,6 +62,56 @@ public static class ClaudeTranscriptLookup
         catch (JsonException) { return null; }
     }
 
+    /// <summary>引き直す画像の上限（バイト）。記録に載る画像は API の制限で数 MB まで。</summary>
+    public const int MaxImageBytes = 20 * 1024 * 1024;
+
+    /// <summary>画像の中身（base64 を戻したもの）。行が無い・数え方が合わない・壊れていれば null。
+    /// 数え方は <see cref="ClaudeSessionDigest.ReadImages"/> と同じ（行の中の画像を文書順に、結果の中のものも含めて）。</summary>
+    public static byte[]? ReadImage(ClaudeImage image)
+    {
+        if (ReadLine(image.TranscriptPath, image.Line) is not { } line)
+            return null;
+        try
+        {
+            using var doc = JsonDocument.Parse(line);
+            if (!doc.RootElement.TryGetProperty("message", out var message) || !message.TryGetProperty("content", out var content)
+                || content.ValueKind != JsonValueKind.Array)
+                return null;
+            var index = 0;
+            foreach (var block in content.EnumerateArray())
+            {
+                if (block.ValueKind != JsonValueKind.Object)
+                    continue;
+                if (Str(block, "type") == "image")
+                {
+                    if (index++ == image.Index)
+                        return Decode(block);
+                }
+                else if (Str(block, "type") == "tool_result" && block.TryGetProperty("content", out var inner)
+                         && inner.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var item in inner.EnumerateArray())
+                    {
+                        if (item.ValueKind == JsonValueKind.Object && Str(item, "type") == "image" && index++ == image.Index)
+                            return Decode(item);
+                    }
+                }
+            }
+            return null;
+        }
+        catch (JsonException) { return null; }
+
+        static byte[]? Decode(JsonElement block)
+        {
+            if (!block.TryGetProperty("source", out var source) || source.ValueKind != JsonValueKind.Object
+                || Str(source, "type") != "base64" || Str(source, "data") is not { Length: > 0 } data
+                || data.Length / 4 * 3 > MaxImageBytes)
+                return null;
+            try { return Convert.FromBase64String(data); }
+            catch (FormatException) { return null; }
+        }
+    }
+
     /// <summary>記録の <paramref name="lineNumber"/> 行目（1始まり）。書き込み中でも読む。</summary>
     internal static string? ReadLine(string path, int lineNumber)
     {

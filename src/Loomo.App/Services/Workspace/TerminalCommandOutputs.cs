@@ -12,17 +12,24 @@ namespace sk0ya.Loomo.App.Services;
 /// <paramref name="TabId"/>／<paramref name="WorkingDirectory"/> は出どころ（どのタブで・どこで実行したか）——
 /// ペグボードへ出典付きで残すときに使う（§24.26）。
 /// <paramref name="Styled"/> は描かれたときの色と書式（<see cref="Text"/> の1行に1つ、行の文字の連なり。Terminal 1.0.47〜）。
-/// 色の無い出力では持たない（null）——見せ直し（§39.5.1）が素の文字を色付きで描くためだけのもの。</summary>
+/// 色の無い出力では持たない（null）——見せ直し（§39.5.1）が素の文字を色付きで描くためだけのもの。
+/// <paramref name="Images"/> はその回の実行中（C〜切り出し）に端末へ届いたインライン画像（Sixel・iTerm2・Kitty、§39.10.3）。</summary>
 public sealed record TerminalCommandOutput(
     string Command, string Text, int? ExitCode, DateTime FinishedUtc, bool HeadOmitted,
     Guid TabId = default, string? WorkingDirectory = null,
-    IReadOnlyList<IReadOnlyList<Terminal.Tabs.TerminalOutputRun>>? Styled = null)
+    IReadOnlyList<IReadOnlyList<Terminal.Tabs.TerminalOutputRun>>? Styled = null,
+    IReadOnlyList<TerminalInlineImage>? Images = null)
 {
     /// <summary>書式を持っておく値打ちがあるか（どこかの文字に色か書式が付いている）。無ければ null を返す。</summary>
     public static IReadOnlyList<IReadOnlyList<Terminal.Tabs.TerminalOutputRun>>? StyledOrNull(
         IReadOnlyList<IReadOnlyList<Terminal.Tabs.TerminalOutputRun>>? styled)
         => styled is not null && styled.Any(row => row.Any(run => !run.IsPlain)) ? styled : null;
 }
+
+/// <summary>端末に届いたインライン画像1枚（§39.10.3）。中身は <paramref name="Encoded"/> を呼んだときに作る（Sixel の生の画素は
+/// PNG に符号化するので、裏のスレッドで呼ぶ）。</summary>
+public sealed record TerminalInlineImage(
+    Func<byte[]> Encoded, string MimeType, int PixelWidth, int PixelHeight, string Protocol, DateTime ReceivedUtc);
 
 /// <summary>
 /// コマンドごとに「前回」と「今回」の出力を持つ置き場（純ロジック・テスト対象）。§24.21。

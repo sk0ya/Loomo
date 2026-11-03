@@ -52,9 +52,11 @@ internal static class ClaudeConversationDocument
     /// <param name="displayPath">ファイルの見せ方（マルチルートの表示パス）。</param>
     /// <param name="working">Claude がいま作業中か（最後のターンの最後の本文を「途中」と扱う）。</param>
     /// <param name="cache">ターンごとの描画の控え（無ければ毎回全ターンを描く）。</param>
+    /// <param name="imageUrl">記録の画像をページから指す URL にする口（§39.10.1。記録から引き直して置き場に書く）。
+    /// 無ければ画像は出さない。</param>
     public static string BuildBody(
         ClaudeSessionDigest digest, Func<string, bool> inWorkspace, Func<string, string> displayPath, bool working,
-        RenderCache? cache = null)
+        RenderCache? cache = null, Func<ClaudeImage, string?>? imageUrl = null)
     {
         var html = new StringBuilder();
         html.Append(Style);
@@ -69,8 +71,8 @@ internal static class ClaudeConversationDocument
             var turn = digest.Turns[i];
             var inProgress = i == digest.Turns.Count - 1 && working;
             html.Append(cache is null
-                ? RenderTurn(turn, inProgress, inWorkspace, displayPath)
-                : cache.GetOrRender(TurnKey(turn, inProgress), () => RenderTurn(turn, inProgress, inWorkspace, displayPath), used));
+                ? RenderTurn(turn, inProgress, inWorkspace, displayPath, imageUrl)
+                : cache.GetOrRender(TurnKey(turn, inProgress), () => RenderTurn(turn, inProgress, inWorkspace, displayPath, imageUrl), used));
         }
         cache?.Keep(used);
         return html.ToString();
@@ -86,7 +88,8 @@ internal static class ClaudeConversationDocument
         Func<RunToolCall, string?> ReadResult,
         Func<RunToolCall, string, string?> ReadInput,
         Func<TerminalCommandOutput, TerminalOutputPresentation> PresentOutput,
-        RenderCache? Cache = null);
+        RenderCache? Cache = null,
+        Func<ClaudeImage, string?>? ImageUrl = null);
 
     /// <summary>
     /// ツリーで選んだ節<b>だけ</b>を描く（§39.9）。長い文書をスクロールして探す代わりに、選んだものを1枚に：
@@ -97,13 +100,13 @@ internal static class ClaudeConversationDocument
     public static string BuildNodeBody(ClaudeTreeNode node, ClaudeSessionDigest digest, NodeContext context)
     {
         if (node.Kind == ClaudeTreeKind.Conversation)
-            return BuildBody(digest, context.InWorkspace, context.DisplayPath, context.Working, context.Cache);
+            return BuildBody(digest, context.InWorkspace, context.DisplayPath, context.Working, context.Cache, context.ImageUrl);
         var html = new StringBuilder();
         html.Append(Style);
         var turn = node.Turn;
         if (node.Kind == ClaudeTreeKind.Turn && turn is not null)
         {
-            html.Append(RenderTurn(turn, node.Working, context.InWorkspace, context.DisplayPath));
+            html.Append(RenderTurn(turn, node.Working, context.InWorkspace, context.DisplayPath, context.ImageUrl));
             return html.ToString();
         }
         if (turn is not null)
@@ -258,18 +261,20 @@ internal static class ClaudeConversationDocument
     internal static string TurnKey(ClaudeTurn turn, bool inProgress)
         => string.Join('|', turn.PromptLine, turn.At?.ToUnixTimeSeconds(), turn.Replies.Count, turn.Reply?.Length,
             turn.Calls.Count, turn.Calls.Count(c => c.HasResult), turn.Failures.Count(), turn.Files.Count,
-            string.Join(',', turn.Files.Select(f => f.Path)), inProgress);
+            string.Join(',', turn.Files.Select(f => f.Path)), turn.Images.Count, inProgress);
 
-    private static string RenderTurn(ClaudeTurn turn, bool inProgress, Func<string, bool> inWorkspace, Func<string, string> displayPath)
+    private static string RenderTurn(
+        ClaudeTurn turn, bool inProgress, Func<string, bool> inWorkspace, Func<string, string> displayPath,
+        Func<ClaudeImage, string?>? imageUrl)
     {
         var html = new StringBuilder();
-        AppendTurn(html, turn, inProgress, inWorkspace, displayPath);
+        AppendTurn(html, turn, inProgress, inWorkspace, displayPath, imageUrl);
         return html.ToString();
     }
 
     private static void AppendTurn(
         StringBuilder html, ClaudeTurn turn, bool inProgress,
-        Func<string, bool> inWorkspace, Func<string, string> displayPath)
+        Func<string, bool> inWorkspace, Func<string, string> displayPath, Func<ClaudeImage, string?>? imageUrl)
     {
         // 返事の中の見出し・脚注の id はターンごとに頭を付けて一意にする（同じ題の節が二つのターンにあると、
         // 「#まとめ」へのリンクやパーマリンクが先のターンへ飛んでいた）。
@@ -285,12 +290,19 @@ internal static class ClaudeConversationDocument
         html.Append("<h2 id=\"cc-turn-").Append(turn.PromptLine).Append("\">").Append(Encode(heading)).Append("</h2>");
         if (prompt != heading)
             html.Append("<div class=\"cc-ask-full\">").Append(Encode(prompt)).Append("</div>");
+        // 貼った画像。ターミナルでは「[Image #1]」の文字でしかない（§39.10.1）。
+        if (imageUrl is not null)
+            html.Append(TerminalOutputImages.Strip(Images(turn, turn.Images.Where(i => i.FromPrompt), imageUrl), withStyle: false));
         html.Append("</div>");
 
         // このターンで変えたもの（読み物の脇に添える1行。ファイルは押せば開く）。
         var meta = Meta(turn, inWorkspace, displayPath);
         if (meta.Length > 0)
             html.Append("<div class=\"cc-meta\">").Append(meta).Append("</div>");
+
+        // Claude が見た画像（Read したスクリーンショットなど）。ターミナルには何も残らない——何を見て判断したかが分かる。
+        if (imageUrl is not null)
+            html.Append(TerminalOutputImages.Strip(Images(turn, turn.Images.Where(i => !i.FromPrompt), imageUrl), "Claude が見た画像", withStyle: false));
 
         // 本文。最後の1つが返事、それより前は作業の途中に書いたメモなので畳む。
         var replies = turn.Replies;
@@ -314,6 +326,23 @@ internal static class ClaudeConversationDocument
             html.Append("<div class=\"cc-reply cc-progress\"><div class=\"cc-who\">Claude · 作業中</div></div>");
         }
         html.Append("</section>");
+    }
+
+    /// <summary>ターンの画像を並びの形に。ツールの結果の画像は、その呼び出しが読んだファイルを添え書きのリンクにする。
+    /// 引き直せなかった画像（記録が書き直された等）は黙って外す。</summary>
+    private static List<TerminalSupportImage> Images(ClaudeTurn turn, IEnumerable<ClaudeImage> images, Func<ClaudeImage, string?> imageUrl)
+    {
+        var list = new List<TerminalSupportImage>();
+        foreach (var image in images)
+        {
+            if (imageUrl(image) is not { } url)
+                continue;
+            var call = image.ToolUseId is { Length: > 0 } id ? turn.Calls.FirstOrDefault(c => c.ToolUseId == id) : null;
+            list.Add(call?.FilePath is { Length: > 0 } file && Path.IsPathFullyQualified(file)
+                ? new TerminalSupportImage(url, FilePath: file)
+                : new TerminalSupportImage(url, Caption: call is null ? null : call.Tool));
+        }
+        return list;
     }
 
     private static string RenderReply(string markdown, string scope)
@@ -407,5 +436,5 @@ internal static class ClaudeConversationDocument
         .cc-title { margin: 0 0 .2em; border: none; font-size: 1.15em; }
         .cc-title a { text-decoration: none; }
         </style>
-        """;
+        """ + TerminalOutputImages.Style;
 }
