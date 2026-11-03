@@ -13,15 +13,27 @@ public partial class ShellWindow {
         // 実行した場所は C の時点で覚える——出力が届くのは D の後なので、`cd` のようなコマンドでは
         // その頃にはもう移った先になっている（ペグボードの出典・§24.26）。
         string? executedIn = null;
+        // その回の実行中（C〜切り出し）に届いたインライン画像（§39.10.3）。プロンプトで待っている間に届いたものは誰の
+        // 出力でもないので拾わない。中身は符号化を遅らせたまま持つ（Sixel の PNG 化は見せ直しの裏のスレッドで）。
+        List<TerminalInlineImage>? images = null;
         tab.View.ShellCommandActivity += (_, e) => {
-            if (e.Phase == ShellCommandPhase.CommandExecuted)
+            if (e.Phase == ShellCommandPhase.CommandExecuted) {
                 executedIn = tab.View.WorkingDirectory;
+                images = new List<TerminalInlineImage>();
+            }
+        };
+        tab.View.InlineImageReceived += (_, e) => {
+            if (images is { Count: < TerminalOutputImages.MaxImages } list)
+                list.Add(new TerminalInlineImage(e.GetEncodedData, e.MimeType, e.PixelWidth, e.PixelHeight, e.Protocol, e.ReceivedUtc));
         };
         tab.View.CommandOutputCaptured += (_, e) => {
+            var received = images is { Count: > 0 } list ? list : null;
+            images = null;
             if (RecentTerminalCommands.Normalize(e.CommandLine) is { } command)
                 RecordTerminalCommandOutput(tab.Id,
                     new TerminalCommandOutput(command, e.Output, e.ExitCode, DateTime.UtcNow, e.HeadLost,
-                        tab.Id, executedIn ?? tab.View.WorkingDirectory, TerminalCommandOutput.StyledOrNull(e.StyledLines)));
+                        tab.Id, executedIn ?? tab.View.WorkingDirectory, TerminalCommandOutput.StyledOrNull(e.StyledLines),
+                        received));
         };
     }
 

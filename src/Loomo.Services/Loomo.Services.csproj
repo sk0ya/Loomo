@@ -162,6 +162,10 @@
     <!-- 1.0.54: ITerminalSession.SetOwnerWindow と、同梱 ConPTY の ConptyReparentPseudoConsole。TerminalTabView がセッションの開始時と
          切り離しで自分の窓を渡し、端末から出たダイアログ（資格情報・サインイン）が端末の手前に出る。常駐ホスト経由は
          RemotePtySession がフレーム OwnerWindow で運ぶ（§34.12・2026-10-31 公開） -->
+    <!-- 1.0.55: TerminalTabView.InlineImageReceived（届いたインライン画像を PNG/JPEG でホストへ。ターミナルサポートが回の出力に付けて
+         並べる、§39.10.3）。同梱 ConPTY は Sixel を通して自分のカーソルを進めるので、同じだけ進めて描く・DA1 で Sixel を返す。
+         折り返したコマンド行の続きが切り出した出力の頭に混ざる・Ctrl+L の後のプロンプトの印が最下行に付くのを直す。
+         全角文字の上のカーソルを 2 セル幅に・ブロックカーソルの下の文字を反転（2026-11-03 公開） -->
     <!-- 版は Directory.Build.props の TerminalPackageVersion（常駐ホストと共有するため一か所）。参照は eng/LocalTerminal.props
          （-p:UseLocalTerminal=true でプロジェクト参照へ切り替わる）。 -->
   </ItemGroup>
