@@ -15,8 +15,6 @@ public enum BrowserSupportActionKind
     OpenLocalFile,
     /// <summary>ページのコミットを Diff ペインで。</summary>
     CommitDiff,
-    /// <summary>このリポジトリを Git の対象（リポジトリの帯で選んでいるもの）にする。</summary>
-    SelectRepository,
     /// <summary>CI の失敗したログをエディタで読む。</summary>
     BuildLog,
     /// <summary>ブラウザで開いているローカルの HTML の元ファイルをエディタで開く（§24.45）。</summary>
@@ -101,7 +99,6 @@ public static class BrowserSupportCatalog
                 [new(BrowserSupportActionKind.BuildLog, "失敗したログをエディタで読む", "失敗した段のログをまとめて1枚の写しに", NeedsLocalRepository: false)],
                 page);
         var where = $"{page.Project} / {page.Repository}";
-        var select = SelectRepository();
         return page.Kind switch
         {
             AzureDevOpsWebPageKind.PullRequest => new BrowserSupportPage(AzureDevOpsSite, $"PR {page.PullRequestId}", where,
@@ -110,19 +107,17 @@ public static class BrowserSupportCatalog
                     "入れ先から分かれたあとの変更だけ（Azure Repos の「ファイル」と同じ）。元と入れ先のブランチを手元へ取ってくる", NeedsLocalRepository: true),
                 new(BrowserSupportActionKind.PullRequestDocument, "概要と会話をエディタで読む",
                     "説明・レビュアーと投票・スレッドを Markdown の写しに（保存しても Azure DevOps へは戻さない）", NeedsLocalRepository: false),
-                select,
             ], page),
             AzureDevOpsWebPageKind.File => new BrowserSupportPage(AzureDevOpsSite, FileHeading(page.FilePath, page.Line), Annotate(where, page),
-                [OpenLocalFile(page.Line), select], page),
+                [OpenLocalFile(page.Line)], page),
             AzureDevOpsWebPageKind.Commit => new BrowserSupportPage(AzureDevOpsSite, $"コミット {Short(page.CommitHash)}", where,
-                [CommitDiff(), select], page),
-            _ => new BrowserSupportPage(AzureDevOpsSite, page.Repository, where, [select], page),
+                [CommitDiff()], page),
+            _ => new BrowserSupportPage(AzureDevOpsSite, page.Repository, where, [], page),
         };
     }
 
     private static BrowserSupportPage DescribeGitHub(GitHubWebPage page)
     {
-        var select = SelectRepository();
         return page.Kind switch
         {
             GitHubWebPageKind.PullRequest => new BrowserSupportPage(GitHubSite, $"#{page.Number}", page.Slug,
@@ -131,24 +126,20 @@ public static class BrowserSupportCatalog
                     "基準から分かれたあとの変更だけ（GitHub の Files changed と同じ）。PR の先頭（refs/pull/N/head）を手元へ取ってくる", NeedsLocalRepository: true),
                 new(BrowserSupportActionKind.PullRequestDocument, "概要と会話をエディタで読む",
                     "状態・チェック・変わったファイル・会話を Markdown の写しに（gh。保存しても GitHub へは戻さない）", NeedsLocalRepository: false),
-                select,
             ], GitHub: page),
             GitHubWebPageKind.Issue => new BrowserSupportPage(GitHubSite, $"#{page.Number}", page.Slug,
-                [new(BrowserSupportActionKind.IssueDocument, "本文と会話をエディタで読む", "Markdown の写しに（gh）", NeedsLocalRepository: false), select],
+                [new(BrowserSupportActionKind.IssueDocument, "本文と会話をエディタで読む", "Markdown の写しに（gh）", NeedsLocalRepository: false)],
                 GitHub: page),
             GitHubWebPageKind.File => new BrowserSupportPage(GitHubSite, FileHeading(page.FileName, page.Line), $"{page.Slug}\n{page.BlobPath}",
-                [OpenLocalFile(page.Line), select], GitHub: page),
+                [OpenLocalFile(page.Line)], GitHub: page),
             GitHubWebPageKind.Commit => new BrowserSupportPage(GitHubSite, $"コミット {Short(page.CommitSha)}", page.Slug,
-                [CommitDiff(), select], GitHub: page),
+                [CommitDiff()], GitHub: page),
             GitHubWebPageKind.ActionsRun => new BrowserSupportPage(GitHubSite, $"Actions の実行 {page.RunId}", page.Slug,
-                [new(BrowserSupportActionKind.BuildLog, "失敗したログをエディタで読む", "gh run view --log-failed", NeedsLocalRepository: false), select],
+                [new(BrowserSupportActionKind.BuildLog, "失敗したログをエディタで読む", "gh run view --log-failed", NeedsLocalRepository: false)],
                 GitHub: page),
-            _ => new BrowserSupportPage(GitHubSite, page.Repository, page.Slug, [select], GitHub: page),
+            _ => new BrowserSupportPage(GitHubSite, page.Repository, page.Slug, [], GitHub: page),
         };
     }
-
-    private static BrowserSupportAction SelectRepository() => new(BrowserSupportActionKind.SelectRepository,
-        "このリポジトリを Git の対象にする", "Git パネル・Diff ペインがこのリポジトリを見る", NeedsLocalRepository: true);
 
     private static BrowserSupportAction OpenLocalFile(int line) => new(BrowserSupportActionKind.OpenLocalFile,
         line > 0 ? $"手元のファイルを開く（{line} 行目）" : "手元のファイルを開く",

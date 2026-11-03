@@ -201,10 +201,10 @@ public partial class ShellWindow {
                     + (p.Local is null && place.Length > 0 ? "（手元に見つかりません）" : "");
                 return new BrowserSupportRow(title.Length > 0 ? title : "（場所なし）", message,
                     p.Local is { } file ? [new BrowserSupportButton("開く", () => _ = OpenPathInEditorAsync(file, p.problem.Line, p.problem.Column))] : [],
-                    Mono: true);
+                    BrowserSupportRowLook.Path);
             }).ToList();
-        _browserSupport.SetSection(page, "problems", $"エラー（{rows.Count}）", SectionProblems, rows,
-            rows.Count == 0 ? "ログからエラーの場所は拾えませんでした。「失敗したログをエディタで読む」で全文を見られます。" : "");
+        _browserSupport.SetSection(page, "problems", "エラー", SectionProblems, rows,
+            count: rows.Count > 0 ? rows.Count : null, note: rows.Count == 0 ? "ログからエラーの場所は拾えませんでした。「失敗したログをエディタで読む」で全文を見られます。" : "");
 
         static string Shorten(string text, int max) => text.Length > max ? text[..max] + "…" : text;
     }
@@ -278,17 +278,17 @@ public partial class ShellWindow {
                 buttons.Add(new($"{version} にする", () => RunPackageCommand(BrowserPackagePages.InstallCommand(package, usage.FilePath, version, usage.Section)),
                     "見えるターミナルで実行する"));
             var versionText = usage.Version.Length > 0 ? usage.Version : "版の指定なし";
-            return new BrowserSupportRow(_workspace.ToDisplayPath(usage.FilePath), $"{versionText}（{usage.Section}）", buttons, Mono: true);
+            return new BrowserSupportRow(_workspace.ToDisplayPath(usage.FilePath), $"{versionText}（{usage.Section}）", buttons, BrowserSupportRowLook.Path);
         }).ToList();
-        _browserSupport.SetSection(page, "usages", $"このワークスペースで使っている場所（{scan.Usages.Count}）", SectionUsages, usages,
-            usages.Count == 0 ? $"このワークスペースでは {package.Name} を使っていません。" : scan.Truncated ? "大きなワークスペースなので途中まで探しました。" : "");
+        _browserSupport.SetSection(page, "usages", "このワークスペースで使っている場所", SectionUsages, usages,
+            count: usages.Count > 0 ? scan.Usages.Count : null, note: usages.Count == 0 ? $"このワークスペースでは {package.Name} を使っていません。" : scan.Truncated ? "大きなワークスペースなので途中まで探しました。" : "");
 
         var others = scan.OtherProjects.Take(30).Select(project => new BrowserSupportRow(_workspace.ToDisplayPath(project), "",
             safe ? [new BrowserSupportButton(package.Version is { } v ? $"{v} を追加" : "追加（最新）",
                 () => RunPackageCommand(BrowserPackagePages.InstallCommand(package, project, package.Version)), "見えるターミナルで実行する")] : [],
-            Mono: true)).ToList();
+            BrowserSupportRowLook.Path)).ToList();
         if (others.Count > 0)
-            _browserSupport.SetSection(page, "others", $"まだ入れていないプロジェクト（{scan.OtherProjects.Count}）", SectionOtherProjects, others);
+            _browserSupport.SetSection(page, "others", "まだ入れていないプロジェクト", SectionOtherProjects, others, count: scan.OtherProjects.Count);
         else
             _browserSupport.RemoveSection(page, "others");
     }

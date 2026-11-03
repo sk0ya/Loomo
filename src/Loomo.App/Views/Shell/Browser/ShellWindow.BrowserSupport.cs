@@ -111,10 +111,16 @@ public partial class ShellWindow {
             return;
         _browserSupportRemote = clone?.Remote;
         _browserSupport.SetRepository(page, clone?.Root, clone is { } found
-            ? $"手元のクローン: {_workspace.ToDisplayPath(found.Root)}（{found.Remote}）"
+            ? $"手元のクローン: {CloneDisplayName(found.Root)} · リモート {found.Remote}"
             : $"ワークスペースに {label} のクローンがありません。差分・ファイルを開くには、そのリポジトリのフォルダーを開いてください。");
         if (page.GitHub is { Kind: GitHubWebPageKind.ActionsRun })
             _ = LoadGitHubRunFailuresAsync(page);
+    }
+
+    /// <summary>クローンの呼び名。ワークスペースのフォルダーそのものだと表示パスは空になる（フォルダーが1つのとき）ので、フォルダー名にする。</summary>
+    private string CloneDisplayName(string root) {
+        var display = _workspace.ToDisplayPath(root);
+        return display.Length > 0 ? display : Path.GetFileName(root.TrimEnd('\\', '/'));
     }
 
     private async Task RunBrowserSupportActionAsync(BrowserSupportAction action) {
@@ -122,10 +128,6 @@ public partial class ShellWindow {
             return;
         var root = _browserSupport.RepositoryRoot;
         switch (action.Kind) {
-            case BrowserSupportActionKind.SelectRepository when root is not null:
-                SelectGitRepository(root);
-                _browserSupport.ReportStatus($"Git の対象を {_workspace.ToDisplayPath(root)} にしました。");
-                return;
             case BrowserSupportActionKind.OpenSourceFile when page.LocalFilePath is { } path:
                 EnsurePaneVisibleOrSwapTopLeft(PaneKind.Editor);
                 await OpenPathInEditorAsync(path, 0, 0);
@@ -156,8 +158,8 @@ public partial class ShellWindow {
                     ActiveBrowserView.TryCore()?.Navigate(link);
             }, "このタブのまま、取った一節までスクロールして強調する"),
             new BrowserSupportButton("コンポーザへ", () => InsertIntoComposer(item.Content)),
-        ])).ToList();
-        _browserSupport.SetSection(page, "clips", $"このページの抜き書き（{rows.Count}）", SectionClips, rows);
+        ], BrowserSupportRowLook.Quote)).ToList();
+        _browserSupport.SetSection(page, "clips", "このページの抜き書き", SectionClips, rows, count: rows.Count);
     }
 
     // ── 記事・ドキュメント：ページのコード ─────────────────────────────
@@ -201,9 +203,9 @@ public partial class ShellWindow {
             buttons.Add(new("ペグボードへ", () => _vm.Pegboard.AddContent(block.Text, type: "text", sourceUrl: url, sourceTitle: title),
                 "出典付きで残す（§24.24）"));
             var language = block.Language.Length > 0 ? block.Language : "言語の指定なし";
-            return new BrowserSupportRow(BrowserPageCode.Preview(block.Text), $"{language} · {block.LineCount} 行", buttons, Mono: true);
+            return new BrowserSupportRow(BrowserPageCode.Preview(block.Text), $"{language} · {block.LineCount} 行", buttons, BrowserSupportRowLook.Code);
         }).ToList();
-        var section = _browserSupport.SetSection(page, "code", $"このページのコード（{rows.Count}）", SectionCode, rows);
+        var section = _browserSupport.SetSection(page, "code", "このページのコード", SectionCode, rows, count: rows.Count);
         if (section is { Buttons.Count: 0 })
             section.Buttons.Add(new BrowserSupportButton("読み直す", () => _ = LoadBrowserSupportCodeAsync(page), "ページが後から書き足したコードも拾う"));
     }
@@ -241,8 +243,8 @@ public partial class ShellWindow {
         };
         var row = new BrowserSupportRow(title, $"「{origin.QueryPreview}」を調べています",
             [new BrowserSupportButton("戻る", () => _ = ReturnToSearchOriginAsync(origin), tip)],
-            Mono: origin is BrowserSearchOrigin.Editor);
-        _browserSupport.SetSection(page, "origin", "調べ始めた場所", SectionOrigin, [row]);
+            origin is BrowserSearchOrigin.Editor ? BrowserSupportRowLook.Path : BrowserSupportRowLook.Text);
+        _browserSupport.SetSection(page, "origin", "調べ始めた場所", SectionOrigin, [row], emphasis: true);
     }
 
     private async Task ReturnToSearchOriginAsync(BrowserSearchOrigin origin) {
@@ -333,6 +335,6 @@ public partial class ShellWindow {
             owner.Tab is { } tab ? $"ターミナル「{tab.Title}」で動いています" : "Loomo のターミナルの外で動いています",
             owner.Tab is { } target ? [new BrowserSupportButton("このタブへ", () => GoToTerminalTab(target.Id))] : [])).ToList();
         _browserSupport.SetSection(page, "port", $"ポート {page.LocalPort} を開いているもの", SectionPort, rows,
-            rows.Count == 0 ? "このポートで待ち受けているプロセスはありません（サーバーが止まっている）。" : "");
+            count: rows.Count > 0 ? rows.Count : null, note: rows.Count == 0 ? "このポートで待ち受けているプロセスはありません（サーバーが止まっている）。" : "");
     }
 }

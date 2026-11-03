@@ -98,7 +98,7 @@ public class BrowserSupportTests
         Assert.Equal(BrowserSupportCatalog.AzureDevOpsSite, page!.Site);
         Assert.Equal("PR 12", page.Heading);
         Assert.Equal(
-            [BrowserSupportActionKind.PullRequestDiff, BrowserSupportActionKind.PullRequestDocument, BrowserSupportActionKind.SelectRepository],
+            [BrowserSupportActionKind.PullRequestDiff, BrowserSupportActionKind.PullRequestDocument],
             page.Actions.Select(a => a.Kind));
     }
 
@@ -134,7 +134,7 @@ public class BrowserSupportTests
         Assert.Equal([BrowserSupportActionKind.PullRequestDocument], vm.Actions.Select(a => a.Action.Kind));
 
         vm.SetRepository(page!, @"C:\work\repo", "手元のクローン");
-        Assert.Equal(3, vm.Actions.Count);
+        Assert.Equal(2, vm.Actions.Count);
 
         vm.SetRepository(page!, null, "ありません");
         Assert.Single(vm.Actions);
@@ -376,7 +376,7 @@ public class BrowserSupportTests
         var gh = BrowserSupportCatalog.Describe("https://github.com/o/r/pull/3")!;
         Assert.True(gh.HasRepository);
         Assert.False(gh.ShowsCode);
-        Assert.Equal([BrowserSupportActionKind.PullRequestDiff, BrowserSupportActionKind.PullRequestDocument, BrowserSupportActionKind.SelectRepository],
+        Assert.Equal([BrowserSupportActionKind.PullRequestDiff, BrowserSupportActionKind.PullRequestDocument],
             gh.Actions.Select(a => a.Kind));
     }
 
@@ -403,6 +403,31 @@ public class BrowserSupportTests
         Assert.Empty(vm.Sections);
         Assert.Null(vm.SetSection(page, "code", "コード", 60, []));   // 前のページの答えは捨てる
         Assert.Empty(vm.Sections);
+    }
+
+    [Fact]
+    public void ViewModel_SectionCountIsSeparateFromTitle_AndTitleChangeRebuilds()
+    {
+        var vm = new BrowserSupportViewModel();
+        var page = BrowserSupportCatalog.Describe("https://example.com/a")!;
+        vm.Show(page, "https://example.com/a");
+        vm.SetSection(page, "problems", "エラー", 10, [], "読んでいます…");
+        Assert.False(vm.Sections[0].HasCount);
+        vm.SetSection(page, "problems", "エラー", 10, [new BrowserSupportRow("a.cs:1", "", [])], count: 1);
+        Assert.Equal("1", vm.Sections[0].Count);
+        Assert.False(vm.Sections[0].HasNote);
+        vm.SetSection(page, "port", "ポート 1", 50, []);
+        vm.SetSection(page, "port", "ポート 2", 50, []);   // 見出しが替われば作り直す（古い見出しのまま残さない）
+        Assert.Equal("ポート 2", vm.Sections.Single(s => s.Key == "port").Title);
+    }
+
+    [Fact]
+    public void Row_SingleButtonGoesInline_CodeKeepsButtonsBelow()
+    {
+        BrowserSupportButton[] one = [new("開く", () => { })];
+        Assert.True(new BrowserSupportRow("a", "", one, BrowserSupportRowLook.Path).ButtonInline);
+        Assert.True(new BrowserSupportRow("a", "", one, BrowserSupportRowLook.Code).ButtonsBelow);
+        Assert.False(new BrowserSupportRow("a", "", []).ButtonsBelow);
     }
 
     // ── 調べ始めた場所へ貼る（§41.12） ──
