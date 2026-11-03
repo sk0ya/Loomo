@@ -298,6 +298,7 @@ public partial class ShellWindow : Window {
             _taskbarWorkspaceRecent.AddRecent(activeWorkspace);
         InitializeDebugWiring();
         InitializeTestGlyphWiring();
+        InitializePullRequestComments();
         HookIdeActivity(PaneKind.Debug, _vm.Debug);
         HookIdeActivity(PaneKind.TsIde, _vm.TsIde);
         InitializeProblemsWiring();

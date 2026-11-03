@@ -342,6 +342,7 @@ public partial class ShellWindow {
         control.WindowCloseRequested += (_, _) => CloseEditorView();
         WireEditorForDebug(control);
         WireEditorForTestGlyphs(control);
+        _pullRequestComments.WireEditor(control);   // PR のレビューのコメント（§42）
         WireEditorForLocationHistory(control);
         WireEditorForClaudeIde(control);
         return control;
@@ -437,6 +438,7 @@ public partial class ShellWindow {
         _localHistory.RecordOpened(control.FilePath);
         _appearance.ApplyUsingFoldingOnOpen(control);
         SyncEditorTestGlyphs(control);   // LoadFile はグリフを捨てるが BufferChanged を出さない
+        _pullRequestComments.OnFileLoaded(control);   // PR のコメントの印も同じ
         _debugEditorController?.OnEditorFileLoaded(control);   // 行末の値も同じ（停止と同時に開いたタブへ出す）
         SyncEditorCodeActionBulb(control);
         ScheduleStyleCopAnalysis(control);

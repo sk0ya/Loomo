@@ -265,7 +265,10 @@ public partial class ShellWindow {
         core.WebMessageReceived += (_, e) => OnBrowserWebMessageReceived(tab, e);
         core.FaviconChanged += OnBrowserFaviconChanged;
         core.DownloadStarting += BrowserDownloads.OnStarting;
-        core.ContextMenuRequested += (_, e) => OnBrowserContextMenuRequested(core, e);
+        core.ContextMenuRequested += (_, e) => {
+            OnBrowserContextMenuRequested(core, e);
+            AddReviewThreadMenuItems(core, e);   // PR のページ：コメント → 手元で開く（§42.3）
+        };
         BrowserFind.Hook(core);
     }
     private void ScheduleBrowserRealize(BrowserTab? tab) {

@@ -157,6 +157,22 @@ public sealed class AzureDevOpsWorkItemClient
         return results.SelectMany(r => r).ToList();
     }
 
+    /// <summary>そのブランチを元にした進行中の PR（無ければ null。複数あれば新しいもの）。PR のコメントをエディタに出すとき、
+    /// 手元のワークツリーのブランチから PR を引く（§42）。読むだけ。</summary>
+    public async Task<AzureDevOpsPullRequest?> FindActivePullRequestAsync(
+        string organizationUrl, AzureDevOpsPrTarget target, string branch, AuthenticationHeaderValue auth,
+        CancellationToken cancellationToken)
+    {
+        var url = $"{organizationUrl}/{Uri.EscapeDataString(target.Project)}/_apis/git/repositories/" +
+                  $"{Uri.EscapeDataString(target.Repository)}/pullrequests?searchCriteria.status=active" +
+                  $"&searchCriteria.sourceRefName={Uri.EscapeDataString("refs/heads/" + branch)}&api-version={ApiVersion}";
+        using var doc = await SendAsync(HttpMethod.Get, url, null, auth, cancellationToken).ConfigureAwait(false);
+        return doc.RootElement.TryGetProperty("value", out var value) && value.ValueKind == JsonValueKind.Array
+            ? value.EnumerateArray().Select(item => AzureDevOpsPullRequestJson.ParsePullRequest(item, organizationUrl, target))
+                .OrderByDescending(pr => pr.Id).FirstOrDefault()
+            : null;
+    }
+
     /// <summary>PR の中身（説明・レビュアーと投票・マージ状態）と会話（スレッド）。読むだけ（§24.27.1）。</summary>
     public async Task<AzureDevOpsPullRequestDetail> GetPullRequestDetailAsync(
         string organizationUrl, AzureDevOpsPrTarget target, int pullRequestId, AuthenticationHeaderValue auth,
@@ -197,6 +213,30 @@ public sealed class AzureDevOpsWorkItemClient
                 response.StatusCode is HttpStatusCode.Unauthorized);
         return text;
     }
+
+    /// <summary>コメントに貼られた画像（PR の添付）を取る。読むだけ。<b>組織の URL の下にあるものだけ</b>を、PAT を付けて取りに行く——
+    /// コメントの本文は人が書いたものなので、よそのホストの URL に PAT を送らない。</summary>
+    public async Task<byte[]> GetAttachmentAsync(string organizationUrl, string url, AuthenticationHeaderValue auth, CancellationToken cancellationToken)
+    {
+        if (!IsUnderOrganization(organizationUrl, url))
+            throw new AzureDevOpsException("組織の外の URL には認証を付けて取りに行きません。");
+        using var request = CreateRequest(HttpMethod.Get, url, null, auth);
+        request.Headers.Accept.Clear();
+        request.Headers.Accept.ParseAdd("image/*");
+        using var response = await _http.SendAsync(request, cancellationToken).ConfigureAwait(false);
+        if (!response.IsSuccessStatusCode)
+            throw new AzureDevOpsException($"Azure DevOps が HTTP {(int)response.StatusCode} {response.ReasonPhrase} を返しました。",
+                response.StatusCode is HttpStatusCode.Unauthorized);
+        return await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary><paramref name="url"/> が組織の URL の下か（スキーム・ホスト・パスの頭が一致）。</summary>
+    public static bool IsUnderOrganization(string organizationUrl, string url)
+        => Uri.TryCreate(organizationUrl.TrimEnd('/') + "/", UriKind.Absolute, out var root)
+           && Uri.TryCreate(url, UriKind.Absolute, out var target)
+           && root.Scheme == target.Scheme
+           && string.Equals(root.Host, target.Host, StringComparison.OrdinalIgnoreCase)
+           && target.AbsolutePath.StartsWith(root.AbsolutePath, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// このリポジトリの最近のビルド（新しい順・コミット一覧の CI の印・§24.93）。読むだけ。ビルドの API はリポジトリを ID で絞るので、

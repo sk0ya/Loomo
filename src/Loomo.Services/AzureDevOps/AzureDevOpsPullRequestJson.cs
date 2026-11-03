@@ -15,15 +15,19 @@ public sealed record AzureDevOpsComment(string Author, string Content, DateTimeO
 
 /// <summary>スレッド1つ。<see cref="FilePath"/> があればコードの行に付いたもの。</summary>
 public sealed record AzureDevOpsThread(
-    string? FilePath, int? Line, string Status, IReadOnlyList<AzureDevOpsComment> Comments)
+    string? FilePath, int? Line, string Status, IReadOnlyList<AzureDevOpsComment> Comments, int Id = 0)
 {
+    /// <summary>まだ片付いていない会話か（active・pending）。fixed・closed・byDesign・wontFix は片付いたもの。</summary>
+    public bool IsOpen => Status is "active" or "pending" or "";
+
     public DateTimeOffset? StartedAt => Comments.Count > 0 ? Comments[0].PublishedAt : null;
 }
 
 /// <summary>PR の中身（§24.27.1）。</summary>
+/// <paramref name="SourceCommit"/> は元のブランチの最新の版（スレッドの行はこの版の行。手元の行に合わせるときの基準）。
 public sealed record AzureDevOpsPullRequestDetail(
     AzureDevOpsPullRequest Summary, string Description, string Status, string MergeStatus,
-    IReadOnlyList<AzureDevOpsReviewer> Reviewers, IReadOnlyList<AzureDevOpsThread> Threads);
+    IReadOnlyList<AzureDevOpsReviewer> Reviewers, IReadOnlyList<AzureDevOpsThread> Threads, string SourceCommit = "");
 
 /// <summary>
 /// Azure DevOps の PR の応答を読む・写しにする（純粋）。欄が欠けていても既定値で読む。
@@ -70,7 +74,8 @@ public static class AzureDevOpsPullRequestJson
             .ToList();
         return new AzureDevOpsPullRequestDetail(
             ParsePullRequest(pr, organizationUrl, target), Str(pr, "description"), Str(pr, "status"),
-            Str(pr, "mergeStatus"), reviewers, ParseThreads(threads));
+            Str(pr, "mergeStatus"), reviewers, ParseThreads(threads),
+            pr.TryGetProperty("lastMergeSourceCommit", out var source) && source.ValueKind == JsonValueKind.Object ? Str(source, "commitId") : "");
     }
 
     /// <summary>人の書いた会話だけ（投票・更新などのシステムの記録と、消されたものは除く）を、始まった順に。</summary>
@@ -100,7 +105,8 @@ public static class AzureDevOpsPullRequestJson
                     }
                 }
             }
-            result.Add(new AzureDevOpsThread(path, line, Str(thread, "status"), comments));
+            result.Add(new AzureDevOpsThread(path, line, Str(thread, "status"), comments,
+                thread.TryGetProperty("id", out var tid) && tid.TryGetInt32(out var threadId) ? threadId : 0));
         }
         return result.OrderBy(t => t.StartedAt ?? DateTimeOffset.MinValue).ToList();
     }

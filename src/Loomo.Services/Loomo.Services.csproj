@@ -98,6 +98,8 @@
          VimEditorControl.ExportUndoHistory／ImportUndoHistory。取り消しの履歴を閉じても残す（§24.96・2026-10-26 公開）。 -->
     <!-- 1.0.110: 色見本を後ろの文字をズラして空けた所に描く（文字に被らない）。色の判定は '#' の前も見て、Markdown の
          リンク先（](#add)・doc.md#bed）・href="#fed"・issue#123・#add-feature の頭を色と取り違えない（2026-11-02 公開）。 -->
+    <!-- 1.0.111: ガターの注記の印（EditorNoteMarker・SetNoteMarkersEnabled／SetNoteMarkers・NoteMarkerClicked・
+         NoteToolTipContentProvider）。PR のレビューのコメントを手元の行に出す（§42・2026-11-03 公開）。 -->
     <ProjectReference Include="..\..\..\Editor\src\Editor.Controls.Defaults\Editor.Controls.Defaults.csproj"
                       Condition="'$(UseLocalEditor)' != 'false'" />
     <!-- Defaults はパッケージ化時に Core/Controls を同梱する構成で、プロジェクト参照では
