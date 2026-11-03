@@ -158,7 +158,12 @@ public partial class ShellWindow
     /// Azure Repos のプロジェクト／リポジトリの手元のクローン：ワークスペースの<b>全リポジトリ</b>（§40 のカタログ）のうち、
     /// リモートの URL がそれを指すもの。いま Git の対象にしているリポジトリを先に見る。リモートが複数当たれば origin を採る。
     /// </summary>
-    private async Task<(string Root, string Remote)?> FindAzureRepositoryAsync(string project, string repository)
+    private Task<(string Root, string Remote)?> FindAzureRepositoryAsync(string project, string repository)
+        => FindRepositoryByRemoteAsync(url => AzureDevOpsPullRequestJson.RemoteMatches(url, project, repository));
+
+    /// <summary>リモートの URL が <paramref name="matches"/> に当たるリポジトリ（全リポジトリから・いまの対象を先に・origin を優先。§40）。
+    /// GitHub のページ（ブラウザサポート §41）もこれで手元のクローンを探す。</summary>
+    private async Task<(string Root, string Remote)?> FindRepositoryByRemoteAsync(Func<string, bool> matches)
     {
         var selected = _git.RootPath;
         // 一覧の初回はフォルダーを歩くので UI スレッドでは作らない。
@@ -166,7 +171,7 @@ public partial class ShellWindow
         foreach (var repo in repositories.OrderBy(r => string.Equals(r.Root, selected, StringComparison.OrdinalIgnoreCase) ? 0 : 1))
         {
             var remotes = await _git.For(repo).GetRemoteUrlsAsync();
-            if (PreferOrigin(remotes).FirstOrDefault(r => AzureDevOpsPullRequestJson.RemoteMatches(r.Url, project, repository)) is { } remote)
+            if (PreferOrigin(remotes).FirstOrDefault(r => matches(r.Url)) is { } remote)
                 return (repo.Root, remote.Name);
         }
         return null;

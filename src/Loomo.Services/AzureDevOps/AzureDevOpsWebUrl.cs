@@ -16,6 +16,8 @@ public enum AzureDevOpsWebPageKind
     Commit,
     /// <summary>ファイル（<c>…/_git/repo?path=/src/a.cs&amp;line=12</c>）。</summary>
     File,
+    /// <summary>パイプラインの実行結果（<c>…/プロジェクト/_build/results?buildId=123</c>）。リポジトリは空。</summary>
+    Build,
 }
 
 /// <summary>
@@ -33,7 +35,8 @@ public sealed record AzureDevOpsWebPage(
     string CommitHash = "",
     string FilePath = "",
     int Line = 0,
-    string Version = "")
+    string Version = "",
+    int BuildId = 0)
 {
     /// <summary><see cref="Version"/> がブランチ（<c>GB…</c>）ならその名前。</summary>
     public string? VersionBranch => Version.StartsWith("GB", StringComparison.Ordinal) && Version.Length > 2 ? Version[2..] : null;
@@ -58,9 +61,6 @@ public static class AzureDevOpsWebUrl
 
         var segments = uri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries)
             .Select(Uri.UnescapeDataString).ToList();
-        var git = segments.FindIndex(s => s.Equals("_git", StringComparison.OrdinalIgnoreCase));
-        if (git < 0 || git + 1 >= segments.Count)
-            return null;
 
         // 組織を表す段の数（URL の先頭から）。プロジェクトはその直後、_git の手前に1段。
         var host = uri.Host;
@@ -74,6 +74,21 @@ public static class AzureDevOpsWebUrl
         else
             return null;
 
+        var organizationUrl = uri.GetLeftPart(UriPartial.Authority)
+            + string.Concat(uri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries)
+                .Take(organizationSegments).Select(s => "/" + s));
+        var query = ParseQuery(uri.Query);
+
+        // パイプラインの実行結果（組織/プロジェクト/_build/results?buildId=123）。リポジトリには属さない。
+        if (segments.Count >= organizationSegments + 2
+            && segments[organizationSegments + 1].Equals("_build", StringComparison.OrdinalIgnoreCase)
+            && query.TryGetValue("buildId", out var buildText) && int.TryParse(buildText, out var buildId) && buildId > 0)
+            return new AzureDevOpsWebPage(AzureDevOpsWebPageKind.Build, organizationUrl, segments[organizationSegments], "", BuildId: buildId);
+
+        var git = segments.FindIndex(s => s.Equals("_git", StringComparison.OrdinalIgnoreCase));
+        if (git < 0 || git + 1 >= segments.Count)
+            return null;
+
         string project;
         if (git == organizationSegments + 1)
             project = segments[git - 1];
@@ -82,13 +97,7 @@ public static class AzureDevOpsWebUrl
         else
             return null;
         var repository = segments[git + 1];
-
-        var organizationUrl = uri.GetLeftPart(UriPartial.Authority)
-            + string.Concat(uri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries)
-                .Take(organizationSegments).Select(s => "/" + s));
-
         var rest = segments.Skip(git + 2).ToList();
-        var query = ParseQuery(uri.Query);
 
         if (rest.Count >= 2 && rest[0].Equals("pullrequest", StringComparison.OrdinalIgnoreCase)
             && int.TryParse(rest[1], out var id) && id > 0)

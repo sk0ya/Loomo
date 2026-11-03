@@ -171,6 +171,33 @@ public sealed class AzureDevOpsWorkItemClient
         return AzureDevOpsPullRequestJson.ParseDetail(pr.RootElement, threads.RootElement, organizationUrl, target);
     }
 
+    /// <summary>パイプラインの実行の失敗した段と issue（ブラウザサポート §41）。読むだけ。</summary>
+    public async Task<IReadOnlyList<AzureDevOpsBuildStep>> GetBuildFailuresAsync(
+        string organizationUrl, string project, int buildId, AuthenticationHeaderValue auth, CancellationToken cancellationToken)
+    {
+        using var timeline = await SendAsync(HttpMethod.Get,
+            $"{organizationUrl}/{Uri.EscapeDataString(project)}/_apis/build/builds/{buildId}/timeline?api-version={ApiVersion}",
+            null, auth, cancellationToken).ConfigureAwait(false);
+        return AzureDevOpsBuildJson.ParseTimeline(timeline.RootElement);
+    }
+
+    /// <summary>パイプラインの1段のログ（素のテキスト）。読むだけ。</summary>
+    public async Task<string> GetBuildLogAsync(
+        string organizationUrl, string project, int buildId, int logId, AuthenticationHeaderValue auth, CancellationToken cancellationToken)
+    {
+        var url = $"{organizationUrl}/{Uri.EscapeDataString(project)}/_apis/build/builds/{buildId}/logs/{logId}?api-version={ApiVersion}";
+        using var request = CreateRequest(HttpMethod.Get, url, null, auth);
+        request.Headers.Accept.Clear();
+        request.Headers.Accept.ParseAdd("text/plain");
+        using var response = await _http.SendAsync(request, cancellationToken).ConfigureAwait(false);
+        var text = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+        if (!response.IsSuccessStatusCode)
+            throw new AzureDevOpsException(
+                $"Azure DevOps が HTTP {(int)response.StatusCode} {response.ReasonPhrase} を返しました: {Shorten(text)}",
+                response.StatusCode is HttpStatusCode.Unauthorized);
+        return text;
+    }
+
     /// <summary>
     /// このリポジトリの最近のビルド（新しい順・コミット一覧の CI の印・§24.93）。読むだけ。ビルドの API はリポジトリを ID で絞るので、
     /// 名前から ID を引いてから問い合わせる（ID は覚えておく）。リポジトリが見つからなければ空。

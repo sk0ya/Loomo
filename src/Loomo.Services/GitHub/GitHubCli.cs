@@ -42,6 +42,21 @@ public sealed class GitHubCli
         => GitHubJson.ParsePullRequestDetail(Ok(await RunAsync(folder,
             "pr", "view", Num(number), "--json", GitHubJson.PullRequestViewFields)));
 
+    /// <summary><paramref name="repository"/>（<c>owner/repo</c>）を名指しして PR を読む（ブラウザサポート §41：手元に
+    /// クローンが無くても、ブラウザで見ているリポジトリのものを読む）。</summary>
+    public async Task<GitHubPullRequestDetail> GetPullRequestAsync(string folder, int number, string repository)
+        => GitHubJson.ParsePullRequestDetail(Ok(await RunAsync(folder,
+            "pr", "view", Num(number), "--repo", repository, "--json", GitHubJson.PullRequestViewFields)));
+
+    public async Task<GitHubIssueDetail> GetIssueAsync(string folder, int number, string repository)
+        => GitHubJson.ParseIssueDetail(Ok(await RunAsync(folder,
+            "issue", "view", Num(number), "--repo", repository, "--comments", "--json", GitHubJson.IssueViewFields)));
+
+    /// <summary>GitHub Actions の実行の、失敗したステップのログ（<c>gh run view --log-failed</c>。各行は「ジョブ⇥ステップ⇥時刻 本文」）。</summary>
+    public async Task<string> GetFailedRunLogAsync(string folder, long runId, string repository)
+        => Ok(await RunAsync(folder,
+            "run", "view", runId.ToString(CultureInfo.InvariantCulture), "--repo", repository, "--log-failed"));
+
     public async Task<IReadOnlyList<GitHubIssue>> ListIssuesAsync(string folder)
         => GitHubJson.ParseIssues(Ok(await RunAsync(folder,
             "issue", "list", "--state", "open", "--limit", "50", "--json", GitHubJson.IssueListFields)));

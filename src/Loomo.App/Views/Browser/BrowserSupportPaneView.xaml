@@ -37,6 +37,12 @@
                 </Setter.Value>
             </Setter>
         </Style>
+
+        <Style x:Key="SmallButton" TargetType="Button" BasedOn="{StaticResource SecondaryButton}">
+            <Setter Property="Margin" Value="6,0,0,0" />
+            <Setter Property="Padding" Value="8,1" />
+            <Setter Property="FontSize" Value="{DynamicResource Fs11}" />
+        </Style>
     </UserControl.Resources>
 
     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
@@ -48,10 +54,13 @@
             <StackPanel Visibility="{Binding HasPage, Converter={StaticResource BoolToVis}}">
                 <TextBlock Margin="10,10,10,0" Style="{StaticResource Dim}" FontWeight="SemiBold" Text="{Binding Site}" />
                 <TextBlock Margin="10,2,10,0" FontSize="{DynamicResource Fs14}" FontWeight="SemiBold"
-                           Foreground="{DynamicResource Fg}" TextWrapping="Wrap" Text="{Binding Heading}" />
-                <TextBlock Margin="10,2,10,0" Style="{StaticResource Dim}" Text="{Binding Detail}" />
-                <TextBlock Margin="10,6,10,6" Style="{StaticResource Dim}" Text="{Binding Status}" />
-                <Border Height="1" Background="{DynamicResource Border}" />
+                           Foreground="{DynamicResource Fg}" TextWrapping="Wrap" Text="{Binding Heading}"
+                           Visibility="{Binding HasHeading, Converter={StaticResource BoolToVis}}" />
+                <TextBlock Margin="10,2,10,0" Style="{StaticResource Dim}" Text="{Binding Detail}"
+                           Visibility="{Binding HasDetail, Converter={StaticResource BoolToVis}}" />
+                <TextBlock Margin="10,6,10,0" Style="{StaticResource Dim}" Text="{Binding Status}"
+                           Visibility="{Binding HasStatus, Converter={StaticResource BoolToVis}}" />
+                <Border Height="1" Margin="0,6,0,0" Background="{DynamicResource Border}" />
                 <ItemsControl ItemsSource="{Binding Actions}" Focusable="False">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
@@ -61,6 +70,61 @@
                                     <TextBlock Text="{Binding Detail}" Style="{StaticResource Dim}" Margin="0,1,0,0" />
                                 </StackPanel>
                             </Button>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <!-- 節：ページから読み出した、数の決まっていない行（CI のエラー・使っている場所・コード・抜き書き） -->
+                <ItemsControl ItemsSource="{Binding Sections}" Focusable="False">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel Margin="0,8,0,0">
+                                <DockPanel Margin="10,0,10,2" LastChildFill="True">
+                                    <ItemsControl DockPanel.Dock="Right" ItemsSource="{Binding Buttons}" Focusable="False">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Button Style="{StaticResource SmallButton}" Content="{Binding Label}" ToolTip="{Binding Tip}" Command="{Binding Command}" />
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                    <TextBlock Style="{StaticResource Dim}" FontWeight="SemiBold" Text="{Binding Title}" VerticalAlignment="Center" />
+                                </DockPanel>
+                                <TextBlock Margin="10,0,10,2" Style="{StaticResource Dim}" Text="{Binding Note}"
+                                           Visibility="{Binding HasNote, Converter={StaticResource BoolToVis}}" />
+                                <ItemsControl ItemsSource="{Binding Rows}" Focusable="False">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border Padding="10,4" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1">
+                                                <StackPanel>
+                                                    <TextBlock x:Name="RowTitle" Text="{Binding Title}" FontSize="{DynamicResource Fs12}"
+                                                               Foreground="{DynamicResource Fg}" TextWrapping="Wrap" />
+                                                    <TextBlock Text="{Binding Detail}" Style="{StaticResource Dim}" Margin="0,1,0,0"
+                                                               Visibility="{Binding HasDetail, Converter={StaticResource BoolToVis}}" />
+                                                    <ItemsControl ItemsSource="{Binding Buttons}" Focusable="False" Margin="0,3,0,0">
+                                                        <ItemsControl.ItemsPanel>
+                                                            <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
+                                                        </ItemsControl.ItemsPanel>
+                                                        <ItemsControl.ItemTemplate>
+                                                            <DataTemplate>
+                                                                <Button Style="{StaticResource SmallButton}" Margin="0,0,6,2" Content="{Binding Label}"
+                                                                        ToolTip="{Binding Tip}" Command="{Binding Command}" />
+                                                            </DataTemplate>
+                                                        </ItemsControl.ItemTemplate>
+                                                    </ItemsControl>
+                                                </StackPanel>
+                                            </Border>
+                                            <DataTemplate.Triggers>
+                                                <DataTrigger Binding="{Binding Mono}" Value="True">
+                                                    <Setter TargetName="RowTitle" Property="FontFamily" Value="Cascadia Mono, Consolas" />
+                                                </DataTrigger>
+                                            </DataTemplate.Triggers>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
