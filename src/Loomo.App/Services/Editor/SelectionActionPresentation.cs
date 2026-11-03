@@ -30,7 +30,7 @@ internal static class SelectionActionPresentation
         var name = Path.GetFileName(location.Path);
         var where = location.Line > 0 ? $"{name}:{location.Line}" : name;
         var target = location.Line > 0 ? $"{location.Path}:{location.Line}" : location.Path;
-        return ($"エディタへ送る（{where}）", target);
+        return ($"エディタ（{where}）", target);
     }
 
     public static string SelectionSourceLabel(string? path)

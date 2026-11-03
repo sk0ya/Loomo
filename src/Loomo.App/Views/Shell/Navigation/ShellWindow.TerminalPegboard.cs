@@ -28,10 +28,16 @@ public partial class ShellWindow {
             whole.Click += (_, _) => PinTerminalOutput(containing);
             menu.Items.Add(whole);
         }
-        // コンポーザはコマンドを組む作業台なので出典は付けない（§24.24 と同じ判断：出典の行が混ざると実行されてしまう）。
-        var composer = new MenuItem { Header = "選択をコンポーザへ送る", ToolTip = "コンポーザの本文末尾へ追記する" };
+    }
+
+    /// <summary>「ペインへ送る」の末尾に入れる「コンポーザ」。コンポーザはコマンドを組む作業台なので出典は付けない
+    /// （§24.24 と同じ判断：出典の行が混ざると実行されてしまう）。</summary>
+    private MenuItem? BuildComposerSendMenuItem(string selectedText, bool hasSelection) {
+        if (!hasSelection || string.IsNullOrWhiteSpace(selectedText))
+            return null;
+        var composer = new MenuItem { Header = "コンポーザ", ToolTip = "選択をコンポーザの本文末尾へ追記する" };
         composer.Click += (_, _) => InsertIntoComposer(selectedText);
-        menu.Items.Add(composer);
+        return composer;
     }
 
     /// <summary>メニューの見出しに入れるコマンド（長いものは頭だけ）。</summary>

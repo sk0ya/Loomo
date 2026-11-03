@@ -20,10 +20,7 @@ public partial class ShellWindow {
         AdjustNativeEditorMenuItems(
             e.Menu, control, control is not null ? Mouse.GetPosition(control) : new Point());
         // ① 素材を別のペインへ送る（§23.3 の「〜へ送る」）
-        AddMenuGroup(e.Menu, menu => {
-            AddClaudeSendMenuItem(menu, control);
-            AddEditorSelectionSendItems(menu, control, e);
-        });
+        AddMenuGroup(e.Menu, menu => AddEditorSelectionSendItems(menu, control, e));
         // 「どこかへ行く」操作はコントロール側の「移動」サブメニューへ入れる。
         // Loomo の定義 Peek だけ別の場所に出ていると、移動の入口が2つに割れる。
         AddCSharpPeekMenuItem(e.NavigateMenu, control);
@@ -65,7 +62,8 @@ public partial class ShellWindow {
                 _vm.AiBar.AskAbout(e.SelectedText);
             },
             text => _ = SearchSelectionInBrowserAsync(text, EditorSearchOrigin(control, text)),
-            AddWorkflowMenuItems);
+            AddWorkflowMenuItems,
+            leadingItems: BuildClaudeSendMenuItem(control) is { } claude ? [claude] : null);
 
     /// <summary>1つの束を足す。中身が1つでも入ったときだけ、束の<b>前</b>に区切り線を1本入れる。
     /// 寄稿側が自分で区切り線を足さなくなるので、「区切り線だけが並ぶ」「末尾が区切り線で終わる」が
@@ -281,7 +279,8 @@ public partial class ShellWindow {
             text => _ = SearchSelectionInBrowserAsync(text,
                 _terminalTabs.FirstOrDefault(t => ReferenceEquals(t.View, sender)) is { } tab
                     ? new BrowserSearchOrigin.Terminal(text, tab.Id) : null),
-            AddWorkflowMenuItems));
+            AddWorkflowMenuItems,
+            trailingItems: BuildComposerSendMenuItem(e.SelectedText, e.HasSelection) is { } composer ? [composer] : null));
     private async Task SendLocationToEditorAsync(SourceLocation location) {
         await OpenPathInEditorAsync(location.Path, location.Line, location.Column);
         FocusPane(PaneKind.Editor);
@@ -367,7 +366,7 @@ public partial class ShellWindow {
         _ = view.RunCommandAsync($"& {FileDragDrop.PowerShellQuote(path)}", CancellationToken.None);
         FocusPane(PaneKind.Terminal);
     }
-    private void AddWorkflowMenuItems(ContextMenu menu, string input) {
+    private void AddWorkflowMenuItems(ItemsControl menu, string input) {
         var workflows = _vm.AiBar.Workflow.ListInputWorkflows().Select(workflow => (workflow.Id, workflow.Name));
         SelectionActionMenuBuilder.AddWorkflowMenuItems(
             menu, input, workflows, !_vm.AiBar.IsBusy && !_vm.AiBar.IsWarmingUp,

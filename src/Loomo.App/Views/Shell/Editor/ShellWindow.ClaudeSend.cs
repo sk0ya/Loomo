@@ -3,12 +3,13 @@ namespace sk0ya.Loomo.App.Views;
 /// 選択があればその行範囲、なければファイルを <c>@path#L10-24</c> としてプロンプトへ入力する（Enter は押さない）。
 /// 項目は Claude Code が動いているタブ（§24.1.1 のタイトルの印で分かる）があるときだけ出す。</summary>
 public partial class ShellWindow {
-    private void AddClaudeSendMenuItem(ContextMenu menu, VimEditorControl? control) {
+    /// <summary>「ペインへ送る」の先頭に入れる「Claude Code（…）」。Claude Code のタブが無ければ null。</summary>
+    private MenuItem? BuildClaudeSendMenuItem(VimEditorControl? control) {
         if (control?.FilePath is not { Length: > 0 } path)
-            return;
+            return null;
         if (_paneActivity.AgentTabFor(_activeTerminalTab?.Id) is not { } tabId
             || _terminalTabs.FirstOrDefault(t => t.Id == tabId) is not { } tab)
-            return;
+            return null;
         int? start = null, end = null;
         if (control.HasSelection && control.SelectionAsLspRange() is { } selection) {
             (var s, var e) = ClaudeCodeReference.LinesOfSelection(
@@ -16,11 +17,11 @@ public partial class ShellWindow {
             (start, end) = (s, e);
         }
         var item = new MenuItem {
-            Header = $"Claude へ送る（{ClaudeCodeReference.Label(path, start, end)}）",
+            Header = $"Claude Code（{ClaudeCodeReference.Label(path, start, end)}）",
             ToolTip = "この場所を @参照 としてターミナルの Claude Code のプロンプトへ入力する（送信はしない）",
         };
         item.Click += (_, _) => SendReferenceToClaude(tab, path, start, end);
-        menu.Items.Add(item);
+        return item;
     }
     private void SendReferenceToClaude(TerminalTab tab, string path, int? start, int? end) {
         if (_terminalTabs.All(t => t.Id != tab.Id))

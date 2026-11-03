@@ -189,6 +189,12 @@ internal static class SelectionActionMenuBuilder
         return item;
     }
 
+    /// <summary>
+    /// 選んだテキストの「送る」を、FolderTree と同じ<b>「ペインへ送る」サブメニュー1つ</b>に畳む（§24.3）。子の見出しは
+    /// 受け取るペインの名前だけ（「AI」「ブラウザ」「エディタ（a.cs:12）」…）。<paramref name="leadingItems"/> は先頭
+    /// （エディタの「Claude Code」）、<paramref name="trailingItems"/> は末尾（ターミナルの「コンポーザ」）に入る。
+    /// Diff は FolderTree と同じく見比べる相手を選ぶ別のサブメニュー「Diffへ送る」としてその下に並べる。
+    /// </summary>
     public static void AddSelectionMenuItems(
         ContextMenu menu,
         string selectedText,
@@ -198,35 +204,42 @@ internal static class SelectionActionMenuBuilder
         bool aiAvailable,
         Action askAi,
         Action<string> searchInBrowser,
-        Action<ContextMenu, string> addWorkflowItems)
+        Action<ItemsControl, string> addWorkflowItems,
+        IEnumerable<MenuItem>? leadingItems = null,
+        IEnumerable<MenuItem>? trailingItems = null)
     {
         var hasText = hasSelection && !string.IsNullOrWhiteSpace(selectedText);
-        if (!hasText && editorItem is null && diffItem is null)
-            return;
+        var send = new MenuItem { Header = "ペインへ送る" };
+        foreach (var item in leadingItems ?? [])
+            send.Items.Add(item);
         if (hasText)
         {
             var ask = new MenuItem
             {
-                Header = "AIへ送る",
+                Header = "AI",
                 ToolTip = "選択テキストについてAIに尋ねる",
                 IsEnabled = aiAvailable,
             };
             ask.Click += (_, _) => askAi();
-            menu.Items.Add(ask);
+            send.Items.Add(ask);
             var search = new MenuItem
             {
-                Header = "ブラウザへ送る",
+                Header = "ブラウザ",
                 ToolTip = "選択テキストをブラウザペインで検索する",
             };
             search.Click += (_, _) => searchInBrowser(selectedText);
-            menu.Items.Add(search);
+            send.Items.Add(search);
         }
         if (editorItem is not null)
-            menu.Items.Add(editorItem);
+            send.Items.Add(editorItem);
+        foreach (var item in trailingItems ?? [])
+            send.Items.Add(item);
+        if (hasText)
+            addWorkflowItems(send, selectedText);
+        if (send.Items.Count > 0)
+            menu.Items.Add(send);
         if (diffItem is not null)
             menu.Items.Add(diffItem);
-        if (hasText)
-            addWorkflowItems(menu, selectedText);
     }
 
     public static MenuItem? BuildDiffSendMenu(IReadOnlyList<SelectionCompareMenuEntry> entries)
@@ -255,7 +268,7 @@ internal static class SelectionActionMenuBuilder
     }
 
     public static void AddWorkflowMenuItems(
-        ContextMenu menu,
+        ItemsControl menu,
         string input,
         IEnumerable<(string Id, string Name)> workflows,
         bool aiAvailable,
@@ -266,7 +279,7 @@ internal static class SelectionActionMenuBuilder
             return;
         var parent = new MenuItem
         {
-            Header = "AIワークフローへ送る",
+            Header = "AIワークフロー",
             ToolTip = "選択テキストを入力にしてワークフローを実行する",
             IsEnabled = aiAvailable,
         };
