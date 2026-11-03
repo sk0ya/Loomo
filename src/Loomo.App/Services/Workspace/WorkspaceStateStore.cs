@@ -781,7 +781,10 @@ public enum PaneKind
     Harness,
     /// <summary>ターミナルサポートペイン。前に出ているターミナルのタブに追従し、そこで動いているもの
     /// （Claude Code・TUI・シェル）に合わせた情報を横に出す（§39）。EditorSupport のターミナル版。</summary>
-    TerminalSupport
+    TerminalSupport,
+    /// <summary>ブラウザサポートペイン。前に出ているブラウザのタブのページ（サイト）に合った道具を出す（§41）。
+    /// Azure DevOps の PR → Diff ペイン・ファイル → 手元のクローンのように、ページを部屋の中へつなぐ。</summary>
+    BrowserSupport
 }
 
 /// <summary>

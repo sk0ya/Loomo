@@ -188,6 +188,7 @@ public partial class ShellWindow : Window {
             support.PageLinkClicked += (_, href) => OnTerminalSupportConversationLink(href);
             return support;
         });
+        DeferPaneContent(BrowserSupportPaneHost, () => new BrowserSupportPaneView());
         DeferPaneContent(TraceSessionHost, () => new TraceSessionView());
         DeferPaneContent(DebugPaneHost, () => new DebugView());
         DeferPaneContent(TsIdePaneHost, () => new TsDebugView());
@@ -269,6 +270,7 @@ public partial class ShellWindow : Window {
         WireTerminalStatusRows();
         InitializeRunningPanel();
         InitializeTerminalSupport();
+        InitializeBrowserSupport();
         InitializeDebugMonitor();
         InitializeClaudeHooks();   // パイプ名を先に決める（ターミナルの環境変数に入る）
         InitializeClaudeIde();

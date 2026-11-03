@@ -674,12 +674,15 @@ public sealed partial class BrowserViewModel : ObservableObject
     /// （未読込なら★は消えたまま。読んだ時点で <see cref="Library"/> が揃え直す）。</summary>
     public void SetCurrentPage(string? url, string? title)
     {
+        var changed = !string.Equals(CurrentUrl, url, StringComparison.Ordinal);
         CurrentUrl = url;
         CurrentTitle = title;
         IsBookmarked = _library is not null && url is not null
             && _library.Bookmarks.Any(b => BrowserLibrary.SameUrl(b.Url, url));
         OnPropertyChanged(nameof(IsBookmarkable));
         OnPropertyChanged(nameof(BookmarkTip));
+        if (changed)
+            CurrentPageChanged?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>ページを訪れた（ナビゲーション成功）ことを記録する。</summary>
@@ -718,6 +721,10 @@ public sealed partial class BrowserViewModel : ObservableObject
         if (wasUntitled)
             Persist();
     }
+
+    /// <summary>前に出ているタブのページ（<see cref="CurrentUrl"/>）が替わった（タブの切替・遷移・同一ページ内の遷移）。
+    /// ブラウザサポート（§41）が追従する。題だけの変化では来ない。</summary>
+    public event EventHandler? CurrentPageChanged;
 
     /// <summary>いま表示しているページ（★の対象）。</summary>
     public string? CurrentUrl { get; private set; }

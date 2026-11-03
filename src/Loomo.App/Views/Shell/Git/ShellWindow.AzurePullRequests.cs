@@ -91,13 +91,7 @@ public partial class ShellWindow
             var connection = await workItems.ConnectAsync(CancellationToken.None);
             var detail = await workItems.Client.GetPullRequestDetailAsync(connection.OrganizationUrl,
                 new AzureDevOpsPrTarget(pull.Project, pull.Repository), pull.Id, connection.Auth, CancellationToken.None);
-            EnsurePaneVisibleOrSwapTopLeft(PaneKind.Editor);
-            await _editor.OpenDocumentAsync(new EditorDocument
-            {
-                FileName = $"PR-{pull.Id}.md",
-                Content = AzureDevOpsPullRequestJson.Markdown(detail),
-                OnSaved = _ => { },   // 読むための写し：保存しても Azure DevOps へは戻さない
-            });
+            await ShowAzurePullRequestDocumentAsync(detail);
         }
         catch (Exception ex) when (ex is AzureDevOpsException or System.Net.Http.HttpRequestException or TaskCanceledException)
         {
@@ -105,9 +99,21 @@ public partial class ShellWindow
         }
     }
 
+    private async Task ShowAzurePullRequestDocumentAsync(AzureDevOpsPullRequestDetail detail)
+    {
+        EnsurePaneVisibleOrSwapTopLeft(PaneKind.Editor);
+        await _editor.OpenDocumentAsync(new EditorDocument
+        {
+            FileName = $"PR-{detail.Summary.Id}.md",
+            Content = AzureDevOpsPullRequestJson.Markdown(detail),
+            OnSaved = _ => { },   // 読むための写し：保存しても Azure DevOps へは戻さない
+        });
+    }
+
     private async Task OpenAzurePullRequestDiffAsync(AzureDevOpsPullRequest pull)
     {
-        if (await FetchAzurePullRequestAsync(pull) is { } fetched)
+        // 差分は Diff ペインが Git の対象のリポジトリで読むだけなので、別のリポジトリのクローンでも対象を切り替えて出せる（§40）。
+        if (await FetchAzurePullRequestAsync(pull, allowOtherRepository: true) is { } fetched)
             ShowPullRequestDiff(fetched, pull.TargetBranch, $"PR {pull.Id}");
     }
 
@@ -119,25 +125,55 @@ public partial class ShellWindow
 
     /// <summary>元のブランチと入れ先のブランチを、その PR のリポジトリを指すリモートから取る。Azure Repos の PR は
     /// 同じリポジトリのブランチ同士なので、<c>refs/heads/…</c> をそのまま取ればよい（一覧に元のブランチ名が無い
-    /// 古い応答は、ブラウザへ誘う）。</summary>
-    private async Task<FetchedPullRequest?> FetchAzurePullRequestAsync(AzureDevOpsPullRequest pull)
+    /// 古い応答は、ブラウザへ誘う）。
+    /// <para><paramref name="allowOtherRepository"/> なら、いまの Git の対象に無くても<b>ワークスペースの全リポジトリ</b>から
+    /// クローンを探し、見つかればそれを Git の対象にしてから取る（§40）。ワークツリーは Git パネルの一覧（選んでいる
+    /// リポジトリの読み込み済みの状態）の上で作るので、切り替え直後の読み込み前に動かさないよう許さない。</para></summary>
+    private async Task<FetchedPullRequest?> FetchAzurePullRequestAsync(AzureDevOpsPullRequest pull, bool allowOtherRepository = false)
     {
         if (pull.SourceRefName.Length == 0 || pull.TargetRefName.Length == 0)
         {
             ShowAzureError($"PR {pull.Id} のブランチが分かりません", "ブラウザで開いて確かめてください。");
             return null;
         }
-        var remote = _vm.GitSession.Remotes
-            .OrderBy(r => string.Equals(r.Name, "origin", StringComparison.OrdinalIgnoreCase) ? 0 : 1)
-            .FirstOrDefault(r => AzureDevOpsPullRequestJson.RemoteMatches(r.Url, pull.Project, pull.Repository));
-        if (remote is null)
+        var remoteName = PreferOrigin(_vm.GitSession.Remotes)
+            .FirstOrDefault(r => AzureDevOpsPullRequestJson.RemoteMatches(r.Url, pull.Project, pull.Repository))?.Name;
+        if (remoteName is null && allowOtherRepository && await FindAzureRepositoryAsync(pull.Project, pull.Repository) is { } clone)
+        {
+            SelectGitRepository(clone.Root);
+            remoteName = clone.Remote;
+        }
+        if (remoteName is null)
         {
             ShowAzureError($"PR {pull.Id} のリポジトリが見つかりません",
-                $"いまの Git の対象に {pull.Project} / {pull.Repository} を指すリモートがありません。そのリポジトリのフォルダーを開いてください。");
+                allowOtherRepository
+                    ? $"ワークスペースに {pull.Project} / {pull.Repository} を指すリモートを持つリポジトリがありません。そのリポジトリのフォルダーを開いてください。"
+                    : $"いまの Git の対象に {pull.Project} / {pull.Repository} を指すリモートがありません。そのリポジトリのフォルダーを開いてください。");
             return null;
         }
-        return await FetchPullRequestAsync(remote.Name, pull.SourceRefName, pull.TargetRefName, $"PR {pull.Id}", ShowAzureError);
+        return await FetchPullRequestAsync(remoteName, pull.SourceRefName, pull.TargetRefName, $"PR {pull.Id}", ShowAzureError);
     }
+
+    /// <summary>
+    /// Azure Repos のプロジェクト／リポジトリの手元のクローン：ワークスペースの<b>全リポジトリ</b>（§40 のカタログ）のうち、
+    /// リモートの URL がそれを指すもの。いま Git の対象にしているリポジトリを先に見る。リモートが複数当たれば origin を採る。
+    /// </summary>
+    private async Task<(string Root, string Remote)?> FindAzureRepositoryAsync(string project, string repository)
+    {
+        var selected = _git.RootPath;
+        // 一覧の初回はフォルダーを歩くので UI スレッドでは作らない。
+        var repositories = await Task.Run(() => _git.Repositories.Repositories);
+        foreach (var repo in repositories.OrderBy(r => string.Equals(r.Root, selected, StringComparison.OrdinalIgnoreCase) ? 0 : 1))
+        {
+            var remotes = await _git.For(repo).GetRemoteUrlsAsync();
+            if (PreferOrigin(remotes).FirstOrDefault(r => AzureDevOpsPullRequestJson.RemoteMatches(r.Url, project, repository)) is { } remote)
+                return (repo.Root, remote.Name);
+        }
+        return null;
+    }
+
+    private static IEnumerable<GitRemoteInfo> PreferOrigin(IEnumerable<GitRemoteInfo> remotes)
+        => remotes.OrderBy(r => string.Equals(r.Name, "origin", StringComparison.OrdinalIgnoreCase) ? 0 : 1);
 
     private void ShowAzureError(string title, string reason)
         => MessageBox.Show(this, string.IsNullOrWhiteSpace(reason) ? title : $"{title}\n\n{reason.Trim()}",

@@ -17,6 +17,7 @@ public partial class ShellWindow {
         _paneElements[PaneKind.Files] = FilesPane;
         _paneElements[PaneKind.Harness] = HarnessPane;
         _paneElements[PaneKind.TerminalSupport] = TerminalSupportPane;
+        _paneElements[PaneKind.BrowserSupport] = BrowserSupportPane;
         _paneElements[PaneKind.TsIde] = TsIdePane;
         _editorViews = new PaneSplitView( EditorContentHost, id => _editorTabs.FirstOrDefault(t => t.Id == id)?.Control, () => _editorTabs.Where(t => t.IsRealized).Select(t => (FrameworkElement)t.Control), () => (Brush)FindResource("Border"), () => (Brush)FindResource("Accent"), el => el.Focus(), () => SaveActiveWorkspaceSnapshot());
         InitializeEditorOutline();

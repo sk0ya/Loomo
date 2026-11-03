@@ -27,6 +27,7 @@ internal static class PaneVisibilityPresentation
         PaneKind.Files => "ファイル一覧",
         PaneKind.Harness => "ハーネス",
         PaneKind.TerminalSupport => "ターミナルサポート",
+        PaneKind.BrowserSupport => "ブラウザサポート",
         _ => kind.ToString(),
     };
 

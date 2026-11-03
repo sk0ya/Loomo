@@ -265,6 +265,9 @@ public partial class ShellWindow {
             case PaneKind.TerminalSupport:
                 PaneFocusElementResolver.FocusFirstFocusable(TerminalSupportPane);
                 break;
+            case PaneKind.BrowserSupport:
+                PaneFocusElementResolver.FocusFirstFocusable(BrowserSupportPane);
+                break;
         }
         RecordTrailPane(kind);
     }
