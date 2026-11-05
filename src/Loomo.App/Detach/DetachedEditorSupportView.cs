@@ -299,9 +299,8 @@ internal sealed class DetachedEditorSupportView : Grid, IDisposable
     {
         if (!string.Equals(_source.FilePath, e.FilePath, StringComparison.OrdinalIgnoreCase))
             return;
-        if (_source.Text == e.Text)
-            return;
-        _source.SetText(e.Text);
+        // SetText だと未保存の印・Undo が付かず、閉じると変更が消える。編集として入れる。
+        EditorTextMirror.ApplyAsEdit(_source, e.Text);
     }
 
     private static void Navigate(CoreWebView2 core, string html)

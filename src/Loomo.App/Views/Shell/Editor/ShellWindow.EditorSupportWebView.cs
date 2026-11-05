@@ -137,9 +137,9 @@ public partial class ShellWindow {
         if (tab is null
             || !string.Equals(tab.Control.FilePath, e.FilePath, StringComparison.OrdinalIgnoreCase))
             return;
-        if (tab.Control.Text == e.Text)
-            return;
-        tab.Control.SetText(e.Text);
+        // SetText は「読み込み」扱いで未保存の印も Undo も BufferChanged も付かない——グリッドで直した
+        // 内容が未保存にならず、閉じると黙って消えていた。編集として入れる（EditorTextMirror と同じ）。
+        EditorTextMirror.ApplyAsEdit(tab.Control, e.Text);
     }
     private void ShowEditorSupportPane() {
         if (IsPaneVisible(PaneKind.EditorSupport))
