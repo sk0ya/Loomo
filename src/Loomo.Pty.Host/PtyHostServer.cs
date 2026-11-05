@@ -17,7 +17,7 @@ internal sealed class PtyHostServer(string pipeName, TimeSpan? idleExit, Action?
     private readonly object _gate = new();
     private readonly Dictionary<Guid, HostSession> _sessions = new();
     /// <summary>要求をくれた Loomo のプロセス。正常終了の <c>Leave</c> で外し、落ちたものは生死で数えない。</summary>
-    private readonly Dictionary<int, System.Diagnostics.Process> _clients = new();
+    private readonly Dictionary<int, ClientProcess> _clients = new();
     private int _connections;
     private DateTime _idleSinceUtc = DateTime.UtcNow;
 
@@ -226,15 +226,9 @@ internal sealed class PtyHostServer(string pipeName, TimeSpan? idleExit, Action?
                 return;
         }
 
-        System.Diagnostics.Process process;
-        try
-        {
-            process = System.Diagnostics.Process.GetProcessById(processId);
-        }
-        catch (ArgumentException)
-        {
+        // PID ではなくプロセスそのものを覚える（PID の再利用で別人を「生きている Loomo」と数えない）。
+        if (ClientProcess.TryOpen(processId) is not { } process)
             return; // もういない。
-        }
 
         lock (_gate)
         {
@@ -256,10 +250,7 @@ internal sealed class PtyHostServer(string pipeName, TimeSpan? idleExit, Action?
                 leaving.Dispose();
             foreach (var (id, process) in _clients.ToList())
             {
-                bool exited;
-                try { exited = process.HasExited; }
-                catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception) { exited = true; }
-                if (!exited)
+                if (!process.HasExited)
                     continue;
                 _clients.Remove(id);
                 process.Dispose();
