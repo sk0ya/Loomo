@@ -16,12 +16,19 @@ public static class DiffRepositoryRouting
     /// <summary>項目のリポジトリが「選んでいるリポジトリ」ならその窓口（照会のキャッシュと変更の通知を Git パネルと
     /// 共有する）、別のリポジトリならそのリポジトリに固定した窓口（§40.5）。</summary>
     public static GitService ForItem(this GitService git, DiffFileItem? item)
+        => git.ForRepository(item?.RepositoryRoot);
+
+    /// <summary><see cref="ForItem"/> のリポジトリ版。<paramref name="root"/> が null なら選んでいるリポジトリの窓口。</summary>
+    public static GitService ForRepository(this GitService git, string? root)
     {
-        if (item?.RepositoryRoot is not { } root)
+        if (root is null)
             return git;
-        var selected = git.RootPath is { } current ? git.Repositories.KnownRepositoryFor(current)?.Root ?? current : null;
-        return string.Equals(selected, root, StringComparison.OrdinalIgnoreCase) ? git : git.For(root);
+        return string.Equals(SelectedRepository(git), root, StringComparison.OrdinalIgnoreCase) ? git : git.For(root);
     }
+
+    /// <summary>いま選んでいるリポジトリのルート（ワークスペースのフォルダーがリポジトリの中なら、そのリポジトリのルート）。</summary>
+    public static string? SelectedRepository(GitService git)
+        => git.RootPath is { } current ? git.Repositories.KnownRepositoryFor(current)?.Root ?? current : null;
 }
 
 /// <summary>作業ツリー、コミット範囲から Diff ファイル一覧を読み込む Query。</summary>
@@ -37,11 +44,14 @@ public sealed class DiffSessionQuery
     /// <param name="compareBase">比較基準の解決結果。null または作業ツリー基準なら従来どおり
     /// <c>git status</c> の作業ツリー一覧。コミット範囲（<paramref name="range"/>）を表示している間は
     /// そちらが優先で、比較基準は効かない（同時に2つの「何と比べているか」は持たない）。</param>
+    /// <param name="rangeRepository">コミット範囲のリポジトリ（開いたときに固定したもの）。Git パネルで対象を
+    /// 切り替えても、範囲はこのリポジトリで引き続ける——ハッシュは別のリポジトリでは解決できない。
+    /// null なら選んでいるリポジトリ。</param>
     public async Task<DiffFileList> LoadAsync(
-        (string? From, string To)? range, GitCompareResolution? compareBase = null)
+        (string? From, string To)? range, GitCompareResolution? compareBase = null, string? rangeRepository = null)
     {
         if (range is { } commitRange)
-            return await LoadCommitRangeAsync(commitRange);
+            return await LoadCommitRangeAsync(commitRange, rangeRepository);
         if (compareBase is { IsCanceled: true })
             return DiffFileList.Canceled(compareBase.Error!);
         if (compareBase is { HasError: true })
@@ -53,9 +63,9 @@ public sealed class DiffSessionQuery
 
     // マルチルート：作業ツリー・コミット範囲の項目は常に「今 Git 操作の対象になっているフォルダー」
     // （_git.RootPath）基準。
-    public string ToDisplayPath(string fullPath)
+    public string ToDisplayPath(string fullPath, string? repository = null)
     {
-        var root = _git.RootPath;
+        var root = repository ?? _git.RootPath;
         if (!string.IsNullOrEmpty(root) && fullPath.StartsWith(root, StringComparison.OrdinalIgnoreCase))
             return fullPath[root.Length..].TrimStart('\\', '/').Replace('\\', '/');
         return fullPath;
@@ -191,10 +201,10 @@ public sealed class DiffSessionQuery
         return new DiffFileList(items, $"{resolution.Label}：変更ファイルはありません。");
     }
 
-    private async Task<DiffFileList> LoadCommitRangeAsync((string? From, string To) range)
+    private async Task<DiffFileList> LoadCommitRangeAsync((string? From, string To) range, string? repository)
     {
-        var root = _git.RootPath ?? "";
-        var changes = await _git.GetRangeChangesAsync(range.From, range.To);
+        var root = repository ?? _git.RootPath ?? "";
+        var changes = await _git.ForRepository(repository).GetRangeChangesAsync(range.From, range.To);
         // 失敗（時間切れ・壊れた ref）を「この範囲に変更ファイルはありません」と名乗らせない。
         if (changes.IsCanceled)
             return DiffFileList.Canceled(changes.Error!);
@@ -204,6 +214,8 @@ public sealed class DiffSessionQuery
         {
             FullPath = Path.Combine(root, change.Path), DisplayPath = change.Path,
             Badge = change.Status.ToString(), CommitFile = change,
+            // 項目からもそのリポジトリの窓口へ回す（本文・打ち消し・監視が ForItem で同じリポジトリを引く）。
+            RepositoryRoot = repository,
         }).ToList();
         return new DiffFileList(items, "この範囲に変更ファイルはありません。");
     }

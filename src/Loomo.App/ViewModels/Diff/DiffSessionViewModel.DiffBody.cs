@@ -212,7 +212,7 @@ public sealed partial class DiffSessionViewModel
             return cached;
         // 比較基準の項目は、その項目が作られたときの ref で引く（項目と ref を一緒に持たせてある）。
         var text = await (item.CommitFile is { } commitFile && _commitRange is { } range
-            ? _git.GetRangeFileDiffAsync(range.From, range.To, commitFile, contextLines, ignoreWhitespace)
+            ? _git.ForItem(item).GetRangeFileDiffAsync(range.From, range.To, commitFile, contextLines, ignoreWhitespace)
             : item.CompareBaseFile is { } compareFile
                 ? _git.GetCompareFileDiffAsync(compareFile.BaseRef, compareFile.Change, contextLines, ignoreWhitespace)
                 : _git.ForItem(item).GetHeadDiffTextAsync(item.Entry!, contextLines, ignoreWhitespace));
@@ -490,7 +490,7 @@ public sealed partial class DiffSessionViewModel
             "コミットの変更を打ち消す", MessageBoxButton.YesNo, MessageBoxImage.Question);
         if (answer != MessageBoxResult.Yes) return;
 
-        var result = await _git.ApplyReverseDiscardPatchAsync(reduced.Patch);
+        var result = await _git.ForItem(item).ApplyReverseDiscardPatchAsync(reduced.Patch);
         SetStatus(result.Success
                 ? $"{item.DisplayPath} の {reduced.LineCount} 行ぶんを作業ツリーで打ち消しました（作業ツリーの変更として残っています）。"
                 : $"打ち消せませんでした（その後の編集で周りが変わっているかもしれません）: {result.Message.Trim()}",

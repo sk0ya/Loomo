@@ -49,6 +49,19 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
     private Task<GitCompareRange>? _pendingRangeTask;
     private DiffOpenTarget.PointsRange? _pendingRangeTaskFor;
 
+    /// <summary>
+    /// コミット範囲・2点比較を<b>開いたときのリポジトリ</b>。範囲はハッシュでしか覚えていないので、読み直しのたびに
+    /// 「Git パネルでいま選んでいるリポジトリ」で引くと、対象を切り替えた途端に別のリポジトリでハッシュを探して
+    /// 一覧が空になる。見ている差分は対象の切替で変わらない——開いた時点のリポジトリに固定して引き続ける。
+    /// </summary>
+    private string? _rangeRepository;
+
+    /// <summary>これから開く範囲を、いま選んでいるリポジトリに固定する。</summary>
+    private void PinRangeRepository() => _rangeRepository = DiffRepositoryRouting.SelectedRepository(_git);
+
+    /// <summary>範囲を引く窓口（固定したリポジトリ。選んでいるリポジトリと同じなら共有の窓口）。</summary>
+    private GitService RangeGit => _git.ForRepository(_rangeRepository);
+
     /// <summary>作業ツリー（または比較基準）以外の何か——コミット範囲・解決待ちの2点比較・その失敗——を見ているか。</summary>
     private bool HasGitTarget => _commitRange is not null || _pendingRange is not null || _rangeFailure is not null;
 
@@ -486,6 +499,7 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
     {
         _loaded = true;
         SetCommitRange(null);
+        PinRangeRepository();
         _pendingRange = range;
         OnPropertyChanged(nameof(CanOpenCommitInGit));
         GitTargetLabel = range.Label;
@@ -503,6 +517,7 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
     public void ShowCommitRange(string? fromHash, string toHash, string label)
     {
         _loaded = true;
+        PinRangeRepository();
         SetCommitRange((fromHash, toHash));
         OnPropertyChanged(nameof(CanOpenCommitInGit));
         GitTargetLabel = label;
@@ -529,6 +544,7 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
         if (!string.IsNullOrEmpty(filePath))
             _git.SetActiveRootForPath(filePath);
         _loaded = true;
+        PinRangeRepository();
         SetCommitRange((fromHash, hash));
         OnPropertyChanged(nameof(CanOpenCommitInGit));
         GitTargetLabel = label;
@@ -549,7 +565,7 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
         }
         await RefreshAsync();
 
-        var display = _query.ToDisplayPath(filePath ?? "");
+        var display = _query.ToDisplayPath(filePath ?? "", _rangeRepository);
         var target = Files.FirstOrDefault(f =>
             string.Equals(f.DisplayPath, display, StringComparison.OrdinalIgnoreCase));
         if (target is null) return;
@@ -866,8 +882,11 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void OpenCommitInGit()
     {
-        if (_commitRange is { From: null, To: var hash })
-            CommitOpenInGitRequested?.Invoke(this, hash);
+        if (_commitRange is not { From: null, To: var hash }) return;
+        // Git ペインは選んでいるリポジトリでコミットを探すので、範囲のリポジトリへ戻してから渡す。
+        if (_rangeRepository is { } repository)
+            _git.SetActiveRootForPath(repository);
+        CommitOpenInGitRequested?.Invoke(this, hash);
     }
 
     /// <param name="force">一覧の中身が同じでも組み直す。アドホック比較の作り直しのように、
@@ -897,7 +916,8 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
             else
                 result = await _query.LoadAsync(
                     _commitRange,
-                    _commitRange is null ? await CompareBase.ResolveAsync() : null);
+                    _commitRange is null ? await CompareBase.ResolveAsync() : null,
+                    _rangeRepository);
         }
         // 基準変更などで先行した読み込みが後から完了しても、最新の選択状態を上書きさせない。
         if (refreshGeneration != Volatile.Read(ref _refreshGeneration)) return;
@@ -973,7 +993,7 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
         if (!ReferenceEquals(_pendingRangeTaskFor, pending) || _pendingRangeTask is null)
         {
             _pendingRangeTaskFor = pending;
-            _pendingRangeTask = _git.ResolveCompareRangeAsync(pending.From, pending.To, pending.FromMergeBase);
+            _pendingRangeTask = RangeGit.ResolveCompareRangeAsync(pending.From, pending.To, pending.FromMergeBase);
         }
         var range = await _pendingRangeTask;
         // 待っている間に別の差分を開いた／同じ比較を読み直しが先に解決したなら、この結果は使わない。

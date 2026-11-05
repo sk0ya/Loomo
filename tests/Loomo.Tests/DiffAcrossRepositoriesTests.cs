@@ -55,6 +55,32 @@ public sealed class DiffAcrossRepositoriesTests : IDisposable
         Assert.True(notified > 0);
     }
 
+    [Fact]
+    public async Task コミット範囲は開いたときのリポジトリで引き続ける_選んでいるリポジトリが替わっても空にならない()
+    {
+        var app = Repo("app");
+        var work = Path.Combine(_root, "work");
+        var api = Repo(Path.Combine("work", "api"));
+        File.WriteAllText(Path.Combine(api, "b.txt"), "api only");
+        Git(api, "add", "b.txt");
+        Git(api, "commit", "-m", "api commit");
+        var hash = Git(api, "rev-parse", "HEAD").Trim();
+        var workspace = new WorkspaceService(new SafetySettings());
+        workspace.OpenFolder(app);
+        workspace.AddFolder(work);
+        var git = new GitService(workspace);
+        Assert.Equal(app, DiffRepositoryRouting.SelectedRepository(git)); // 選んでいるのは app
+
+        var list = await new DiffSessionQuery(git).LoadAsync((null, hash), null, api);
+
+        var item = Assert.Single(list.Items);
+        Assert.Equal("b.txt", item.DisplayPath);
+        Assert.Equal(api, item.RepositoryRoot);
+        Assert.Equal(Path.Combine(api, "b.txt"), item.FullPath);
+        var diff = await git.ForItem(item).GetRangeFileDiffAsync(null, hash, item.CommitFile!, 3);
+        Assert.Contains("+api only", diff);
+    }
+
     private string Repo(string relative)
     {
         var full = Path.Combine(_root, relative);
@@ -68,14 +94,15 @@ public sealed class DiffAcrossRepositoriesTests : IDisposable
         return full;
     }
 
-    private static void Git(string directory, params string[] args)
+    private static string Git(string directory, params string[] args)
     {
         var info = new ProcessStartInfo("git") { WorkingDirectory = directory, UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true, StandardErrorEncoding = Encoding.UTF8 };
         foreach (var arg in args) info.ArgumentList.Add(arg);
         using var process = Process.Start(info)!;
         var error = process.StandardError.ReadToEndAsync();
-        process.StandardOutput.ReadToEnd();
+        var output = process.StandardOutput.ReadToEnd();
         process.WaitForExit();
         Assert.True(process.ExitCode == 0, error.Result);
+        return output;
     }
 }
