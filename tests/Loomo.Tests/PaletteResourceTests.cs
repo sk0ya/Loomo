@@ -151,6 +151,54 @@ public class PaletteResourceTests
         });
     }
 
+    /// <summary>実行時にアクセントの色味で作るペインヘッダーの帯（<see cref="ThemeManager.PaneHeaderTint"/>）が、
+    /// どのテーマ × どのアクセントでも「見出しだと分かる」強さで本体から持ち上がり、しかも見出しの文字
+    /// （Fg / FgDim）が読めること。灰色の持ち上げだけ（1.18 前後）ではヘッダーと中身の区別がつかなかった。</summary>
+    [Fact]
+    public void ペインヘッダーの帯はアクセントの色味で本体から見分けられる()
+    {
+        RunSta(() =>
+        {
+            foreach (var theme in Enum.GetValues<AppTheme>())
+            {
+                var dict = Load(theme);
+                Color Color(string key) => ((SolidColorBrush)dict[key]).Color;
+                var panel = Color("Panel");
+
+                // テーマ既定のアクセントに加え、利用者が選びそうな明暗・色相の違うアクセントでも確かめる。
+                var accents = new[]
+                {
+                    Color("Accent"), Hsl(210, 0.9, 0.25), Hsl(30, 0.9, 0.55), Hsl(130, 0.6, 0.8), Hsl(300, 0.7, 0.45),
+                };
+                foreach (var accent in accents)
+                {
+                    var header = ThemeManager.PaneHeaderTint(panel, accent, Color("FgDim"));
+                    var contrast = ThemeManager.Contrast(panel, header);
+                    // 下限は既定 1.30。本体の上でも FgDim が弱いテーマだけ、見出しの文字を守るために緩む
+                    // （それでも灰色の持ち上げ 1.12 より下には落とさない）。
+                    var floor = Math.Max(1.12, Math.Min(1.30,
+                        ThemeManager.Contrast(panel, Color("FgDim")) / ThemeManager.PaneHeaderMinTextContrast - 0.01));
+                    Assert.True(contrast >= floor && contrast <= 1.70,
+                        $"{theme}/{accent}: Panel {panel} × 帯 {header} のコントラストが {contrast:0.000}（{floor:0.00}〜1.70 の外）");
+
+                    static double Luminance(Color c) => (0.299 * c.R + 0.587 * c.G + 0.114 * c.B) / 255.0;
+                    var lifted = Luminance(header) > Luminance(panel);
+                    Assert.True(lifted == !theme.IsLight(), $"{theme}/{accent}: 帯 {header} の明暗の向きが逆");
+
+                    // 文字の読みやすさは「本体の上で読めていた量をほぼ保つ」で測る。Solarized のように本体の上でも
+                    // Fg が 4.5 ぎりぎりのテーマがあり、絶対値で縛ると帯を持ち上げる余地がない。
+                    foreach (var fg in new[] { "Fg", "FgDim" })
+                    {
+                        var onPanel = ThemeManager.Contrast(panel, Color(fg));
+                        var onHeader = ThemeManager.Contrast(header, Color(fg));
+                        Assert.True(onHeader >= Math.Min(onPanel * 0.7, fg == "Fg" ? 4.5 : 3.0) && onHeader >= Math.Min(2.75, onPanel * 0.85),
+                            $"{theme}/{accent}: 帯 {header} の上の {fg} が {onHeader:0.00}（本体の上では {onPanel:0.00}）");
+                    }
+                }
+            }
+        });
+    }
+
     /// <summary>テスト用の HSL→RGB（ThemeManager 側は private なので、入力の生成だけ自前で行う）。</summary>
     private static Color Hsl(double h, double s, double l)
     {

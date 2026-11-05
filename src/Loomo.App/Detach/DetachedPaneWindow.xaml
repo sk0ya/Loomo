@@ -44,8 +44,10 @@
         <!-- タイトルバー：バー全体がタブのドロップ先＋ドラッグでウィンドウ移動（空き領域）。
              バー全体を IsHitTestVisibleInChrome=True にして WPF 入力（クリック/ドラッグ/ドロップ）を受け、
              ウィンドウ移動・最大化トグルは自前で処理する（WindowChrome はリサイズ枠のみ担当）。 -->
-        <!-- 背景は本体のタイトルバーと同じ ActivityBarBg（BgAlt だと本体と並べたとき色がズレる）。 -->
-        <Grid x:Name="TitleBar" DockPanel.Dock="Top" Height="34" Background="{DynamicResource ActivityBarBg}"
+        <!-- 背景はペインヘッダーと同じ PaneHeaderBg（アクセントの色味の帯）。切り離した窓の見出しは
+             ペインの見出しそのものなので揃える（灰色の ActivityBarBg だと中身と同じ色の仲間に見えて、
+             どこがヘッダーか読めなかった）。選択中のタブは Panel 色で中身へつながる。 -->
+        <Grid x:Name="TitleBar" DockPanel.Dock="Top" Height="34" Background="{DynamicResource PaneHeaderBg}"
               AllowDrop="True" Drop="OnTabStripDrop" DragOver="OnTabStripDragOver"
               MouseLeftButtonDown="OnCaptionMouseDown"
               WindowChrome.IsHitTestVisibleInChrome="True">

@@ -16,6 +16,9 @@ public sealed class ThemeManager
     private const string AccentKey = "Accent";
     private const string AccentHoverKey = "AccentHover";
     private const string AccentFgKey = "AccentFg";
+    private const string PanelKey = "Panel";
+    private const string PaneHeaderBgKey = "PaneHeaderBg";
+    private const string FgDimKey = "FgDim";
 
     private AppTheme _theme = AppTheme.Dark;
     private string? _accent;
@@ -101,13 +104,73 @@ public sealed class ThemeManager
             // 文字色はパレット既定のアクセントからも同じ規則で作る（手書き値とカスタム指定で
             // 見え方が変わらないよう、規則を一本にする）。Remove 済みなのでマージ辞書側が引ける。
             if (res[AccentKey] is SolidColorBrush palette)
+            {
                 res[AccentFgKey] = new SolidColorBrush(AccentForeground(palette.Color));
+                ApplyPaneHeader(res, palette.Color);
+            }
             return;
         }
 
         res[AccentKey] = new SolidColorBrush(color);
         res[AccentHoverKey] = new SolidColorBrush(Lighten(color, 0.18));
         res[AccentFgKey] = new SolidColorBrush(AccentForeground(color));
+        ApplyPaneHeader(res, color);
+    }
+
+    /// <summary>ペインヘッダー（と切り離し窓のタイトルバー）の帯をアクセントの色味で塗る。
+    /// パレットの PaneHeaderBg は灰色の一段持ち上げだけで、本体・ほかの chrome と同じ灰色の仲間に
+    /// 見えて「どこが見出しか」が読めなかった。アクセントは利用者が変えられるので、パレットに
+    /// 手書きせず実行時に Panel × Accent から作る（テーマ・アクセントどちらを替えても追従する）。
+    /// パレット側の値は Application 無しで辞書だけ読む場面（テスト・デザイナ）の既定として残す。</summary>
+    private static void ApplyPaneHeader(ResourceDictionary res, Color accent)
+    {
+        res.Remove(PaneHeaderBgKey);   // 前回の上書きを外してからパレットの Panel を引く
+        if (res[PanelKey] is SolidColorBrush panel)
+            res[PaneHeaderBgKey] = new SolidColorBrush(PaneHeaderTint(
+                panel.Color, accent, (res[FgDimKey] as SolidColorBrush)?.Color));
+    }
+
+    /// <summary>帯の目標コントラスト（Panel との比）。灰色の持ち上げ（1.18 前後）より一段強くし、
+    /// 色味と合わせて見出しだと一目で分かる量。上げすぎると帯が中身より目立つ。</summary>
+    public const double PaneHeaderContrast = 1.35;
+
+    /// <summary>帯の上の FgDim（見出しの文字）に残すコントラストの下限。</summary>
+    public const double PaneHeaderMinTextContrast = 2.8;
+
+    /// <summary>Panel をアクセントへ寄せた帯の色。寄せる割合は固定にせず、Panel とのコントラストが
+    /// <see cref="PaneHeaderContrast"/> に届く最小の量を探す（アクセントの明暗に関わらず同じ強さに見せる）。
+    /// 向きは ActivityBarBg と同じ規則——暗色テーマは明るく、明色テーマは暗く——で、アクセントへ寄せても
+    /// 逆向きになる・届かない（Panel に近い明るさのアクセント）ときは白／黒へ足して確保する。
+    /// 帯に載る見出しの文字は FgDim なので、<paramref name="dimText"/> を渡すと帯の強さをその文字が
+    /// <see cref="PaneHeaderMinTextContrast"/> を切らない所で頭打ちにする（Solarized Dark のように
+    /// 本体の上でも FgDim が弱いテーマで、帯を持ち上げた分だけ見出しが沈むのを防ぐ）。</summary>
+    public static Color PaneHeaderTint(Color panel, Color accent, Color? dimText = null)
+    {
+        var dark = Luminance(panel) < 0.18;
+        var target = PaneHeaderContrast;
+        if (dimText is { } dim)
+            target = Math.Max(1.15, Math.Min(target, Contrast(panel, dim) / PaneHeaderMinTextContrast));
+        bool Ok(Color c) => (Luminance(c) > Luminance(panel)) == dark && Contrast(panel, c) >= target;
+
+        Color tint = panel;
+        for (var t = 0.005; t <= 0.60001; t += 0.005)
+        {
+            tint = Mix(panel, accent, t);
+            if (Ok(tint)) return tint;
+        }
+
+        // アクセントが Panel と同じ明るさ寄り（暗色テーマに濃紺など）。色味は保ったまま明暗を足す。
+        var edge = dark ? Colors.White : Colors.Black;
+        tint = Mix(panel, accent, 0.30);
+        for (var i = 0; i < 200 && !Ok(tint); i++)
+            tint = Mix(tint, edge, 0.01);
+        return tint;
+    }
+
+    private static Color Mix(Color a, Color b, double t)
+    {
+        byte M(byte x, byte y) => (byte)Math.Clamp(Math.Round(x + (y - x) * t), 0, 255);
+        return Color.FromRgb(M(a.R, b.R), M(a.G, b.G), M(a.B, b.B));
     }
 
     /// <summary>指定文字列が有効なカラー指定（"#RRGGBB" 等）かどうか。</summary>
