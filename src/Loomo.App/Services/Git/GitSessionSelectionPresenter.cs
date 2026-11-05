@@ -10,16 +10,6 @@ namespace sk0ya.Loomo.App.Services;
 /// <summary>Gitセッションの選択対象を解決し、関連する表示状態や選択操作へ反映する。</summary>
 internal static class GitSessionSelectionPresenter
 {
-    internal static void SelectReferenceTab(GitSessionViewModel? viewModel, object sender)
-    {
-        if (viewModel is null || sender is not FrameworkElement { Tag: string tag } button)
-            return;
-
-        if (Enum.TryParse<GitReferenceTab>(tag, out var tab))
-            viewModel.ReferenceTab = tab;
-        (button as ToggleButton)?.GetBindingExpression(ToggleButton.IsCheckedProperty)?.UpdateTarget();
-    }
-
     internal static void SelectRowFromContextMenu(object? originalSource)
     {
         switch (FindRowContainer(originalSource))
@@ -32,6 +22,9 @@ internal static class GitSessionSelectionPresenter
                 break;
         }
     }
+
+    internal static BranchTreeNode? ResolveDoubleClickedNode(object? originalSource)
+        => FindRowContainer(originalSource) is TreeViewItem { DataContext: BranchTreeNode node } ? node : null;
 
     internal static GitBranchInfo? ResolveDoubleClickedBranch(
         object? originalSource, GitBranchInfo? selectedBranch)

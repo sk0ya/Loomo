@@ -1167,6 +1167,52 @@
                 </Button.Template>
             </Button>
 
+            <!-- そこで動いている Claude Code（§24.17.2）。ブランチの行ならそれを置いているワークツリーの。 -->
+            <TextBlock DockPanel.Dock="Right" Text="{Binding AgentMark}" FontSize="{DynamicResource Fs10}"
+                       Foreground="{DynamicResource Accent}" VerticalAlignment="Center" Margin="6,0,0,0"
+                       ToolTip="このワークスペースのターミナルで、ここを作業場所にしている Claude Code">
+                <TextBlock.Style>
+                    <Style TargetType="TextBlock">
+                        <Style.Triggers>
+                            <Trigger Property="Text" Value="">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </TextBlock.Style>
+            </TextBlock>
+
+            <!-- ワークツリーの印（§24.17.3）：📁＝このブランチを別の場所に置いている、±N＝そこでの未コミット。
+                 左列下段の WT 一覧をやめて、ブランチの行の属性として出す。 -->
+            <TextBlock DockPanel.Dock="Right" Text="{Binding WorktreeMark}" FontSize="{DynamicResource Fs10}"
+                       Foreground="{DynamicResource FgDim}" VerticalAlignment="Center" Margin="6,0,0,0"
+                       ToolTip="{Binding WorktreeToolTip}">
+                <TextBlock.Style>
+                    <Style TargetType="TextBlock">
+                        <Style.Triggers>
+                            <Trigger Property="Text" Value="">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </TextBlock.Style>
+            </TextBlock>
+
+            <!-- タグ＝指すコミット、サブモジュール＝状態とコミット -->
+            <TextBlock DockPanel.Dock="Right" Text="{Binding Detail}" FontSize="{DynamicResource Fs10}"
+                       FontFamily="Cascadia Mono, Consolas"
+                       Foreground="{DynamicResource FgDim}" VerticalAlignment="Center" Margin="6,0,0,0">
+                <TextBlock.Style>
+                    <Style TargetType="TextBlock">
+                        <Style.Triggers>
+                            <Trigger Property="Text" Value="">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </TextBlock.Style>
+            </TextBlock>
+
             <!-- 上流との差。0 のときは TrackLabel が空になり、幅も取らない -->
             <TextBlock DockPanel.Dock="Right" Text="{Binding TrackLabel}" FontSize="{DynamicResource Fs10}"
                        FontWeight="SemiBold" Foreground="{DynamicResource Accent}"

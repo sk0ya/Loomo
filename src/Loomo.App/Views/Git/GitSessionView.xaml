@@ -190,7 +190,7 @@
             </Setter>
         </Style>
 
-        <!-- 操作バーの区切り（同期／ブランチ／一覧の3群を見分けるための線） -->
+        <!-- 操作バーの区切り（開閉／同期／作る・その他の3群を見分けるための線） -->
         <Style x:Key="BranchOpSeparator" TargetType="Border">
             <Setter Property="Height" Value="1" />
             <Setter Property="Margin" Value="5,5" />
@@ -418,13 +418,13 @@
                     <ColumnDefinition Width="*" MinWidth="200" />
                 </Grid.ColumnDefinitions>
 
-                <!-- 操作バー＋ブランチ一覧＋タグ一覧。バーのいちばん上の開閉ボタンで一覧を畳める
+                <!-- 操作バー＋ブランチ・ワークツリー・タグ・サブモジュールのツリー。バーのいちばん上の開閉ボタンで一覧を畳める
                      （畳んでも列は 0 にせずバーの幅まで詰める＝ApplyBranchColumnVisibility。
                      バーごと消すと戻す入口が画面から無くなるため）。 -->
                 <DockPanel x:Name="BranchPanel" Grid.Column="0">
 
                     <!-- ===== 操作バー（一覧の左に立てる縦帯）=====
-                         上から「同期（リポジトリ全体）」「ブランチ（選んだ1本）」「一覧そのもの」の3群。
+                         上から「開閉」「同期（リポジトリ全体）」「作る・その他」の3群（§24.17.3 で選んだ1本に効く操作は行へ移した）。
                          同期がここに来たのは、ペインの中で<b>一覧を見ながら押せる場所</b>が他に無かった
                          ため——以前はヘッダーのブランチ切替ポップアップの同期帯だけが持ち場で、押すたびに
                          一覧を開き直す必要があった（そのポップアップはペインからは消した）。
@@ -529,61 +529,73 @@
                             <StackPanel x:Name="BranchOpListGroup">
                             <Border Style="{StaticResource BranchOpSeparator}" />
 
-                            <!-- 以下は「一覧で選んだ1本」に効く群。選択が無い／フォルダ行のときは押せない
-                                 （＋だけは現在ブランチから作れるので常に押せる）。 -->
-                            <Button Style="{StaticResource BranchOpButton}"
-                                    Content="＋" ToolTip="新しいブランチを作成…（選んだブランチが起点。無選択なら現在ブランチ）"
-                                    Click="OnBarBranchCreate" />
-                            <Button x:Name="BranchOpCheckout" Style="{StaticResource BranchOpButton}"
-                                    Content="✓" ToolTip="チェックアウト（選んだブランチへ切り替える）"
-                                    Click="OnBranchCheckout" />
-                            <Button x:Name="BranchOpMerge" Style="{StaticResource BranchOpButton}"
-                                    Content="⑃" ToolTip="現在のブランチへマージ（選んだブランチを取り込む）"
-                                    Click="OnBranchMerge" />
-                            <Button x:Name="BranchOpDelete" Style="{StaticResource BranchOpButton}"
-                                    Content="🗑" ToolTip="削除（選んだブランチ）"
-                                    Click="OnBranchDelete" />
-
-                            <Border Style="{StaticResource BranchOpSeparator}" />
-
-                            <!-- 終わったブランチを理由つきで並べて、選んで消す（§24.69）。 -->
-                            <Button Style="{StaticResource BranchOpButton}" Content="🧹"
-                                    ToolTip="片付け…（取り込み済み・上流が消えた・しばらく動いていないブランチを、理由つきで並べて消す）"
-                                    AutomationProperties.Name="ブランチの片付け"
-                                    Click="OnBranchesCleanup" />
-                            <Button Style="{StaticResource BranchOpButton}" Content="⊞"
-                                    ToolTip="すべて展開" Click="OnBarExpandAll" />
-                            <Button Style="{StaticResource BranchOpButton}" Content="⊟"
-                                    ToolTip="すべて折りたたむ" Click="OnBarCollapseAll" />
+                            <!-- 縦帯に常設するのは「作る」と「その他」だけ（§24.17.3）。選んだ1本に効く操作
+                                 （チェックアウト・マージ・削除）は行のクリック／右クリックと Del が持ち場で、
+                                 帯に並べると一覧の高さぶんボタンが立って、見たいものより目立っていた。 -->
+                            <Button x:Name="BranchOpCreate" Style="{StaticResource BranchOpButton}" Content="＋"
+                                    ToolTip="作成…（ブランチ・ワークツリー・タグ）"
+                                    AutomationProperties.Name="作成"
+                                    Click="OnBarButtonMenu">
+                                <Button.ContextMenu>
+                                    <ContextMenu>
+                                        <MenuItem Header="新しいブランチ…（選んだブランチが起点。無選択なら現在ブランチ）"
+                                                  Click="OnBarBranchCreate" />
+                                        <MenuItem Header="ワークツリー…（別の場所に置いて並行作業）" Click="OnWorktreeCreate" />
+                                        <MenuItem Header="タグ…" Click="OnTagCreate" />
+                                    </ContextMenu>
+                                </Button.ContextMenu>
+                            </Button>
+                            <Button x:Name="BranchOpMore" Style="{StaticResource BranchOpButton}" Content="⋯"
+                                    ToolTip="その他（比較・片付け・同期・展開）"
+                                    AutomationProperties.Name="その他"
+                                    Click="OnBarButtonMenu">
+                                <Button.ContextMenu>
+                                    <ContextMenu>
+                                        <MenuItem Header="2点を選んで比較…（ブランチ・タグ・ワークツリーの作業中の状態）"
+                                                  Click="OnComparePoints" />
+                                        <Separator />
+                                        <!-- 終わったブランチ／ワークツリーを理由・大きさつきで並べて、選んで消す（§24.69／§24.55）。 -->
+                                        <MenuItem Header="ブランチの片付け…" Click="OnBranchesCleanup" />
+                                        <MenuItem Header="ワークツリーの片付け…" Click="OnWorktreesCleanup" />
+                                        <MenuItem Header="フォルダーが消えたワークツリーを一覧から外す（掃除）" Click="OnWorktreesPrune" />
+                                        <Separator />
+                                        <MenuItem Header="すべてのタグをプッシュ" Click="OnTagsPushAll" />
+                                        <MenuItem x:Name="BarMenuSubmodulesSync" Header="サブモジュールを同期" Click="OnSubmodulesSync" />
+                                        <Separator />
+                                        <MenuItem Header="すべて展開" Click="OnBarExpandAll" />
+                                        <MenuItem Header="すべて折りたたむ" Click="OnBarCollapseAll" />
+                                        <Separator />
+                                        <!-- 相手のワークツリーでの編集は、こちらのリポジトリ監視に現れない＝±N は手で数え直す。 -->
+                                        <MenuItem Header="読み直す（ワークツリーの件数も数え直す）" InputGestureText="F5"
+                                                  Click="OnReloadAll" />
+                                    </ContextMenu>
+                                </Button.ContextMenu>
+                            </Button>
                             </StackPanel>
                         </StackPanel>
                     </Border>
 
-                    <Grid x:Name="BranchListArea">
-                    <!-- 下段が3セクションの縦積みから切替式になったぶん、既定の取り分をブランチへ寄せる
-                         （下段はどの種類でも「見出し1行＋一覧」の同じ高さで足りる）。 -->
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="3*" MinHeight="80" />
-                        <RowDefinition Height="6" />
-                        <RowDefinition Height="1*" MinHeight="70" />
-                    </Grid.RowDefinitions>
-
-                    <DockPanel Grid.Row="0">
+                    <!-- ブランチ・ワークツリー・タグ・サブモジュールを1本のツリーに（§24.17.3）。下段の切替式の一覧は
+                         やめた——本命のブランチ一覧の高さを常に削り、作成・比較・片付けのボタンまで並んでいた。 -->
+                    <DockPanel x:Name="BranchListArea">
                         <!-- 特定ブランチに絞っている間だけ「すべてのブランチ」へ戻すリンクを出す -->
                         <Button DockPanel.Dock="Top" Margin="8,0,8,2" HorizontalAlignment="Left"
                                 Style="{StaticResource ToolbarButton}" Content="↺ すべてのブランチを表示"
                                 Click="OnShowAllBranchesLog"
                                 Visibility="{Binding History.IsLogScoped, Converter={StaticResource BoolToVis}}" />
 
-                        <!-- ブランチの絞り込み。ブランチ切替ポップアップの絞り込みとは<b>別の状態</b>
+                        <!-- ブランチの絞り込み。<b>ふだんは畳んでおき</b>、ツリーで文字を打つか "/" で開く
+                             （VS Code のツリー検索と同じ）。絞り込んでいる間と、欄にフォーカスがある間は出したまま
+                             （UpdateBranchFilterRow）。ブランチ切替ポップアップの絞り込みとは<b>別の状態</b>
                              （PaneBranchFilter）を見る——同じにすると、ポップアップを開いた拍子に
                              （開くたびに空へ戻す作りなので）ここで打った語が消える。
                              Esc で解除、↓ で一覧へ（GitSessionView.Keyboard.cs）。 -->
-                        <Grid DockPanel.Dock="Top" Margin="8,0,8,3">
+                        <Grid x:Name="BranchFilterRow" DockPanel.Dock="Top" Margin="8,2,8,3" Visibility="Collapsed">
                             <TextBox x:Name="BranchFilterBox" MinHeight="24"
                                      VerticalContentAlignment="Center"
                                      Text="{Binding PaneBranchFilter, UpdateSourceTrigger=PropertyChanged, Delay=120}"
-                                     PreviewKeyDown="OnBranchFilterKeyDown">
+                                     PreviewKeyDown="OnBranchFilterKeyDown"
+                                     LostKeyboardFocus="OnBranchFilterLostFocus">
                                 <TextBox.Style>
                                     <!-- 右の余白は「✕」が出ている間だけ空ける（常に空けると、絞り込んで
                                          いないときに理由のない余白が残る）。 -->
@@ -599,7 +611,7 @@
                             </TextBox>
                             <!-- 透かし文字は<b>入力欄の Text</b> を見る。VM 側（Delay=120）を見ると、
                                  打った最初の1文字の上に 120ms のあいだ透かしが残る。 -->
-                            <TextBlock Text="🔍 ブランチを絞り込み" Foreground="{DynamicResource FgDim}"
+                            <TextBlock Text="🔍 絞り込み" Foreground="{DynamicResource FgDim}"
                                        FontSize="{DynamicResource Fs12}" Margin="8,0,0,0" IsHitTestVisible="False"
                                        VerticalAlignment="Center"
                                        Visibility="{Binding Text, ElementName=BranchFilterBox,
@@ -616,22 +628,55 @@
 
                         <TreeView x:Name="BranchList" Background="Transparent" BorderThickness="0"
                                   Foreground="{DynamicResource Fg}"
-                                  ItemsSource="{Binding PaneFilteredBranchTree}"
+                                  ItemsSource="{Binding PaneTree}"
                                   ItemContainerStyle="{StaticResource BranchTreeItem}"
                                   ItemTemplate="{StaticResource BranchNodeTemplate}"
                                   ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                                   MouseDoubleClick="OnBranchDoubleClick"
                                   SelectedItemChanged="OnBranchSelectionChanged"
                                   PreviewKeyDown="OnBranchListKeyDown"
+                                  PreviewTextInput="OnBranchListTextInput"
                                   PreviewMouseRightButtonDown="OnListRightClickSelect">
-                            <!-- 行のクリック／右クリック＝そのブランチ1本に効く操作。フォルダ／見出しではメニューを出さず、
-                                 現在ブランチやリモートブランチに意味を成さない項目は無効化する。 -->
+                            <!-- 行のクリック／右クリック＝その行1つに効く操作。行の種類（ブランチ・ワークツリー・タグ・
+                                 サブモジュール）で出す項目を替える＝Tag の印（PrepareTreeMenu）。印の無い項目は
+                                 ブランチ用。フォルダ／見出しではメニューを出さない。
+                                 種類ごとに別の ContextMenu を持たないのは、1つの TreeView に付けられるメニューが1つで、
+                                 Style や資源に置いたメニューは Click が結線されないため（行テンプレートに置くと
+                                 x:Name で可否を切り替えられない）。 -->
                             <TreeView.ContextMenu>
                                 <ContextMenu>
                                     <MenuItem Header="このブランチのコミットを表示" Click="OnBranchShowLog" />
                                     <MenuItem Header="作業ツリーと比較">
                                         <MenuItem Header="このブランチと比較" Click="OnBranchCompareWorkingTree" />
                                         <MenuItem Header="分岐点と比較（自分が入れた変更だけ）" Click="OnBranchCompareMergeBase" />
+                                    </MenuItem>
+                                    <!-- このブランチを置いているワークツリー（別の場所）。ワークツリーそのものの行では
+                                         中身をこの階層へ持ち上げる（PrepareTreeMenu）。 -->
+                                    <MenuItem x:Name="BranchMenuWorktree" Header="ワークツリー" Tag="branch-worktree">
+                                        <!-- いちばん多い問い（このワークツリーで何を変えたか）。元＝作ったときの起点、
+                                             記録が無ければ reflog、それも無ければ既定ブランチ。 -->
+                                        <MenuItem x:Name="WorktreeMenuCompareFromOrigin" Header="ブランチ元から入れた変更"
+                                                  FontWeight="SemiBold" Click="OnWorktreeCompareFromOrigin" Tag="worktree"
+                                                  ToolTip="ブランチ元との分岐点から、このワークツリーの作業中の状態（未コミット込み）まで" />
+                                        <MenuItem x:Name="WorktreeMenuCompare" Header="作業ツリーと比較（向こうの作業中の状態）"
+                                                  Click="OnWorktreeCompare" Tag="worktree" />
+                                        <MenuItem Header="2点比較…" Click="OnWorktreeComparePoints" Tag="worktree" />
+                                        <Separator Tag="worktree" />
+                                        <MenuItem x:Name="WorktreeMenuOpenWorkspace" Header="ワークスペースとして開く"
+                                                  Click="OnWorktreeOpenWorkspace" Tag="worktree" />
+                                        <MenuItem x:Name="WorktreeMenuAddFolder" Header="今のワークスペースにフォルダーとして追加"
+                                                  Click="OnWorktreeAddFolder" Tag="worktree" />
+                                        <MenuItem x:Name="WorktreeMenuTerminal" Header="ターミナルでこの場所へ移動"
+                                                  Click="OnWorktreeTerminal" Tag="worktree" />
+                                        <MenuItem x:Name="WorktreeMenuExplorer" Header="エクスプローラーで開く"
+                                                  Click="OnWorktreeExplorer" Tag="worktree" />
+                                        <MenuItem Header="パスをコピー" Click="OnWorktreeCopyPath" Tag="worktree" />
+                                        <Separator Tag="worktree" />
+                                        <MenuItem x:Name="WorktreeMenuLock" Header="ロック…（掃除・削除から守る）" Click="OnWorktreeLock" Tag="worktree" />
+                                        <MenuItem x:Name="WorktreeMenuUnlock" Header="ロック解除" Click="OnWorktreeUnlock" Tag="worktree" />
+                                        <!-- フォルダーを動かして見失ったものを、動かした先で繋ぎ直す（§24.75）。消えたものだけに出す。 -->
+                                        <MenuItem x:Name="WorktreeMenuRepair" Header="動かした先を選んで繋ぎ直す…" Click="OnWorktreeRepair" Tag="worktree" />
+                                        <MenuItem x:Name="WorktreeMenuRemove" Header="ワークツリーを削除…（ブランチは残る）" Click="OnWorktreeRemove" Tag="worktree" />
                                     </MenuItem>
                                     <Separator />
                                     <MenuItem x:Name="BranchMenuCheckout" Header="チェックアウト" Click="OnBranchCheckout" />
@@ -644,11 +689,11 @@
                                     <MenuItem x:Name="BranchMenuRebase" Header="このブランチへリベース（現在のブランチを載せ替え）" Click="OnBranchRebase" />
                                     <Separator />
                                     <MenuItem Header="ここから新しいブランチを作成…" Click="OnBranchCreateFrom" />
-                                    <MenuItem x:Name="BranchMenuWorktree" Header="ワークツリーとして別の場所に置く…"
+                                    <MenuItem x:Name="BranchMenuCreateWorktree" Header="ワークツリーとして別の場所に置く…"
                                               Click="OnBranchCreateWorktree" />
                                     <MenuItem Header="ブランチ名をコピー" Click="OnBranchCopyName" />
                                     <Separator />
-                                    <MenuItem x:Name="BranchMenuDelete" Header="削除" Click="OnBranchDelete" />
+                                    <MenuItem x:Name="BranchMenuDelete" Header="削除" InputGestureText="Del" Click="OnBranchDelete" />
                                     <MenuItem x:Name="BranchMenuDeleteRemote" Header="リモートから削除…"
                                               Click="OnBranchDeleteRemote" />
                                     <Separator />
@@ -659,238 +704,23 @@
                                     <MenuItem x:Name="BranchMenuPush" Header="プッシュ" Click="OnBranchPush" />
                                     <MenuItem x:Name="BranchMenuPushForce" Header="強制プッシュ（--force-with-lease）…"
                                               Click="OnBranchPushForce" />
+
+                                    <!-- タグの行 -->
+                                    <MenuItem Header="チェックアウト（detached）" Click="OnTagCheckout" Tag="tag" />
+                                    <MenuItem Header="プッシュ" Click="OnTagPush" Tag="tag" />
+                                    <MenuItem Header="タグ名をコピー" Click="OnTagCopyName" Tag="tag" />
+                                    <Separator Tag="tag" />
+                                    <MenuItem Header="削除" Click="OnTagDelete" Tag="tag" />
+
+                                    <!-- サブモジュールの行 -->
+                                    <MenuItem Header="初期化" Click="OnSubmoduleInit" Tag="submodule" />
+                                    <MenuItem Header="更新" Click="OnSubmoduleUpdate" Tag="submodule" />
+                                    <Separator Tag="submodule" />
+                                    <MenuItem Header="パスをコピー" Click="OnSubmoduleCopyPath" Tag="submodule" />
                                 </ContextMenu>
                             </TreeView.ContextMenu>
                         </TreeView>
                     </DockPanel>
-
-                    <GridSplitter Grid.Row="1" Style="{StaticResource GitRowSplitter}" />
-
-                    <!-- 参照（ワークツリー／タグ／サブモジュール）。縦に積むと、190px の列の中で
-                         本命のブランチ一覧が潰れる。切替式にして、空いた高さはブランチ側へ回す。
-                         選んだ種類は設定へ持ち越す。リモートはタブにしない——一覧はブランチツリーの
-                         見出し（origin 等）が既に兼ねていて、追加・URL 変更は滅多にしないので git で足りる。 -->
-                    <DockPanel Grid.Row="2">
-                        <!-- 種類の切替。EnumToBool で相互排他に振る舞わせる。押し直しで外れて見える
-                             （ToggleButton は Click の前に自分で反転する）のは、押されたボタンを
-                             結び直して直す＝OnReferenceTabClick。 -->
-                        <UniformGrid DockPanel.Dock="Top" Rows="1" Margin="6,2,6,3">
-                            <!-- ワークツリー（git worktree）。件数はメイン以外の数。190px に並べるので名前は詰める。 -->
-                            <ToggleButton x:Name="RefTabWorktrees" Style="{StaticResource ToolbarToggleButton}" MinHeight="22"
-                                          Margin="0,0,3,0"
-                                          ToolTip="ワークツリー（同じリポジトリの別ブランチを別の場所に置いて並行作業）"
-                                          IsChecked="{Binding EffectiveReferenceTab, Mode=OneWay,
-                                              Converter={StaticResource EnumToBool}, ConverterParameter=Worktrees}"
-                                          Tag="Worktrees" Click="OnReferenceTabClick">
-                                <TextBlock FontSize="{DynamicResource Fs11}">
-                                    <Run Text="WT" /><Run Text=" " /><Run
-                                        Text="{Binding LinkedWorktreeCount, Mode=OneWay}"
-                                        Foreground="{DynamicResource FgDim}" />
-                                </TextBlock>
-                            </ToggleButton>
-                            <ToggleButton x:Name="RefTabTags" Style="{StaticResource ToolbarToggleButton}" Margin="0,0,3,0"
-                                          MinHeight="22" ToolTip="タグ"
-                                          IsChecked="{Binding EffectiveReferenceTab, Mode=OneWay,
-                                              Converter={StaticResource EnumToBool}, ConverterParameter=Tags}"
-                                          Tag="Tags" Click="OnReferenceTabClick">
-                                <TextBlock FontSize="{DynamicResource Fs11}">
-                                    <Run Text="タグ" /><Run Text=" " /><Run
-                                        Text="{Binding Tags.Count, Mode=OneWay}"
-                                        Foreground="{DynamicResource FgDim}" />
-                                </TextBlock>
-                            </ToggleButton>
-                            <!-- サブモジュールが無いワークスペースでは、そもそも選べるようにしない -->
-                            <ToggleButton x:Name="RefTabSubmodules" Style="{StaticResource ToolbarToggleButton}" MinHeight="22"
-                                          ToolTip="サブモジュール"
-                                          IsChecked="{Binding EffectiveReferenceTab, Mode=OneWay,
-                                              Converter={StaticResource EnumToBool}, ConverterParameter=Submodules}"
-                                          Tag="Submodules" Click="OnReferenceTabClick"
-                                          Visibility="{Binding HasSubmodules, Converter={StaticResource BoolToVis}}">
-                                <TextBlock FontSize="{DynamicResource Fs11}">
-                                    <Run Text="サブ" /><Run Text=" " /><Run
-                                        Text="{Binding Submodules.Count, Mode=OneWay}"
-                                        Foreground="{DynamicResource FgDim}" />
-                                </TextBlock>
-                            </ToggleButton>
-                        </UniformGrid>
-
-                        <Grid>
-                        <DockPanel Visibility="{Binding EffectiveReferenceTab, Converter={StaticResource EnumToVis},
-                                       ConverterParameter=Tags}">
-                            <DockPanel DockPanel.Dock="Top" Margin="8,2,8,2" LastChildFill="False">
-                                <Button DockPanel.Dock="Left" Style="{StaticResource ToolbarButton}"
-                                        Content="＋ タグ" ToolTip="タグを作成…" Click="OnTagCreate" />
-                                <Button DockPanel.Dock="Right" Style="{StaticResource ToolbarButton}" Margin="0"
-                                        Content="⇡ 全て" ToolTip="すべてのタグをプッシュ" Click="OnTagsPushAll" />
-                            </DockPanel>
-                            <ListBox x:Name="TagList" Style="{StaticResource GitList}"
-                                     ItemsSource="{Binding Tags}"
-                                     MouseDoubleClick="OnTagDoubleClick"
-                                     PreviewMouseRightButtonDown="OnListRightClickSelect">
-                                <ListBox.ContextMenu>
-                                    <ContextMenu>
-                                        <MenuItem Header="チェックアウト（detached）" Click="OnTagCheckout" />
-                                        <MenuItem Header="プッシュ" Click="OnTagPush" />
-                                        <MenuItem Header="タグ名をコピー" Click="OnTagCopyName" />
-                                        <Separator />
-                                        <MenuItem Header="削除" Click="OnTagDelete" />
-                                    </ContextMenu>
-                                </ListBox.ContextMenu>
-                                <ListBox.ItemTemplate>
-                                    <DataTemplate>
-                                        <DockPanel LastChildFill="True" ToolTip="{Binding Subject}">
-                                            <TextBlock DockPanel.Dock="Right" Text="{Binding TargetShortHash}" FontSize="{DynamicResource Fs11}"
-                                                       Foreground="{DynamicResource FgDim}" Margin="8,0,0,0"
-                                                       FontFamily="Cascadia Mono, Consolas" />
-                                            <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
-                                        </DockPanel>
-                                    </DataTemplate>
-                                </ListBox.ItemTemplate>
-                            </ListBox>
-                        </DockPanel>
-
-                        <!-- ワークツリー一覧。先頭がメイン。行の右クリックで比較・開く・削除、見出しで作成・2点比較。
-                             ダブルクリックは「作業ツリーと比較」——並行作業の中身を見に行くのがいちばん多い用途で、
-                             ワークスペースごと切り替える（部屋が入れ替わる）ほうは明示の操作にしておく。 -->
-                        <DockPanel Visibility="{Binding EffectiveReferenceTab, Converter={StaticResource EnumToVis},
-                                       ConverterParameter=Worktrees}">
-                            <!-- 190px の列に3つ並べるので、他のタブの見出しより余白を詰める（詰めないと右端の ↻ が潰れる）。 -->
-                            <DockPanel DockPanel.Dock="Top" Margin="4,2,4,2" LastChildFill="False">
-                                <Button DockPanel.Dock="Left" Style="{StaticResource ToolbarButton}"
-                                        Content="＋ 作成" ToolTip="ワークツリーを作成…" Click="OnWorktreeCreate" />
-                                <Button DockPanel.Dock="Left" Style="{StaticResource ToolbarButton}"
-                                        Content="⇄ 比較" ToolTip="2点を選んで比較…（ブランチ・タグ・ワークツリーの作業中の状態）"
-                                        Click="OnComparePoints" />
-                                <Button DockPanel.Dock="Right" Style="{StaticResource ToolbarButton}" Margin="0"
-                                        Width="22" Padding="0" Content="↻" ToolTip="読み直す（ほかのワークツリーでの編集件数を数え直す）"
-                                        Click="OnWorktreesRefresh" />
-                                <!-- 使われていないものを大きさつきで並べて、選んで消す（§24.55）。 -->
-                                <Button DockPanel.Dock="Right" Style="{StaticResource ToolbarButton}" Margin="0,0,2,0"
-                                        Width="22" Padding="0" Content="🧹"
-                                        ToolTip="片付け…（取り込み済み・しばらく触っていないワークツリーを、大きさつきで並べて消す）"
-                                        AutomationProperties.Name="ワークツリーの片付け"
-                                        Click="OnWorktreesCleanup" />
-                            </DockPanel>
-                            <ListBox x:Name="WorktreeList" Style="{StaticResource GitList}"
-                                     ItemsSource="{Binding Worktrees}"
-                                     MouseDoubleClick="OnWorktreeDoubleClick"
-                                     PreviewMouseRightButtonDown="OnListRightClickSelect"
-                                     ContextMenuOpening="OnWorktreeContextMenuOpening">
-                                <ListBox.ContextMenu>
-                                    <ContextMenu>
-                                        <!-- いちばん多い問い（このワークツリーで何を変えたか）。元＝作ったときの起点、
-                                             記録が無ければ reflog、それも無ければ既定ブランチ。 -->
-                                        <MenuItem x:Name="WorktreeMenuCompareFromOrigin" Header="ブランチ元から入れた変更"
-                                                  FontWeight="SemiBold" Click="OnWorktreeCompareFromOrigin"
-                                                  ToolTip="ブランチ元との分岐点から、このワークツリーの作業中の状態（未コミット込み）まで" />
-                                        <MenuItem x:Name="WorktreeMenuCompare" Header="作業ツリーと比較（向こうの作業中の状態）"
-                                                  Click="OnWorktreeCompare" />
-                                        <MenuItem Header="2点比較…" Click="OnWorktreeComparePoints" />
-                                        <Separator />
-                                        <MenuItem x:Name="WorktreeMenuOpenWorkspace" Header="ワークスペースとして開く"
-                                                  Click="OnWorktreeOpenWorkspace" />
-                                        <MenuItem x:Name="WorktreeMenuAddFolder" Header="今のワークスペースにフォルダーとして追加"
-                                                  Click="OnWorktreeAddFolder" />
-                                        <MenuItem x:Name="WorktreeMenuTerminal" Header="ターミナルでこの場所へ移動"
-                                                  Click="OnWorktreeTerminal" />
-                                        <MenuItem x:Name="WorktreeMenuExplorer" Header="エクスプローラーで開く"
-                                                  Click="OnWorktreeExplorer" />
-                                        <MenuItem Header="パスをコピー" Click="OnWorktreeCopyPath" />
-                                        <Separator />
-                                        <MenuItem x:Name="WorktreeMenuLock" Header="ロック…（掃除・削除から守る）" Click="OnWorktreeLock" />
-                                        <MenuItem x:Name="WorktreeMenuUnlock" Header="ロック解除" Click="OnWorktreeUnlock" />
-                                        <!-- フォルダーを動かして見失ったものを、動かした先で繋ぎ直す（§24.75）。消えたものだけに出す。 -->
-                                        <MenuItem x:Name="WorktreeMenuRepair" Header="動かした先を選んで繋ぎ直す…" Click="OnWorktreeRepair" />
-                                        <MenuItem Header="掃除（フォルダーが消えたものを一覧から外す）" Click="OnWorktreesPrune" />
-                                        <MenuItem x:Name="WorktreeMenuRemove" Header="削除…" Click="OnWorktreeRemove" />
-                                    </ContextMenu>
-                                </ListBox.ContextMenu>
-                                <ListBox.ItemTemplate>
-                                    <DataTemplate>
-                                        <DockPanel LastChildFill="True" ToolTip="{Binding Path}">
-                                            <!-- そこで動いている Claude Code（§24.17.2）。この部屋のターミナルのものだけ。 -->
-                                            <TextBlock DockPanel.Dock="Right" FontSize="{DynamicResource Fs11}"
-                                                       Foreground="{DynamicResource Accent}" Margin="6,0,0,0"
-                                                       ToolTip="このワークスペースのターミナルで、ここを作業場所にしている Claude Code">
-                                                <TextBlock.Text>
-                                                    <MultiBinding Converter="{StaticResource DictionaryLookup}">
-                                                        <Binding Path="Path" />
-                                                        <Binding Path="DataContext.WorktreeAgentMarks"
-                                                                 RelativeSource="{RelativeSource AncestorType=ListBox}" />
-                                                    </MultiBinding>
-                                                </TextBlock.Text>
-                                                <TextBlock.Style>
-                                                    <Style TargetType="TextBlock">
-                                                        <Style.Triggers>
-                                                            <Trigger Property="Text" Value="">
-                                                                <Setter Property="Visibility" Value="Collapsed" />
-                                                            </Trigger>
-                                                        </Style.Triggers>
-                                                    </Style>
-                                                </TextBlock.Style>
-                                            </TextBlock>
-                                            <!-- 未コミットの件数（未追跡を含む）。0 なら出さない。 -->
-                                            <TextBlock DockPanel.Dock="Right" Text="{Binding ChangeCount, StringFormat=±{0}}"
-                                                       FontSize="{DynamicResource Fs11}" Foreground="#FFE5A23B" Margin="6,0,0,0"
-                                                       ToolTip="未コミットの変更（未追跡を含む）"
-                                                       Visibility="{Binding IsDirty, Converter={StaticResource BoolToVis}}" />
-                                            <TextBlock DockPanel.Dock="Right" Text="🔒" FontSize="{DynamicResource Fs11}" Margin="6,0,0,0"
-                                                       ToolTip="{Binding LockReason, TargetNullValue=ロック中}"
-                                                       Visibility="{Binding IsLocked, Converter={StaticResource BoolToVis}}" />
-                                            <TextBlock DockPanel.Dock="Right" Text="消失" FontSize="{DynamicResource Fs11}"
-                                                       Foreground="#FFE57373" Margin="6,0,0,0"
-                                                       ToolTip="フォルダーがありません（「掃除」で一覧から外せます）"
-                                                       Visibility="{Binding IsPrunable, Converter={StaticResource BoolToVis}}" />
-                                            <TextBlock DockPanel.Dock="Right" Text="いま" FontSize="{DynamicResource Fs11}"
-                                                       Foreground="{DynamicResource Accent}" Margin="6,0,0,0"
-                                                       ToolTip="いま Git 操作の対象になっているワークツリー"
-                                                       Visibility="{Binding IsCurrent, Converter={StaticResource BoolToVis}}" />
-                                            <TextBlock TextTrimming="CharacterEllipsis">
-                                                <Run Text="{Binding DisplayName, Mode=OneWay}" /><Run
-                                                    Text="{Binding FolderName, Mode=OneWay, StringFormat='  {0}'}"
-                                                    FontSize="{DynamicResource Fs11}" Foreground="{DynamicResource FgDim}" />
-                                            </TextBlock>
-                                        </DockPanel>
-                                    </DataTemplate>
-                                </ListBox.ItemTemplate>
-                            </ListBox>
-                        </DockPanel>
-
-                        <!-- サブモジュール一覧（タブ自体がサブモジュールのあるときだけ） -->
-                        <DockPanel Visibility="{Binding EffectiveReferenceTab, Converter={StaticResource EnumToVis},
-                                       ConverterParameter=Submodules}">
-                            <DockPanel DockPanel.Dock="Top" Margin="8,2,8,2" LastChildFill="False">
-                                <Button DockPanel.Dock="Right" Style="{StaticResource ToolbarButton}" Margin="0"
-                                        Content="同期" Click="OnSubmodulesSync" />
-                            </DockPanel>
-                            <ListBox x:Name="SubmoduleList" Style="{StaticResource GitList}"
-                                     ItemsSource="{Binding Submodules}"
-                                     PreviewMouseRightButtonDown="OnListRightClickSelect">
-                                <ListBox.ContextMenu>
-                                    <ContextMenu>
-                                        <MenuItem Header="初期化" Click="OnSubmoduleInit" />
-                                        <MenuItem Header="更新" Click="OnSubmoduleUpdate" />
-                                        <Separator />
-                                        <MenuItem Header="パスをコピー" Click="OnSubmoduleCopyPath" />
-                                    </ContextMenu>
-                                </ListBox.ContextMenu>
-                                <ListBox.ItemTemplate>
-                                    <DataTemplate>
-                                        <DockPanel LastChildFill="True" ToolTip="{Binding Describe}">
-                                            <TextBlock DockPanel.Dock="Right" Text="{Binding StatusLabel}" FontSize="{DynamicResource Fs11}"
-                                                       Foreground="#FFE5A23B" Margin="8,0,0,0" />
-                                            <TextBlock DockPanel.Dock="Right" Text="{Binding ShortHash}" FontSize="{DynamicResource Fs11}"
-                                                       Foreground="{DynamicResource FgDim}" Margin="8,0,0,0"
-                                                       FontFamily="Cascadia Mono, Consolas" />
-                                            <TextBlock Text="{Binding Path}" TextTrimming="CharacterEllipsis" />
-                                        </DockPanel>
-                                    </DataTemplate>
-                                </ListBox.ItemTemplate>
-                            </ListBox>
-                        </DockPanel>
-                        </Grid>
-                    </DockPanel>
-                    </Grid>
                 </DockPanel>
 
                 <GridSplitter x:Name="BranchSplitter" Grid.Column="1" Style="{StaticResource GitColumnSplitter}" />
@@ -924,15 +754,13 @@
                          効いている絞り込みごと画面から消えていた。それを避けるために「狭いときは下の帯へ
                          移し替える」仕掛け（閾値・ヒステリシス・畳ませない条件）が要ったが、一覧の列の中
                          なら幅は一覧と同じで、収まらなければ WrapPanel がそのまま折り返す＝仕掛けごと不要。 -->
+                    <!-- 帯は<b>ふだん畳んでおく</b>（一覧の高さを取らない）。開くのは一覧見出しの 🔍 か "/"、
+                         効いている絞り込みがある間は畳まない（IsLogFilterBarVisible）。
+                         手で読み直す ⟳ は常設をやめて F5（一覧の上）へ。 -->
                     <Border x:Name="LogFilterBar" DockPanel.Dock="Top" Padding="5,3"
-                            BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1">
+                            BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1"
+                            Visibility="{Binding History.IsLogFilterBarVisible, Converter={StaticResource BoolToVis}}">
                         <WrapPanel Orientation="Horizontal">
-                            <!-- 手で読み直す。監視の取りこぼし（隠れている間の外部の commit 等）で一覧が古いときの逃げ道。
-                                 先頭に置くのは、後ろの「✕ 解除」の出入りで位置が動かないように。 -->
-                            <Button Content="⟳" Margin="0,1,6,1" MinHeight="24" MinWidth="24"
-                                    VerticalAlignment="Center" Style="{StaticResource ToolbarButton}"
-                                    ToolTip="コミット一覧を更新"
-                                    Command="{Binding ReloadCommand}" />
                             <Grid Width="210" Margin="0,1,6,1" VerticalAlignment="Center">
                                 <TextBox x:Name="LogFilterBox" MinHeight="24" Padding="6,3"
                                          VerticalContentAlignment="Center" Cursor="IBeam"
@@ -1052,9 +880,46 @@
                                 <GridViewColumn Header="コミット" Width="380">
                                     <GridViewColumn.HeaderTemplate>
                                         <DataTemplate>
-                                            <TextBlock Text="{Binding}" FontSize="{DynamicResource Fs11}"
-                                                       VerticalAlignment="Center"
-                                                       TextTrimming="CharacterEllipsis" />
+                                            <!-- 絞り込み帯の入口（🔍）。帯はふだん畳んであり、ここか "/" で開く。
+                                                 帯が出ている間はアクセント色＝「いま絞り込みの帯が居る」が見出しで分かる。 -->
+                                            <DockPanel LastChildFill="True">
+                                                <Button DockPanel.Dock="Right" Click="OnLogFilterToggleClick"
+                                                        Focusable="False" Cursor="Hand" Padding="6,0" Margin="0,0,6,0"
+                                                        Background="Transparent" BorderThickness="0"
+                                                        ToolTip="絞り込み（/）"
+                                                        AutomationProperties.Name="コミットの絞り込み">
+                                                    <Button.Template>
+                                                        <ControlTemplate TargetType="Button">
+                                                            <Border x:Name="b" Background="Transparent" CornerRadius="3"
+                                                                    Padding="{TemplateBinding Padding}">
+                                                                <ContentPresenter VerticalAlignment="Center" />
+                                                            </Border>
+                                                            <ControlTemplate.Triggers>
+                                                                <Trigger Property="IsMouseOver" Value="True">
+                                                                    <Setter TargetName="b" Property="Background" Value="{DynamicResource Border}" />
+                                                                </Trigger>
+                                                            </ControlTemplate.Triggers>
+                                                        </ControlTemplate>
+                                                    </Button.Template>
+                                                    <TextBlock Text="🔍" FontSize="{DynamicResource Fs11}">
+                                                        <TextBlock.Style>
+                                                            <Style TargetType="TextBlock">
+                                                                <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding DataContext.History.IsLogFilterBarVisible,
+                                                                                     RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                                                 Value="True">
+                                                                        <Setter Property="Foreground" Value="{DynamicResource Accent}" />
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </TextBlock.Style>
+                                                    </TextBlock>
+                                                </Button>
+                                                <TextBlock Text="{Binding}" FontSize="{DynamicResource Fs11}"
+                                                           VerticalAlignment="Center"
+                                                           TextTrimming="CharacterEllipsis" />
+                                            </DockPanel>
                                         </DataTemplate>
                                     </GridViewColumn.HeaderTemplate>
                                     <GridViewColumn.CellTemplate>

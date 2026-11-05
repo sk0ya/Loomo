@@ -7,9 +7,15 @@ using sk0ya.Loomo.Services;
 namespace sk0ya.Loomo.App.Services;
 
 /// <summary>
-/// ブランチ一覧ツリーのノード。<see cref="Branch"/> が null のノードはフォルダ
-/// （"feature/x" の "feature"）か、ローカル／リモートを分ける見出し（<see cref="IsSection"/>）。
-/// Label は自分のセグメントのみで、フルネームはリーフの <see cref="Branch"/>.Name が持つ。
+/// ブランチ一覧ツリーのノード。項目（ブランチ・タグ・サブモジュール・ブランチを持たないワークツリー）の
+/// どれも持たないノードはフォルダ（"feature/x" の "feature"）か、ローカル／リモート／タグ等を分ける
+/// 見出し（<see cref="IsSection"/>）。Label は自分のセグメントのみで、フルネームはリーフの
+/// <see cref="Branch"/>.Name が持つ。
+///
+/// <para>タグ・サブモジュール・ワークツリーも同じツリーに載る（§24.17.3）。左列の下段に切替式の
+/// 一覧を別に持っていた頃は、本命のブランチ一覧の高さを常に削り、作成・比較・片付けのボタンまで
+/// 並んで見たいものが見えなかった。ワークツリーは「ブランチを置いてある場所」なので、
+/// ブランチの行の印（<see cref="Worktree"/>）として出すのが本来の形。</para>
 /// </summary>
 public sealed class BranchTreeNode : INotifyPropertyChanged
 {
@@ -21,7 +27,17 @@ public sealed class BranchTreeNode : INotifyPropertyChanged
     /// フォルダとしては同じ（開閉する）が、見た目と意味が違うのでビューが区別する。</summary>
     public bool IsSection { get; init; }
 
-    public bool IsFolder => Branch is null;
+    /// <summary>タグの行（見出し「タグ」の下）。</summary>
+    public GitTagInfo? Tag { get; init; }
+
+    /// <summary>サブモジュールの行（見出し「サブモジュール」の下）。</summary>
+    public GitSubmoduleInfo? Submodule { get; init; }
+
+    /// <summary>ブランチを持たない（デタッチの）ワークツリーそのものの行か。ブランチの行に付く
+    /// ワークツリーの印（<see cref="Worktree"/>）とは別——そちらはブランチの行のまま。</summary>
+    public bool IsWorktreeItem { get; init; }
+
+    public bool IsFolder => Branch is null && Tag is null && Submodule is null && !IsWorktreeItem;
     public bool IsCurrent => Branch?.IsCurrent == true;
     public bool IsRemote => Branch?.IsRemote == true;
 
@@ -63,6 +79,72 @@ public sealed class BranchTreeNode : INotifyPropertyChanged
 
     public bool HasPullRequest => _pullRequest is not null;
 
+    /// <summary>
+    /// このブランチを<b>別の場所に</b>置いているワークツリー（いまの場所のものは付けない＝現在ブランチの ● で足りる）。
+    /// <see cref="IsWorktreeItem"/> の行ではそのワークツリー自身。読み直しで件数が変わっても行は作り直さず、
+    /// ここだけ差し替える（作り直すと選択・開きかけのメニューが落ちる）。
+    /// </summary>
+    public GitWorktreeInfo? Worktree
+    {
+        get => _worktree;
+        set
+        {
+            if (Equals(_worktree, value)) return;
+            _worktree = value;
+            Raise(nameof(Worktree));
+            Raise(nameof(HasWorktree));
+            Raise(nameof(WorktreeMark));
+            Raise(nameof(WorktreeToolTip));
+            Raise(nameof(ToolTip));
+        }
+    }
+
+    private GitWorktreeInfo? _worktree;
+
+    public bool HasWorktree => _worktree is not null;
+
+    /// <summary>行の右に出すワークツリーの印。📁＝別の場所にある、±N＝そこでの未コミット、🔒・消失は状態。</summary>
+    public string WorktreeMark => _worktree is not { } w ? "" : string.Join(' ', new[]
+    {
+        IsWorktreeItem ? null : "📁",
+        w.IsDirty ? $"±{w.ChangeCount}" : null,
+        w.IsLocked ? "🔒" : null,
+        w.IsPrunable ? "消失" : null,
+    }.Where(s => s is not null));
+
+    public string? WorktreeToolTip => _worktree is not { } w ? null
+        : string.Join('\n', new[]
+        {
+            IsWorktreeItem ? null : "ワークツリーとして別の場所に置いています（右クリック →「ワークツリー」で開く・比べる）",
+            w.Path,
+            w.IsDirty ? $"未コミットの変更 {w.ChangeCount} 件（未追跡を含む）" : null,
+            w.IsLocked ? $"ロック中{(string.IsNullOrEmpty(w.LockReason) ? "" : $"：{w.LockReason}")}" : null,
+            w.IsPrunable ? "フォルダーがありません（右クリックで繋ぎ直す・掃除できます）" : null,
+        }.Where(s => s is not null));
+
+    /// <summary>そのワークツリーで動いている Claude Code の印（§24.17.2）。無ければ空。</summary>
+    public string AgentMark
+    {
+        get => _agentMark;
+        set
+        {
+            value ??= "";
+            if (_agentMark == value) return;
+            _agentMark = value;
+            Raise(nameof(AgentMark));
+        }
+    }
+
+    private string _agentMark = "";
+
+    /// <summary>行の右に淡く出す補足（タグ＝指すコミット、サブモジュール＝状態だけ）。サブモジュールのパスは
+    /// 長くなりがちで、190px の列でコミットまで並べるとパスのほうが押し出されて消える——コミットはツールチップへ。</summary>
+    public string Detail => Tag is { } tag ? tag.TargetShortHash
+        : Submodule is { } sub ? sub.StatusLabel ?? ""
+        : "";
+
+    private void Raise(string name) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+
     /// <summary>行に出す印（<c>#123</c>）。</summary>
     public string PullRequestLabel => _pullRequest is { } pr ? $"#{pr.Number}" : "";
 
@@ -73,11 +155,15 @@ public sealed class BranchTreeNode : INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged;
 
     /// <summary>リーフのツールチップ：フルネーム＋上流（あれば）。フォルダ・見出しには出さない。</summary>
-    public string? ToolTip => Branch is null ? null
-        : string.IsNullOrEmpty(Branch.Upstream) ? Branch.Name : $"{Branch.Name} → {Branch.Upstream}";
+    public string? ToolTip => Branch is { } branch
+        ? string.IsNullOrEmpty(branch.Upstream) ? branch.Name : $"{branch.Name} → {branch.Upstream}"
+        : Tag is { } tag ? string.IsNullOrEmpty(tag.Subject) ? tag.Name : $"{tag.Name}\n{tag.Subject}"
+        : Submodule is { } sub ? $"{sub.Path}\n{sub.ShortHash}{(sub.Describe is { Length: > 0 } d ? $"（{d}）" : "")}"
+        : IsWorktreeItem ? WorktreeToolTip
+        : null;
 
-    /// <summary>配下のブランチ数（見出しの件数ピル用）。リーフは自分自身で 1。</summary>
-    public int LeafCount => Branch is not null ? 1 : Children.Sum(c => c.LeafCount);
+    /// <summary>配下の項目数（見出しの件数ピル用）。リーフは自分自身で 1。</summary>
+    public int LeafCount => !IsFolder ? 1 : Children.Sum(c => c.LeafCount);
 
     /// <summary>上流との差（例: "↑2 ↓1"）。差が無い・上流が無いなら空。</summary>
     public string TrackLabel => Branch is null ? "" : (Branch.Ahead, Branch.Behind) switch

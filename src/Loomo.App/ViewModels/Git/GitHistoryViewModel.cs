@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using System.Windows.Data;
 using sk0ya.Loomo.Core.Git;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -82,6 +82,20 @@ public sealed partial class GitHistoryViewModel : ObservableObject
         || AuthorSelection == AllAuthorsLabel ? null : AuthorSelection;
     public bool HasActiveFilters => !_parsedFilter.IsEmpty || EffectiveAuthor is not null
         || DateFrom.HasValue || DateTo.HasValue;
+
+    /// <summary>
+    /// 絞り込み帯を利用者が開いているか（一覧見出しの 🔍 か <c>/</c>）。帯はふだん畳んでおき、一覧に高さを回す。
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsLogFilterBarVisible))]
+    private bool _isLogFilterBarOpen;
+
+    /// <summary>
+    /// 絞り込み帯を出すか。<b>効いている絞り込みがある間は開閉に関係なく出し続ける</b>——畳んだ拍子に
+    /// 効いている条件ごと見えなくなると、一覧が欠けている理由が画面から消える（§24.15 でヘッダーの
+    /// 切り落としが起こしたのと同じ失敗）。
+    /// </summary>
+    public bool IsLogFilterBarVisible => IsLogFilterBarOpen || HasActiveFilters;
 
     public GitHistoryViewModel(GitSessionQuery query)
     {
@@ -228,7 +242,12 @@ public sealed partial class GitHistoryViewModel : ObservableObject
             .Select(x => x.row).ToList();
 
     [RelayCommand]
-    private void ClearLogFilters() => ClearFilters(requery: true);
+    private void ClearLogFilters()
+    {
+        ClearFilters(requery: true);
+        // 「全部外す」は帯を出しておく理由も無くなる。開いたまま残すと空の帯が高さを取り続ける。
+        IsLogFilterBarOpen = false;
+    }
 
     /// <summary>
     /// 絞り込みを全部落とす。<paramref name="requery"/> が false なら読み直しを予約しない
@@ -681,6 +700,7 @@ public sealed partial class GitHistoryViewModel : ObservableObject
     private void RefreshView()
     {
         OnPropertyChanged(nameof(HasActiveFilters));
+        OnPropertyChanged(nameof(IsLogFilterBarVisible));
         OnPropertyChanged(nameof(ShowGraph));
         LogView.Refresh();
         // 絞り込み中はグラフを出さない＝経路も出さない（外れたら同じ起点で戻る）。

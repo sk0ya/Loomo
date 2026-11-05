@@ -18,6 +18,22 @@ public partial class GitSessionView
     private void OnLogFilterKeyDown(object sender, KeyEventArgs e)
         => _keyboardController.OnLogFilterKeyDown(sender, e);
 
+    /// <summary>
+    /// 一覧見出しの 🔍。畳んでいれば開いて入力欄へ。開いていれば畳む——ただし効いている絞り込みが
+    /// ある間は帯を畳めない（条件ごと見えなくなる）ので、そのときは入力欄へ移るだけにする。
+    /// </summary>
+    private void OnLogFilterToggleClick(object sender, RoutedEventArgs e)
+    {
+        e.Handled = true;
+        if (Vm?.History is not { } history) return;
+        if (history.IsLogFilterBarVisible && !history.HasActiveFilters)
+        {
+            history.IsLogFilterBarOpen = false;
+            return;
+        }
+        _keyboardController.FocusLogFilter();
+    }
+
     private void OnLogDateToggle(object sender, MouseButtonEventArgs e)
         => PopupReopenGuard.SuppressReopen(sender, e, LogDatePopup);
 }

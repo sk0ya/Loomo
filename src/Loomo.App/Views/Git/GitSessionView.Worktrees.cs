@@ -10,13 +10,15 @@ using sk0ya.Loomo.Services;
 namespace sk0ya.Loomo.App.Views;
 
 /// <summary>
-/// GitSessionView: ワークツリー（左列下段の「WT」タブ）と、比較の入口（2点比較・ブランチ／コミットの
-/// 「作業ツリーと比較」）。ダイアログと確認はここ、git と比較の組み立ては VM
+/// GitSessionView: ワークツリー（ブランチの行の印と「ワークツリー」の見出し・§24.17.3）と、比較の入口
+/// （2点比較・ブランチ／コミットの「作業ツリーと比較」）。ダイアログと確認はここ、git と比較の組み立ては VM
 /// （<see cref="GitSessionViewModel"/> のワークツリー部分）。
 /// </summary>
 public partial class GitSessionView
 {
-    private GitWorktreeInfo? SelectedWorktree => WorktreeList.SelectedItem as GitWorktreeInfo;
+    /// <summary>メニューの対象の行のワークツリー：ブランチの行ならそれを置いているワークツリー、
+    /// ワークツリーの行ならそれ自身。</summary>
+    private GitWorktreeInfo? SelectedWorktree => SelectedTreeNode?.Worktree;
 
     // ===== 作成 =====
 
@@ -40,18 +42,10 @@ public partial class GitSessionView
         var carry = await vm.LoadWorktreeCarryEntriesAsync();
         if (WorktreeCreateDialog.Prompt(Window.GetWindow(this), vm, startPoint, existingBranch, carry) is not { } result)
             return;
-        if (await vm.CreateWorktreeAsync(result.Request, result.OpenAfter, result.CarryOver))
-            vm.ReferenceTab = GitReferenceTab.Worktrees;   // 作ったものが見える場所へ
+        await vm.CreateWorktreeAsync(result.Request, result.OpenAfter, result.CarryOver);
     }
 
     // ===== 比較 =====
-
-    private void OnWorktreeDoubleClick(object sender, MouseButtonEventArgs e)
-    {
-        if (SelectedWorktree is { IsCurrent: false, Exists: true } worktree)
-            Vm?.CompareWithWorktree(worktree);
-    }
-
     private async void OnWorktreeCompareFromOrigin(object sender, RoutedEventArgs e)
     {
         if (Vm is { } vm && SelectedWorktree is { } worktree)
@@ -132,11 +126,6 @@ public partial class GitSessionView
     private void OnWorktreeCopyPath(object sender, RoutedEventArgs e) => ClipboardText.Set(SelectedWorktree?.Path);
 
     // ===== 管理 =====
-
-    private async void OnWorktreesRefresh(object sender, RoutedEventArgs e)
-    {
-        if (Vm is { } vm) await vm.RefreshWorktreesAsync();
-    }
 
     /// <summary>
     /// 片付け（§24.55）。件数付きで読み直してから窓を開き、選ばれたものを 1 つずつ消す（消すたびに部屋も片付く）。
@@ -249,15 +238,9 @@ public partial class GitSessionView
             await vm.RemoveWorktreeAsync(worktree, force: true);
     }
 
-    /// <summary>行の状態に合わせてメニューを出し分ける（押せるのに何も起きない項目を作らない）。
-    /// 行の外（空白）での右クリックはメニューごと出さない。</summary>
-    private void OnWorktreeContextMenuOpening(object sender, ContextMenuEventArgs e)
+    /// <summary>ワークツリーの項目を行の状態に合わせる（押せるのに何も起きない項目を作らない）。</summary>
+    private void PrepareWorktreeMenu(GitWorktreeInfo worktree)
     {
-        if (SelectedWorktree is not { } worktree)
-        {
-            e.Handled = true;
-            return;
-        }
         var other = !worktree.IsCurrent && worktree.Exists;
         WorktreeMenuCompareFromOrigin.IsEnabled = worktree.Exists && !worktree.IsBare;
         WorktreeMenuCompare.IsEnabled = other;

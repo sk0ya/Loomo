@@ -119,9 +119,6 @@ public sealed class SettingsStore
         /// <summary>Git ペインのブランチ一覧列の表示ON/OFF。null=旧設定（未指定）→ 既定（表示）を維持。</summary>
         public bool? GitBranchColumnVisible { get; set; }
 
-        /// <summary>Git ペイン左列の下段で選んでいる参照の種類。null=旧設定（未指定）→ 既定（タグ）を維持。</summary>
-        public string? GitReferenceTab { get; set; }
-
         /// <summary>Git ペインの本体の面（履歴／操作ログ）。null=旧設定（未指定）→ 既定（履歴）を維持。</summary>
         public string? GitSessionMode { get; set; }
 
@@ -160,7 +157,6 @@ public sealed class SettingsStore
             TrailExpanded = s.TrailExpanded,
             GitCommitDetailVisible = s.GitCommitDetailVisible,
             GitBranchColumnVisible = s.GitBranchColumnVisible,
-            GitReferenceTab = s.GitReferenceTab,
             GitSessionMode = s.GitSessionMode,
             GitLogColumns = PersistedGitLogColumns.From(s.GitLogColumns),
             GitLayout = PersistedGitPaneLayout.From(s.GitLayout),
@@ -193,7 +189,6 @@ public sealed class SettingsStore
             if (TrailExpanded is { } trailExpanded) s.TrailExpanded = trailExpanded; // 同上（既定は閉じる）
             if (GitCommitDetailVisible is { } gitDetail) s.GitCommitDetailVisible = gitDetail; // 同上
             if (GitBranchColumnVisible is { } gitBranches) s.GitBranchColumnVisible = gitBranches; // 同上
-            if (GitReferenceTab is { Length: > 0 } gitRefTab) s.GitReferenceTab = gitRefTab;      // 同上
             if (GitSessionMode is { Length: > 0 } gitMode) s.GitSessionMode = gitMode;           // 同上
             GitLogColumns?.ApplyTo(s.GitLogColumns);                                              // 同上
             GitLayout?.ApplyTo(s.GitLayout);                                                      // 同上

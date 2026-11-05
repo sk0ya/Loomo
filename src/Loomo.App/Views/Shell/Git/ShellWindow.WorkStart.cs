@@ -28,7 +28,6 @@ public partial class ShellWindow {
                 return;
             if (!await git.CreateWorktreeAsync(result.Request, result.OpenAfter, result.CarryOver))
                 return;   // 失敗の理由は Git ペインの状態欄に出ている
-            git.ReferenceTab = GitReferenceTab.Worktrees;
             if (result.StartClaudePrompt is { } prompt)
                 await StartClaudeInWorktreeAsync(result.Request.Path, result.OpenAfter, prompt);
         } catch (Exception ex) when (ex is InvalidOperationException or IOException) {

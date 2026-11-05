@@ -31,6 +31,7 @@ internal sealed class GitBranchTreeMenuController
     private readonly ButtonBase? _operationCheckout;
     private readonly ButtonBase? _operationMerge;
     private readonly ButtonBase? _operationDelete;
+    private readonly Func<BranchTreeNode, bool>? _prepareNode;
     private DispatcherTimer? _menuTimer;
     private TreeViewItem? _pendingItem;
     private int _downClickCount;
@@ -55,7 +56,8 @@ internal sealed class GitBranchTreeMenuController
         MenuItem? mergeStrategy = null,
         ButtonBase? operationCheckout = null,
         ButtonBase? operationMerge = null,
-        ButtonBase? operationDelete = null)
+        ButtonBase? operationDelete = null,
+        Func<BranchTreeNode, bool>? prepareNode = null)
     {
         _tree = tree;
         _hasRemote = hasRemote;
@@ -74,16 +76,20 @@ internal sealed class GitBranchTreeMenuController
         _operationCheckout = operationCheckout;
         _operationMerge = operationMerge;
         _operationDelete = operationDelete;
+        _prepareNode = prepareNode;
 
         _tree.PreviewMouseLeftButtonDown += OnTreeLeftButtonDown;
         _tree.PreviewMouseLeftButtonUp += OnTreeLeftButtonUp;
         _tree.ContextMenuOpening += OnContextMenuOpening;
         _tree.PreviewMouseRightButtonDown += OnTreeRightButtonDown;
         if (_tree.ContextMenu is { } menu)
-            menu.Closed += (_, _) => Target = null;
+            menu.Closed += (_, _) => TargetNode = null;
     }
 
-    internal GitBranchInfo? Target { get; private set; }
+    /// <summary>メニューの対象の行（ブランチ・タグ・サブモジュール・ワークツリー）。閉じたら外す。</summary>
+    internal BranchTreeNode? TargetNode { get; private set; }
+
+    internal GitBranchInfo? Target => TargetNode?.Branch;
 
     internal void UpdateSelectionActions(GitBranchInfo? branch)
     {
@@ -153,9 +159,9 @@ internal sealed class GitBranchTreeMenuController
             || row.DataContext is not BranchTreeNode node)
             return;
 
-        if (node.Branch is null)
+        if (node.IsFolder)
         {
-            Target = null;
+            TargetNode = null;
             row.IsExpanded = !row.IsExpanded;
             return;
         }
@@ -167,20 +173,18 @@ internal sealed class GitBranchTreeMenuController
 
     private void OnTreeRightButtonDown(object sender, MouseButtonEventArgs e)
     {
-        Target = null;
+        TargetNode = null;
         if (FindRow(e.OriginalSource) is not { } item)
             return;
         item.IsSelected = true;
-        Target = (item.DataContext as BranchTreeNode)?.Branch;
+        TargetNode = item.DataContext as BranchTreeNode;
     }
 
     private void OnContextMenuOpening(object sender, ContextMenuEventArgs e)
     {
         var item = FindRow(e.OriginalSource);
-        Target = item?.DataContext is BranchTreeNode { Branch: { } branch }
-            ? branch
-            : (_tree.SelectedItem as BranchTreeNode)?.Branch;
-        if (!PrepareMenu(Target))
+        TargetNode = item?.DataContext as BranchTreeNode ?? _tree.SelectedItem as BranchTreeNode;
+        if (!PrepareMenu(TargetNode))
         {
             e.Handled = true;
             return;
@@ -220,20 +224,20 @@ internal sealed class GitBranchTreeMenuController
         var item = _pendingItem;
         _pendingItem = null;
         _menuTimer = null;
-        if (item is { IsLoaded: true, DataContext: BranchTreeNode { Branch: not null } })
+        if (item is { IsLoaded: true, DataContext: BranchTreeNode { IsFolder: false } })
             OpenMenu(item);
     }
 
     private void OpenMenu(TreeViewItem item)
     {
         if (_tree.ContextMenu is not { } menu
-            || item is not { IsLoaded: true, DataContext: BranchTreeNode { Branch: { } branch } })
+            || item is not { IsLoaded: true, DataContext: BranchTreeNode { IsFolder: false } node })
             return;
 
         if (menu.IsOpen)
             menu.IsOpen = false;
-        Target = branch;
-        if (!PrepareMenu(branch))
+        TargetNode = node;
+        if (!PrepareMenu(node))
             return;
 
         PlaceMenu(menu, item);
@@ -248,10 +252,19 @@ internal sealed class GitBranchTreeMenuController
         menu.StaysOpen = false;
     }
 
-    private bool PrepareMenu(GitBranchInfo? target)
+    /// <summary>
+    /// メニューを対象の行に合わせる。フォルダ・見出しなら出さない。ブランチ以外の行（タグ・サブモジュール・
+    /// ワークツリー）は持ち主（<c>prepareNode</c>）が項目の出し分けを持つ——無ければ出さない
+    /// （ブランチ切替ポップアップのツリーにはブランチしか居ない）。
+    /// </summary>
+    private bool PrepareMenu(BranchTreeNode? node)
     {
-        if (target is not { } branch)
+        if (node is not { IsFolder: false })
             return false;
+        if (_prepareNode is not null && !_prepareNode(node))
+            return false;
+        if (node.Branch is not { } branch)
+            return _prepareNode is not null;
         var availability = GitBranchActionPolicy.ForBranch(branch, _hasRemote());
         _checkout.IsEnabled = availability.CanCheckout;
         _merge.IsEnabled = availability.CanMerge;

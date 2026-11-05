@@ -22,6 +22,7 @@ public enum GitLogKeyAction
     OpenDiff,
     FocusFilter,
     ClearFilter,
+    Reload,
 }
 
 /// <summary>キー1打の結果。<paramref name="PendingG"/> は "gg" の1つ目を待っている状態。</summary>
@@ -60,6 +61,7 @@ public partial class GitSessionView
             GitLogKeyCommand.OpenDiff => GitLogKeyAction.OpenDiff,
             GitLogKeyCommand.FocusFilter => GitLogKeyAction.FocusFilter,
             GitLogKeyCommand.ClearFilter => GitLogKeyAction.ClearFilter,
+            GitLogKeyCommand.Reload => GitLogKeyAction.Reload,
             _ => GitLogKeyAction.None,
         };
         return new(action, mapped.PendingG);

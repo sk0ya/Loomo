@@ -40,12 +40,12 @@ public partial class GitSessionView : UserControl
             BranchMenuDeleteRemote, BranchMenuSetUpstream, BranchMenuUnsetUpstream,
             BranchMenuPull, BranchMenuPush, BranchMenuPushForce,
             deferSingleClick: true, mergeStrategy: BranchMenuMergeStrategy,
-            operationCheckout: BranchOpCheckout,
-            operationMerge: BranchOpMerge,
-            operationDelete: BranchOpDelete);
+            prepareNode: PrepareTreeMenu);
         _keyboardController = new GitSessionKeyboardController(
             this, LogList, BranchList, BranchFilterBox, LogFilterBox,
-            () => Vm, () => SelectedTreeBranch, ShowBranchLogGuardedAsync);
+            () => Vm, () => SelectedTreeBranch, ShowBranchLogGuardedAsync, OpenBranchFilter,
+            () => OnBranchDelete(this, new RoutedEventArgs()));
+        CaptureTreeMenuWorktreeItems();
         SetupLogColumns();
         SetupLogColumnResize();
         SetupGraphWidthGrip();
@@ -73,6 +73,11 @@ public partial class GitSessionView : UserControl
 
     private void OnDataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
     {
+        if (e.OldValue is GitSessionViewModel oldVm)
+            oldVm.PropertyChanged -= OnVmPropertyChanged;
+        if (e.NewValue is GitSessionViewModel newVm)
+            newVm.PropertyChanged += OnVmPropertyChanged;
+        UpdateBranchFilterRow();
         // このブランチで入れたコミットを選ぶ（§24.76）。ListView の複数選択は束縛できないのでここで選ぶ。
         if (_ownCommitsSource is not null)
             _ownCommitsSource.SelectRowsRequested -= SelectLogRows;
@@ -84,18 +89,6 @@ public partial class GitSessionView : UserControl
         AttachLogColumns(Vm);
         _logColumnResizeController?.ApplySavedWidths();
     }
-
-    /// <summary>
-    /// 左列下段の種類切替（タグ／リモート／サブモジュール）。
-    ///
-    /// <para><b>選択中のボタンを押しても外れないようにする</b>のがここの主な仕事。ToggleButton は
-    /// Click が届く前に自分で IsChecked を反転させてしまうので、同じ種類を押し直すと
-    /// 「ボタンは OFF なのに一覧はその種類のまま」になる——VM の値は変わらず、通知も飛ばないので
-    /// 片方向バインディングは二度と true を押し戻さない。押されたボタンだけ結び直して実体へ揃える
-    /// （種類が実際に変わったときは通知で3つとも揃うので、これで足りる）。</para>
-    /// </summary>
-    private void OnReferenceTabClick(object sender, RoutedEventArgs e)
-        => GitSessionSelectionPresenter.SelectReferenceTab(Vm, sender);
 
     /// <summary>操作バーのいちばん上の開閉ボタン。VM 側を反転させ、
     /// 表示の反映（列を畳む／戻す）と永続化はそちらの変更通知経由で行う。</summary>
@@ -136,6 +129,9 @@ public partial class GitSessionView : UserControl
     private GitBranchInfo? SelectedTreeBranch => (BranchList.SelectedItem as BranchTreeNode)?.Branch;
     private GitBranchInfo? SelectedBranch => _branchMenuController.Target ?? SelectedTreeBranch;
 
+    /// <summary>メニューの対象の行（無ければツリーの選択）。タグ・サブモジュール・ワークツリーの操作はここから引く。</summary>
+    private BranchTreeNode? SelectedTreeNode => _branchMenuController.TargetNode ?? BranchList.SelectedItem as BranchTreeNode;
+
     /// <summary>
     /// ブランチのダブルクリックはチェックアウトではなく、右側のコミットグラフをそのブランチに切り替える
     /// （ブランチの切り替え自体はヘッダーのブランチ切替コントロールから行う）。
@@ -147,6 +143,16 @@ public partial class GitSessionView : UserControl
 
         // 連打中は SelectedItem が次のクリックで変わっている可能性があるため、
         // TreeView の現在選択ではなく、ダブルクリックされた行を対象にする。
+        // ブランチを持たないワークツリーの行は「作業ツリーと比較」（並行作業の中身を見に行くのがいちばん多い用途。
+        // ワークスペースごと切り替える＝部屋が入れ替わるほうは明示の操作にしておく）。
+        if (GitSessionSelectionPresenter.ResolveDoubleClickedNode(e.OriginalSource) is
+            { IsWorktreeItem: true, Worktree: { IsCurrent: false, Exists: true } worktree })
+        {
+            _branchMenuController.CancelPendingMenu();
+            vm.CompareWithWorktree(worktree);
+            return;
+        }
+
         var branch = GitSessionSelectionPresenter.ResolveDoubleClickedBranch(
             e.OriginalSource, SelectedTreeBranch);
         if (branch is null)
@@ -270,13 +276,27 @@ public partial class GitSessionView : UserControl
 
     // ===== 操作バー（ブランチ一覧の左の縦帯）=====
 
-    /// <summary>
-    /// 選んだ1本に効く操作（チェックアウト／マージ／削除）の可否を選択に合わせる。
-    /// 判定は行の右クリックメニューと同じ——同じ操作が
-    /// 入口ごとに違う可否を見せると、押せないのか効かないのか分からなくなる。
-    /// </summary>
     private void OnBranchSelectionChanged(object sender, RoutedPropertyChangedEventArgs<object> e) =>
         _branchMenuController.UpdateSelectionActions(SelectedTreeBranch);
+
+    /// <summary>縦帯の「＋」「⋯」：押したボタンの横にそのメニューを開く（右クリックを待たない）。</summary>
+    private void OnBarButtonMenu(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { ContextMenu: { } menu } button) return;
+        BarMenuSubmodulesSync.Visibility = Vm?.HasSubmodules == true ? Visibility.Visible : Visibility.Collapsed;
+        menu.PlacementTarget = button;
+        menu.Placement = System.Windows.Controls.Primitives.PlacementMode.Right;
+        menu.IsOpen = true;
+    }
+
+    /// <summary>「⋯」の読み直し（F5 と同じ）。ほかのワークツリーでの編集件数も数え直す——向こうの編集は
+    /// こちらのリポジトリ監視に現れない。</summary>
+    private async void OnReloadAll(object sender, RoutedEventArgs e)
+    {
+        if (Vm is not { } vm) return;
+        await vm.RefreshWorktreesAsync();
+        vm.ReloadCommand.Execute(null);
+    }
 
     /// <summary>
     /// 新しいブランチ。起点は一覧で選んだブランチで、選んでいなければ現在ブランチ（＝素の
@@ -314,17 +334,13 @@ public partial class GitSessionView : UserControl
 
     private void SetBranchTreeExpanded(bool expanded)
     {
-        if (Vm?.PaneFilteredBranchTree is { } tree)
+        if (Vm?.PaneTree is { } tree)
             BranchTreeBuilder.SetExpandedAll(tree, expanded);
     }
 
     // ===== タグ操作 =====
 
-    private GitTagInfo? SelectedTag => TagList.SelectedItem as GitTagInfo;
-
-    private async void OnTagDoubleClick(object sender, MouseButtonEventArgs e) =>
-        await GitSessionOperationController.ExecuteTagAsync(
-            Vm, SelectedTag, GitTagOperation.Checkout);
+    private GitTagInfo? SelectedTag => SelectedTreeNode?.Tag;
 
     private async void OnTagCheckout(object sender, RoutedEventArgs e) =>
         await GitSessionOperationController.ExecuteTagAsync(
@@ -362,7 +378,7 @@ public partial class GitSessionView : UserControl
 
     // ===== サブモジュール操作 =====
 
-    private GitSubmoduleInfo? SelectedSubmodule => SubmoduleList.SelectedItem as GitSubmoduleInfo;
+    private GitSubmoduleInfo? SelectedSubmodule => SelectedTreeNode?.Submodule;
 
     private async void OnSubmoduleInit(object sender, RoutedEventArgs e) =>
         await GitSessionOperationController.ExecuteSubmoduleAsync(

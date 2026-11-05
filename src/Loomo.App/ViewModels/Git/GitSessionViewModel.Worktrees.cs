@@ -33,7 +33,7 @@ public sealed record GitWorktreeOpenRequest(string Path, GitWorktreeOpenMode Mod
 /// </summary>
 public sealed partial class GitSessionViewModel
 {
-    /// <summary>ワークツリー一覧（先頭がメイン）。ワークツリーのタブを見ている間だけ未コミットの件数まで数える。</summary>
+    /// <summary>ワークツリー一覧（先頭がメイン）。左列が見えている間だけ未コミットの件数まで数える。</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(LinkedWorktreeCount))]
     [NotifyPropertyChangedFor(nameof(IsInLinkedWorktree))]
@@ -107,8 +107,10 @@ public sealed partial class GitSessionViewModel
         return endpoints;
     }
 
-    /// <summary>ワークツリー一覧を読み直す（タブを見ているときは件数付き）。中身が同じなら差し替えない
-    /// ——差し替えると行の選択が外れ、右クリックしようとしていた行を見失う。</summary>
+    /// <summary>ワークツリー一覧を読み直す（左列が見えているときは件数付き）。中身が同じなら差し替えない
+    /// ——差し替えると行の選択が外れ、右クリックしようとしていた行を見失う。
+    /// 件数は各ワークツリーで <c>git status</c> を1回ずつ起こすので、出す場所（ブランチの行の ±N）が
+    /// 見えていないときは数えない（§24.17 で WT タブを見ている間だけ数えていたのと同じ考え）。</summary>
     private async Task ReloadWorktreesAsync()
     {
         if (!IsRepository)
@@ -116,20 +118,13 @@ public sealed partial class GitSessionViewModel
             Worktrees = Array.Empty<GitWorktreeInfo>();
             return;
         }
-        var withCounts = EffectiveReferenceTab == GitReferenceTab.Worktrees;
+        var withCounts = BranchColumnVisible;
         var list = await _git.GetWorktreesAsync(withCounts);
         if (!list.SequenceEqual(Worktrees))
         {
             Worktrees = list;
             OnPropertyChanged(nameof(CurrentWorktree));
         }
-    }
-
-    /// <summary>ワークツリーのタブを開いたときに件数付きで読み直す（ほかのタブの間は名前だけ引いている）。</summary>
-    private void OnReferenceTabChangedForWorktrees(GitReferenceTab value)
-    {
-        if (value == GitReferenceTab.Worktrees && _loaded)
-            _ = ReloadWorktreesAsync();
     }
 
     /// <summary>手動の読み直し（相手のワークツリーで編集した分の件数は、こちらの監視には現れない）。</summary>

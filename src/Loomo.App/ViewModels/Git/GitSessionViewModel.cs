@@ -16,14 +16,6 @@ using sk0ya.Loomo.Services;
 
 namespace sk0ya.Loomo.App.ViewModels;
 
-/// <summary>Git ペイン左列の下段で切り替える参照の種類。</summary>
-public enum GitReferenceTab
-{
-    Tags,
-    Submodules,
-    Worktrees,
-}
-
 /// <summary>Git ペインの本体に出す面。ペインヘッダーの切替で選ぶ。</summary>
 public enum GitSessionMode
 {
@@ -138,6 +130,9 @@ public sealed partial class GitSessionViewModel : ObservableObject
 
     partial void OnBranchColumnVisibleChanged(bool value)
     {
+        // ワークツリーの未コミット件数は左列が見えている間だけ数える（畳んでいる間は数えても出す場所が無い）。
+        if (value && _loaded && IsRepository)
+            _ = ReloadWorktreesAsync();
         if (_settings is null) return;
         _settings.GitBranchColumnVisible = value;
         try { _settingsStore?.Save(_settings); }
@@ -181,38 +176,8 @@ public sealed partial class GitSessionViewModel : ObservableObject
         catch { /* 永続化に失敗しても表示の変更自体は効かせる */ }
     }
 
-    /// <summary>
-    /// 左列の下段で選んでいる参照の種類。タグ／リモート／サブモジュールを縦に積むと、本命の
-    /// ブランチ一覧が 190px の列の中で潰れる（リモートは滅多に触らないのに場所だけ取る）ので、
-    /// 切替式にして高さをブランチへ回す。選択は設定へ持ち越す。
-    /// </summary>
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(EffectiveReferenceTab))]
-    private GitReferenceTab _referenceTab;
-
-    partial void OnReferenceTabChanged(GitReferenceTab value)
-    {
-        OnReferenceTabChangedForWorktrees(value);
-        if (_settings is null) return;
-        _settings.GitReferenceTab = value.ToString();
-        try { _settingsStore?.Save(_settings); }
-        catch { /* 永続化に失敗しても切替自体は効かせる */ }
-    }
-
-    /// <summary>サブモジュールが1つも無いか（タブごと出さない判断に使う）。</summary>
+    /// <summary>サブモジュールが1つも無いか。</summary>
     public bool HasSubmodules => Submodules.Count > 0;
-
-    /// <summary>
-    /// 実際に見せる種類。<b>選択そのものは書き換えない</b>——サブモジュールを見ている最中に
-    /// ワークスペースを切り替えて（サブモジュールの無いリポジトリになって）も、戻ってきたら
-    /// 元の種類に戻ってほしい。消えたタブを選んだままにしておくと空の一覧が居座るので、
-    /// 表示だけ既定（ワークツリー）へ落とす。
-    /// </summary>
-    public GitReferenceTab EffectiveReferenceTab => Resolve(ReferenceTab, HasSubmodules);
-
-    /// <summary>表示する種類を決める（純ロジック）。</summary>
-    public static GitReferenceTab Resolve(GitReferenceTab desired, bool hasSubmodules) =>
-        desired is GitReferenceTab.Submodules && !hasSubmodules ? GitReferenceTab.Worktrees : desired;
 
     /// <summary>ブランチ一覧のツリー（ローカル／リモートの見出し、その中を "/" でフォルダ化）。</summary>
     [ObservableProperty] private IReadOnlyList<BranchTreeNode> _branchTree = Array.Empty<BranchTreeNode>();
@@ -238,6 +203,38 @@ public sealed partial class GitSessionViewModel : ObservableObject
     /// <summary>ペイン左列の絞り込み後のブランチ一覧。空語なら <see cref="BranchTree"/> と同一インスタンス
     /// （作り直さない＝フォルダの開閉と選択が生きる）。</summary>
     [ObservableProperty] private IReadOnlyList<BranchTreeNode> _paneFilteredBranchTree = Array.Empty<BranchTreeNode>();
+
+    /// <summary>
+    /// ペイン左列に実際に出すツリー：<see cref="PaneFilteredBranchTree"/> の後ろに「ワークツリー」（ブランチを
+    /// 持たないもの）「タグ」「サブモジュール」の見出しを足したもの（§24.17.3、<see cref="GitPaneTreeComposer"/>）。
+    /// 足すものが無ければ <see cref="PaneFilteredBranchTree"/> と同一インスタンス。
+    /// </summary>
+    [ObservableProperty] private IReadOnlyList<BranchTreeNode> _paneTree = Array.Empty<BranchTreeNode>();
+
+    partial void OnPaneFilteredBranchTreeChanged(IReadOnlyList<BranchTreeNode> value) => UpdatePaneTree();
+    partial void OnBranchTreeChanged(IReadOnlyList<BranchTreeNode> value) => ApplyWorktreeMarks();
+    partial void OnFilteredBranchTreeChanged(IReadOnlyList<BranchTreeNode> value) => ApplyWorktreeMarks();
+    partial void OnTagsChanged(IReadOnlyList<GitTagInfo> value) => UpdatePaneTree();
+    partial void OnSubmodulesChanged(IReadOnlyList<GitSubmoduleInfo> value) => UpdatePaneTree();
+    partial void OnWorktreesChanged(IReadOnlyList<GitWorktreeInfo> value) => UpdatePaneTree();
+    partial void OnWorktreeAgentMarksChanged(IReadOnlyDictionary<string, string> value) => ApplyWorktreeMarks();
+
+    private void UpdatePaneTree()
+    {
+        PaneTree = GitPaneTreeComposer.Compose(PaneTree, PaneFilteredBranchTree,
+            HasPaneBranchFilter ? PaneBranchFilter : null, _allBranches, Worktrees, Tags, Submodules);
+        ApplyWorktreeMarks();
+    }
+
+    /// <summary>ブランチの行にワークツリーの印を付け直す。絞り込みのツリーは別のノードなので、それぞれに付ける。</summary>
+    private void ApplyWorktreeMarks()
+    {
+        GitPaneTreeComposer.ApplyWorktreeMarks(BranchTree, Worktrees, WorktreeAgentMarks);
+        if (!ReferenceEquals(FilteredBranchTree, BranchTree))
+            GitPaneTreeComposer.ApplyWorktreeMarks(FilteredBranchTree, Worktrees, WorktreeAgentMarks);
+        if (!ReferenceEquals(PaneTree, BranchTree))
+            GitPaneTreeComposer.ApplyWorktreeMarks(PaneTree, Worktrees, WorktreeAgentMarks);
+    }
 
     /// <summary>絞り込み中か（解除ボタンの出し入れ）。判定は一覧を絞る側と<b>同じ述語</b>にする
     /// ——空白だけを打ったときに「✕ は出るが一覧は絞られていない」という嘘になる。</summary>
@@ -275,7 +272,6 @@ public sealed partial class GitSessionViewModel : ObservableObject
     /// <summary>サブモジュール一覧（0件ならビュー側でタブごと隠す）。</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasSubmodules))]
-    [NotifyPropertyChangedFor(nameof(EffectiveReferenceTab))]
     private IReadOnlyList<GitSubmoduleInfo> _submodules = Array.Empty<GitSubmoduleInfo>();
 
     /// <summary>Git 操作の対象フォルダーの切替 UI 状態。サイドバー Git パネル（<see cref="GitPanelViewModel"/>）
@@ -305,10 +301,7 @@ public sealed partial class GitSessionViewModel : ObservableObject
         History.GraphWidth = Layout.GraphWidth;
         // 読めない値（手書き・古い版）は既定へ落とす。ここで例外にすると起動ごと落ちる。
         // IsDefined まで見るのは、TryParse が "7" のような数値文字列を<b>成功させて</b>
-        // 定義の無い値を返すため——どのタブにも一致せず、左列の下段が空白のまま操作不能になる。
-        _referenceTab = Enum.TryParse<GitReferenceTab>(settings?.GitReferenceTab, out var tab)
-            && Enum.IsDefined(tab)
-            ? tab : GitReferenceTab.Worktrees;
+        // 定義の無い値を返すため。
         _mode = Enum.TryParse<GitSessionMode>(settings?.GitSessionMode, out var mode) && Enum.IsDefined(mode)
             ? mode : GitSessionMode.History;
         Reflog = new GitReflogViewModel(git);

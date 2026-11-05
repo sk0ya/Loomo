@@ -19,6 +19,8 @@ internal sealed class GitSessionKeyboardController
     private readonly Func<GitSessionViewModel?> _getViewModel;
     private readonly Func<GitBranchInfo?> _getSelectedBranch;
     private readonly Func<GitSessionViewModel, GitBranchInfo, Task> _showBranchLog;
+    private readonly Action<string?> _openBranchFilter;
+    private readonly Action _deleteSelectedBranch;
     private bool _pendingLogG;
 
     internal GitSessionKeyboardController(
@@ -29,7 +31,9 @@ internal sealed class GitSessionKeyboardController
         TextBox logFilterBox,
         Func<GitSessionViewModel?> getViewModel,
         Func<GitBranchInfo?> getSelectedBranch,
-        Func<GitSessionViewModel, GitBranchInfo, Task> showBranchLog)
+        Func<GitSessionViewModel, GitBranchInfo, Task> showBranchLog,
+        Action<string?> openBranchFilter,
+        Action deleteSelectedBranch)
     {
         _owner = owner;
         _logList = logList;
@@ -39,6 +43,8 @@ internal sealed class GitSessionKeyboardController
         _getViewModel = getViewModel;
         _getSelectedBranch = getSelectedBranch;
         _showBranchLog = showBranchLog;
+        _openBranchFilter = openBranchFilter;
+        _deleteSelectedBranch = deleteSelectedBranch;
     }
 
     internal void OnBranchFilterKeyDown(object sender, KeyEventArgs e)
@@ -77,8 +83,16 @@ internal sealed class GitSessionKeyboardController
         if (e.Key is Key.OemQuestion or Key.Divide)
         {
             e.Handled = true;
-            _branchFilterBox.Focus();
-            _branchFilterBox.SelectAll();
+            // 絞り込み欄はふだん畳んである。開いてから入る（畳んだままでは Focus が効かない）。
+            _openBranchFilter(null);
+            return;
+        }
+
+        // 削除は縦帯のボタンから行の Del へ移した（帯には「作る」と「その他」だけ残す）。確認は削除の側が出す。
+        if (e.Key is Key.Delete && _getSelectedBranch() is not null)
+        {
+            e.Handled = true;
+            _deleteSelectedBranch();
             return;
         }
 
@@ -106,15 +120,20 @@ internal sealed class GitSessionKeyboardController
             return;
 
         e.Handled = true;
-        if (command is GitLogFilterKeyCommand.Clear)
+        switch (command)
         {
-            box.Clear();
-            // Delay=200 を待たずに反映して、Esc の入力をすぐ一覧へ反映する。
-            PushFilterTermNow(box);
-        }
-        else
-        {
-            FocusCommitList();
+            case GitLogFilterKeyCommand.Clear:
+                box.Clear();
+                // Delay=200 を待たずに反映して、Esc の入力をすぐ一覧へ反映する。
+                PushFilterTermNow(box);
+                break;
+            case GitLogFilterKeyCommand.Close:
+                if (_getViewModel() is { } vm) vm.History.IsLogFilterBarOpen = false;
+                FocusCommitList();
+                break;
+            default:
+                FocusCommitList();
+                break;
         }
     }
 
@@ -166,11 +185,20 @@ internal sealed class GitSessionKeyboardController
             case GitLogKeyCommand.ClearFilter:
                 vm?.History.ClearLogFiltersCommand.Execute(null);
                 break;
+            case GitLogKeyCommand.Reload:
+                vm?.ReloadCommand.Execute(null);
+                break;
         }
     }
 
+    /// <summary>
+    /// 絞り込み帯を開いて入力欄へ。帯はふだん畳んであるので、開いた直後は欄がまだ配置されておらず
+    /// Focus が効かない——レイアウトを1回通してから渡す。
+    /// </summary>
     internal void FocusLogFilter()
     {
+        if (_getViewModel() is { } vm) vm.History.IsLogFilterBarOpen = true;
+        _owner.UpdateLayout();
         _logFilterBox.Focus();
         _logFilterBox.SelectAll();
     }

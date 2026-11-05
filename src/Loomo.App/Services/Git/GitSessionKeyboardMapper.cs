@@ -19,9 +19,10 @@ internal enum GitLogKeyCommand
     OpenDiff,
     FocusFilter,
     ClearFilter,
+    Reload,
 }
 
-internal enum GitLogFilterKeyCommand { None, Clear, FocusList }
+internal enum GitLogFilterKeyCommand { None, Clear, FocusList, Close }
 
 internal readonly record struct GitLogKeyMapping(GitLogKeyCommand Action, bool PendingG);
 
@@ -31,7 +32,9 @@ internal static class GitSessionKeyboardMapper
     internal static GitLogFilterKeyCommand ResolveLogFilterKey(Key key, string text) => key switch
     {
         Key.Escape when text.Length > 0 => GitLogFilterKeyCommand.Clear,
-        Key.Escape or Key.Down or Key.Enter => GitLogFilterKeyCommand.FocusList,
+        // 空の欄で Esc＝帯を畳んで一覧へ戻る（帯はふだん畳んでおく・効いている条件があれば畳まれない）。
+        Key.Escape => GitLogFilterKeyCommand.Close,
+        Key.Down or Key.Enter => GitLogFilterKeyCommand.FocusList,
         _ => GitLogFilterKeyCommand.None,
     };
 
@@ -60,6 +63,8 @@ internal static class GitSessionKeyboardMapper
             Key.Enter => new(GitLogKeyCommand.OpenDiff, false),
             Key.OemQuestion or Key.Divide when !shift => new(GitLogKeyCommand.FocusFilter, false),
             Key.Escape when hasFilters => new(GitLogKeyCommand.ClearFilter, false),
+            // 手で読み直す（監視の取りこぼしの逃げ道）。常設の ⟳ ボタンは一覧の高さを取るので外した。
+            Key.F5 => new(GitLogKeyCommand.Reload, false),
             _ => new(GitLogKeyCommand.None, false),
         };
     }
