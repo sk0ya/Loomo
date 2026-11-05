@@ -1,7 +1,8 @@
 <ResourceDictionary
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:conv="clr-namespace:sk0ya.Loomo.App.Converters">
+    xmlns:conv="clr-namespace:sk0ya.Loomo.App.Converters"
+    xmlns:views="clr-namespace:sk0ya.Loomo.App.Views">
 
     <!-- 配色（ブラシ）は Palette.Dark.xaml / Palette.Light.xaml に分離。
          ここのスタイルはブラシを DynamicResource で参照し、テーマ切替で即時反映される。 -->
@@ -1133,100 +1134,14 @@
     </Style>
 
     <!-- ブランチ1行。左＝現在印＋名前、右＝上流との差と最終コミット（右揃えで列に見える）。
+         狭いときは名前が先（BranchRowPanel）：付記は右端の日時から順に引っ込める。
          見出し（ローカル／origin）は名前を淡く太く、右に配下の件数ピル。 -->
     <HierarchicalDataTemplate x:Key="BranchNodeTemplate" ItemsSource="{Binding Children}">
-        <DockPanel ToolTip="{Binding ToolTip}" Background="Transparent">
-            <!-- 見出しの件数ピル -->
-            <Border DockPanel.Dock="Right" Background="{DynamicResource Border}" CornerRadius="7"
-                    Padding="6,0" MinWidth="18" Height="15" Margin="6,0,2,0" VerticalAlignment="Center"
-                    Visibility="{Binding IsSection, Converter={StaticResource BoolToVis}}">
-                <TextBlock Text="{Binding LeafCount}" FontSize="{DynamicResource Fs10}"
-                           Foreground="{DynamicResource Fg}"
-                           HorizontalAlignment="Center" VerticalAlignment="Center" />
-            </Border>
-
-            <!-- 最終コミットの相対日時（どれが生きているブランチかの目安） -->
-            <TextBlock DockPanel.Dock="Right" Text="{Binding RelativeDate}" FontSize="{DynamicResource Fs10}"
-                       Foreground="{DynamicResource FgDim}" VerticalAlignment="Center" Margin="8,1,2,0" />
-
-            <!-- このブランチから出ている PR（§24.39）。押すと PR でできることを開く（§24.27）。
-                 押す先はツリーの持ち主の VM（Git ペイン）。持たない一覧ではコマンドが見つからず何もしない。 -->
-            <Button DockPanel.Dock="Right" Margin="8,0,0,0" Padding="4,0" VerticalAlignment="Center"
-                    Background="Transparent" BorderThickness="0" Cursor="Hand"
-                    Content="{Binding PullRequestLabel}" ToolTip="{Binding PullRequestToolTip}"
-                    FontSize="{DynamicResource Fs10}" FontWeight="SemiBold" Foreground="{DynamicResource Accent}"
-                    Command="{Binding DataContext.OpenBranchPullRequestCommand, RelativeSource={RelativeSource AncestorType=TreeView}}"
-                    CommandParameter="{Binding}"
-                    Visibility="{Binding HasPullRequest, Converter={StaticResource BoolToVis}}">
-                <Button.Template>
-                    <ControlTemplate TargetType="Button">
-                        <Border Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}" CornerRadius="3">
-                            <ContentPresenter VerticalAlignment="Center" />
-                        </Border>
-                    </ControlTemplate>
-                </Button.Template>
-            </Button>
-
-            <!-- そこで動いている Claude Code（§24.17.2）。ブランチの行ならそれを置いているワークツリーの。 -->
-            <TextBlock DockPanel.Dock="Right" Text="{Binding AgentMark}" FontSize="{DynamicResource Fs10}"
-                       Foreground="{DynamicResource Accent}" VerticalAlignment="Center" Margin="6,0,0,0"
-                       ToolTip="このワークスペースのターミナルで、ここを作業場所にしている Claude Code">
-                <TextBlock.Style>
-                    <Style TargetType="TextBlock">
-                        <Style.Triggers>
-                            <Trigger Property="Text" Value="">
-                                <Setter Property="Visibility" Value="Collapsed" />
-                            </Trigger>
-                        </Style.Triggers>
-                    </Style>
-                </TextBlock.Style>
-            </TextBlock>
-
-            <!-- ワークツリーの印（§24.17.3）：📁＝このブランチを別の場所に置いている、±N＝そこでの未コミット。
-                 左列下段の WT 一覧をやめて、ブランチの行の属性として出す。 -->
-            <TextBlock DockPanel.Dock="Right" Text="{Binding WorktreeMark}" FontSize="{DynamicResource Fs10}"
-                       Foreground="{DynamicResource FgDim}" VerticalAlignment="Center" Margin="6,0,0,0"
-                       ToolTip="{Binding WorktreeToolTip}">
-                <TextBlock.Style>
-                    <Style TargetType="TextBlock">
-                        <Style.Triggers>
-                            <Trigger Property="Text" Value="">
-                                <Setter Property="Visibility" Value="Collapsed" />
-                            </Trigger>
-                        </Style.Triggers>
-                    </Style>
-                </TextBlock.Style>
-            </TextBlock>
-
-            <!-- タグ＝指すコミット、サブモジュール＝状態とコミット -->
-            <TextBlock DockPanel.Dock="Right" Text="{Binding Detail}" FontSize="{DynamicResource Fs10}"
-                       FontFamily="Cascadia Mono, Consolas"
-                       Foreground="{DynamicResource FgDim}" VerticalAlignment="Center" Margin="6,0,0,0">
-                <TextBlock.Style>
-                    <Style TargetType="TextBlock">
-                        <Style.Triggers>
-                            <Trigger Property="Text" Value="">
-                                <Setter Property="Visibility" Value="Collapsed" />
-                            </Trigger>
-                        </Style.Triggers>
-                    </Style>
-                </TextBlock.Style>
-            </TextBlock>
-
-            <!-- 上流との差。0 のときは TrackLabel が空になり、幅も取らない -->
-            <TextBlock DockPanel.Dock="Right" Text="{Binding TrackLabel}" FontSize="{DynamicResource Fs10}"
-                       FontWeight="SemiBold" Foreground="{DynamicResource Accent}"
-                       VerticalAlignment="Center" Margin="8,0,0,0" />
-
-            <!-- 上流が消えている（リモートで削除済み）ブランチの目印 -->
-            <TextBlock DockPanel.Dock="Right" Text="上流なし" FontSize="{DynamicResource Fs10}"
-                       Foreground="{DynamicResource FgDim}" VerticalAlignment="Center" Margin="8,0,0,0"
-                       ToolTip="上流ブランチがリモートに存在しません（削除済み）"
-                       Visibility="{Binding IsUpstreamGone, Converter={StaticResource BoolToVis}}" />
-
+        <!-- 子の順＝現在印・名前・右側の付記（左→右）。幅が足りなければ名前を優先し、付記を右端（日時）から落とす。 -->
+        <views:BranchRowPanel ToolTip="{Binding ToolTip}" Background="Transparent">
             <!-- 現在ブランチの印。Collapsed ではなく Hidden で幅を残す（印の有無で名前の
                  左端がずれると、行が階段状になって一覧として読めなくなる）。 -->
-            <TextBlock DockPanel.Dock="Left" Text="●" Width="10" Margin="0,0,4,0"
+            <TextBlock Text="●" Width="10" Margin="0,0,4,0"
                        FontSize="{DynamicResource Fs10}"
                        Foreground="{DynamicResource Accent}" VerticalAlignment="Center"
                        TextAlignment="Center">
@@ -1268,7 +1183,95 @@
                     </Style>
                 </TextBlock.Style>
             </TextBlock>
-        </DockPanel>
+
+            <!-- 上流が消えている（リモートで削除済み）ブランチの目印 -->
+            <TextBlock Text="上流なし" FontSize="{DynamicResource Fs10}"
+                       Foreground="{DynamicResource FgDim}" VerticalAlignment="Center" Margin="8,0,0,0"
+                       ToolTip="上流ブランチがリモートに存在しません（削除済み）"
+                       Visibility="{Binding IsUpstreamGone, Converter={StaticResource BoolToVis}}" />
+
+            <!-- 上流との差。0 のときは TrackLabel が空になり、幅も取らない -->
+            <TextBlock Text="{Binding TrackLabel}" FontSize="{DynamicResource Fs10}"
+                       FontWeight="SemiBold" Foreground="{DynamicResource Accent}"
+                       VerticalAlignment="Center" Margin="8,0,0,0" />
+
+            <!-- タグ＝指すコミット、サブモジュール＝状態とコミット -->
+            <TextBlock Text="{Binding Detail}" FontSize="{DynamicResource Fs10}"
+                       FontFamily="Cascadia Mono, Consolas"
+                       Foreground="{DynamicResource FgDim}" VerticalAlignment="Center" Margin="6,0,0,0">
+                <TextBlock.Style>
+                    <Style TargetType="TextBlock">
+                        <Style.Triggers>
+                            <Trigger Property="Text" Value="">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </TextBlock.Style>
+            </TextBlock>
+
+            <!-- ワークツリーの印（§24.17.3）：📁＝このブランチを別の場所に置いている、±N＝そこでの未コミット。
+                 左列下段の WT 一覧をやめて、ブランチの行の属性として出す。 -->
+            <TextBlock Text="{Binding WorktreeMark}" FontSize="{DynamicResource Fs10}"
+                       Foreground="{DynamicResource FgDim}" VerticalAlignment="Center" Margin="6,0,0,0"
+                       ToolTip="{Binding WorktreeToolTip}">
+                <TextBlock.Style>
+                    <Style TargetType="TextBlock">
+                        <Style.Triggers>
+                            <Trigger Property="Text" Value="">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </TextBlock.Style>
+            </TextBlock>
+
+            <!-- そこで動いている Claude Code（§24.17.2）。ブランチの行ならそれを置いているワークツリーの。 -->
+            <TextBlock Text="{Binding AgentMark}" FontSize="{DynamicResource Fs10}"
+                       Foreground="{DynamicResource Accent}" VerticalAlignment="Center" Margin="6,0,0,0"
+                       ToolTip="このワークスペースのターミナルで、ここを作業場所にしている Claude Code">
+                <TextBlock.Style>
+                    <Style TargetType="TextBlock">
+                        <Style.Triggers>
+                            <Trigger Property="Text" Value="">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </TextBlock.Style>
+            </TextBlock>
+
+            <!-- このブランチから出ている PR（§24.39）。押すと PR でできることを開く（§24.27）。
+                 押す先はツリーの持ち主の VM（Git ペイン）。持たない一覧ではコマンドが見つからず何もしない。 -->
+            <Button Margin="8,0,0,0" Padding="4,0" VerticalAlignment="Center"
+                    Background="Transparent" BorderThickness="0" Cursor="Hand"
+                    Content="{Binding PullRequestLabel}" ToolTip="{Binding PullRequestToolTip}"
+                    FontSize="{DynamicResource Fs10}" FontWeight="SemiBold" Foreground="{DynamicResource Accent}"
+                    Command="{Binding DataContext.OpenBranchPullRequestCommand, RelativeSource={RelativeSource AncestorType=TreeView}}"
+                    CommandParameter="{Binding}"
+                    Visibility="{Binding HasPullRequest, Converter={StaticResource BoolToVis}}">
+                <Button.Template>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}" CornerRadius="3">
+                            <ContentPresenter VerticalAlignment="Center" />
+                        </Border>
+                    </ControlTemplate>
+                </Button.Template>
+            </Button>
+
+            <!-- 最終コミットの相対日時（どれが生きているブランチかの目安） -->
+            <TextBlock Text="{Binding RelativeDate}" FontSize="{DynamicResource Fs10}"
+                       Foreground="{DynamicResource FgDim}" VerticalAlignment="Center" Margin="8,1,2,0" />
+
+            <!-- 見出しの件数ピル -->
+            <Border Background="{DynamicResource Border}" CornerRadius="7"
+                    Padding="6,0" MinWidth="18" Height="15" Margin="6,0,2,0" VerticalAlignment="Center"
+                    Visibility="{Binding IsSection, Converter={StaticResource BoolToVis}}">
+                <TextBlock Text="{Binding LeafCount}" FontSize="{DynamicResource Fs10}"
+                           Foreground="{DynamicResource Fg}"
+                           HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Border>
+        </views:BranchRowPanel>
     </HierarchicalDataTemplate>
 
     <!-- ツリー項目：FolderTree と同じ作り（ヘッダ行だけをホバー/選択ハイライト・子に左ガイド線）。
