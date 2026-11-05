@@ -99,9 +99,75 @@ public sealed class PtyHostClient
     /// </summary>
     public void Leave()
     {
-        if (IsHostRunning())
-            Ask(new PtyProtocol.Request(PtyProtocol.Operation.Leave), TimeSpan.FromSeconds(3));
+        if (!IsHostRunning())
+            return;
+
+        // ホストの PID は先に聞いておく（Leave の後は、ホストが終わればもう繋げない）。
+        int? hostProcessId = HostProcessId();
+        Ask(new PtyProtocol.Request(PtyProtocol.Operation.Leave), TimeSpan.FromSeconds(3));
+
+        // 「最後の Loomo の正常終了でホストが終わる」はホストの判断だけに任せない。ホストが「ほかの Loomo が生きている」と
+        // 取り違えて残ると（落ちた Loomo の PID を別のプロセスが再利用していた——実際に4日間居座った、2026-11-06）、
+        // 誰も止められず古い版のホストが使われ続ける。この Loomo が最後なら、終わらないホストはこちらで止める
+        // （シェルは ConPTY の kill-on-close で一緒に終わる）。既に動いている古い版のホストにも効くのはこちら側だけ。
+        if (hostProcessId is { } hostId && hostId != Environment.ProcessId && !OtherLoomoAlive())
+            StopHostIfStillRunning(hostId, TimeSpan.FromSeconds(2));
     }
+
+    /// <summary>パイプの向こうのホストのプロセス ID。繋げなければ null。</summary>
+    private int? HostProcessId()
+    {
+        try
+        {
+            using var pipe = Connect(launchIfMissing: false, TimeSpan.FromMilliseconds(500));
+            if (pipe is null)
+                return null;
+            return GetNamedPipeServerProcessId(pipe.SafePipeHandle, out uint id) ? (int)id : null;
+        }
+        catch (Exception ex) when (ex is IOException or InvalidOperationException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>同じ Windows セッションに、この Loomo と同じ実行ファイル名のプロセスがほかにいるか（ホストの判定と同じ物差し）。</summary>
+    private static bool OtherLoomoAlive()
+    {
+        using var self = System.Diagnostics.Process.GetCurrentProcess();
+        var others = System.Diagnostics.Process.GetProcessesByName(self.ProcessName);
+        try
+        {
+            return others.Any(p => p.Id != self.Id && p.SessionId == self.SessionId);
+        }
+        finally
+        {
+            foreach (var p in others)
+                p.Dispose();
+        }
+    }
+
+    private static void StopHostIfStillRunning(int hostProcessId, TimeSpan grace)
+    {
+        try
+        {
+            using var host = System.Diagnostics.Process.GetProcessById(hostProcessId);
+            // PID の取り違えを避ける：ホストの実行ファイルであることを確かめてから止める。
+            if (!string.Equals(host.ProcessName + ".exe", HostExecutableName, StringComparison.OrdinalIgnoreCase))
+                return;
+            if (host.WaitForExit(grace))
+                return;
+            host.Kill();
+            host.WaitForExit(grace);
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or Win32Exception)
+        {
+            // もういない・止められない。終了処理なので何もしない。
+        }
+    }
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetNamedPipeServerProcessId(Microsoft.Win32.SafeHandles.SafePipeHandle pipe, out uint serverProcessId);
 
     /// <summary>ホストが握っているミューテックスで在否を見る。パイプへの接続と違って待たない。</summary>
     private bool IsHostRunning()
