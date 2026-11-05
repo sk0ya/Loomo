@@ -21,6 +21,7 @@ public sealed record WorktreeSwitchRequest(
 /// ワークツリーの部屋を「今の部屋を写して」作る（§24.17.1）。ブランチを切り替えたときのように、
 /// 配置・タブ・キャレット・ツリーの開き具合をそのまま持ち越し、ファイルだけをワークツリー側へ付け替える。
 /// ワークツリーどうしは相対パスの構成が同じなので、ほとんどのタブはそのまま開ける。
+/// 部屋がもうあるときは写し直さず、レイアウトだけを持ってくる（<see cref="CopyLayout"/>）。
 ///
 /// <para><b>付け替えるのは「写し元のワークツリーのもの」だけ</b>。パスの持ち主は、そのパスを含むワークツリーの
 /// うち<b>いちばん深いもの</b>で決める——ワークツリーはリポジトリの中（<c>.claude/worktrees/x</c>）に置かれる
@@ -150,6 +151,34 @@ public static class WorktreeRoomSeed
         seed.CommitDrafts = null;
 
         return seed;
+    }
+
+    /// <summary>
+    /// もうある部屋へ移るときに、<b>画面のレイアウトだけ</b>を今の部屋から持ってくる（§24.17.1）。ブランチを
+    /// 切り替えても画面の組み方は変わらないのと同じで、ワークツリーを渡り歩くたびに配置が部屋ごとに違うと、
+    /// 「さっき組んだ形」がどこにも無いことになる。写すのはペインの配置・表示モード・舞台／袖・ドック・保存した
+    /// レイアウト・コンポーザーの出し入れ——どれもペインの種類と寸法だけで、パスもタブ ID も持たない。
+    /// タブ・キャレット・ツリー・ペイン内の分割（<c>EditorViewLayout</c>／<c>TerminalViewLayout</c>：タブ ID を指す）は
+    /// その部屋のものを残す。
+    /// </summary>
+    /// <param name="source">写す元（今の部屋）。変更しない。</param>
+    /// <param name="target">行き先の部屋（読み込み済みの実体）。</param>
+    public static void CopyLayout(WorkspaceSnapshot source, WorkspaceSnapshot target)
+    {
+        var copy = Clone(source);
+        target.PaneLayout = copy.PaneLayout;
+        target.ActivePane = copy.ActivePane;
+        target.Mode = copy.Mode;
+        target.EnabledSessions = copy.EnabledSessions;
+        target.ActiveWingTab = copy.ActiveWingTab;
+        target.Stage = copy.Stage;
+        target.Dock = copy.Dock;
+        target.Layouts = copy.Layouts;
+        target.ScratchLayout = copy.ScratchLayout;
+        target.ActiveLayoutIndex = copy.ActiveLayoutIndex;
+        target.LayoutDirty = copy.LayoutDirty;
+        target.ComposerVisible = copy.ComposerVisible;
+        target.ComposerHeight = copy.ComposerHeight;
     }
 
     /// <summary>パスの持ち主（それを含むいちばん深いワークツリー）が写し元なら、行き先の同じ相対位置へ。

@@ -280,6 +280,53 @@ public class WorktreeRoomListTests
         Assert.Equal(2, sut.Workspaces.Count);
     }
 
+    /// <summary>§24.17.1 もうある部屋へ戻るときも、画面のレイアウトは今の部屋から持ってくる（タブはその部屋のまま）。</summary>
+    [Fact]
+    public void Returning_to_an_existing_worktree_room_brings_the_current_layout_but_keeps_its_tabs()
+    {
+        var main = NewDir();
+        var worktree = NewDir(main);
+        var sut = NewList();
+        var activated = new List<WorkspaceSnapshot>();
+        sut.WorkspaceActivated += (_, s) => activated.Add(s);
+        sut.ActivateFolder(main);
+        var mainRoom = activated[^1];
+        sut.ActivateWorktree(To(worktree, main, main), mainRoom, _ => true);
+        var worktreeRoom = activated[^1];
+        worktreeRoom.EditorTabs.Add(new EditorTabSnapshot { FilePath = Path.Combine(worktree, "only-here.txt") });
+        sut.SaveSnapshot(worktreeRoom);
+        sut.ActivateWorktree(To(main, worktree, main), worktreeRoom, _ => true);
+
+        // 本体の部屋でレイアウトを組み替える。
+        var current = activated[^1];
+        current.Mode = DisplayMode.Layout;
+        current.PaneLayout = new PaneNodeSnapshot
+        {
+            Orientation = "Columns",
+            Children = [new() { Kind = PaneKind.Terminal, Weight = 2 }, new() { Kind = PaneKind.Git }],
+        };
+        current.Dock = new DockSnapshot { BottomPane = PaneKind.Diff, BottomHeight = 321, Configured = true };
+        current.Stage = new StageSnapshot { Pane = PaneKind.Browser, WingWidth = 333 };
+        current.Layouts = [new SavedLayout { Name = "組み替え", Tree = new() { Kind = PaneKind.Git } }];
+        current.ComposerVisible = true;
+
+        sut.ActivateWorktree(To(worktree, main, main), current, _ => true);
+
+        var back = activated[^1];
+        Assert.Equal(worktreeRoom.Id, back.Id);
+        Assert.Equal(DisplayMode.Layout, back.Mode);
+        Assert.Equal([PaneKind.Terminal, PaneKind.Git], back.PaneLayout!.Children.Select(c => c.Kind!.Value));
+        Assert.Equal(2, back.PaneLayout.Children[0].Weight);
+        Assert.Equal(PaneKind.Diff, back.Dock!.BottomPane);
+        Assert.Equal(321, back.Dock.BottomHeight);
+        Assert.Equal(PaneKind.Browser, back.Stage!.Pane);
+        Assert.Equal("組み替え", Assert.Single(back.Layouts).Name);
+        Assert.True(back.ComposerVisible);
+        // タブはその部屋のもの。レイアウトは複製で、元の部屋と共有しない。
+        Assert.Equal(Path.Combine(worktree, "only-here.txt"), Assert.Single(back.EditorTabs).FilePath);
+        Assert.NotSame(current.PaneLayout, back.PaneLayout);
+    }
+
     /// <summary>§24.75 動かしたワークツリーを繋ぎ直したら、その部屋も新しい場所へ付け替わる（名前・畳み先は引き継ぐ）。</summary>
     [Fact]
     public void Moving_a_worktree_moves_its_room()

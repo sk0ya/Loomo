@@ -402,7 +402,8 @@ public sealed partial class WorkspaceListViewModel : ObservableObject
 
     /// <summary>
     /// ワークツリーへ「ブランチを切り替えるように」移る（§24.17.1）。そのワークツリーの部屋があれば
-    /// 前回の状態のまま戻り、無ければ<b>今の部屋を写して</b>作ってから移る（<see cref="WorktreeRoomSeed"/>）。
+    /// タブ・キャレット・ツリーは前回の状態のまま、<b>画面のレイアウトだけ今の部屋から</b>持ってきて戻る
+    /// （<see cref="WorktreeRoomSeed.CopyLayout"/>）。無ければ<b>今の部屋を写して</b>作ってから移る（<see cref="WorktreeRoomSeed"/>）。
     /// </summary>
     /// <param name="current">写し元＝今の部屋（呼び出し側が直前に最新の状態を捕まえておく）。</param>
     public void ActivateWorktree(
@@ -411,7 +412,10 @@ public sealed partial class WorkspaceListViewModel : ObservableObject
         var fullPath = Path.GetFullPath(request.Target);
         if (FindByRoot(fullPath) is { } existing)
         {
-            Activate(existing);
+            // 写すのは読み込んだ<b>後</b>の実体へ（未読込の索引の写しへ入れても、読み込みで差し替わって消える）。
+            Activate(existing, current is { IsDetailsLoaded: true } && current.Id != existing.Id
+                ? loaded => WorktreeRoomSeed.CopyLayout(current, loaded)
+                : null);
             return;
         }
         if (current is not { IsDetailsLoaded: true })
@@ -558,7 +562,9 @@ public sealed partial class WorkspaceListViewModel : ObservableObject
         RefreshEntries();
     }
 
-    private void Activate(WorkspaceSnapshot snapshot)
+    /// <param name="adjust">読み込んだ実体を開く直前に手を入れる（ワークツリーの部屋へレイアウトを持ってくる等）。
+    /// 今開いている部屋そのものなら呼ばない。</param>
+    private void Activate(WorkspaceSnapshot snapshot, Action<WorkspaceSnapshot>? adjust = null)
     {
         if (_state.ActiveWorkspaceId == snapshot.Id)
         {
@@ -572,6 +578,7 @@ public sealed partial class WorkspaceListViewModel : ObservableObject
         if (loaded is not null && !ReferenceEquals(loaded, snapshot))
             snapshot = ReplaceWithLoaded(snapshot, loaded);
 
+        adjust?.Invoke(snapshot);
         ActivateLoaded(snapshot);
     }
 
