@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <RootNamespace>sk0ya.Loomo.Services</RootNamespace>
@@ -168,6 +168,8 @@
          並べる、§39.10.3）。同梱 ConPTY は Sixel を通して自分のカーソルを進めるので、同じだけ進めて描く・DA1 で Sixel を返す。
          折り返したコマンド行の続きが切り出した出力の頭に混ざる・Ctrl+L の後のプロンプトの印が最下行に付くのを直す。
          全角文字の上のカーソルを 2 セル幅に・ブロックカーソルの下の文字を反転（2026-11-03 公開） -->
+    <!-- 1.0.56: 常駐セッションへ付け直したとき、画面・スクロールバックの画像（Sixel・iTerm2・Kitty）を VT スナップショットで
+         元の行・桁へ戻す（これまでは絵が消えて空の行だけが残った。2026-11-06 公開） -->
     <!-- 版は Directory.Build.props の TerminalPackageVersion（常駐ホストと共有するため一か所）。参照は eng/LocalTerminal.props
          （-p:UseLocalTerminal=true でプロジェクト参照へ切り替わる）。 -->
   </ItemGroup>
