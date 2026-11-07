@@ -680,7 +680,17 @@
                                         <MenuItem Header="マージコミットを作成してマージ" Click="OnBranchMergeNoFastForward" />
                                         <MenuItem Header="スカッシュマージ（コミットは別途実行）" Click="OnBranchMergeSquash" />
                                     </MenuItem>
-                                    <MenuItem x:Name="BranchMenuRebase" Header="このブランチへリベース（現在のブランチを載せ替え）" Click="OnBranchRebase" />
+                                    <MenuItem x:Name="BranchMenuRebase" Header="現在のブランチをこのブランチへリベース" Click="OnBranchRebase" />
+                                    <!-- 並び：毎日使うプル／プッシュを先に、たまにしか触らない上流の設定はその後ろ、
+                                         取り返しのつかない削除は誤クリックしにくい最下段（Rider 等と同じ）。 -->
+                                    <Separator />
+                                    <MenuItem x:Name="BranchMenuPull" Header="プル" Click="OnBranchPull" />
+                                    <MenuItem x:Name="BranchMenuPush" Header="プッシュ" Click="OnBranchPush" />
+                                    <MenuItem x:Name="BranchMenuPushForce" Header="強制プッシュ（--force-with-lease）…"
+                                              Click="OnBranchPushForce" />
+                                    <Separator />
+                                    <MenuItem x:Name="BranchMenuSetUpstream" Header="上流を設定…" Click="OnBranchSetUpstream" />
+                                    <MenuItem x:Name="BranchMenuUnsetUpstream" Header="上流を解除" Click="OnBranchUnsetUpstream" />
                                     <Separator />
                                     <MenuItem Header="ここから新しいブランチを作成…" Click="OnBranchCreateFrom" />
                                     <MenuItem x:Name="BranchMenuCreateWorktree" Header="ワークツリーとして別の場所に置く…"
@@ -690,14 +700,6 @@
                                     <MenuItem x:Name="BranchMenuDelete" Header="削除" InputGestureText="Del" Click="OnBranchDelete" />
                                     <MenuItem x:Name="BranchMenuDeleteRemote" Header="リモートから削除…"
                                               Click="OnBranchDeleteRemote" />
-                                    <Separator />
-                                    <MenuItem x:Name="BranchMenuSetUpstream" Header="上流を設定…" Click="OnBranchSetUpstream" />
-                                    <MenuItem x:Name="BranchMenuUnsetUpstream" Header="上流を解除" Click="OnBranchUnsetUpstream" />
-                                    <Separator />
-                                    <MenuItem x:Name="BranchMenuPull" Header="プル" Click="OnBranchPull" />
-                                    <MenuItem x:Name="BranchMenuPush" Header="プッシュ" Click="OnBranchPush" />
-                                    <MenuItem x:Name="BranchMenuPushForce" Header="強制プッシュ（--force-with-lease）…"
-                                              Click="OnBranchPushForce" />
 
                                     <!-- タグの行 -->
                                     <MenuItem Header="チェックアウト（detached）" Click="OnTagCheckout" Tag="tag" />

@@ -265,22 +265,23 @@
                     <ContextMenu>
                         <MenuItem x:Name="MenuCheckout" Header="チェックアウト" Click="OnMenuCheckout" />
                         <MenuItem x:Name="MenuMerge" Header="現在のブランチへマージ" Click="OnMenuMerge" />
-                        <MenuItem x:Name="MenuRebase" Header="このブランチへリベース（現在のブランチを載せ替え）"
+                        <MenuItem x:Name="MenuRebase" Header="現在のブランチをこのブランチへリベース"
                                   Click="OnMenuRebase" />
+                        <!-- 並びは Git ペインのブランチメニューと同じ：プル／プッシュ → 上流 → 作成・コピー → 削除（最下段）。 -->
+                        <Separator />
+                        <MenuItem x:Name="MenuPull" Header="プル" Click="OnMenuPull" />
+                        <MenuItem x:Name="MenuPush" Header="プッシュ" Click="OnMenuPush" />
+                        <MenuItem x:Name="MenuPushForce" Header="強制プッシュ（--force-with-lease）…"
+                                  Click="OnMenuPushForce" />
+                        <Separator />
+                        <MenuItem x:Name="MenuSetUpstream" Header="上流を設定…" Click="OnMenuSetUpstream" />
+                        <MenuItem x:Name="MenuUnsetUpstream" Header="上流を解除" Click="OnMenuUnsetUpstream" />
                         <Separator />
                         <MenuItem Header="ここから新しいブランチを作成…" Click="OnMenuCreateFrom" />
                         <MenuItem Header="ブランチ名をコピー" Click="OnMenuCopyName" />
                         <Separator />
                         <MenuItem x:Name="MenuDelete" Header="削除" Click="OnMenuDelete" />
                         <MenuItem x:Name="MenuDeleteRemote" Header="リモートから削除…" Click="OnMenuDeleteRemote" />
-                        <Separator />
-                        <MenuItem x:Name="MenuSetUpstream" Header="上流を設定…" Click="OnMenuSetUpstream" />
-                        <MenuItem x:Name="MenuUnsetUpstream" Header="上流を解除" Click="OnMenuUnsetUpstream" />
-                        <Separator />
-                        <MenuItem x:Name="MenuPull" Header="プル" Click="OnMenuPull" />
-                        <MenuItem x:Name="MenuPush" Header="プッシュ" Click="OnMenuPush" />
-                        <MenuItem x:Name="MenuPushForce" Header="強制プッシュ（--force-with-lease）…"
-                                  Click="OnMenuPushForce" />
                     </ContextMenu>
                 </TreeView.ContextMenu>
             </TreeView>
