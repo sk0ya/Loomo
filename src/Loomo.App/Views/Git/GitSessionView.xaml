@@ -578,12 +578,6 @@
                     <!-- ブランチ・ワークツリー・タグ・サブモジュールを1本のツリーに（§24.17.3）。下段の切替式の一覧は
                          やめた——本命のブランチ一覧の高さを常に削り、作成・比較・片付けのボタンまで並んでいた。 -->
                     <DockPanel x:Name="BranchListArea">
-                        <!-- 特定ブランチに絞っている間だけ「すべてのブランチ」へ戻すリンクを出す -->
-                        <Button DockPanel.Dock="Top" Margin="8,0,8,2" HorizontalAlignment="Left"
-                                Style="{StaticResource ToolbarButton}" Content="↺ すべてのブランチを表示"
-                                Click="OnShowAllBranchesLog"
-                                Visibility="{Binding History.IsLogScoped, Converter={StaticResource BoolToVis}}" />
-
                         <!-- ブランチの絞り込み。<b>ふだんは畳んでおき</b>、ツリーで文字を打つか "/" で開く
                              （VS Code のツリー検索と同じ）。絞り込んでいる間と、欄にフォーカスがある間は出したまま
                              （UpdateBranchFilterRow）。ブランチ切替ポップアップの絞り込みとは<b>別の状態</b>
@@ -914,6 +908,37 @@
                                                                 </Style.Triggers>
                                                             </Style>
                                                         </TextBlock.Style>
+                                                    </TextBlock>
+                                                </Button>
+                                                <!-- 1本のブランチに絞っている間だけ、そのブランチ名のチップ（押すと全ブランチへ戻る）。
+                                                     以前は左列のツリーの上に「↺ すべてのブランチを表示」を出していたが、ダブルクリックの
+                                                     直後にツリーが1行ぶん下へずれて邪魔だった。見出しの中なら高さを取らない。 -->
+                                                <Button DockPanel.Dock="Right" Click="OnShowAllBranchesLog"
+                                                        Focusable="False" Cursor="Hand" Padding="6,0" Margin="0,0,4,0"
+                                                        Background="Transparent" BorderThickness="0"
+                                                        ToolTip="このブランチに絞っています。押すとすべてのブランチのコミットに戻ります"
+                                                        Visibility="{Binding DataContext.History.IsLogScoped,
+                                                                     RelativeSource={RelativeSource AncestorType=UserControl},
+                                                                     Converter={StaticResource BoolToVis}}">
+                                                    <Button.Template>
+                                                        <ControlTemplate TargetType="Button">
+                                                            <Border x:Name="b" Background="Transparent" CornerRadius="3"
+                                                                    Padding="{TemplateBinding Padding}">
+                                                                <ContentPresenter VerticalAlignment="Center" />
+                                                            </Border>
+                                                            <ControlTemplate.Triggers>
+                                                                <Trigger Property="IsMouseOver" Value="True">
+                                                                    <Setter TargetName="b" Property="Background" Value="{DynamicResource Border}" />
+                                                                </Trigger>
+                                                            </ControlTemplate.Triggers>
+                                                        </ControlTemplate>
+                                                    </Button.Template>
+                                                    <TextBlock FontSize="{DynamicResource Fs11}" Foreground="{DynamicResource Accent}"
+                                                               TextTrimming="CharacterEllipsis" MaxWidth="180">
+                                                        <Run Text="⑂" />
+                                                        <Run Text="{Binding DataContext.History.ScopedBranchLabel, Mode=OneWay,
+                                                                    RelativeSource={RelativeSource AncestorType=UserControl}}" />
+                                                        <Run Text="✕" Foreground="{DynamicResource FgDim}" />
                                                     </TextBlock>
                                                 </Button>
                                                 <TextBlock Text="{Binding}" FontSize="{DynamicResource Fs11}"

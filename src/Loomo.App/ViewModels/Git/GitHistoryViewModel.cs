@@ -58,6 +58,8 @@ public sealed partial class GitHistoryViewModel : ObservableObject
     [ObservableProperty] private bool _isPathScoped;
     [ObservableProperty] private string _pathScopeLabel = "";
     [ObservableProperty] private bool _isLogScoped;
+    /// <summary>一覧を絞っているブランチ名（一覧見出しのチップに出す）。絞っていなければ空。</summary>
+    [ObservableProperty] private string _scopedBranchLabel = "";
     [ObservableProperty] private string _logFilter = "";
     [ObservableProperty] private IReadOnlyList<string> _authorOptions = new[] { AllAuthorsLabel };
     [ObservableProperty] private string _authorSelection = AllAuthorsLabel;
@@ -447,6 +449,7 @@ public sealed partial class GitHistoryViewModel : ObservableObject
     public Task ShowBranchAsync(GitBranchInfo branch)
     {
         _branch = branch.Name;
+        ScopedBranchLabel = branch.Name;
         IsLogScoped = true;
         _knownAuthors.Clear();
         return ReloadAsync();
@@ -455,6 +458,7 @@ public sealed partial class GitHistoryViewModel : ObservableObject
     public Task ShowAllBranchesAsync()
     {
         _branch = null;
+        ScopedBranchLabel = "";
         IsLogScoped = false;
         _knownAuthors.Clear();
         return ReloadAsync();
@@ -484,6 +488,7 @@ public sealed partial class GitHistoryViewModel : ObservableObject
     public async Task SelectCommitAsync(string hash)
     {
         _branch = null;
+        ScopedBranchLabel = "";
         IsLogScoped = false;
         ResetPathScope();
         // 絞り込みが残っていると git 側が篩ってしまい、目的のコミットまで手繰れない。
