@@ -81,16 +81,16 @@
         </DataTemplate>
     </UserControl.Resources>
     <DockPanel>
-        <Border Style="{StaticResource SidebarHeaderBand}" Padding="10,3,4,3">
+        <Border Style="{StaticResource SidebarHeaderBand}">
             <DockPanel>
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
-                    <Button x:Name="FilterButton" Content="⌕" Style="{StaticResource PaneHeaderGhostButton}" Click="OnToggleFilter"
+                    <Button x:Name="FilterButton" Content="⌕" Style="{StaticResource PaneHeaderGhostButton}" Height="20" Click="OnToggleFilter"
                             ToolTip="絞り込み (Ctrl+F)" AutomationProperties.Name="TODO の絞り込みを表示" />
-                    <Button Content="↻" Style="{StaticResource PaneHeaderGhostButton}" Command="{Binding RefreshCommand}"
+                    <Button Content="↻" Style="{StaticResource PaneHeaderGhostButton}" Height="20" Command="{Binding RefreshCommand}"
                             ToolTip="再検索 (F5)" AutomationProperties.Name="TODO を再検索" />
-                    <Button Content="⊟" Style="{StaticResource PaneHeaderGhostButton}" Command="{Binding CollapseAllCommand}"
+                    <Button Content="⊟" Style="{StaticResource PaneHeaderGhostButton}" Height="20" Command="{Binding CollapseAllCommand}"
                             ToolTip="すべて折りたたむ" AutomationProperties.Name="TODO をすべて折りたたむ" />
-                    <Button Content="⋯" Style="{StaticResource PaneHeaderGhostButton}" Click="OnMoreClick"
+                    <Button Content="⋯" Style="{StaticResource PaneHeaderGhostButton}" Height="20" Click="OnMoreClick"
                             ToolTip="表示と操作" AutomationProperties.Name="TODO の表示と操作" />
                 </StackPanel>
                 <TextBlock VerticalAlignment="Center" FontSize="{DynamicResource Fs11}" TextTrimming="CharacterEllipsis">

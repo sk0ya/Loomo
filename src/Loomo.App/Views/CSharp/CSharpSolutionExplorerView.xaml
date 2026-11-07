@@ -40,14 +40,14 @@
     </UserControl.Resources>
 
     <DockPanel>
-        <!-- 見出し。他のサイドバーパネル（GIT・ペグボード）と同じ PanelHeader で揃える。 -->
+        <!-- 見出し。他のサイドバーパネルと同じ SidebarHeaderBand／SidebarHeaderText で揃える。 -->
         <Border Style="{StaticResource SidebarHeaderBand}" Margin="0,0,0,4">
         <DockPanel LastChildFill="False">
-            <TextBlock DockPanel.Dock="Left" Style="{StaticResource PanelHeader}" Text="ソリューション" />
+            <TextBlock DockPanel.Dock="Left" Style="{StaticResource SidebarHeaderText}" Text="ソリューション" />
             <ComboBox DockPanel.Dock="Right" ItemsSource="{Binding ConfigurationOptions}"
                       SelectedItem="{Binding SelectedConfiguration, Mode=TwoWay}"
                       Visibility="{Binding HasMultipleConfigurations, Converter={StaticResource BoolToVis}}"
-                      Margin="0,0,4,2" Padding="4,0" MinWidth="62" Height="20"
+                      Margin="0,0,4,0" Padding="4,0" MinWidth="62" Height="20"
                       VerticalAlignment="Center"
                       FontSize="{DynamicResource Fs11}"
                       ToolTip="Build／Test／Run／Debugで使う構成を選択"

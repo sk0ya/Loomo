@@ -39,8 +39,8 @@
 
         <!-- 見出しの小さなボタン（すべて展開／折りたたむ）。IconButton の 48px 角は見出しに大きすぎる。 -->
         <Style x:Key="WorkItemHeaderButton" TargetType="Button" BasedOn="{StaticResource IconButton}">
-            <Setter Property="Width" Value="28" />
-            <Setter Property="Height" Value="28" />
+            <Setter Property="Width" Value="24" />
+            <Setter Property="Height" Value="20" />
             <Setter Property="FontSize" Value="{DynamicResource Fs14}" />
         </Style>
 
@@ -66,13 +66,13 @@
 
     <DockPanel>
         <!-- 見出し：組織名・件数と、更新／組織の切替。 -->
-        <Border Style="{StaticResource SidebarHeaderBand}" Padding="6,2,2,4" Margin="0,0,0,6">
+        <Border Style="{StaticResource SidebarHeaderBand}" Padding="10,0,2,0">
         <DockPanel>
-            <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="⟳"
+            <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Height="20" Content="⟳"
                     ToolTip="取り直す (F5)" Command="{Binding RefreshCommand}"
                     AutomationProperties.AutomationId="WorkItemsRefreshButton"
                     IsEnabled="{Binding IsLoading, Converter={StaticResource InverseBool}}" />
-            <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="⚙"
+            <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Height="20" Content="⚙"
                     ToolTip="設定（組織 URL・プロジェクト・PR 対象）" Command="{Binding ToggleSettingsCommand}"
                     AutomationProperties.AutomationId="WorkItemsSettingsButton" />
             <Button DockPanel.Dock="Right" Style="{StaticResource WorkItemHeaderButton}" Content="⊞"
@@ -83,20 +83,20 @@
                     ToolTip="すべて折りたたむ" Command="{Binding CollapseAllCommand}"
                     AutomationProperties.AutomationId="WorkItemsCollapseAllButton"
                     AutomationProperties.Name="すべて折りたたむ" />
-            <StackPanel VerticalAlignment="Center">
-                <TextBlock FontSize="{DynamicResource Fs13}" Foreground="{DynamicResource Fg}">
-                    <Run Text="自分の Work Items" FontWeight="SemiBold" />
-                    <Run Text="{Binding OrganizationName, Mode=OneWay}" Foreground="{DynamicResource FgDim}" />
-                </TextBlock>
-                <TextBlock Text="{Binding StatusText}" FontSize="{DynamicResource Fs11}"
-                           Foreground="{DynamicResource FgDim}"
-                           Visibility="{Binding StatusText, Converter={StaticResource NonEmptyToVis}}" />
-            </StackPanel>
+            <TextBlock VerticalAlignment="Center" FontSize="{DynamicResource Fs11}" Foreground="{DynamicResource Fg}"
+                       TextTrimming="CharacterEllipsis">
+                <Run Text="自分の Work Items" FontWeight="SemiBold" /><Run Text="  " /><Run
+                     Text="{Binding OrganizationName, Mode=OneWay}" Foreground="{DynamicResource FgDim}" />
+            </TextBlock>
         </DockPanel>
         </Border>
+        <!-- 状態（取得中・件数など）は帯の外の1行に置く。帯に2行目を入れるとこのパネルだけ見出しが高くなる。 -->
+        <TextBlock DockPanel.Dock="Top" Text="{Binding StatusText}" FontSize="{DynamicResource Fs11}"
+                   Foreground="{DynamicResource FgDim}" Margin="10,4,6,0"
+                   Visibility="{Binding StatusText, Converter={StaticResource NonEmptyToVis}}" />
 
         <!-- 設定：TaskAzure の設定と同じ項目（組織 URL・プロジェクト・PR 対象）。 -->
-        <Grid DockPanel.Dock="Top" Margin="6,0,6,6"
+        <Grid DockPanel.Dock="Top" Margin="6,6,6,0"
               Visibility="{Binding IsSettingsVisible, Converter={StaticResource BoolToVis}}">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
@@ -131,7 +131,7 @@
         </Grid>
 
         <!-- 絞り込み：文字（タイトル・状態・種類・ID）＋状態（☑ 複数）＋種類（☑ 複数）。 -->
-        <DockPanel DockPanel.Dock="Top" Margin="6,0,6,6">
+        <DockPanel DockPanel.Dock="Top" Margin="6,6,6,6">
             <ToggleButton x:Name="TypeFilterButton" DockPanel.Dock="Right" Margin="4,0,0,0"
                           Style="{StaticResource WorkItemFilterToggle}"
                           IsChecked="{Binding IsTypeFilterOpen, Mode=TwoWay}"

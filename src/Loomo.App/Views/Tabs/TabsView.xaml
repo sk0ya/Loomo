@@ -534,7 +534,7 @@
     <DockPanel>
         <!-- 見出し：TABS ＋ 設定ボタン ＋ 件数。帯そのものは押さない（面の出し入れは ActivityBar、
              種別の出し入れはこの ⚙ だけ）。 -->
-        <Border Style="{StaticResource SidebarHeaderBand}" Padding="8,5,6,3">
+        <Border Style="{StaticResource SidebarHeaderBand}" Padding="10,0,6,0">
         <DockPanel LastChildFill="True">
             <TextBlock DockPanel.Dock="Right" Text="{Binding TotalCount}"
                        Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs11}"

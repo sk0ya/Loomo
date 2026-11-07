@@ -325,7 +325,7 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="TabItem">
-                        <Border x:Name="Bd" Padding="8,4" Margin="0,0,2,0" Background="Transparent"
+                        <Border x:Name="Bd" Padding="8,2,8,1" Margin="0,0,2,0" Background="Transparent"
                                 BorderBrush="Transparent" BorderThickness="0,0,0,2">
                             <ContentPresenter ContentSource="Header" VerticalAlignment="Center" />
                         </Border>
@@ -353,10 +353,9 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="TabControl">
-                        <!-- 見出し帯（SidebarHeaderBand と同じ PaneHeaderBg ＋下辺の罫）。 -->
-                        <Border Background="{DynamicResource PaneHeaderBg}" BorderBrush="{DynamicResource Border}"
-                                BorderThickness="0,0,0,1" Margin="0,0,0,2">
-                            <TabPanel IsItemsHost="True" Background="Transparent" Margin="4,0,4,0" />
+                        <!-- 見出し帯（他のサイドバーパネルと同じ高さ・色）。タブの下線が帯の下辺に乗るよう下寄せ。 -->
+                        <Border Style="{StaticResource SidebarHeaderBand}" Padding="4,0" Margin="0,0,0,2">
+                            <TabPanel IsItemsHost="True" Background="Transparent" VerticalAlignment="Bottom" />
                         </Border>
                     </ControlTemplate>
                 </Setter.Value>
@@ -391,7 +390,7 @@
         </TabControl>
         <Border Style="{StaticResource SidebarHeaderBand}"
                 Visibility="{Binding IsRepository, Converter={StaticResource InverseBoolToVis}}">
-            <TextBlock Style="{StaticResource PanelHeader}" Text="GIT" />
+            <TextBlock Style="{StaticResource SidebarHeaderText}" Text="GIT" />
         </Border>
 
         <!-- リポジトリの帯（§40.8.3）：リポジトリが2つ以上あるとき、コンボボックスで選ぶ。閉じた箱にも選んでいるリポジトリの

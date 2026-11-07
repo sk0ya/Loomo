@@ -44,7 +44,7 @@
 
     <DockPanel>
         <Border Style="{StaticResource SidebarHeaderBand}">
-            <TextBlock Style="{StaticResource PanelHeader}" Text="AIセッション" />
+            <TextBlock Style="{StaticResource SidebarHeaderText}" Text="AIセッション" />
         </Border>
 
         <Button DockPanel.Dock="Top" Margin="10,4,10,8" Padding="10,7"

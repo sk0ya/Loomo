@@ -94,14 +94,14 @@
 
     <DockPanel>
         <!-- ヘッダー：名前・件数・操作（TODO Tree と同じ帯） -->
-        <Border Style="{StaticResource SidebarHeaderBand}" Padding="10,3,4,3">
+        <Border Style="{StaticResource SidebarHeaderBand}">
             <DockPanel>
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
-                    <Button Tag="{StaticResource PegIcon.Filter}" Style="{StaticResource PaneHeaderGhostButton}"
+                    <Button Tag="{StaticResource PegIcon.Filter}" Style="{StaticResource PaneHeaderGhostButton}" Height="20"
                             Click="OnToggleFilter" ToolTip="絞り込み (Ctrl+F)"
                             AutomationProperties.Name="ペグボードの絞り込みを表示" />
                     <Button x:Name="AddButton" Tag="{StaticResource PegIcon.Add}" Content="残す"
-                            Style="{StaticResource PaneHeaderGhostButton}" Click="OnAddClick"
+                            Style="{StaticResource PaneHeaderGhostButton}" Height="20" Click="OnAddClick"
                             ToolTip="クリップボード・ブラウザ・エディタから残す"
                             AutomationProperties.Name="ペグボードへ残す">
                         <Button.ContextMenu>

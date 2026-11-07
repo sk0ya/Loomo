@@ -877,9 +877,19 @@
          違うので、帯は Border として外側に被せ、内側の余白は Padding で持つ（Margin だと塗られない隙間が残る）。 -->
     <Style x:Key="SidebarHeaderBand" TargetType="Border">
         <Setter Property="DockPanel.Dock" Value="Top" />
+        <!-- 高さは帯が決める（中のボタン任せにするとパネルごとにズレる＝実際にズレていた）。ペインの見出しと同じ
+             PaneHeaderH なので文字サイズにも追随する。中に置くボタンはこの高さに収まる大きさ（20px 程度）にする。 -->
+        <Setter Property="Height" Value="{DynamicResource PaneHeaderH}" />
+        <Setter Property="Padding" Value="10,0,4,0" />
         <Setter Property="Background" Value="{DynamicResource PaneHeaderBg}" />
         <Setter Property="BorderBrush" Value="{DynamicResource Border}" />
         <Setter Property="BorderThickness" Value="0,0,0,1" />
+    </Style>
+
+    <!-- SidebarHeaderBand に置く見出し文字。左の余白は帯の Padding が持つので 0、縦は帯の中央。 -->
+    <Style x:Key="SidebarHeaderText" TargetType="TextBlock" BasedOn="{StaticResource PanelHeader}">
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
 
     <!-- ペインヘッダーの見出し（見ているタブ）の直後に付く ×。見ているタブを閉じる。
