@@ -234,11 +234,9 @@
                       Visibility="{Binding HasVisibleNodes, Converter={StaticResource BoolToVis}}">
                 <TreeView.ContextMenu>
                     <!-- 空き領域での右クリック。対象は「ツリー全体／表示ルート直下」に限る
-                         （項目に効く操作は下の ItemTemplate 側のメニュー）。 -->
+                         （項目に効く操作は下の ItemTemplate 側のメニュー）。空き領域で押す目的はたいてい
+                         「ここに作る／貼る」なのでそれを先頭に、部屋の外へ出る Explorer は項目のメニューと同じく最下段。 -->
                     <ContextMenu Style="{StaticResource FileContextMenu}" Opened="OnTreeContextMenuOpened">
-                        <MenuItem Header="エクスプローラーで開く" Click="OnOpenRootInExplorerClick"
-                                  ToolTip="表示中のルートフォルダーを Explorer で開きます" />
-                        <Separator />
                         <MenuItem Header="新規ファイル" Tag="FileSystemOnly" Click="OnNewFileClick"
                                   ToolTip="名前と拡張子を選んで作成します" />
                         <MenuItem Header="新規フォルダー" Tag="FileSystemOnly" Click="OnNewFolderClick" />
@@ -254,6 +252,9 @@
                         <MenuItem Header="すべて展開" Click="OnExpandAllClick" />
                         <MenuItem Header="すべて折りたたむ" Click="OnCollapseAllClick" />
                         <MenuItem Header="更新" Click="OnRefreshClick" />
+                        <Separator />
+                        <MenuItem Header="エクスプローラーで開く" Click="OnOpenRootInExplorerClick"
+                                  ToolTip="表示中のルートフォルダーを Explorer で開きます" />
                     </ContextMenu>
                 </TreeView.ContextMenu>
                 <TreeView.ItemContainerStyle>
@@ -380,8 +381,10 @@
                              行全幅をヒットテスト対象にする（無いと背後の TreeView の空白用メニューが出る）。 -->
                         <DockPanel LastChildFill="True" Background="Transparent">
                             <DockPanel.ContextMenu>
-                                <!-- 並びは「開く/作る → 移す → 直す → 送る/比較 → Git → AI → 枝の開閉 →
-                                     ワークスペース → ZIP → Explorer のメニュー」。「次で開く」＝部屋の外（Windows のアプリ）、
+                                <!-- 並びは「開く → 作る（新規・複製・ZIP）→ クリップボード（パスのコピー含む）→ 名前の変更・削除 →
+                                     元に戻す → 送る/比較・Git・AI → 枝の開閉 → ワークスペース → Explorer のメニュー」。
+                                     削除は「パスをコピー」の隣で誤クリックされないよう名前の変更と組にして区切る
+                                     （ゴミ箱行き＋元に戻せるので最下段までは下げない）。「次で開く」＝部屋の外（Windows のアプリ）、
                                      「ペインへ送る」＝部屋の中の別ペイン（§24.3 の「送る」）で分ける。区切り線は静的に置くだけで、実際の
                                      出し分け（グループが丸ごと隠れたときに線だけ残さない）は
                                      OnNodeContextMenuOpened から共有 Presenter が行う。 -->
@@ -401,26 +404,31 @@
                                                   Visibility="{Binding IsDirectory, Converter={StaticResource InverseBoolToVis}}"
                                                   ToolTip="Windows の『アプリで開く』画面を表示します" />
                                     </MenuItem>
+                                    <Separator />
                                     <MenuItem Header="新規作成" Tag="AutoGroup">
                                         <MenuItem Header="新規ファイル" Tag="FileSystemOnly" Click="OnNewFileClick"
                                                   ToolTip="名前と拡張子を選んで作成します" />
                                         <MenuItem Header="新規フォルダー" Tag="FileSystemOnly" Click="OnNewFolderClick" />
                                     </MenuItem>
+                                    <MenuItem Header="複製" InputGestureText="Ctrl+D" Click="OnDuplicateClick"
+                                              ToolTip="同じフォルダーに「 - コピー」を付けて複製します"
+                                              Visibility="{Binding CanDuplicate, Converter={StaticResource BoolToVis}}" />
+                                    <MenuItem Header="ZIPに圧縮" Click="OnCompressToZipClick"
+                                              Visibility="{Binding CanCompress, Converter={StaticResource BoolToVis}}"
+                                              ToolTip="フォルダーを同じ場所の ZIP に圧縮します（Undo/Redo 対応）" />
                                     <Separator />
                                     <MenuItem Header="切り取り" Tag="FileSystemOnly" InputGestureText="Ctrl+X" Click="OnCutClick" />
                                     <MenuItem Header="コピー" Tag="FileSystemOnly" InputGestureText="Ctrl+C" Click="OnCopyClick" />
                                     <MenuItem Header="貼り付け" Tag="FileSystemOnly" InputGestureText="Ctrl+V" Click="OnPasteClick" />
-                                    <MenuItem Header="複製" InputGestureText="Ctrl+D" Click="OnDuplicateClick"
-                                              ToolTip="同じフォルダーに「 - コピー」を付けて複製します"
-                                              Visibility="{Binding CanDuplicate, Converter={StaticResource BoolToVis}}" />
-                                    <MenuItem Header="名前の変更" Tag="FileSystemOnly" InputGestureText="F2" Click="OnRenameClick" />
-                                    <MenuItem Header="削除" Tag="FileSystemOnly" InputGestureText="Delete" Click="OnDeleteClick" />
                                     <MenuItem Header="パスをコピー">
                                         <MenuItem Header="フルパス" Click="OnCopyPathClick" />
                                         <MenuItem Header="相対パス" Click="OnCopyRelativePathClick"
                                                   ToolTip="所属するワークスペースフォルダーからの相対パス" />
                                         <MenuItem Header="名前" Click="OnCopyNameClick" />
                                     </MenuItem>
+                                    <Separator />
+                                    <MenuItem Header="名前の変更" Tag="FileSystemOnly" InputGestureText="F2" Click="OnRenameClick" />
+                                    <MenuItem Header="削除" Tag="FileSystemOnly" InputGestureText="Delete" Click="OnDeleteClick" />
                                     <Separator />
                                     <MenuItem Header="元に戻す" Tag="UndoItem" InputGestureText="Ctrl+Z"
                                               Click="OnUndoFileOperationClick" />
@@ -493,9 +501,6 @@
                                         <MenuItem Header="ワークスペースから削除" Click="OnRemoveFromWorkspaceClick"
                                                   Visibility="{Binding CanRemoveFromWorkspace, Converter={StaticResource BoolToVis}}" />
                                     </MenuItem>
-                                    <MenuItem Header="ZIPに圧縮" Click="OnCompressToZipClick"
-                                              Visibility="{Binding CanCompress, Converter={StaticResource BoolToVis}}"
-                                              ToolTip="フォルダーを同じ場所の ZIP に圧縮します（Undo/Redo 対応）" />
                                     <Separator />
                                     <!-- 共有・送る・プロパティ・Shell 拡張は Explorer のメニューに任せる（Shell がその場で組み立てる）。 -->
                                     <MenuItem Header="Explorer のメニュー…" Click="OnExplorerMenuClick" />
