@@ -57,6 +57,9 @@ internal sealed class DetachedWindowManager
     /// <summary>全ウィンドウの切り離し項目（ホスト側から種類で絞って一括操作するため）。</summary>
     internal IEnumerable<DetachedItem> AllItems => _windows.SelectMany(w => w.Items);
 
+    /// <summary>開いている切り離しウィンドウ（本体の OwnedWindows には載らない——Owner を付けないため）。</summary>
+    internal IReadOnlyList<DetachedPaneWindow> Windows => _windows;
+
     /// <summary>
     /// 切り離しの<b>唯一の入口</b>。<b>いま開いている切り離しウィンドウ</b>（直近に前へ出たもの）が
     /// あれば、そこへ<b>タブとして</b>足して前へ出す。1つも無ければ新しいフローティングウィンドウを開く。
@@ -116,7 +119,11 @@ internal sealed class DetachedWindowManager
 
     private DetachedPaneWindow NewWindow(double? left = null, double? top = null)
     {
-        var win = new DetachedPaneWindow(this) { Owner = _owner };
+        // Owner は付けない。付けると本体より常に手前に居座り、本体へ渡した操作（差分の札から「Git 一覧で表示」
+        // など）の行き先が窓の下に隠れて、押しても何も起きないように見えた。普通の窓どうしとして重なり順を
+        // 譲り合い、手前に置き続けたいときはタイトルバーのピン（Topmost・§24.36）を使う。本体を閉じたときは
+        // ShellWindow.OnClosed の CloseAll が一緒に閉じる（Owner による巻き添えには頼らない）。
+        var win = new DetachedPaneWindow(this);
         win.Activated += (_, _) => NoteActivated(win);
         if (left is { } l && top is { } t)
         {

@@ -153,15 +153,40 @@ public class DetachedPaneWindowTests
             try
             {
                 manager.Detach(NewItem("A"));
-                var window = Assert.Single(owner.OwnedWindows.OfType<DetachedPaneWindow>());
+                var window = Assert.Single(manager.Windows);
                 window.SetTopmost(true);
 
                 var snapshots = manager.Capture(item => new sk0ya.Loomo.App.Services.DetachedItemSnapshot { Kind = "Editor", Text = item.Title });
                 Assert.True(Assert.Single(snapshots).IsTopmost);
 
                 manager.Restore(snapshots, s => NewItem(s.Text ?? ""));
-                var restored = Assert.Single(owner.OwnedWindows.OfType<DetachedPaneWindow>());
+                var restored = Assert.Single(manager.Windows);
                 Assert.True(restored.Topmost);
+            }
+            finally
+            {
+                manager.CloseAll();
+                owner.Close();
+            }
+        });
+    }
+
+    [Fact]
+    public void 切り離した窓は本体を_Owner_に持たない()
+    {
+        // Owner だと本体より常に手前に居座り、本体へ渡した操作（差分の札から「Git 一覧で表示」）の行き先が
+        // 窓の下に隠れて、押しても何も起きないように見えた。手前に置き続けるのはピン（Topmost）の役目。
+        RunSta(() =>
+        {
+            var owner = new Window { Width = 200, Height = 200, ShowInTaskbar = false };
+            owner.Show();
+            var manager = new DetachedWindowManager(owner);
+            try
+            {
+                manager.Detach(NewItem("A"));
+                var window = Assert.Single(manager.Windows);
+                Assert.Null(window.Owner);
+                Assert.Empty(owner.OwnedWindows);
             }
             finally
             {
