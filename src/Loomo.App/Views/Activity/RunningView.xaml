@@ -99,7 +99,7 @@
         </DataTemplate>
     </UserControl.Resources>
     <DockPanel>
-        <Border DockPanel.Dock="Top" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1" Padding="10,5,4,5">
+        <Border Style="{StaticResource SidebarHeaderBand}" Padding="10,5,4,5">
             <TextBlock VerticalAlignment="Center" FontSize="{DynamicResource Fs11}" TextTrimming="CharacterEllipsis">
                 <Run Text="動いているもの" FontWeight="SemiBold" /><Run Text="  " /><Run
                      Text="{Binding RunningCount, Mode=OneWay, StringFormat={}{0}件}" Foreground="{DynamicResource FgDim}" />

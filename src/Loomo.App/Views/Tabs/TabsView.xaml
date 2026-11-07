@@ -534,7 +534,8 @@
     <DockPanel>
         <!-- 見出し：TABS ＋ 設定ボタン ＋ 件数。帯そのものは押さない（面の出し入れは ActivityBar、
              種別の出し入れはこの ⚙ だけ）。 -->
-        <DockPanel DockPanel.Dock="Top" LastChildFill="True" Margin="8,5,6,3">
+        <Border Style="{StaticResource SidebarHeaderBand}" Padding="8,5,6,3">
+        <DockPanel LastChildFill="True">
             <TextBlock DockPanel.Dock="Right" Text="{Binding TotalCount}"
                        Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs11}"
                        Opacity="0.7" VerticalAlignment="Center" Margin="5,0,2,0" />
@@ -584,6 +585,7 @@
             <TextBlock Style="{StaticResource PanelHeader}" Padding="0" Text="TABS"
                        VerticalAlignment="Center" />
         </DockPanel>
+        </Border>
 
         <!-- 設定ビュー：一覧に出す種別。設定ボタン（⚙）にぶら下がる**ポップアップ**で出す——面の中へ挟むと、
              ただでさえ短い区画の高さをタブ列から奪い、選び終わった後も居座る。タイトルバーの

@@ -41,7 +41,8 @@
 
     <DockPanel>
         <!-- 見出し。他のサイドバーパネル（GIT・ペグボード）と同じ PanelHeader で揃える。 -->
-        <DockPanel DockPanel.Dock="Top" LastChildFill="False">
+        <Border Style="{StaticResource SidebarHeaderBand}" Margin="0,0,0,4">
+        <DockPanel LastChildFill="False">
             <TextBlock DockPanel.Dock="Left" Style="{StaticResource PanelHeader}" Text="ソリューション" />
             <ComboBox DockPanel.Dock="Right" ItemsSource="{Binding ConfigurationOptions}"
                       SelectedItem="{Binding SelectedConfiguration, Mode=TwoWay}"
@@ -59,6 +60,7 @@
                     AutomationProperties.AutomationId="CSharpSolutionCollapseAll"
                     AutomationProperties.Name="すべて折りたたむ" />
         </DockPanel>
+        </Border>
 
         <!-- 操作行。「何に対して」実行するのかを左に出す。左列は 220px 程度と狭いので、
              ここには対象名とビルド／テストだけを置き、構成（モード設定）は見出し行へ逃がす。 -->

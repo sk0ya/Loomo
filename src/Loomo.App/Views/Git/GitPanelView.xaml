@@ -353,7 +353,11 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="TabControl">
-                        <TabPanel IsItemsHost="True" Background="Transparent" Margin="4,0,4,2" />
+                        <!-- 見出し帯（SidebarHeaderBand と同じ PaneHeaderBg ＋下辺の罫）。 -->
+                        <Border Background="{DynamicResource PaneHeaderBg}" BorderBrush="{DynamicResource Border}"
+                                BorderThickness="0,0,0,1" Margin="0,0,0,2">
+                            <TabPanel IsItemsHost="True" Background="Transparent" Margin="4,0,4,0" />
+                        </Border>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
@@ -385,8 +389,10 @@
                 </TabItem.Header>
             </TabItem>
         </TabControl>
-        <TextBlock DockPanel.Dock="Top" Style="{StaticResource PanelHeader}" Text="GIT"
-                   Visibility="{Binding IsRepository, Converter={StaticResource InverseBoolToVis}}" />
+        <Border Style="{StaticResource SidebarHeaderBand}"
+                Visibility="{Binding IsRepository, Converter={StaticResource InverseBoolToVis}}">
+            <TextBlock Style="{StaticResource PanelHeader}" Text="GIT" />
+        </Border>
 
         <!-- リポジトリの帯（§40.8.3）：リポジトリが2つ以上あるとき、コンボボックスで選ぶ。閉じた箱にも選んでいるリポジトリの
              印（ブランチ・ahead/behind・変更数）が出て、開けば全リポジトリを印付きで並べる。縦の一覧は狭いサイドバーで

@@ -94,7 +94,7 @@
 
     <DockPanel>
         <!-- ヘッダー：名前・件数・操作（TODO Tree と同じ帯） -->
-        <Border DockPanel.Dock="Top" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1" Padding="10,3,4,3">
+        <Border Style="{StaticResource SidebarHeaderBand}" Padding="10,3,4,3">
             <DockPanel>
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
                     <Button Tag="{StaticResource PegIcon.Filter}" Style="{StaticResource PaneHeaderGhostButton}"

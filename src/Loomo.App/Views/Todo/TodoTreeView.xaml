@@ -81,7 +81,7 @@
         </DataTemplate>
     </UserControl.Resources>
     <DockPanel>
-        <Border DockPanel.Dock="Top" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1" Padding="10,3,4,3">
+        <Border Style="{StaticResource SidebarHeaderBand}" Padding="10,3,4,3">
             <DockPanel>
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
                     <Button x:Name="FilterButton" Content="⌕" Style="{StaticResource PaneHeaderGhostButton}" Click="OnToggleFilter"

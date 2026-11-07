@@ -85,7 +85,8 @@
     </UserControl.Resources>
 
     <DockPanel>
-        <Grid DockPanel.Dock="Top" Margin="8,6,6,4">
+        <Border Style="{StaticResource SidebarHeaderBand}" Padding="8,6,6,4">
+        <Grid>
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
@@ -169,12 +170,13 @@
                 </Grid>
             </Button>
         </Grid>
+        </Border>
 
         <!-- 表示ルートの切替（単一フォルダー時のみ）。操作ボタンの行とは分け、ツリーの直上に
              専用行として置く。候補はワークスペースルート＋ピン留めフォルダ。複数フォルダー時は
              フォルダーごとの見出し行（ツリー内、下の ItemTemplate）が同じ役割を持つので隠す。 -->
         <StackPanel DockPanel.Dock="Top"
-                    Margin="8,0,6,6"
+                    Margin="8,4,6,6"
                     Visibility="{Binding IsMultiRootWorkspace, Converter={StaticResource InverseBoolToVis}}">
             <DockPanel LastChildFill="True">
                 <Button DockPanel.Dock="Right"

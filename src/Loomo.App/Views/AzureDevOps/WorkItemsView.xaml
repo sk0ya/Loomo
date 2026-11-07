@@ -66,7 +66,8 @@
 
     <DockPanel>
         <!-- 見出し：組織名・件数と、更新／組織の切替。 -->
-        <DockPanel DockPanel.Dock="Top" Margin="6,2,2,4">
+        <Border Style="{StaticResource SidebarHeaderBand}" Padding="6,2,2,4" Margin="0,0,0,6">
+        <DockPanel>
             <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="⟳"
                     ToolTip="取り直す (F5)" Command="{Binding RefreshCommand}"
                     AutomationProperties.AutomationId="WorkItemsRefreshButton"
@@ -92,6 +93,7 @@
                            Visibility="{Binding StatusText, Converter={StaticResource NonEmptyToVis}}" />
             </StackPanel>
         </DockPanel>
+        </Border>
 
         <!-- 設定：TaskAzure の設定と同じ項目（組織 URL・プロジェクト・PR 対象）。 -->
         <Grid DockPanel.Dock="Top" Margin="6,0,6,6"

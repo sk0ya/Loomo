@@ -872,6 +872,16 @@
         <Setter Property="Background" Value="{DynamicResource Border}" />
     </Style>
 
+    <!-- サイドバー各パネル（FILES・GIT・ペグボード・TABS・TODO…）の見出し帯。ペインの見出し（PaneHeaderBar）と
+         同じ PaneHeaderBg（アクセントの色味）で塗り、下辺に 1px の罫を引く。パネルごとに中身（ボタン列・タブ・件数）が
+         違うので、帯は Border として外側に被せ、内側の余白は Padding で持つ（Margin だと塗られない隙間が残る）。 -->
+    <Style x:Key="SidebarHeaderBand" TargetType="Border">
+        <Setter Property="DockPanel.Dock" Value="Top" />
+        <Setter Property="Background" Value="{DynamicResource PaneHeaderBg}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Border}" />
+        <Setter Property="BorderThickness" Value="0,0,0,1" />
+    </Style>
+
     <!-- ペインヘッダーの見出し（見ているタブ）の直後に付く ×。見ているタブを閉じる。
          常設するとヘッダーのボタン列が1つ増えるだけなので、ヘッダーにマウスが乗っている間だけ出す
          （出ていないときは幅も取らない）。置き方は「ヘッダー(DockPanel) > 見出し帯(Grid) > 見出し(DockPanel) > ×」
