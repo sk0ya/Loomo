@@ -35,9 +35,26 @@ internal sealed class GitBranchTreeMenuController
     private DispatcherTimer? _menuTimer;
     private TreeViewItem? _pendingItem;
     private int _downClickCount;
+    private (long Tick, POINT Point)? _menuDismissClick;
 
     [DllImport("user32.dll")]
     private static extern uint GetDoubleClickTime();
+
+    [DllImport("user32.dll")]
+    private static extern bool GetCursorPos(out POINT point);
+
+    [DllImport("user32.dll")]
+    private static extern int GetSystemMetrics(int index);
+
+    private const int SmCxDoubleClk = 36;
+    private const int SmCyDoubleClk = 37;
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct POINT
+    {
+        public int X;
+        public int Y;
+    }
 
     internal GitBranchTreeMenuController(
         TreeView tree,
@@ -83,8 +100,20 @@ internal sealed class GitBranchTreeMenuController
         _tree.ContextMenuOpening += OnContextMenuOpening;
         _tree.PreviewMouseRightButtonDown += OnTreeRightButtonDown;
         if (_tree.ContextMenu is { } menu)
-            menu.Closed += (_, _) => TargetNode = null;
+        {
+            menu.Closed += OnMenuClosed;
+            if (_deferSingleClick)
+                menu.AddHandler(Mouse.PreviewMouseDownOutsideCapturedElementEvent,
+                    new MouseButtonEventHandler(OnMenuDownOutside), handledEventsToo: true);
+        }
     }
+
+    /// <summary>
+    /// メニューを閉じたクリックに続けて押した2回目（WPF には単クリックとして届く）。引数は押下の
+    /// <c>OriginalSource</c>。持ち主はダブルクリックと同じ処理をする
+    /// （<see cref="GitBranchTreeClickPolicy.IsDoubleClickAfterMenuDismiss"/>）。
+    /// </summary>
+    internal event Action<object?>? DoubleClickAfterMenuDismiss;
 
     /// <summary>メニューの対象の行（ブランチ・タグ・サブモジュール・ワークツリー）。閉じたら外す。</summary>
     internal BranchTreeNode? TargetNode { get; private set; }
@@ -121,8 +150,43 @@ internal sealed class GitBranchTreeMenuController
     private void OnTreeLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         _downClickCount = e.ClickCount;
+        if (_deferSingleClick && e.ClickCount == 1 && ConsumeMenuDismissClick()
+            && FindRow(e.OriginalSource) is { DataContext: BranchTreeNode { IsFolder: false } })
+        {
+            // 1回目はメニューを閉じるのに使われて WPF に届いていない。これが2回目なので、
+            // 離したときに単クリック扱い（メニューの予約し直し）にしない。
+            _downClickCount = 2;
+            CancelPendingMenu();
+            DoubleClickAfterMenuDismiss?.Invoke(e.OriginalSource);
+            return;
+        }
         if (_deferSingleClick && e.ClickCount > 1)
             CancelPendingMenu();
+    }
+
+    private void OnMenuClosed(object? sender, RoutedEventArgs e) => TargetNode = null;
+
+    /// <summary>
+    /// メニューを開いている間（マウスをキャプチャしている間）に外を左で押した＝メニューを閉じるクリック。
+    /// その時刻と位置を覚えておく（キーボード・項目の選択で閉じたときは来ない）。
+    /// </summary>
+    private void OnMenuDownOutside(object sender, MouseButtonEventArgs e)
+    {
+        _menuDismissClick = e.ChangedButton == MouseButton.Left && GetCursorPos(out var point)
+            ? (Environment.TickCount64, point)
+            : null;
+    }
+
+    private bool ConsumeMenuDismissClick()
+    {
+        if (_menuDismissClick is not { } dismiss)
+            return false;
+        _menuDismissClick = null;
+        return GetCursorPos(out var point)
+            && GitBranchTreeClickPolicy.IsDoubleClickAfterMenuDismiss(
+                Environment.TickCount64 - dismiss.Tick,
+                point.X - dismiss.Point.X, point.Y - dismiss.Point.Y,
+                GetDoubleClickTime(), GetSystemMetrics(SmCxDoubleClk), GetSystemMetrics(SmCyDoubleClk));
     }
 
     private void OnTreeLeftButtonUp(object sender, MouseButtonEventArgs e)

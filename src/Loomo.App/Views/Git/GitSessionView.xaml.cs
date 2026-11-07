@@ -41,6 +41,7 @@ public partial class GitSessionView : UserControl
             BranchMenuPull, BranchMenuPush, BranchMenuPushForce,
             deferSingleClick: true, mergeStrategy: BranchMenuMergeStrategy,
             prepareNode: PrepareTreeMenu);
+        _branchMenuController.DoubleClickAfterMenuDismiss += source => _ = OnBranchDoubleClickAsync(source);
         _keyboardController = new GitSessionKeyboardController(
             this, LogList, BranchList, BranchFilterBox, LogFilterBox,
             () => Vm, () => SelectedTreeBranch, ShowBranchLogGuardedAsync, OpenBranchFilter,
@@ -137,6 +138,10 @@ public partial class GitSessionView : UserControl
     /// （ブランチの切り替え自体はヘッダーのブランチ切替コントロールから行う）。
     /// </summary>
     private async void OnBranchDoubleClick(object sender, MouseButtonEventArgs e)
+        => await OnBranchDoubleClickAsync(e.OriginalSource);
+
+    /// <summary>ダブルクリックの中身。メニューを閉じたクリックに続く2回目（WPF のダブルクリックにならない）からも来る。</summary>
+    private async Task OnBranchDoubleClickAsync(object? originalSource)
     {
         if (Vm is not { } vm)
             return;
@@ -145,7 +150,7 @@ public partial class GitSessionView : UserControl
         // TreeView の現在選択ではなく、ダブルクリックされた行を対象にする。
         // ブランチを持たないワークツリーの行は「作業ツリーと比較」（並行作業の中身を見に行くのがいちばん多い用途。
         // ワークスペースごと切り替える＝部屋が入れ替わるほうは明示の操作にしておく）。
-        if (GitSessionSelectionPresenter.ResolveDoubleClickedNode(e.OriginalSource) is
+        if (GitSessionSelectionPresenter.ResolveDoubleClickedNode(originalSource) is
             { IsWorktreeItem: true, Worktree: { IsCurrent: false, Exists: true } worktree })
         {
             _branchMenuController.CancelPendingMenu();
@@ -154,7 +159,7 @@ public partial class GitSessionView : UserControl
         }
 
         var branch = GitSessionSelectionPresenter.ResolveDoubleClickedBranch(
-            e.OriginalSource, SelectedTreeBranch);
+            originalSource, SelectedTreeBranch);
         if (branch is null)
             return;
 
