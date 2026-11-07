@@ -1108,7 +1108,8 @@
                                 </GridViewColumn>
                             </GridView>
                         </ListView.View>
-                        <!-- コミット行の右クリック。よく押す順（見る→ここから作る→取り込む）に上から並べ、
+                        <!-- コミット行の右クリック。よく押す順（見る→ここから作る→取り込む→外へ出す）に上から並べ、
+                             履歴の書き換えだけは頻度に関係なく最下段に置く。
                              同じ問いの変種（リセットの3段階・コピーの各項目・取り込み方）は子メニューへ畳んで、
                              最上位は「何をしたいか」の粒度だけにする。選択数・ファイル履歴・GitHub の有無で
                              出し入れするものは OnCommitContextMenuOpening が切り替える。 -->
@@ -1121,6 +1122,10 @@
                                 <!-- 右側が作業ツリーそのもの＝このコミット以降の変更を見ながらその場で直せる。 -->
                                 <MenuItem x:Name="CompareWorkingTreeMenuItem" Header="作業ツリーと比較（このコミット以降の変更すべて）"
                                           Click="OnCommitCompareWorkingTree" />
+                                <!-- 一覧の見え方を変えるだけの読み取り操作なので「見る」の組に置く。
+                                     作者が無い行では消えるので、単独の組にすると区切り線だけが二重に残る。 -->
+                                <MenuItem x:Name="FilterByAuthorMenuItem" Header="この作者のコミットだけ表示"
+                                          Click="OnCommitFilterByAuthor" />
                                 <!-- ファイル履歴（パス絞り込み）中だけ出す「その頃のこのファイル」。
                                      OnCommitContextMenuOpening が表示を切り替える。 -->
                                 <Separator x:Name="FileRevisionSeparator" />
@@ -1148,24 +1153,6 @@
                                     <MenuItem Header="リバート（コミットせず作業ツリーへ）"
                                               Click="OnCommitRevertNoCommit" />
                                 </MenuItem>
-                                <!-- 履歴が書き換わる操作はここへまとめる（押す前に「書き換える」と読める位置に置く）。
-                                     スカッシュは2件以上、インタラクティブリベースは単一選択のときだけ出す。 -->
-                                <MenuItem Header="履歴を書き換える">
-                                    <MenuItem Header="コミットメッセージを修正…" Click="OnCommitRewriteMessage" />
-                                    <MenuItem x:Name="InteractiveRebaseMenuItem"
-                                              Header="ここからインタラクティブリベース…" Click="OnCommitInteractiveRebase" />
-                                    <MenuItem x:Name="SquashMenuItem"
-                                              Header="選択したコミットをスカッシュ（1つにまとめる）…" Click="OnCommitSquash" />
-                                    <Separator />
-                                    <MenuItem Header="ここまでリセット">
-                                        <MenuItem Header="soft（コミットだけ取り消す）" Click="OnCommitResetSoft" />
-                                        <MenuItem Header="mixed（ステージも取り消す）" Click="OnCommitResetMixed" />
-                                        <MenuItem Header="hard（作業ツリーごと捨てる）…" Click="OnCommitResetHard" />
-                                    </MenuItem>
-                                </MenuItem>
-                                <Separator />
-                                <MenuItem x:Name="FilterByAuthorMenuItem" Header="この作者のコミットだけ表示"
-                                          Click="OnCommitFilterByAuthor" />
                                 <Separator />
                                 <MenuItem x:Name="OpenOnHostingMenuItem" Header="GitHub で開く"
                                           Click="OnCommitOpenOnHosting" />
@@ -1183,6 +1170,23 @@
                                     <MenuItem Header="このコミットへのリンク（loomo://）" Click="OnCommitCopyLoomoLink" />
                                     <MenuItem x:Name="CopyHostingUrlMenuItem" Header="GitHub のリンク"
                                               Click="OnCommitCopyHostingUrl" />
+                                </MenuItem>
+                                <!-- 履歴が書き換わる操作はここへまとめ、ブランチメニューの「削除」と同じく誤クリックしにくい
+                                     最下段に置く（押す前に「書き換える」と読める）。
+                                     スカッシュは2件以上、インタラクティブリベースは単一選択のときだけ出す。 -->
+                                <Separator />
+                                <MenuItem Header="履歴を書き換える">
+                                    <MenuItem Header="コミットメッセージを修正…" Click="OnCommitRewriteMessage" />
+                                    <MenuItem x:Name="InteractiveRebaseMenuItem"
+                                              Header="ここからインタラクティブリベース…" Click="OnCommitInteractiveRebase" />
+                                    <MenuItem x:Name="SquashMenuItem"
+                                              Header="選択したコミットをスカッシュ（1つにまとめる）…" Click="OnCommitSquash" />
+                                    <Separator />
+                                    <MenuItem Header="ここまでリセット">
+                                        <MenuItem Header="soft（コミットだけ取り消す）" Click="OnCommitResetSoft" />
+                                        <MenuItem Header="mixed（ステージも取り消す）" Click="OnCommitResetMixed" />
+                                        <MenuItem Header="hard（作業ツリーごと捨てる）…" Click="OnCommitResetHard" />
+                                    </MenuItem>
                                 </MenuItem>
                             </ContextMenu>
                         </ListView.ContextMenu>
