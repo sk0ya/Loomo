@@ -674,8 +674,8 @@
                                     </MenuItem>
                                     <Separator />
                                     <MenuItem x:Name="BranchMenuCheckout" Header="チェックアウト" Click="OnBranchCheckout" />
-                                    <MenuItem x:Name="BranchMenuMerge" Header="現在のブランチへマージ" Click="OnBranchMerge" />
-                                    <MenuItem x:Name="BranchMenuMergeStrategy" Header="現在のブランチへマージ（戦略を選択）">
+                                    <MenuItem x:Name="BranchMenuMerge" Header="現在のブランチへマージ">
+                                        <MenuItem Header="可能ならFast-forward（git の既定）" Click="OnBranchMerge" />
                                         <MenuItem Header="Fast-forwardのみでマージ" Click="OnBranchMergeFastForwardOnly" />
                                         <MenuItem Header="マージコミットを作成してマージ" Click="OnBranchMergeNoFastForward" />
                                         <MenuItem Header="スカッシュマージ（コミットは別途実行）" Click="OnBranchMergeSquash" />

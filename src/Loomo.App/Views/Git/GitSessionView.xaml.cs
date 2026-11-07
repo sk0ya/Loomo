@@ -39,7 +39,7 @@ public partial class GitSessionView : UserControl
             BranchMenuCheckout, BranchMenuMerge, BranchMenuRebase, BranchMenuDelete,
             BranchMenuDeleteRemote, BranchMenuSetUpstream, BranchMenuUnsetUpstream,
             BranchMenuPull, BranchMenuPush, BranchMenuPushForce,
-            deferSingleClick: true, mergeStrategy: BranchMenuMergeStrategy,
+            deferSingleClick: true,
             prepareNode: PrepareTreeMenu);
         _branchMenuController.DoubleClickAfterMenuDismiss += source => _ = OnBranchDoubleClickAsync(source);
         _keyboardController = new GitSessionKeyboardController(
