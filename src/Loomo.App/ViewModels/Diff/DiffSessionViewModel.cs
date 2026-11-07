@@ -91,7 +91,31 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
 
     /// <summary>いまの比べ方（<see cref="IgnoreWhitespace"/>）。行を取り直す計算はすべてこれで比べる。</summary>
     public DiffOptions DiffOptions => new(IgnoreWhitespace);
-    [ObservableProperty] private string _gitTargetLabel = "";
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanReturnToGitTarget))]
+    private string _gitTargetLabel = "";
+
+    /// <summary>札の × で作業ツリーへ戻る直前に見ていたコミット範囲（戻り先）。× で解除すると、もう一度見るには
+    /// Git ペインで探し直すしかなかった——ブラウザの「戻る」と同じく、直前の 1 件だけは手元に残す。
+    /// 別のコミットを開く・比較へ移ると捨てる（戻り先が古いものを指したまま残らないように）。</summary>
+    private ReturnableGitTarget? _returnableGitTarget;
+    private sealed record ReturnableGitTarget(
+        (string? From, string To) Range, string Label, string? Repository, string? SelectedDisplayPath);
+
+    /// <summary>戻り先の札の文字（無ければ空）。</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanReturnToGitTarget))]
+    private string _returnableGitTargetLabel = "";
+
+    /// <summary>作業ツリーを見ていて、× で外した直前のコミットへ戻れるか。</summary>
+    public bool CanReturnToGitTarget => ReturnableGitTargetLabel.Length > 0 && GitTargetLabel.Length == 0;
+
+    private void ForgetReturnableGitTarget()
+    {
+        _returnableGitTarget = null;
+        ReturnableGitTargetLabel = "";
+    }
+
     /// <summary>単一コミットの差分を表示中なら、そのコミットを Git 一覧で選択できる。</summary>
     public bool CanOpenCommitInGit => _commitRange is { From: null };
 
@@ -329,6 +353,7 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
         ResetChangeCursor();
         if (value != DiffSource.Git)
         {
+            ForgetReturnableGitTarget();
             SetCommitRange(null);
             OnPropertyChanged(nameof(CanOpenCommitInGit));
             GitTargetLabel = "";
@@ -498,6 +523,7 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
     public void ShowPointsRange(DiffOpenTarget.PointsRange range)
     {
         _loaded = true;
+        ForgetReturnableGitTarget();
         SetCommitRange(null);
         PinRangeRepository();
         _pendingRange = range;
@@ -517,6 +543,7 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
     public void ShowCommitRange(string? fromHash, string toHash, string label)
     {
         _loaded = true;
+        ForgetReturnableGitTarget();
         PinRangeRepository();
         SetCommitRange((fromHash, toHash));
         OnPropertyChanged(nameof(CanOpenCommitInGit));
@@ -544,6 +571,7 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
         if (!string.IsNullOrEmpty(filePath))
             _git.SetActiveRootForPath(filePath);
         _loaded = true;
+        ForgetReturnableGitTarget();
         PinRangeRepository();
         SetCommitRange((fromHash, hash));
         OnPropertyChanged(nameof(CanOpenCommitInGit));
@@ -872,11 +900,36 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
     private void ClearGitTarget()
     {
         if (!HasGitTarget) return;
+        // 解決済みの範囲だけを戻り先に残す（解決待ち・失敗の 2 点比較は戻っても同じ所で止まるだけ）。
+        if (_commitRange is { } range)
+        {
+            _returnableGitTarget = new ReturnableGitTarget(
+                range, GitTargetLabel, _rangeRepository, SelectedFile?.DisplayPath);
+            ReturnableGitTargetLabel = GitTargetLabel;
+        }
         SetCommitRange(null);
         OnPropertyChanged(nameof(CanOpenCommitInGit));
         GitTargetLabel = "";
         UpdateCanDiscard();
         _ = RefreshAsync();
+    }
+
+    /// <summary>× で外した直前のコミット範囲へ戻る（見ていたファイルも選び直す）。</summary>
+    [RelayCommand]
+    private async Task ReturnToGitTargetAsync()
+    {
+        if (_returnableGitTarget is not { } target || HasGitTarget) return;
+        ForgetReturnableGitTarget();
+        _loaded = true;
+        _rangeRepository = target.Repository;   // 開いたときのリポジトリへ固定し直す（いま選んでいるものではなく）
+        SetCommitRange(target.Range);
+        OnPropertyChanged(nameof(CanOpenCommitInGit));
+        GitTargetLabel = target.Label;
+        UpdateCanDiscard();
+        await RefreshAsync();
+        if (target.SelectedDisplayPath is { } path
+            && Files.FirstOrDefault(f => string.Equals(f.DisplayPath, path, StringComparison.OrdinalIgnoreCase)) is { } file)
+            SelectedFile = file;
     }
 
     [RelayCommand]

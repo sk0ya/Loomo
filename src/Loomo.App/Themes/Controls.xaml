@@ -1853,6 +1853,131 @@
         </Setter>
     </Style>
 
+    <!-- ヘッダーの単独のオン／オフ（Diff の「空白無視」など）。PaneHeaderGhostButton と同じ静けさ（線画アイコン＋
+         短い文言）で、入っている間だけ選択色の地とアクセントのアイコンで示す。以前はこれを 1 個だけ SegmentGroup の
+         枠に入れていたので、隣の表示形式のセグメントと箱が二つ並び、どちらが一組なのか読めなかった。 -->
+    <Style x:Key="PaneHeaderGhostToggle" TargetType="ToggleButton">
+        <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Padding" Value="6,0" />
+        <Setter Property="MinWidth" Value="24" />
+        <Setter Property="Height" Value="24" />
+        <Setter Property="Margin" Value="0,0,2,0" />
+        <Setter Property="FontSize" Value="{DynamicResource Fs12}" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ToggleButton">
+                    <Border x:Name="b" Background="{TemplateBinding Background}" CornerRadius="4"
+                            Padding="{TemplateBinding Padding}">
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <Path x:Name="icon" Width="12" Height="12" Stretch="Uniform" VerticalAlignment="Center"
+                                  StrokeThickness="1.4" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                  StrokeLineJoin="Round"
+                                  Data="{Binding Tag, RelativeSource={RelativeSource TemplatedParent}}"
+                                  Stroke="{TemplateBinding Foreground}" />
+                            <ContentPresenter x:Name="text" Margin="5,0,0,0" VerticalAlignment="Center">
+                                <ContentPresenter.Resources>
+                                    <Style TargetType="TextBlock" BasedOn="{StaticResource ContentText}" />
+                                </ContentPresenter.Resources>
+                            </ContentPresenter>
+                        </StackPanel>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="Tag" Value="{x:Null}">
+                            <Setter TargetName="icon" Property="Visibility" Value="Collapsed" />
+                            <Setter TargetName="text" Property="Margin" Value="0" />
+                        </Trigger>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="b" Property="Background" Value="{DynamicResource Border}" />
+                            <Setter Property="Foreground" Value="{DynamicResource Fg}" />
+                        </Trigger>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="b" Property="Background" Value="{DynamicResource SelectionBg}" />
+                            <Setter Property="Foreground" Value="{DynamicResource Fg}" />
+                            <Setter TargetName="icon" Property="Stroke" Value="{DynamicResource Accent}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ヘッダーの「いま何を見ているか」の札（Diff の「コミット 48613996」など）。見ている対象と、それに効く操作
+         （Git 一覧で開く・解除）を一つの枠にまとめる。以前はアクセント色の素の文字が表示切替の後ろに浮き、それに効く
+         「Git 一覧で表示」「作業ツリーへ戻る」は右端の操作群に離れていて、どれが何に効くのか読めなかった。 -->
+    <Style x:Key="PaneHeaderContextChip" TargetType="Border">
+        <Setter Property="Background" Value="{DynamicResource BgAlt}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Border}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="5" />
+        <Setter Property="Padding" Value="1" />
+        <Setter Property="Margin" Value="0,0,6,0" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+
+    <!-- 札の中の押せる部分（本体＝対象を開く・末尾の × ＝解除）。押せないとき（範囲表示で開く先が無いなど）も
+         札の文字は読めないといけないので、無効でも薄くしない（ホバーの地が出ないだけ）。 -->
+    <Style x:Key="PaneHeaderChipButton" TargetType="Button">
+        <Setter Property="Foreground" Value="{DynamicResource Fg}" />
+        <Setter Property="Padding" Value="6,0" />
+        <Setter Property="MinWidth" Value="20" />
+        <Setter Property="Height" Value="20" />
+        <Setter Property="FontSize" Value="{DynamicResource Fs12}" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="b" Background="Transparent" CornerRadius="3" Padding="{TemplateBinding Padding}">
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <Path x:Name="icon" Width="11" Height="11" Stretch="Uniform" VerticalAlignment="Center"
+                                  StrokeThickness="1.4" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                  StrokeLineJoin="Round"
+                                  Data="{Binding Tag, RelativeSource={RelativeSource TemplatedParent}}"
+                                  Stroke="{DynamicResource Accent}" />
+                            <ContentPresenter x:Name="text" Margin="5,0,0,0" VerticalAlignment="Center">
+                                <ContentPresenter.Resources>
+                                    <Style TargetType="TextBlock" BasedOn="{StaticResource ContentText}">
+                                        <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                                        <Setter Property="MaxWidth" Value="220" />
+                                    </Style>
+                                </ContentPresenter.Resources>
+                            </ContentPresenter>
+                        </StackPanel>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="Tag" Value="{x:Null}">
+                            <Setter TargetName="icon" Property="Visibility" Value="Collapsed" />
+                            <Setter TargetName="text" Property="Margin" Value="0" />
+                        </Trigger>
+                        <Trigger Property="Content" Value="{x:Null}">
+                            <Setter TargetName="text" Property="Visibility" Value="Collapsed" />
+                            <Setter TargetName="icon" Property="Stroke" Value="{DynamicResource FgDim}" />
+                        </Trigger>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="b" Property="Background" Value="{DynamicResource Border}" />
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="b" Property="Background" Value="{DynamicResource SelectionBg}" />
+                        </Trigger>
+                        <MultiTrigger>
+                            <MultiTrigger.Conditions>
+                                <Condition Property="Content" Value="{x:Null}" />
+                                <Condition Property="IsMouseOver" Value="True" />
+                            </MultiTrigger.Conditions>
+                            <Setter TargetName="icon" Property="Stroke" Value="{DynamicResource Fg}" />
+                        </MultiTrigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Cursor" Value="Arrow" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!-- Diff ヘッダーの線画アイコン（12px 想定・Stroke で描く）。PaneHeaderGhostButton の Tag に渡す。 -->
     <StreamGeometry x:Key="DiffIcon.Prev">M3,9.5 L7,5.5 L11,9.5</StreamGeometry>
     <StreamGeometry x:Key="DiffIcon.Next">M3,4.5 L7,8.5 L11,4.5</StreamGeometry>
@@ -1862,5 +1987,9 @@
     <StreamGeometry x:Key="DiffIcon.Clipboard">M5,2.5 H9 V4 H5 Z M5,3 H3 V12.5 H11 V3 H9</StreamGeometry>
     <StreamGeometry x:Key="DiffIcon.Close">M3.5,3.5 L10.5,10.5 M10.5,3.5 L3.5,10.5</StreamGeometry>
     <StreamGeometry x:Key="DiffIcon.Commits">M7,1.5 V4.5 M7,9.5 V12.5 M7,4.5 A2.5,2.5 0 1 0 7,9.5 A2.5,2.5 0 1 0 7,4.5</StreamGeometry>
+    <!-- 戻る（←）。札の × で外したコミットへ戻る口。 -->
+    <StreamGeometry x:Key="DiffIcon.Back">M6,3 L2.5,7 L6,11 M2.5,7 H11.5</StreamGeometry>
+    <!-- 空白（␣）。「空白無視」のトグル用。 -->
+    <StreamGeometry x:Key="DiffIcon.Whitespace">M2,7.5 V10.5 H12 V7.5</StreamGeometry>
 
 </ResourceDictionary>

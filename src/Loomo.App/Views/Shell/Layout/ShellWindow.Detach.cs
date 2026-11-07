@@ -234,12 +234,15 @@ public partial class ShellWindow {
         // 「次の差分」はファイルの端を越えると隣のファイルへ移る（＝窓の中身が別ファイルになる）ので、
         // タブのタイトルとアイコンも今見ているファイルへ追従させる——開いたときの名前のままだと、
         // どのファイルを読んでいるのか窓の側から分からなくなる。
+        // 札の × でコミットを外すと、この窓の中身は作業ツリーの差分に変わる。タブ名を開いたときの
+        // 「…@ハッシュ」のままにすると、作業ツリーを見ているのにコミットを見ているように名乗っていた。
         vm.PropertyChanged += (_, e) => {
-            if (e.PropertyName != nameof(DiffSessionViewModel.SelectedFile)) return;
+            if (e.PropertyName is not (nameof(DiffSessionViewModel.SelectedFile)
+                or nameof(DiffSessionViewModel.GitTargetLabel))) return;
             if (vm.SelectedFile is not { } file) return;
             item.Title = file.Comparison is { } compare
                 ? new DiffOpenTarget.Comparison(compare).WindowTitle    // 比較は左右の名前で名乗る
-                : target.TitleFor(file.FullPath);
+                : target.TitleFor(file.FullPath, vm.GitTargetLabel);
             item.Icon = _tabIcons.GetFileIcon(file.FullPath);
         };
         _ = ShowDiffInWindowAsync(vm, target);

@@ -28,6 +28,14 @@ public abstract record DiffOpenTarget
     /// 種別ごとの短い添え字（@ハッシュ 等）は保つ——どの差分の中に居るのかが消えないように。</summary>
     public abstract string TitleFor(string? path);
 
+    /// <summary>窓の中でいま見ているものに合わせたタブ名。コミット（範囲・2点比較）を開いた窓でも、札の × で
+    /// 外して作業ツリーを見ている間（<paramref name="gitTargetLabel"/> が空）は作業ツリーと同じくファイル名だけを
+    /// 名乗る——開いたときの「@ハッシュ」のままだと、作業ツリーを見ているのにコミットを見ているように読める。</summary>
+    public string TitleFor(string? path, string gitTargetLabel)
+        => this is (CommitRange or CommitFile or PointsRange) && gitTargetLabel.Length == 0
+            ? Trim(FileName(path))
+            : TitleFor(path);
+
     /// <summary>この差分の出どころのファイル（タブのアイコンに使う。無ければ空）。</summary>
     public virtual string IconPath => "";
 

@@ -305,17 +305,27 @@
                             ToolTip="残っている比較（「Diff へ送る」で作ったもの）の一覧へ戻る"
                             Command="{Binding ShowStockedComparisonsCommand}"
                             Visibility="{Binding HasStockedComparisons, Converter={StaticResource BoolToVis}}" />
-                    <!-- Git セッションから連携されたコミット範囲の操作 -->
-                    <Button Style="{StaticResource PaneHeaderGhostButton}" Content="Git 一覧で表示"
-                            Tag="{StaticResource DiffIcon.Commits}"
-                            ToolTip="このコミットを Git のコミット一覧で選択"
-                            Command="{Binding OpenCommitInGitCommand}"
-                            Visibility="{Binding CanOpenCommitInGit, Converter={StaticResource BoolToVis}}" />
-                    <Button Style="{StaticResource PaneHeaderGhostButton}" Content="作業ツリーへ戻る"
-                            Tag="{StaticResource DiffIcon.Close}"
-                            ToolTip="コミット範囲の表示を解除して作業ツリー差分へ戻る"
-                            Command="{Binding ClearGitTargetCommand}"
-                            Visibility="{Binding GitTargetLabel, Converter={StaticResource NonEmptyToVis}}" />
+                    <!-- Git セッションから連携されたコミット範囲の札：本体を押すと Git 一覧でそのコミットを選び、
+                         × で解除して作業ツリー差分へ戻る（見ている対象とそれに効く操作を一つの枠に）。
+                         解除したら「← コミット …」で直前のコミットへ戻れる。 -->
+                    <Border Style="{StaticResource PaneHeaderContextChip}"
+                            Visibility="{Binding GitTargetLabel, Converter={StaticResource NonEmptyToVis}}">
+                        <StackPanel Orientation="Horizontal">
+                            <Button Style="{StaticResource PaneHeaderChipButton}" Content="{Binding GitTargetLabel}"
+                                    Tag="{StaticResource DiffIcon.Commits}"
+                                    ToolTip="このコミットを Git のコミット一覧で選択"
+                                    Command="{Binding OpenCommitInGitCommand}"
+                                    IsEnabled="{Binding CanOpenCommitInGit}" />
+                            <Button Style="{StaticResource PaneHeaderChipButton}" Tag="{StaticResource DiffIcon.Close}"
+                                    ToolTip="コミット範囲の表示を解除して作業ツリー差分へ戻る"
+                                    Command="{Binding ClearGitTargetCommand}" />
+                        </StackPanel>
+                    </Border>
+                    <Button Style="{StaticResource PaneHeaderGhostButton}" Content="{Binding ReturnableGitTargetLabel}"
+                            Tag="{StaticResource DiffIcon.Back}" Foreground="{DynamicResource FgDim}"
+                            ToolTip="作業ツリーへ戻る前に見ていたコミットの差分へ戻る"
+                            Command="{Binding ReturnToGitTargetCommand}"
+                            Visibility="{Binding CanReturnToGitTarget, Converter={StaticResource BoolToVis}}" />
                     <!-- アドホック比較中だけの操作。どちらを「元」と見るかはその場で決まるので入替を近くに置く。 -->
                     <Button Style="{StaticResource PaneHeaderGhostButton}" Tag="{StaticResource DiffIcon.Swap}"
                             ToolTip="比較の左右を入れ替える"
@@ -382,12 +392,11 @@
                     </Border>
                     <!-- 空白の違いを無視して比べる（git diff -w）。字下げ・整形だけの変更を消して本当の変更を読む。
                          行番号は実ファイルのままなので、ステージ・破棄・行へ飛ぶはそのまま使える。 -->
-                    <Border Style="{StaticResource SegmentGroup}"
-                            Visibility="{Binding CanChooseTextLayout, Converter={StaticResource BoolToVis}}">
-                        <ToggleButton Style="{StaticResource SegmentToggle}" Content="空白無視"
-                                      ToolTip="空白の違いを無視して比べる（字下げ・整形だけの変更を消す）"
-                                      IsChecked="{Binding IgnoreWhitespace}" />
-                    </Border>
+                    <ToggleButton Style="{StaticResource PaneHeaderGhostToggle}" Content="空白無視"
+                                  Tag="{StaticResource DiffIcon.Whitespace}" Margin="0,0,8,0"
+                                  ToolTip="空白の違いを無視して比べる（字下げ・整形だけの変更を消す）"
+                                  IsChecked="{Binding IgnoreWhitespace}"
+                                  Visibility="{Binding CanChooseTextLayout, Converter={StaticResource BoolToVis}}" />
                     <!-- Markdown 差分のレンダリング表示（§24.10）。テキスト／描画の切り替えは
                          **対象が Markdown のときだけ**出す（押せるのに何も起きない項目を作らない・§24.7）。 -->
                     <Border Style="{StaticResource SegmentGroup}"
@@ -401,12 +410,6 @@
                                          IsChecked="{Binding IsMarkdownRender}" />
                         </StackPanel>
                     </Border>
-                    <!-- Git セッションから連携されたコミット範囲の表示中ラベル（解除・Git 一覧は右の操作群） -->
-                    <TextBlock Text="{Binding GitTargetLabel}" FontSize="{DynamicResource Fs12}"
-                               Foreground="{DynamicResource Accent}" VerticalAlignment="Center"
-                               Margin="0,0,8,0" TextTrimming="CharacterEllipsis" MaxWidth="240"
-                               ToolTip="{Binding GitTargetLabel}"
-                               Visibility="{Binding GitTargetLabel, Converter={StaticResource NonEmptyToVis}}" />
                     <!-- いま何番目の変更にいるか（↑↓ で飛んだ先は本文側で枠を引く）。まだ飛んでいなければ出さない。
                          出たり消えたりするので左グループの末尾に置く——↑↓ の直後だと、そのたびに後ろの左右／統合がズレる。 -->
                     <TextBlock Text="{Binding ChangePositionLabel}" VerticalAlignment="Center" Margin="2,0,2,0"
