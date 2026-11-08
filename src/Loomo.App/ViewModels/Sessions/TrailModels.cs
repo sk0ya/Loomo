@@ -35,7 +35,10 @@ public enum TrailEntryKind
     Edit,
     /// <summary>Git 操作（コミット・プッシュ・ブランチ切替など）。target は操作の種別キー、label は
     /// 表示名。ログ専用で戻り先を持たない（クリックしても復元しない）。</summary>
-    Git
+    Git,
+    /// <summary>Git ペインで読んだコミット（§24.103）。target は <c>リポジトリの絶対パス|完全なハッシュ</c>
+    /// （<see cref="Services.TrailLogic.CommitTarget"/>）、label は「短縮ハッシュ 件名」。戻ると Git ペインでそのコミットを選び直す。</summary>
+    Commit
 }
 
 /// <summary>軌跡の1エントリ＝一度通過した地点。バーには点（ドット）で表示し、
@@ -148,6 +151,7 @@ public sealed partial class TrailEntryViewModel : ObservableObject
         TrailEntryKind.Session => "✦",
         TrailEntryKind.Edit => "◇",
         TrailEntryKind.Git => "❖",
+        TrailEntryKind.Commit => "⊚",
         _ => "◆"   // File
     };
 
@@ -184,6 +188,8 @@ public sealed partial class TrailEntryViewModel : ObservableObject
             "M2.9,12.1 A1.7,1.7 0 1 0 6.3,12.1 A1.7,1.7 0 1 0 2.9,12.1 Z " +
             "M9.7,6.4 A1.7,1.7 0 1 0 13.1,6.4 A1.7,1.7 0 1 0 9.7,6.4 Z " +
             "M4.6,5.6 L4.6,10.4 M4.6,8 C7.8,8 8.4,6.9 10,6.7",
+        // コミット：線の上の節（コミットグラフの 1 点）
+        TrailEntryKind.Commit => "M1.4,8 L5.1,8 M10.9,8 L14.6,8 M5.1,8 A2.9,2.9 0 1 0 10.9,8 A2.9,2.9 0 1 0 5.1,8 Z",
         // ファイル：書類（折れ角＋本文行）
         _ => "M4,1.8 L8.6,1.8 L12,5 L12,14.2 L4,14.2 Z M8.6,1.8 L8.6,5 L12,5 " +
             "M6,8.4 L10,8.4 M6,10.8 L10,10.8"
@@ -206,6 +212,7 @@ public sealed partial class TrailEntryViewModel : ObservableObject
                 TrailEntryKind.Session => "セッション",
                 TrailEntryKind.Edit => "編集",
                 TrailEntryKind.Git => "Git",
+                TrailEntryKind.Commit => "コミット",
                 _ => "地点"
             };
             var name = Kind is TrailEntryKind.File or TrailEntryKind.Edit && Line >= 0
@@ -229,6 +236,7 @@ public sealed partial class TrailEntryViewModel : ObservableObject
             {
                 TrailEntryKind.File or TrailEntryKind.Edit when Line >= 0 => $"{Target}:{Line + 1}",
                 TrailEntryKind.File or TrailEntryKind.Edit or TrailEntryKind.Browser or TrailEntryKind.Preview => Target,
+                TrailEntryKind.Commit when Services.TrailLogic.TryParseCommitTarget(Target, out var repo, out var hash) => $"{repo} @ {hash}",
                 _ => null
             };
             var body = location is null ? $"{Glyph} {name}" : $"{Glyph} {name}\n{location}";

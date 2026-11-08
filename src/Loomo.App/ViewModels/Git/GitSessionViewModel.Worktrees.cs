@@ -21,6 +21,9 @@ public enum GitWorktreeOpenMode
 
     /// <summary>エクスプローラー（Windows）で開く。</summary>
     Explorer,
+
+    /// <summary>そのワークツリーを場所にした新しいターミナルのタブで、決めたコマンドを回す（§24.104）。</summary>
+    RunCommand,
 }
 
 /// <summary>ワークツリーを開く要求。</summary>
@@ -44,6 +47,11 @@ public sealed partial class GitSessionViewModel
     /// 状態から ShellWindow が入れる（Git の VM はターミナルを知らない）。</summary>
     [ObservableProperty]
     private IReadOnlyDictionary<string, string> _worktreeAgentMarks = new Dictionary<string, string>();
+
+    /// <summary>ワークツリーのパス → そこで最後に回したコマンドの印（§24.104・「✓ dotnet test」）。ターミナルの終了コードから
+    /// ShellWindow が入れる。</summary>
+    [ObservableProperty]
+    private IReadOnlyDictionary<string, string> _worktreeRunMarks = new Dictionary<string, string>();
 
     /// <summary>メイン以外のワークツリーの数（タブの件数）。メインしか無いリポジトリでは 0。</summary>
     public int LinkedWorktreeCount => Math.Max(0, Worktrees.Count - 1);

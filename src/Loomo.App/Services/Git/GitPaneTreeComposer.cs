@@ -69,7 +69,8 @@ public static class GitPaneTreeComposer
     public static void ApplyWorktreeMarks(
         IEnumerable<BranchTreeNode> nodes,
         IReadOnlyList<GitWorktreeInfo> worktrees,
-        IReadOnlyDictionary<string, string> agentMarks)
+        IReadOnlyDictionary<string, string> agentMarks,
+        IReadOnlyDictionary<string, string>? runMarks = null)
     {
         foreach (var node in nodes)
         {
@@ -79,14 +80,21 @@ public static class GitPaneTreeComposer
                     && string.Equals(w.Branch, branch.Name, StringComparison.Ordinal));
                 node.Worktree = holder;
                 node.AgentMark = AgentMarkFor(holder, agentMarks);
+                node.RunMark = RunMarkFor(holder, runMarks);
             }
             else if (node.IsWorktreeItem)
             {
                 node.AgentMark = AgentMarkFor(node.Worktree, agentMarks);
+                node.RunMark = RunMarkFor(node.Worktree, runMarks);
             }
-            ApplyWorktreeMarks(node.Children, worktrees, agentMarks);
+            ApplyWorktreeMarks(node.Children, worktrees, agentMarks, runMarks);
         }
     }
+
+    // 印の鍵はパスの末尾の区切りを落とした形（WorktreeRuns.Marks と同じ）。大文字小文字は辞書が無視する。
+    private static string RunMarkFor(GitWorktreeInfo? worktree, IReadOnlyDictionary<string, string>? marks)
+        => worktree is not null && marks is not null
+           && marks.TryGetValue(System.IO.Path.TrimEndingDirectorySeparator(worktree.Path), out var mark) ? mark : "";
 
     /// <summary>
     /// ブランチの行に載らないワークツリー（デタッチ・ブランチ一覧に無いブランチ）。いまの場所と bare は出さない。

@@ -116,6 +116,7 @@ public partial class GitSessionView
     private void OnWorktreeAddFolder(object sender, RoutedEventArgs e) => Open(GitWorktreeOpenMode.AddFolder);
     private void OnWorktreeTerminal(object sender, RoutedEventArgs e) => Open(GitWorktreeOpenMode.Terminal);
     private void OnWorktreeExplorer(object sender, RoutedEventArgs e) => Open(GitWorktreeOpenMode.Explorer);
+    private void OnWorktreeRunCommand(object sender, RoutedEventArgs e) => Open(GitWorktreeOpenMode.RunCommand);
 
     private void Open(GitWorktreeOpenMode mode)
     {
@@ -247,6 +248,7 @@ public partial class GitSessionView
         WorktreeMenuOpenWorkspace.IsEnabled = other;
         WorktreeMenuAddFolder.IsEnabled = other;
         WorktreeMenuTerminal.IsEnabled = worktree.Exists;
+        WorktreeMenuRunCommand.IsEnabled = worktree.Exists && !worktree.IsBare;
         WorktreeMenuExplorer.IsEnabled = worktree.Exists;
         WorktreeMenuLock.Visibility = !worktree.IsLocked && !worktree.IsMain ? Visibility.Visible : Visibility.Collapsed;
         WorktreeMenuUnlock.Visibility = worktree.IsLocked ? Visibility.Visible : Visibility.Collapsed;

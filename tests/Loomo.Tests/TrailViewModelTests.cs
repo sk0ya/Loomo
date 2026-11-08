@@ -588,6 +588,46 @@ public class TrailViewModelTests : IDisposable
     }
 
     [Fact]
+    public void RecordCommit_folds_the_same_commit_and_keeps_a_new_one()
+    {
+        // §24.103：同じコミットを選び直しても 1 点（大文字のハッシュでも同じ点）、別のコミットは新しい点。
+        var sut = CreateSut();
+        var repo = Path.GetTempPath();
+        sut.RecordCommit(repo, "4EEFA1C7AABBCCDD", "サイドバーの段");
+        sut.RecordCommit(repo, "4eefa1c7aabbccdd", "サイドバーの段");
+        sut.RecordCommit(repo, "de6c0c4d11223344", "ドックの受け皿");
+
+        Assert.Equal(2, sut.Entries.Count);
+        Assert.Equal(TrailEntryKind.Commit, sut.Entries[0].Kind);
+        Assert.Equal("4eefa1c7 サイドバーの段", sut.Entries[0].Label);
+        Assert.True(TrailLogic.TryParseCommitTarget(sut.Entries[1].Target, out var parsedRepo, out var hash));
+        Assert.Equal(Path.TrimEndingDirectorySeparator(repo), parsedRepo);
+        Assert.Equal("de6c0c4d11223344", hash);
+        Assert.Contains("コミット", sut.Entries[1].AccessibleName);
+    }
+
+    [Fact]
+    public void RecordCommit_ignores_revisions_that_are_not_hashes()
+    {
+        var sut = CreateSut();
+        sut.RecordCommit(Path.GetTempPath(), "HEAD~3", null);
+        sut.RecordCommit("", "4eefa1c7", null);
+        Assert.Empty(sut.Entries);
+    }
+
+    [Fact]
+    public void A_commit_point_can_be_jumped_to_only_while_its_repository_exists()
+    {
+        var existing = TrailLogic.CommitTarget(Path.GetTempPath(), "4eefa1c7");
+        var missing = TrailLogic.CommitTarget(Path.Combine(Path.GetTempPath(), "no-such-repo-" + Guid.NewGuid().ToString("N")), "4eefa1c7");
+        bool Can(string target) => TrailLogic.CanJumpToEntry(TrailEntryKind.Commit, target, null, _ => true, _ => true, _ => true);
+        Assert.True(Can(existing));
+        Assert.False(Can(missing));
+        Assert.False(Can("relative|4eefa1c7"));
+        Assert.False(Can(TrailLogic.CommitTarget(Path.GetTempPath(), "main")));
+    }
+
+    [Fact]
     public void Every_kind_has_a_distinct_glyph()
     {
         // §27.11-D：Pane と Layout が同じ記号だと、バー上で種別を見分けられない。

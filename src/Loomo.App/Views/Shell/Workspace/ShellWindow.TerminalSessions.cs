@@ -112,7 +112,7 @@ public partial class ShellWindow {
             return;
         snapshot.TerminalTabs = _terminalTabs.Select(tab => new TerminalTabSnapshot {
             Id = tab.Id, CustomName = tab.CustomName, WorkingDirectory = tab.View.WorkingDirectory, ColorKey = tab.ColorKey,
-            Note = tab.Note,
+            Note = tab.Note, ResumeClaudeSessionId = _paneActivity.RunningAgentSessionOf(tab.Id),
         }).ToList();
         snapshot.ActiveTerminalTabId = _activeTerminalTab?.Id;
         snapshot.TerminalViewLayout = _terminalViews?.Capture();
@@ -147,12 +147,15 @@ public partial class ShellWindow {
             return false;
         }
         _ = AdoptOrphanTerminalSessionsAsync(terminalWorkspace);
-        var restorable = WorkspaceSessionCoordinator.ResolveRestorableTerminalTabs(workspace.TerminalTabs, hostSessions);
+        var savedScreens = sk0ya.Loomo.Core.Pty.TerminalScreenRestore.SavedIds(sk0ya.Loomo.Core.Pty.TerminalScreenRestore.DefaultDirectory);
+        var restorable = WorkspaceSessionCoordinator.ResolveRestorableTerminalTabs(workspace.TerminalTabs, hostSessions, savedScreens);
         if (restorable.Count == 0)
             return false;
         foreach (var saved in restorable) {
             var cwd = Directory.Exists(saved.WorkingDirectory) ? saved.WorkingDirectory! : fallbackDirectory;
-            AddRestoredTerminalTab(cwd, saved.Id, saved.CustomName, saved.ColorKey, saved.Note);
+            var tab = AddRestoredTerminalTab(cwd, saved.Id, saved.CustomName, saved.ColorKey, saved.Note);
+            if (WorkspaceSessionCoordinator.ClaudeResumeCommand(saved, hostSessions) is { } resume)
+                RunAtFirstPrompt(tab, resume);
         }
         terminalWorkspace.NextTabNumber = _terminalTabs.Count + 1;
         var active = workspace.ActiveTerminalTabId is { } id && _terminalTabs.Any(t => t.Id == id)
@@ -195,13 +198,29 @@ public partial class ShellWindow {
         SaveActiveWorkspaceSnapshot();
     }
 
-    private void AddRestoredTerminalTab(string cwd, Guid id, string? customName, string? colorKey = null, string? note = null) {
+    private TerminalTab AddRestoredTerminalTab(string cwd, Guid id, string? customName, string? colorKey = null, string? note = null) {
         var tab = CreateTerminalTab(cwd, id);
         tab.CustomName = customName;
         tab.ColorKey = TerminalTabColors.Normalize(colorKey);
         tab.Note = TabsViewModel.NormalizeNote(note);
         _terminalTabs.Add(tab);
         _vm.Tabs.AddTerminalTab(tab.Id, tab.View.HeaderTitle, false, customName, tab.ColorKey, tab.Note);
+        return tab;
+    }
+
+    /// <summary>
+    /// 画面だけ戻したタブの、新しいシェルの最初のプロンプト（OSC 133;A）で 1 行打つ（§34.13 の Claude Code の再開）。
+    /// <see cref="RunWhenShellReady"/> と違って時間切れで打たない——戻したタブはタブを見るまでシェルが起きないので、
+    /// 時間で打つとまだ居ないシェルへ捨てることになる。前回の画面の中の印は再生として届くので、ここへは来ない。
+    /// </summary>
+    private void RunAtFirstPrompt(TerminalTab tab, string command) {
+        void OnActivity(object? sender, ShellCommandActivityEventArgs e) {
+            if (e.Phase != ShellCommandPhase.PromptStart)
+                return;
+            tab.View.ShellCommandActivity -= OnActivity;
+            Dispatcher.BeginInvoke(() => tab.View.SendTerminalInput(command + "\r"));
+        }
+        tab.View.ShellCommandActivity += OnActivity;
     }
 
     /// <summary>
@@ -212,6 +231,8 @@ public partial class ShellWindow {
     private void KillPersistentTerminal(Guid tabId) {
         // 設定は今の値で、このタブが常駐で作られたかとは限らないので見ない（居なければ何も起きない）。
         // 先勝ちに負けたタブの同じ ID のシェルは、別の Loomo の持ち物。
+        // 前回の画面を残したまま一度も表示しなかったタブ（§34.13）：閉じたのだから次の起動で戻さない。
+        sk0ya.Loomo.Core.Pty.TerminalScreenRestore.Discard(sk0ya.Loomo.Core.Pty.TerminalScreenRestore.DefaultDirectory, tabId);
         if (_localTerminalTabs.TryRemove(tabId, out _))
             return;
         if (_ptyHost.IsAvailable)

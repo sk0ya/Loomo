@@ -31,6 +31,10 @@ public partial class GitSessionView : UserControl
         DataContextChanged += OnDataContextChanged;
         _selectedLogRowPresenter = new GitSelectedLogRowPresenter(LogList);
         _commitFilePresenter = new GitCommitFileInteractionPresenter(CommitFileList, () => Vm);
+        // コミットの変更ファイルを、作業ツリーの実体としてほかのペインへ運ぶ（§24.102）。その版の中身ではない——版は「この版を開く」。
+        ItemsFileDragSource.Attach(CommitFileList, item =>
+            item is CommitFileNode node && Vm is { } vm
+                ? CommitFileLeaves(node).Select(vm.ChangedFilePathOf).OfType<string>() : []);
         _columnVisibilityController = new GitSessionColumnVisibilityController(
             BranchSplitterColumn, BranchColumn, BranchSplitter, BranchListArea, BranchOpListGroup, BranchOpBar,
             CommitDetailSplitterColumn, CommitDetailColumn, CommitDetailSplitter, CommitDetailPanel);
@@ -56,6 +60,9 @@ public partial class GitSessionView : UserControl
     }
 
     private GitSessionViewModel? Vm => DataContext as GitSessionViewModel;
+
+    private static IEnumerable<string> CommitFileLeaves(CommitFileNode node)
+        => node.NavigatePath is { } path ? [path] : node.Children.SelectMany(CommitFileLeaves);
 
     private string? PromptGitOperation(GitOperationPrompt request) => InputDialog.Prompt(
         Window.GetWindow(this), request.Title, request.Message, request.InitialValue,

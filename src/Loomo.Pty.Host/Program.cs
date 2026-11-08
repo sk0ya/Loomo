@@ -16,7 +16,7 @@ HostLog.Write($"起動 pid={Environment.ProcessId} pipe={pipeName} dir={AppConte
 try
 {
     new PtyHostServer(pipeName, idleExit: TimeSpan.FromMinutes(1), lastClientLeft: () => Environment.Exit(0),
-        archiveDirectory: TerminalArchive.DefaultDirectory).Run();
+        archiveDirectory: TerminalArchive.DefaultDirectory, restoreDirectory: TerminalScreenRestore.DefaultDirectory).Run();
     return 0;
 }
 catch (Exception ex)

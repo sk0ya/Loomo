@@ -1246,6 +1246,21 @@
                 </TextBlock.Style>
             </TextBlock>
 
+            <!-- そのワークツリーで最後に回したコマンド（§24.104）。▶ 実行中・✓ 成功・✗ 失敗。 -->
+            <TextBlock Text="{Binding RunMark}" FontSize="{DynamicResource Fs10}"
+                       Foreground="{DynamicResource FgDim}" VerticalAlignment="Center" Margin="6,0,0,0"
+                       ToolTip="このワークツリーで最後に回したコマンド（右クリック →「ワークツリー」→「このワークツリーでコマンドを実行…」）">
+                <TextBlock.Style>
+                    <Style TargetType="TextBlock">
+                        <Style.Triggers>
+                            <Trigger Property="Text" Value="">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </TextBlock.Style>
+            </TextBlock>
+
             <!-- そこで動いている Claude Code（§24.17.2）。ブランチの行ならそれを置いているワークツリーの。 -->
             <TextBlock Text="{Binding AgentMark}" FontSize="{DynamicResource Fs10}"
                        Foreground="{DynamicResource Accent}" VerticalAlignment="Center" Margin="6,0,0,0"

@@ -1528,6 +1528,10 @@ public sealed partial class GitPanelViewModel : ObservableObject
             + "もう一度コミットを押すと、そのままコミットします。";
     }
 
+    /// <summary>変更行の作業ツリーの実体（ドラッグで運ぶ・§24.102）。削除済みなど実体が無ければ null。</summary>
+    public string? WorkingFilePathOf(GitChangeItem item)
+        => string.IsNullOrEmpty(_git.RootPath) ? null : Path.Combine(_git.RootPath, item.Entry.Path);
+
     /// <summary>変更行の右クリックメニュー「ファイルを開く」：そのファイルの実体をエディタで開く
     /// （差分ではなくファイルそのもの。差分はダブルクリック／「差分を開く」の <see cref="OpenDiffCommand"/>）。
     /// 削除済みエントリは開く実体が無いので何もしない。</summary>

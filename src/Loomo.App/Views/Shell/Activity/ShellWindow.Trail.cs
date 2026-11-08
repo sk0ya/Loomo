@@ -15,6 +15,7 @@ public partial class ShellWindow {
     private string? _trailLastLayoutKey;
     private void InitializeTrail() {
         RegisterTrailJumps();
+        InitializeTrailCommits();
         InitializeTrailBookmarks();
         _trailEditCommit = new TrailEditCommitController(_vm.Trail, () => _trailSuppressed,
             (position, record) => RecordTrail(position, record), TrailFilePositionOf);

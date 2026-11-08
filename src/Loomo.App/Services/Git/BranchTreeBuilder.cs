@@ -137,6 +137,21 @@ public sealed class BranchTreeNode : INotifyPropertyChanged
 
     private string _agentMark = "";
 
+    /// <summary>そのワークツリーで最後に回したコマンドの印（§24.104・「✓ dotnet test」）。無ければ空。</summary>
+    public string RunMark
+    {
+        get => _runMark;
+        set
+        {
+            value ??= "";
+            if (_runMark == value) return;
+            _runMark = value;
+            Raise(nameof(RunMark));
+        }
+    }
+
+    private string _runMark = "";
+
     /// <summary>行の右に淡く出す補足（タグ＝指すコミット、サブモジュール＝状態だけ）。サブモジュールのパスは
     /// 長くなりがちで、190px の列でコミットまで並べるとパスのほうが押し出されて消える——コミットはツールチップへ。</summary>
     public string Detail => Tag is { } tag ? tag.TargetShortHash

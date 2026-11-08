@@ -55,18 +55,34 @@ public static class WorkspaceSessionCoordinator
         => Directory.Exists(workingDirectory) ? workingDirectory : fallbackDirectory;
 
     /// <summary>
-    /// 前回のターミナルタブのうち、常駐ホストにシェルが残っていて戻せるもの（§34.6）。シェルが無いタブは
-    /// 前の画面も実行中のコマンドも戻らないので立て直さない（消す）。<paramref name="hostSessions"/> が null
+    /// 前回のターミナルタブのうち戻せるもの（§34.6・§34.13）。常駐ホストにシェルが残っているタブ、または
+    /// Loomo が全部終わったときに画面を残したタブ（<paramref name="savedScreens"/>）。どちらも無いタブは前の画面も
+    /// 実行中のコマンドも戻らないので立て直さない（消す）。<paramref name="hostSessions"/> が null
     /// （ホストに聞けなかった）なら、分からないものを消さないよう全部残す。
     /// </summary>
     public static List<TerminalTabSnapshot> ResolveRestorableTerminalTabs(
         IReadOnlyList<TerminalTabSnapshot> saved,
-        IReadOnlyCollection<Guid>? hostSessions)
+        IReadOnlyCollection<Guid>? hostSessions,
+        IReadOnlyCollection<Guid>? savedScreens = null)
     {
         if (hostSessions is null)
             return saved.ToList();
-        return saved.Where(tab => hostSessions.Contains(tab.Id)).ToList();
+        return saved.Where(tab => hostSessions.Contains(tab.Id) || savedScreens?.Contains(tab.Id) == true).ToList();
     }
+
+    /// <summary>
+    /// 画面だけ戻すタブで打ち直す Claude Code の再開（§34.13）。シェルがホストに残っているタブは Claude Code ごと生きているので
+    /// 打たない。ホストに聞けなかったとき（<paramref name="hostSessions"/> が null）も、生きている Claude に打ち込みかねないので打たない。
+    /// </summary>
+    public static string? ClaudeResumeCommand(TerminalTabSnapshot tab, IReadOnlyCollection<Guid>? hostSessions)
+        => hostSessions is not null && !hostSessions.Contains(tab.Id)
+           && tab.ResumeClaudeSessionId is { Length: > 0 } id && IsSafeSessionId(id)
+            ? $"claude --resume {id}"
+            : null;
+
+    // セッション ID はフックから来る文字列なので、シェルに打つ前に形を確かめる（UUID の文字だけ）。
+    private static bool IsSafeSessionId(string id)
+        => id.Length <= 64 && id.All(c => char.IsAsciiLetterOrDigit(c) || c == '-');
 
     /// <summary>旧 single-editor 鏡へ使うタブ。アクティブ ID が無ければ先頭のタブを使う。</summary>
     public static EditorTabSnapshot? SelectActiveEditorSnapshot(

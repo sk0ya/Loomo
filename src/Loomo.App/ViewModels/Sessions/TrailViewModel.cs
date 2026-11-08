@@ -231,6 +231,15 @@ public sealed partial class TrailViewModel : ObservableObject
             displayMode: displayMode, stagePane: stagePane, paneLayout: null);
     }
 
+    /// <summary>Git ペインで読んだコミット（§24.103）。同じコミットを選び直しても 1 点（target が同じならデデュープで畳む）。</summary>
+    public void RecordCommit(string repository, string hash, string? subject,
+        DisplayMode displayMode = DisplayMode.Layout, PaneKind? stagePane = null, string? paneLayout = null)
+    {
+        if (string.IsNullOrWhiteSpace(repository) || !sk0ya.Loomo.Core.Files.LoomoLink.IsCommitHash(hash)) return;
+        Record(TrailEntryKind.Commit, TrailLogic.CommitTarget(repository, hash), TrailLogic.CommitLabel(hash, subject),
+            displayMode: displayMode, stagePane: stagePane, paneLayout: paneLayout);
+    }
+
     /// <param name="redirectFrom">中継ページから来た遷移なら、その中継ページの URL。
     /// 直前の地点がそのページなら点を足さずに置き換える（中継ページを軌跡に残さない）。</param>
     public void RecordBrowser(string url, string? title,

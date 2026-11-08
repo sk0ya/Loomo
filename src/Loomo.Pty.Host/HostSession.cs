@@ -26,11 +26,14 @@ internal sealed class HostSession
     private int _exitCode = -1;
     private int _finished;
     private volatile bool _killRequested;
+    private volatile bool _keepScreen;
     private readonly string? _archiveDirectory;
+    private readonly string? _restoreDirectory;
 
-    private HostSession(PtyProtocol.Request request, Action<HostSession> ended, string? archiveDirectory)
+    private HostSession(PtyProtocol.Request request, Action<HostSession> ended, string? archiveDirectory, string? restoreDirectory)
     {
         _archiveDirectory = archiveDirectory;
+        _restoreDirectory = restoreDirectory;
         Id = request.SessionId;
         WorkspaceId = request.WorkspaceId;
         CreatedUtc = DateTime.UtcNow;
@@ -40,6 +43,7 @@ internal sealed class HostSession
         short rows = Math.Max(request.Rows, (short)5);
         _screen = new HeadlessTerminal(columns, rows, request.ScrollbackLimit > 0 ? request.ScrollbackLimit : 10000);
         _screen.ResponseGenerated += OnScreenResponse;
+        ReplaySavedScreen();
         _pty = new ConPtySession(columns, rows, request.CommandLine!, request.WorkingDirectory, request.Environment);
         _pty.OutputReceived += (_, text) => Post(() => OnOutput(text));
         _pty.Exited += (_, code) => Post(() => Finish(code));
@@ -59,11 +63,35 @@ internal sealed class HostSession
     /// 作り直しに来た Open にはもう渡さない）。</summary>
     public bool HasFinished => _killRequested || Volatile.Read(ref _finished) != 0;
 
-    public static HostSession Start(PtyProtocol.Request request, Action<HostSession> ended, string? archiveDirectory = null)
+    public static HostSession Start(PtyProtocol.Request request, Action<HostSession> ended, string? archiveDirectory = null,
+        string? restoreDirectory = null)
     {
         if (string.IsNullOrWhiteSpace(request.CommandLine))
             throw new ArgumentException("起動コマンド行がありません。");
-        return new HostSession(request, ended, archiveDirectory);
+        return new HostSession(request, ended, archiveDirectory, restoreDirectory);
+    }
+
+    /// <summary>
+    /// 前回 Loomo が全部終わったときに残したこのタブの画面（§34.13）があれば、シェルを起こす前に画面モデルへ流し、
+    /// 区切りの 1 行を足す。付け直しの最初に送る VT の列（<see cref="Attach"/>）がこれを含むので、タブには前回の画面の下に
+    /// 新しいシェルが出る。残した列は再生の括弧で始まるので、中のコマンドの区切りの印は「いま起きたこと」として数えない。
+    /// 画面モデルのスレッドはまだ動いていない（コンストラクターの中）ので、ここで触ってよい。
+    /// </summary>
+    private void ReplaySavedScreen()
+    {
+        if (_restoreDirectory is null)
+            return;
+        try
+        {
+            if (TerminalScreenRestore.Take(_restoreDirectory, Id) is not { } saved)
+                return;
+            _screen.Process(saved.Screen);
+            _screen.Process(TerminalScreenRestore.Divider(saved.ClosedUtc));
+        }
+        catch (Exception ex)
+        {
+            HostLog.Write($"前回の画面を戻せなかった {Id:N}: {ex.Message}");
+        }
     }
 
     public PtyProtocol.SessionInfo Describe() =>
@@ -162,9 +190,11 @@ internal sealed class HostSession
         return done.Wait(TimeSpan.FromSeconds(2)) ? result : Array.Empty<PtyProtocol.SearchMatch>();
     }
 
-    /// <summary>本体がタブを閉じた・作り直した。シェルごと殺す。</summary>
-    public void Kill()
+    /// <summary>本体がタブを閉じた・作り直した。シェルごと殺す。<paramref name="keepScreen"/> は最後の Loomo が正常に
+    /// 終わって全部殺すとき（§34.13）：次の起動で同じタブに戻せるよう、画面を VT のまま残す。</summary>
+    public void Kill(bool keepScreen = false)
     {
+        _keepScreen |= keepScreen;
         _killRequested = true;
         Post(() => Finish(-1));
     }
@@ -206,6 +236,8 @@ internal sealed class HostSession
             return;
         _exitCode = exitCode;
         Archive();
+        if (_keepScreen)
+            KeepScreen();
         _client?.SendExited(exitCode);
         _client?.Close();
         _client = null;
@@ -237,6 +269,25 @@ internal sealed class HostSession
         catch (Exception ex)
         {
             HostLog.Write($"画面を書庫へ残せなかった {Id:N}: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// 次の起動でこのタブへ戻す画面を残す（§34.13）。撮る前に片付けを流す——代替画面から出て、モード・プログラムの申告・題を戻す
+    /// （<see cref="TerminalScreenRestore.CleanupBeforeSnapshot"/>）。シェルはもう終わるので、画面モデルを汚してもかまわない。
+    /// </summary>
+    private void KeepScreen()
+    {
+        if (_restoreDirectory is null)
+            return;
+        try
+        {
+            _screen.Process(TerminalScreenRestore.CleanupBeforeSnapshot);
+            TerminalScreenRestore.Write(_restoreDirectory, Id, WorkspaceId, _screen.CreateVtSnapshot(), DateTime.UtcNow);
+        }
+        catch (Exception ex)
+        {
+            HostLog.Write($"画面を次の起動へ残せなかった {Id:N}: {ex.Message}");
         }
     }
 

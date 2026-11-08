@@ -67,6 +67,9 @@ public partial class ShellWindow {
             case GitWorktreeOpenMode.Explorer:
                 FileExplorerLauncher.OpenInExplorer(path);
                 break;
+            case GitWorktreeOpenMode.RunCommand:
+                _ = RunCommandInWorktreeAsync(path);
+                break;
         }
     }
 

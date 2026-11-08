@@ -41,6 +41,10 @@ public partial class DiffSessionView : UserControl, IDisposable
     public DiffSessionView()
     {
         InitializeComponent();
+        // 差分のファイル一覧の行を、作業ツリーのファイルとしてほかのペインへ運ぶ（§24.102）。アドホック比較の項目は
+        // パスを持たないことがあるので、実在するときだけ（FileDragDrop が消えたパスを落とす）。
+        ItemsFileDragSource.Attach(FileTreeView, item =>
+            item is DiffFileTreeNode node ? DiffFileLeaves(node).Select(file => file.FullPath) : []);
         _documentRenderer = new DiffFlowDocumentRenderer(this);
         _sideEditors = new DiffSideEditorPresenter(() => Vm, LeftEditorHost, RightEditorHost, SideStatusBar);
         _sideBlockPresenter = new DiffSideBlockPresenter(
@@ -356,6 +360,9 @@ public partial class DiffSessionView : UserControl, IDisposable
     }
 
     private DiffSessionViewModel? Vm => DataContext as DiffSessionViewModel;
+
+    private static IEnumerable<DiffFileItem> DiffFileLeaves(DiffFileTreeNode node)
+        => node.File is { } file ? [file] : node.Children.SelectMany(DiffFileLeaves);
 
     // ===== データ購読・FlowDocument 構築 =====
 

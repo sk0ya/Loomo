@@ -231,6 +231,11 @@ internal sealed class PaneActivityTracker
     public (string SessionId, string? TranscriptPath)? AgentSessionOf(Guid tabId)
         => _terminals.TryGetValue(tabId, out var state) && state.SessionId is { } id ? (id, state.TranscriptPath) : null;
 
+    /// <summary>そのタブの前面で<b>いま</b>動いている Claude Code のセッション ID（§34.13）。フックで結び付いていて、
+    /// まだ居なくなっていない（タイトルの印か OSC 7501 の申告がある）ときだけ。抜けた後の ID は返さない。</summary>
+    public string? RunningAgentSessionOf(Guid tabId)
+        => _terminals.TryGetValue(tabId, out var state) && state.Agent is not null ? state.SessionId : null;
+
     public bool ForgetTerminal(Guid tabId) => _terminals.Remove(tabId);
 
     /// <summary>コマンドが進捗を知らせてきた（OSC 9;4・§24.35）。表示が変わるなら true

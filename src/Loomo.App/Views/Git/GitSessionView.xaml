@@ -662,6 +662,9 @@
                                                   Click="OnWorktreeAddFolder" Tag="worktree" />
                                         <MenuItem x:Name="WorktreeMenuTerminal" Header="ターミナルでこの場所へ移動"
                                                   Click="OnWorktreeTerminal" Tag="worktree" />
+                                        <MenuItem x:Name="WorktreeMenuRunCommand" Header="このワークツリーでコマンドを実行…"
+                                                  Click="OnWorktreeRunCommand" Tag="worktree"
+                                                  ToolTip="ここを場所にした新しいターミナルのタブで回し、結果（✓／✗）を行に出す。コマンドはリポジトリごとに覚える" />
                                         <MenuItem x:Name="WorktreeMenuExplorer" Header="エクスプローラーで開く"
                                                   Click="OnWorktreeExplorer" Tag="worktree" />
                                         <MenuItem Header="パスをコピー" Click="OnWorktreeCopyPath" Tag="worktree" />

@@ -218,6 +218,7 @@ public sealed partial class GitSessionViewModel : ObservableObject
     partial void OnSubmodulesChanged(IReadOnlyList<GitSubmoduleInfo> value) => UpdatePaneTree();
     partial void OnWorktreesChanged(IReadOnlyList<GitWorktreeInfo> value) => UpdatePaneTree();
     partial void OnWorktreeAgentMarksChanged(IReadOnlyDictionary<string, string> value) => ApplyWorktreeMarks();
+    partial void OnWorktreeRunMarksChanged(IReadOnlyDictionary<string, string> value) => ApplyWorktreeMarks();
 
     private void UpdatePaneTree()
     {
@@ -229,11 +230,11 @@ public sealed partial class GitSessionViewModel : ObservableObject
     /// <summary>ブランチの行にワークツリーの印を付け直す。絞り込みのツリーは別のノードなので、それぞれに付ける。</summary>
     private void ApplyWorktreeMarks()
     {
-        GitPaneTreeComposer.ApplyWorktreeMarks(BranchTree, Worktrees, WorktreeAgentMarks);
+        GitPaneTreeComposer.ApplyWorktreeMarks(BranchTree, Worktrees, WorktreeAgentMarks, WorktreeRunMarks);
         if (!ReferenceEquals(FilteredBranchTree, BranchTree))
-            GitPaneTreeComposer.ApplyWorktreeMarks(FilteredBranchTree, Worktrees, WorktreeAgentMarks);
+            GitPaneTreeComposer.ApplyWorktreeMarks(FilteredBranchTree, Worktrees, WorktreeAgentMarks, WorktreeRunMarks);
         if (!ReferenceEquals(PaneTree, BranchTree))
-            GitPaneTreeComposer.ApplyWorktreeMarks(PaneTree, Worktrees, WorktreeAgentMarks);
+            GitPaneTreeComposer.ApplyWorktreeMarks(PaneTree, Worktrees, WorktreeAgentMarks, WorktreeRunMarks);
     }
 
     /// <summary>絞り込み中か（解除ボタンの出し入れ）。判定は一覧を絞る側と<b>同じ述語</b>にする
@@ -699,6 +700,9 @@ public sealed partial class GitSessionViewModel : ObservableObject
         await History.SelectCommitAsync(hash);
         return History.SelectedLogRow?.Hash is { } selected && selected.StartsWith(hash, StringComparison.OrdinalIgnoreCase);
     }
+
+    /// <summary>コミットの変更ファイルの、作業ツリーの実体（ドラッグで運ぶ・§24.102）。無ければ null。</summary>
+    public string? ChangedFilePathOf(string relativePath) => _query.ResolveExistingChangedFile(relativePath);
 
     /// <summary>
     /// コミット詳細（変更ファイル一覧）でクリックされた相対パスを、リポジトリルート基準で解決し

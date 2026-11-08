@@ -1049,6 +1049,9 @@ public sealed class TerminalTabSnapshot
     public string? ColorKey { get; set; }
     /// <summary>人が付けたメモ（§24.73）。名前・色と同じく鍵の側（生きたタブ）に持ってここへ書く。</summary>
     public string? Note { get; set; }
+    /// <summary>保存した時点でこのタブの前面で動いていた Claude Code のセッション ID（§34.13・SessionStart のフックで分かる）。
+    /// シェルごと失って画面だけ戻したタブで <c>claude --resume</c> するためだけに使う。動いていなければ null。</summary>
+    public string? ResumeClaudeSessionId { get; set; }
 }
 
 public sealed class BrowserTabSnapshot

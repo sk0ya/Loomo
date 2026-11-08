@@ -110,8 +110,37 @@ public static class TrailLogic
             TrailEntryKind.Session => target is not null && hasSession(target),
             TrailEntryKind.Layout => !string.IsNullOrWhiteSpace(paneLayout),
             TrailEntryKind.Git => false,
+            TrailEntryKind.Commit => TryParseCommitTarget(target, out var repository, out _) && Directory.Exists(repository),
             _ => false,
         };
+    }
+
+    /// <summary>コミットの地点の target（§24.103）。リポジトリの絶対パスと完全なハッシュを <c>|</c> で繋ぐ（パスに <c>|</c> は入らない）。
+    /// ハッシュは小文字にそろえる——同じコミットを選び直したとき、デデュープ（大文字小文字を区別する）で 1 点に畳むため。</summary>
+    public static string CommitTarget(string repository, string hash)
+        => $"{Path.TrimEndingDirectorySeparator(repository)}|{hash.ToLowerInvariant()}";
+
+    /// <summary><see cref="CommitTarget"/> を読む。リポジトリが絶対パスでない・ハッシュが 16 進でない（<c>HEAD~3</c> やブランチ名は時間で別の
+    /// コミットを指すので受けない・§24.74 と同じ）なら false。</summary>
+    public static bool TryParseCommitTarget(string? target, out string repository, out string hash)
+    {
+        repository = hash = "";
+        var bar = target?.LastIndexOf('|') ?? -1;
+        if (bar <= 0)
+            return false;
+        var repo = target![..bar];
+        var commit = target[(bar + 1)..];
+        if (!Path.IsPathFullyQualified(repo) || !sk0ya.Loomo.Core.Files.LoomoLink.IsCommitHash(commit))
+            return false;
+        (repository, hash) = (repo, commit);
+        return true;
+    }
+
+    /// <summary>コミットの地点のラベル（「1a2b3c4d 件名」）。件名が無ければ短縮ハッシュだけ。</summary>
+    public static string CommitLabel(string hash, string? subject)
+    {
+        var shortHash = hash.Length > 8 ? hash[..8] : hash;
+        return string.IsNullOrWhiteSpace(subject) ? shortHash : $"{shortHash} {subject.Trim()}";
     }
 
     /// <summary><paramref name="dock"/> はドックモードで開いている領域（例 "Git+EditorSupport"）。

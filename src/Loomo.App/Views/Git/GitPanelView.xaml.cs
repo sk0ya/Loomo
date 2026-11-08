@@ -10,10 +10,20 @@ public partial class GitPanelView
         InitializeComponent();
         new GitPanelInteractionController(
             StagedList, WorkingTree, () => DataContext as GitPanelViewModel);
+        // 変更の行をターミナル・エディタ・ペグボードへドラッグで運ぶ（§24.102）。フォルダー・区分の行は配下のファイルを全部。
+        ItemsFileDragSource.Attach(StagedList, item =>
+            item is GitChangeItem change && DataContext is GitPanelViewModel vm && vm.WorkingFilePathOf(change) is { } path
+                ? [path] : []);
+        ItemsFileDragSource.Attach(WorkingTree, item =>
+            item is GitChangeTreeNode node && DataContext is GitPanelViewModel vm
+                ? GitChangeLeaves(node).Select(vm.WorkingFilePathOf).OfType<string>() : []);
         // コミットメッセージで、変えたファイル名・識別子を補完する（§24.95）。
         new CommitMessageCompletionController(CommitMessageBox, () =>
             DataContext is GitPanelViewModel vm ? vm.LoadCommitCompletionCandidatesAsync() : Task.FromResult<IReadOnlyList<string>>([]));
     }
+
+    private static IEnumerable<GitChangeItem> GitChangeLeaves(GitChangeTreeNode node)
+        => node.Change is { } change ? [change] : node.Children.SelectMany(GitChangeLeaves);
 
     /// <summary>「⤒」は左クリックで当て方（クリップボード／ファイル）のメニューを開く（§24.38.1）。</summary>
     private void OnApplyPatchMenuClick(object sender, System.Windows.RoutedEventArgs e)
