@@ -34,6 +34,17 @@ public class DockDropZonesTests
         Assert.Equal(new Rect(700, 0, 300, 600), zone.Preview);
     }
 
+    /// <summary>器の半分を占める下・右の領域でも、塗る枠は実際の大きさのまま（一律の上限で削ると枠が領域とズレた）。</summary>
+    [Fact]
+    public void Large_open_regions_are_not_shrunk()
+    {
+        var right = DockDropZones.Resolve(Area, 450, 400, new Point(600, 100))!.Value;
+        Assert.Equal(DockRegion.Right, right.Region);
+        Assert.Equal(new Rect(550, 0, 450, 400), right.Preview);
+        var bottom = DockDropZones.Resolve(Area, 450, 400, new Point(100, 450))!.Value;
+        Assert.Equal(new Rect(0, 400, 1000, 400), bottom.Preview);
+    }
+
     /// <summary>中央を畳んで下が器いっぱいに広がっていても、中央へ戻す受け皿は残る。</summary>
     [Fact]
     public void Center_stays_reachable_when_a_region_fills_the_area()
