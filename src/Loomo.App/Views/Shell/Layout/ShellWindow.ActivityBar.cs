@@ -52,6 +52,9 @@ public partial class ShellWindow {
             SecondarySidebarRow.Height = new GridLength(DefaultSecondarySectionHeight);
         };
         _vm.ActivityBar.ItemMoved += (_, _) => ApplySidebarLayout();
+        SidebarContainer.PreviewMouseLeftButtonDown += OnSidebarHeaderMouseDown;
+        SidebarContainer.PreviewMouseMove += OnSidebarHeaderMouseMove;
+        SidebarContainer.PreviewMouseLeftButtonUp += (_, _) => _sidebarHeaderDragItem = null;
         _vm.PropertyChanged += (_, e) => {
             if (e.PropertyName is nameof(ShellViewModel.ActivePanel) or nameof(ShellViewModel.SecondaryPanel)
                 or nameof(ShellViewModel.IsSidebarVisible) or nameof(ShellViewModel.IsSecondarySidebarVisible))
@@ -198,5 +201,113 @@ public partial class ShellWindow {
     private void HideActivityDropMarks() {
         PrimaryActivityDropMark.Visibility = Visibility.Collapsed;
         SecondaryActivityDropMark.Visibility = Visibility.Collapsed;
+    }
+
+    // ===== パネルの見出しを掴んで段を移す =====
+    // ActivityBar のアイコンを運ぶのと同じ中身（ActivityItemFormat）を運ぶので、アイコンの列へ落としても、
+    // サイドバーの上半分（上段）／下半分（中段）へ落としてもよい。
+
+    private Point _sidebarHeaderDragOrigin;
+    private ActivityBarItemViewModel? _sidebarHeaderDragItem;
+
+    private void OnSidebarHeaderMouseDown(object sender, MouseButtonEventArgs e) {
+        _sidebarHeaderDragItem = null;
+        if (e.ClickCount != 1 || SidebarPanelOfHeader(e.OriginalSource as DependencyObject) is not { } panel)
+            return;
+        _sidebarHeaderDragItem = _vm.ActivityBar.ItemFor(panel);
+        _sidebarHeaderDragOrigin = e.GetPosition(this);
+    }
+
+    private void OnSidebarHeaderMouseMove(object sender, MouseEventArgs e) {
+        if (_sidebarHeaderDragItem is null)
+            return;
+        if (e.LeftButton != MouseButtonState.Pressed) {
+            _sidebarHeaderDragItem = null;
+            return;
+        }
+        var delta = e.GetPosition(this) - _sidebarHeaderDragOrigin;
+        if (Math.Abs(delta.X) < SystemParameters.MinimumHorizontalDragDistance
+            && Math.Abs(delta.Y) < SystemParameters.MinimumVerticalDragDistance)
+            return;
+        var item = _sidebarHeaderDragItem;
+        _sidebarHeaderDragItem = null;   // DoDragDrop は入れ子のメッセージループなので、先に手を放す
+        SidebarDropPreview.Background = TranslucentAccent(0.25);
+        SidebarDropOverlay.Visibility = Visibility.Visible;
+        try {
+            DragDrop.DoDragDrop(SidebarContainer, new DataObject(ActivityItemFormat, item), DragDropEffects.Move);
+        } finally {
+            SidebarDropOverlay.Visibility = Visibility.Collapsed;
+            SidebarDropPreview.Visibility = Visibility.Collapsed;
+            HideActivityDropMarks();
+        }
+    }
+
+    /// <summary>押した場所がサイドバーのパネルの見出し帯（<c>SidebarHeaderBand</c>）の空きなら、そのパネル。
+    /// 見出しに置いたボタン・タブ（Git の「変更／比較」）・入力欄は押す場所であって取っ手ではない。</summary>
+    private SidebarPanel? SidebarPanelOfHeader(DependencyObject? source) {
+        var headerStyle = TryFindResource("SidebarHeaderBand");
+        var onHeader = false;
+        for (var current = source; current is not null && !ReferenceEquals(current, SidebarContainer);
+             current = current is Visual or System.Windows.Media.Media3D.Visual3D
+                 ? VisualTreeHelper.GetParent(current) : LogicalTreeHelper.GetParent(current)) {
+            if (!onHeader) {
+                if (current is ButtonBase or ComboBox or TabItem or TextBoxBase)
+                    return null;
+                if (current is Border border && headerStyle is not null && ReferenceEquals(border.Style, headerStyle))
+                    onHeader = true;
+                continue;
+            }
+            foreach (var (panel, view) in SidebarPanelViews)
+                if (ReferenceEquals(view, current))
+                    return panel;
+        }
+        return null;
+    }
+
+    /// <summary>サイドバーの受け皿：上半分＝上段・下半分＝中段。両段とも出ていれば、その段の実際の区画を塗る。</summary>
+    private (ActivityBarSlot Slot, Rect Preview)? ResolveSidebarDropZone(DragEventArgs e) {
+        var width = SidebarDropOverlay.ActualWidth;
+        var height = SidebarDropOverlay.ActualHeight;
+        if (width <= 0 || height <= 0)
+            return null;
+        var slot = e.GetPosition(SidebarDropOverlay).Y < height / 2 ? ActivityBarSlot.Primary : ActivityBarSlot.Secondary;
+        var preview = slot == ActivityBarSlot.Primary
+            ? new Rect(0, 0, width, height / 2)
+            : new Rect(0, height / 2, width, height / 2);
+        if (_sidebarSectionsBothShown) {
+            var host = slot == ActivityBarSlot.Primary ? PrimarySidebarHost : SecondarySidebarHost;
+            var origin = host.TranslatePoint(new Point(0, 0), SidebarDropOverlay);
+            preview = new Rect(origin, new Size(host.ActualWidth, host.ActualHeight));
+        }
+        return (slot, preview);
+    }
+
+    private void OnSidebarOverlayDragOver(object sender, DragEventArgs e) {
+        e.Handled = true;
+        // 今いる段へ落としても何も起きないので、受けない（並べ替えはアイコンの列で）。
+        if (DraggedActivityItem(e) is not { } item || ResolveSidebarDropZone(e) is not { } zone
+            || _vm.ActivityBar.SlotOf(item.Panel) == zone.Slot) {
+            e.Effects = DragDropEffects.None;
+            SidebarDropPreview.Visibility = Visibility.Collapsed;
+            return;
+        }
+        e.Effects = DragDropEffects.Move;
+        Canvas.SetLeft(SidebarDropPreview, zone.Preview.X);
+        Canvas.SetTop(SidebarDropPreview, zone.Preview.Y);
+        SidebarDropPreview.Width = zone.Preview.Width;
+        SidebarDropPreview.Height = zone.Preview.Height;
+        SidebarDropPreview.Visibility = Visibility.Visible;
+    }
+
+    private void OnSidebarOverlayDragLeave(object sender, DragEventArgs e)
+        => SidebarDropPreview.Visibility = Visibility.Collapsed;
+
+    private void OnSidebarOverlayDrop(object sender, DragEventArgs e) {
+        e.Handled = true;
+        SidebarDropPreview.Visibility = Visibility.Collapsed;
+        if (DraggedActivityItem(e) is not { } item || ResolveSidebarDropZone(e) is not { } zone
+            || _vm.ActivityBar.SlotOf(item.Panel) == zone.Slot)
+            return;
+        _vm.ActivityBar.Move(item, zone.Slot, _vm.ActivityBar.ItemsIn(zone.Slot).Count);   // 移した先の段の末尾へ
     }
 }

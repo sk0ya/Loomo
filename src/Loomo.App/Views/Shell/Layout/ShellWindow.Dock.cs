@@ -296,11 +296,65 @@ public partial class ShellWindow {
             return;
         var data = new DataObject(DockDragFormat, kind.ToString());
         PaneLayoutDebugLog.Log($"[dockdrag] begin {kind}");
+        // 帯の区画だけでなく、画面の実際の領域にも落とせるよう受け皿を被せる（運んでいる間だけ）。
+        // 全画面（F11）中は領域が1枚しか無いので被せない。
+        if (!_paneFullscreen) {
+            DockDropPreview.Background = TranslucentAccent(0.25);   // テーマ切替に追随するよう毎回作る
+            DockDropOverlay.Visibility = Visibility.Visible;
+        }
         try {
             DragDrop.DoDragDrop(source, data, DragDropEffects.Move);
         } finally {
+            DockDropOverlay.Visibility = Visibility.Collapsed;
+            DockDropPreview.Visibility = Visibility.Collapsed;
             ClearDockZoneHighlights();
         }
+    }
+    /// <summary>受け皿の上のどこへ落とすか。右・下の領域は開いていればその大きさ、閉じていれば器の端の帯。</summary>
+    private (DockRegion Region, Rect Preview)? ResolveDockOverlayZone(DragEventArgs e) {
+        static double Shown(FrameworkElement host, Func<FrameworkElement, double> size)
+            => host.Visibility == Visibility.Visible ? size(host) : 0;
+        var rightWidth = Shown(DockRightHost, h => h.ActualWidth);
+        var bottomHeight = Shown(DockBottomHost, h => h.ActualHeight);
+        if (bottomHeight > 0)
+            bottomHeight += DockBottomSplitterRow.ActualHeight;
+        if (rightWidth > 0)
+            rightWidth += DockRightSplitterColumn.ActualWidth;
+        return DockDropZones.Resolve(
+            new Size(DockDropOverlay.ActualWidth, DockDropOverlay.ActualHeight),
+            rightWidth, bottomHeight, e.GetPosition(DockDropOverlay));
+    }
+    private void OnDockOverlayDragOver(object sender, DragEventArgs e) {
+        e.Handled = true;
+        var zone = ResolveDockOverlayZone(e);
+        // 今いる領域へ落としても何も起きないので、受けない（帯の区画と同じ判断）。
+        if (zone is not { } z || !DockLayoutPresentation.CanDrop(_dockMode, DockDragPayload(e.Data), z.Region)) {
+            e.Effects = DragDropEffects.None;
+            DockDropPreview.Visibility = Visibility.Collapsed;
+            return;
+        }
+        e.Effects = DragDropEffects.Move;
+        Canvas.SetLeft(DockDropPreview, z.Preview.X);
+        Canvas.SetTop(DockDropPreview, z.Preview.Y);
+        DockDropPreview.Width = z.Preview.Width;
+        DockDropPreview.Height = z.Preview.Height;
+        DockDropPreview.Visibility = Visibility.Visible;
+    }
+    private void OnDockOverlayDragLeave(object sender, DragEventArgs e)
+        => DockDropPreview.Visibility = Visibility.Collapsed;
+    private void OnDockOverlayDrop(object sender, DragEventArgs e) {
+        e.Handled = true;
+        DockDropPreview.Visibility = Visibility.Collapsed;
+        if (DockDragPayload(e.Data) is { } kind && ResolveDockOverlayZone(e) is { } zone)
+            PlaceDockPane(kind, zone.Region);
+    }
+    /// <summary>受け皿の塗り（アクセント色を薄めたもの）。</summary>
+    private Brush TranslucentAccent(double opacity) {
+        var accent = (Brush)FindResource("Accent");
+        var brush = accent.CloneCurrentValue();
+        brush.Opacity = opacity;
+        brush.Freeze();
+        return brush;
     }
     private static PaneKind? DockDragPayload(IDataObject data)
         => data.GetDataPresent(DockDragFormat)

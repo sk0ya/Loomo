@@ -963,6 +963,18 @@
                         <views:TodoTreeView x:Name="SidebarTodoTree" DataContext="{Binding TodoTree}" Visibility="Collapsed" />
                         <views:RunningView x:Name="SidebarRunning" DataContext="{Binding Running}" Visibility="Collapsed" />
                     </Grid>
+
+                    <!-- パネルの見出しを掴んで運んでいる間だけ出す、上段／中段の受け皿
+                         （上半分＝上段・下半分＝中段。ShellWindow.ActivityBar.cs）。 -->
+                    <Grid x:Name="SidebarDropOverlay" Grid.RowSpan="3" Panel.ZIndex="10"
+                          Background="Transparent" AllowDrop="True" Visibility="Collapsed"
+                          DragOver="OnSidebarOverlayDragOver" DragLeave="OnSidebarOverlayDragLeave"
+                          Drop="OnSidebarOverlayDrop">
+                        <Canvas IsHitTestVisible="False">
+                            <Border x:Name="SidebarDropPreview" Visibility="Collapsed" CornerRadius="2"
+                                    BorderThickness="2" BorderBrush="{DynamicResource Accent}" />
+                        </Canvas>
+                    </Grid>
                 </Grid>
 
                 <GridSplitter x:Name="SidebarSplitter" Grid.Column="1" Grid.RowSpan="3" Width="6"
@@ -2850,6 +2862,18 @@
                                     ToolTip="右の領域（ここへドラッグすると右に置く）" />
                     </DockPanel>
                 </Border>
+
+                <!-- ドックの割り当てを変えるドラッグ中だけ出す、実際の領域（中央・右・下）の受け皿。
+                     列 2〜6・全行＝中央・右・下をまとめた器に重ねる。右帯（列 7）は覆わない——帯の3区画も
+                     受け皿のまま。どこへ落ちるかは DockDropZones が決める（ShellWindow.Dock.cs）。 -->
+                <Grid x:Name="DockDropOverlay" Grid.Column="2" Grid.ColumnSpan="5" Grid.RowSpan="3"
+                      Panel.ZIndex="99" Background="Transparent" AllowDrop="True" Visibility="Collapsed"
+                      DragOver="OnDockOverlayDragOver" DragLeave="OnDockOverlayDragLeave" Drop="OnDockOverlayDrop">
+                    <Canvas IsHitTestVisible="False">
+                        <Border x:Name="DockDropPreview" Visibility="Collapsed" CornerRadius="2"
+                                BorderThickness="2" BorderBrush="{DynamicResource Accent}" />
+                    </Canvas>
+                </Grid>
 
                 <!-- 俯瞰：全セッションをカードで一望する Exposé 風レイヤ（背景クリックで閉じる。ソロ専用） -->
                 <Grid x:Name="OverviewLayer" Grid.Column="2" Grid.ColumnSpan="3" Grid.RowSpan="3" Visibility="Collapsed"
