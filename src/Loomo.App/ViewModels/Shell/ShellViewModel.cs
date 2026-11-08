@@ -255,10 +255,30 @@ public sealed partial class ShellViewModel : ObservableObject
         ClaudeUsage = claudeUsage;
         ActivityBar.SetAvailable(SidebarPanel.Solution, IsCSharpSolutionAvailable);
         ActivityBar.SetAvailable(SidebarPanel.WorkItems, WorkItems is not null);
-        // 段を移した項目は移した先で開いて見せる（同じ段での並べ替えでは開き直さない——
-        // 人間がしていないナビゲーションになる）。取り残された区画は既定のパネルへ寄せ直す。
+        // 段を移しても「見えているか」は変えない。見えていたパネルは移した先でも見えたまま、閉じていた
+        // パネルは閉じたまま移る（以前は移した先で必ず開いていたので、見ていないパネルが勝手に出てきた）。
+        // 見えていたパネルが抜けた区画は畳む——代わりのパネルを出すと、それも見ていないものが出てくることになる。
+        // 区画の選択だけはその段に残るパネルへ寄せ直す（NormalizeSections、開閉は変えない）。
         ActivityBar.ItemMoved += (_, moved) => {
-            if (moved.SlotChanged) Reveal(moved.Item.Panel);
+            if (moved.SlotChanged)
+            {
+                var panel = moved.Item.Panel;
+                var fromSecondary = moved.Item.Slot == ActivityBarSlot.Primary;
+                var wasShowing = fromSecondary
+                    ? IsSecondarySidebarVisible && SecondaryPanel == panel
+                    : IsSidebarVisible && ActivePanel == panel;
+                if (wasShowing)
+                {
+                    IsPanelChangeAutomatic = true;
+                    try
+                    {
+                        if (fromSecondary) IsSecondarySidebarVisible = false;
+                        else IsSidebarVisible = false;
+                    }
+                    finally { IsPanelChangeAutomatic = false; }
+                    Reveal(panel);
+                }
+            }
             NormalizeSections();
         };
         // 保存された配置は既定（上段＝エクスプローラ／中段＝タブ一覧）と食い違いうる。

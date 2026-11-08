@@ -329,10 +329,10 @@ public class ShellViewModelTests
         Assert.False(sut.IsSidebarVisible);      // 畳んだまま
     }
 
-    /// <summary>ドラッグで段を移した項目は、移した先の区画で開いて見せる。取り残された区画は
-    /// その段の先頭の面へ寄せ直し、段が空になったら畳む。</summary>
+    /// <summary>見えていたパネルを段を移すと、移した先でも見えたまま。抜けた区画は代わりの面を出さずに畳み、
+    /// 選択だけその段の先頭の面へ寄せ直す（見ていない面が勝手に出てこないように）。</summary>
     [Fact]
-    public void 段を移した項目は移した先で開き元の区画は寄せ直す()
+    public void 見えていた項目は移した先で見えたまま元の区画は畳む()
     {
         var sut = CreateSut();
 
@@ -340,14 +340,31 @@ public class ShellViewModelTests
 
         Assert.Equal(SidebarPanel.Explorer, sut.SecondaryPanel);
         Assert.True(sut.IsSecondarySidebarVisible);
-        // 上段はエクスプローラを失ったので先頭（Git）へ。
+        // 上段はエクスプローラを失ったので畳む。選択は先頭（Git）へ寄せておく。
         Assert.Equal(SidebarPanel.Git, sut.ActivePanel);
-        Assert.True(sut.IsSidebarVisible);
+        Assert.False(sut.IsSidebarVisible);
 
         // 以後、エクスプローラのアイコンは中段の区画を開閉する。
         sut.ShowExplorerCommand.Execute(null);
         Assert.False(sut.IsSecondarySidebarVisible);
         Assert.Equal(SidebarPanel.Git, sut.ActivePanel);
+    }
+
+    /// <summary>見えていないパネルは段を移しても見えないまま。移した先・元の区画の表示も変わらない。</summary>
+    [Fact]
+    public void 見えていない項目は移しても表示されない()
+    {
+        var sut = CreateSut();
+        var primary = sut.ActivePanel;
+        var secondary = sut.SecondaryPanel;
+
+        sut.ActivityBar.Move(sut.ActivityBar.ItemFor(SidebarPanel.Todo)!, ActivityBarSlot.Primary, 0);
+
+        Assert.False(sut.IsPanelShowing(SidebarPanel.Todo));
+        Assert.Equal(primary, sut.ActivePanel);
+        Assert.Equal(secondary, sut.SecondaryPanel);
+        Assert.True(sut.IsSidebarVisible);
+        Assert.True(sut.IsSecondarySidebarVisible);
     }
 
     [Fact]
