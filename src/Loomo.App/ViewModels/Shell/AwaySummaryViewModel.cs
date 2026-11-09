@@ -37,18 +37,19 @@ public sealed partial class AwaySummaryViewModel : ObservableObject
     /// （§24.23）で置き換わっても別に覚えておく。</summary>
     public AwaySummary? LastAway { get; private set; }
 
-    /// <summary>手を付けずに置いておけば消える（留守中のまとめだけ）。自分で開いた「この日のまとめ」（§24.23）は
-    /// 読みに来たものなので消さない。消えても「もう一度表示」で出し直せる。</summary>
+    /// <summary>戻ったときに<b>向こうから</b>出したまとめ。手を付けずに置けば消え、Esc でも閉じる。自分で開いた
+    /// もの（「この日のまとめ」§24.23・「もう一度表示」）は読みに来たものなので、× で閉じるまで残す。</summary>
     public bool AutoDismiss { get; private set; }
 
     /// <summary>ポインタがカードの上にある（読んでいる最中なので自動では消さない）。カードが立てる。</summary>
     [ObservableProperty]
     private bool _isPointerOver;
 
-    public void Show(AwaySummary summary)
+    /// <param name="onRequest">人が自分で開いた（「もう一度表示」・この日のまとめ）。自動では消さない。</param>
+    public void Show(AwaySummary summary, bool onRequest = false)
     {
         _summary = summary;
-        AutoDismiss = summary.Title is null;
+        AutoDismiss = summary.Title is null && !onRequest;
         if (summary.Title is null)
             LastAway = summary;
         Items.Clear();
@@ -71,10 +72,10 @@ public sealed partial class AwaySummaryViewModel : ObservableObject
     }
 
     [RelayCommand]
-    public void Close()
+    private void Close()
     {
-        if (!IsVisible && Items.Count == 0)
-            return;
+        // 畳んだカードには MouseLeave が届かないことがある。立ったままだと次のまとめが自動で消えなくなる
+        IsPointerOver = false;
         IsVisible = false;
         Items.Clear();
     }

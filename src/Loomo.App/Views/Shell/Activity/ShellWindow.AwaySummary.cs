@@ -31,7 +31,6 @@ public partial class ShellWindow {
             app.Activated += (_, _) => {
                 _appActive = true;
                 OnPresenceReturn();
-                UpdateAwayCardDismissTimer();
             };
         }
         // 前面のまま席を立った場合は、戻りを入力で知る（どの Loomo ウィンドウの入力でもよい）。
@@ -57,12 +56,13 @@ public partial class ShellWindow {
         };
         _awayCardDismissTimer.Tick += (_, _) => {
             _awayCardDismissTimer.Stop();
-            if (_vm.AwaySummary is { IsVisible: true, AutoDismiss: true, IsPointerOver: false })
-                _vm.AwaySummary.Close();
+            if (CanCountAwayCardDismiss())
+                _vm.AwaySummary.CloseCommand.Execute(null);
         };
+        // 数え直しの合図は「出した（置き換えを含む）」と「ポインタの出入り」だけ。閉じたときは Tick 側で見て何もしない
         _vm.AwaySummary.Shown += (_, _) => UpdateAwayCardDismissTimer();
         _vm.AwaySummary.PropertyChanged += (_, e) => {
-            if (e.PropertyName is nameof(AwaySummaryViewModel.IsVisible) or nameof(AwaySummaryViewModel.IsPointerOver))
+            if (e.PropertyName is nameof(AwaySummaryViewModel.IsPointerOver))
                 UpdateAwayCardDismissTimer();
         };
         Closed += (_, _) => {
@@ -71,19 +71,26 @@ public partial class ShellWindow {
         };
     }
 
-    /// <summary>自動で消えるまでの時間を、数える条件がそろっていれば最初から数え直し、そろっていなければ止める。</summary>
+    /// <summary>自動で消えるまでの時間を数えてよいか：向こうから出したまとめが出ていて、人が前面の Loomo に居て
+    /// （また前面のまま席を立っていない）、ポインタがカードに乗っていない。</summary>
+    private bool CanCountAwayCardDismiss() =>
+        _appActive && !_presence.IsAway
+        && _vm.AwaySummary is { IsVisible: true, AutoDismiss: true, IsPointerOver: false };
+
+    /// <summary>条件がそろっていれば最初から数え直し、そろっていなければ止める。</summary>
     private void UpdateAwayCardDismissTimer() {
         _awayCardDismissTimer.Stop();
-        if (_appActive && _vm.AwaySummary is { IsVisible: true, AutoDismiss: true, IsPointerOver: false })
+        if (CanCountAwayCardDismiss())
             _awayCardDismissTimer.Start();
     }
 
-    /// <summary>キー入力：戻りの合図に加えて、Esc でカードを閉じる。Esc は<b>食べない</b>——Vim の挿入モード抜けや
-    /// ダイアログの取り消しはそのまま効き、ついでにカードも片付く。</summary>
+    /// <summary>キー入力：戻りの合図に加えて、Esc で向こうから出したまとめを閉じる。Esc は<b>食べない</b>——Vim の
+    /// 挿入モード抜けやダイアログの取り消しはそのまま効き、ついでにカードも片付く（読み損ねても「もう一度表示」で戻せる）。
+    /// 自分で開いたまとめ（この日のまとめ・もう一度表示）は Esc では閉じない——Vim では Esc は息をするように押す。</summary>
     private void OnPresenceKey(KeyEventArgs e) {
         OnPresenceInput();
-        if (e.Key == Key.Escape && _vm.AwaySummary.IsVisible)
-            _vm.AwaySummary.Close();
+        if (e.Key == Key.Escape && _vm.AwaySummary is { IsVisible: true, AutoDismiss: true })
+            _vm.AwaySummary.CloseCommand.Execute(null);
     }
 
     private void OnPresenceInput() {
@@ -94,6 +101,8 @@ public partial class ShellWindow {
     private void OnPresenceReturn() {
         if (_presence.OnReturn(DateTime.UtcNow) is { } since)
             _ = ShowAwaySummaryAsync(since, DateTime.UtcNow);
+        // 前面のまま席を立っていた間は数えていないので、戻ったら残っているカードの時間を数え直す
+        UpdateAwayCardDismissTimer();
     }
 
     private async Task ShowAwaySummaryAsync(DateTime sinceUtc, DateTime returnedUtc) {
@@ -181,7 +190,7 @@ public partial class ShellWindow {
     /// <summary>直前の留守中のまとめをもう一度出す（× で閉じた後に読み返す口・§24.22）。</summary>
     private void ReshowAwaySummary() {
         if (_vm.AwaySummary.LastAway is { } last)
-            _vm.AwaySummary.Show(last);
+            _vm.AwaySummary.Show(last, onRequest: true);
         else
             ToastService.Info("まだ留守中のまとめはありません（5分以上離れて戻ると出ます）。");
     }
@@ -226,7 +235,7 @@ public partial class ShellWindow {
             if (summary.IsEmpty)
                 ToastService.Info($"{day:M/d} の記録（しおり・コマンド・Git・変更中のファイル）はありません。");
             else
-                _vm.AwaySummary.Show(summary);
+                _vm.AwaySummary.Show(summary, onRequest: true);
         }
         catch (Exception ex) when (ex is IOException or InvalidOperationException or UnauthorizedAccessException) {
             ToastService.Info("この日のまとめを読めませんでした。");

@@ -9,6 +9,12 @@ public partial class AwaySummaryCard : UserControl
         // ポインタが乗っている間は読んでいる最中——自動で消える時間を数えない
         MouseEnter += (_, _) => SetPointerOver(true);
         MouseLeave += (_, _) => SetPointerOver(false);
+        // 中身の VM が替わったら、前の VM の印は下ろし、新しい VM にはいまの状態を渡す
+        DataContextChanged += (_, e) => {
+            if (e.OldValue is AwaySummaryViewModel old)
+                old.IsPointerOver = false;
+            SetPointerOver(IsMouseOver);
+        };
     }
 
     private void SetPointerOver(bool value)
