@@ -58,7 +58,7 @@ public sealed class KeybindingService
     /// <summary>設定画面用に全コマンドの現在状態を列挙する（カタログ順）。</summary>
     public IEnumerable<KeybindingRow> Rows()
     {
-        foreach (var descriptor in CommandCatalog.All)
+        foreach (var descriptor in CommandCatalog.WithUserCommands(_settings))
         {
             var effective = For(descriptor.Id);
             var conflict = effective is null ? null : CommandAt(effective, descriptor.Id);
@@ -70,7 +70,7 @@ public sealed class KeybindingService
     /// 既定と一致するなら上書きを消して既定へ戻す。永続化して <see cref="Changed"/> を発火する。</summary>
     public void Rebind(string id, KeySequence? sequence)
     {
-        if (CommandCatalog.Find(id) is not { } descriptor) return;
+        if (CommandCatalog.Find(id, _settings) is not { } descriptor) return;
         var defaultSeq = KeySequence.TryParse(descriptor.DefaultBinding);
         var overrides = _settings.Keybindings.Overrides;
 
@@ -82,6 +82,14 @@ public sealed class KeybindingService
             overrides[id] = sequence.Format();
 
         Persist();
+    }
+
+    /// <summary>コマンドの顔ぶれが変わった（設定からスクリプトのコマンドを足した・外した・題を変えた、§24.106）。
+    /// 実効バインドを組み直して知らせる——キーの実行・設定画面の一覧がそれを追う。</summary>
+    public void Refresh()
+    {
+        Rebuild();
+        Changed?.Invoke();
     }
 
     /// <summary>1 コマンドを既定へ戻す。</summary>
@@ -110,7 +118,7 @@ public sealed class KeybindingService
     {
         var map = new Dictionary<string, KeySequence>(StringComparer.Ordinal);
         var overrides = _settings.Keybindings.Overrides;
-        foreach (var descriptor in CommandCatalog.All)
+        foreach (var descriptor in CommandCatalog.WithUserCommands(_settings))
         {
             KeySequence? seq;
             if (overrides.TryGetValue(descriptor.Id, out var custom))

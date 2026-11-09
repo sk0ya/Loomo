@@ -90,6 +90,8 @@
                                      IsChecked="{Binding SettingsCategory, Converter={StaticResource EnumToBool}, ConverterParameter=Editor}" />
                         <RadioButton Style="{StaticResource CategoryNavItem}" Content="🖥  ターミナル"
                                      IsChecked="{Binding SettingsCategory, Converter={StaticResource EnumToBool}, ConverterParameter=Terminal}" />
+                        <RadioButton Style="{StaticResource CategoryNavItem}" Content="🌐  ブラウザ"
+                                     IsChecked="{Binding SettingsCategory, Converter={StaticResource EnumToBool}, ConverterParameter=Browser}" />
                         <RadioButton Style="{StaticResource CategoryNavItem}" Content="🤖  AI"
                                      IsChecked="{Binding SettingsCategory, Converter={StaticResource EnumToBool}, ConverterParameter=Ai}" />
                         <RadioButton Style="{StaticResource CategoryNavItem}" Content="🧩  言語サーバー"
@@ -529,6 +531,116 @@
                                            Text="Loomo で開いたファイルは、そのファイルを含むワークスペースを開いているウィンドウへ、無ければ最後に使ったウィンドウへ送られます。" />
                                 <TextBlock Text="{Binding DefaultApps.Status}" TextWrapping="Wrap" Margin="0,12,0,0"
                                            Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs11}" />
+                            </StackPanel>
+
+                            <!-- ===== ブラウザ：マウスジェスチャー（§24.105） ===== -->
+                            <StackPanel Visibility="{Binding SettingsCategory, Converter={StaticResource EnumToVis}, ConverterParameter=Browser}">
+                                <TextBlock Style="{StaticResource SectionTitle}" Text="マウスジェスチャー" Margin="0,0,0,4" />
+                                <TextBlock Style="{StaticResource FieldHint}" TextWrapping="Wrap"
+                                           Text="ブラウザペインで右ボタンを押したまま描くと、向きに結んだコマンドを実行します。描かずに右クリックすれば、いつものメニューが出ます。" />
+                                <CheckBox IsChecked="{Binding MouseGestures.Enabled}" Margin="0,12,0,0">
+                                    <TextBlock Text="マウスジェスチャーを使う" TextWrapping="Wrap" />
+                                </CheckBox>
+                                <TextBlock Style="{StaticResource FieldHint}" Text="ON/OFF の切り替えは次に開くページから効きます。" />
+
+                                <TextBlock Style="{StaticResource FieldLabel}" Text="割り当て" Margin="0,14,0,4" />
+                                <ItemsControl ItemsSource="{Binding MouseGestures.Rows}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid Margin="0,0,0,4">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="80" />
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="{Binding Arrows}" VerticalAlignment="Center"
+                                                           FontSize="{DynamicResource Fs14}" Foreground="{DynamicResource Fg}" />
+                                                <ComboBox Grid.Column="1" ItemsSource="{Binding Commands}" SelectedItem="{Binding Command}"
+                                                          DisplayMemberPath="Title" />
+                                                <Button Grid.Column="2" Content="外す" Style="{StaticResource SecondaryButton}"
+                                                        FontSize="{DynamicResource Fs11}" Padding="8,2" Margin="6,0,0,0"
+                                                        Command="{Binding DataContext.MouseGestures.RemoveCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                        CommandParameter="{Binding}" />
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+
+                                <Separator Margin="0,10,0,8" />
+                                <TextBlock Style="{StaticResource FieldLabel}" Text="追加（向きは ↓→ でも DR でも）" Margin="0,0,0,4" />
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="80" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox Text="{Binding MouseGestures.NewGesture, UpdateSourceTrigger=PropertyChanged}"
+                                             ToolTip="U=↑ D=↓ L=← R=→。例：DR（↓→）" />
+                                    <ComboBox Grid.Column="1" Margin="6,0,0,0" ItemsSource="{Binding MouseGestures.Commands}"
+                                              SelectedItem="{Binding MouseGestures.NewCommand}" DisplayMemberPath="Title" />
+                                    <Button Grid.Column="2" Content="追加" Style="{StaticResource SecondaryButton}"
+                                            FontSize="{DynamicResource Fs11}" Padding="10,2" Margin="6,0,0,0"
+                                            Command="{Binding MouseGestures.AddCommand}" />
+                                </Grid>
+                                <Button Style="{StaticResource SecondaryButton}" Margin="0,12,0,0" Padding="10,2" HorizontalAlignment="Left"
+                                        Content="既定に戻す" Command="{Binding MouseGestures.ResetDefaultsCommand}"
+                                        ToolTip="↓ リンクをコピー／← 戻る／→ 進む／↑↓ 再読み込み／↓→ タブを閉じる" />
+                                <TextBlock Style="{StaticResource FieldHint}" TextWrapping="Wrap" Margin="0,12,0,0"
+                                           Text="同じコマンドはキーボードショートカットの「ブラウザ」からキーにも結べます。リンクのコピーは Markdown（[題](URL)）と HTML（リンク）の両方で載るので、Teams などへはリンクとして貼れます。" />
+
+                                <!-- スクリプトのコマンド（§24.106） -->
+                                <TextBlock Style="{StaticResource SectionTitle}" Text="スクリプトのコマンド" Margin="0,24,0,4" />
+                                <TextBlock Style="{StaticResource FieldHint}" TextWrapping="Wrap"
+                                           Text="表示中のページで JavaScript を走らせるコマンドを足せます。ブックマークレット（javascript:…）はそのまま貼れます。足したコマンドは上のジェスチャー・キーボードショートカット・コマンドパレットから呼べます。" />
+                                <ItemsControl ItemsSource="{Binding MouseGestures.Scripts}" Margin="0,8,0,0">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="4"
+                                                    Padding="8,6" Margin="0,0,0,6">
+                                                <StackPanel>
+                                                    <Grid>
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBox Text="{Binding Title, UpdateSourceTrigger=LostFocus}" ToolTip="コマンドの名前" />
+                                                        <Button Grid.Column="1" Content="外す" Style="{StaticResource SecondaryButton}"
+                                                                FontSize="{DynamicResource Fs11}" Padding="8,2" Margin="6,0,0,0"
+                                                                ToolTip="このコマンドと、それを指すジェスチャー・キーの割り当てを外します。"
+                                                                Command="{Binding DataContext.MouseGestures.RemoveScriptCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                                CommandParameter="{Binding}" />
+                                                    </Grid>
+                                                    <TextBox Text="{Binding Script, UpdateSourceTrigger=LostFocus}" Margin="0,4,0,0"
+                                                             AcceptsReturn="True" AcceptsTab="True" TextWrapping="Wrap"
+                                                             MinHeight="48" MaxHeight="160" VerticalScrollBarVisibility="Auto"
+                                                             FontFamily="Cascadia Mono, Consolas" FontSize="{DynamicResource Fs11}" />
+                                                </StackPanel>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+
+                                <TextBlock Style="{StaticResource FieldLabel}" Text="追加（名前・ジェスチャーは任意で ↓→ / DR）" Margin="0,8,0,4" />
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="80" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox Text="{Binding MouseGestures.NewScriptTitle, UpdateSourceTrigger=PropertyChanged}" ToolTip="コマンドの名前" />
+                                    <TextBox Grid.Column="1" Margin="6,0,0,0"
+                                             Text="{Binding MouseGestures.NewScriptGesture, UpdateSourceTrigger=PropertyChanged}"
+                                             ToolTip="一緒に結ぶジェスチャー（任意）。U=↑ D=↓ L=← R=→" />
+                                </Grid>
+                                <TextBox Text="{Binding MouseGestures.NewScriptBody, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,0"
+                                         AcceptsReturn="True" AcceptsTab="True" TextWrapping="Wrap"
+                                         MinHeight="64" MaxHeight="200" VerticalScrollBarVisibility="Auto"
+                                         FontFamily="Cascadia Mono, Consolas" FontSize="{DynamicResource Fs11}"
+                                         ToolTip="JavaScript。javascript: で始まるブックマークレットもそのまま貼れます。" />
+                                <Button Style="{StaticResource SecondaryButton}" Margin="0,6,0,0" Padding="10,2" HorizontalAlignment="Left"
+                                        Content="コマンドを追加" Command="{Binding MouseGestures.AddScriptCommand}" />
+
+                                <TextBlock Text="{Binding MouseGestures.Status}" Foreground="{DynamicResource FgDim}"
+                                           Margin="0,12,0,0" TextWrapping="Wrap" FontSize="{DynamicResource Fs11}" />
                             </StackPanel>
 
                             <!-- ===== 外観（カラーテーマはアプリ全体・エディタ・ターミナル・プレビューをここに集約） ===== -->

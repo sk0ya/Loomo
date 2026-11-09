@@ -105,6 +105,8 @@ public partial class ShellWindow {
     /// 第三者の iframe が<b>クリック無しに導入を起こせる</b>——横取りしているのは
     /// 「使う側がストアの追加ボタンを押した」という出来事であって、ページからの依頼ではない。</para></summary>
     private void OnBrowserWebMessageReceived(BrowserTab tab, CoreWebView2WebMessageReceivedEventArgs e) {
+        if (TryHandleBrowserGesture(tab, e))
+            return;
         // タブで開いた設定画面も、その中から別のページ（説明ページ・別の設定タブ）を開こうとする。
         if (ExtensionPageBridgeService.TryReadOpenRequest(e.WebMessageAsJson, e.Source, out var target)) {
             OpenExtensionPageInBrowserTab(target);

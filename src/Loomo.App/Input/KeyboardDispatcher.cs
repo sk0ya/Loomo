@@ -52,6 +52,17 @@ public sealed class KeyboardDispatcher
         NotifyPending(prevPending);
     }
 
+    /// <summary>キー以外の入口（ブラウザのマウスジェスチャー、§24.105）から Id でコマンドを実行する。
+    /// 入口そのものが「その場で明示的に呼んだ」ことを表すので、キー用の関門（<c>canExecute</c>）は通さない。
+    /// 結線されていない Id なら false。</summary>
+    public bool TryExecute(string id)
+    {
+        if (!_actions.TryGetValue(id, out var action))
+            return false;
+        action();
+        return true;
+    }
+
     /// <summary>連鎖待ちの <paramref name="prefix"/> に続けて押せるキーと、その先のコマンド Id。
     /// アクションが結線されていないコマンド（別スコープ）は押しても何も起きないので出さない。</summary>
     public IReadOnlyList<(KeyChord Second, string Id)> ContinuationsOf(KeyChord prefix)

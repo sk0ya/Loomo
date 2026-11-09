@@ -276,6 +276,7 @@ internal static class LoomoServiceCollectionExtensions
         services.AddSingleton<LspPromptViewModel>();
         services.AddSingleton<FormatterSettingsViewModel>();
         services.AddSingleton<StyleCopSettingsViewModel>();
+        services.AddSingleton<MouseGestureSettingsViewModel>();
         services.AddSingleton<KeybindingsViewModel>();
         // キーバインド一覧（全コマンドの行＋グルーピング付き CollectionView の構築で実測 ~51ms）は
         // 設定画面を開くまで誰も見ない。ShellViewModel には Lazy で渡し、起動経路から外す。

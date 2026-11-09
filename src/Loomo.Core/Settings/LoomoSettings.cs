@@ -124,6 +124,12 @@ public sealed class LoomoSettings
     /// <summary>キーボードショートカットのユーザー上書き（既定と異なるものだけ保持）。</summary>
     public KeybindingSettings Keybindings { get; set; } = new();
 
+    /// <summary>ブラウザペインのマウスジェスチャー（右ボタンを押したまま描く→コマンド、§24.105）。</summary>
+    public MouseGestureSettings MouseGestures { get; set; } = new();
+
+    /// <summary>設定から足したブラウザのスクリプトのコマンド（§24.106）。コマンドとしてジェスチャー・キー・パレットから呼べる。</summary>
+    public List<BrowserScriptCommand> BrowserScripts { get; set; } = new();
+
     /// <summary>エディタ／Markdownプレビュー／ターミナルの配色・フォント設定。
     /// アプリUIの配色（<see cref="Theme"/>/<see cref="AccentColor"/>）とは独立に各コンポーネントへ適用する。</summary>
     public AppearanceSettings Appearance { get; set; } = new();
@@ -433,6 +439,41 @@ public sealed class EditorSettings
 public sealed class KeybindingSettings
 {
     public Dictionary<string, string> Overrides { get; set; } = new();
+}
+
+/// <summary>ブラウザペインのマウスジェスチャー（§24.105）。右ボタンを押したまま描いた向きの並び（<c>U</c>/<c>D</c>/<c>L</c>/<c>R</c>、
+/// 例 <c>DR</c>＝↓→）を、コマンドカタログの Id へ結ぶ——キーと同じ「コマンド」をマウスからも呼ぶ口。
+/// 表は丸ごと持つ（既定から外したいジェスチャーは表から消せばよい）。</summary>
+public sealed class MouseGestureSettings
+{
+    public bool Enabled { get; set; } = true;
+
+    /// <summary>向きの並び → コマンド Id。</summary>
+    public Dictionary<string, string> Bindings { get; set; } = Defaults();
+
+    /// <summary>既定。Vivaldi の既定に揃え、↓（Vivaldi では新しいタブ）だけ「リンクをコピー」にしてある。</summary>
+    public static Dictionary<string, string> Defaults() => new(StringComparer.Ordinal)
+    {
+        ["D"] = "browser.copyLink",
+        ["L"] = "browser.back",
+        ["R"] = "browser.forward",
+        ["UD"] = "browser.reload",
+        ["DR"] = "browser.closeTab",
+    };
+}
+
+/// <summary>ブラウザのスクリプトのコマンド 1 つ（§24.106）：表示中のページで走らせる JavaScript。
+/// ブックマークレット（<c>javascript:…</c>）をそのまま貼れる。</summary>
+public sealed class BrowserScriptCommand
+{
+    /// <summary>コマンド Id（<c>browser.script.</c> ＋ 生成時の乱数）。題を変えてもジェスチャー・キーの割り当てが外れないように、題とは別に持つ。</summary>
+    public string Id { get; set; } = "";
+    public string Title { get; set; } = "";
+    public string Script { get; set; } = "";
+
+    public const string IdPrefix = "browser.script.";
+
+    public static string NewId() => IdPrefix + Guid.NewGuid().ToString("N")[..8];
 }
 
 /// <summary>エディタ／Markdownプレビュー／ターミナルの配色・フォント設定。

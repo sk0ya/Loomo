@@ -138,6 +138,8 @@ public sealed class SettingsStore
         public PersistedEditor? Editor { get; set; }
         public PersistedAppearance? Appearance { get; set; }
         public PersistedKeybindings? Keybindings { get; set; }
+        public PersistedMouseGestures? MouseGestures { get; set; }
+        public List<PersistedBrowserScript>? BrowserScripts { get; set; }
         public PersistedLsp? Lsp { get; set; }
         public PersistedInlineCompletion? InlineCompletion { get; set; }
         public PersistedActivityBar? ActivityBar { get; set; }
@@ -168,6 +170,8 @@ public sealed class SettingsStore
             Editor = PersistedEditor.From(s.Editor),
             Appearance = PersistedAppearance.From(s.Appearance),
             Keybindings = PersistedKeybindings.From(s.Keybindings),
+            MouseGestures = PersistedMouseGestures.From(s.MouseGestures),
+            BrowserScripts = s.BrowserScripts.Select(PersistedBrowserScript.From).ToList(),
             Lsp = PersistedLsp.From(s.Lsp),
             InlineCompletion = PersistedInlineCompletion.From(s.InlineCompletion),
             ActivityBar = PersistedActivityBar.From(s.ActivityBar),
@@ -201,6 +205,14 @@ public sealed class SettingsStore
             InlineCompletion?.ApplyTo(s.InlineCompletion);
             Appearance?.ApplyTo(s.Appearance); // 旧設定（null）は in-memory 既定を維持
             Keybindings?.ApplyTo(s.Keybindings); // 旧設定（null）は既定割り当て（上書き無し）を維持
+            MouseGestures?.ApplyTo(s.MouseGestures); // 旧設定（null）は既定のジェスチャーを維持
+            if (BrowserScripts is not null)
+            {
+                s.BrowserScripts.Clear();
+                s.BrowserScripts.AddRange(BrowserScripts
+                    .Where(b => !string.IsNullOrWhiteSpace(b.Id) && b.Id.StartsWith(BrowserScriptCommand.IdPrefix, StringComparison.Ordinal))
+                    .Select(b => new BrowserScriptCommand { Id = b.Id!, Title = b.Title ?? "", Script = b.Script ?? "" }));
+            }
             Lsp?.ApplyTo(s.Lsp);                 // 旧設定（null）は空（=促しを抑止しない）を維持
             ActivityBar?.ApplyTo(s.ActivityBar); // 旧設定（null）は空＝既定配置を維持
             TodoTree?.ApplyTo(s.TodoTree);
@@ -480,6 +492,40 @@ public sealed class SettingsStore
             foreach (var (id, gesture) in Overrides)
                 k.Overrides[id] = gesture;
         }
+    }
+
+    // ===== ブラウザのマウスジェスチャー（§24.105）。表は丸ごと保持（既定から外したものも残すため）。 =====
+
+    private sealed class PersistedMouseGestures
+    {
+        public bool Enabled { get; set; } = true;
+        public Dictionary<string, string>? Bindings { get; set; }
+
+        public static PersistedMouseGestures From(MouseGestureSettings g) => new()
+        {
+            Enabled = g.Enabled,
+            Bindings = new Dictionary<string, string>(g.Bindings),
+        };
+
+        public void ApplyTo(MouseGestureSettings g)
+        {
+            g.Enabled = Enabled;
+            if (Bindings is null) return;   // 表が無い＝既定のまま
+            g.Bindings.Clear();
+            foreach (var (gesture, id) in Bindings)
+                g.Bindings[gesture] = id;
+        }
+    }
+
+    // ===== ブラウザのスクリプトのコマンド（§24.106）。 =====
+
+    private sealed class PersistedBrowserScript
+    {
+        public string? Id { get; set; }
+        public string? Title { get; set; }
+        public string? Script { get; set; }
+
+        public static PersistedBrowserScript From(BrowserScriptCommand c) => new() { Id = c.Id, Title = c.Title, Script = c.Script };
     }
 
     // ===== 外観（エディタ/プレビュー/ターミナルの配色・フォント）。平文で保持。 =====

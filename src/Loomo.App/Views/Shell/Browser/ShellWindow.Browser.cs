@@ -160,6 +160,7 @@ public partial class ShellWindow {
         } catch {
             // 仕込めなくても普通のページには影響しない。
         }
+        await InstallBrowserGestureScriptAsync(core);   // マウスジェスチャー（§24.105）
         if (tab.PendingUrl is { } pending) {
             tab.PendingUrl = null;
             BrowserNavigationCommand.TryNavigate(core, pending);

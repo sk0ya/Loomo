@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using sk0ya.Loomo.Core.Settings;
 using sk0ya.Loomo.CSharp.Editor;
 
 namespace sk0ya.Loomo.App.Input;
@@ -67,6 +68,7 @@ public static class CommandCatalog
     private const string CatComposer = "コンポーザ";
     private const string CatTrail = "軌跡";
     private const string CatHosting = "PR・Issue（GitHub／Azure DevOps）";
+    private const string CatBrowser = "ブラウザ";
 
     /// <summary>大分類と、それぞれに属する小分類（表示順）。どのコマンドの小分類も、ちょうど 1 つの
     /// 大分類に属する（テストで保証）。新しい小分類を足したら、ここにも載せる。</summary>
@@ -80,6 +82,7 @@ public static class CommandCatalog
             CatFormat, CatRefactor, CatGenerate, CatStructure, CatHistory, CatPackages,
         }),
         new("ターミナル", "🖥", new[] { CatTerminal, CatClaude, CatTask, CatComposer }),
+        new("ブラウザ", "🌐", new[] { CatBrowser }),
         new("Git", "⑂", new[] { CatHosting }),
         new("軌跡", "🧭", new[] { CatTrail }),
     };
@@ -282,6 +285,15 @@ public static class CommandCatalog
         new CommandDescriptor("tab.newTerminal", CatTab, "新しいターミナルタブ", null),
         new CommandDescriptor("tab.newEditor", CatTab, "新しいエディタタブ", null),
         new CommandDescriptor("tab.newBrowser", CatTab, "新しいブラウザタブ", null),
+
+        // ===== ブラウザ（§24.105）。キーにもマウスジェスチャーにも結べる。戻る・進む・再読み込みは
+        // ブラウザペインの中の既定キー（Alt+← 等）とは別口なので、既定のキーは付けない。 =====
+        new CommandDescriptor("browser.copyLink", CatBrowser, "ページのリンクをコピー（Markdown / HTML）", null),
+        new CommandDescriptor("browser.copyUrl", CatBrowser, "ページの URL をコピー", null),
+        new CommandDescriptor("browser.back", CatBrowser, "戻る", null),
+        new CommandDescriptor("browser.forward", CatBrowser, "進む", null),
+        new CommandDescriptor("browser.reload", CatBrowser, "再読み込み", null),
+        new CommandDescriptor("browser.closeTab", CatBrowser, "ブラウザのタブを閉じる", null),
         // 部屋のタブを最近使った順に巡る（§24.65）。Ctrl を押したまま進み、離したらそのタブへ。
         new CommandDescriptor("tab.switchRecent", CatTab, "最近使ったタブへ（押したまま巡る）", "Ctrl+Tab"),
         new CommandDescriptor("tab.switchRecentBack", CatTab, "最近使ったタブへ（逆順に巡る）", "Ctrl+Shift+Tab"),
@@ -302,4 +314,25 @@ public static class CommandCatalog
 
     public static CommandDescriptor? Find(string id) =>
         ById.TryGetValue(id, out var d) ? d : null;
+
+    /// <summary>設定から足したブラウザのスクリプトのコマンド（§24.106）を、カタログのコマンドと同じ形にする。
+    /// 分類は「ブラウザ」——キーボード設定でも組み込みのブラウザのコマンドと並ぶ。</summary>
+    public static CommandDescriptor ForBrowserScript(BrowserScriptCommand command)
+        => new(command.Id, CatBrowser, BrowserScriptTitle(command), null);
+
+    public static string BrowserScriptTitle(BrowserScriptCommand command)
+        => $"スクリプト：{(string.IsNullOrWhiteSpace(command.Title) ? "（無題）" : command.Title.Trim())}";
+
+    /// <summary>カタログ＋設定から足したコマンド。キーの割り当て・設定画面はこちらを見る。</summary>
+    public static IEnumerable<CommandDescriptor> WithUserCommands(LoomoSettings settings)
+        => All.Concat(settings.BrowserScripts.Select(ForBrowserScript));
+
+    /// <summary><see cref="Find"/> の、設定から足したコマンドも引く版。</summary>
+    public static CommandDescriptor? Find(string id, LoomoSettings settings)
+    {
+        if (Find(id) is { } builtIn)
+            return builtIn;
+        var script = settings.BrowserScripts.FirstOrDefault(c => c.Id == id);
+        return script is null ? null : ForBrowserScript(script);
+    }
 }

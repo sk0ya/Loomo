@@ -386,6 +386,15 @@ public partial class ShellWindow {
         list.Add(new("タブ", "新しいターミナルタブ", () => OnTerminalNewTab(this, new RoutedEventArgs()), Sc("tab.newTerminal"), "tab.newTerminal"));
         list.Add(new("タブ", "新しいエディタタブ", () => OnEditorNewTab(this, new RoutedEventArgs()), Sc("tab.newEditor"), "tab.newEditor"));
         list.Add(new("タブ", "新しいブラウザタブ", () => OnBrowserNewTab(this, new RoutedEventArgs()), Sc("tab.newBrowser"), "tab.newBrowser"));
+        if (_activeBrowserTab is not null) {
+            list.Add(new("ブラウザ", "ページのリンクをコピー（Markdown / HTML）", CopyActiveBrowserLink, Sc("browser.copyLink"), "browser.copyLink"));
+            list.Add(new("ブラウザ", "ページの URL をコピー", CopyActiveBrowserUrl, Sc("browser.copyUrl"), "browser.copyUrl"));
+            // 設定から足したスクリプトのコマンド（§24.106）。
+            foreach (var script in _settings.BrowserScripts) {
+                var id = script.Id;
+                list.Add(new("ブラウザ", CommandCatalog.BrowserScriptTitle(script), () => _ = RunBrowserScriptCommandAsync(id), Sc(id), id));
+            }
+        }
         // 意味的な選択（§24.9）。キー・右クリックメニューと同じ実装へ入る（§31.2 原則6）。
         list.Add(new("エディタ", "現在のファイルを保存", SaveActiveEditor, Sc("editor.save"), "editor.save"));
         list.Add(new("エディタ", "選択を意味的に広げる", ExpandSemanticSelection, Sc("editor.selection.expand"), "editor.selection.expand"));

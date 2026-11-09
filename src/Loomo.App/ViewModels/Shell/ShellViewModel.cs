@@ -33,6 +33,7 @@ public enum SettingsCategory
     Appearance,
     Editor,
     Terminal,
+    Browser,
     Ai,
     Lsp,
     Formatter,
@@ -75,6 +76,8 @@ public sealed partial class ShellViewModel : ObservableObject
     public StyleCopSettingsViewModel StyleCop { get; }
     /// <summary>Windows の既定のアプリとしての登録（設定オーバーレイの「既定のアプリ」）。</summary>
     public DefaultAppSettingsViewModel DefaultApps { get; } = new();
+    /// <summary>設定「ブラウザ」：マウスジェスチャー（§24.105）。</summary>
+    public MouseGestureSettingsViewModel MouseGestures { get; }
     private readonly Lazy<KeybindingsViewModel> _keyboard;
     /// <summary>キーバインド一覧。設定画面でしか使わないので、起動時には作らず初回参照で作る
     /// （一覧の構築だけで実測 ~51ms）。</summary>
@@ -213,8 +216,10 @@ public sealed partial class ShellViewModel : ObservableObject
         ActivityBarViewModel? activityBar = null,
         WorkItemsViewModel? workItems = null,
         TodoTreeViewModel? todoTree = null,
-        ClaudeUsageViewModel? claudeUsage = null)
+        ClaudeUsageViewModel? claudeUsage = null,
+        MouseGestureSettingsViewModel? mouseGestures = null)
     {
+        MouseGestures = mouseGestures ?? new MouseGestureSettingsViewModel(new sk0ya.Loomo.Core.Settings.LoomoSettings(), null);
         FolderTree = folderTree;
         Files = files;
         Harness = harness;
