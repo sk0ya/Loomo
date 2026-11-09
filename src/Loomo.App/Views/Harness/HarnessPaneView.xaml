@@ -53,7 +53,7 @@
             <Setter Property="VerticalAlignment" Value="Center" />
         </Style>
 
-        <!-- 頭の帯の数字1つ（見出し＋値） -->
+        <!-- 下の帯の数字1つ（見出し＋値） -->
         <Style x:Key="MetricValue" TargetType="TextBlock">
             <Setter Property="FontSize" Value="{DynamicResource Fs12}" />
             <Setter Property="FontWeight" Value="SemiBold" />
@@ -141,9 +141,9 @@
     </UserControl.Resources>
 
     <DockPanel>
-        <!-- 頭の帯：周辺視野（§37.1）。進捗率のような根拠の無い数字は出さない -->
-        <Border DockPanel.Dock="Top" Background="{DynamicResource BgAlt}" Padding="8,4"
-                BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1">
+        <!-- 下の帯：周辺視野（§37.1）。ステータスバーとして下に置く（上だとタブより先に数字が目に入り、分析タブのコピーを押し下げる）。進捗率のような根拠の無い数字は出さない -->
+        <Border DockPanel.Dock="Bottom" Background="{DynamicResource BgAlt}" Padding="8,4"
+                BorderBrush="{DynamicResource Border}" BorderThickness="0,1,0,0">
             <WrapPanel>
                 <TextBlock Style="{StaticResource Dim}" Text="Run" />
                 <TextBlock Style="{StaticResource MetricValue}" Text="{Binding RunsLabel}" />

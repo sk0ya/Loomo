@@ -111,7 +111,7 @@ public sealed partial class HarnessPaneViewModel : ObservableObject
     [ObservableProperty] private string _statusText = "";
     [ObservableProperty] private string _emptyMessage = "";
 
-    // ===== 頭の帯（周辺視野） =====
+    // ===== 下の帯（周辺視野） =====
     [ObservableProperty] private string _runsLabel = "—";
     [ObservableProperty] private string _verdictsLabel = "—";
     [ObservableProperty] private string _tokensPerAcceptedLabel = "—";
