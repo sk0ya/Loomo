@@ -18,10 +18,13 @@ public enum HarnessComponentKind
     Workflow,
     Rule,
     Evaluation,
+    /// <summary>Claude Code の設定ファイル（<c>.claude/settings*.json</c>・<c>.mcp.json</c>）。hooks の有無によらず並べる。</summary>
+    Settings,
 }
 
-/// <summary>構成要素1つ。<see cref="Id"/> は種類つきで一意（例 <c>skill:review</c>）。</summary>
-public sealed record HarnessComponent(string Id, HarnessComponentKind Kind, string Name, string Path);
+/// <summary>構成要素1つ。<see cref="Id"/> は種類つきで一意（例 <c>skill:review</c>）。
+/// <see cref="UserScope"/> はユーザー全体（<c>~/.claude</c>）のもので、どのワークスペースにも効く。</summary>
+public sealed record HarnessComponent(string Id, HarnessComponentKind Kind, string Name, string Path, bool UserScope = false);
 
 /// <summary>
 /// タスク1つ（§37.3・§37.3.2）。<c>.harness/tasks/</c> のファイルなら ID は拡張子を除いたファイル名で、
@@ -166,46 +169,3 @@ public enum HarnessVerdictKind
 }
 
 public sealed record HarnessVerdict(HarnessVerdictKind Verdict, DateTimeOffset At, string? Note);
-
-/// <summary>改善候補の根拠1件＝ある Run のある行で起きたこと。</summary>
-public sealed record HarnessEvidence(
-    string RunId,
-    string RunTitle,
-    string TranscriptPath,
-    int LineNumber,
-    DateTimeOffset? At,
-    string Tool,
-    string Summary,
-    string? FilePath,
-    int Chars);
-
-/// <summary>改善候補の分類（頭の色分けと並べ替えのため）。</summary>
-public enum HarnessCandidateCategory
-{
-    /// <summary>トークン効率。</summary>
-    Tokens,
-    /// <summary>手戻り・失敗。</summary>
-    Rework,
-    /// <summary>品質（検証の欠落など）。</summary>
-    Quality,
-}
-
-/// <summary>
-/// 規則が検出した改善候補（§37.5）。<see cref="Observation"/> は観測事実、<see cref="Direction"/> と
-/// <see cref="RelatedKinds"/> は規則が出す<b>推測</b>。<see cref="EstimatedTokens"/> は文字数 ÷ 4 の概算。
-/// </summary>
-public sealed record HarnessCandidate(
-    string RuleId,
-    string Key,
-    string Title,
-    HarnessCandidateCategory Category,
-    string Observation,
-    string Direction,
-    long EstimatedTokens,
-    int RunCount,
-    IReadOnlyList<HarnessEvidence> Evidence,
-    IReadOnlyList<HarnessComponentKind> RelatedKinds)
-{
-    /// <summary>規則×対象で一意。</summary>
-    public string Id => $"{RuleId}:{Key}";
-}

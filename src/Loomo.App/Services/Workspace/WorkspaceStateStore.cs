@@ -510,7 +510,7 @@ public sealed class WorkspaceSnapshot
     /// <summary>リポジトリの帯で選んでいたリポジトリ（§40.9）。null の旧データはプライマリフォルダー。</summary>
     public string? GitRepository { get; set; }
 
-    /// <summary>ハーネスペイン（§37.7）の選んでいたタブと期間。候補の選択は持ち越さない（記録が変われば意味が変わる）。</summary>
+    /// <summary>ハーネスペイン（§37.7）の選んでいたタブと期間。</summary>
     public HarnessPaneSnapshot? Harness { get; set; }
 }
 
@@ -519,9 +519,6 @@ public sealed class HarnessPaneSnapshot
 {
     public int SelectedTab { get; set; }
     public int PeriodDays { get; set; } = 30;
-    public bool HideSingleRunCandidates { get; set; }
-    /// <summary>対処中・対処済み・見送りの改善候補も並べる（§37.5.1）。</summary>
-    public bool ShowHandledCandidates { get; set; }
 }
 
 /// <summary>最近のコマンド（§24.20）の永続化形。<see cref="ExitCode"/> は最後に実行したときの値で、

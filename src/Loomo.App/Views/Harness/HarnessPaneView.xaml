@@ -167,174 +167,21 @@
 
         <Grid>
             <TabControl Style="{StaticResource HarnessTabControl}" SelectedIndex="{Binding SelectedTab, Mode=TwoWay}">
-                <!-- ===== 改善候補（中心画面） ===== -->
-                <TabItem Header="改善候補">
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="160" MinWidth="110" />
-                            <ColumnDefinition Width="6" />
-                            <ColumnDefinition Width="*" MinWidth="240" />
-                            <ColumnDefinition Width="6" />
-                            <ColumnDefinition Width="*" MinWidth="240" />
-                        </Grid.ColumnDefinitions>
-
-                        <DockPanel Grid.Column="0">
-                            <TextBlock DockPanel.Dock="Top" Style="{StaticResource ColumnTitle}" Text="構成要素"
-                                       ToolTip="選ぶと、その要素に関連しそうな候補に絞る（関連は推測）" />
-                            <ListBox Style="{StaticResource HarnessList}" ItemsSource="{Binding Components}"
-                                     SelectedItem="{Binding SelectedComponent}">
-                                <ListBox.ItemTemplate>
-                                    <DataTemplate>
-                                        <DockPanel ToolTip="{Binding ToolTip}">
-                                            <TextBlock DockPanel.Dock="Right" Text="{Binding CandidateCountLabel}"
-                                                       Style="{StaticResource Dim}" Margin="6,0,0,0" />
-                                            <TextBlock DockPanel.Dock="Left" Text="{Binding KindLabel}"
-                                                       Style="{StaticResource Dim}" Margin="0,0,6,0" />
-                                            <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
-                                        </DockPanel>
-                                    </DataTemplate>
-                                </ListBox.ItemTemplate>
-                            </ListBox>
+                <!-- ===== 分析（§37.5）：直し所は規則で当てず、記録を Claude Code に読ませる。渡す中身をそのまま見せる ===== -->
+                <TabItem Header="分析">
+                    <DockPanel>
+                        <DockPanel DockPanel.Dock="Top">
+                            <Button DockPanel.Dock="Right" Style="{StaticResource SmallButton}" Margin="0,3,8,3"
+                                    Content="分析プロンプトをコピー" Command="{Binding CopyAnalysisPromptCommand}"
+                                    ToolTip="ターミナルの Claude Code に貼ると、期間の記録を読んで直し所を表で返す（直すのは了承したものだけ）" />
+                            <TextBlock Style="{StaticResource ColumnTitle}" TextWrapping="Wrap"
+                                       Text="期間内の記録の場所・指標・構成要素をまとめたプロンプト。直し所を探すのは Claude Code、直すかどうかは人間が決める。" />
                         </DockPanel>
-
-                        <GridSplitter Grid.Column="1" Width="6" HorizontalAlignment="Stretch" Background="{DynamicResource Border}" />
-
-                        <DockPanel Grid.Column="2">
-                            <TextBlock DockPanel.Dock="Top" Style="{StaticResource ColumnTitle}" Text="改善候補（頻度順）"
-                                       ToolTip="何 Run で起きたかの多い順。推定トークンは文字数÷4" />
-                            <!-- 狭いと右寄せのチェックが見出しごと切れていたので、ボタンと同じ折り返し行に置く -->
-                            <WrapPanel DockPanel.Dock="Top" Margin="8,0,8,4">
-                                <CheckBox Margin="0,2,10,2" VerticalAlignment="Center"
-                                          FontSize="{DynamicResource Fs11}" Foreground="{DynamicResource FgDim}"
-                                          Content="対処済みも表示" IsChecked="{Binding ShowHandledCandidates}"
-                                          ToolTip="対処中・対処済み・見送り・前の版だけの候補も並べる（既定は未対処と再発だけ）" />
-                                <CheckBox Margin="0,2,10,2" VerticalAlignment="Center"
-                                          FontSize="{DynamicResource Fs11}" Foreground="{DynamicResource FgDim}"
-                                          Content="1 Run だけを隠す" IsChecked="{Binding HideSingleRunCandidates}"
-                                          ToolTip="1回きりの出来事は、ハーネスの直し所というより偶然であることが多い（再発は隠さない）" />
-                                <Button Style="{StaticResource SmallButton}" Content="まとめて改善プロンプトをコピー"
-                                        ToolTip="一覧に出ている未対処・再発の候補を1つのプロンプトにしてコピーし「対処中」にする。Claude Code に貼って直させる"
-                                        Command="{Binding CopyBulkPromptCommand}" />
-                                <Button Style="{StaticResource SmallButton}" Content="対処中を対処済みに"
-                                        ToolTip="エージェントが直し終えたら押す。これより後に起きたものだけが「再発」として戻る"
-                                        Command="{Binding ResolveAddressingCommand}" />
-                            </WrapPanel>
-                            <TextBlock DockPanel.Dock="Top" Margin="8,0,8,4" Style="{StaticResource Dim}" TextWrapping="Wrap"
-                                       Text="{Binding CurrentHarnessNote}"
-                                       ToolTip="Claude Code は CLAUDE.md などをセッションの開始時に読むので、変えた後に始まったセッションだけが今のハーネスで動いている" />
-                            <Grid>
-                                <ListBox x:Name="CandidateList" Style="{StaticResource HarnessList}"
-                                         ItemsSource="{Binding Candidates}" SelectedItem="{Binding SelectedCandidate}">
-                                    <ListBox.ItemTemplate>
-                                        <DataTemplate>
-                                            <!-- 題と数字を1行に並べると、狭い列では題が「過…」まで削られた。題を1行目に全幅で出し、数字は2行目へ -->
-                                            <DockPanel Margin="0,1" ToolTip="{Binding Title}">
-                                                <Border x:Name="mark" DockPanel.Dock="Left" Width="3" Margin="0,1,6,1"
-                                                        Background="{DynamicResource Accent}" />
-                                                <StackPanel>
-                                                    <TextBlock x:Name="title" Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
-                                                    <StackPanel Orientation="Horizontal">
-                                                        <TextBlock x:Name="standing" Text="{Binding StandingLabel}"
-                                                                   Style="{StaticResource Dim}" Margin="0,0,8,0" />
-                                                        <TextBlock Text="{Binding CategoryLabel}" Style="{StaticResource Dim}" Margin="0,0,8,0" />
-                                                        <TextBlock Text="{Binding RunCountLabel}" Style="{StaticResource Dim}" Margin="0,0,8,0" />
-                                                        <TextBlock Text="{Binding EstimateLabel}" Style="{StaticResource Dim}" />
-                                                    </StackPanel>
-                                                </StackPanel>
-                                            </DockPanel>
-                                            <DataTemplate.Triggers>
-                                                <DataTrigger Binding="{Binding IsHandled}" Value="True">
-                                                    <Setter TargetName="title" Property="Foreground" Value="{DynamicResource FgDim}" />
-                                                </DataTrigger>
-                                                <DataTrigger Binding="{Binding IsRecurred}" Value="True">
-                                                    <Setter TargetName="standing" Property="Foreground" Value="{DynamicResource Error}" />
-                                                </DataTrigger>
-                                                <DataTrigger Binding="{Binding StandingLabel}" Value="">
-                                                    <Setter TargetName="standing" Property="Visibility" Value="Collapsed" />
-                                                </DataTrigger>
-                                                <DataTrigger Binding="{Binding IsRework}" Value="True">
-                                                    <Setter TargetName="mark" Property="Background" Value="{DynamicResource Error}" />
-                                                </DataTrigger>
-                                                <DataTrigger Binding="{Binding IsQuality}" Value="True">
-                                                    <Setter TargetName="mark" Property="Background" Value="{DynamicResource Success}" />
-                                                </DataTrigger>
-                                            </DataTemplate.Triggers>
-                                        </DataTemplate>
-                                    </ListBox.ItemTemplate>
-                                </ListBox>
-                                <TextBlock Style="{StaticResource EmptyNotice}" Text="{Binding EmptyMessage}" />
-                            </Grid>
-                        </DockPanel>
-
-                        <GridSplitter Grid.Column="3" Width="6" HorizontalAlignment="Stretch" Background="{DynamicResource Border}" />
-
-                        <!-- 根拠：どの Run で起きたか／関連しそうな構成要素／方向（推測） -->
-                        <Grid Grid.Column="4">
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="*" MinHeight="60" />
-                                <RowDefinition Height="6" />
-                                <RowDefinition Height="120" MinHeight="40" />
-                            </Grid.RowDefinitions>
-                            <StackPanel Grid.Row="0" Margin="8,4,8,4"
-                                        Visibility="{Binding HasSelectedCandidate, Converter={StaticResource BoolToVis}}">
-                                <TextBlock Style="{StaticResource Dim}" Text="観測事実" FontWeight="SemiBold" />
-                                <TextBlock Text="{Binding CandidateObservation}" TextWrapping="Wrap" Margin="0,1,0,4"
-                                           Foreground="{DynamicResource Fg}" FontSize="{DynamicResource Fs12}" />
-                                <TextBlock Style="{StaticResource Dim}" Text="改善の方向（推測）" FontWeight="SemiBold" />
-                                <TextBlock Text="{Binding CandidateDirection}" TextWrapping="Wrap" Margin="0,1,0,4"
-                                           Foreground="{DynamicResource Fg}" FontSize="{DynamicResource Fs12}" />
-                                <TextBlock Style="{StaticResource Dim}" Text="関連しそうな構成要素（推測）" FontWeight="SemiBold" />
-                                <TextBlock Text="{Binding CandidateRelated}" TextWrapping="Wrap" Margin="0,1,0,6"
-                                           Foreground="{DynamicResource Fg}" FontSize="{DynamicResource Fs12}" />
-                                <TextBlock Text="{Binding CandidateStatusText}" TextWrapping="Wrap" Margin="0,0,0,6"
-                                           Style="{StaticResource Dim}" />
-                                <WrapPanel>
-                                    <Button Style="{StaticResource SmallButton}" Content="タスクにする"
-                                            ToolTip=".harness/tasks/ に観測事実・根拠・方向を書き出してエディタで開く"
-                                            Command="{Binding CreateTaskCommand}" />
-                                    <Button Style="{StaticResource SmallButton}" Content="コピー"
-                                            ToolTip="同じ本文を Markdown でクリップボードへ（エージェントへ渡すとき）"
-                                            Command="{Binding CopyCandidateCommand}" />
-                                    <Button Style="{StaticResource SmallButton}" Content="記録を開く"
-                                            ToolTip="選んだ根拠の記録（transcript）をエディタで開いて該当行へ"
-                                            Command="{Binding OpenEvidenceRecordCommand}" />
-                                    <Button Style="{StaticResource SmallButton}" Content="ファイルを開く"
-                                            ToolTip="選んだ根拠で読まれた／変更されたファイルを開く"
-                                            Command="{Binding OpenEvidenceFileCommand}" />
-                                    <Button Style="{StaticResource SmallButton}" Content="対処済み"
-                                            ToolTip="直した。これより後に起きたものだけが「再発」として戻る"
-                                            Command="{Binding ResolveCandidateCommand}" />
-                                    <Button Style="{StaticResource SmallButton}" Content="見送り"
-                                            ToolTip="直さない（偶然・誤検出）。再発しても上げない"
-                                            Command="{Binding DismissCandidateCommand}" />
-                                    <Button Style="{StaticResource SmallButton}" Content="扱いを外す"
-                                            Command="{Binding ClearCandidateStateCommand}" />
-                                </WrapPanel>
-                                <TextBlock Style="{StaticResource ColumnTitle}" Margin="0,8,0,0" Text="根拠（新しい順・ダブルクリックで記録を開く）" />
-                            </StackPanel>
-                            <ListBox x:Name="EvidenceList" Grid.Row="1" Style="{StaticResource HarnessList}"
-                                     ItemsSource="{Binding Evidence}" SelectedItem="{Binding SelectedEvidence}"
-                                     FontSize="{DynamicResource Fs12}" MouseDoubleClick="OnEvidenceDoubleClick">
-                                <ListBox.ItemTemplate>
-                                    <DataTemplate>
-                                        <DockPanel ToolTip="{Binding ToolTip}">
-                                            <TextBlock DockPanel.Dock="Left" Text="{Binding Time}" Width="84" Style="{StaticResource Dim}" />
-                                            <TextBlock DockPanel.Dock="Left" Text="{Binding Tool}" Width="70"
-                                                       Foreground="{DynamicResource Accent}" TextTrimming="CharacterEllipsis" />
-                                            <TextBlock DockPanel.Dock="Right" Text="{Binding CharsLabel}" Style="{StaticResource Dim}" Margin="8,0,0,0" />
-                                            <StackPanel>
-                                                <TextBlock Text="{Binding Summary}" TextTrimming="CharacterEllipsis" />
-                                                <TextBlock Text="{Binding RunTitle}" Style="{StaticResource Dim}" TextTrimming="CharacterEllipsis" />
-                                            </StackPanel>
-                                        </DockPanel>
-                                    </DataTemplate>
-                                </ListBox.ItemTemplate>
-                            </ListBox>
-                            <GridSplitter Grid.Row="2" Height="6" HorizontalAlignment="Stretch" Background="{DynamicResource Border}" />
-                            <TextBox Grid.Row="3" Style="{StaticResource DetailBox}" Text="{Binding EvidenceDetail, Mode=OneWay}" />
+                        <Grid>
+                            <TextBox x:Name="AnalysisPromptBox" Style="{StaticResource DetailBox}" Text="{Binding AnalysisPrompt, Mode=OneWay}" />
+                            <TextBlock Style="{StaticResource EmptyNotice}" Text="{Binding EmptyMessage}" />
                         </Grid>
-                    </Grid>
+                    </DockPanel>
                 </TabItem>
 
                 <!-- ===== 実行（Run の一覧と、選んだ Run のツール呼び出し） ===== -->
@@ -348,7 +195,7 @@
                         <DockPanel Grid.Column="0">
                             <TextBlock DockPanel.Dock="Top" Style="{StaticResource ColumnTitle}" Text="Run（新しい順）" />
                             <Grid>
-                                <ListBox Style="{StaticResource HarnessList}" ItemsSource="{Binding Runs}" SelectedItem="{Binding SelectedRun}">
+                                <ListBox x:Name="RunList" Style="{StaticResource HarnessList}" ItemsSource="{Binding Runs}" SelectedItem="{Binding SelectedRun}">
                                     <ListBox.ItemTemplate>
                                         <DataTemplate>
                                             <DockPanel>
@@ -441,19 +288,32 @@
                 <!-- ===== 構成（設定されているもの＋観測された使用） ===== -->
                 <TabItem Header="構成">
                     <DockPanel>
-                        <TextBlock DockPanel.Dock="Top" Style="{StaticResource ColumnTitle}" TextWrapping="Wrap"
-                                   Text="{Binding ConfigNote}" />
-                        <ListBox Style="{StaticResource HarnessList}" ItemsSource="{Binding ConfigRows}"
-                                 SelectedItem="{Binding SelectedConfig}" MouseDoubleClick="OnConfigDoubleClick">
+                        <DockPanel DockPanel.Dock="Top">
+                            <Button DockPanel.Dock="Right" Style="{StaticResource SmallButton}" Margin="0,3,8,3"
+                                    Content="開く" Command="{Binding OpenConfigCommand}"
+                                    ToolTip="選んだファイルをエディタで開く（ダブルクリック・Enter でも開く）" />
+                            <TextBlock Style="{StaticResource ColumnTitle}" TextWrapping="Wrap" Text="{Binding ConfigNote}" />
+                        </DockPanel>
+                        <ListBox x:Name="ConfigList" Style="{StaticResource HarnessList}" ItemsSource="{Binding ConfigRows}"
+                                 SelectedItem="{Binding SelectedConfig}" MouseDoubleClick="OnConfigDoubleClick"
+                                 KeyDown="OnConfigKeyDown">
                             <ListBox.ItemTemplate>
                                 <DataTemplate>
-                                    <DockPanel ToolTip="ダブルクリックで定義ファイルを開く">
+                                    <DockPanel ToolTip="ダブルクリック・Enter で開く">
+                                        <TextBlock x:Name="scope" DockPanel.Dock="Left" Text="{Binding ScopeLabel}" Width="72"
+                                                   Style="{StaticResource Dim}"
+                                                   ToolTip="ユーザー＝~/.claude のもの。どのワークスペースのセッションにも効く" />
                                         <TextBlock DockPanel.Dock="Left" Text="{Binding KindLabel}" Width="90" Style="{StaticResource Dim}" />
                                         <TextBlock DockPanel.Dock="Left" Text="{Binding Name}" Width="200" TextTrimming="CharacterEllipsis" />
                                         <TextBlock DockPanel.Dock="Left" Text="{Binding Usage}" Width="80" Style="{StaticResource Dim}"
                                                    ToolTip="期間内の使用（観測）。Skill とサブエージェントだけ回数が記録に残る" />
                                         <TextBlock Text="{Binding PathLabel}" Style="{StaticResource Dim}" TextTrimming="CharacterEllipsis" />
                                     </DockPanel>
+                                    <DataTemplate.Triggers>
+                                        <DataTrigger Binding="{Binding IsUserScope}" Value="True">
+                                            <Setter TargetName="scope" Property="Foreground" Value="{DynamicResource Accent}" />
+                                        </DataTrigger>
+                                    </DataTemplate.Triggers>
                                 </DataTemplate>
                             </ListBox.ItemTemplate>
                         </ListBox>
@@ -476,7 +336,6 @@
                                 <TextBlock Width="120" Text="受け入れ1件あたり" Margin="0,0,8,0" />
                                 <TextBlock Width="90" Text="1 Run あたり" Margin="0,0,8,0" />
                                 <TextBlock Width="80" Text="ツール失敗" Margin="0,0,8,0" />
-                                <TextBlock Width="70" Text="候補/Run" Margin="0,0,8,0" />
                                 <TextBlock Width="100" Text="" Margin="0,0,8,0" />
                             </StackPanel>
                         </Border>
@@ -491,7 +350,6 @@
                                 <TextBlock Width="120" Text="{Binding TokensPerAcceptedLabel}" Margin="0,0,8,0" />
                                 <TextBlock Width="90" Text="{Binding TokensPerRunLabel}" Margin="0,0,8,0" />
                                 <TextBlock Width="80" Text="{Binding ErrorRateLabel}" Margin="0,0,8,0" />
-                                <TextBlock Width="70" Text="{Binding CandidatesPerRunLabel}" Margin="0,0,8,0" />
                                 <TextBlock Width="100" Text="{Binding Note}" Margin="0,0,8,0" />
                                     </StackPanel>
                                 </DataTemplate>
@@ -500,81 +358,6 @@
                     </DockPanel>
                 </TabItem>
 
-                <!-- ===== 点検（§37.10：§37.3 の最小構造と突き合わせて、何が無いかと、なぜ今それが要るか） ===== -->
-                <TabItem Header="点検">
-                    <DockPanel>
-                        <DockPanel DockPanel.Dock="Top">
-                            <Button DockPanel.Dock="Right" Style="{StaticResource SmallButton}" Margin="0,3,8,3"
-                                    Content="足りないものをまとめて作る" Command="{Binding CreateAllMissingCommand}"
-                                    ToolTip="無い必須・推奨の雛形を .harness/ に書き出す（任意の項目と既にあるファイルは触らない）" />
-                            <TextBlock Style="{StaticResource ColumnTitle}" TextWrapping="Wrap" Text="{Binding CheckSummary}" />
-                        </DockPanel>
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" MinWidth="260" />
-                                <ColumnDefinition Width="6" />
-                                <ColumnDefinition Width="1.2*" MinWidth="240" />
-                            </Grid.ColumnDefinitions>
-                            <ListBox Grid.Column="0" Style="{StaticResource HarnessList}" ItemsSource="{Binding CheckRows}"
-                                     SelectedItem="{Binding SelectedCheck}" MouseDoubleClick="OnCheckDoubleClick">
-                                <ListBox.ItemTemplate>
-                                    <DataTemplate>
-                                        <DockPanel Margin="0,1">
-                                            <TextBlock x:Name="status" DockPanel.Dock="Left" Text="{Binding StatusLabel}" Width="60"
-                                                       FontSize="{DynamicResource Fs11}" VerticalAlignment="Top"
-                                                       Foreground="{DynamicResource Accent}" />
-                                            <TextBlock DockPanel.Dock="Left" Text="{Binding LevelLabel}" Width="36"
-                                                       Style="{StaticResource Dim}" VerticalAlignment="Top" />
-                                            <TextBlock DockPanel.Dock="Right" Text="{Binding EvidenceMark}" Style="{StaticResource Dim}"
-                                                       VerticalAlignment="Top" Margin="8,0,0,0"
-                                                       ToolTip="記録の観測が、これが今要る理由を裏づけている" />
-                                            <StackPanel>
-                                                <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
-                                                <TextBlock Text="{Binding Finding}" Style="{StaticResource Dim}" TextTrimming="CharacterEllipsis" />
-                                            </StackPanel>
-                                        </DockPanel>
-                                        <DataTemplate.Triggers>
-                                            <DataTrigger Binding="{Binding IsPresent}" Value="True">
-                                                <Setter TargetName="status" Property="Foreground" Value="{DynamicResource Success}" />
-                                            </DataTrigger>
-                                            <DataTrigger Binding="{Binding IsMissing}" Value="True">
-                                                <Setter TargetName="status" Property="Foreground" Value="{DynamicResource Error}" />
-                                            </DataTrigger>
-                                        </DataTemplate.Triggers>
-                                    </DataTemplate>
-                                </ListBox.ItemTemplate>
-                            </ListBox>
-                            <GridSplitter Grid.Column="1" Width="6" HorizontalAlignment="Stretch" Background="{DynamicResource Border}" />
-                            <DockPanel Grid.Column="2" Visibility="{Binding HasSelectedCheck, Converter={StaticResource BoolToVis}}">
-                                <StackPanel DockPanel.Dock="Top" Margin="8,4,8,4">
-                                    <TextBlock Style="{StaticResource Dim}" Text="何のためか" FontWeight="SemiBold" />
-                                    <TextBlock Text="{Binding SelectedCheck.Item.Purpose}" TextWrapping="Wrap" Margin="0,1,0,4"
-                                               Foreground="{DynamicResource Fg}" FontSize="{DynamicResource Fs12}" />
-                                    <TextBlock Style="{StaticResource Dim}" Text="現状" FontWeight="SemiBold" />
-                                    <TextBlock Text="{Binding SelectedCheck.Item.Finding}" TextWrapping="Wrap" Margin="0,1,0,4"
-                                               Foreground="{DynamicResource Fg}" FontSize="{DynamicResource Fs12}" />
-                                    <TextBlock Style="{StaticResource Dim}" Text="根拠（観測）" FontWeight="SemiBold" />
-                                    <TextBlock TextWrapping="Wrap" Margin="0,1,0,6" Foreground="{DynamicResource Fg}" FontSize="{DynamicResource Fs12}"
-                                               Text="{Binding SelectedCheck.Item.Evidence, TargetNullValue='期間内の記録からは、まだ裏づけが無い。'}" />
-                                    <WrapPanel>
-                                        <Button Style="{StaticResource SmallButton}" Content="作る" Command="{Binding CreateScaffoldCommand}"
-                                                Visibility="{Binding SelectedCheck.CanScaffold, Converter={StaticResource BoolToVis}}"
-                                                ToolTip="下の雛形を .harness/ に書き出してエディタで開く（既にあるファイルは上書きしない）" />
-                                        <Button Style="{StaticResource SmallButton}" Content="開く" Command="{Binding OpenCheckCommand}"
-                                                Visibility="{Binding SelectedCheck.CanOpen, Converter={StaticResource BoolToVis}}"
-                                                ToolTip="既にある定義ファイルをエディタで開く" />
-                                        <Button Style="{StaticResource SmallButton}" Content="実行タブへ" Command="{Binding GoToRunsCommand}"
-                                                Visibility="{Binding SelectedCheck.IsVerdicts, Converter={StaticResource BoolToVis}}"
-                                                ToolTip="判定は Run に付ける（受け入れ／差し戻し）" />
-                                    </WrapPanel>
-                                    <TextBlock Style="{StaticResource ColumnTitle}" Margin="0,8,0,0"
-                                               Text="雛形（観測したコマンドを入れてある・作ってから人間が直す）" />
-                                </StackPanel>
-                                <TextBox Style="{StaticResource DetailBox}" Text="{Binding CheckPreview, Mode=OneWay}" />
-                            </DockPanel>
-                        </Grid>
-                    </DockPanel>
-                </TabItem>
             </TabControl>
         </Grid>
     </DockPanel>

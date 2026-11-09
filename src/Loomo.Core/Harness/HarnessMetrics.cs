@@ -33,7 +33,7 @@ public sealed record HarnessVersion(string Commit, DateTimeOffset At, string Sub
 }
 
 /// <summary>版の比較の1行。<see cref="Version"/> が null の行は「最初の記録より前」。</summary>
-public sealed record HarnessVersionRow(HarnessVersion? Version, HarnessSummary Summary, int CandidateOccurrences);
+public sealed record HarnessVersionRow(HarnessVersion? Version, HarnessSummary Summary);
 
 public static class HarnessMetrics
 {
@@ -63,29 +63,17 @@ public static class HarnessMetrics
         return new HarnessSummary(count, accepted, rejected, usage, calls, errors, costRuns, cost);
     }
 
-    /// <summary>版ごとの比較（新しい版が先）。候補の発生数は、その版の Run に属する根拠の数。
-    /// 版の引き方（<paramref name="versionOf"/>）は呼び出し側が決める——マルチルートでは Run の作業フォルダーごとに
-    /// 履歴が違うので、1本の時系列では引けない。</summary>
+    /// <summary>版ごとの比較（新しい版が先）。版の引き方（<paramref name="versionOf"/>）は呼び出し側が決める——
+    /// マルチルートでは Run の作業フォルダーごとに履歴が違うので、1本の時系列では引けない。</summary>
     public static IReadOnlyList<HarnessVersionRow> CompareVersions(
         IReadOnlyList<HarnessRun> runs,
         IReadOnlyDictionary<string, HarnessVerdict> verdicts,
-        Func<HarnessRun, HarnessVersion?> versionOf,
-        IReadOnlyList<HarnessCandidate> candidates)
-    {
-        var occurrencesByRun = candidates
-            .SelectMany(c => c.Evidence)
-            .GroupBy(e => e.RunId, StringComparer.Ordinal)
-            .ToDictionary(g => g.Key, g => g.Count(), StringComparer.Ordinal);
-
-        return runs
+        Func<HarnessRun, HarnessVersion?> versionOf)
+        => runs
             .GroupBy(versionOf)
-            .Select(g => new HarnessVersionRow(
-                g.Key,
-                Summarize(g, verdicts),
-                g.Sum(r => occurrencesByRun.TryGetValue(r.Id, out var n) ? n : 0)))
+            .Select(g => new HarnessVersionRow(g.Key, Summarize(g, verdicts)))
             .OrderByDescending(row => row.Version?.At ?? DateTimeOffset.MinValue)
             .ToList();
-    }
 }
 
 /// <summary>版の時系列。Run の開始時刻から、その時点で効いていた版を引く。</summary>

@@ -23,7 +23,9 @@ public static class HarnessDefinitionReader
         ("evaluations", HarnessComponentKind.Evaluation),
     ];
 
-    public static HarnessDefinition Read(IEnumerable<string> folders)
+    /// <param name="userClaudeDir">ユーザー全体の Claude Code の設定フォルダー（<c>~/.claude</c>）。null なら読まない。
+    /// ここの CLAUDE.md・settings.json・Skill などはどのワークスペースのセッションにも効くので、ハーネスの一部として並べる。</param>
+    public static HarnessDefinition Read(IEnumerable<string> folders, string? userClaudeDir = null)
     {
         var components = new List<HarnessComponent>();
         var tasks = new List<HarnessTask>();
@@ -57,23 +59,34 @@ public static class HarnessDefinitionReader
                 tasks.Add(ReadTask(file));
         }
 
+        if (!string.IsNullOrEmpty(userClaudeDir) && Directory.Exists(userClaudeDir))
+            ReadClaudeFolder(userClaudeDir, components, userScope: true);
+
         return new HarnessDefinition(harnessFolders, harnessId, version, components, tasks);
     }
 
-    /// <summary>Claude Code が読む構成要素（設定されているもの）。</summary>
+    /// <summary>Claude Code が読む構成要素（設定されているもの）。ワークスペースのフォルダー側。</summary>
     private static void ReadClaudeCode(string folder, List<HarnessComponent> components)
     {
-        foreach (var name in new[] { "CLAUDE.md", "AGENTS.md", Path.Combine(".claude", "CLAUDE.md") })
-        {
-            var path = Path.Combine(folder, name);
-            if (File.Exists(path))
-                components.Add(new HarnessComponent(Key(HarnessComponentKind.Instructions, path),
-                    HarnessComponentKind.Instructions, Path.GetFileName(path), path));
-        }
+        foreach (var name in new[] { "CLAUDE.md", "AGENTS.md" })
+            AddIfExists(components, HarnessComponentKind.Instructions, Path.Combine(folder, name), userScope: false);
+        // プロジェクトの MCP サーバー（.mcp.json）。ツールの数＝毎回の入力に効くので設定として並べる。
+        AddIfExists(components, HarnessComponentKind.Settings, Path.Combine(folder, ".mcp.json"), userScope: false);
 
         var claude = Path.Combine(folder, ".claude");
-        if (!Directory.Exists(claude))
-            return;
+        if (Directory.Exists(claude))
+            ReadClaudeFolder(claude, components, userScope: false);
+    }
+
+    /// <summary>
+    /// <c>.claude</c> フォルダー1つ（プロジェクトの <c>&lt;folder&gt;/.claude</c> とユーザーの <c>~/.claude</c> は同じ形）。
+    /// 設定ファイルは hooks の有無によらず並べる——開きたいのは hooks だけではない（権限・モデル・環境変数）。
+    /// </summary>
+    private static void ReadClaudeFolder(string claude, List<HarnessComponent> components, bool userScope)
+    {
+        AddIfExists(components, HarnessComponentKind.Instructions, Path.Combine(claude, "CLAUDE.md"), userScope);
+        foreach (var settings in new[] { "settings.json", "settings.local.json" })
+            AddIfExists(components, HarnessComponentKind.Settings, Path.Combine(claude, settings), userScope);
 
         var skills = Path.Combine(claude, "skills");
         if (Directory.Exists(skills))
@@ -83,24 +96,30 @@ public static class HarnessDefinitionReader
                 var skillFile = Path.Combine(dir, "SKILL.md");
                 if (File.Exists(skillFile))
                     components.Add(new HarnessComponent(Key(HarnessComponentKind.Skill, skillFile),
-                        HarnessComponentKind.Skill, Path.GetFileName(dir), skillFile));
+                        HarnessComponentKind.Skill, Path.GetFileName(dir), skillFile, userScope));
             }
         }
         foreach (var file in Files(Path.Combine(claude, "agents")).Where(f => f.EndsWith(".md", StringComparison.OrdinalIgnoreCase)))
             components.Add(new HarnessComponent(Key(HarnessComponentKind.Agent, file),
-                HarnessComponentKind.Agent, Path.GetFileNameWithoutExtension(file), file));
+                HarnessComponentKind.Agent, Path.GetFileNameWithoutExtension(file), file, userScope));
         foreach (var file in Files(Path.Combine(claude, "commands"), recursive: true)
                      .Where(f => f.EndsWith(".md", StringComparison.OrdinalIgnoreCase)))
             components.Add(new HarnessComponent(Key(HarnessComponentKind.Command, file),
-                HarnessComponentKind.Command, "/" + Path.GetFileNameWithoutExtension(file), file));
+                HarnessComponentKind.Command, "/" + Path.GetFileNameWithoutExtension(file), file, userScope));
 
         foreach (var settings in new[] { "settings.json", "settings.local.json" })
         {
             var path = Path.Combine(claude, settings);
             foreach (var hookEvent in ReadHookEvents(path))
                 components.Add(new HarnessComponent($"hook:{path}#{hookEvent}",
-                    HarnessComponentKind.Hook, $"{hookEvent}（{settings}）", path));
+                    HarnessComponentKind.Hook, $"{hookEvent}（{settings}）", path, userScope));
         }
+    }
+
+    private static void AddIfExists(List<HarnessComponent> components, HarnessComponentKind kind, string path, bool userScope)
+    {
+        if (File.Exists(path))
+            components.Add(new HarnessComponent(Key(kind, path), kind, Path.GetFileName(path), path, userScope));
     }
 
     /// <summary><c>settings.json</c> の <c>hooks</c> のイベント名（PreToolUse 等）。壊れていれば何も返さない。</summary>

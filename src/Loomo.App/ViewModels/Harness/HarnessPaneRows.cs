@@ -10,7 +10,7 @@ namespace sk0ya.Loomo.App.ViewModels;
 /// <summary>ハーネスペインの表示用の短い書式（数字の出し方を1か所にまとめる）。</summary>
 internal static class HarnessFormat
 {
-    public static string Tokens(long tokens) => HarnessTaskWriter.FormatTokens(tokens);
+    public static string Tokens(long tokens) => HarnessAnalysisPrompt.FormatTokens(tokens);
 
     public static string Percent(double? ratio) => ratio is { } r ? (r * 100).ToString("0.0", CultureInfo.InvariantCulture) + "%" : "—";
 
@@ -35,92 +35,12 @@ internal static class HarnessFormat
         HarnessComponentKind.Workflow => "ワークフロー",
         HarnessComponentKind.Rule => "ルール",
         HarnessComponentKind.Evaluation => "評価",
+        HarnessComponentKind.Settings => "設定",
         _ => kind.ToString(),
-    };
-
-    public static string Category(HarnessCandidateCategory category) => category switch
-    {
-        HarnessCandidateCategory.Tokens => "トークン",
-        HarnessCandidateCategory.Rework => "手戻り",
-        HarnessCandidateCategory.Quality => "品質",
-        _ => category.ToString(),
     };
 
     public static string Version(HarnessVersion? version)
         => version is null ? "最初の記録より前" : $"{version.ShortCommit} {version.Subject}";
-}
-
-/// <summary>改善候補タブの左列：構成要素（先頭は「すべて」）。</summary>
-public sealed class HarnessComponentRow
-{
-    public HarnessComponentRow(HarnessComponent? component, string usage, int candidateCount)
-    {
-        Component = component;
-        Usage = usage;
-        CandidateCount = candidateCount;
-    }
-
-    /// <summary>null は「すべて」。</summary>
-    public HarnessComponent? Component { get; }
-    public string KindLabel => Component is null ? "" : HarnessFormat.Kind(Component.Kind);
-    public string Name => Component?.Name ?? "すべて";
-    /// <summary>観測された使用（「3回」「観測なし」「—」）。</summary>
-    public string Usage { get; }
-    public int CandidateCount { get; }
-    public string CandidateCountLabel => CandidateCount == 0 ? "" : CandidateCount.ToString(CultureInfo.InvariantCulture);
-    public string ToolTip => Component is null ? "すべての改善候補" : $"{Component.Path}\n使用（観測）: {Usage}";
-}
-
-public sealed class HarnessCandidateRow(HarnessTriagedCandidate triaged, DateTimeOffset? harnessChangedAt = null, int currentRunCount = 0)
-{
-    private readonly HarnessCandidate candidate = triaged.Candidate;
-
-    public HarnessCandidate Candidate => candidate;
-    public HarnessCandidateStanding Standing => triaged.Standing;
-    public bool NeedsWork => triaged.NeedsWork;
-    public bool IsHandled => !triaged.NeedsWork;
-    public bool IsRecurred => triaged.Standing == HarnessCandidateStanding.Recurred;
-    public string Title => candidate.Title;
-    public string CategoryLabel => HarnessFormat.Category(candidate.Category);
-    public string RunCountLabel => IsRecurred ? $"対処後 {candidate.RunCount} Run" : $"{candidate.RunCount} Run";
-
-    public string StandingLabel => triaged.Standing switch
-    {
-        HarnessCandidateStanding.Addressing => "対処中",
-        HarnessCandidateStanding.Resolved => "対処済み",
-        HarnessCandidateStanding.Recurred => "再発",
-        HarnessCandidateStanding.Dismissed => "見送り",
-        HarnessCandidateStanding.Superseded => "前の版だけ",
-        _ => "",
-    };
-
-    /// <summary>詳細に出す扱いの説明（いつ付けたか）。</summary>
-    public string StatusDetail => triaged.Standing == HarnessCandidateStanding.Superseded
-        ? $"前の版だけ——ハーネスを変えた {(harnessChangedAt is { } at ? HarnessFormat.Time(at) : "時点")} より後に始まった Run（{currentRunCount} 件）では起きていない。"
-          + "直った見込み（推定）。直っていなければ次のセッションでまた起きて一覧に戻る"
-        : triaged.Status is { } s
-        ? $"{StandingLabel}（{HarnessFormat.Time(s.At)} に{(s.State switch
-        {
-            HarnessCandidateState.Addressing => "エージェントへ渡した",
-            HarnessCandidateState.Resolved => "対処済みにした",
-            _ => "見送った",
-        })}）" + (IsRecurred ? "——それより後の根拠だけを出しています" : "")
-        : "";
-    public string EstimateLabel => candidate.EstimatedTokens > 0 ? $"推定 {HarnessFormat.Tokens(candidate.EstimatedTokens)}" : "";
-    public bool IsQuality => candidate.Category == HarnessCandidateCategory.Quality;
-    public bool IsRework => candidate.Category == HarnessCandidateCategory.Rework;
-}
-
-public sealed class HarnessEvidenceRow(HarnessEvidence evidence, string? fileDisplay)
-{
-    public HarnessEvidence Evidence => evidence;
-    public string Time => HarnessFormat.Time(evidence.At);
-    public string Tool => evidence.Tool;
-    public string Summary => fileDisplay ?? evidence.Summary;
-    public string RunTitle => evidence.RunTitle;
-    public string CharsLabel => evidence.Chars > 0 ? $"{evidence.Chars:N0} 字" : "";
-    public bool HasFile => evidence.FilePath is { } p && File.Exists(p);
-    public string ToolTip => $"{evidence.RunTitle}\n{evidence.Summary}\n記録: {Path.GetFileName(evidence.TranscriptPath)}:{evidence.LineNumber}";
 }
 
 public sealed class HarnessRunRow(HarnessRun run, HarnessVersion? version, HarnessVerdict? verdict, IReadOnlyList<HarnessTaskLink> links)
@@ -224,13 +144,16 @@ public sealed class HarnessRunRow(HarnessRun run, HarnessVersion? version, Harne
 
 public sealed class HarnessCallRow(RunToolCall call)
 {
+    /// <summary>結果の字数をアクセント色で目立たせる目安（Claude Code が逃がす大きさに近い）。</summary>
+    public const int LargeOutputChars = 20_000;
+
     public RunToolCall Call => call;
     public string Time => call.At is { } t ? t.ToLocalTime().ToString("HH:mm:ss", CultureInfo.InvariantCulture) : "";
     public string Tool => call.FromSubagent ? "↳ " + call.Tool : call.Tool;
     public string Summary => call.IsError && call.ErrorHead is { } e ? $"{call.Summary}  ⟶ {e}" : call.Summary;
     public string CharsLabel => call.ResultChars > 0 ? $"{call.ResultChars:N0} 字" : "";
     public bool IsError => call.IsError;
-    public bool IsLarge => call.OutputPersisted || call.ResultChars >= HarnessDetectors.LargeOutputChars;
+    public bool IsLarge => call.OutputPersisted || call.ResultChars >= LargeOutputChars;
 }
 
 /// <summary>構成タブの1行（設定されているもの＋観測された使用）。</summary>
@@ -239,6 +162,9 @@ public sealed class HarnessConfigRow(HarnessComponent component, string usage, s
     public HarnessComponent Component => component;
     public string KindLabel => HarnessFormat.Kind(component.Kind);
     public string Name => component.Name;
+    /// <summary>効く範囲：このワークスペース／ユーザー全体（<c>~/.claude</c>）。</summary>
+    public string ScopeLabel => component.UserScope ? "ユーザー" : "プロジェクト";
+    public bool IsUserScope => component.UserScope;
     public string Usage => usage;
     public string PathLabel => displayPath;
 }
@@ -255,40 +181,8 @@ public sealed class HarnessVersionRowViewModel(HarnessVersionRow row)
     public string TokensPerAcceptedLabel => row.Summary.TokensPerAccepted is { } t ? HarnessFormat.Tokens(t) : "受け入れなし";
     public string TokensPerRunLabel => row.Summary.TokensPerRun is { } t ? HarnessFormat.Tokens(t) : "—";
     public string ErrorRateLabel => HarnessFormat.Percent(row.Summary.ToolErrorRate);
-    public string CandidatesPerRunLabel => row.Summary.RunCount == 0
-        ? "—"
-        : ((double)row.CandidateOccurrences / row.Summary.RunCount).ToString("0.0", CultureInfo.InvariantCulture);
     public string Note => row.Summary.RunCount < FewRunsThreshold ? "試行が少ない" : "";
 }
 
 /// <summary>期間の選択肢。</summary>
 public sealed record HarnessPeriodOption(int Days, string Label);
-
-/// <summary>点検タブの1行（§37.10）。<see cref="Folder"/> は雛形を書き出す先のワークスペースフォルダー。</summary>
-public sealed class HarnessCheckRow(HarnessCheckItem item, string folder, string? folderLabel)
-{
-    public HarnessCheckItem Item => item;
-    public string Folder => folder;
-    public string Title => folderLabel is null ? item.Title : $"{item.Title} — {folderLabel}";
-    public string StatusLabel => item.Status switch
-    {
-        HarnessCheckStatus.Present => "✓ あり",
-        HarnessCheckStatus.Incomplete => "△ 不足",
-        _ => "✕ 無い",
-    };
-    public string LevelLabel => item.Level switch
-    {
-        HarnessCheckLevel.Required => "必須",
-        HarnessCheckLevel.Recommended => "推奨",
-        _ => "任意",
-    };
-    public string Finding => item.Finding;
-    /// <summary>根拠があることを一覧で示す（なぜ今それが要るかを観測が裏づけている）。</summary>
-    public string EvidenceMark => item.Evidence is not null && item.NeedsWork ? "根拠あり" : "";
-    public bool IsPresent => item.Status == HarnessCheckStatus.Present;
-    public bool IsMissing => item.Status == HarnessCheckStatus.Missing;
-    public bool CanScaffold => item.Scaffold.Count > 0;
-    public bool CanOpen => item.ExistingPath is not null;
-    /// <summary>判定は雛形ではなく実行タブで Run に付けるもの。</summary>
-    public bool IsVerdicts => item.Id == HarnessStructureCheck.ItemVerdicts;
-}

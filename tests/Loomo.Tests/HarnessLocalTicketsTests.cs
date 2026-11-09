@@ -253,34 +253,4 @@ public sealed class HarnessLocalTicketsTests : IDisposable
 
         Assert.Equal(("A\tworking", "A\tdone"), (call.EditOld, call.EditNew));
     }
-
-    // ===== 点検 =====
-
-    [Fact]
-    public void Check_does_not_report_tasks_or_workflows_missing_for_a_ticket_workspace()
-    {
-        File.AppendAllText(Path.Combine(_ws, "tickets", Group, "VCI-002", "VCI-002-detail.md"), "\n## 要件・受け入れ条件\n\n- [ ] 足した\n");
-        var runs = new[] { RunWith("r1", "VCI-001 をやって"), RunWith("r2", "雑談") };
-
-        var items = HarnessStructureCheck.Inspect(_ws, runs, [], 1);
-
-        var tasks = items.Single(i => i.Id == HarnessStructureCheck.ItemTasks);
-        Assert.Equal(HarnessCheckStatus.Present, tasks.Status);
-        Assert.Contains("チケット型タスク 3 件", tasks.Finding);
-        Assert.Contains("結び付いたのは 1 件", tasks.Evidence);
-        Assert.Equal(HarnessCheckStatus.Present, items.Single(i => i.Id == HarnessStructureCheck.ItemWorkflows).Status);
-        Assert.Equal(HarnessCheckStatus.Missing, items.Single(i => i.Id == HarnessStructureCheck.ItemManifest).Status); // 必須の欠けのまま
-        Assert.False(Directory.Exists(Path.Combine(_ws, HarnessDefinitionReader.HarnessFolderName))); // 点検だけでは作らない
-    }
-
-    [Fact]
-    public void Ticket_without_the_requirements_section_is_incomplete()
-    {
-        var item = HarnessStructureCheck.Inspect(_ws, [], [], 0).Single(i => i.Id == HarnessStructureCheck.ItemTasks);
-
-        Assert.Equal(HarnessCheckStatus.Incomplete, item.Status);
-        Assert.Contains("VCI-002", item.Finding);
-        Assert.DoesNotContain("VCI-001", item.Finding);
-        Assert.Contains("要件・受け入れ条件", item.Finding);
-    }
 }

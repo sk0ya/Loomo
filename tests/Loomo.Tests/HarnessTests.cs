@@ -190,7 +190,7 @@ public sealed class HarnessTests : IDisposable
         Assert.Single(run.Prompts);
     }
 
-    // ===== 規則（§37.5） =====
+    // ===== Run・ツール呼び出しを組む小道具 =====
 
     private static HarnessRun RunOf(string id, params RunToolCall[] calls) => new()
     {
@@ -208,125 +208,6 @@ public sealed class HarnessTests : IDisposable
             FilePath = file, Command = command, HasResult = true, ResultChars = chars, IsError = error,
             ErrorHead = errorHead, ReadOffset = offset, InputChars = 40,
         };
-
-    [Fact]
-    public void Reread_needs_three_reads_without_a_write_in_between()
-    {
-        const string a = @"C:\ws\a.cs";
-        var twiceThenEdit = RunOf("r1", Call("Read", a), Call("Read", a), Call("Edit", a), Call("Read", a), Call("Bash", command: "dotnet test"));
-        Assert.DoesNotContain(HarnessDetectors.Detect([twiceThenEdit]), c => c.RuleId == HarnessDetectors.RuleReread);
-
-        var thrice = RunOf("r2", Call("Read", a, chars: 400), Call("Read", a, chars: 400), Call("Read", a, chars: 400));
-        var candidate = Assert.Single(HarnessDetectors.Detect([thrice]), c => c.RuleId == HarnessDetectors.RuleReread);
-        // 根拠は2回目以降の読込だけ（1回目は必要な読込）。
-        Assert.Equal(2, candidate.Evidence.Count);
-        Assert.Equal(800 / HarnessDetectors.CharsPerToken, candidate.EstimatedTokens);
-    }
-
-    [Fact]
-    public void Reading_different_ranges_of_one_file_is_not_a_reread()
-    {
-        const string a = @"C:\ws\big.cs";
-        var run = RunOf("r1", Call("Read", a, offset: 1), Call("Read", a, offset: 400), Call("Read", a, offset: 800));
-        Assert.DoesNotContain(HarnessDetectors.Detect([run]), c => c.RuleId == HarnessDetectors.RuleReread);
-    }
-
-    [Fact]
-    public void Large_build_output_points_to_output_filtering()
-    {
-        var run = RunOf("r1", Call("Bash", command: "cd C:/ws && dotnet build -v n", chars: 50_000));
-        var candidate = Assert.Single(HarnessDetectors.Detect([run]), c => c.RuleId == HarnessDetectors.RuleLargeOutput);
-        Assert.Equal("cmd:dotnet build", candidate.Key);
-        Assert.Contains(HarnessComponentKind.Hook, candidate.RelatedKinds);
-        Assert.Equal(50_000 / HarnessDetectors.CharsPerToken, candidate.EstimatedTokens);
-    }
-
-    [Fact]
-    public void Candidates_aggregate_across_runs_and_sort_by_frequency()
-    {
-        var big = Call("Bash", command: "git log", chars: 30_000);
-        var once = RunOf("r1", Call("Read", @"C:\ws\huge.json", chars: 900_000));
-        var runs = new[] { RunOf("r2", big), RunOf("r3", big), once };
-
-        var candidates = HarnessDetectors.Detect(runs).Where(c => c.RuleId == HarnessDetectors.RuleLargeOutput).ToList();
-        // トークンは huge.json が大きいが、頻度（2 Run）が先。
-        Assert.Equal("cmd:git log", candidates[0].Key);
-        Assert.Equal(2, candidates[0].RunCount);
-    }
-
-    [Fact]
-    public void Same_failing_command_twice_is_a_retry_candidate()
-    {
-        var run = RunOf("r1",
-            Call("Bash", command: "dotnet  build", error: true),
-            Call("Edit", @"C:\ws\a.cs"),
-            Call("Bash", command: "dotnet build", error: true),
-            Call("Bash", command: "dotnet build"));
-        var candidate = Assert.Single(HarnessDetectors.Detect([run]), c => c.RuleId == HarnessDetectors.RuleRetry);
-        Assert.Equal(2, candidate.Evidence.Count);
-    }
-
-    [Fact]
-    public void Edit_that_cannot_find_its_target_is_reported()
-    {
-        var run = RunOf("r1", Call("Edit", @"C:\ws\a.cs", error: true, errorHead: "<tool_use_error>String to replace not found in file."));
-        Assert.Single(HarnessDetectors.Detect([run]), c => c.RuleId == HarnessDetectors.RuleEditMismatch);
-    }
-
-    [Fact]
-    public void Source_change_without_a_later_build_or_test_is_unverified()
-    {
-        var verified = RunOf("r1", Call("Edit", @"C:\ws\a.cs"), Call("Bash", command: "npm run test"));
-        var docsOnly = RunOf("r2", Call("Write", @"C:\ws\README.md"));
-        var testedBefore = RunOf("r3", Call("Bash", command: "dotnet test"), Call("Edit", @"C:\ws\a.cs"));
-
-        var candidates = HarnessDetectors.Detect([verified, docsOnly, testedBefore]);
-        var unverified = Assert.Single(candidates, c => c.RuleId == HarnessDetectors.RuleUnverified);
-        Assert.Equal("r3", Assert.Single(unverified.Evidence).RunId);
-        Assert.Equal(HarnessCandidateCategory.Quality, unverified.Category);
-    }
-
-    [Theory]
-    [InlineData("dotnet build sk0ya.Loomo.sln", "dotnet build")]
-    [InlineData("cd C:/Projects/Loomo && git log --oneline", "git log")]
-    [InlineData("cat docs/a.md | head", "cat")]
-    [InlineData("\"C:\\Program Files\\Git\\bin\\git.exe\" status", "git.exe status")]
-    // 2語目はサブコマンドを持つ道具のときだけ（cat のファイル名ごとに候補が割れない）。
-    [InlineData("cat CLAUDE.md", "cat")]
-    [InlineData("find 0e7bb2f3-284b -name x", "find")]
-    // 変数の用意・場所合わせ・呼び出し演算子は飛ばす。
-    [InlineData("tmp=\"$(mktemp)\"; grep -rn foo src > \"$tmp\"", "grep")]
-    [InlineData("PYTHONIOENCODING=utf-8 python -c 'print(1)'", "python")]
-    [InlineData("S=\"a;b\"; cd \"$S\"; dotnet run -c Release", "dotnet run")]
-    [InlineData("$p = 'x'; & \"C:\\tools\\gh.exe\" pr list", "gh.exe pr")]
-    public void Command_key_is_the_command_that_did_the_work(string command, string expected)
-        => Assert.Equal(expected, HarnessDetectors.CommandKey(command));
-
-    [Fact]
-    public void Read_candidates_are_one_per_rule_not_one_per_file()
-    {
-        // ファイルごとに分けると、読んだファイルの数だけ「1 Run だけ」の候補が増え続ける。
-        var r1 = RunOf("r1", Call("Read", @"C:\ws\a.cs", chars: 30_000));
-        var r2 = RunOf("r2", Call("Read", @"C:\ws\b.cs", chars: 30_000));
-        var large = Assert.Single(HarnessDetectors.Detect([r1, r2]), c => c.RuleId == HarnessDetectors.RuleLargeOutput);
-        Assert.Equal(2, large.RunCount);
-        Assert.Equal([@"C:\ws\a.cs", @"C:\ws\b.cs"], large.Evidence.Select(e => e.FilePath).Order());
-
-        var rereads = RunOf("r3",
-            Call("Read", @"C:\ws\a.cs"), Call("Read", @"C:\ws\a.cs"), Call("Read", @"C:\ws\a.cs"),
-            Call("Read", @"C:\ws\b.cs"), Call("Read", @"C:\ws\b.cs"), Call("Read", @"C:\ws\b.cs"));
-        Assert.Single(HarnessDetectors.Detect([rereads]), c => c.RuleId == HarnessDetectors.RuleReread);
-    }
-
-    [Fact]
-    public void Reading_back_a_persisted_tool_result_is_not_counted_twice()
-    {
-        var run = RunOf("r1",
-            Call("Bash", command: "git diff", chars: 50_000),
-            Call("Read", @"C:\Users\u\.claude\projects\C--ws\s1\tool-results\b123.txt", chars: 40_000));
-        var candidate = Assert.Single(HarnessDetectors.Detect([run]), c => c.RuleId == HarnessDetectors.RuleLargeOutput);
-        Assert.Equal("cmd:git diff", candidate.Key);
-    }
 
     // ===== 指標・版（§37.4・§37.6） =====
 
@@ -366,10 +247,51 @@ public sealed class HarnessTests : IDisposable
         var v2 = new HarnessVersion("bbb", DateTimeOffset.Parse("2026-10-05T00:00:00Z"), "v2");
         var runs = new[] { RunOf("old"), RunOf("new1"), RunOf("new2") };
         var rows = HarnessMetrics.CompareVersions(runs, new Dictionary<string, HarnessVerdict>(),
-            r => r.Id == "old" ? v1 : v2, []);
+            r => r.Id == "old" ? v1 : v2);
 
         Assert.Equal(["bbb", "aaa"], rows.Select(r => r.Version!.Commit));
         Assert.Equal(2, rows[0].Summary.RunCount);
+    }
+
+    // ===== 分析プロンプト（§37.5） =====
+
+    [Fact]
+    public void Analysis_prompt_hands_over_transcripts_and_limits_changes_to_the_harness()
+    {
+        var v1 = new HarnessVersion("abcdef0123456789", DateTimeOffset.Parse("2026-10-01T00:00:00Z"), "v1");
+        var rejected = RunOf("r1", Call("Bash", command: "dotnet build", error: true)) with
+        {
+            Title = "a|b\n改行", ToolErrorCount = 1, ToolCallCountExcludingRejected = 1, SubagentCount = 2,
+        };
+        var runs = new[] { rejected, RunOf("r2") };
+        var verdicts = new Dictionary<string, HarnessVerdict> { ["r1"] = new(HarnessVerdictKind.Rejected, DateTimeOffset.Now, null) };
+        var components = new[] { new HarnessComponent("instructions:CLAUDE.md", HarnessComponentKind.Instructions, "CLAUDE.md", @"C:\ws\CLAUDE.md") };
+
+        var text = HarnessAnalysisPrompt.Build(runs, verdicts, r => r.Id == "r1" ? v1 : null, components,
+            DateTimeOffset.Parse("2026-10-01T00:00:00Z"), DateTimeOffset.Parse("2026-10-11T00:00:00Z"), p => p);
+
+        Assert.Contains("2 Run", text);
+        Assert.Contains(@"`C:\t\r1.jsonl`", text);   // 記録のパスをそのまま渡す（エージェントが読みに行く）
+        Assert.Contains("差し戻し", text);
+        Assert.Contains("abcdef01", text);
+        Assert.Contains("（サブ 2）", text);
+        Assert.Contains("直す先はハーネスだけ", text);
+        Assert.Contains("人間が了承したものだけ", text);
+        Assert.Contains("指示 `CLAUDE.md`", text);
+        Assert.Contains("| a／b 改行 |", text);       // 題の | と改行は表を壊すので潰す
+    }
+
+    [Fact]
+    public void Analysis_prompt_caps_the_run_list()
+    {
+        var runs = Enumerable.Range(0, HarnessAnalysisPrompt.MaxRuns + 5).Select(i => RunOf($"r{i}")).ToList();
+
+        var text = HarnessAnalysisPrompt.Build(runs, new Dictionary<string, HarnessVerdict>(), _ => null, [],
+            DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch, p => p);
+
+        Assert.Contains($"r{HarnessAnalysisPrompt.MaxRuns - 1}.jsonl", text);
+        Assert.DoesNotContain($"r{HarnessAnalysisPrompt.MaxRuns}.jsonl", text);
+        Assert.Contains("ほか 5 Run", text);
     }
 
     // ===== 定義・判定・タスク =====
@@ -401,6 +323,30 @@ public sealed class HarnessTests : IDisposable
     }
 
     [Fact]
+    public void Claude_code_settings_files_are_listed_with_or_without_hooks_and_user_scope_is_marked()
+    {
+        var ws = Path.Combine(_base, "ws2");
+        var user = Path.Combine(_base, "home", ".claude");
+        Directory.CreateDirectory(Path.Combine(ws, ".claude"));
+        Directory.CreateDirectory(Path.Combine(user, "commands"));
+        File.WriteAllText(Path.Combine(ws, ".claude", "settings.local.json"), "{ \"permissions\": {} }");
+        File.WriteAllText(Path.Combine(ws, ".mcp.json"), "{}");
+        File.WriteAllText(Path.Combine(user, "settings.json"), "{ \"model\": \"x\" }");
+        File.WriteAllText(Path.Combine(user, "CLAUDE.md"), "# 全体");
+        File.WriteAllText(Path.Combine(user, "commands", "go.md"), "x");
+
+        var def = HarnessDefinitionReader.Read([ws], user);
+
+        Assert.Contains(def.Components, c => c is { Kind: HarnessComponentKind.Settings, Name: "settings.local.json", UserScope: false });
+        Assert.Contains(def.Components, c => c is { Kind: HarnessComponentKind.Settings, Name: ".mcp.json", UserScope: false });
+        Assert.Contains(def.Components, c => c is { Kind: HarnessComponentKind.Settings, Name: "settings.json", UserScope: true });
+        Assert.Contains(def.Components, c => c is { Kind: HarnessComponentKind.Instructions, Name: "CLAUDE.md", UserScope: true });
+        Assert.Contains(def.Components, c => c is { Kind: HarnessComponentKind.Command, Name: "/go", UserScope: true });
+        Assert.DoesNotContain(def.Components, c => c.Kind == HarnessComponentKind.Hook); // hooks が無ければ Hook 行は出ない
+        Assert.DoesNotContain(HarnessDefinitionReader.Read([ws]).Components, c => c.UserScope); // 渡さなければ読まない
+    }
+
+    [Fact]
     public void Runs_link_to_tasks_only_by_explicit_reference()
     {
         var task = new HarnessTask("fix-login", "ログインを直す", @"C:\ws\.harness\tasks\fix-login.md");
@@ -424,152 +370,6 @@ public sealed class HarnessTests : IDisposable
         Assert.False(loaded.ContainsKey("a"));
         Assert.Equal(HarnessVerdictKind.Rejected, loaded["b"].Verdict);
         Assert.Equal("テスト落ち", loaded["b"].Note);
-    }
-
-    [Fact]
-    public void Task_file_separates_observation_from_guess_and_never_overwrites()
-    {
-        var ws = Path.Combine(_base, "ws");
-        var run = RunOf("r1", Call("Bash", command: "dotnet build", chars: 50_000));
-        var candidate = HarnessDetectors.Detect([run]).First(c => c.RuleId == HarnessDetectors.RuleLargeOutput);
-        var now = DateTimeOffset.Parse("2026-10-11T03:00:00Z");
-
-        var first = HarnessTaskWriter.Write(ws, candidate, now, p => p);
-        var second = HarnessTaskWriter.Write(ws, candidate, now, p => p);
-
-        Assert.NotEqual(first, second);
-        var text = File.ReadAllText(first);
-        Assert.Contains("## 観測事実", text);
-        Assert.Contains("## 改善の方向（推測）", text);
-        Assert.Contains("推定", text);
-    }
-
-    // ===== 候補の扱い（§37.5.1） =====
-
-    private static RunToolCall At(RunToolCall call, string at) => call with { At = DateTimeOffset.Parse(at) };
-
-    [Fact]
-    public void Resolved_candidate_counts_only_evidence_after_resolution()
-    {
-        var before = At(Call("Bash", command: "git log", chars: 30_000), "2026-10-10T00:00:00Z");
-        var after = At(Call("Bash", command: "git log", chars: 40_000), "2026-10-12T00:00:00Z");
-        var runs = new[] { RunOf("r1", before), RunOf("r2", before), RunOf("r3", after) };
-        var candidate = Assert.Single(HarnessDetectors.Detect(runs), c => c.RuleId == HarnessDetectors.RuleLargeOutput);
-        var resolvedAt = DateTimeOffset.Parse("2026-10-11T00:00:00Z");
-
-        var recurred = Assert.Single(HarnessCandidateStore.Triage([candidate],
-            new Dictionary<string, HarnessCandidateStatus> { [candidate.Id] = new(HarnessCandidateState.Resolved, resolvedAt, null) }));
-        Assert.Equal(HarnessCandidateStanding.Recurred, recurred.Standing);
-        Assert.True(recurred.NeedsWork);
-        Assert.Equal(1, recurred.Candidate.RunCount);
-        Assert.Equal(40_000 / HarnessDetectors.CharsPerToken, recurred.Candidate.EstimatedTokens);
-        Assert.All(recurred.Candidate.Evidence, e => Assert.Equal("r3", e.RunId));
-
-        // 対処後に起きていなければ、直す対象から外れる。
-        var quiet = Assert.Single(HarnessCandidateStore.Triage([candidate],
-            new Dictionary<string, HarnessCandidateStatus> { [candidate.Id] = new(HarnessCandidateState.Resolved, DateTimeOffset.Parse("2026-10-13T00:00:00Z"), null) }));
-        Assert.Equal(HarnessCandidateStanding.Resolved, quiet.Standing);
-        Assert.False(quiet.NeedsWork);
-    }
-
-    [Fact]
-    public void Addressing_and_dismissed_candidates_never_come_back_as_recurrences()
-    {
-        var call = At(Call("Bash", command: "git log", chars: 30_000), "2026-10-12T00:00:00Z");
-        var candidate = Assert.Single(HarnessDetectors.Detect([RunOf("r1", call)]), c => c.RuleId == HarnessDetectors.RuleLargeOutput);
-        var earlier = DateTimeOffset.Parse("2026-10-11T00:00:00Z");
-
-        // 対処中：直している最中のセッションが根拠を生んでも再発にしない。
-        var addressing = Assert.Single(HarnessCandidateStore.Triage([candidate],
-            new Dictionary<string, HarnessCandidateStatus> { [candidate.Id] = new(HarnessCandidateState.Addressing, earlier, null) }));
-        Assert.Equal(HarnessCandidateStanding.Addressing, addressing.Standing);
-        var dismissed = Assert.Single(HarnessCandidateStore.Triage([candidate],
-            new Dictionary<string, HarnessCandidateStatus> { [candidate.Id] = new(HarnessCandidateState.Dismissed, earlier, null) }));
-        Assert.Equal(HarnessCandidateStanding.Dismissed, dismissed.Standing);
-        Assert.False(dismissed.NeedsWork);
-    }
-
-    [Fact]
-    public void Candidate_that_does_not_occur_on_the_current_harness_is_superseded()
-    {
-        // ハーネスを直しただけ（ペインで扱いを付けない）でも、直した後に始まった Run で起きていなければ外れる（§37.5.2）。
-        var big = Call("Bash", command: "git log", chars: 30_000);
-        var runs = new[] { RunOf("old1", big), RunOf("old2", big), RunOf("new1", Call("Read", @"C:\ws\a.cs")) };
-        var candidate = Assert.Single(HarnessDetectors.Detect(runs), c => c.RuleId == HarnessDetectors.RuleLargeOutput);
-        var current = new HashSet<string>(["new1"]);
-        var none = new Dictionary<string, HarnessCandidateStatus>();
-
-        var superseded = Assert.Single(HarnessCandidateStore.Triage([candidate], none, current));
-        Assert.Equal(HarnessCandidateStanding.Superseded, superseded.Standing);
-        Assert.False(superseded.NeedsWork);
-
-        // 今のハーネスでもまだ起きているなら直す対象のまま。
-        var still = Assert.Single(HarnessCandidateStore.Triage([candidate], none, new HashSet<string>(["old2"])));
-        Assert.Equal(HarnessCandidateStanding.Open, still.Standing);
-
-        // ハーネスの変更が分からなければ従来どおり。
-        Assert.Equal(HarnessCandidateStanding.Open, Assert.Single(HarnessCandidateStore.Triage([candidate], none)).Standing);
-    }
-
-    [Fact]
-    public void Addressing_candidate_is_superseded_only_when_the_harness_changed_after_handing_it_over()
-    {
-        var call = Call("Bash", command: "git log", chars: 30_000);
-        var candidate = Assert.Single(HarnessDetectors.Detect([RunOf("old", call)]), c => c.RuleId == HarnessDetectors.RuleLargeOutput);
-        var handedOver = DateTimeOffset.Parse("2026-10-11T00:00:00Z");
-        var statuses = new Dictionary<string, HarnessCandidateStatus> { [candidate.Id] = new(HarnessCandidateState.Addressing, handedOver, null) };
-        var current = new HashSet<string>(["new"]);
-
-        // 渡した後にハーネスが変わった＝直しが入った。
-        Assert.Equal(HarnessCandidateStanding.Superseded,
-            Assert.Single(HarnessCandidateStore.Triage([candidate], statuses, current, handedOver.AddHours(1))).Standing);
-        // 渡しただけでハーネスはまだ変わっていない。
-        Assert.Equal(HarnessCandidateStanding.Addressing,
-            Assert.Single(HarnessCandidateStore.Triage([candidate], statuses, current, handedOver.AddHours(-1))).Standing);
-    }
-
-    [Fact]
-    public void Candidate_statuses_round_trip_and_unreadable_file_is_left_alone()
-    {
-        var path = HarnessCandidateStore.PathFor(Path.Combine(_base, "ws"));
-        var at = DateTimeOffset.Parse("2026-10-11T00:00:00Z");
-        HarnessCandidateStore.SetMany(path, new Dictionary<string, HarnessCandidateStatus?>
-        {
-            ["large-output:cmd:git log"] = new(HarnessCandidateState.Addressing, at, null),
-            ["reread:c:\\ws\\a.cs"] = new(HarnessCandidateState.Dismissed, at, "偶然"),
-        });
-        HarnessCandidateStore.SetMany(path, new Dictionary<string, HarnessCandidateStatus?>
-        {
-            ["large-output:cmd:git log"] = new(HarnessCandidateState.Resolved, at.AddDays(1), null),
-            ["reread:c:\\ws\\a.cs"] = null,
-        });
-        var loaded = HarnessCandidateStore.Load(path);
-        Assert.Equal(HarnessCandidateState.Resolved, Assert.Single(loaded).Value.State);
-        Assert.Equal(at.AddDays(1), loaded["large-output:cmd:git log"].At);
-
-        File.WriteAllText(path, "{ 壊れた");
-        Assert.Throws<InvalidDataException>(() => HarnessCandidateStore.SetMany(path,
-            new Dictionary<string, HarnessCandidateStatus?> { ["x"] = new(HarnessCandidateState.Resolved, at, null) }));
-        Assert.Equal("{ 壊れた", File.ReadAllText(path));
-    }
-
-    [Fact]
-    public void Bulk_prompt_lists_every_candidate_with_its_id_and_asks_for_a_report()
-    {
-        var runs = new[]
-        {
-            RunOf("r1", Call("Bash", command: "dotnet build", chars: 50_000)),
-            RunOf("r2", Call("Edit", @"C:\ws\a.cs", error: true, errorHead: "String to replace not found in file")),
-        };
-        var candidates = HarnessDetectors.Detect(runs).Where(c => c.RuleId is HarnessDetectors.RuleLargeOutput or HarnessDetectors.RuleEditMismatch).ToList();
-        Assert.Equal(2, candidates.Count);
-
-        var text = HarnessTaskWriter.ToBulkPrompt(candidates, DateTimeOffset.Parse("2026-10-11T03:00:00Z"), p => p);
-
-        foreach (var c in candidates)
-            Assert.Contains($"`{c.Id}`", text);
-        Assert.Contains("| 候補 ID |", text);
-        Assert.Contains("改善の方向（推測）", text);
     }
 
     // ===== 記録フォルダーの探し方 =====
@@ -623,94 +423,10 @@ public sealed class HarnessTests : IDisposable
 
         var run = Assert.Single(snapshot.Runs);
         Assert.Equal("s1", run.Id);
-        Assert.Contains(snapshot.Candidates, c => c.RuleId == HarnessDetectors.RuleLargeOutput);
+        Assert.Equal(25_000, Assert.Single(run.ToolCalls).ResultChars);
 
         var again = await analyzer.AnalyzeAsync(TimeSpan.FromDays(30), null, CancellationToken.None);
         Assert.Same(run, Assert.Single(again.Runs)); // 長さ・更新時刻が同じなら読み直さない
-    }
-
-    // ===== 点検（§37.10） =====
-
-    private static HarnessCheckItem CheckOf(IReadOnlyList<HarnessCheckItem> items, string id) => Assert.Single(items, i => i.Id == id);
-
-    [Fact]
-    public void Check_on_empty_folder_reports_everything_missing_and_creates_nothing()
-    {
-        var items = HarnessStructureCheck.Inspect(_base, [], [], 0);
-
-        Assert.All(items, i => Assert.Equal(HarnessCheckStatus.Missing, i.Status));
-        Assert.Equal(".harness/ が無い。", CheckOf(items, HarnessStructureCheck.ItemManifest).Finding);
-        // 点検するだけでリポジトリにフォルダーを生やさない（§37.3）。
-        Assert.False(Directory.Exists(Path.Combine(_base, ".harness")));
-        // 判定は Run に付けるもので、雛形は無い。
-        Assert.Empty(CheckOf(items, HarnessStructureCheck.ItemVerdicts).Scaffold);
-    }
-
-    [Fact]
-    public void Scaffold_uses_observed_successful_build_command_and_never_overwrites()
-    {
-        var run = RunOf("r1",
-            Call("Edit", @"C:\ws\a.cs"),
-            Call("Bash", command: "cd C:/ws && dotnet build x.sln 2>&1 | tail -5"),
-            Call("Bash", command: "dotnet test", error: true));
-        var candidates = HarnessDetectors.Detect([run]);
-        var workflows = CheckOf(HarnessStructureCheck.Inspect(_base, [run], candidates, 1), HarnessStructureCheck.ItemWorkflows);
-
-        var content = Assert.Single(workflows.Scaffold).Content;
-        Assert.Contains("`dotnet build x.sln`（観測: 1 Run で成功）", content);
-        Assert.DoesNotContain("dotnet test", content); // 失敗したコマンドは「検証のコマンド」にしない
-
-        var path = Path.Combine(_base, ".harness", "workflows", "verify-before-done.md");
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        File.WriteAllText(path, "人間が書いた");
-        Assert.Empty(HarnessStructureCheck.WriteScaffold(_base, workflows));
-        Assert.Equal("人間が書いた", File.ReadAllText(path));
-    }
-
-    [Fact]
-    public void Written_scaffold_makes_the_item_present_and_manifest_is_readable()
-    {
-        var folder = Path.Combine(_base, "My App");
-        Directory.CreateDirectory(folder);
-        var manifest = CheckOf(HarnessStructureCheck.Inspect(folder, [], [], 0), HarnessStructureCheck.ItemManifest);
-        var written = Assert.Single(HarnessStructureCheck.WriteScaffold(folder, manifest));
-
-        Assert.Equal(("my-app", "0.1.0"), HarnessDefinitionReader.ReadManifest(written));
-        var again = CheckOf(HarnessStructureCheck.Inspect(folder, [], [], 0), HarnessStructureCheck.ItemManifest);
-        Assert.Equal(HarnessCheckStatus.Present, again.Status);
-    }
-
-    [Fact]
-    public void Tasks_without_acceptance_section_are_incomplete()
-    {
-        var tasks = Path.Combine(_base, ".harness", "tasks");
-        Directory.CreateDirectory(tasks);
-        File.WriteAllText(Path.Combine(tasks, "good.md"), "# 良い\n\n## 受け入れ条件\n\n- [ ] 通る\n");
-        File.WriteAllText(Path.Combine(tasks, "bad.md"), "# 悪い\n\n## 目的\n");
-        var linked = RunOf("r1") with { Prompts = ["task:good をやって"] };
-
-        var item = CheckOf(HarnessStructureCheck.Inspect(_base, [linked, RunOf("r2")], [], 1), HarnessStructureCheck.ItemTasks);
-
-        Assert.Equal(HarnessCheckStatus.Incomplete, item.Status);
-        Assert.Contains("bad", item.Finding);
-        Assert.DoesNotContain("good", item.Finding);
-        Assert.Equal("期間内の Run 2 件のうち、タスクに結び付いたのは 1 件。", item.Evidence);
-    }
-
-    [Fact]
-    public void Rules_evidence_and_scaffold_come_from_repeated_failures_of_this_folder_only()
-    {
-        var fail = Call("Bash", command: "npm run lint", error: true, errorHead: "boom");
-        var mine = RunOf("r1", fail, fail);
-        var other = RunOf("r9", Call("Bash", command: "cargo fmt", error: true), Call("Bash", command: "cargo fmt", error: true));
-        var candidates = HarnessDetectors.Detect([mine, other]);
-
-        var rules = CheckOf(HarnessStructureCheck.Inspect(_base, [mine], candidates, 1), HarnessStructureCheck.ItemRules);
-
-        Assert.Equal("同じコマンドの失敗反復 1 種（1 Run）（改善候補）。", rules.Evidence);
-        var content = Assert.Single(rules.Scaffold).Content;
-        Assert.Contains("npm run", content);
-        Assert.DoesNotContain("cargo", content); // 別フォルダーの Run の候補は混ぜない
     }
 
     // ===== レビュー指摘の再発防止 =====
@@ -742,20 +458,6 @@ public sealed class HarnessTests : IDisposable
         var text = File.ReadAllText(path);
         Assert.Contains("pending", text);
         Assert.Equal(HarnessVerdictKind.Rejected, Assert.Single(HarnessVerdictStore.Load(path)).Value.Verdict);
-    }
-
-    [Fact]
-    public void Check_counts_only_runs_of_its_own_folder()
-    {
-        var edit = Call("Edit", @"C:\ws\a.cs");
-        var mine = RunOf("r1", edit);
-        var others = Enumerable.Range(2, 4).Select(i => RunOf($"r{i}", edit)).ToList();
-        var candidates = HarnessDetectors.Detect([mine, .. others]);
-        Assert.Equal(5, Assert.Single(candidates, c => c.RuleId == HarnessDetectors.RuleUnverified).RunCount);
-
-        var workflows = CheckOf(HarnessStructureCheck.Inspect(_base, [mine], candidates, 0), HarnessStructureCheck.ItemWorkflows);
-
-        Assert.Equal("検証なしの変更が 1 Run で起きている（改善候補）。", workflows.Evidence);
     }
 
     [Fact]
@@ -818,30 +520,6 @@ public sealed class HarnessTests : IDisposable
         Assert.Same(declared, links[0]);
         Assert.True(links[1].IsTicketOnly);
         Assert.Equal("AB#77", links[1].Id);
-    }
-
-    [Fact]
-    public void Ticket_linked_runs_satisfy_the_tasks_check_without_task_files()
-    {
-        Directory.CreateDirectory(Path.Combine(_base, ".harness"));
-        var linked = RunOf("r1") with { Prompts = ["AB#1234 をやって"] };
-
-        var item = CheckOf(HarnessStructureCheck.Inspect(_base, [linked, RunOf("r2")], [], 1), HarnessStructureCheck.ItemTasks);
-
-        Assert.Equal(HarnessCheckStatus.Present, item.Status);
-        Assert.Empty(item.Scaffold);
-        Assert.Contains("AB#1234", item.Evidence);
-    }
-    [Fact]
-    public void Scaffold_comment_is_not_read_as_a_ticket_declaration()
-    {
-        var file = Path.Combine(_base, "t.md");
-        // 雛形から ticket: の行だけ消したもの。コメントの説明に「ticket:」と AB#1234 が残る。
-        var template = HarnessStructureCheck.Inspect(_base, [], [], 0)
-            .Single(i => i.Id == HarnessStructureCheck.ItemTasks).Scaffold.Single().Content;
-        File.WriteAllText(file, string.Join("\n", template.Split('\n').Where(l => l.Trim() != "ticket:")));
-
-        Assert.Null(HarnessDefinitionReader.ReadTicket(file));
     }
 
     [Theory]

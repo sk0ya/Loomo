@@ -14,19 +14,11 @@ namespace sk0ya.Loomo.Services;
 public sealed record HarnessSnapshot(
     HarnessDefinition Definition,
     IReadOnlyList<HarnessRun> Runs,
-    IReadOnlyList<HarnessCandidate> Candidates,
     IReadOnlyDictionary<string, HarnessVerdict> Verdicts,
     IReadOnlyDictionary<string, HarnessVersion?> VersionByRun,
     IReadOnlyList<string> TranscriptDirectories,
-    DateTimeOffset Since,
-    IReadOnlyDictionary<string, HarnessCandidateStatus> CandidateStatuses,
-    IReadOnlyDictionary<string, DateTimeOffset>? HarnessChangedAt = null,
-    IReadOnlySet<string>? CurrentRuns = null)
+    DateTimeOffset Since)
 {
-    /// <summary>どれかのフォルダーでハーネスを最後に変えた時刻（§37.5.2）。分からなければ null。</summary>
-    public DateTimeOffset? LatestHarnessChange
-        => HarnessChangedAt is { Count: > 0 } changed ? changed.Values.Max() : null;
-
     public HarnessVersion? VersionOf(HarnessRun run) => VersionByRun.TryGetValue(run.Id, out var v) ? v : null;
 }
 
@@ -66,9 +58,10 @@ public sealed class HarnessAnalyzer
         var folders = _workspace.Folders.ToList();
         var since = DateTimeOffset.UtcNow - period;
 
-        var (definition, directories, runs, verdicts, statuses) = await Task.Run(() =>
+        var (definition, directories, runs, verdicts) = await Task.Run(() =>
         {
-            var definition = HarnessDefinitionReader.Read(folders);
+            // ユーザー全体の ~/.claude（記録フォルダー projects/ の親）も、どのセッションにも効くハーネスとして読む。
+            var definition = HarnessDefinitionReader.Read(folders, Path.GetDirectoryName(_projectsRoot));
             var directories = ClaudeTranscriptLocator.FindProjectDirectories(_projectsRoot, _workspace);
             var files = directories.SelectMany(d => ClaudeTranscriptLocator.ListSessions(d, since.UtcDateTime)).ToList();
             EvictOutside(directories);
@@ -93,17 +86,7 @@ public sealed class HarnessAnalyzer
                 foreach (var (id, v) in HarnessVerdictStore.Load(HarnessVerdictStore.PathFor(folder)))
                     verdicts[id] = v;
             }
-            // 候補の扱い（§37.5.1）。同じ候補が複数フォルダーにあれば新しく付けたほうを採る。
-            var statuses = new Dictionary<string, HarnessCandidateStatus>(StringComparer.Ordinal);
-            foreach (var folder in folders)
-            {
-                foreach (var (id, st) in HarnessCandidateStore.Load(HarnessCandidateStore.PathFor(folder)))
-                {
-                    if (!statuses.TryGetValue(id, out var existing) || existing.At < st.At)
-                        statuses[id] = st;
-                }
-            }
-            return (definition, directories, runs, verdicts, statuses);
+            return (definition, directories, runs, verdicts);
         }, cancellationToken).ConfigureAwait(false);
 
         var timelines = new Dictionary<string, HarnessVersionTimeline>(StringComparer.OrdinalIgnoreCase);
@@ -120,56 +103,7 @@ public sealed class HarnessAnalyzer
                 : null;
         }
 
-        // 今のハーネス（§37.5.2）：フォルダーごとにハーネスを最後に変えた時刻を出し、それより後に始まった Run を集める。
-        var changedAt = new Dictionary<string, DateTimeOffset>(StringComparer.OrdinalIgnoreCase);
-        foreach (var folder in folders)
-        {
-            var committed = timelines.TryGetValue(folder, out var t) && t.Versions.Count > 0 ? t.Versions[^1].At : (DateTimeOffset?)null;
-            var edited = LatestHarnessEdit(folder, definition);
-            if (Max(committed, edited) is { } at)
-                changedAt[folder] = at;
-        }
-        var currentRuns = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var run in runs)
-        {
-            var folder = _workspace.FolderForOrPrimary(run.Cwd);
-            // 開始時刻が分からない Run は今のものとして扱う（分からないまま外すと、直っていないものまで隠れる）。
-            if (folder is null || !changedAt.TryGetValue(folder, out var at) || run.StartedAt is not { } started || started >= at)
-                currentRuns.Add(run.Id);
-        }
-
-        var candidates = await Task.Run(() => HarnessDetectors.Detect(runs), cancellationToken).ConfigureAwait(false);
-        return new HarnessSnapshot(definition, runs, candidates, verdicts, versionByRun, directories, since, statuses,
-            changedAt, currentRuns);
-    }
-
-    private static DateTimeOffset? Max(DateTimeOffset? a, DateTimeOffset? b)
-        => a is null ? b : b is null ? a : a > b ? a : b;
-
-    /// <summary>
-    /// フォルダーのハーネスのファイル（構成要素として読んだもの＋ harness.yaml）を最後に書き換えた時刻。未コミットの直しを
-    /// 拾うため（コミットだけ見ると、CLAUDE.md を直してもコミットするまで候補が消えない）。
-    /// <para><c>settings.local.json</c> は見ない——権限を許可するたびに Claude Code が書き足すので、ハーネスを直していなくても
-    /// 時刻が進む。<c>.harness/runs/</c>・<c>tasks/</c> もこのペインが書くので構成要素に入っていない。</para>
-    /// </summary>
-    private DateTimeOffset? LatestHarnessEdit(string folder, HarnessDefinition definition)
-    {
-        DateTimeOffset? latest = null;
-        var paths = definition.Components.Select(c => c.Path)
-            .Append(Path.Combine(folder, HarnessDefinitionReader.HarnessFolderName, "harness.yaml"));
-        foreach (var path in paths.Distinct(StringComparer.OrdinalIgnoreCase))
-        {
-            if (string.Equals(Path.GetFileName(path), "settings.local.json", StringComparison.OrdinalIgnoreCase)
-                || !string.Equals(_workspace.FolderFor(path), folder, StringComparison.OrdinalIgnoreCase))
-                continue;
-            try
-            {
-                if (File.Exists(path))
-                    latest = Max(latest, new DateTimeOffset(File.GetLastWriteTimeUtc(path), TimeSpan.Zero));
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
-        }
-        return latest;
+        return new HarnessSnapshot(definition, runs, verdicts, versionByRun, directories, since);
     }
 
     /// <summary>

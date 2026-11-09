@@ -19,19 +19,17 @@ public partial class HarnessPaneView : UserControl
         };
     }
 
-    /// <summary>ペインへフォーカスを移したとき（キーボードで候補を送れるように一覧へ落とす）。</summary>
+    /// <summary>ペインへフォーカスを移したとき（キーボードで送れるように、見えているタブの中身へ落とす）。</summary>
     public void FocusList()
     {
-        if (CandidateList.IsVisible)
-            CandidateList.Focus();
+        if (RunList.IsVisible)
+            RunList.Focus();
+        else if (ConfigList.IsVisible)
+            ConfigList.Focus();
+        else if (AnalysisPromptBox.IsVisible)
+            AnalysisPromptBox.Focus();
         else
             Focus();
-    }
-
-    private void OnEvidenceDoubleClick(object sender, MouseButtonEventArgs e)
-    {
-        if (DataContext is HarnessPaneViewModel vm && vm.SelectedEvidence is { } row)
-            vm.OpenEvidenceRecordCommand.Execute(row);
     }
 
     private void OnConfigDoubleClick(object sender, MouseButtonEventArgs e)
@@ -40,9 +38,12 @@ public partial class HarnessPaneView : UserControl
             vm.OpenConfigCommand.Execute(row);
     }
 
-    private void OnCheckDoubleClick(object sender, MouseButtonEventArgs e)
+    private void OnConfigKeyDown(object sender, KeyEventArgs e)
     {
-        if (DataContext is HarnessPaneViewModel vm && vm.SelectedCheck is { } row)
-            vm.OpenCheckCommand.Execute(row);
+        if (e.Key == Key.Enter && DataContext is HarnessPaneViewModel vm && vm.SelectedConfig is { } row)
+        {
+            vm.OpenConfigCommand.Execute(row);
+            e.Handled = true;
+        }
     }
 }

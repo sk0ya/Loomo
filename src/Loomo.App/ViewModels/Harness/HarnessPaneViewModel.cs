@@ -37,20 +37,19 @@ public interface IHarnessTicketDirectory
 }
 
 /// <summary>
-/// ハーネスペイン（<see cref="PaneKind.Harness"/>、§37）。ハーネスの改善箇所を見つけ、根拠を辿り、版を比べる作業台。
-/// <para><b>観測事実と推測を混ぜない</b>：数値は記録にあるものだけ（料金が無ければ「不明」）、推定トークンと
-/// 「関連しそうな構成要素」「改善の方向」は推測として書く（§37.2）。</para>
+/// ハーネスペイン（<see cref="PaneKind.Harness"/>、§37）。記録を見て、版を比べ、直し所探しを Claude Code に渡す作業台。
+/// <para><b>観測事実だけを出す</b>：数値は記録にあるものだけ（料金が無ければ「不明」）。直し所の推測はペインではせず、
+/// 記録を読ませるプロンプトにして渡す（§37.5）。</para>
 /// <para>記録の解析は重いので、初めて見えたとき・期間を変えたとき・更新を押したときだけ走る。記録フォルダーは
 /// 監視しない——Claude Code はターンごとに追記するので、監視すると作業中ずっと再解析が走る（§37.8）。</para>
 /// </summary>
 public sealed partial class HarnessPaneViewModel : ObservableObject
 {
-    public const int TabCandidates = 0;
+    /// <summary>分析（§37.5）。タブの番号は永続化される（旧「改善候補」の 0 を引き継ぐ。旧「点検」の 4 は 0 に戻す）。</summary>
+    public const int TabAnalysis = 0;
     public const int TabRuns = 1;
     public const int TabConfig = 2;
     public const int TabVersions = 3;
-    /// <summary>点検（§37.10）。タブの番号は永続化されるので末尾に足す。</summary>
-    public const int TabCheck = 4;
 
     private const int DetailMaxChars = 20_000;
 
@@ -58,11 +57,8 @@ public sealed partial class HarnessPaneViewModel : ObservableObject
     private readonly IWorkspaceService _workspace;
     private readonly IHarnessTicketDirectory? _tickets;
     private CancellationTokenSource? _loadCts;
-    // 根拠の詳細とツール呼び出しの詳細は別々に取り消す（共有すると、片方の選択が外れただけで他方の読込が止まる）。
-    private readonly DetailSlot _evidenceDetailLoad = new();
     private readonly DetailSlot _callDetailLoad = new();
     private HarnessSnapshot? _snapshot;
-    private IReadOnlyList<HarnessTriagedCandidate> _triaged = [];
     private bool _loaded;
     private bool _stale = true;
 
@@ -123,24 +119,9 @@ public sealed partial class HarnessPaneViewModel : ObservableObject
     [ObservableProperty] private string _costLabel = "—";
     [ObservableProperty] private string _harnessLabel = "";
 
-    // ===== 改善候補 =====
-    public ObservableCollection<HarnessComponentRow> Components { get; } = new();
-    public ObservableCollection<HarnessCandidateRow> Candidates { get; } = new();
-    public ObservableCollection<HarnessEvidenceRow> Evidence { get; } = new();
-    [ObservableProperty] private HarnessComponentRow? _selectedComponent;
-    /// <summary>1 Run でしか起きていない候補を隠す（1回きりは偶然のことが多い）。</summary>
-    [ObservableProperty] private bool _hideSingleRunCandidates;
-    /// <summary>対処中・対処済み・見送りの候補も並べる（§37.5.1）。既定は直す対象（未対処・再発）だけ。</summary>
-    [ObservableProperty] private bool _showHandledCandidates;
-    [ObservableProperty] private string _candidateStatusText = "";
-    /// <summary>どの Run から直す対象を数えているか（§37.5.2、ハーネスを変えた時刻）。</summary>
-    [ObservableProperty] private string _currentHarnessNote = "";
-    [ObservableProperty] private HarnessCandidateRow? _selectedCandidate;
-    [ObservableProperty] private HarnessEvidenceRow? _selectedEvidence;
-    [ObservableProperty] private string _candidateObservation = "";
-    [ObservableProperty] private string _candidateDirection = "";
-    [ObservableProperty] private string _candidateRelated = "";
-    [ObservableProperty] private string _evidenceDetail = "";
+    // ===== 分析 =====
+    /// <summary>Claude Code に渡すプロンプト（期間の記録のパス・指標・構成要素）。コピーする前に中身を見せる。</summary>
+    [ObservableProperty] private string _analysisPrompt = "";
 
     // ===== 実行 =====
     public ObservableCollection<HarnessRunRow> Runs { get; } = new();
@@ -156,12 +137,6 @@ public sealed partial class HarnessPaneViewModel : ObservableObject
     [ObservableProperty] private HarnessConfigRow? _selectedConfig;
     [ObservableProperty] private string _configNote = "";
 
-    // ===== 点検 =====
-    public ObservableCollection<HarnessCheckRow> CheckRows { get; } = new();
-    [ObservableProperty] private HarnessCheckRow? _selectedCheck;
-    [ObservableProperty] private string _checkSummary = "";
-    [ObservableProperty] private string _checkPreview = "";
-
     /// <summary>エディタで開く（ShellWindow が受ける）。</summary>
     public event EventHandler<HarnessOpenRequest>? OpenRequested;
 
@@ -170,9 +145,7 @@ public sealed partial class HarnessPaneViewModel : ObservableObject
     /// <summary>タブ・期間が変わった（ワークスペースへ保存する合図）。</summary>
     public event EventHandler? StateChanged;
 
-    public bool HasSelectedCandidate => SelectedCandidate is not null;
     public bool HasSelectedRun => SelectedRun is not null;
-    public bool HasSelectedCheck => SelectedCheck is not null;
 
     /// <summary>ペインが初めて見えたとき（またはワークスペースが変わってから最初に見えたとき）に読む。</summary>
     public void EnsureLoaded()
@@ -186,8 +159,6 @@ public sealed partial class HarnessPaneViewModel : ObservableObject
     {
         SelectedTab = SelectedTab,
         PeriodDays = (SelectedPeriod ?? DefaultPeriod).Days,
-        HideSingleRunCandidates = HideSingleRunCandidates,
-        ShowHandledCandidates = ShowHandledCandidates,
     };
 
     public void Restore(HarnessPaneSnapshot? snapshot)
@@ -195,10 +166,8 @@ public sealed partial class HarnessPaneViewModel : ObservableObject
         _restoring = true;
         try
         {
-            SelectedTab = snapshot is { SelectedTab: >= TabCandidates and <= TabCheck } s ? s.SelectedTab : TabCandidates;
+            SelectedTab = snapshot is { SelectedTab: >= TabAnalysis and <= TabVersions } s ? s.SelectedTab : TabAnalysis;
             SelectedPeriod = PeriodOptions.FirstOrDefault(p => p.Days == snapshot?.PeriodDays) ?? DefaultPeriod;
-            HideSingleRunCandidates = snapshot?.HideSingleRunCandidates ?? false;
-            ShowHandledCandidates = snapshot?.ShowHandledCandidates ?? false;
         }
         finally
         {
@@ -265,13 +234,6 @@ public sealed partial class HarnessPaneViewModel : ObservableObject
     private void Apply(HarnessSnapshot snapshot)
     {
         _snapshot = snapshot;
-        _triaged = HarnessCandidateStore.Triage(snapshot.Candidates, snapshot.CandidateStatuses,
-            snapshot.CurrentRuns, snapshot.LatestHarnessChange);
-        var superseded = _triaged.Count(t => t.Standing == HarnessCandidateStanding.Superseded);
-        CurrentHarnessNote = snapshot.LatestHarnessChange is { } changed
-            ? $"ハーネスを変えた {HarnessFormat.Time(changed)} より後に始まった Run（{CurrentRunCount(snapshot)} 件）で起きたものだけを直す対象にしています"
-              + (superseded > 0 ? $"——前の版だけで起きた {superseded} 件は「対処済みも表示」で見られます。" : "。")
-            : "";
         var summary = HarnessMetrics.Summarize(snapshot.Runs, snapshot.Verdicts);
         RunsLabel = summary.RunCount.ToString();
         VerdictsLabel = $"{summary.Accepted} ／ {summary.Rejected}";
@@ -291,38 +253,62 @@ public sealed partial class HarnessPaneViewModel : ObservableObject
             ? "このワークスペースで起動した Claude Code の記録が見つかりません（~/.claude/projects）。"
             : snapshot.Runs.Count == 0 ? "この期間の記録がありません。期間を広げてください。" : "";
 
-        var runsById = snapshot.Runs.ToDictionary(r => r.Id, StringComparer.Ordinal);
-        ApplyComponents(snapshot, runsById);
+        ApplyConfig(snapshot);
         ApplyRuns(snapshot);
         ApplyVersions(snapshot);
-        ApplyChecks(snapshot);
+        ApplyAnalysis(snapshot);
     }
 
-    // ===== 改善候補タブ =====
+    // ===== 分析タブ =====
 
-    private void ApplyComponents(HarnessSnapshot snapshot, Dictionary<string, HarnessRun> runsById)
+    private void ApplyAnalysis(HarnessSnapshot snapshot)
+        => AnalysisPrompt = snapshot.Runs.Count == 0
+            ? ""
+            : HarnessAnalysisPrompt.Build(snapshot.Runs, snapshot.Verdicts, snapshot.VersionOf, snapshot.Definition.Components,
+                snapshot.Since, DateTimeOffset.Now, DisplayPath);
+
+    /// <summary>分析プロンプトをコピーする。Claude Code に貼れば、記録を読んで直し所を表で返す（直すのは了承したものだけ）。</summary>
+    [RelayCommand]
+    private void CopyAnalysisPrompt()
     {
-        var previous = SelectedComponent?.Component?.Id;
-        var previousCandidate = SelectedCandidate?.Candidate.Id;
-        Components.Clear();
-        // 構成要素の件数は直す対象（未対処・再発）だけを数える——対処済みまで数えると、直しても減らない。
-        var open = _triaged.Where(t => t.NeedsWork).Select(t => t.Candidate).ToList();
-        Components.Add(new HarnessComponentRow(null, "", open.Count));
-        ConfigRows.Clear();
-        foreach (var component in snapshot.Definition.Components)
+        if (AnalysisPrompt.Length == 0)
         {
-            var usage = UsageOf(component, snapshot.Runs);
-            var related = open.Count(c => IsRelated(c, component, runsById));
-            Components.Add(new HarnessComponentRow(component, usage, related));
-            ConfigRows.Add(new HarnessConfigRow(component, usage, DisplayPath(component.Path)));
+            StatusText = "この期間の記録がありません。";
+            return;
         }
+        try
+        {
+            Clipboard.SetText(AnalysisPrompt);
+            StatusText = "分析プロンプトをコピーしました。ターミナルの Claude Code に貼ってください。";
+        }
+        catch (System.Runtime.InteropServices.ExternalException)
+        {
+            StatusText = "クリップボードが使えませんでした。";
+        }
+    }
+
+    // ===== 構成タブ =====
+
+    private void ApplyConfig(HarnessSnapshot snapshot)
+    {
+        var previous = SelectedConfig?.Component.Id;
+        ConfigRows.Clear();
+        // 開きに来ることが多いもの（指示・設定）を先に、ワークスペースのものをユーザー全体のものより先に並べる。
+        foreach (var component in snapshot.Definition.Components.OrderBy(c => c.UserScope).ThenBy(c => ConfigRank(c.Kind)))
+            ConfigRows.Add(new HarnessConfigRow(component, UsageOf(component, snapshot.Runs), DisplayPath(component.Path)));
         ConfigNote = snapshot.Definition.HasHarnessFolder
             ? $"定義（設定されているもの）と、期間内の使用（観測）。.harness: {string.Join(", ", snapshot.Definition.HarnessFolders.Select(DisplayPath))}"
-            : "定義（設定されているもの）と、期間内の使用（観測）。.harness/ はまだ無い——判定を付けるか、改善候補をタスクにすると作られる。";
-        SelectedComponent = Components.FirstOrDefault(c => c.Component?.Id == previous) ?? Components[0];
-        if (previousCandidate is not null)
-            SelectedCandidate = Candidates.FirstOrDefault(c => c.Candidate.Id == previousCandidate) ?? SelectedCandidate;
+            : "定義（設定されているもの）と、期間内の使用（観測）。";
+        SelectedConfig = ConfigRows.FirstOrDefault(r => r.Component.Id == previous);
     }
+
+    private static int ConfigRank(HarnessComponentKind kind) => kind switch
+    {
+        HarnessComponentKind.Instructions => 0,
+        HarnessComponentKind.Settings => 1,
+        HarnessComponentKind.Hook => 2,
+        _ => 3,
+    };
 
     /// <summary>構成要素の使用（観測）。Skill／サブエージェントだけは呼ばれた回数が記録に残る。</summary>
     private static string UsageOf(HarnessComponent component, IReadOnlyList<HarnessRun> runs) => component.Kind switch
@@ -335,243 +321,6 @@ public sealed partial class HarnessPaneViewModel : ObservableObject
     };
 
     private static string CountLabel(int count) => count == 0 ? "観測なし" : $"{count}回";
-
-    /// <summary>候補とこの構成要素が「関連しそう」か（推測）：規則の当たりの種類か、根拠の Run でその Skill が使われた。</summary>
-    private static bool IsRelated(HarnessCandidate candidate, HarnessComponent component, Dictionary<string, HarnessRun> runsById)
-    {
-        if (candidate.RelatedKinds.Contains(component.Kind))
-            return true;
-        if (component.Kind != HarnessComponentKind.Skill)
-            return false;
-        return candidate.Evidence.Any(e => runsById.TryGetValue(e.RunId, out var run)
-            && run.SkillsUsed.Any(s => s.Equals(component.Name, StringComparison.OrdinalIgnoreCase)));
-    }
-
-    partial void OnHideSingleRunCandidatesChanged(bool value)
-    {
-        if (!_restoring)
-            StateChanged?.Invoke(this, EventArgs.Empty);
-        OnSelectedComponentChanged(SelectedComponent);
-    }
-
-    partial void OnShowHandledCandidatesChanged(bool value)
-    {
-        if (!_restoring)
-            StateChanged?.Invoke(this, EventArgs.Empty);
-        OnSelectedComponentChanged(SelectedComponent);
-    }
-
-    partial void OnSelectedComponentChanged(HarnessComponentRow? value)
-    {
-        if (_snapshot is null)
-            return;
-        var runsById = _snapshot.Runs.ToDictionary(r => r.Id, StringComparer.Ordinal);
-        var previous = SelectedCandidate?.Candidate.Id;
-        Candidates.Clear();
-        foreach (var triaged in _triaged)
-        {
-            var candidate = triaged.Candidate;
-            if (!ShowHandledCandidates && !triaged.NeedsWork)
-                continue;
-            if (value?.Component is { } component && !IsRelated(candidate, component, runsById))
-                continue;
-            // 再発は1 Run でも隠さない（直したはずのものがまた起きたのは偶然では片付けない）。
-            if (HideSingleRunCandidates && candidate.RunCount < 2 && triaged.Standing != HarnessCandidateStanding.Recurred)
-                continue;
-            Candidates.Add(new HarnessCandidateRow(triaged, _snapshot.LatestHarnessChange, CurrentRunCount(_snapshot)));
-        }
-        SelectedCandidate = Candidates.FirstOrDefault(c => c.Candidate.Id == previous) ?? Candidates.FirstOrDefault();
-    }
-
-    private static int CurrentRunCount(HarnessSnapshot snapshot) => snapshot.CurrentRuns?.Count ?? snapshot.Runs.Count;
-
-    partial void OnSelectedCandidateChanged(HarnessCandidateRow? value)
-    {
-        OnPropertyChanged(nameof(HasSelectedCandidate));
-        Evidence.Clear();
-        if (value is null)
-        {
-            CandidateObservation = CandidateDirection = CandidateRelated = CandidateStatusText = EvidenceDetail = "";
-            return;
-        }
-        var c = value.Candidate;
-        CandidateObservation = $"{c.Observation}  —  {c.RunCount} Run・根拠 {c.Evidence.Count} 件"
-            + (c.EstimatedTokens > 0 ? $"・推定 {HarnessFormat.Tokens(c.EstimatedTokens)} トークン（文字数÷{HarnessDetectors.CharsPerToken}）" : "");
-        CandidateDirection = c.Direction;
-        CandidateStatusText = value.StatusDetail;
-        var present = _snapshot?.Definition.Components.Where(comp => c.RelatedKinds.Contains(comp.Kind)).Select(comp => comp.Name).ToList() ?? [];
-        CandidateRelated = string.Join(" ・ ", c.RelatedKinds.Select(HarnessFormat.Kind))
-            + (present.Count > 0 ? $"（{string.Join(", ", present)}）" : "（該当する定義なし）");
-        foreach (var e in c.Evidence)
-            Evidence.Add(new HarnessEvidenceRow(e, e.FilePath is { } p ? DisplayPath(p) : null));
-        SelectedEvidence = Evidence.FirstOrDefault();
-    }
-
-    partial void OnSelectedEvidenceChanged(HarnessEvidenceRow? value)
-        => _ = LoadRecordAsync(_evidenceDetailLoad, value?.Evidence.TranscriptPath, value?.Evidence.LineNumber ?? 0, text => EvidenceDetail = text);
-
-    [RelayCommand]
-    private void OpenEvidenceRecord(HarnessEvidenceRow? row)
-    {
-        if ((row ?? SelectedEvidence) is { } r)
-            OpenRequested?.Invoke(this, new HarnessOpenRequest(r.Evidence.TranscriptPath, r.Evidence.LineNumber));
-    }
-
-    [RelayCommand]
-    private void OpenEvidenceFile(HarnessEvidenceRow? row)
-    {
-        if ((row ?? SelectedEvidence)?.Evidence.FilePath is { } path && File.Exists(path))
-            OpenRequested?.Invoke(this, new HarnessOpenRequest(path, 0));
-    }
-
-    /// <summary>改善候補を <c>.harness/tasks/</c> のタスクとして書き出し、エディタで開く（構想§5）。</summary>
-    [RelayCommand]
-    private void CreateTask()
-    {
-        if (SelectedCandidate?.Candidate is not { } candidate)
-            return;
-        if (FolderOf(candidate) is not { } folder)
-        {
-            StatusText = "ワークスペースフォルダーが開かれていません。";
-            return;
-        }
-        try
-        {
-            var path = HarnessTaskWriter.Write(folder, candidate, DateTimeOffset.Now, DisplayPath);
-            StatusText = $"タスクにしました: {DisplayPath(path)}";
-            OpenRequested?.Invoke(this, new HarnessOpenRequest(path, 0));
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            StatusText = $"書き出せませんでした: {ex.Message}";
-        }
-    }
-
-    [RelayCommand]
-    private void CopyCandidate()
-    {
-        if (SelectedCandidate?.Candidate is not { } candidate)
-            return;
-        try
-        {
-            Clipboard.SetText(HarnessTaskWriter.ToMarkdown(candidate, DateTimeOffset.Now, DisplayPath));
-            StatusText = "改善候補を Markdown でコピーしました。";
-        }
-        catch (System.Runtime.InteropServices.ExternalException)
-        {
-            StatusText = "クリップボードが使えませんでした。";
-        }
-    }
-
-    /// <summary>候補を書き込むハーネスのフォルダー：根拠の Run を起動したフォルダー（マルチルート）。分からなければプライマリ。</summary>
-    private string? FolderOf(HarnessCandidate candidate)
-    {
-        var runCwd = candidate.Evidence.Select(e => _snapshot?.Runs.FirstOrDefault(r => r.Id == e.RunId)?.Cwd).FirstOrDefault(c => c is not null);
-        return _workspace.FolderForOrPrimary(runCwd);
-    }
-
-    /// <summary>
-    /// 一覧に出ている直す対象（未対処・再発）をまとめて1つのプロンプトにしてコピーし、「対処中」にする（§37.5.1）。
-    /// 絞り込み（構成要素・1 Run だけを隠す）はそのまま効く——見えているものだけを渡す。
-    /// </summary>
-    [RelayCommand]
-    private void CopyBulkPrompt()
-    {
-        var targets = Candidates.Where(r => r.NeedsWork).Select(r => r.Candidate).ToList();
-        if (targets.Count == 0)
-        {
-            StatusText = "直す対象の候補がありません（対処中・対処済み・見送りは含めません）。";
-            return;
-        }
-        try
-        {
-            Clipboard.SetText(HarnessTaskWriter.ToBulkPrompt(targets, DateTimeOffset.Now, DisplayPath));
-        }
-        catch (System.Runtime.InteropServices.ExternalException)
-        {
-            StatusText = "クリップボードが使えませんでした。";
-            return;
-        }
-        if (SetCandidateStates(targets, HarnessCandidateState.Addressing))
-            StatusText = $"{targets.Count} 件をまとめたプロンプトをコピーし「対処中」にしました。エージェントが直し終えたら「対処中を対処済みに」。";
-    }
-
-    /// <summary>対処中の候補をすべて対処済みにする。ここから後の根拠だけが再発として数えられる。</summary>
-    [RelayCommand]
-    private void ResolveAddressing()
-    {
-        var targets = _triaged.Where(t => t.Standing == HarnessCandidateStanding.Addressing).Select(t => t.Candidate).ToList();
-        if (targets.Count == 0)
-        {
-            StatusText = "対処中の候補はありません。";
-            return;
-        }
-        if (SetCandidateStates(targets, HarnessCandidateState.Resolved))
-            StatusText = $"{targets.Count} 件を対処済みにしました。これより後に起きたものだけが「再発」として戻ります。";
-    }
-
-    [RelayCommand]
-    private void ResolveCandidate() => SetSelectedCandidateState(HarnessCandidateState.Resolved);
-
-    [RelayCommand]
-    private void DismissCandidate() => SetSelectedCandidateState(HarnessCandidateState.Dismissed);
-
-    [RelayCommand]
-    private void ClearCandidateState() => SetSelectedCandidateState(null);
-
-    private void SetSelectedCandidateState(HarnessCandidateState? state)
-    {
-        if (SelectedCandidate?.Candidate is { } candidate)
-            SetCandidateStates([candidate], state);
-    }
-
-    /// <summary>
-    /// 候補の扱いを保存して、記録を読み直さずに一覧へ反映する。書く先は候補ごとのフォルダーで、ほかのフォルダーに
-    /// 同じ候補の古い扱いが残っていれば消す（読み込みは新しいほうを採るので、残すと外したはずの扱いが戻る）。
-    /// </summary>
-    private bool SetCandidateStates(IReadOnlyList<HarnessCandidate> candidates, HarnessCandidateState? state)
-    {
-        if (_snapshot is null)
-            return false;
-        var status = state is { } s ? new HarnessCandidateStatus(s, DateTimeOffset.Now, null) : null;
-        var changesByFolder = new Dictionary<string, Dictionary<string, HarnessCandidateStatus?>>(StringComparer.OrdinalIgnoreCase);
-        foreach (var candidate in candidates)
-        {
-            var target = status is null ? null : FolderOf(candidate);
-            if (status is not null && target is null)
-            {
-                StatusText = "ワークスペースフォルダーが開かれていません。";
-                return false;
-            }
-            foreach (var folder in _workspace.Folders)
-            {
-                var isTarget = string.Equals(folder, target, StringComparison.OrdinalIgnoreCase);
-                if (!isTarget && !File.Exists(HarnessCandidateStore.PathFor(folder)))
-                    continue;
-                if (!changesByFolder.TryGetValue(folder, out var changes))
-                    changesByFolder[folder] = changes = new(StringComparer.Ordinal);
-                changes[candidate.Id] = isTarget ? status : null;
-            }
-        }
-        try
-        {
-            foreach (var (folder, changes) in changesByFolder)
-                HarnessCandidateStore.SetMany(HarnessCandidateStore.PathFor(folder), changes);
-        }
-        catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException)
-        {
-            StatusText = $"候補の扱いを保存できませんでした: {ex.Message}";
-            return false;
-        }
-        var statuses = new Dictionary<string, HarnessCandidateStatus>(_snapshot.CandidateStatuses, StringComparer.Ordinal);
-        foreach (var candidate in candidates)
-        {
-            if (status is null) statuses.Remove(candidate.Id);
-            else statuses[candidate.Id] = status;
-        }
-        Apply(_snapshot with { CandidateStatuses = statuses });
-        return true;
-    }
 
     // ===== 実行タブ =====
 
@@ -670,7 +419,7 @@ public sealed partial class HarnessPaneViewModel : ObservableObject
         Apply(_snapshot with { Verdicts = verdicts });
     }
 
-    // ===== 構成・版タブ =====
+    // ===== 構成・版タブ（操作） =====
 
     [RelayCommand]
     private void OpenConfig(HarnessConfigRow? row)
@@ -682,95 +431,23 @@ public sealed partial class HarnessPaneViewModel : ObservableObject
     private void ApplyVersions(HarnessSnapshot snapshot)
     {
         Versions.Clear();
-        foreach (var row in HarnessMetrics.CompareVersions(snapshot.Runs, snapshot.Verdicts, snapshot.VersionOf, snapshot.Candidates))
+        foreach (var row in HarnessMetrics.CompareVersions(snapshot.Runs, snapshot.Verdicts, snapshot.VersionOf))
             Versions.Add(new HarnessVersionRowViewModel(row));
     }
 
-    // ===== 点検タブ（§37.10） =====
-
-    private void ApplyChecks(HarnessSnapshot snapshot)
-    {
-        var previous = SelectedCheck is { } p ? (p.Folder, p.Item.Id) : default;
-        CheckRows.Clear();
-        var folders = _workspace.Folders.ToList();
-        foreach (var folder in folders)
-        {
-            // 根拠はそのフォルダーで起動した Run だけから取る（マルチルートで別フォルダーの記録を混ぜない）。
-            var runs = snapshot.Runs
-                .Where(r => string.Equals(_workspace.FolderForOrPrimary(r.Cwd), folder, StringComparison.OrdinalIgnoreCase))
-                .ToList();
-            // 版の無い Run（最初のハーネスのコミットより前・git 外）は「別の版」として数えない。
-            var versionCount = runs.Select(r => snapshot.VersionOf(r)?.Commit).OfType<string>().Distinct(StringComparer.Ordinal).Count();
-            var label = folders.Count > 1 ? WorkspacePaths.FolderName(folder) : null;
-            foreach (var item in HarnessStructureCheck.Inspect(folder, runs, snapshot.Candidates, versionCount))
-                CheckRows.Add(new HarnessCheckRow(item, folder, label));
-        }
-        var required = CheckRows.Count(r => r.Item.NeedsWork && r.Item.Level == HarnessCheckLevel.Required);
-        var recommended = CheckRows.Count(r => r.Item.NeedsWork && r.Item.Level == HarnessCheckLevel.Recommended);
-        CheckSummary = required + recommended == 0
-            ? "§37.3 の最小構造は揃っている。"
-            : $"足りないもの：必須 {required} 件・推奨 {recommended} 件。「作る」は無いファイルだけを書き出し、既にあるファイルは上書きしない。";
-        SelectedCheck = CheckRows.FirstOrDefault(r => (r.Folder, r.Item.Id) == previous)
-            ?? CheckRows.FirstOrDefault(r => r.Item.NeedsWork) ?? CheckRows.FirstOrDefault();
-    }
-
-    partial void OnSelectedCheckChanged(HarnessCheckRow? value)
-    {
-        OnPropertyChanged(nameof(HasSelectedCheck));
-        CheckPreview = value?.Item.Scaffold is { Count: > 0 } files
-            ? string.Join("\n", files.Select(f => $"── .harness/{f.RelativePath.Replace('\\', '/')} ──\n{f.Content}"))
-            : "";
-    }
-
-    /// <summary>選んだ項目の雛形を書き出して開く。</summary>
-    [RelayCommand]
-    private void CreateScaffold()
-    {
-        if (SelectedCheck is { CanScaffold: true } row)
-            WriteScaffolds([row]);
-    }
-
-    /// <summary>足りない必須・推奨の雛形をまとめて書き出す（任意は人間が選んだときだけ）。</summary>
-    [RelayCommand]
-    private void CreateAllMissing()
-        => WriteScaffolds(CheckRows.Where(r => r.Item.NeedsWork && r.CanScaffold && r.Item.Level != HarnessCheckLevel.Optional).ToList());
-
-    private void WriteScaffolds(IReadOnlyList<HarnessCheckRow> rows)
-    {
-        if (rows.Count == 0 || _snapshot is null)
-            return;
-        var written = new List<string>();
-        try
-        {
-            foreach (var row in rows)
-                written.AddRange(HarnessStructureCheck.WriteScaffold(row.Folder, row.Item));
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            StatusText = $"書き出せませんでした: {ex.Message}";
-        }
-        if (written.Count == 0)
-            return;
-        StatusText = written.Count == 1 ? $"作りました: {DisplayPath(written[0])}" : $"{written.Count} ファイルを作りました。";
-        // 定義だけ読み直す（記録は変わっていない）。構成タブ・点検タブがそのまま追従する。
-        var folders = _workspace.Folders.ToList();
-        Apply(_snapshot with { Definition = HarnessLocalTickets.WithArchived(HarnessDefinitionReader.Read(folders), folders, _snapshot.Runs) });
-        OpenRequested?.Invoke(this, new HarnessOpenRequest(written[0], 0));
-    }
-
-    [RelayCommand]
-    private void OpenCheck(HarnessCheckRow? row)
-    {
-        if ((row ?? SelectedCheck)?.Item.ExistingPath is { } path && File.Exists(path))
-            OpenRequested?.Invoke(this, new HarnessOpenRequest(path, 0));
-    }
-
-    [RelayCommand]
-    private void GoToRuns() => SelectedTab = TabRuns;
-
     // ===== 共通 =====
 
-    private string DisplayPath(string path) => _workspace.Contains(path) ? _workspace.ToDisplayPath(path) : path;
+    private static readonly string UserProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+
+    /// <summary>ワークスペースの中はフォルダー基準、ホームの下（<c>~/.claude</c> 等）は <c>~</c> で縮めて出す。</summary>
+    private string DisplayPath(string path)
+    {
+        if (_workspace.Contains(path))
+            return _workspace.ToDisplayPath(path);
+        if (UserProfile.Length > 0 && path.StartsWith(UserProfile + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+            return "~" + path[UserProfile.Length..];
+        return path;
+    }
 
     /// <summary>記録の1行を整形して出す（数 MB の記録をエディタで開かなくても中身が見えるように）。</summary>
     private async Task LoadRecordAsync(DetailSlot slot, string? path, int line, Action<string> apply)
