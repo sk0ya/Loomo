@@ -14,6 +14,11 @@ public partial class ShellWindow {
     private const int AwayReflogTake = 40;
     private const int AwayMaxStatFiles = 2000;
 
+    /// <summary>留守中のまとめを手を付けずに置いたら消えるまでの時間。数えるのは Loomo が前面で、ポインタが
+    /// カードに乗っていない間だけ（乗ったら・離れたら最初から数え直す）。消えても「もう一度表示」で戻せる。</summary>
+    private static readonly TimeSpan AwayCardIdleDismiss = TimeSpan.FromSeconds(60);
+    private readonly DispatcherTimer _awayCardDismissTimer = new(DispatcherPriority.Background) { Interval = AwayCardIdleDismiss };
+
     private void InitializeAwaySummary() {
         // ウィンドウではなく<b>アプリ</b>の活性で見る。切り離したウィンドウ（§21.4）へ移っただけで
         // 主ウィンドウは非アクティブになるが、人は部屋の中に居る。
@@ -21,17 +26,19 @@ public partial class ShellWindow {
             app.Deactivated += (_, _) => {
                 _appActive = false;
                 _presence.OnDeactivated(DateTime.UtcNow);
+                UpdateAwayCardDismissTimer();
             };
             app.Activated += (_, _) => {
                 _appActive = true;
                 OnPresenceReturn();
+                UpdateAwayCardDismissTimer();
             };
         }
         // 前面のまま席を立った場合は、戻りを入力で知る（どの Loomo ウィンドウの入力でもよい）。
         if (!_presenceInputHooked) {
             _presenceInputHooked = true;
             EventManager.RegisterClassHandler(typeof(Window), PreviewKeyDownEvent,
-                new KeyEventHandler((_, _) => (Application.Current?.MainWindow as ShellWindow)?.OnPresenceInput()), true);
+                new KeyEventHandler((_, e) => (Application.Current?.MainWindow as ShellWindow)?.OnPresenceKey(e)), true);
             EventManager.RegisterClassHandler(typeof(Window), PreviewMouseDownEvent,
                 new MouseButtonEventHandler((_, _) => (Application.Current?.MainWindow as ShellWindow)?.OnPresenceInput()), true);
         }
@@ -48,7 +55,35 @@ public partial class ShellWindow {
             }
             catch { /* クリップボード占有中は無視 */ }
         };
-        Closed += (_, _) => _presenceTimer.Stop();
+        _awayCardDismissTimer.Tick += (_, _) => {
+            _awayCardDismissTimer.Stop();
+            if (_vm.AwaySummary is { IsVisible: true, AutoDismiss: true, IsPointerOver: false })
+                _vm.AwaySummary.Close();
+        };
+        _vm.AwaySummary.Shown += (_, _) => UpdateAwayCardDismissTimer();
+        _vm.AwaySummary.PropertyChanged += (_, e) => {
+            if (e.PropertyName is nameof(AwaySummaryViewModel.IsVisible) or nameof(AwaySummaryViewModel.IsPointerOver))
+                UpdateAwayCardDismissTimer();
+        };
+        Closed += (_, _) => {
+            _presenceTimer.Stop();
+            _awayCardDismissTimer.Stop();
+        };
+    }
+
+    /// <summary>自動で消えるまでの時間を、数える条件がそろっていれば最初から数え直し、そろっていなければ止める。</summary>
+    private void UpdateAwayCardDismissTimer() {
+        _awayCardDismissTimer.Stop();
+        if (_appActive && _vm.AwaySummary is { IsVisible: true, AutoDismiss: true, IsPointerOver: false })
+            _awayCardDismissTimer.Start();
+    }
+
+    /// <summary>キー入力：戻りの合図に加えて、Esc でカードを閉じる。Esc は<b>食べない</b>——Vim の挿入モード抜けや
+    /// ダイアログの取り消しはそのまま効き、ついでにカードも片付く。</summary>
+    private void OnPresenceKey(KeyEventArgs e) {
+        OnPresenceInput();
+        if (e.Key == Key.Escape && _vm.AwaySummary.IsVisible)
+            _vm.AwaySummary.Close();
     }
 
     private void OnPresenceInput() {
