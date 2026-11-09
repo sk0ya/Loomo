@@ -14,6 +14,8 @@ internal static class HarnessFormat
 
     public static string Percent(double? ratio) => ratio is { } r ? (r * 100).ToString("0.0", CultureInfo.InvariantCulture) + "%" : "—";
 
+    public static string Date(DateTimeOffset at) => at.ToLocalTime().ToString("MM/dd", CultureInfo.InvariantCulture);
+
     public static string Time(DateTimeOffset? at) => at is { } t ? t.ToLocalTime().ToString("MM/dd HH:mm", CultureInfo.InvariantCulture) : "—";
 
     public static string Duration(TimeSpan? duration)
@@ -163,7 +165,7 @@ public sealed class HarnessConfigRow(HarnessComponent component, string usage, s
     public string KindLabel => HarnessFormat.Kind(component.Kind);
     public string Name => component.Name;
     /// <summary>効く範囲：このワークスペース／ユーザー全体（<c>~/.claude</c>）。</summary>
-    public string ScopeLabel => component.UserScope ? "ユーザー" : "プロジェクト";
+    public string ScopeLabel => component.UserScope ? "ユーザー全体（~/.claude）— どのワークスペースにも効く" : "このワークスペース";
     public bool IsUserScope => component.UserScope;
     public string Usage => usage;
     public string PathLabel => displayPath;

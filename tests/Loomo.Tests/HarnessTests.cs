@@ -277,7 +277,7 @@ public sealed class HarnessTests : IDisposable
         Assert.Contains("（サブ 2）", text);
         Assert.Contains("直す先はハーネスだけ", text);
         Assert.Contains("人間が了承したものだけ", text);
-        Assert.Contains("指示 `CLAUDE.md`", text);
+        Assert.Contains(@"指示 `C:\ws\CLAUDE.md`", text);
         Assert.Contains("| a／b 改行 |", text);       // 題の | と改行は表を壊すので潰す
     }
 

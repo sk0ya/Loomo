@@ -147,11 +147,14 @@
             <WrapPanel>
                 <TextBlock Style="{StaticResource Dim}" Text="Run" />
                 <TextBlock Style="{StaticResource MetricValue}" Text="{Binding RunsLabel}" />
-                <TextBlock Style="{StaticResource Dim}" Text="受け入れ／差し戻し" ToolTip="人間の判定（.harness/runs/verdicts.json）" />
-                <TextBlock Style="{StaticResource MetricValue}" Text="{Binding VerdictsLabel}" />
-                <TextBlock Style="{StaticResource Dim}" Text="受け入れ1件あたり"
-                           ToolTip="失敗・差し戻し・未判定を含む総トークン ÷ 受け入れ件数（成功だけの平均にしない）" />
-                <TextBlock Style="{StaticResource MetricValue}" Text="{Binding TokensPerAcceptedLabel}" />
+                <!-- 判定が1件も無い間は出さない（0／0 と「受け入れなし」が並ぶだけになる）。判定は実行タブで付ける -->
+                <StackPanel Orientation="Horizontal" Visibility="{Binding HasVerdicts, Converter={StaticResource BoolToVis}}">
+                    <TextBlock Style="{StaticResource Dim}" Text="受け入れ／差し戻し" ToolTip="人間の判定（.harness/runs/verdicts.json）" />
+                    <TextBlock Style="{StaticResource MetricValue}" Text="{Binding VerdictsLabel}" />
+                    <TextBlock Style="{StaticResource Dim}" Text="受け入れ1件あたり"
+                               ToolTip="失敗・差し戻し・未判定を含む総トークン ÷ 受け入れ件数（成功だけの平均にしない）" />
+                    <TextBlock Style="{StaticResource MetricValue}" Text="{Binding TokensPerAcceptedLabel}" />
+                </StackPanel>
                 <TextBlock Style="{StaticResource Dim}" Text="総トークン" />
                 <TextBlock Style="{StaticResource MetricValue}" Text="{Binding TotalTokensLabel}" />
                 <TextBlock Style="{StaticResource Dim}" Text="キャッシュ読込" ToolTip="cache_read ÷（input + cache_read + cache_creation）" />
@@ -169,19 +172,34 @@
             <TabControl Style="{StaticResource HarnessTabControl}" SelectedIndex="{Binding SelectedTab, Mode=TwoWay}">
                 <!-- ===== 分析（§37.5）：直し所は規則で当てず、記録を Claude Code に読ませる。渡す中身をそのまま見せる ===== -->
                 <TabItem Header="分析">
-                    <DockPanel>
-                        <DockPanel DockPanel.Dock="Top">
-                            <Button DockPanel.Dock="Right" Style="{StaticResource SmallButton}" Margin="0,3,8,3"
-                                    Content="分析プロンプトをコピー" Command="{Binding CopyAnalysisPromptCommand}"
-                                    ToolTip="ターミナルの Claude Code に貼ると、期間の記録を読んで直し所を表で返す（直すのは了承したものだけ）" />
-                            <TextBlock Style="{StaticResource ColumnTitle}" TextWrapping="Wrap"
-                                       Text="期間内の記録の場所・指標・構成要素をまとめたプロンプト。直し所を探すのは Claude Code、直すかどうかは人間が決める。" />
+                    <Grid>
+                        <DockPanel Margin="16,12,16,12">
+                            <!-- 何を渡して、どう使うか。主役はコピーの1操作だけ -->
+                            <StackPanel DockPanel.Dock="Top">
+                                <TextBlock Text="直し所探しを Claude Code に渡す" FontSize="{DynamicResource Fs14}" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource Fg}" />
+                                <TextBlock Text="{Binding AnalysisSummary}" Style="{StaticResource Dim}" Margin="0,4,0,0" TextWrapping="Wrap" />
+                                <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                                    <Button Style="{StaticResource FlatButton}" Content="分析プロンプトをコピー"
+                                            Command="{Binding CopyAnalysisPromptCommand}" VerticalAlignment="Center"
+                                            ToolTip="期間内の記録の場所・指標・構成要素をまとめたプロンプトをクリップボードへ" />
+                                    <TextBlock Margin="14,0,0,0" VerticalAlignment="Center" Style="{StaticResource Dim}" TextWrapping="Wrap"
+                                               Text="① コピー → ② ターミナルの Claude Code に貼る → ③ 返ってきた直し所の表から、直させるものを選ぶ" />
+                                </StackPanel>
+                            </StackPanel>
+                            <TextBlock DockPanel.Dock="Top" Style="{StaticResource ColumnTitle}" Margin="0,16,0,4"
+                                       Text="渡す内容" />
+                            <Border BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="4">
+                                <TextBox x:Name="AnalysisPromptBox" Style="{StaticResource DetailBox}" Padding="10,8"
+                                         TextWrapping="Wrap" HorizontalScrollBarVisibility="Disabled"
+                                         Text="{Binding AnalysisPrompt, Mode=OneWay}" />
+                            </Border>
                         </DockPanel>
-                        <Grid>
-                            <TextBox x:Name="AnalysisPromptBox" Style="{StaticResource DetailBox}" Text="{Binding AnalysisPrompt, Mode=OneWay}" />
+                        <Border Background="{DynamicResource Panel}"
+                                Visibility="{Binding EmptyMessage, Converter={StaticResource NonEmptyToVis}}">
                             <TextBlock Style="{StaticResource EmptyNotice}" Text="{Binding EmptyMessage}" />
-                        </Grid>
-                    </DockPanel>
+                        </Border>
+                    </Grid>
                 </TabItem>
 
                 <!-- ===== 実行（Run の一覧と、選んだ Run のツール呼び出し） ===== -->
@@ -199,19 +217,21 @@
                                     <ListBox.ItemTemplate>
                                         <DataTemplate>
                                             <DockPanel>
+                                                <!-- 右の数字は幅を決めて揃える（失敗の有無で版やトークンの列がずれないように） -->
                                                 <TextBlock x:Name="verdict" DockPanel.Dock="Right" Text="{Binding VerdictLabel}"
                                                            Style="{StaticResource Dim}" Margin="8,0,0,0" />
-                                                <TextBlock DockPanel.Dock="Right" Text="{Binding ErrorsLabel}"
+                                                <TextBlock DockPanel.Dock="Right" Text="{Binding ErrorsLabel}" Width="48" TextAlignment="Right"
                                                            Foreground="{DynamicResource Error}" FontSize="{DynamicResource Fs11}"
                                                            VerticalAlignment="Center" Margin="8,0,0,0" />
-                                                <TextBlock DockPanel.Dock="Right" Text="{Binding TokensLabel}" Style="{StaticResource Dim}" Margin="8,0,0,0" />
+                                                <TextBlock DockPanel.Dock="Right" Text="{Binding TokensLabel}" Style="{StaticResource Dim}" Margin="8,0,0,0"
+                                                           Width="52" TextAlignment="Right" />
                                                 <TextBlock DockPanel.Dock="Right" Text="{Binding VersionLabel}" Style="{StaticResource Dim}" Margin="8,0,0,0"
-                                                           FontFamily="Cascadia Mono, Consolas" />
+                                                           Width="64" FontFamily="Cascadia Mono, Consolas" />
                                                 <TextBlock DockPanel.Dock="Right" Text="{Binding TasksLabel}" Foreground="{DynamicResource Accent}"
                                                            FontSize="{DynamicResource Fs11}" VerticalAlignment="Center" Margin="8,0,0,0"
                                                            MaxWidth="160" TextTrimming="CharacterEllipsis" ToolTip="{Binding TasksLabel}" />
-                                                <TextBlock DockPanel.Dock="Left" Text="{Binding Started}" Width="84" Style="{StaticResource Dim}" />
-                                                <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
+                                                <TextBlock DockPanel.Dock="Left" Text="{Binding Started}" Width="76" Style="{StaticResource Dim}" />
+                                                <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Title}" />
                                             </DockPanel>
                                             <DataTemplate.Triggers>
                                                 <DataTrigger Binding="{Binding IsAccepted}" Value="True">
@@ -289,31 +309,36 @@
                 <TabItem Header="構成">
                     <DockPanel>
                         <DockPanel DockPanel.Dock="Top">
-                            <Button DockPanel.Dock="Right" Style="{StaticResource SmallButton}" Margin="0,3,8,3"
+                            <Button DockPanel.Dock="Right" Style="{StaticResource SmallButton}" Margin="0,4,8,4"
                                     Content="開く" Command="{Binding OpenConfigCommand}"
                                     ToolTip="選んだファイルをエディタで開く（ダブルクリック・Enter でも開く）" />
                             <TextBlock Style="{StaticResource ColumnTitle}" TextWrapping="Wrap" Text="{Binding ConfigNote}" />
                         </DockPanel>
-                        <ListBox x:Name="ConfigList" Style="{StaticResource HarnessList}" ItemsSource="{Binding ConfigRows}"
+                        <!-- 効く範囲（このワークスペース／ユーザー全体）で見出しを分ける。行ごとに範囲を書くと同じ語が並ぶだけになる -->
+                        <ListBox x:Name="ConfigList" Style="{StaticResource HarnessList}" ItemsSource="{Binding ConfigView}"
                                  SelectedItem="{Binding SelectedConfig}" MouseDoubleClick="OnConfigDoubleClick"
-                                 KeyDown="OnConfigKeyDown">
+                                 KeyDown="OnConfigKeyDown" VirtualizingPanel.IsVirtualizingWhenGrouping="True">
+                            <ListBox.GroupStyle>
+                                <GroupStyle>
+                                    <GroupStyle.HeaderTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding Name}" Margin="8,10,8,3" FontSize="{DynamicResource Fs11}"
+                                                       FontWeight="SemiBold" Foreground="{DynamicResource FgDim}" />
+                                        </DataTemplate>
+                                    </GroupStyle.HeaderTemplate>
+                                </GroupStyle>
+                            </ListBox.GroupStyle>
                             <ListBox.ItemTemplate>
                                 <DataTemplate>
-                                    <DockPanel ToolTip="ダブルクリック・Enter で開く">
-                                        <TextBlock x:Name="scope" DockPanel.Dock="Left" Text="{Binding ScopeLabel}" Width="72"
-                                                   Style="{StaticResource Dim}"
-                                                   ToolTip="ユーザー＝~/.claude のもの。どのワークスペースのセッションにも効く" />
-                                        <TextBlock DockPanel.Dock="Left" Text="{Binding KindLabel}" Width="90" Style="{StaticResource Dim}" />
-                                        <TextBlock DockPanel.Dock="Left" Text="{Binding Name}" Width="200" TextTrimming="CharacterEllipsis" />
-                                        <TextBlock DockPanel.Dock="Left" Text="{Binding Usage}" Width="80" Style="{StaticResource Dim}"
-                                                   ToolTip="期間内の使用（観測）。Skill とサブエージェントだけ回数が記録に残る" />
-                                        <TextBlock Text="{Binding PathLabel}" Style="{StaticResource Dim}" TextTrimming="CharacterEllipsis" />
+                                    <DockPanel ToolTip="ダブルクリック・Enter で開く" Margin="8,1,0,1">
+                                        <TextBlock DockPanel.Dock="Left" Text="{Binding KindLabel}" Width="84" Style="{StaticResource Dim}" />
+                                        <TextBlock DockPanel.Dock="Left" Text="{Binding Name}" Width="220" TextTrimming="CharacterEllipsis"
+                                                   ToolTip="{Binding Name}" />
+                                        <TextBlock DockPanel.Dock="Left" Text="{Binding Usage}" Width="190" Style="{StaticResource Dim}"
+                                                   TextTrimming="CharacterEllipsis" ToolTip="{Binding Usage}" />
+                                        <TextBlock Text="{Binding PathLabel}" Style="{StaticResource Dim}" TextTrimming="CharacterEllipsis"
+                                                   ToolTip="{Binding Component.Path}" />
                                     </DockPanel>
-                                    <DataTemplate.Triggers>
-                                        <DataTrigger Binding="{Binding IsUserScope}" Value="True">
-                                            <Setter TargetName="scope" Property="Foreground" Value="{DynamicResource Accent}" />
-                                        </DataTrigger>
-                                    </DataTemplate.Triggers>
                                 </DataTemplate>
                             </ListBox.ItemTemplate>
                         </ListBox>
@@ -331,11 +356,11 @@
                                         TextElement.FontSize="{DynamicResource Fs11}">
                                 <TextBlock Width="280" Text="版" Margin="0,0,8,0" TextTrimming="CharacterEllipsis" />
                                 <TextBlock Width="90" Text="日付" Margin="0,0,8,0" />
-                                <TextBlock Width="50" Text="Run" Margin="0,0,8,0" />
-                                <TextBlock Width="80" Text="受入／差戻" Margin="0,0,8,0" />
-                                <TextBlock Width="120" Text="受け入れ1件あたり" Margin="0,0,8,0" />
-                                <TextBlock Width="90" Text="1 Run あたり" Margin="0,0,8,0" />
-                                <TextBlock Width="80" Text="ツール失敗" Margin="0,0,8,0" />
+                                <TextBlock Width="50" Text="Run" Margin="0,0,8,0" TextAlignment="Right" />
+                                <TextBlock Width="80" Text="受入／差戻" Visibility="{Binding HasVerdicts, Converter={StaticResource BoolToVis}}" Margin="0,0,8,0" />
+                                <TextBlock Width="120" Text="受け入れ1件あたり" Visibility="{Binding HasVerdicts, Converter={StaticResource BoolToVis}}" Margin="0,0,8,0" />
+                                <TextBlock Width="90" Text="1 Run あたり" Margin="0,0,8,0" TextAlignment="Right" />
+                                <TextBlock Width="80" Text="ツール失敗" Margin="0,0,16,0" TextAlignment="Right" />
                                 <TextBlock Width="100" Text="" Margin="0,0,8,0" />
                             </StackPanel>
                         </Border>
@@ -343,14 +368,14 @@
                             <ListBox.ItemTemplate>
                                 <DataTemplate>
                                     <StackPanel Orientation="Horizontal">
-                                <TextBlock Width="280" Text="{Binding VersionLabel}" Margin="0,0,8,0" TextTrimming="CharacterEllipsis" />
+                                <TextBlock Width="280" Text="{Binding VersionLabel}" Margin="0,0,8,0" TextTrimming="CharacterEllipsis" ToolTip="{Binding VersionLabel}" />
                                 <TextBlock Width="90" Text="{Binding DateLabel}" Margin="0,0,8,0" />
-                                <TextBlock Width="50" Text="{Binding RunsLabel}" Margin="0,0,8,0" />
-                                <TextBlock Width="80" Text="{Binding VerdictsLabel}" Margin="0,0,8,0" />
-                                <TextBlock Width="120" Text="{Binding TokensPerAcceptedLabel}" Margin="0,0,8,0" />
-                                <TextBlock Width="90" Text="{Binding TokensPerRunLabel}" Margin="0,0,8,0" />
-                                <TextBlock Width="80" Text="{Binding ErrorRateLabel}" Margin="0,0,8,0" />
-                                <TextBlock Width="100" Text="{Binding Note}" Margin="0,0,8,0" />
+                                <TextBlock Width="50" Text="{Binding RunsLabel}" Margin="0,0,8,0" TextAlignment="Right" />
+                                <TextBlock Width="80" Text="{Binding VerdictsLabel}" Visibility="{Binding DataContext.HasVerdicts, RelativeSource={RelativeSource AncestorType=ListBox}, Converter={StaticResource BoolToVis}}" Margin="0,0,8,0" />
+                                <TextBlock Width="120" Text="{Binding TokensPerAcceptedLabel}" Visibility="{Binding DataContext.HasVerdicts, RelativeSource={RelativeSource AncestorType=ListBox}, Converter={StaticResource BoolToVis}}" Margin="0,0,8,0" />
+                                <TextBlock Width="90" Text="{Binding TokensPerRunLabel}" Margin="0,0,8,0" TextAlignment="Right" />
+                                <TextBlock Width="80" Text="{Binding ErrorRateLabel}" Margin="0,0,16,0" TextAlignment="Right" />
+                                <TextBlock Width="100" Text="{Binding Note}" Margin="0,0,8,0" Foreground="{DynamicResource FgDim}" />
                                     </StackPanel>
                                 </DataTemplate>
                             </ListBox.ItemTemplate>

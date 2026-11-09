@@ -76,6 +76,8 @@ public sealed partial class HarnessPaneViewModel : ObservableObject
             };
         // ワークスペースが変われば記録の出どころも変わる。見えていれば読み直し、見えていなければ次に見えたとき。
         _workspace.FoldersChanged += (_, _) => QueueRefresh();
+        ConfigView = new System.Windows.Data.ListCollectionView(ConfigRows);
+        ConfigView.GroupDescriptions.Add(new System.Windows.Data.PropertyGroupDescription(nameof(HarnessConfigRow.ScopeLabel)));
     }
 
     private bool _refreshQueued;
@@ -118,10 +120,14 @@ public sealed partial class HarnessPaneViewModel : ObservableObject
     [ObservableProperty] private string _errorRateLabel = "—";
     [ObservableProperty] private string _costLabel = "—";
     [ObservableProperty] private string _harnessLabel = "";
+    /// <summary>期間内に判定（受け入れ／差し戻し）が1件でもあるか。無ければ判定まわりの数字は出さない（0／0 と「受け入れなし」が並ぶだけになる）。</summary>
+    [ObservableProperty] private bool _hasVerdicts;
 
     // ===== 分析 =====
     /// <summary>Claude Code に渡すプロンプト（期間の記録のパス・指標・構成要素）。コピーする前に中身を見せる。</summary>
     [ObservableProperty] private string _analysisPrompt = "";
+    /// <summary>何を渡すかの一行（期間・Run 数・差し戻し・失敗のある Run）。</summary>
+    [ObservableProperty] private string _analysisSummary = "";
 
     // ===== 実行 =====
     public ObservableCollection<HarnessRunRow> Runs { get; } = new();
@@ -133,6 +139,8 @@ public sealed partial class HarnessPaneViewModel : ObservableObject
 
     // ===== 構成・版 =====
     public ObservableCollection<HarnessConfigRow> ConfigRows { get; } = new();
+    /// <summary>構成タブの一覧（効く範囲＝このワークスペース／ユーザー全体で見出しを分ける）。</summary>
+    public System.ComponentModel.ICollectionView ConfigView { get; }
     public ObservableCollection<HarnessVersionRowViewModel> Versions { get; } = new();
     [ObservableProperty] private HarnessConfigRow? _selectedConfig;
     [ObservableProperty] private string _configNote = "";
@@ -244,10 +252,12 @@ public sealed partial class HarnessPaneViewModel : ObservableObject
         CostLabel = summary.CostKnownRuns == 0
             ? "不明"
             : $"${summary.CostTotal:0.00}（記録 {summary.CostKnownRuns}/{summary.RunCount} Run）";
+        HasVerdicts = summary.Accepted + summary.Rejected > 0;
         var def = snapshot.Definition;
-        HarnessLabel = def.HasHarnessFolder
-            ? $"{def.HarnessId ?? ".harness"}{(def.DeclaredVersion is { } v ? " " + v : "")}"
-            : ".harness なし";
+        // 宣言された ID・版があるときだけ出す（無いのに「.harness」「.harness なし」を出しても何も伝えない）。
+        HarnessLabel = def.HarnessId is null && def.DeclaredVersion is null
+            ? ""
+            : $"{def.HarnessId ?? ".harness"}{(def.DeclaredVersion is { } v ? " " + v : "")}";
 
         EmptyMessage = snapshot.TranscriptDirectories.Count == 0
             ? "このワークスペースで起動した Claude Code の記録が見つかりません（~/.claude/projects）。"
@@ -262,10 +272,26 @@ public sealed partial class HarnessPaneViewModel : ObservableObject
     // ===== 分析タブ =====
 
     private void ApplyAnalysis(HarnessSnapshot snapshot)
-        => AnalysisPrompt = snapshot.Runs.Count == 0
+    {
+        var runs = snapshot.Runs;
+        AnalysisPrompt = runs.Count == 0
             ? ""
-            : HarnessAnalysisPrompt.Build(snapshot.Runs, snapshot.Verdicts, snapshot.VersionOf, snapshot.Definition.Components,
+            : HarnessAnalysisPrompt.Build(runs, snapshot.Verdicts, snapshot.VersionOf, snapshot.Definition.Components,
                 snapshot.Since, DateTimeOffset.Now, DisplayPath);
+        if (runs.Count == 0)
+        {
+            AnalysisSummary = "";
+            return;
+        }
+        var rejected = runs.Count(r => snapshot.Verdicts.TryGetValue(r.Id, out var v) && v.Verdict == HarnessVerdictKind.Rejected);
+        var failed = runs.Count(r => r.ToolErrorCount > 0);
+        var listed = Math.Min(runs.Count, HarnessAnalysisPrompt.MaxRuns);
+        AnalysisSummary = $"{HarnessFormat.Date(snapshot.Since)}〜{HarnessFormat.Date(DateTimeOffset.Now)} の {runs.Count} Run"
+            + (listed < runs.Count ? $"（新しい {listed} Run の記録を渡す）" : "の記録を渡す")
+            + $" ・ 失敗のある Run {failed}"
+            + (rejected > 0 ? $" ・ 差し戻し {rejected}" : "")
+            + $" ・ 構成要素 {snapshot.Definition.Components.Count}";
+    }
 
     /// <summary>分析プロンプトをコピーする。Claude Code に貼れば、記録を読んで直し所を表で返す（直すのは了承したものだけ）。</summary>
     [RelayCommand]
@@ -294,13 +320,25 @@ public sealed partial class HarnessPaneViewModel : ObservableObject
         var previous = SelectedConfig?.Component.Id;
         ConfigRows.Clear();
         // 開きに来ることが多いもの（指示・設定）を先に、ワークスペースのものをユーザー全体のものより先に並べる。
-        foreach (var component in snapshot.Definition.Components.OrderBy(c => c.UserScope).ThenBy(c => ConfigRank(c.Kind)))
-            ConfigRows.Add(new HarnessConfigRow(component, UsageOf(component, snapshot.Runs), DisplayPath(component.Path)));
-        ConfigNote = snapshot.Definition.HasHarnessFolder
-            ? $"定義（設定されているもの）と、期間内の使用（観測）。.harness: {string.Join(", ", snapshot.Definition.HarnessFolders.Select(DisplayPath))}"
-            : "定義（設定されているもの）と、期間内の使用（観測）。";
+        // Hook は設定ファイルの中身なので行を分けず、その設定ファイルの行に「hooks: …」として添える（同じファイルが3行並ばない）。
+        var hooksByFile = snapshot.Definition.Components.Where(c => c.Kind == HarnessComponentKind.Hook)
+            .GroupBy(c => c.Path, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.Select(c => HookEvent(c.Name)).ToList(), StringComparer.OrdinalIgnoreCase);
+        foreach (var component in snapshot.Definition.Components
+                     .Where(c => c.Kind != HarnessComponentKind.Hook)
+                     .OrderBy(c => c.UserScope).ThenBy(c => ConfigRank(c.Kind)))
+        {
+            var usage = component.Kind == HarnessComponentKind.Settings && hooksByFile.TryGetValue(component.Path, out var hooks)
+                ? "hooks: " + string.Join(", ", hooks)
+                : UsageOf(component, snapshot.Runs);
+            ConfigRows.Add(new HarnessConfigRow(component, usage, DisplayPath(component.Path)));
+        }
+        ConfigNote = "Claude Code が読む指示・設定・Skill など（設定されているもの）と、期間内の使用（観測）。";
         SelectedConfig = ConfigRows.FirstOrDefault(r => r.Component.Id == previous);
     }
+
+    /// <summary>Hook の構成要素名「Notification（settings.json）」からイベント名だけを取る。</summary>
+    private static string HookEvent(string name) => name.IndexOf('（') is var i and > 0 ? name[..i] : name;
 
     private static int ConfigRank(HarnessComponentKind kind) => kind switch
     {
@@ -316,8 +354,8 @@ public sealed partial class HarnessPaneViewModel : ObservableObject
         HarnessComponentKind.Skill => CountLabel(runs.Sum(r => r.SkillsUsed.Count(s => s.Equals(component.Name, StringComparison.OrdinalIgnoreCase)))),
         HarnessComponentKind.Agent when component.Path.Contains(Path.DirectorySeparatorChar + ".claude" + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
             => CountLabel(runs.Sum(r => r.AgentsUsed.Count(a => a.Equals(component.Name, StringComparison.OrdinalIgnoreCase)))),
-        HarnessComponentKind.Instructions => "毎回",
-        _ => "—",
+        HarnessComponentKind.Instructions => "毎回読まれる",
+        _ => "",
     };
 
     private static string CountLabel(int count) => count == 0 ? "観測なし" : $"{count}回";
@@ -444,8 +482,9 @@ public sealed partial class HarnessPaneViewModel : ObservableObject
     {
         if (_workspace.Contains(path))
             return _workspace.ToDisplayPath(path);
+        // 区切りは / に揃える（日本語フォントでは \ が ¥ に見えるうえ、ワークスペース側の表示とも揃う）。
         if (UserProfile.Length > 0 && path.StartsWith(UserProfile + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
-            return "~" + path[UserProfile.Length..];
+            return "~" + path[UserProfile.Length..].Replace('\\', '/');
         return path;
     }
 

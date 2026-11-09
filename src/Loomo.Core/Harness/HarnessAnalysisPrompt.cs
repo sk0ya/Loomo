@@ -59,8 +59,20 @@ public static class HarnessAnalysisPrompt
             sb.AppendLine();
             sb.AppendLine("## いまのハーネスの構成要素");
             sb.AppendLine();
-            foreach (var c in components)
-                sb.AppendLine($"- {KindLabel(c.Kind)}{(c.UserScope ? "（ユーザー全体）" : "")} `{c.Name}` — `{displayPath(c.Path)}`");
+            // ユーザー全体の Skill・エージェント・コマンドは数が多く、場所も決まっている（~/.claude/<種類>/）ので種類ごとに1行へ畳む。
+            // Hook は設定ファイルの中身なので、ファイルの行とは別に挙げない（イベント名だけ添える）。
+            static bool Folded(HarnessComponent c)
+                => c.UserScope && c.Kind is HarnessComponentKind.Skill or HarnessComponentKind.Agent or HarnessComponentKind.Command;
+            foreach (var c in components.Where(c => !Folded(c) && c.Kind != HarnessComponentKind.Hook))
+            {
+                var hooks = components.Where(h => h.Kind == HarnessComponentKind.Hook
+                        && string.Equals(h.Path, c.Path, StringComparison.OrdinalIgnoreCase))
+                    .Select(h => h.Name.Split('（')[0]).ToList();
+                sb.AppendLine($"- {KindLabel(c.Kind)}{(c.UserScope ? "（ユーザー全体）" : "")} `{displayPath(c.Path)}`"
+                    + (hooks.Count > 0 ? $"（hooks: {string.Join(", ", hooks)}）" : ""));
+            }
+            foreach (var group in components.Where(Folded).GroupBy(c => c.Kind))
+                sb.AppendLine($"- {KindLabel(group.Key)}（ユーザー全体）{group.Count()} 件: {string.Join(", ", group.Select(c => c.Name))}");
         }
 
         sb.AppendLine();
@@ -87,9 +99,10 @@ public static class HarnessAnalysisPrompt
         return sb.ToString();
     }
 
-    /// <summary>トークン数の短い表記（1.2M / 34.5k / 812）。</summary>
+    /// <summary>トークン数の短い表記（3.08B / 1.2M / 34.5k / 812）。</summary>
     public static string FormatTokens(long tokens) => tokens switch
     {
+        >= 1_000_000_000 => (tokens / 1_000_000_000.0).ToString("0.00", CultureInfo.InvariantCulture) + "B",
         >= 1_000_000 => (tokens / 1_000_000.0).ToString("0.0", CultureInfo.InvariantCulture) + "M",
         >= 1_000 => (tokens / 1_000.0).ToString("0.0", CultureInfo.InvariantCulture) + "k",
         _ => tokens.ToString(CultureInfo.InvariantCulture),
