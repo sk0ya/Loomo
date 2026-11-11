@@ -68,8 +68,9 @@ public static class HarnessDefinitionReader
     /// <summary>Claude Code が読む構成要素（設定されているもの）。ワークスペースのフォルダー側。</summary>
     private static void ReadClaudeCode(string folder, List<HarnessComponent> components)
     {
-        foreach (var name in new[] { "CLAUDE.md", "AGENTS.md" })
-            AddIfExists(components, HarnessComponentKind.Instructions, Path.Combine(folder, name), userScope: false);
+        AddIfExists(components, HarnessComponentKind.Instructions, Path.Combine(folder, "CLAUDE.md"), userScope: false);
+        AddIfExists(components, HarnessComponentKind.Instructions, Path.Combine(folder, "AGENTS.md"), userScope: false,
+            notLoaded: AgentsMdShadowed(folder));
         // プロジェクトの MCP サーバー（.mcp.json）。ツールの数＝毎回の入力に効くので設定として並べる。
         AddIfExists(components, HarnessComponentKind.Settings, Path.Combine(folder, ".mcp.json"), userScope: false);
 
@@ -116,11 +117,45 @@ public static class HarnessDefinitionReader
         }
     }
 
-    private static void AddIfExists(List<HarnessComponent> components, HarnessComponentKind kind, string path, bool userScope)
+    private static void AddIfExists(List<HarnessComponent> components, HarnessComponentKind kind, string path, bool userScope,
+        bool notLoaded = false)
     {
         if (File.Exists(path))
             components.Add(new HarnessComponent(Key(kind, path), kind, Path.GetFileName(path), path, userScope,
-                kind == HarnessComponentKind.Instructions ? CountLines(path) : null));
+                kind == HarnessComponentKind.Instructions ? CountLines(path) : null, notLoaded));
+    }
+
+    private static readonly string[] ClaudeMdNames = ["CLAUDE.md", Path.Combine(".claude", "CLAUDE.md"), "CLAUDE.local.md"];
+
+    /// <summary>
+    /// Claude Code（v2.1.277〜）は AGENTS.md を、そのフォルダーか上の階層に CLAUDE.md（.claude/CLAUDE.md・CLAUDE.local.md を含む）が
+    /// <b>無いときだけ</b>読む。あれば読まれるのは CLAUDE.md だけ——ただしそのフォルダーの CLAUDE.md が <c>@AGENTS.md</c> で
+    /// 取り込んでいれば読まれる。<c>~/.claude/CLAUDE.md</c> は数えない。/config の「Project instructions」で両方読む設定に
+    /// 変えている人は見分けられない（ユーザー設定の plugin オプションなので既定どおりとみなす）。
+    /// </summary>
+    internal static bool AgentsMdShadowed(string folder)
+    {
+        var own = ClaudeMdNames.Select(n => Path.Combine(folder, n)).Where(File.Exists).ToList();
+        if (own.Any(ImportsAgentsMd))
+            return false;
+        if (own.Count > 0)
+            return true;
+        for (var dir = Directory.GetParent(folder); dir is not null; dir = dir.Parent)
+        {
+            if (ClaudeMdNames.Any(n => File.Exists(Path.Combine(dir.FullName, n))))
+                return true;
+        }
+        return false;
+    }
+
+    private static bool ImportsAgentsMd(string claudeMd)
+    {
+        try
+        {
+            return File.ReadLines(claudeMd).Any(l => System.Text.RegularExpressions.Regex.IsMatch(l, @"(^|\s)@(\./)?AGENTS\.md\b"));
+        }
+        catch (IOException) { return false; }
+        catch (UnauthorizedAccessException) { return false; }
     }
 
     /// <summary>

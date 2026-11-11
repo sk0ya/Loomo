@@ -317,14 +317,14 @@ public sealed class HarnessTests : IDisposable
         var components = new[]
         {
             new HarnessComponent("i:c", HarnessComponentKind.Instructions, "CLAUDE.md", @"C:\ws\CLAUDE.md", Lines: 420),
-            new HarnessComponent("i:a", HarnessComponentKind.Instructions, "AGENTS.md", @"C:\ws\AGENTS.md", Lines: 12),
+            new HarnessComponent("i:a", HarnessComponentKind.Instructions, "AGENTS.md", @"C:\ws\AGENTS.md", Lines: 12, NotLoaded: true),
         };
 
         var text = HarnessAnalysisPrompt.Build([run], new Dictionary<string, HarnessVerdict>(), _ => null, components,
             DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch, p => p);
 
         Assert.Contains("CLAUDE.md`（420 行・毎回読まれる）", text);
-        Assert.Contains("AGENTS.md`（12 行）", text);  // Claude Code は AGENTS.md を読み込まない
+        Assert.Contains("AGENTS.md`（12 行）", text);  // CLAUDE.md と並んだ AGENTS.md は Claude Code に読まれない
         Assert.Contains("中央値 31.0k", text);
     }
 
@@ -384,6 +384,27 @@ public sealed class HarnessTests : IDisposable
         Assert.Contains(def.Components, c => c is { Name: "CLAUDE.md", Lines: 3, AlwaysLoaded: true });
         var memory = Assert.Single(def.Components, c => c.Name.StartsWith("MEMORY.md"));
         Assert.Equal((2, false, true), (memory.Lines, memory.UserScope, memory.AlwaysLoaded));
+    }
+
+    [Theory]
+    [InlineData(null, null, true)]               // CLAUDE.md が無ければ AGENTS.md が読まれる
+    [InlineData("# x", null, false)]             // 並んだ CLAUDE.md があればそちらだけ
+    [InlineData("@AGENTS.md\n# x", null, true)]  // CLAUDE.md が取り込んでいれば読まれる
+    [InlineData(null, "# parent", false)]        // 上の階層の CLAUDE.md でも読まれなくなる
+    public void Agents_md_is_always_loaded_only_when_no_claude_md_shadows_it(string? claudeMd, string? parentClaudeMd, bool loaded)
+    {
+        var parent = Path.Combine(_base, "agents-" + Guid.NewGuid().ToString("N"));
+        var ws = Path.Combine(parent, "ws");
+        Directory.CreateDirectory(ws);
+        File.WriteAllText(Path.Combine(ws, "AGENTS.md"), "a\nb\n");
+        if (claudeMd is not null)
+            File.WriteAllText(Path.Combine(ws, "CLAUDE.md"), claudeMd);
+        if (parentClaudeMd is not null)
+            File.WriteAllText(Path.Combine(parent, "CLAUDE.md"), parentClaudeMd);
+
+        var agents = Assert.Single(HarnessDefinitionReader.Read([ws]).Components, c => c.Name == "AGENTS.md");
+
+        Assert.Equal((2, loaded), (agents.Lines, agents.AlwaysLoaded));
     }
 
     [Fact]

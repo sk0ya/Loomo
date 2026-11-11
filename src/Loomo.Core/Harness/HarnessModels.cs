@@ -25,12 +25,13 @@ public enum HarnessComponentKind
 /// <summary>構成要素1つ。<see cref="Id"/> は種類つきで一意（例 <c>skill:review</c>）。
 /// <see cref="UserScope"/> はユーザー全体（<c>~/.claude</c>）のもので、どのワークスペースにも効く。
 /// <see cref="Lines"/> は毎回読み込まれる指示（<see cref="HarnessComponentKind.Instructions"/>）の行数——指示の長さは
-/// 毎回の入力に乗るので、数えた事実として並べる（長すぎるかどうかの判定はしない）。それ以外は null。</summary>
-public sealed record HarnessComponent(string Id, HarnessComponentKind Kind, string Name, string Path, bool UserScope = false, int? Lines = null)
+/// 毎回の入力に乗るので、数えた事実として並べる（長すぎるかどうかの判定はしない）。それ以外は null。
+/// <see cref="NotLoaded"/> は置いてあっても Claude Code が読まない指示（CLAUDE.md と並んだ AGENTS.md）。</summary>
+public sealed record HarnessComponent(string Id, HarnessComponentKind Kind, string Name, string Path, bool UserScope = false, int? Lines = null,
+    bool NotLoaded = false)
 {
-    /// <summary>Claude Code がセッションの開始で必ず読み込む指示（CLAUDE.md・自動メモリ）。AGENTS.md は Claude Code は読まない。</summary>
-    public bool AlwaysLoaded => Kind == HarnessComponentKind.Instructions
-        && !string.Equals(System.IO.Path.GetFileName(Path), "AGENTS.md", StringComparison.OrdinalIgnoreCase);
+    /// <summary>Claude Code がセッションの開始で必ず読み込む指示（CLAUDE.md・AGENTS.md・自動メモリ）。</summary>
+    public bool AlwaysLoaded => Kind == HarnessComponentKind.Instructions && !NotLoaded;
 }
 
 /// <summary>
