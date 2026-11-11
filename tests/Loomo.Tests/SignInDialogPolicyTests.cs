@@ -36,4 +36,18 @@ public sealed class SignInDialogPolicyTests
             ("ApplicationFrameTitleBarWindow", "explorer"),
             ("ApplicationFrameInputSinkWindow", "explorer"),
         ], loomoIsForeground: true));
+
+    private static readonly DateTime T0 = new(2026, 11, 11, 4, 0, 0, DateTimeKind.Utc);
+
+    [Fact]
+    public void 引き上げた直後にLoomoを触ったらもう一度前に出す()
+        => Assert.True(SignInDialogPolicy.MayRaiseAgain(T0, 1, T0.AddSeconds(1)));
+
+    [Fact]
+    public void しばらく経ってからLoomoへ戻したのは人の選択なので追いかけない()
+        => Assert.False(SignInDialogPolicy.MayRaiseAgain(T0, 1, T0.AddSeconds(10)));
+
+    [Fact]
+    public void 何度も触るなら取り合いにしない()
+        => Assert.False(SignInDialogPolicy.MayRaiseAgain(T0, SignInDialogPolicy.MaxRaises, T0.AddMilliseconds(500)));
 }
