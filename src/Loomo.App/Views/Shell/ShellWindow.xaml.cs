@@ -314,6 +314,7 @@ public partial class ShellWindow : Window {
         Deactivated += OnWindowDeactivated;
         InitializeAwaySummary();
         InitializeTabShelf();
+        InitializeWindowTitle();
         InitializeHttpRequests();
         var startDir = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         if (vm.Workspaces.ActiveWorkspace is null) {
