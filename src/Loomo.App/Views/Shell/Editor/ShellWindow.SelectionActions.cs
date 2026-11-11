@@ -214,7 +214,7 @@ public partial class ShellWindow {
     /// <summary>blame の行のコミットへのリンクを写す動作（§24.74）。リポジトリはファイルから上へ .git を探して決める
     /// （Git ペインが対象にしているリポジトリとは限らない）。未コミットの行・リポジトリの外では出さない。</summary>
     private Action? CopyBlameCommitLinkAction(string? filePath, string? commitHash) {
-        if (filePath is not { Length: > 0 } || !LoomoLink.IsCommitHash(commitHash) || commitHash!.All(c => c == '0'))
+        if (filePath is not { Length: > 0 } || commitHash is null || !LoomoLink.IsCommitHash(commitHash) || commitHash.All(c => c == '0'))
             return null;
         for (var dir = Path.GetDirectoryName(filePath); dir is not null; dir = Path.GetDirectoryName(dir)) {
             var dotGit = Path.Combine(dir, ".git");

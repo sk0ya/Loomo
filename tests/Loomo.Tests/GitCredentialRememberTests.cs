@@ -61,7 +61,6 @@ public sealed class GitCredentialRememberHttpsTests : IAsyncLifetime
     private string _globalConfig = null!;
     private string _store = null!;
     private Dictionary<string, string> _environment = null!;
-    private GitCommandRunner _runner = null!;
 
     private string RepoDir => Path.Combine(_root, "repo");
 
