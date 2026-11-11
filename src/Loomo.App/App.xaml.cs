@@ -91,6 +91,8 @@ public partial class App : Application
         shell.ContentRendered += (_, _) => _services.GetRequiredService<GitAutoFetchScheduler>().Start();
         shell.Show();
         StartupProfiler.Mark("Show() 呼び出し完了");
+        // MCP サーバーなど窓の無いプロセスが出したサインインのアカウント選択が Loomo の奥に隠れるのを、前面にいる間だけ引き上げる（§34.12.1）
+        sk0ya.Loomo.App.Services.SignInDialogRaiser.Start();
 
         // 取り込みの結果はここで出す。ToastService は購読者がいなければ黙って捨てる作りで、
         // 購読者（ToastHostViewModel）が生まれるのは ShellWindow を解決した後——
@@ -177,6 +179,7 @@ public partial class App : Application
         // 上書き貼り付けの退避先（.loomo-conflict-*）は Undo のためだけに残している隠しコピーなので、
         // 履歴と一緒にここで捨てる。落ちて通らなかったぶんは次回起動の Sweep が拾う。
         try { _services?.GetService<FileOperationHistory>()?.Clear(); } catch { }
+        sk0ya.Loomo.App.Services.SignInDialogRaiser.Stop();
         // 端末の常駐ホスト（§34.6）：最後の Loomo が正常に終わるならシェルを残さない。落ちたときはここを通らないので、
         // シェルは生き残って次の起動で戻る。
         try { _services?.GetService<sk0ya.Loomo.Services.Terminal.PtyHostClient>()?.Leave(); } catch { }
