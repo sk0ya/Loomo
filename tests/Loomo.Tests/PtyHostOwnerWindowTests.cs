@@ -76,6 +76,45 @@ public sealed class PtyHostOwnerWindowTests : IDisposable
         }
     }
 
+    [Fact]
+    public void 持ち主の窓が破棄されたあとも新しい窓へ付け直せる()
+    {
+        var baseDirectory = AppContext.BaseDirectory;
+        Assert.True(File.Exists(Path.Combine(baseDirectory, "conpty.dll")) &&
+                    File.Exists(Path.Combine(baseDirectory, "x64", "OpenConsole.exe")),
+            "テストの出力に同梱の ConPTY が無い");
+
+        var first = CreateWindowExW(0, "STATIC", "loomo-owner-test-1", WsPopup, 0, 0, 10, 10,
+            IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero);
+        var second = IntPtr.Zero;
+        var session = _client.OpenSession(Guid.NewGuid(), Guid.NewGuid(), new TerminalSessionRequest(
+            "cmd.exe", "cmd.exe /d /k prompt $G$G", _root, 80, 24, new Dictionary<string, string?>(), ScrollbackLimit: 1000));
+        try
+        {
+            var text = new StringBuilder();
+            session.OutputReceived += (_, chunk) => { lock (text) text.Append(chunk); };
+            session.Start();
+            WaitUntil(() => { lock (text) return text.ToString().Contains(">>"); }, "プロンプト");
+
+            session.SetOwnerWindow(first);
+            WaitUntil(() => ConsoleWindowsOwnedBy(first) > 0, "最初の持ち主");
+
+            // Loomo を閉じた（窓が消えた）あと、次の Loomo が繋ぎ直して自分の窓を送る。
+            DestroyWindow(first);
+            first = IntPtr.Zero;
+            second = CreateWindowExW(0, "STATIC", "loomo-owner-test-2", WsPopup, 0, 0, 10, 10,
+                IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero);
+            session.SetOwnerWindow(second);
+            WaitUntil(() => ConsoleWindowsOwnedBy(second) > 0, "破棄後の付け直し");
+        }
+        finally
+        {
+            session.Dispose();
+            if (first != IntPtr.Zero) DestroyWindow(first);
+            if (second != IntPtr.Zero) DestroyWindow(second);
+        }
+    }
+
     private static void WaitUntil(Func<bool> condition, string what)
     {
         var watch = Stopwatch.StartNew();
