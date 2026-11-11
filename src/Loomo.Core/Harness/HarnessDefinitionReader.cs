@@ -119,7 +119,31 @@ public static class HarnessDefinitionReader
     private static void AddIfExists(List<HarnessComponent> components, HarnessComponentKind kind, string path, bool userScope)
     {
         if (File.Exists(path))
-            components.Add(new HarnessComponent(Key(kind, path), kind, Path.GetFileName(path), path, userScope));
+            components.Add(new HarnessComponent(Key(kind, path), kind, Path.GetFileName(path), path, userScope,
+                kind == HarnessComponentKind.Instructions ? CountLines(path) : null));
+    }
+
+    /// <summary>
+    /// Claude Code の自動メモリ（<c>~/.claude/projects/&lt;slug&gt;/memory/MEMORY.md</c>）を指示として足す。
+    /// 置き場所は <c>~/.claude</c> の下だが、効くのはその記録フォルダーのワークスペースだけで、毎回読み込まれる。
+    /// </summary>
+    public static HarnessDefinition WithAutoMemory(HarnessDefinition definition, IEnumerable<string> transcriptDirectories)
+    {
+        var added = new List<HarnessComponent>();
+        foreach (var dir in transcriptDirectories)
+        {
+            var path = Path.Combine(dir, "memory", "MEMORY.md");
+            if (File.Exists(path) && !definition.Components.Any(c => string.Equals(c.Path, path, StringComparison.OrdinalIgnoreCase)))
+                added.Add(new HarnessComponent(Key(HarnessComponentKind.Instructions, path), HarnessComponentKind.Instructions,
+                    "MEMORY.md（自動メモリ）", path, UserScope: false, CountLines(path)));
+        }
+        return added.Count == 0 ? definition : definition with { Components = [.. definition.Components, .. added] };
+    }
+
+    private static int? CountLines(string path)
+    {
+        try { return File.ReadLines(path).Count(); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return null; }
     }
 
     /// <summary><c>settings.json</c> の <c>hooks</c> のイベント名（PreToolUse 等）。壊れていれば何も返さない。</summary>

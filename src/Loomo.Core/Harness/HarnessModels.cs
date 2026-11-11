@@ -23,8 +23,15 @@ public enum HarnessComponentKind
 }
 
 /// <summary>構成要素1つ。<see cref="Id"/> は種類つきで一意（例 <c>skill:review</c>）。
-/// <see cref="UserScope"/> はユーザー全体（<c>~/.claude</c>）のもので、どのワークスペースにも効く。</summary>
-public sealed record HarnessComponent(string Id, HarnessComponentKind Kind, string Name, string Path, bool UserScope = false);
+/// <see cref="UserScope"/> はユーザー全体（<c>~/.claude</c>）のもので、どのワークスペースにも効く。
+/// <see cref="Lines"/> は毎回読み込まれる指示（<see cref="HarnessComponentKind.Instructions"/>）の行数——指示の長さは
+/// 毎回の入力に乗るので、数えた事実として並べる（長すぎるかどうかの判定はしない）。それ以外は null。</summary>
+public sealed record HarnessComponent(string Id, HarnessComponentKind Kind, string Name, string Path, bool UserScope = false, int? Lines = null)
+{
+    /// <summary>Claude Code がセッションの開始で必ず読み込む指示（CLAUDE.md・自動メモリ）。AGENTS.md は Claude Code は読まない。</summary>
+    public bool AlwaysLoaded => Kind == HarnessComponentKind.Instructions
+        && !string.Equals(System.IO.Path.GetFileName(Path), "AGENTS.md", StringComparison.OrdinalIgnoreCase);
+}
 
 /// <summary>
 /// タスク1つ（§37.3・§37.3.2）。<c>.harness/tasks/</c> のファイルなら ID は拡張子を除いたファイル名で、
@@ -134,6 +141,12 @@ public sealed record HarnessRun
     public string? Cwd { get; init; }
     public IReadOnlyList<string> Models { get; init; } = [];
     public RunTokenUsage Usage { get; init; }
+    /// <summary>
+    /// 本体の最初の応答の入力（input + cache_read + cache_creation）。システムプロンプト・ツール定義・CLAUDE.md・
+    /// 自動メモリなど<b>何もしないうちから毎回払う量</b>で、ハーネスを削ったり足したりした効き目が一番素直に出る。
+    /// 記録に書かれた数（推定ではない）。応答が無ければ null。再開したセッションでは前の会話も含む。
+    /// </summary>
+    public long? StartupInput { get; init; }
     /// <summary>CLI が記録した料金（<c>cost-state</c>）。無ければ null＝不明（推計で埋めない）。</summary>
     public decimal? CostUsd { get; init; }
     public IReadOnlyList<RunToolCall> ToolCalls { get; init; } = [];

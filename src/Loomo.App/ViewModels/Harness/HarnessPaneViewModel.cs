@@ -119,6 +119,8 @@ public sealed partial class HarnessPaneViewModel : ObservableObject
     [ObservableProperty] private string _cacheLabel = "—";
     [ObservableProperty] private string _errorRateLabel = "—";
     [ObservableProperty] private string _costLabel = "—";
+    /// <summary>開始時の入力の中央値（何もしないうちから毎回払う量、§37.4）。</summary>
+    [ObservableProperty] private string _startupInputLabel = "—";
     [ObservableProperty] private string _harnessLabel = "";
     /// <summary>期間内に判定（受け入れ／差し戻し）が1件でもあるか。無ければ判定まわりの数字は出さない（0／0 と「受け入れなし」が並ぶだけになる）。</summary>
     [ObservableProperty] private bool _hasVerdicts;
@@ -249,6 +251,7 @@ public sealed partial class HarnessPaneViewModel : ObservableObject
         TotalTokensLabel = HarnessFormat.Tokens(summary.Usage.Total);
         CacheLabel = HarnessFormat.Percent(summary.Usage.CacheReadRatio);
         ErrorRateLabel = HarnessFormat.Percent(summary.ToolErrorRate);
+        StartupInputLabel = summary.MedianStartupInput is { } startup ? HarnessFormat.Tokens(startup) : "—";
         CostLabel = summary.CostKnownRuns == 0
             ? "不明"
             : $"${summary.CostTotal:0.00}（記録 {summary.CostKnownRuns}/{summary.RunCount} Run）";
@@ -354,7 +357,11 @@ public sealed partial class HarnessPaneViewModel : ObservableObject
         HarnessComponentKind.Skill => CountLabel(runs.Sum(r => r.SkillsUsed.Count(s => s.Equals(component.Name, StringComparison.OrdinalIgnoreCase)))),
         HarnessComponentKind.Agent when component.Path.Contains(Path.DirectorySeparatorChar + ".claude" + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
             => CountLabel(runs.Sum(r => r.AgentsUsed.Count(a => a.Equals(component.Name, StringComparison.OrdinalIgnoreCase)))),
-        HarnessComponentKind.Instructions => "毎回読まれる",
+        HarnessComponentKind.Instructions => string.Join("・", new[]
+            {
+                component.AlwaysLoaded ? "毎回読まれる" : null,
+                component.Lines is { } lines ? $"{lines} 行" : null,
+            }.Where(p => p is not null)),
         _ => "",
     };
 

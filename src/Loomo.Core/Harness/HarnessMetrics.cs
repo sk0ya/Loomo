@@ -16,7 +16,8 @@ public sealed record HarnessSummary(
     int ToolCalls,
     int ToolErrors,
     int CostKnownRuns,
-    decimal CostTotal)
+    decimal CostTotal,
+    long? MedianStartupInput = null)
 {
     /// <summary>受け入れ0件なら null（値を作らない）。</summary>
     public long? TokensPerAccepted => Accepted == 0 ? null : Usage.Total / Accepted;
@@ -42,6 +43,7 @@ public static class HarnessMetrics
     {
         int count = 0, accepted = 0, rejected = 0, calls = 0, errors = 0, costRuns = 0;
         var usage = default(RunTokenUsage);
+        var startups = new List<long>();
         decimal cost = 0;
         foreach (var run in runs)
         {
@@ -49,6 +51,8 @@ public static class HarnessMetrics
             usage += run.Usage;
             calls += run.ToolCallCountExcludingRejected;
             errors += run.ToolErrorCount;
+            if (run.StartupInput is { } startup)
+                startups.Add(startup);
             if (run.CostUsd is { } c)
             {
                 costRuns++;
@@ -60,7 +64,19 @@ public static class HarnessMetrics
                 else rejected++;
             }
         }
-        return new HarnessSummary(count, accepted, rejected, usage, calls, errors, costRuns, cost);
+        return new HarnessSummary(count, accepted, rejected, usage, calls, errors, costRuns, cost, Median(startups));
+    }
+
+    /// <summary>
+    /// 中央値（偶数個なら下側）。開始時の入力は再開したセッション（前の会話を丸ごと持ち込む）で桁違いに跳ねるので、
+    /// 平均ではなく中央値で版を比べる。空なら null。
+    /// </summary>
+    public static long? Median(IReadOnlyCollection<long> values)
+    {
+        if (values.Count == 0)
+            return null;
+        var sorted = values.OrderBy(v => v).ToList();
+        return sorted[(sorted.Count - 1) / 2];
     }
 
     /// <summary>版ごとの比較（新しい版が先）。版の引き方（<paramref name="versionOf"/>）は呼び出し側が決める——

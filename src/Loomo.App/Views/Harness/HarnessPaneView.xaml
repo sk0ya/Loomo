@@ -161,6 +161,9 @@
                 <TextBlock Style="{StaticResource MetricValue}" Text="{Binding CacheLabel}" />
                 <TextBlock Style="{StaticResource Dim}" Text="ツール失敗" ToolTip="is_error ÷ ツール呼び出し（人間の拒否は除く）" />
                 <TextBlock Style="{StaticResource MetricValue}" Text="{Binding ErrorRateLabel}" />
+                <TextBlock Style="{StaticResource Dim}" Text="開始時の入力"
+                           ToolTip="本体の最初の応答の入力（システムプロンプト・ツール定義・CLAUDE.md・自動メモリ）の中央値。何もしないうちから毎回払う量" />
+                <TextBlock Style="{StaticResource MetricValue}" Text="{Binding StartupInputLabel}" />
                 <TextBlock Style="{StaticResource Dim}" Text="費用" ToolTip="CLI が記録した料金（cost-state）。記録の無い Run は推計で埋めない" />
                 <TextBlock Style="{StaticResource MetricValue}" Text="{Binding CostLabel}" />
                 <TextBlock Style="{StaticResource Dim}" Text="{Binding HarnessLabel}" Margin="0,0,14,0" />
@@ -360,7 +363,9 @@
                                 <TextBlock Width="80" Text="受入／差戻" Visibility="{Binding HasVerdicts, Converter={StaticResource BoolToVis}}" Margin="0,0,8,0" />
                                 <TextBlock Width="120" Text="受け入れ1件あたり" Visibility="{Binding HasVerdicts, Converter={StaticResource BoolToVis}}" Margin="0,0,8,0" />
                                 <TextBlock Width="90" Text="1 Run あたり" Margin="0,0,8,0" TextAlignment="Right" />
-                                <TextBlock Width="80" Text="ツール失敗" Margin="0,0,16,0" TextAlignment="Right" />
+                                <TextBlock Width="80" Text="ツール失敗" Margin="0,0,8,0" TextAlignment="Right" />
+                                <TextBlock Width="90" Text="開始時の入力" Margin="0,0,16,0" TextAlignment="Right"
+                                           ToolTip="本体の最初の応答の入力の中央値（毎回読み込まれる指示・ツール定義の重さ）" />
                                 <TextBlock Width="100" Text="" Margin="0,0,8,0" />
                             </StackPanel>
                         </Border>
@@ -374,7 +379,8 @@
                                 <TextBlock Width="80" Text="{Binding VerdictsLabel}" Visibility="{Binding DataContext.HasVerdicts, RelativeSource={RelativeSource AncestorType=ListBox}, Converter={StaticResource BoolToVis}}" Margin="0,0,8,0" />
                                 <TextBlock Width="120" Text="{Binding TokensPerAcceptedLabel}" Visibility="{Binding DataContext.HasVerdicts, RelativeSource={RelativeSource AncestorType=ListBox}, Converter={StaticResource BoolToVis}}" Margin="0,0,8,0" />
                                 <TextBlock Width="90" Text="{Binding TokensPerRunLabel}" Margin="0,0,8,0" TextAlignment="Right" />
-                                <TextBlock Width="80" Text="{Binding ErrorRateLabel}" Margin="0,0,16,0" TextAlignment="Right" />
+                                <TextBlock Width="80" Text="{Binding ErrorRateLabel}" Margin="0,0,8,0" TextAlignment="Right" />
+                                <TextBlock Width="90" Text="{Binding StartupInputLabel}" Margin="0,0,16,0" TextAlignment="Right" />
                                 <TextBlock Width="100" Text="{Binding Note}" Margin="0,0,8,0" Foreground="{DynamicResource FgDim}" />
                                     </StackPanel>
                                 </DataTemplate>

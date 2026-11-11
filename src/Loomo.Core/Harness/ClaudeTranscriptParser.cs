@@ -58,6 +58,7 @@ public static class ClaudeTranscriptParser
             Cwd = state.Cwd,
             Models = state.Models.ToList(),
             Usage = usage,
+            StartupInput = state.StartupInput,
             CostUsd = state.Cost,
             ToolCalls = calls,
             // 読み手は追記を続けるので、渡すのはその時点の写し（後から伸びない）。
@@ -156,9 +157,14 @@ public static class ClaudeTranscriptParser
             && usage.ValueKind == JsonValueKind.Object)
         {
             // 同じ id の行は同じ応答の別ブロック。最後に見た値で上書きする（足さない）。
-            state.UsageByMessage[(isSubagent ? "s:" : "m:") + id] = new RunTokenUsage(
+            var u = new RunTokenUsage(
                 Long(usage, "input_tokens"), Long(usage, "output_tokens"),
                 Long(usage, "cache_read_input_tokens"), Long(usage, "cache_creation_input_tokens"));
+            state.UsageByMessage[(isSubagent ? "s:" : "m:") + id] = u;
+            // 開始時の入力：本体の最初の応答だけ（API エラーの合成応答は usage が 0 なので飛ばす）。
+            var prompt = u.Input + u.CacheRead + u.CacheCreation;
+            if (!isSubagent && state.StartupInput is null && prompt > 0)
+                state.StartupInput = prompt;
         }
         if (!message.TryGetProperty("content", out var content) || content.ValueKind != JsonValueKind.Array)
             return;
@@ -404,6 +410,7 @@ public static class ClaudeTranscriptParser
     {
         public string? Title;
         public decimal? Cost;
+        public long? StartupInput;
         public string? Cwd;
         public DateTimeOffset? First;
         public DateTimeOffset? Last;

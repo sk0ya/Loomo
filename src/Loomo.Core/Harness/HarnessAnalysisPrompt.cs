@@ -40,7 +40,8 @@ public static class HarnessAnalysisPrompt
         sb.AppendLine("- 見る観点の例：大きすぎるツール出力、同じファイルの読み直し、遠回りな探索、同じ失敗の繰り返し、編集の空振り、検証せずに終えた変更、指示や Skill が読まれていない／守られていない箇所。例に無い観点でもよい。");
         sb.AppendLine("- 1回きりの偶然は直し所にしない。何 Run で起きたかを数え、根拠（記録のパスと行番号）を挙げる。");
         sb.AppendLine("- 直す先はハーネスだけ：`CLAUDE.md` / `AGENTS.md`、`.claude/settings.json` の hooks、`.claude/skills/`・`.claude/agents/`・`.claude/commands/`、`.harness/`。プロダクトのコードは変えない。ユーザー全体（`~/.claude`）のものは他のワークスペースにも効くので、変えるなら先にそう断る。");
-        sb.AppendLine("- 同じ原因はまとめて1か所で直す。指示文を足すなら短く、既存の節に寄せる（指示が膨らむと毎回の入力が増える）。");
+        sb.AppendLine("- 直し方は確実なものから選ぶ。毎回必ず守らせたいこと（してはいけない操作・編集後の検証）は指示文ではなく `permissions.deny` か hooks で止める・走らせる。決まった手順は Skill に分けて、要るときだけ読まれるようにする。`CLAUDE.md` に書くのは、そのどちらにもできない説明だけ（文章の指示は読み飛ばされ得る）。");
+        sb.AppendLine("- 同じ原因はまとめて1か所で直す。指示文を足すなら短く、既存の節に寄せる（指示が膨らむと毎回の入力が増える）。毎回読み込まれる指示を削れるなら、それも直し所に挙げてよい。");
         sb.AppendLine();
         sb.AppendLine("## 返してほしいもの");
         sb.AppendLine();
@@ -53,6 +54,8 @@ public static class HarnessAnalysisPrompt
         sb.AppendLine();
         sb.AppendLine($"- Run {summary.RunCount}・受け入れ {summary.Accepted}／差し戻し {summary.Rejected}（人間の判定。未判定は数えない）");
         sb.AppendLine($"- 総トークン {FormatTokens(summary.Usage.Total)}・キャッシュ読込率 {Percent(summary.Usage.CacheReadRatio)}・ツール失敗率 {Percent(summary.ToolErrorRate)}");
+        if (summary.MedianStartupInput is { } startup)
+            sb.AppendLine($"- 開始時の入力（本体の最初の応答の入力。システムプロンプト・ツール定義・毎回読まれる指示の合計）の中央値 {FormatTokens(startup)}");
 
         if (components.Count > 0)
         {
@@ -69,6 +72,7 @@ public static class HarnessAnalysisPrompt
                         && string.Equals(h.Path, c.Path, StringComparison.OrdinalIgnoreCase))
                     .Select(h => h.Name.Split('（')[0]).ToList();
                 sb.AppendLine($"- {KindLabel(c.Kind)}{(c.UserScope ? "（ユーザー全体）" : "")} `{displayPath(c.Path)}`"
+                    + (c.Lines is { } lines ? $"（{lines} 行{(c.AlwaysLoaded ? "・毎回読まれる" : "")}）" : "")
                     + (hooks.Count > 0 ? $"（hooks: {string.Join(", ", hooks)}）" : ""));
             }
             foreach (var group in components.Where(Folded).GroupBy(c => c.Kind))

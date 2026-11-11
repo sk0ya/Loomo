@@ -96,6 +96,7 @@ public sealed class HarnessRunRow(HarnessRun run, HarnessVersion? version, Harne
                 $"トークン: 計 {HarnessFormat.Tokens(run.Usage.Total)}（入力 {HarnessFormat.Tokens(run.Usage.Input)} ・ 出力 {HarnessFormat.Tokens(run.Usage.Output)} ・ "
                 + $"キャッシュ読込 {HarnessFormat.Tokens(run.Usage.CacheRead)} ・ キャッシュ書込 {HarnessFormat.Tokens(run.Usage.CacheCreation)}）",
                 $"キャッシュ読込率: {HarnessFormat.Percent(run.Usage.CacheReadRatio)}",
+                $"開始時の入力: {(run.StartupInput is { } su ? HarnessFormat.Tokens(su) : "—")}（最初の応答の入力。再開したセッションは前の会話を含む）",
                 $"費用: {(run.CostUsd is { } c ? "$" + c.ToString("0.00", CultureInfo.InvariantCulture) + "（CLI の記録）" : "不明（記録なし）")}",
                 $"ツール: {run.ToolCallCountExcludingRejected} 回 ・ 失敗 {run.ToolErrorCount} ・ サブエージェント {run.SubagentCount}",
             };
@@ -183,6 +184,7 @@ public sealed class HarnessVersionRowViewModel(HarnessVersionRow row)
     public string TokensPerAcceptedLabel => row.Summary.TokensPerAccepted is { } t ? HarnessFormat.Tokens(t) : "受け入れなし";
     public string TokensPerRunLabel => row.Summary.TokensPerRun is { } t ? HarnessFormat.Tokens(t) : "—";
     public string ErrorRateLabel => HarnessFormat.Percent(row.Summary.ToolErrorRate);
+    public string StartupInputLabel => row.Summary.MedianStartupInput is { } t ? HarnessFormat.Tokens(t) : "—";
     public string Note => row.Summary.RunCount < FewRunsThreshold ? "試行が少ない" : "";
 }
 

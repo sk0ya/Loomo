@@ -63,6 +63,7 @@ public sealed class HarnessAnalyzer
             // ユーザー全体の ~/.claude（記録フォルダー projects/ の親）も、どのセッションにも効くハーネスとして読む。
             var definition = HarnessDefinitionReader.Read(folders, Path.GetDirectoryName(_projectsRoot));
             var directories = ClaudeTranscriptLocator.FindProjectDirectories(_projectsRoot, _workspace);
+            definition = HarnessDefinitionReader.WithAutoMemory(definition, directories);
             var files = directories.SelectMany(d => ClaudeTranscriptLocator.ListSessions(d, since.UtcDateTime)).ToList();
             EvictOutside(directories);
             var runs = new List<HarnessRun>(files.Count);

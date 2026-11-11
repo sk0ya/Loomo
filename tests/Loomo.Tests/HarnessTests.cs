@@ -184,6 +184,34 @@ public sealed class HarnessTests : IDisposable
     }
 
     [Fact]
+    public void Startup_input_is_the_first_main_response_input_skipping_synthetic_zero_usage()
+    {
+        var sub = new[] { Assistant("sub_1", [new { type = "text", text = "x" }], input: 999, cacheRead: 0, cacheCreate: 0) };
+        var run = ClaudeTranscriptParser.Parse("run-1", @"C:\t\run-1.jsonl",
+            [
+                User("やって"),
+                // API エラーの合成応答は usage が 0（開始時の入力にしない）。
+                Assistant("err", [new { type = "text", text = "API Error" }], input: 0, output: 0, cacheRead: 0, cacheCreate: 0),
+                Assistant("m1", [new { type = "text", text = "はい" }], input: 3, cacheRead: 20000, cacheCreate: 500),
+                Assistant("m2", [new { type = "text", text = "終わり" }], input: 1, cacheRead: 90000, cacheCreate: 0),
+            ],
+            [(@"C:\t\run-1\subagents\agent-1.jsonl", sub)]);
+
+        Assert.Equal(3 + 20000 + 500, run.StartupInput);
+        Assert.Null(Parse(User("やって")).StartupInput);
+    }
+
+    [Fact]
+    public void Startup_input_is_compared_by_median_so_a_resumed_session_does_not_dominate()
+    {
+        var runs = new[] { 20_000L, 22_000, 900_000 }.Select((v, i) => RunOf($"r{i}") with { StartupInput = v })
+            .Append(RunOf("none")).ToList();
+
+        Assert.Equal(22_000, HarnessMetrics.Summarize(runs, new Dictionary<string, HarnessVerdict>()).MedianStartupInput);
+        Assert.Null(HarnessMetrics.Summarize([RunOf("none")], new Dictionary<string, HarnessVerdict>()).MedianStartupInput);
+    }
+
+    [Fact]
     public void Broken_lines_are_skipped()
     {
         var run = Parse(User("やって"), "{\"type\":\"assistant\",", "not json");
@@ -278,7 +306,26 @@ public sealed class HarnessTests : IDisposable
         Assert.Contains("直す先はハーネスだけ", text);
         Assert.Contains("人間が了承したものだけ", text);
         Assert.Contains(@"指示 `C:\ws\CLAUDE.md`", text);
+        Assert.Contains("permissions.deny", text);    // 守らせたいことは指示文でなく仕組みで（直し方の優先順位）
         Assert.Contains("| a／b 改行 |", text);       // 題の | と改行は表を壊すので潰す
+    }
+
+    [Fact]
+    public void Analysis_prompt_states_instruction_length_and_startup_input()
+    {
+        var run = RunOf("r1") with { StartupInput = 31_000 };
+        var components = new[]
+        {
+            new HarnessComponent("i:c", HarnessComponentKind.Instructions, "CLAUDE.md", @"C:\ws\CLAUDE.md", Lines: 420),
+            new HarnessComponent("i:a", HarnessComponentKind.Instructions, "AGENTS.md", @"C:\ws\AGENTS.md", Lines: 12),
+        };
+
+        var text = HarnessAnalysisPrompt.Build([run], new Dictionary<string, HarnessVerdict>(), _ => null, components,
+            DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch, p => p);
+
+        Assert.Contains("CLAUDE.md`（420 行・毎回読まれる）", text);
+        Assert.Contains("AGENTS.md`（12 行）", text);  // Claude Code は AGENTS.md を読み込まない
+        Assert.Contains("中央値 31.0k", text);
     }
 
     [Fact]
@@ -320,6 +367,23 @@ public sealed class HarnessTests : IDisposable
         Assert.Contains(def.Components, c => c.Kind == HarnessComponentKind.Rule && c.Name == "no-sleep");
         var task = Assert.Single(def.Tasks);
         Assert.Equal(("fix-login", "ログインを直す"), (task.Id, task.Title));
+    }
+
+    [Fact]
+    public void Instructions_carry_their_line_count_and_auto_memory_is_added_from_the_transcript_folder()
+    {
+        var ws = Path.Combine(_base, "ws3");
+        var transcripts = Path.Combine(_base, "projects", "C--ws3");
+        Directory.CreateDirectory(ws);
+        Directory.CreateDirectory(Path.Combine(transcripts, "memory"));
+        File.WriteAllText(Path.Combine(ws, "CLAUDE.md"), "a\nb\nc\n");
+        File.WriteAllText(Path.Combine(transcripts, "memory", "MEMORY.md"), "- x\n- y\n");
+
+        var def = HarnessDefinitionReader.WithAutoMemory(HarnessDefinitionReader.Read([ws]), [transcripts, Path.Combine(_base, "none")]);
+
+        Assert.Contains(def.Components, c => c is { Name: "CLAUDE.md", Lines: 3, AlwaysLoaded: true });
+        var memory = Assert.Single(def.Components, c => c.Name.StartsWith("MEMORY.md"));
+        Assert.Equal((2, false, true), (memory.Lines, memory.UserScope, memory.AlwaysLoaded));
     }
 
     [Fact]
