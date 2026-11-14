@@ -68,7 +68,6 @@ public partial class ShellWindow {
                     () => SendRecentCommandToTerminal(BrowserPageCode.AsCommand(block.Text))));
         }
         items.Add(MenuCommand(core, $"このコードをエディタの新しいタブへ{lines}", () => _ = OpenCodeBlockInEditorAsync(block)));
-        items.Add(MenuCommand(core, "このコードをコンポーザへ", () => InsertIntoComposer(block.Text)));
         return items;
     }
 }

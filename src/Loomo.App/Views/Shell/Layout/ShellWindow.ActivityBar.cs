@@ -24,7 +24,6 @@ public partial class ShellWindow {
         ??= new Dictionary<SidebarPanel, FrameworkElement> {
             [SidebarPanel.Explorer] = SidebarFolderTree,
             [SidebarPanel.Git] = SidebarGitPanel,
-            [SidebarPanel.Pegboard] = SidebarPegboard,
             [SidebarPanel.Solution] = SidebarSolution,
             [SidebarPanel.Tabs] = SidebarTabs,
             [SidebarPanel.Todo] = SidebarTodoTree,

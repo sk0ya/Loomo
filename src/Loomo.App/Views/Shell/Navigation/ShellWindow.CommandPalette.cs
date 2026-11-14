@@ -1,7 +1,7 @@
 ﻿using sk0ya.Loomo.CSharp.Editor;
 
 namespace sk0ya.Loomo.App.Views;
-/// <summary>ShellWindow: コマンドパレット（部屋全体の操作統一）。移動・ペイン表示・タブ・コンポーザ・ ペグボード・サイドバー・ワークスペース切替といった既存操作に名前を付け、 Ctrl+Shift+P（または Ctrl+W p）から検索して実行できるようにする。 一覧は開くたびに現在状態（ステージ中か・WS一覧など）から組み直す。 絞り込みロジックは <see cref="PaletteFilter"/>（純ロジック・テスト済み）。
+/// <summary>ShellWindow: コマンドパレット（部屋全体の操作統一）。移動・ペイン表示・タブ・サイドバー・ワークスペース切替といった既存操作に名前を付け、 Ctrl+Shift+P（または Ctrl+W p）から検索して実行できるようにする。 一覧は開くたびに現在状態（ステージ中か・WS一覧など）から組み直す。 絞り込みロジックは <see cref="PaletteFilter"/>（純ロジック・テスト済み）。
 /// 先頭1文字（/ # @ :）で「探して飛ぶ」側へ切り替わり（<see cref="PaletteQuery"/>）、選んでいる場所は
 /// 開かずに右半分でプレビューする（<see cref="PalettePreviewLoader"/>／<see cref="PalettePreviewView"/>）。
 /// 右半分はコマンドのときも空けず、選んでいるコマンドの詳細を出す——探し方を切り替えても箱と列の
@@ -373,10 +373,6 @@ public partial class ShellWindow {
             Sc("tasks.runDefaultBuild"), "tasks.runDefaultBuild"));
         if (_taskRunner?.ActiveWatch is { } watch)
             list.Add(new("タスク", $"watch タスク「{watch.Label}」の追跡をやめる", StopWatchingTask));
-        list.Add(new("ターミナル", "コマンドの出力をペグボードへ残す", OpenTerminalOutputsToPin,
-            Sc("terminal.pinOutput"), "terminal.pinOutput"));
-        list.Add(new("ターミナル", "ターミナルの選択をペグボードへ残す", PinActiveTerminalSelection,
-            Sc("terminal.pinSelection"), "terminal.pinSelection"));
         list.Add(new("軌跡", "いまの地点にしおりを付ける", () => BookmarkTrailEntry(_vm.Trail.CurrentEntry),
             Sc("trail.bookmark"), "trail.bookmark"));
         list.Add(new("軌跡", "しおり一覧", OpenTrailBookmarks, Sc("trail.bookmarks"), "trail.bookmarks"));
@@ -449,19 +445,12 @@ public partial class ShellWindow {
         // 固まったときの逃げ道。ヘッダーの ↻ と同じ実装（ペインが舞台に無い・袖にいても引ける口として）。
         if (_editorSupport.Source is not null)
             list.Add(new("プレビュー", "EditorSupport の表示を作り直す（固まった・描かれないとき）", RebuildEditorSupport));
-        list.Add(new("コンポーザ", IsComposerVisible ? "コンポーザを閉じる" : "コンポーザを開く", () => SetComposerVisible(!IsComposerVisible)));
-        list.Add(new("コンポーザ", "本文をターミナルで実行", RunComposer, Sc("composer.run"), "composer.run"));
-        list.Add(new("コンポーザ", "本文をペグボードへ残す", () => OnComposerPinToPegboard(this, new RoutedEventArgs())));
-        list.Add(new("ペグボード", "クリップボードを残す", () => _vm.Pegboard.AddFromClipboardCommand.Execute(null)));
-        list.Add(new("ペグボード", "エディタの選択を残す", PinEditorSelectionToPegboard));
-        list.Add(new("ペグボード", "ブラウザのURLを残す", PinBrowserUrlToPegboard));
         if (_vm.Tabs.Shelf.HasItems)
             list.Add(new("タブ", $"棚のタブをすべて戻す（{_vm.Tabs.Shelf.Count} 件）",
                 () => _vm.Tabs.Shelf.RestoreAllCommand.Execute(null)));
         list.Add(new("サイドバー", "エクスプローラ", () => _vm.ShowExplorerCommand.Execute(null), Sc("sidebar.explorer"), "sidebar.explorer"));
         list.Add(new("サイドバー", "タブ一覧を開閉", () => _vm.ShowTabsCommand.Execute(null), Sc("sidebar.tabs"), "sidebar.tabs"));
         list.Add(new("サイドバー", "Git", () => _vm.ShowGitCommand.Execute(null), Sc("sidebar.git"), "sidebar.git"));
-        list.Add(new("サイドバー", "ペグボード", () => _vm.ShowPegboardCommand.Execute(null), Sc("sidebar.pegboard"), "sidebar.pegboard"));
         list.Add(new("サイドバー", "動いているもの", () => _vm.ShowRunningCommand.Execute(null), Sc("sidebar.running"), "sidebar.running"));
         if (_vm.IsCSharpSolutionAvailable)
             list.Add(new("サイドバー", "ソリューション（C#）", () => _vm.ShowSolutionCommand.Execute(null), Sc("sidebar.solution"), "sidebar.solution"));

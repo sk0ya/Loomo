@@ -463,18 +463,6 @@ public sealed class WorkspaceSnapshot
     /// <summary>現在のタイル配置が保存レイアウトから変化しているか（巡回で現配置をスクラッチへ退避するかの判定に使う）。</summary>
     public bool LayoutDirty { get; set; }
 
-    /// <summary>コマンドコンポーザ（§23.2）の本文。エディタタブ同様、全文をそのまま保存する。</summary>
-    public string? ComposerText { get; set; }
-
-    /// <summary>コマンドコンポーザの表示状態（開いたまま離れたら開いたまま戻る）。</summary>
-    public bool ComposerVisible { get; set; }
-
-    /// <summary>コマンドコンポーザの高さ（px）。null なら既定値。</summary>
-    public double? ComposerHeight { get; set; }
-
-    /// <summary>ペグボード（§23.3）のアイテム。ワークスペース毎に持つ。</summary>
-    public List<PegboardItemSnapshot> Pegboard { get; set; } = new();
-
     /// <summary>デバッグの準備（ブレークポイントとウォッチ式・§28.16）。.NET と TS IDE で別々に持つ。
     /// null は保存したことが無い部屋（この項目より前の state.json）。</summary>
     public DebugRoomSnapshot? DebugState { get; set; }
@@ -664,50 +652,6 @@ public sealed class DetachedItemSnapshot
     public bool IsModified { get; set; }
     public string? WorkingDirectory { get; set; }
     public string? Url { get; set; }
-}
-
-/// <summary>ペグボード（§23.3）の1アイテム。</summary>
-public sealed class PegboardItemSnapshot
-{
-    public Guid Id { get; set; } = Guid.NewGuid();
-    /// <summary>"text" | "url" | "file"（開くときの振る舞いを決める）。</summary>
-    public string Type { get; set; } = "text";
-    /// <summary>本文（text はスニペット全文、url は URL、file はフルパス）。</summary>
-    public string Content { get; set; } = "";
-    /// <summary>一覧の見出し。null なら Content の先頭行を表示に使う。</summary>
-    public string? Title { get; set; }
-    public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
-    /// <summary>上部固定。</summary>
-    public bool Pinned { get; set; }
-    /// <summary>出典のページ（ブラウザの選択から残した text だけが持つ・§24.24）。null なら出典なし。</summary>
-    public string? SourceUrl { get; set; }
-    /// <summary>出典のページ題名（残した時点のもの）。</summary>
-    public string? SourceTitle { get; set; }
-    /// <summary>出典のターミナル（可視ターミナルの出力・選択から残した text だけが持つ・§24.26）。null なら出典なし。
-    /// <see cref="SourceUrl"/> とは排他（どちらか一方だけ）。</summary>
-    public PegboardTerminalSource? TerminalSource { get; set; }
-}
-
-/// <summary>ペグボードの text がターミナルから来たときの出典（§24.26）。どれも残した時点の値で、
-/// 後から書き換えない（タブ名やフォルダーがその後変わっても、出典は「そのとき」を指す）。</summary>
-public sealed class PegboardTerminalSource
-{
-    /// <summary>出どころのターミナルタブ（常駐セッションの鍵でもあるので、再起動しても同じタブへ戻れる・§34）。</summary>
-    public Guid TabId { get; set; }
-    /// <summary>残した時点のタブの見出し。</summary>
-    public string? TabTitle { get; set; }
-    /// <summary>出力を生んだコマンド行。選択がどのコマンドの出力か分からなかったときは null。</summary>
-    public string? Command { get; set; }
-    /// <summary>コマンドを実行した場所（コマンドが分からないときは残した時点のタブの場所）。</summary>
-    public string? WorkingDirectory { get; set; }
-    /// <summary>コマンドの終了コード（不明・コマンドが分からないときは null）。</summary>
-    public int? ExitCode { get; set; }
-    /// <summary>コマンドが終わった時刻（コマンドが分からないときは残した時刻）。</summary>
-    public DateTime CapturedUtc { get; set; } = DateTime.UtcNow;
-    /// <summary>本文の先頭を省いている（出力が上限を超えて頭を落とした・スクロールバックから押し出されていた）。</summary>
-    public bool HeadOmitted { get; set; }
-    /// <summary>残す前に伏せた秘密らしい文字列の数（§24.66）。本文とコマンド行の合計。</summary>
-    public int MaskedSecrets { get; set; }
 }
 
 /// <summary>検索ペインのタブに残した検索結果1枚ぶん（<see cref="WorkspaceSnapshot.SearchTabs"/>）。</summary>

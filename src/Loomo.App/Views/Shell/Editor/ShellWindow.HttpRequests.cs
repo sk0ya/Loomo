@@ -5,7 +5,7 @@ namespace sk0ya.Loomo.App.Views;
 
 /// <summary>
 /// ShellWindow: .http のリクエスト（§24.30）。送受信は <see cref="HttpEditorSupport"/> が持ち、ここは部屋の側の
-/// 受け口だけ——応答を素材の流れ（ペグボード・エディタ）へ渡すことと、キャレットから送る入口。
+/// 受け口だけ——応答をエディタ・ブラウザへ渡すことと、キャレットから送る入口。
 /// </summary>
 public partial class ShellWindow {
     private HttpEditorSupport? _httpSupport;
@@ -14,10 +14,6 @@ public partial class ShellWindow {
         _httpSupport = _editorSupports.Resolve("request.http") as HttpEditorSupport;
         if (_httpSupport is null)
             return;
-        _httpSupport.PegboardRequested += (_, material) => {
-            _vm.Pegboard.AddContent(material.Text, type: "text", title: material.Title);
-            ToastService.Info("応答をペグボードへ残しました");
-        };
         _httpSupport.OpenInEditorRequested += (_, material) => OpenTextInNewEditorTab(material.Text);
         _httpSupport.OpenUrlRequested += (_, url) => _ = OpenUrlInNewBrowserTabAsync(url);
         _httpSupport.AppendRequestRequested += (_, request) => AppendHttpRequest(request);
@@ -60,6 +56,12 @@ public partial class ShellWindow {
         var result = await _httpSupport!.SendAtLineAsync(path, text, line);
         if (result is null)
             ToastService.Info("カーソルの位置にリクエストがありません");
+    }
+
+    private async Task OpenUrlInNewBrowserTabAsync(string url) {
+        EnsurePaneVisibleOrSwapTopLeft(PaneKind.Browser);
+        var tab = await CreateBrowserTabAsync(url);
+        ActivateBrowserTab(tab.Id);
     }
 
     /// <summary>本文を名前の無い新しいタブで開く（言語は本文から決まる・§24.28）。</summary>

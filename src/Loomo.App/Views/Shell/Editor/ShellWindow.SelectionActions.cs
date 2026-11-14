@@ -258,9 +258,6 @@ public partial class ShellWindow {
         // ターミナル側はエディタと違いホスト項目の区切り線を整理しないので、ここも束として足す
         // （中身が入ったときだけ、ネイティブ項目との間に区切り線が1本入る）。
         AddTerminalSelectionMenuItems(sender, e);
-        // 素材として残す・送る束（ペグボードへは出典付き・§24.26）。
-        AddMenuGroup(e.Menu, menu => AddTerminalMaterialMenuItems(
-            menu, sender as TerminalTabView, e.SelectedText, e.HasSelection));
     }
     private void AddTerminalSelectionMenuItems(object? sender, TerminalContextMenuBuildingEventArgs e)
         => AddMenuGroup(e.Menu, menu => SelectionActionMenuBuilder.AddSelectionMenuItems(
@@ -279,8 +276,7 @@ public partial class ShellWindow {
             text => _ = SearchSelectionInBrowserAsync(text,
                 _terminalTabs.FirstOrDefault(t => ReferenceEquals(t.View, sender)) is { } tab
                     ? new BrowserSearchOrigin.Terminal(text, tab.Id) : null),
-            AddWorkflowMenuItems,
-            trailingItems: BuildComposerSendMenuItem(e.SelectedText, e.HasSelection) is { } composer ? [composer] : null));
+            AddWorkflowMenuItems));
     private async Task SendLocationToEditorAsync(SourceLocation location) {
         await OpenPathInEditorAsync(location.Path, location.Line, location.Column);
         FocusPane(PaneKind.Editor);

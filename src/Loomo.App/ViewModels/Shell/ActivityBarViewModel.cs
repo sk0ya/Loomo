@@ -78,8 +78,8 @@ public sealed partial class ActivityBarViewModel : ObservableObject
     /// <summary>既定で上段に並ぶ項目 Id（上から順）。</summary>
     public static readonly string[] DefaultPrimaryIds = ["explorer", "git", "solution", "workitems"];
 
-    /// <summary>既定で中段に並ぶ項目 Id。タブ一覧の下に TODO Tree、その下にペグボードを並べる。</summary>
-    public static readonly string[] DefaultSecondaryIds = ["tabs", "running", "todo", "pegboard"];
+    /// <summary>既定で中段に並ぶ項目 Id。タブ一覧の下に動いているもの、その下に TODO Tree を並べる。</summary>
+    public static readonly string[] DefaultSecondaryIds = ["tabs", "running", "todo"];
 
     public ActivityBarViewModel(LoomoSettings? settings = null, SettingsStore? settingsStore = null)
     {
@@ -90,8 +90,6 @@ public sealed partial class ActivityBarViewModel : ObservableObject
             new("explorer", SidebarPanel.Explorer, "🗂", "エクスプローラ", "ExplorerPanelButton"),
             new("git", SidebarPanel.Git, "⎇", "Git", "GitPanelButton"),
             new("solution", SidebarPanel.Solution, "◈", "ソリューション（C#）", "SolutionPanelButton"),
-            new("pegboard", SidebarPanel.Pegboard, "📌", "ペグボード（スニペット・URL・パスの作業台）",
-                "PegboardPanelButton"),
             new("tabs", SidebarPanel.Tabs, "▤", "タブ一覧", "TabsPanelButton"),
             new("todo", SidebarPanel.Todo, "☑", "TODO Tree", "TodoPanelButton"),
             new("running", SidebarPanel.Running, "▶", "動いているもの（コマンド・Claude Code・デバッグ・言語サーバー）",

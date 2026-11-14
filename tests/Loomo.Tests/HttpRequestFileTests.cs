@@ -295,16 +295,13 @@ public sealed class HttpRequestFileTests
     }
 
     [Fact]
-    public void ペグボードへ残す中身はリクエスト行を頭に付ける()
+    public void 応答の出典の1行はメソッドとURLと状態と時刻()
     {
         var request = new PreparedHttpRequest("GET", "https://a/b", [], null, [], null);
         var result = new HttpExchangeResult(request, new DateTimeOffset(2026, 10, 18, 14, 3, 0, TimeSpan.Zero),
             TimeSpan.FromMilliseconds(12), 200, "OK", "HTTP/1.1", [], "application/json", 7,
             """{"a":1}""", "{\n  \"a\": 1\n}", false, false, null);
 
-        var text = HttpRequestPanelViewModel.MaterialText(result);
-
-        Assert.StartsWith("GET https://a/b\nHTTP/1.1 200 OK\n\n{", text.Replace("\r\n", "\n"));
         Assert.Equal("GET https://a/b → 200 OK · 10/18 14:03", HttpRequestPanelViewModel.MaterialTitle(result));
     }
 

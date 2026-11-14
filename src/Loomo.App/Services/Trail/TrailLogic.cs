@@ -211,7 +211,6 @@ public static class TrailLogic
     {
         SidebarPanel.Explorer => "エクスプローラ",
         SidebarPanel.Git => "Gitパネル",
-        SidebarPanel.Pegboard => "ペグボード",
         SidebarPanel.Solution => "ソリューション",
         SidebarPanel.Tabs => "タブ一覧",
         SidebarPanel.Todo => "TODO Tree",

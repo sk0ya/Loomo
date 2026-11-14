@@ -212,13 +212,6 @@ public sealed partial class HttpRequestPanelViewModel : ObservableObject
     private Task SendSelected() => Send(Selected);
 
     [RelayCommand]
-    private void PinToPegboard()
-    {
-        if (Result is { } result)
-            _owner.RequestPegboard(new HttpResponseMaterial(MaterialTitle(result), MaterialText(result), result));
-    }
-
-    [RelayCommand]
     private void OpenInEditor()
     {
         if (Result is { } result)
@@ -247,17 +240,6 @@ public sealed partial class HttpRequestPanelViewModel : ObservableObject
     /// <summary>出典の1行（「GET https://api/x → 200 OK · 10/18 14:03」）。</summary>
     public static string MaterialTitle(HttpExchangeResult result)
         => $"{result.Request.Method} {result.Request.Url} → {result.StatusLine} · {result.StartedAt:M/d HH:mm}";
-
-    /// <summary>ペグボードへ残す中身。応答だけでは「何を投げた答えか」が残らないので、リクエスト行を頭に付ける。</summary>
-    public static string MaterialText(HttpExchangeResult result)
-    {
-        var sb = new StringBuilder();
-        sb.Append(result.Request.Method).Append(' ').AppendLine(result.Request.Url);
-        sb.Append(result.HttpVersion ?? "").Append(' ').AppendLine(result.StatusLine);
-        sb.AppendLine();
-        sb.Append(result.Error ?? Formatted(result));
-        return sb.ToString().TrimEnd();
-    }
 
     /// <summary>整形した本文の全文（表示は切り詰めることがあるので、こちらは整形し直す）。</summary>
     private static string Formatted(HttpExchangeResult result)

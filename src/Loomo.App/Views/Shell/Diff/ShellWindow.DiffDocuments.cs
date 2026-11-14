@@ -11,6 +11,23 @@ public partial class ShellWindow {
     private IDiffWorkingDocuments? _diffWorkingDocuments;
     private IDiffWorkingDocuments DiffWorkingDocuments => _diffWorkingDocuments ??= new DiffWorkingDocumentsHost(this);
 
+    /// <summary>
+    /// Diff の左右並びで本文を出すエディタ。構文の登録（C# の色分け）・右クリックの見出し・Vim の有無は
+    /// エディタペインと揃えるが、<b>LSP は渡さない</b>——CodeLens やインレイヒントは表示行を足し引きするので、
+    /// 左右の行の揃いが崩れる。
+    /// </summary>
+    private VimEditorControl CreateDiffEditorControl() =>
+        new(new VimEditorControlOptions {
+            EngineServices = _editorEngineServices,
+            ContextMenuLabels = Services.EditorMenuLabels.Japanese,
+        }) { VimEnabled = _settings.Vim.Enabled };
+
+    private void ApplyDiffEditorAppearance(VimEditorControl control) {
+        control.VimEnabled = _settings.Vim.Enabled;   // 共有ステータスバーを出すかどうかもこれで決まる
+        _appearance.ApplyEditorOptions(control);
+        _appearance.ApplyEditorAppearance(control);
+    }
+
     private sealed class DiffWorkingDocumentsHost(ShellWindow shell) : IDiffWorkingDocuments {
         public EditorDocumentEvents Events => shell._editorDocumentEvents;
 

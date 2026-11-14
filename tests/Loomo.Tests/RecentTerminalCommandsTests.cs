@@ -179,7 +179,7 @@ public class RecentTerminalCommandsTests
 
         var multi = RecentTerminalCommands.Detail(
             new RecentTerminalCommandSnapshot { Command = "a\nb", LastRunUtc = T0 }, T0);
-        Assert.Contains("コンポーザへ送る", multi);
+        Assert.Contains("エディタの新しいタブに開く", multi);
     }
 
     [Fact]

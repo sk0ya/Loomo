@@ -8,6 +8,11 @@ namespace sk0ya.Loomo.App.Views;
 /// <para>材料はシェル統合の合図だけ：OSC 133 の A（プロンプト＝cwd が確定した）・C（走り始め）・D（終わり）と、
 /// OSC 633;E（コマンド行）。ブランチは cwd から <c>.git/HEAD</c> を裏で読む（git は起こさない）。</para></summary>
 public partial class ShellWindow {
+    /// <summary>タブの見出し（TABS に出ている名前。人が付けた名前があればそれを含む）。閉じたタブは null。</summary>
+    private string? TerminalTabTitle(Guid tabId)
+        => _vm.Tabs.TerminalTabs.FirstOrDefault(t => t.Id == tabId)?.Title
+           ?? _terminalTabs.FirstOrDefault(t => t.Id == tabId)?.View.HeaderTitle;
+
     private readonly Dictionary<Guid, TerminalTabStatus> _terminalStatus = new();
     private DispatcherTimer? _terminalStatusTimer;
 

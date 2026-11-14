@@ -36,9 +36,7 @@ public class WorktreeRoomSeedTests
         TreeSelectedPath = Main + @"\src\A.cs",
         PinnedFolders = [Main + @"\docs"],
         AdditionalFolders = [new WorkspaceFolderPin { FolderPath = @"D:\shared" }],
-        Pegboard = [new PegboardItemSnapshot { Content = "メモ" }],
         SearchTabs = [new SearchTabSnapshot { Query = "x" }],
-        ComposerText = "dotnet test",
         GitCompare = new GitCompareSnapshot { Kind = 1, Branch = "main" },
         DetachedWindows = [new DetachedWindowSnapshot()],
         Mode = DisplayMode.Dock,
@@ -143,10 +141,8 @@ public class WorktreeRoomSeedTests
     {
         var seed = Seed(Source());
 
-        Assert.Empty(seed.Pegboard);
         Assert.Empty(seed.SearchTabs);
         Assert.Empty(seed.DetachedWindows);
-        Assert.Null(seed.ComposerText);
         Assert.Null(seed.GitCompare);
     }
 
@@ -308,7 +304,6 @@ public class WorktreeRoomListTests
         current.Dock = new DockSnapshot { BottomPane = PaneKind.Diff, BottomHeight = 321, Configured = true };
         current.Stage = new StageSnapshot { Pane = PaneKind.Browser, WingWidth = 333 };
         current.Layouts = [new SavedLayout { Name = "組み替え", Tree = new() { Kind = PaneKind.Git } }];
-        current.ComposerVisible = true;
 
         sut.ActivateWorktree(To(worktree, main, main), current, _ => true);
 
@@ -321,7 +316,6 @@ public class WorktreeRoomListTests
         Assert.Equal(321, back.Dock.BottomHeight);
         Assert.Equal(PaneKind.Browser, back.Stage!.Pane);
         Assert.Equal("組み替え", Assert.Single(back.Layouts).Name);
-        Assert.True(back.ComposerVisible);
         // タブはその部屋のもの。レイアウトは複製で、元の部屋と共有しない。
         Assert.Equal(Path.Combine(worktree, "only-here.txt"), Assert.Single(back.EditorTabs).FilePath);
         Assert.NotSame(current.PaneLayout, back.PaneLayout);

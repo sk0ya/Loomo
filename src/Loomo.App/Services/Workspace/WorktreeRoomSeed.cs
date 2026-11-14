@@ -142,9 +142,7 @@ public static class WorktreeRoomSeed
 
         // ===== 元の部屋で今やっていること（写さない） =====
         seed.DetachedWindows = new();
-        seed.Pegboard = new();
         seed.SearchTabs = new();
-        seed.ComposerText = null;
         seed.GitCompare = null;
         seed.GitCompareByRepository = null;
         seed.GitRepository = null;
@@ -177,8 +175,6 @@ public static class WorktreeRoomSeed
         target.ScratchLayout = copy.ScratchLayout;
         target.ActiveLayoutIndex = copy.ActiveLayoutIndex;
         target.LayoutDirty = copy.LayoutDirty;
-        target.ComposerVisible = copy.ComposerVisible;
-        target.ComposerHeight = copy.ComposerHeight;
     }
 
     /// <summary>パスの持ち主（それを含むいちばん深いワークツリー）が写し元なら、行き先の同じ相対位置へ。

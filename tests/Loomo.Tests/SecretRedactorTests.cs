@@ -85,35 +85,4 @@ public sealed class SecretRedactorTests
         var updated = RecentTerminalCommands.Record(current, new RecentTerminalCommandRun("dotnet build", 0, T0))!;
         Assert.Equal(new[] { "dotnet build", "git status" }, updated.Select(c => c.Command));
     }
-
-    // ===== ペグボード =====
-
-    [Fact]
-    public void Pegboard_output_is_masked_and_says_so()
-    {
-        var output = new TerminalCommandOutput($"gh auth token", $"{GitHubToken}\n", 0, T0, false, Guid.NewGuid(), null);
-        var item = TerminalPegboardMaterial.FromOutput(output, "pwsh")!;
-        Assert.Equal(SecretRedactor.Mask, item.Content);
-        Assert.Equal(1, item.Source.MaskedSecrets);
-        Assert.Contains("1 か所伏せました", TerminalPegboardMaterial.ToolTip(item.Source));
-    }
-
-    [Fact]
-    public void Pegboard_selection_masks_the_command_of_the_containing_output_too()
-    {
-        var tab = Guid.NewGuid();
-        var output = new TerminalCommandOutput("mysql --password=hunter2 -e \"select 1\"", "1\n", 0, T0, false, tab, null);
-        var item = TerminalPegboardMaterial.FromSelection("1", tab, "pwsh", null, output, T0)!;
-        Assert.Equal($"mysql --password={SecretRedactor.Mask} -e \"select 1\"", item.Source.Command);
-        Assert.Equal(1, item.Source.MaskedSecrets);
-    }
-
-    [Fact]
-    public void Pegboard_without_secrets_reports_nothing()
-    {
-        var output = new TerminalCommandOutput("dotnet test", "Passed!  - Failed: 0\n", 0, T0, false, Guid.NewGuid(), null);
-        var item = TerminalPegboardMaterial.FromOutput(output, "pwsh")!;
-        Assert.Equal(0, item.Source.MaskedSecrets);
-        Assert.DoesNotContain("伏せました", TerminalPegboardMaterial.ToolTip(item.Source));
-    }
 }

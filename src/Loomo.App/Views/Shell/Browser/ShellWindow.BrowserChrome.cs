@@ -214,24 +214,11 @@ public partial class ShellWindow {
                 EnsurePaneVisibleOrSwapTopLeft(PaneKind.Ai);
                 _vm.AiBar.AskAbout(selection);
             },
-            (selection, url, title) => {
-                _vm.Pegboard.AddContent(selection, type: "text", sourceUrl: url, sourceTitle: title);
-                ToastService.Success("選択テキストを出典付きでペグボードへ残しました。");
-            },
-            InsertIntoComposer,
-            (url, title) => {
-                _vm.Pegboard.AddContent(url, type: "url", title: title);
-                ToastService.Success("ページをペグボードへ残しました。");
-            },
             link => {
                 _ = CreateBrowserTabAsync(link);
                 SaveActiveWorkspaceSnapshot();
             },
             OpenUrlInDetachedWindow,
-            (link, linkText) => {
-                _vm.Pegboard.AddContent(link, type: "url", title: linkText);
-                ToastService.Success("リンクをペグボードへ残しました。");
-            },
             () => _ = SendBrowserPageToEditorAsync(),
             _vm.Browser.IsBookmarked,
             _vm.Browser.BookmarkBarMenuText,

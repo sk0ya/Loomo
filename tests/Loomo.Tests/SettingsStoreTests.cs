@@ -17,20 +17,20 @@ public class SettingsStoreTests
         try
         {
             var saved = new LoomoSettings();
-            saved.ActivityBar.PrimarySelection = "pegboard";
+            saved.ActivityBar.PrimarySelection = "todo";
             saved.ActivityBar.SecondarySelection = "git";
             saved.ActivityBar.PrimaryVisible = primary;
             saved.ActivityBar.SecondaryVisible = secondary;
             saved.ActivityBar.SidebarWidth = 345;
             saved.ActivityBar.SecondaryHeight = 321;
-            saved.ActivityBar.Primary = ["explorer", "pegboard"];
+            saved.ActivityBar.Primary = ["explorer", "todo"];
             saved.ActivityBar.Secondary = ["tabs", "git", "solution"];
             new SettingsStore(path).Save(saved);
 
             var loaded = new LoomoSettings();
             new SettingsStore(path).Load(loaded);
 
-            Assert.Equal("pegboard", loaded.ActivityBar.PrimarySelection);
+            Assert.Equal("todo", loaded.ActivityBar.PrimarySelection);
             Assert.Equal("git", loaded.ActivityBar.SecondarySelection);
             Assert.Equal(primary, loaded.ActivityBar.PrimaryVisible);
             Assert.Equal(secondary, loaded.ActivityBar.SecondaryVisible);

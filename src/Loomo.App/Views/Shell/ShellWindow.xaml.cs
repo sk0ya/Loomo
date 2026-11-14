@@ -525,7 +525,6 @@ public partial class ShellWindow : Window {
             if (e.NewValue is true)
                 _vm.TraceSession.EnsureLoaded();
         };
-        InitializePegboard();
         InitializeBrowserChrome();
         InitializeTrail();
         InitializeDock();

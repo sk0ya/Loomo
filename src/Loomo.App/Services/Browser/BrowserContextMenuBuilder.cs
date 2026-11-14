@@ -3,7 +3,7 @@ namespace sk0ya.Loomo.App.Services;
 /// <summary>WebView2 の既定コンテキストメニューへ Loomo の操作を組み立てる。
 /// Loomo の操作は<b>先頭の「Loomo」サブメニュー1つにすべて入れ</b>、その下に区切り線を挟んで Chromium 既定の項目を残す。
 /// サブメニューの中は「選択 → リンク → このページ」の順に区切り線で分ける（右クリックした対象にあるものだけ）。
-/// 動詞は §24.3 の共通語彙（送る／開く／残す）に揃える——ペグボードへ入れるのは「残す」で、「ピン」は使わない。</summary>
+/// 動詞は §24.3 の共通語彙（送る／開く）に揃える。</summary>
 internal static class BrowserContextMenuBuilder
 {
     public static void AddItems(
@@ -11,12 +11,8 @@ internal static class BrowserContextMenuBuilder
         CoreWebView2ContextMenuRequestedEventArgs e,
         Dispatcher dispatcher,
         Action<string> askAbout,
-        Action<string, string, string?> pinText,
-        Action<string> sendToComposer,
-        Action<string, string?> pinPage,
         Action<string> openNewTab,
         Action<string> openDetachedWindow,
-        Action<string, string?> pinLink,
         Action sendPageToEditor,
         bool isBookmarked,
         string bookmarkBarMenuText,
@@ -40,22 +36,16 @@ internal static class BrowserContextMenuBuilder
             {
                 var selection = target.SelectionText;
                 children.Add(Command(core, dispatcher, "選択をAIへ送る", () => askAbout(selection)));
-                children.Add(Command(core, dispatcher, "選択をコンポーザへ送る", () => sendToComposer(selection)));
-                children.Add(Command(core, dispatcher, "選択をペグボードへ残す（出典付き）",
-                    () => pinText(selection, url, title)));
                 children.Add(Separator(core));
             }
             if (target.HasLinkUri && !string.IsNullOrWhiteSpace(target.LinkUri))
             {
                 var link = target.LinkUri;
-                var linkText = string.IsNullOrWhiteSpace(target.LinkText) ? null : target.LinkText;
                 children.Add(Command(core, dispatcher, "リンクを新しいタブで開く", () => openNewTab(link)));
                 children.Add(Command(core, dispatcher, "リンクを別ウィンドウで開く", () => openDetachedWindow(link)));
-                children.Add(Command(core, dispatcher, "リンクをペグボードへ残す", () => pinLink(link, linkText)));
                 children.Add(Separator(core));
             }
             children.Add(Command(core, dispatcher, "このページをエディタへ送る（Markdown）", sendPageToEditor));
-            children.Add(Command(core, dispatcher, "このページをペグボードへ残す", () => pinPage(url, title)));
             children.Add(Command(core, dispatcher,
                 isBookmarked ? "ブックマークを外す" : "ブックマークに追加", toggleBookmark));
             children.Add(Command(core, dispatcher, bookmarkBarMenuText, toggleBookmarkBar));

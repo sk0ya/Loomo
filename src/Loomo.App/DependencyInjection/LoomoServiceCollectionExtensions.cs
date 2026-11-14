@@ -284,7 +284,6 @@ internal static class LoomoServiceCollectionExtensions
         // 設定画面を開くまで誰も見ない。ShellViewModel には Lazy で渡し、起動経路から外す。
         services.AddSingleton(sp => new Lazy<KeybindingsViewModel>(sp.GetRequiredService<KeybindingsViewModel>));
         services.AddSingleton<TraceSessionViewModel>();
-        services.AddSingleton<PegboardViewModel>();
         // ブックマーク・履歴はワークスペースをまたぐ資産なので、アプリ単位の1ファイルに持つ。
         services.AddSingleton<BrowserLibraryStore>();
         services.AddSingleton<BrowserViewModel>();

@@ -11,7 +11,6 @@ public enum SidebarPanel
     Settings,
     Appearance,
     Git,
-    Pegboard,
     /// <summary>開いているタブの一覧。エクスプローラ内のセクションから独立した面へ戻し、
     /// 既定では中段バー（2本目の ActivityBar）に住む。</summary>
     Tabs,
@@ -86,7 +85,6 @@ public sealed partial class ShellViewModel : ObservableObject
     public GitSessionViewModel GitSession { get; }
     public DiffSessionViewModel DiffSession { get; }
     public TraceSessionViewModel TraceSession { get; }
-    public PegboardViewModel Pegboard { get; }
     /// <summary>評価済みsolution／projectの構造表示。通常のFolderTreeとは別のC#ビューで、
     /// サイドバーの独立したパネル（<see cref="SidebarPanel.Solution"/>）として住む。</summary>
     public CSharpSolutionExplorerViewModel? CSharpSolutionExplorer { get; }
@@ -204,7 +202,6 @@ public sealed partial class ShellViewModel : ObservableObject
         GitSessionViewModel gitSession,
         DiffSessionViewModel diffSession,
         TraceSessionViewModel traceSession,
-        PegboardViewModel pegboard,
         BrowserViewModel browser,
         SearchPanelViewModel searchPanel,
         DebugViewModel debug,
@@ -242,7 +239,6 @@ public sealed partial class ShellViewModel : ObservableObject
         GitSession = gitSession;
         DiffSession = diffSession;
         TraceSession = traceSession;
-        Pegboard = pegboard;
         Browser = browser;
         SearchPanel = searchPanel;
         Debug = debug;
@@ -450,10 +446,6 @@ public sealed partial class ShellViewModel : ObservableObject
         if (!IsCSharpSolutionAvailable) return;
         Activate(SidebarPanel.Solution);
     }
-
-    /// <summary>ActivityBar のペグボードアイコン（§23.3）。</summary>
-    [RelayCommand]
-    private void ShowPegboard() => Activate(SidebarPanel.Pegboard);
 
     /// <summary>ActivityBar の「動いているもの」アイコン（§24.54）。</summary>
     [RelayCommand]

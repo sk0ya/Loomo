@@ -313,4 +313,18 @@ public sealed class TabShelfTests
             Kind = ShelvedTabSnapshot.EditorKind, FilePath = path,
             ShelvedUtc = T0.AddDays(-shelvedDaysAgo), Pinned = pinned,
         };
+
+    [Theory]
+    [InlineData(0, 0, 30, "たった今")]
+    [InlineData(0, 0, 60 * 5, "5分前")]
+    [InlineData(0, 3, 0, "3時間前")]
+    [InlineData(1, 0, 0, "昨日")]
+    [InlineData(4, 0, 0, "4日前")]
+    [InlineData(20, 0, 0, "9/15")]
+    public void FormatRelative_uses_short_relative_labels(int days, int hours, int seconds, string expected)
+    {
+        var now = new DateTime(2026, 10, 5, 18, 0, 0);
+        var at = now.AddDays(-days).AddHours(-hours).AddSeconds(-seconds);
+        Assert.Equal(expected, ShelvedTabEntryViewModel.FormatRelative(at, now));
+    }
 }

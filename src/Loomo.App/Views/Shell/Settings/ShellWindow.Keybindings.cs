@@ -21,8 +21,6 @@ public partial class ShellWindow {
             ["terminal.openArchive"] = OpenTerminalArchive,
             ["tasks.run"] = OpenWorkspaceTasks,
             ["tasks.runDefaultBuild"] = RunDefaultBuildTask,
-            ["terminal.pinOutput"] = OpenTerminalOutputsToPin,
-            ["terminal.pinSelection"] = PinActiveTerminalSelection,
             ["trail.bookmark"] = () => BookmarkTrailEntry(_vm.Trail.CurrentEntry),
             ["trail.bookmarks"] = OpenTrailBookmarks,
             ["trail.daySummary"] = ShowTrailDaySummary,
@@ -73,7 +71,7 @@ public partial class ShellWindow {
             ["browser.copyLink"] = CopyActiveBrowserLink, ["browser.copyUrl"] = CopyActiveBrowserUrl,
             ["browser.back"] = () => BrowserNavigateHistory(back: true), ["browser.forward"] = () => BrowserNavigateHistory(back: false),
             ["browser.reload"] = () => OnBrowserReload(this, new RoutedEventArgs()), ["browser.closeTab"] = CloseActiveBrowserTab,
-            ["sidebar.explorer"] = () => _vm.ShowExplorerCommand.Execute(null), ["sidebar.tabs"] = () => _vm.ShowTabsCommand.Execute(null), ["sidebar.sessions"] = () => _vm.Sessions.ToggleOpenCommand.Execute(null), ["sidebar.git"] = () => _vm.ShowGitCommand.Execute(null), ["sidebar.pegboard"] = () => _vm.ShowPegboardCommand.Execute(null), ["sidebar.solution"] = () => _vm.ShowSolutionCommand.Execute(null), ["sidebar.running"] = () => _vm.ShowRunningCommand.Execute(null), ["sidebar.settings"] = () => _vm.ShowSettingsCommand.Execute(null), ["sidebar.appearance"] = () => _vm.ShowAppearanceCommand.Execute(null), ["explorer.revealActiveFile"] = RevealActiveFileInFolderTree, };
+            ["sidebar.explorer"] = () => _vm.ShowExplorerCommand.Execute(null), ["sidebar.tabs"] = () => _vm.ShowTabsCommand.Execute(null), ["sidebar.sessions"] = () => _vm.Sessions.ToggleOpenCommand.Execute(null), ["sidebar.git"] = () => _vm.ShowGitCommand.Execute(null), ["sidebar.solution"] = () => _vm.ShowSolutionCommand.Execute(null), ["sidebar.running"] = () => _vm.ShowRunningCommand.Execute(null), ["sidebar.settings"] = () => _vm.ShowSettingsCommand.Execute(null), ["sidebar.appearance"] = () => _vm.ShowAppearanceCommand.Execute(null), ["explorer.revealActiveFile"] = RevealActiveFileInFolderTree, };
         foreach (var command in CSharpEditorCommandCatalog.All)
             actions[command.Id] = () => ExecuteCSharpEditorCommand(command.Id);
         for (var n = 1; n <= 9; n++) {

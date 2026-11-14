@@ -102,7 +102,7 @@ public partial class ShellWindow {
         await _editor.OpenDocumentAsync(new EditorDocument {
             FileName = TerminalCommandOutputs.DocumentName(output),
             Content = output.Text,
-            OnSaved = _ => { },   // 読むための写し：保存しても残さない（ペグボードの text と同じ）
+            OnSaved = _ => { },   // 読むための写し：保存しても残さない
         });
     }
 }

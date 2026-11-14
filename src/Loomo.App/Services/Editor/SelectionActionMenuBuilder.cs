@@ -192,7 +192,7 @@ internal static class SelectionActionMenuBuilder
     /// <summary>
     /// 選んだテキストの「送る」を、FolderTree と同じ<b>「ペインへ送る」サブメニュー1つ</b>に畳む（§24.3）。子の見出しは
     /// 受け取るペインの名前だけ（「AI」「ブラウザ」「エディタ（a.cs:12）」…）。<paramref name="leadingItems"/> は先頭
-    /// （エディタの「Claude Code」）、<paramref name="trailingItems"/> は末尾（ターミナルの「コンポーザ」）に入る。
+    /// （エディタの「Claude Code」）、<paramref name="trailingItems"/> は末尾に入る。
     /// Diff は FolderTree と同じく見比べる相手を選ぶ別のサブメニュー「Diffへ送る」としてその下に並べる。
     /// </summary>
     public static void AddSelectionMenuItems(

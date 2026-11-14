@@ -71,7 +71,7 @@ public static class RecentTerminalCommands
         return string.IsNullOrEmpty(trimmed) ? null : trimmed;
     }
 
-    /// <summary>複数行か（プロンプトへ直接送ると最初の改行で走ってしまうので、コンポーザへ回す）。</summary>
+    /// <summary>複数行か（プロンプトへ直接送ると最初の改行で走ってしまうので、エディタで開く）。</summary>
     public static bool IsMultiline(string command) => command.IndexOf('\n') >= 0 || command.IndexOf('\r') >= 0;
 
     /// <summary>一覧の1行に出す形（改行を ⏎ に畳む）。</summary>
@@ -101,7 +101,7 @@ public static class RecentTerminalCommands
             : $"最終実行: {item.LastRunUtc.ToLocalTime().ToString("yyyy/MM/dd HH:mm", CultureInfo.InvariantCulture)}"
               + $"（{Ago(nowUtc - item.LastRunUtc)}）";
         var action = IsMultiline(item.Command)
-            ? "Enter でコンポーザへ送る（複数行のため・実行はしない）"
+            ? "Enter でエディタの新しいタブに開く（複数行のため・実行はしない）"
             : "Enter でターミナルへ送る（実行はしない）";
         var body = IsMultiline(item.Command)
             ? item.Command.Replace("\r\n", "\n").Replace("\n", Environment.NewLine)

@@ -29,7 +29,7 @@ public sealed class ExplorerLayoutTests
         Assert.DoesNotContain("ConverterParameter=Explorer", sidebar);
         Assert.DoesNotContain("ConverterParameter=Solution", sidebar);
         foreach (var name in new[] {
-            "SidebarFolderTree", "SidebarGitPanel", "SidebarPegboard", "SidebarSolution", "SidebarTabs" })
+            "SidebarFolderTree", "SidebarGitPanel", "SidebarSolution", "SidebarTabs" })
             Assert.Contains($"x:Name=\"{name}\"", sidebar);
 
         // 最近項目は中央の FilesPane 内のクイックアクセスへ移したので、サイドバーには重複表示しない。

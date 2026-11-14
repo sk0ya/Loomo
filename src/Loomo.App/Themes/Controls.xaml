@@ -872,7 +872,7 @@
         <Setter Property="Background" Value="{DynamicResource Border}" />
     </Style>
 
-    <!-- サイドバー各パネル（FILES・GIT・ペグボード・TABS・TODO…）の見出し帯。ペインの見出し（PaneHeaderBar）と
+    <!-- サイドバー各パネル（FILES・GIT・TABS・TODO…）の見出し帯。ペインの見出し（PaneHeaderBar）と
          同じ PaneHeaderBg（アクセントの色味）で塗り、下辺に 1px の罫を引く。パネルごとに中身（ボタン列・タブ・件数）が
          違うので、帯は Border として外側に被せ、内側の余白は Padding で持つ（Margin だと塗られない隙間が残る）。 -->
     <Style x:Key="SidebarHeaderBand" TargetType="Border">

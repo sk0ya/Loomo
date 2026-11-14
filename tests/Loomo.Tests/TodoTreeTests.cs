@@ -25,7 +25,7 @@ public sealed class TodoTreeTests
     public void 既存配置への追加と移動後の保存を維持する()
     {
         var settings = new LoomoSettings();
-        settings.ActivityBar.Primary = ["explorer", "git", "solution", "pegboard"];
+        settings.ActivityBar.Primary = ["explorer", "git", "solution"];
         settings.ActivityBar.Secondary = ["tabs"];
         var vm = new ActivityBarViewModel(settings);
         Assert.Equal(["tabs", "todo", "running"], vm.SecondaryItems.Select(i => i.Id));

@@ -152,8 +152,6 @@ public partial class ShellWindow {
             StartupProfiler.Mark("  復元:FolderTree.LoadRoot");
         }
         profile?.Lap("folderTree");
-        RestoreComposer(workspace);
-        _vm.Pegboard.LoadItems(workspace.Pegboard);
         RestoreDebugState(workspace.DebugState);
         _vm.Tabs.Shelf.Load(workspace.ShelvedTabs);
         _vm.SearchPanel.RestoreTabs(workspace.SearchTabs);
@@ -269,10 +267,6 @@ public partial class ShellWindow {
         snapshot.GitCompareByRepository = _vm.GitPanel.CompareBase.CaptureAll();
         snapshot.GitRepository = _git.RootPath;
         snapshot.CommitDrafts = _vm.GitPanel.CaptureCommitDrafts();
-        snapshot.ComposerText = CaptureComposerText();
-        snapshot.ComposerVisible = IsComposerVisible;
-        snapshot.ComposerHeight = CaptureComposerHeight();
-        snapshot.Pegboard = _vm.Pegboard.ToSnapshots();
         snapshot.DebugState = CaptureDebugState();
         snapshot.ShelvedTabs = _vm.Tabs.Shelf.ToSnapshots();
         snapshot.SearchTabs = _vm.SearchPanel.CaptureTabs();

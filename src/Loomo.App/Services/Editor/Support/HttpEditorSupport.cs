@@ -5,7 +5,7 @@ using sk0ya.Loomo.Core.Http;
 
 namespace sk0ya.Loomo.App.Services;
 
-/// <summary>応答を部屋の素材にする依頼（ペグボードへ・エディタで開く）。<see cref="Title"/> は出典の1行。</summary>
+/// <summary>応答を部屋の素材にする依頼（エディタで開く）。<see cref="Title"/> は出典の1行。</summary>
 public sealed record HttpResponseMaterial(string Title, string Text, HttpExchangeResult Result);
 
 /// <summary>
@@ -53,9 +53,6 @@ public sealed class HttpEditorSupport : IEditorSupportVisualProvider, IDisposabl
 
     /// <summary>送り始めた・応答が届いた（表示インスタンスはこれで行を更新する）。UI スレッドで発火する。</summary>
     public event EventHandler<HttpRequestStateChanged>? StateChanged;
-
-    /// <summary>応答をペグボードへ残したい。</summary>
-    public event EventHandler<HttpResponseMaterial>? PegboardRequested;
 
     /// <summary>応答の本文をエディタの新しいタブで開きたい。</summary>
     public event EventHandler<HttpResponseMaterial>? OpenInEditorRequested;
@@ -130,8 +127,6 @@ public sealed class HttpEditorSupport : IEditorSupportVisualProvider, IDisposabl
             catch (ObjectDisposedException) { }
         }
     }
-
-    internal void RequestPegboard(HttpResponseMaterial material) => PegboardRequested?.Invoke(this, material);
 
     internal void RequestOpenInEditor(HttpResponseMaterial material) => OpenInEditorRequested?.Invoke(this, material);
 

@@ -139,9 +139,6 @@
                     <ToggleButton Style="{DynamicResource SegmentToggle}" Content="ヘッダー"
                                   IsChecked="{Binding ShowHeaders, Mode=TwoWay}" Margin="0,0,4,0"
                                   ToolTip="本文とヘッダーを切り替える" />
-                    <Button Style="{DynamicResource PaneHeaderGhostButton}" Content="ペグボードへ"
-                            Command="{Binding PinToPegboardCommand}" Margin="0,0,2,0"
-                            ToolTip="リクエスト行と応答を、出典付きでペグボードへ残す" />
                     <Button Style="{DynamicResource PaneHeaderGhostButton}" Content="エディタで開く"
                             Command="{Binding OpenInEditorCommand}" Margin="0,0,2,0"
                             ToolTip="本文を新しいエディタタブで開く（全文・整形済み）" />

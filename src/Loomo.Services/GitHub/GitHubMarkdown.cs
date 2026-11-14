@@ -8,7 +8,7 @@ namespace sk0ya.Loomo.Services.GitHub;
 
 /// <summary>
 /// PR・Issue を、エディタで読む Markdown の写しにする（純粋）。部屋のエディタ／Markdown プレビューでそのまま
-/// 読めて、ペグボードやコンポーザへ素材として渡せる。書き戻しはしない（コメントは別の操作で送る）。
+/// 読めて、エディタへ素材として渡せる。書き戻しはしない（コメントは別の操作で送る）。
 /// </summary>
 public static class GitHubMarkdown
 {

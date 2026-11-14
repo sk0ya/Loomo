@@ -42,7 +42,20 @@ public sealed partial class ShelvedTabEntryViewModel : ObservableObject
     }
 
     /// <summary>いつ下げたか（「3時間前」）。</summary>
-    public string ShelvedLabel => PegboardItemVm.FormatRelative(Snapshot.ShelvedUtc.ToLocalTime(), DateTime.Now);
+    public string ShelvedLabel => FormatRelative(Snapshot.ShelvedUtc.ToLocalTime(), DateTime.Now);
+
+    /// <summary>相対時刻。1時間以内は分、当日は時間、前日は「昨日」、1週間以内は日数、それより前は日付。</summary>
+    internal static string FormatRelative(DateTime local, DateTime now)
+    {
+        var elapsed = now - local;
+        if (elapsed < TimeSpan.FromMinutes(1)) return "たった今";
+        if (elapsed < TimeSpan.FromHours(1)) return $"{(int)elapsed.TotalMinutes}分前";
+        var days = (now.Date - local.Date).Days;
+        if (days == 0) return $"{(int)elapsed.TotalHours}時間前";
+        if (days == 1) return "昨日";
+        if (days < 7) return $"{days}日前";
+        return local.Year == now.Year ? local.ToString("M/d") : local.ToString("yyyy/M/d");
+    }
 
     /// <summary>棚の行のピン留め（期限が来ても消さない）。</summary>
     public bool IsPinned => Snapshot.Pinned;

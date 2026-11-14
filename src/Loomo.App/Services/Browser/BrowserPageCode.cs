@@ -10,7 +10,7 @@ public sealed record BrowserCodeBlock(string Language, string Text)
 }
 
 /// <summary>
-/// 表示中のページのコードブロック（ブラウザサポート §41：記事・ドキュメントのコードを、エディタ・コンポーザ・ターミナルへ）。
+/// 表示中のページのコードブロック（ブラウザサポート §41：記事・ドキュメントのコードを、エディタ・ターミナルへ）。
 /// 抜き出しはページの中（JavaScript）で行い、結果は<b>データとして</b>受け取るだけ——ページから届く合図は受けない。
 /// </summary>
 public static class BrowserPageCode

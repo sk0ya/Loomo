@@ -104,7 +104,7 @@ public sealed partial class BrowserSupportViewModel : ObservableObject
         new("GitHub", "PR・Issue を Claude Code へ・ファイルを手元で・Actions のエラーを手元の行で"),
         new("npm／NuGet", "このワークスペースでの使われ方と追加"),
         new("localhost", "そのポートを動かしているターミナル"),
-        new("記事・ドキュメント", "コードブロックを右クリック → エディタ・ターミナル・コンポーザへ"),
+        new("記事・ドキュメント", "コードブロックを右クリック → エディタ・ターミナルへ"),
         new("「ブラウザへ送る」で来たタブ", "調べ始めた場所へ戻る・ページのコードをそこへ貼る"),
     ];
 

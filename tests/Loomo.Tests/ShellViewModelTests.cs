@@ -57,8 +57,8 @@ public class ShellViewModelTests
     public void ソリューションだけの区画は遅延検出後に保存した開閉状態へ戻る(bool primary, bool visible)
     {
         var settings = new LoomoSettings();
-        settings.ActivityBar.Primary = primary ? ["solution"] : ["explorer", "git", "pegboard", "tabs", "todo", "running"];
-        settings.ActivityBar.Secondary = primary ? ["explorer", "git", "pegboard", "tabs", "todo", "running"] : ["solution"];
+        settings.ActivityBar.Primary = primary ? ["solution"] : ["explorer", "git", "tabs", "todo", "running"];
+        settings.ActivityBar.Secondary = primary ? ["explorer", "git", "tabs", "todo", "running"] : ["solution"];
         settings.ActivityBar.PrimarySelection = primary ? "solution" : "explorer";
         settings.ActivityBar.SecondarySelection = primary ? "tabs" : "solution";
         settings.ActivityBar.PrimaryVisible = primary ? visible : true;
@@ -172,7 +172,6 @@ public class ShellViewModelTests
 
         return new ShellViewModel(folderTree, filesVm, harnessVm, workspacesVm, aiBar, new TabsViewModel(), sessionsVm, settingsVm,
             appearanceVm, lspVm, lspPromptVm, formatterVm, new Lazy<KeybindingsViewModel>(() => keyboardVm), gitPanelVm, gitSessionVm, diffSessionVm, traceSessionVm,
-            new PegboardViewModel(),
             new BrowserViewModel(new BrowserLibraryStore(
                 Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-loomo-browser.json"))),
             searchVm, debugVm, tsIdeVm,
@@ -289,7 +288,7 @@ public class ShellViewModelTests
     {
         var settings = new LoomoSettings();
         // 前回：エクスプローラを中段へ、タブ一覧を上段へ動かしていた部屋。
-        settings.ActivityBar.Primary = ["tabs", "git", "solution", "pegboard"];
+        settings.ActivityBar.Primary = ["tabs", "git", "solution"];
         settings.ActivityBar.Secondary = ["explorer"];
         var sut = CreateSut(activityBar: new ActivityBarViewModel(settings));
 
@@ -305,7 +304,7 @@ public class ShellViewModelTests
     public void 空の段は畳んだ状態で起動する()
     {
         var settings = new LoomoSettings();
-        settings.ActivityBar.Primary = ["explorer", "git", "solution", "pegboard", "tabs", "todo", "running"];
+        settings.ActivityBar.Primary = ["explorer", "git", "solution", "tabs", "todo", "running"];
         settings.ActivityBar.Secondary = [];
         var sut = CreateSut(activityBar: new ActivityBarViewModel(settings));
 
@@ -372,7 +371,6 @@ public class ShellViewModelTests
     {
         var sut = CreateSut();
 
-        sut.ActivityBar.Move(sut.ActivityBar.ItemFor(SidebarPanel.Pegboard)!, ActivityBarSlot.Primary, 0);
         sut.ActivityBar.Move(sut.ActivityBar.ItemFor(SidebarPanel.Todo)!, ActivityBarSlot.Primary, 0);
         sut.ActivityBar.Move(sut.ActivityBar.ItemFor(SidebarPanel.Running)!, ActivityBarSlot.Primary, 0);
 
@@ -384,14 +382,14 @@ public class ShellViewModelTests
     }
 
     [Fact]
-    public void ShowPegboard_switches_panel_and_keeps_open()
+    public void ShowRunning_switches_panel_and_keeps_open()
     {
         var sut = CreateSut();
 
-        sut.ShowPegboardCommand.Execute(null);
-        // 既定ではペグボードは中段（TODO Tree の下）に住むので、中段の区画で開く。
+        sut.ShowRunningCommand.Execute(null);
+        // 既定では動いているものは中段（タブ一覧の下）に住むので、中段の区画で開く。
         Assert.True(sut.IsSecondarySidebarVisible);
-        Assert.Equal(SidebarPanel.Pegboard, sut.SecondaryPanel);
+        Assert.Equal(SidebarPanel.Running, sut.SecondaryPanel);
     }
 
     [Fact]

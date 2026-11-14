@@ -213,7 +213,7 @@ public partial class ShellWindow {
     private void SendCodeToSearchOriginTerminal(BrowserSearchOrigin.Terminal origin, BrowserCodeBlock block) {
         var command = BrowserPageCode.AsCommand(block.Text);
         if (RecentTerminalCommands.IsMultiline(command)) {
-            InsertIntoComposer(command);
+            _ = OpenMultilineCommandInEditorAsync(command);
             return;
         }
         if (_terminalTabs.FirstOrDefault(t => t.Id == origin.TabId) is not { } tab)

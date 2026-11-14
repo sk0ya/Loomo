@@ -65,7 +65,6 @@ public static class CommandCatalog
     private const string CatTerminal = "ターミナル";
     private const string CatClaude = "Claude Code";
     private const string CatTask = "タスク";
-    private const string CatComposer = "コンポーザ";
     private const string CatTrail = "軌跡";
     private const string CatHosting = "PR・Issue（GitHub／Azure DevOps）";
     private const string CatBrowser = "ブラウザ";
@@ -81,7 +80,7 @@ public static class CommandCatalog
             CatEdit, CatNavigate, CatCodeNavigate, CatProblems, CatTest,
             CatFormat, CatRefactor, CatGenerate, CatStructure, CatHistory, CatPackages,
         }),
-        new("ターミナル", "🖥", new[] { CatTerminal, CatClaude, CatTask, CatComposer }),
+        new("ターミナル", "🖥", new[] { CatTerminal, CatClaude, CatTask }),
         new("ブラウザ", "🌐", new[] { CatBrowser }),
         new("Git", "⑂", new[] { CatHosting }),
         new("軌跡", "🧭", new[] { CatTrail }),
@@ -185,9 +184,6 @@ public static class CommandCatalog
         new CommandDescriptor("terminal.openOutput", CatTerminal, "コマンドの出力をエディタで開く", null),
         // 閉じたターミナルの画面を書庫から読む（§24.72）。
         new CommandDescriptor("terminal.openArchive", CatTerminal, "閉じたターミナルの画面を読む", null),
-        // 出典付きでペグボードへ残す（§24.26）。右クリック（選択時）と同じ実装へ入る。
-        new CommandDescriptor("terminal.pinOutput", CatTerminal, "コマンドの出力をペグボードへ残す", null),
-        new CommandDescriptor("terminal.pinSelection", CatTerminal, "ターミナルの選択をペグボードへ残す", null),
         new CommandDescriptor("trail.bookmark", CatTrail, "いまの地点にしおりを付ける", null),
         new CommandDescriptor("trail.bookmarks", CatTrail, "しおり一覧", null),
         new CommandDescriptor("trail.daySummary", CatTrail, "この日のまとめ", null),
@@ -266,15 +262,11 @@ public static class CommandCatalog
         new CommandDescriptor("stage.cycle", CatMode, "次へ切り替え（ソロ＝舞台／レイアウト＝保存レイアウト）", "Ctrl+T"),
         new CommandDescriptor("mode.toggle", CatMode, "表示モードを切り替え（集中→分割→ドック）", "Ctrl+Shift+T"),
 
-        // ===== コンポーザ =====
-        new CommandDescriptor("composer.run", CatComposer, "本文をターミナルで実行", "Ctrl+Enter"),
-
         // ===== サイドバー（既定未割当。設定画面でキーを与えられる） =====
         new CommandDescriptor("sidebar.explorer", CatSidebar, "エクスプローラを開く", null),
         new CommandDescriptor("sidebar.tabs", CatSidebar, "タブセクションを開閉", null),
         new CommandDescriptor("sidebar.sessions", CatSidebar, "AIセッションを開く", null),
         new CommandDescriptor("sidebar.git", CatSidebar, "Git を開く", null),
-        new CommandDescriptor("sidebar.pegboard", CatSidebar, "ペグボードを開く", null),
         new CommandDescriptor("sidebar.solution", CatSidebar, "ソリューション（C#）を開く", null),
         new CommandDescriptor("sidebar.running", CatSidebar, "動いているものを開く", null),
         new CommandDescriptor("sidebar.settings", CatSidebar, "設定を開く", null),

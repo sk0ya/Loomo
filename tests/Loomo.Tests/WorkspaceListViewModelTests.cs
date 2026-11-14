@@ -593,16 +593,16 @@ public class WorkspaceListViewModelTests
     {
         var root = Path.Combine(Path.GetTempPath(), $"loomo-store-{Guid.NewGuid():N}");
         var store = new WorkspaceStateStore(Path.Combine(root, "workspaces.json"));
-        var active = new WorkspaceSnapshot { RootPath = @"C:\active", ComposerText = "active detail" };
-        var inactive = new WorkspaceSnapshot { RootPath = @"C:\inactive", ComposerText = "inactive detail" };
+        var active = new WorkspaceSnapshot { RootPath = @"C:\active", TreeSelectedPath = "active detail" };
+        var inactive = new WorkspaceSnapshot { RootPath = @"C:\inactive", TreeSelectedPath = "inactive detail" };
         store.Save(new WorkspaceState
             { ActiveWorkspaceId = active.Id, Workspaces = [active, inactive] });
 
         var startup = store.LoadForStartup();
 
-        Assert.Equal("active detail", startup.Workspaces.Single(w => w.Id == active.Id).ComposerText);
-        Assert.Null(startup.Workspaces.Single(w => w.Id == inactive.Id).ComposerText);
-        Assert.Equal("inactive detail", store.LoadWorkspace(inactive.Id)?.ComposerText);
+        Assert.Equal("active detail", startup.Workspaces.Single(w => w.Id == active.Id).TreeSelectedPath);
+        Assert.Null(startup.Workspaces.Single(w => w.Id == inactive.Id).TreeSelectedPath);
+        Assert.Equal("inactive detail", store.LoadWorkspace(inactive.Id)?.TreeSelectedPath);
     }
 
     [Fact]

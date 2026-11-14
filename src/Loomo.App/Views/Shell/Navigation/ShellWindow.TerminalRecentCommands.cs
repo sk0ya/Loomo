@@ -1,7 +1,7 @@
 namespace sk0ya.Loomo.App.Views;
 /// <summary>ShellWindow: ターミナルの「最近のコマンド」（§24.20）。可視ターミナルで人間が実行し終えた
 /// コマンドを終了コード付きでワークスペースへ残し、コマンドパレットから選び直して<b>ターミナルへ送る</b>
-/// （§24.3 の「送る」＝プロンプトへ入力するだけで実行はしない。複数行はプロンプト暴発を避けてコンポーザへ）。
+/// （§24.3 の「送る」＝プロンプトへ入力するだけで実行はしない。複数行はプロンプト暴発を避けてエディタで開く）。
 /// 記録は UI スレッドでスナップショットの参照を差し替えるだけで、ディスクへの書き出しは定期保存の
 /// 書き出しスレッドが引き取る（§31.15）。</summary>
 public partial class ShellWindow {
@@ -86,15 +86,26 @@ public partial class ShellWindow {
     /// <summary>「最近のコマンドを選び直す」。パレットを「$ ターミナル」の探し方で開く。</summary>
     private void OpenRecentTerminalCommands() => OpenCommandPalette(PaletteMode.Terminal);
 
-    /// <summary>選んだコマンドを可視ターミナルのプロンプトへ入力する（Enter は送らない）。
-    /// ペグボードの「ターミナルへ送る」と同じ流儀（§24.3）。</summary>
+    /// <summary>選んだコマンドを可視ターミナルのプロンプトへ入力する（Enter は送らない・§24.3）。
+    /// 複数行はプロンプトへ打つと行ごとに走ってしまうので、エディタの新しいタブで開く。</summary>
     private void SendRecentCommandToTerminal(string command) {
         if (RecentTerminalCommands.IsMultiline(command)) {
-            InsertIntoComposer(command);
+            _ = OpenMultilineCommandInEditorAsync(command);
             return;
         }
         SetPaneVisible(PaneKind.Terminal, true);
         _activeTerminalTab?.View.SendTerminalInput(command);
         FocusPane(PaneKind.Terminal);
+    }
+
+    /// <summary>複数行のコマンドを <c>command.ps1</c> という名前の無いタブで開く（どこにも書き戻さない）。</summary>
+    private async Task OpenMultilineCommandInEditorAsync(string command) {
+        EnsurePaneVisibleOrSwapTopLeft(PaneKind.Editor);
+        await _editor.OpenDocumentAsync(new EditorDocument {
+            FileName = "command.ps1",
+            Content = command.Replace("\r\n", "\n").Replace("\n", Environment.NewLine),
+            OnSaved = _ => { },
+        });
+        ToastService.Info("複数行のコマンドなのでエディタで開きました");
     }
 }

@@ -3,7 +3,7 @@ using sk0ya.Loomo.Core.Markdown;
 
 namespace sk0ya.Loomo.App.Services;
 
-/// <summary>ブラウザのタブから写す URL とリンク（§24.46）。タブを前に出さずに、調べ物をエディタやコンポーザへ運ぶ。</summary>
+/// <summary>ブラウザのタブから写す URL とリンク（§24.46）。タブを前に出さずに、調べ物をエディタやターミナルへ運ぶ。</summary>
 internal static class BrowserTabLink
 {
     /// <summary>写す URL。ローカルのページ（<c>https://file.loomo/…</c>）は Loomo の外では開けないので <c>file:///</c> に戻す。
