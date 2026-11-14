@@ -13,32 +13,121 @@ public partial class ShellWindow {
 
     /// <summary>blame の欄で Claude の行を押した：頼みごとを通知欄に出す（コミットの行なら差分が開く場所）。</summary>
     private void ShowClaudeBlameRequest(Editor.Controls.Git.EditorBlameLine blame) {
-        if (ClaudeProvenance.FromHandle(blame.OriginalLine) is not { } write)
-            return;
-        ToastService.Info($"この行を書いた頼みごと（{blame.Date}）\n{ClaudeTranscriptParser.Shorten(write.Prompt, 400)}");
+        if (ClaudeProvenance.FromHandle(blame.OriginalLine) is { } write)
+            ShowClaudeRequest(write);
+    }
+
+    /// <summary>出自の項目を押した回数（§43.6 の測り直し）。使われていなければ外す、の物差し。</summary>
+    private ProvenanceUsageLog? _provenanceUsage;
+    private ProvenanceUsageLog ProvenanceUsage
+        => _provenanceUsage ??= new ProvenanceUsageLog(ProvenanceUsageLog.DefaultPath());
+
+    private void ShowClaudeRequest(ClaudeWrite write) {
+        ProvenanceUsage.Record("request.show");
+        var at = write.At?.LocalDateTime.ToString("yyyy-MM-dd HH:mm") ?? "";
+        ToastService.Info($"この行を書いた頼みごと（{at}）\n{ClaudeTranscriptParser.Shorten(write.Prompt, 400)}");
+    }
+
+    /// <summary>頼みごとへの項目（変わった場所・全文のコピー・会話の再開）。コミットしていない行でも、最近コミットした
+    /// 行（§43.6 A2a）でも同じ並び。<paramref name="withShow"/>：欄を押すと差分が開く行（コミット済み）には
+    /// 「この行を書いた頼みごと」も足す。</summary>
+    private void AddClaudeRequestMenuItems(ContextMenu menu, ClaudeWrite write, bool withShow) {
+        if (withShow) {
+            var show = new MenuItem { Header = $"この行を書いた頼みごと：{ClaudeTranscriptParser.Shorten(write.PromptHead, 40)}" };
+            show.Click += (_, _) => ShowClaudeRequest(write);
+            menu.Items.Add(show);
+        }
+        var diff = new MenuItem { Header = "この頼みごとの差分を開く" };
+        diff.Click += (_, _) => {
+            ProvenanceUsage.Record("request.diff");
+            OpenClaudeRequestDiff(write);
+        };
+        menu.Items.Add(diff);
+        var read = new MenuItem { Header = "この頼みごとの会話を読む（ターミナルサポート）" };
+        read.Click += (_, _) => {
+            ProvenanceUsage.Record("request.read");
+            OpenClaudeTurnRecord(write);
+        };
+        menu.Items.Add(read);
+        var places = new MenuItem { Header = "この頼みごとで変わった場所…" };
+        places.Click += (_, _) => {
+            ProvenanceUsage.Record("request.places");
+            OpenClaudeRequestPlaces(write);
+        };
+        menu.Items.Add(places);
+        var copy = new MenuItem { Header = "頼みごとの全文をコピー" };
+        copy.Click += (_, _) => {
+            ProvenanceUsage.Record("request.copy");
+            try { Clipboard.SetText(write.Prompt); } catch { /* クリップボード占有中は無視 */ }
+        };
+        menu.Items.Add(copy);
+        // セッション ID は記録のファイル名から来る文字列なので、シェルに打つ前に形を確かめる（UUID の文字だけ）。
+        if (write.SessionId.Length is > 0 and <= 64 && write.SessionId.All(c => char.IsAsciiLetterOrDigit(c) || c == '-')) {
+            var resume = new MenuItem { Header = "この会話を再開（新しいタブで claude --resume）" };
+            resume.Click += (_, _) => {
+                ProvenanceUsage.Record("request.resume");
+                ResumeClaudeSession(write.SessionId);
+            };
+            menu.Items.Add(resume);
+        }
     }
 
     private void AddClaudeBlameMenuItems(ContextMenu menu, VimEditorControl control, Editor.Controls.Git.EditorBlameLine blame) {
         if (ClaudeProvenance.FromHandle(blame.OriginalLine) is { } write) {
-            var places = new MenuItem { Header = "この頼みごとで変わった場所…" };
-            places.Click += (_, _) => OpenClaudeRequestPlaces(write);
-            menu.Items.Add(places);
-            var copy = new MenuItem { Header = "頼みごとの全文をコピー" };
-            copy.Click += (_, _) => {
-                try { Clipboard.SetText(write.Prompt); } catch { /* クリップボード占有中は無視 */ }
-            };
-            menu.Items.Add(copy);
-            // セッション ID は記録のファイル名から来る文字列なので、シェルに打つ前に形を確かめる（UUID の文字だけ）。
-            if (write.SessionId.Length is > 0 and <= 64 && write.SessionId.All(c => char.IsAsciiLetterOrDigit(c) || c == '-')) {
-                var resume = new MenuItem { Header = "この会話を再開（新しいタブで claude --resume）" };
-                resume.Click += (_, _) => ResumeClaudeSession(write.SessionId);
-                menu.Items.Add(resume);
-            }
+            AddClaudeRequestMenuItems(menu, write, withShow: false);
             menu.Items.Add(new Separator());
         }
         var close = new MenuItem { Header = "Blame を閉じる", InputGestureText = ":Gblame" };
         close.Click += (_, _) => control.ExecuteCommand("Gblame");
         menu.Items.Add(close);
+    }
+
+    /// <summary>頼みごと → その頼みごとの差分（§43.6 A3）。書き換えたファイルを、頼みごとの前と後で Diff ペインに並べる。
+    /// 記録とバックアップを読むのは裏で。あとから変わったファイル・前後を組めず抜粋になったファイルは、一覧の見出しで言う。</summary>
+    private async void OpenClaudeRequestDiff(ClaudeWrite origin) {
+        var writes = ClaudeProvenance.WritesOfRequest(origin);
+        IReadOnlyList<DiffComparison> comparisons;
+        try {
+            comparisons = await Task.Run(() => ClaudeRequestComparisons.Build(
+                ClaudeRequestDiffBuilder.Build(writes), origin, _workspace.ToDisplayPath));
+        } catch (Exception ex) {
+            ToastService.Error($"頼みごとの差分を組めませんでした: {ex.Message}");
+            return;
+        }
+        if (comparisons.Count == 0) {
+            ToastService.Info("この頼みごとの書き込みは、記録から読めませんでした");
+            return;
+        }
+        ShowDiff(new DiffOpenTarget.Request(comparisons, origin.PromptHead));
+    }
+
+    /// <summary>行 → 頼みごと → そのときの Claude の返事（§43.6 A4）。ターミナルサポートに記録を留めて、そのターンを開く。
+    /// 再開（<c>--resume</c>）と違って何も動かさない——読むだけ。</summary>
+    private async void OpenClaudeTurnRecord(ClaudeWrite write) {
+        EnsurePaneVisibleOrSwapTopLeft(PaneKind.TerminalSupport);
+        try {
+            await _terminalSupport.ShowRecordAsync(write.TranscriptPath, write.PromptLine, _activeTerminalTab?.Id);
+        } catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) {
+            ToastService.Error($"記録を読めませんでした: {ex.Message}");
+        }
+    }
+
+    /// <summary>ターミナルサポートのターンから（§39・§43.6 A3）。記録を読むのは裏で。ファイルを書き換えていない
+    /// 頼みごと・索引の期間より古い記録は、そう言う。</summary>
+    private async void OpenClaudeTurnDiff(string sessionId, int promptLine) {
+        ProvenanceUsage.Record("turn.diff");
+        IReadOnlyList<ClaudeWrite> writes;
+        try {
+            writes = await Task.Run(() => ClaudeProvenance.WritesOfRequest(sessionId, promptLine));
+        } catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) {
+            ToastService.Error($"記録を読めませんでした: {ex.Message}");
+            return;
+        }
+        if (writes.Count == 0) {
+            ToastService.Info("この頼みごとはファイルを書き換えていません（または記録が古くて読んでいません）");
+            return;
+        }
+        OpenClaudeRequestDiff(writes[0]);
     }
 
     /// <summary>頼みごと → それで変わった場所。ファイルごとに 1 行、選ぶとその書き込みがいまある行へ行く
@@ -52,7 +141,10 @@ public partial class ShellWindow {
             .ToList());
         var items = places.Select(place => new PaletteCommand("変わった場所",
             _workspace.ToDisplayPath(place.Path),
-            () => _ = OpenPathInEditorAsync(place.Path, place.Line ?? 1, 1)) {
+            () => {
+                ProvenanceUsage.Record("places.jump");
+                _ = OpenPathInEditorAsync(place.Path, place.Line ?? 1, 1);
+            }) {
             Badge = $"+{place.Added}",
             Detail = string.Join(Environment.NewLine, new[] {
                 $"頼みごと: {origin.PromptHead}",

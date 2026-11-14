@@ -482,6 +482,9 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
             case DiffOpenTarget.ComparisonSet set:
                 ShowComparisons(set.Values);
                 return Task.CompletedTask;
+            case DiffOpenTarget.Request request:
+                ShowComparisons(request.Values);
+                return Task.CompletedTask;
             case DiffOpenTarget.CommitRange r:
                 ShowCommitRange(r.FromHash, r.ToHash, r.Label);
                 return Task.CompletedTask;

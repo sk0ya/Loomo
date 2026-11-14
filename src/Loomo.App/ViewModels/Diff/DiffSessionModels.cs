@@ -59,6 +59,10 @@ public sealed record DiffComparison(
     /// 一覧を組み直すたびに UI スレッドで全件の差分を取り直さないようにする。null なら一覧を作るときに数える。</summary>
     public (int Added, int Removed)? Stat { get; init; }
 
+    /// <summary>「見た」印（§24.107）を覚える見方。素材がファイルの決まった版同士（頼みごとの前と後＝§43.6 A3）で、
+    /// 開き直しても同じ比較になるものだけが名乗る。null（既定）は印を付けない——クリップボードや選択との比較は一度きり。</summary>
+    public string? ViewedScope { get; init; }
+
     public DiffComparison Swapped()
         => new(RightTitle, RightText, LeftTitle, LeftText, FilePath, !FileIsLeft)
         {
@@ -71,7 +75,7 @@ public sealed record DiffComparison(
     /// 出どころのファイルも一緒に手放す——残すと「右はもう別物なのに、行はそのファイルの行番号として開く」
     /// 取り違えになるため。</summary>
     public DiffComparison WithRight(string title, string text)
-        => this with { RightTitle = title, RightText = text, FilePath = FileIsLeft ? FilePath : "", Badge = "", Stat = null };
+        => this with { RightTitle = title, RightText = text, FilePath = FileIsLeft ? FilePath : "", Badge = "", Stat = null, ViewedScope = null };
 
     /// <summary>ファイル一覧に出す見出し（どちらとどちらを比べているか）。</summary>
     public string DisplayPath => Label ?? $"{LeftTitle} ↔ {RightTitle}";

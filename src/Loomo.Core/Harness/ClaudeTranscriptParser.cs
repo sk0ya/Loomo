@@ -138,7 +138,12 @@ public static class ClaudeTranscriptParser
                 // queued_command の添付として残る——これも人間の頼みごとで、ここから先の操作はこれに応えたもの。
                 case "attachment" when !isSubagent
                     && root.TryGetProperty("attachment", out var attachment) && attachment.ValueKind == JsonValueKind.Object
-                    && Str(attachment, "type") == "queued_command" && Str(attachment, "commandMode") is null or "prompt":
+                    && Str(attachment, "type") == "queued_command" && Str(attachment, "commandMode") is null or "prompt"
+                    // 同じ形で、人間でないものも届く：サブエージェントの報告（origin.kind が peer・isMeta）。頼みごとに数えると、
+                    // そこから先の操作が「サブエージェントの報告に応えたもの」になり、ターンも出自（§43）も人間の頼みごとから切れる。
+                    && !(attachment.TryGetProperty("isMeta", out var queuedMeta) && queuedMeta.ValueKind == JsonValueKind.True)
+                    && !(attachment.TryGetProperty("origin", out var origin) && origin.ValueKind == JsonValueKind.Object
+                         && Str(origin, "kind") is { } kind && kind != "human"):
                     AddPrompt(state, Str(attachment, "prompt"), new RunPromptMark(lineNumber, at));
                     break;
             }

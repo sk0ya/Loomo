@@ -32,6 +32,7 @@ public sealed class ClaudeProvenanceIndex
     private readonly object _gate = new();
     private readonly Dictionary<string, Entry> _sessions = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<ClaudeWrite> _handles = new();
+    private readonly Dictionary<string, Dictionary<(string Hash, int OriginalLine), ClaudeWrite>> _commitLines = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<ClaudeWrite, int> _handleOf = new(ReferenceEqualityComparer.Instance);
 
     public ClaudeProvenanceIndex(IWorkspaceService workspace, Func<string>? projectsRoot = null)
@@ -69,6 +70,21 @@ public sealed class ClaudeProvenanceIndex
         }
     }
 
+    /// <summary>記録のセッションと頼みごとの行番号から、その頼みごとが書いたもの全部（古い順）。ターミナルサポートの
+    /// ターンから引く入口（§43.6 A3）。記録を読み直すので、UI スレッドから呼ばないこと。</summary>
+    public IReadOnlyList<ClaudeWrite> WritesOfRequest(string sessionId, int promptLine)
+    {
+        lock (_gate)
+        {
+            Refresh();
+            return _sessions.Values
+                .SelectMany(entry => entry.Writes.Values.SelectMany(list => list))
+                .Where(write => write.PromptLine == promptLine && string.Equals(write.SessionId, sessionId, StringComparison.Ordinal))
+                .OrderBy(write => write.At ?? DateTimeOffset.MinValue)
+                .ToList();
+        }
+    }
+
     /// <summary>コミットしていない行（0 始まり → 中身）を、それを書いた頼みごとへ結ぶ。</summary>
     public Dictionary<int, ClaudeWrite> Attribute(string filePath, IReadOnlyDictionary<int, string> uncommitted)
         => uncommitted.Count == 0 ? [] : ClaudeProvenance.Attribute(uncommitted, WritesFor(filePath));
@@ -89,6 +105,33 @@ public sealed class ClaudeProvenanceIndex
     {
         lock (_gate)
             return handle >= 1 && handle <= _handles.Count ? _handles[handle - 1] : null;
+    }
+
+    /// <summary>
+    /// コミット済みの行の出自を覚える（§43.6 A2a）。blame の行はハッシュと元の行番号を git のまま運ぶので、取っ手を
+    /// 載せる欄が無い——代わりに（ファイル・短いハッシュ・そのコミットでの行番号）で引けるようにする。
+    /// ファイルごとに、blame を引くたび丸ごと差し替える。
+    /// </summary>
+    public void SetCommitLines(string filePath, Dictionary<(string Hash, int OriginalLine), ClaudeWrite> lines)
+    {
+        var key = Normalize(filePath);
+        lock (_gate)
+        {
+            if (lines.Count == 0)
+                _commitLines.Remove(key);
+            else
+                _commitLines[key] = lines;
+        }
+    }
+
+    /// <summary>コミット済みの行（blame の行のハッシュと元の行番号）を書いた頼みごと。結んでいなければ null。</summary>
+    public ClaudeWrite? ForCommitLine(string? filePath, string? hash, int originalLine)
+    {
+        if (filePath is not { Length: > 0 } || hash is not { Length: > 0 })
+            return null;
+        var key = Normalize(filePath);
+        lock (_gate)
+            return _commitLines.TryGetValue(key, out var lines) && lines.TryGetValue((hash, originalLine), out var write) ? write : null;
     }
 
     private void Refresh()
@@ -137,14 +180,22 @@ public sealed class ClaudeProvenanceIndex
             foreach (var call in group)
             {
                 if (!raw.TryGetValue(call.LineNumber, out var line)
-                    || ClaudeProvenance.ReadAddedLines(line, call.ToolUseId!) is not { Count: > 0 } added
+                    // 行を足さない書き込み（消すだけの Edit）も持つ。行の出自には効かないが、頼みごと単位の差分（§43.6 A3）は
+                    // 操作を順に当て直すので、抜けると「後」が合わない。
+                    || ClaudeProvenance.ReadAddedLines(line, call.ToolUseId!) is not { } added
                     || PromptOf(run, call) is not { } owner)
                     continue;
                 var (prompt, promptLine) = owner;
                 var path = Normalize(call.FilePath!);
                 if (!result.TryGetValue(path, out var list))
                     result[path] = list = new List<ClaudeWrite>();
-                list.Add(new ClaudeWrite(file.SessionId, file.Path, path, prompt, promptLine, call.At, added, call.FromSubagent));
+                list.Add(new ClaudeWrite(file.SessionId, file.Path, path, prompt, promptLine, call.At, added, call.FromSubagent)
+                {
+                    SourcePath = call.TranscriptPath,
+                    SourceLine = call.LineNumber,
+                    ResultLine = call.ResultLineNumber,
+                    ToolUseId = call.ToolUseId,
+                });
             }
         }
         return result;

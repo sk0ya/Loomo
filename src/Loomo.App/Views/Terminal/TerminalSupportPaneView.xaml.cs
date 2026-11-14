@@ -43,6 +43,16 @@ public partial class TerminalSupportPaneView : UserControl
         OutputHost.IsVisibleChanged += (_, _) => ShowOutput();
     }
 
+    /// <summary>ターンの外の行（「会話をすべて」など）では右クリックのメニューを出さない。</summary>
+    private void OnTreeRowContextMenuOpening(object sender, ContextMenuEventArgs e)
+    {
+        if (_vm is null || !_vm.CanOpenRequestDiff((sender as FrameworkElement)?.DataContext as ClaudeTreeItem))
+            e.Handled = true;
+    }
+
+    private void OnTreeRowOpenRequestDiff(object sender, RoutedEventArgs e)
+        => _vm?.OpenRequestDiff((sender as FrameworkElement)?.DataContext as ClaudeTreeItem);
+
     /// <summary>ページ（会話・出力）の本文のリンクが押された（ファイル・URL）。</summary>
     public event EventHandler<string>? PageLinkClicked;
 

@@ -67,7 +67,9 @@ public static class DiffViewedMarks
     /// </summary>
     public static string? Scope(DiffFileItem item, GitCompareBaseSelection? compareBase)
     {
-        if (item.IsCompare || string.IsNullOrEmpty(item.FullPath)) return null;
+        if (string.IsNullOrEmpty(item.FullPath)) return null;
+        // 素材の比較は、見方を名乗るもの（頼みごとの前と後＝§43.6 A3）だけ。
+        if (item.IsCompare) return item.Comparison!.ViewedScope;
         if (item.CommitFile is not null) return "range";
         if (item.CompareBaseFile is not null)
             return compareBase is { } selection ? $"base:{selection.Kind}:{selection.Target}" : "base";

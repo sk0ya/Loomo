@@ -224,23 +224,58 @@ public sealed class EditorGitService : IEditorGitService
         var result = Run(folder, "blame", "--porcelain", "--", filePath);
         var lines = result.Success ? GitBlamePorcelainParser.Parse(result.Output) : [];
         if (_provenance is not null)
-            AddClaudeLines(lines, filePath, result.Success ? GitBlamePorcelainParser.ParseUncommitted(result.Output) : UntrackedLines(folder, filePath));
+        {
+            AddClaudeLines(lines, filePath,
+                result.Success ? GitBlamePorcelainParser.ParseUncommitted(result.Output) : UntrackedLines(folder, filePath),
+                result.Success ? GitBlamePorcelainParser.ParseCommitted(result.Output) : []);
+        }
         return lines;
     }
 
-    /// <summary>コミットしていない行を、それを書いた頼みごとで埋める（§43）。git が何も言えない行だけに足す。</summary>
-    private void AddClaudeLines(Dictionary<int, EditorBlameLine> lines, string filePath, IReadOnlyDictionary<int, string> uncommitted)
+    /// <summary>
+    /// 出自（§43）を blame に足す。コミットしていない行は、それを書いた頼みごとで<b>埋める</b>（git が何も言えない行）。
+    /// 最近コミットした行（<see cref="ClaudeProvenanceIndex.Window"/> 以内）は git の行を残して頼みごとを<b>添える</b>
+    /// ——コミットしても線を切らない（§43.6 A2a）。
+    /// </summary>
+    private void AddClaudeLines(Dictionary<int, EditorBlameLine> lines, string filePath,
+        IReadOnlyDictionary<int, string> uncommitted, IReadOnlyList<GitBlameSourceLine> committed)
     {
-        if (uncommitted.Count == 0)
-            return;
+        var since = DateTimeOffset.UtcNow - ClaudeProvenanceIndex.Window;
+        var recent = committed.Where(line => line.CommitTime is { } at && at >= since).ToList();
+        var commitLines = new Dictionary<(string Hash, int OriginalLine), ClaudeWrite>();
         try
         {
-            foreach (var (line, write) in _provenance!.Attribute(filePath, uncommitted))
+            if (uncommitted.Count == 0 && recent.Count == 0)
+                return;
+            var writes = _provenance!.WritesFor(filePath);
+            if (writes.Count == 0)
+                return;
+            foreach (var (line, write) in ClaudeProvenance.Attribute(uncommitted, writes))
                 lines[line] = ClaudeBlame.ToBlameLine(write, _provenance.HandleOf(write));
+
+            // コミットごとに結ぶ：そのコミットより後の書き込みは、その行を書いていない（あとから同じ中身を
+            // 書き直していても、コミットに入ったのは前の頼みごとのぶん）。続いている行を辿るのも同じコミットの中だけ。
+            foreach (var commit in recent.GroupBy(line => line.Hash, StringComparer.Ordinal))
+            {
+                var committedAt = commit.First().CommitTime!.Value.AddSeconds(1); // git の時刻は秒まで
+                var before = writes.Where(write => write.At is not { } at || at < committedAt).ToList();
+                var origins = commit.ToDictionary(line => line.Line);
+                foreach (var (line, write) in ClaudeProvenance.Attribute(commit.ToDictionary(l => l.Line, l => l.Text), before))
+                {
+                    if (!lines.TryGetValue(line, out var blame))
+                        continue;
+                    lines[line] = ClaudeBlame.WithRequest(blame, write);
+                    commitLines[(blame.CommitHash, origins[line].OriginalLine)] = write;
+                }
+            }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             // 記録が読めなくても git の blame はそのまま出す。
+        }
+        finally
+        {
+            _provenance!.SetCommitLines(filePath, commitLines);
         }
     }
 
@@ -514,6 +549,46 @@ public static class GitBlamePorcelainParser
         return result;
     }
 
+    /// <summary>コミット済みの行を、中身とコミットの時刻つきで返す（§43.6 A2a の出自の入力）。ハッシュは
+    /// <see cref="Parse"/> と同じ短い形（blame の行と突き合わせる鍵）。時刻はコミットした時刻（無ければ書いた時刻）。</summary>
+    public static List<GitBlameSourceLine> ParseCommitted(string blameOutput)
+    {
+        var result = new List<GitBlameSourceLine>();
+        if (string.IsNullOrEmpty(blameOutput))
+            return result;
+        var times = new Dictionary<string, (DateTimeOffset? Committed, DateTimeOffset? Authored)>(StringComparer.Ordinal);
+        string? hash = null;
+        var resultLine = -1;
+        var origLine = 0;
+        foreach (var raw in blameOutput.Split('\n'))
+        {
+            var line = raw.TrimEnd('\r');
+            if (line.Length == 0) continue;
+            if (line[0] == '\t')
+            {
+                if (hash is not null && resultLine >= 0 && !hash.All(c => c == '0'))
+                {
+                    var time = times.GetValueOrDefault(hash);
+                    result.Add(new GitBlameSourceLine(resultLine, line[1..], hash[..Math.Min(7, hash.Length)], origLine,
+                        time.Committed ?? time.Authored));
+                }
+                resultLine = -1;
+            }
+            else if (char.IsAsciiHexDigit(line[0]) && line.Length > 40 && line[40] == ' ')
+            {
+                var parts = line.Split(' ');
+                hash = parts[0];
+                origLine = parts.Length > 1 && int.TryParse(parts[1], out var ol) ? ol : 0;
+                resultLine = parts.Length > 2 && int.TryParse(parts[2], out var rl) ? rl - 1 : -1;
+            }
+            else if (hash is not null && line.StartsWith("committer-time ", StringComparison.Ordinal) && long.TryParse(line[15..], out var committed))
+                times[hash] = (DateTimeOffset.FromUnixTimeSeconds(committed), times.GetValueOrDefault(hash).Authored);
+            else if (hash is not null && line.StartsWith("author-time ", StringComparison.Ordinal) && long.TryParse(line[12..], out var authored))
+                times[hash] = (times.GetValueOrDefault(hash).Committed, DateTimeOffset.FromUnixTimeSeconds(authored));
+        }
+        return result;
+    }
+
     /// <summary>コミットしていない行（hash が全て 0）だけを、0 始まりの行番号 → 中身で返す（§43 の出自の入力）。</summary>
     public static Dictionary<int, string> ParseUncommitted(string blameOutput)
     {
@@ -557,7 +632,21 @@ public static class ClaudeBlame
     public static EditorBlameLine ToBlameLine(ClaudeWrite write, int handle)
         => new(Marker, write.FromSubagent ? "サブエージェント" : "頼みごと",
             write.At?.LocalDateTime.ToString("yyyy-MM-dd HH:mm") ?? "", write.PromptHead, handle);
+
+    /// <summary>
+    /// コミット済みの行に頼みごとを添える（§43.6 A2a）。ハッシュ・作者・日付・元の行番号は git のまま（差分・履歴・
+    /// リンクの経路はこれまでどおり）。件名の<b>前</b>に置くのは、行末の注記が件名を先頭 60 字で切るから——後ろでは
+    /// 長い件名のコミットで頼みごとが見えない。件名は残る（blame の欄のツールチップで全部読める）。
+    /// </summary>
+    public static EditorBlameLine WithRequest(EditorBlameLine blame, ClaudeWrite write)
+    {
+        var request = $"{(write.FromSubagent ? "サブエージェント" : "頼みごと")}「{write.PromptHead}」";
+        return blame with { Summary = blame.Summary.Length > 0 ? $"{request} · {blame.Summary}" : request };
+    }
 }
+
+/// <summary>blame のコミット済みの 1 行：いまの行番号（0 始まり）・中身・コミット（短いハッシュ）・そのコミットでの行番号・コミットの時刻。</summary>
+public sealed record GitBlameSourceLine(int Line, string Text, string Hash, int OriginalLine, DateTimeOffset? CommitTime);
 
 /// <summary>
 /// unified diff → ガターの行ごとの状態（0 始まりの新しい側の行）。エディタ既定の

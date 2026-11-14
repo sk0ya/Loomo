@@ -271,6 +271,80 @@ public sealed class ClaudeProvenanceTests : IAsyncLifetime
         Assert.All(new[] { 0, 1, 2 }, line => Assert.True(ClaudeBlame.IsClaude(blame[line])));
     }
 
+    // ===== コミットしても線を切らない（§43.6 A2a） =====
+
+    [Fact]
+    public void blame_からコミット済みの行を_中身とコミットの時刻つきで読む()
+    {
+        var zero = new string('0', 40);
+        var hash = new string('a', 40);
+        var output = string.Join('\n',
+            $"{hash} 7 1 2", "author Someone", "author-time 1000", "committer-time 2000", "summary first", "\tcommitted line",
+            $"{zero} 2 2 1", "author Not Committed Yet", "\tnot yet",
+            $"{hash} 8 3", "\tsecond committed line",
+            "");
+
+        var lines = GitBlamePorcelainParser.ParseCommitted(output);
+
+        Assert.Equal(2, lines.Count);
+        Assert.Equal(new GitBlameSourceLine(0, "committed line", "aaaaaaa", 7, DateTimeOffset.FromUnixTimeSeconds(2000)), lines[0]);
+        // 同じコミットの 2 つ目以降は見出しだけ（時刻は最初の 1 回から引く）。
+        Assert.Equal(new GitBlameSourceLine(2, "second committed line", "aaaaaaa", 8, DateTimeOffset.FromUnixTimeSeconds(2000)), lines[1]);
+    }
+
+    [Fact]
+    public async Task コミットした行にも頼みごとが添えられ_コミットの情報は残る()
+    {
+        var file = Path.Combine(_repo, "a.cs");
+        File.WriteAllText(file, "class A\n{\n}\n");
+        await MustRunAsync("add", "-A");
+        await MustRunAsync("commit", "-m", "first");
+        File.WriteAllText(file, "class A\n{\n    void AddedByClaude() { }\n    void TypedByHuman() { }\n}\n");
+        WriteTranscript("s1", Prompt("メソッドを足して\n（詳細）"),
+            ToolUse("t1", "Edit", new { file_path = file, old_string = "{\n}", new_string = "{\n    void AddedByClaude() { }\n}" }),
+            Result("t1", "ok"));
+        await MustRunAsync("add", "-A");
+        await MustRunAsync("commit", "-m", "second");
+        var index = new ClaudeProvenanceIndex(_workspace, () => _projects);
+        var service = new EditorGitService(_git, () => null, index);
+
+        var blame = service.GetBlameLines(file);
+
+        // git の行のまま（ハッシュ・元の行番号＝差分と履歴の経路）で、件名の前に頼みごとが付く。
+        var line = blame[2];
+        Assert.False(ClaudeBlame.IsClaude(line));
+        Assert.True(line.CommitHash.All(char.IsAsciiHexDigit));
+        Assert.Equal(3, line.OriginalLine);
+        Assert.Equal("頼みごと「メソッドを足して」 · second", line.Summary);
+        Assert.Equal("メソッドを足して\n（詳細）", index.ForCommitLine(file, line.CommitHash, line.OriginalLine)?.Prompt);
+        // 同じコミットの人間の行・前のコミットの行には付かない。
+        Assert.Equal("second", blame[3].Summary);
+        Assert.Null(index.ForCommitLine(file, blame[3].CommitHash, blame[3].OriginalLine));
+        Assert.Equal("first", blame[0].Summary);
+        // 索引を渡さなければ git のまま。
+        Assert.Equal("second", new EditorGitService(_git, () => null).GetBlameLines(file)[2].Summary);
+    }
+
+    [Fact]
+    public async Task コミットより後の書き込みは_その行を書いていない()
+    {
+        var file = Path.Combine(_repo, "a.cs");
+        File.WriteAllText(file, "class A\n{\n    void WrittenBefore() { }\n}\n");
+        await MustRunAsync("add", "-A");
+        await MustRunAsync("commit", "-m", "first");
+        // コミットの後で、同じ中身を含むファイルを丸ごと書き直した（Write は全行が「足した行」になる）。
+        var later = DateTimeOffset.UtcNow.AddHours(1);
+        WriteTranscript("s1", Prompt("書き直して", later),
+            ToolUse("t1", "Write", new { file_path = file, content = "class A\n{\n    void WrittenBefore() { }\n}\n" }, later.AddSeconds(1)),
+            Result("t1", "ok", at: later.AddSeconds(2)));
+        var index = new ClaudeProvenanceIndex(_workspace, () => _projects);
+
+        var blame = new EditorGitService(_git, () => null, index).GetBlameLines(file);
+
+        Assert.Equal("first", blame[2].Summary);
+        Assert.Null(index.ForCommitLine(file, blame[2].CommitHash, blame[2].OriginalLine));
+    }
+
     // ===== 道具 =====
 
     private static int _clock;
@@ -289,22 +363,22 @@ public sealed class ClaudeProvenanceTests : IAsyncLifetime
 
     private static string Stamp() => new DateTimeOffset(2026, 11, 14, 10, 0, 0, TimeSpan.Zero).AddSeconds(++_clock).ToString("o");
 
-    private string Prompt(string text)
-        => JsonSerializer.Serialize(new { type = "user", timestamp = Stamp(), cwd = _repo, message = new { role = "user", content = text } });
+    private string Prompt(string text, DateTimeOffset? at = null)
+        => JsonSerializer.Serialize(new { type = "user", timestamp = at?.ToString("o") ?? Stamp(), cwd = _repo, message = new { role = "user", content = text } });
 
-    private static string ToolUse(string id, string name, object input)
+    private static string ToolUse(string id, string name, object input, DateTimeOffset? at = null)
         => JsonSerializer.Serialize(new
         {
             type = "assistant",
-            timestamp = Stamp(),
+            timestamp = at?.ToString("o") ?? Stamp(),
             message = new { role = "assistant", content = new object[] { new { type = "tool_use", id, name, input } } },
         });
 
-    private static string Result(string id, string text, bool isError = false)
+    private static string Result(string id, string text, bool isError = false, DateTimeOffset? at = null)
         => JsonSerializer.Serialize(new
         {
             type = "user",
-            timestamp = Stamp(),
+            timestamp = at?.ToString("o") ?? Stamp(),
             message = new { role = "user", content = new object[] { new { type = "tool_result", tool_use_id = id, content = text, is_error = isError } } },
         });
 

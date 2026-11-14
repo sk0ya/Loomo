@@ -175,6 +175,62 @@ public sealed class TerminalSupportTests : IDisposable
     }
 
     [Fact]
+    public void ツリーの行から_属するターンの頼みごとの行番号が引ける()
+    {
+        Assert.Equal(12, TerminalSupportViewModel.TurnLineOf("t12"));
+        Assert.Equal(12, TerminalSupportViewModel.TurnLineOf("t12/r3/x"));
+        Assert.Null(TerminalSupportViewModel.TurnLineOf("all"));
+        Assert.Null(TerminalSupportViewModel.TurnLineOf("t"));
+        Assert.Null(TerminalSupportViewModel.TurnLineOf(null));
+    }
+
+    [Fact]
+    public async Task 留めた記録は_同じタブが前に居る間は残り_タブが替わると離れる()
+    {
+        var vm = new TerminalSupportViewModel();
+        var front = Guid.NewGuid();
+        var missing = Path.Combine(Path.GetTempPath(), $"loomo-no-such-{Guid.NewGuid():N}.jsonl");
+
+        await vm.ShowRecordAsync(missing, 3, front);
+        Assert.True(vm.IsPinnedRecord);
+        Assert.True(vm.IsClaude);
+
+        // 前面のタブが無くなった（＝留めたときのタブではない）→ 離れて、タブの様子へ戻る。
+        vm.Update(null, [], _ => false, DateTime.UtcNow);
+        Assert.False(vm.IsPinnedRecord);
+        Assert.False(vm.IsClaude);
+
+        // 「タブへ戻る」でも離れ、ホストへ知らせる。
+        await vm.ShowRecordAsync(missing, 3, null);
+        vm.Update(null, [], _ => false, DateTime.UtcNow);   // 留めたときと同じ（タブ無し）なら残る
+        Assert.True(vm.IsPinnedRecord);
+        var closed = 0;
+        vm.PinnedRecordClosed += (_, _) => closed++;
+        vm.ClosePinnedRecordCommand.Execute(null);
+        Assert.False(vm.IsPinnedRecord);
+        Assert.Equal(1, closed);
+    }
+
+    [Fact]
+    public void Digest_SubagentReport_IsNotAPrompt()
+    {
+        // サブエージェントの報告も queued_command の添付で届く（実記録の形：origin.kind が peer・isMeta）。人間の頼みごとではない。
+        var lines = SampleSession().Append(JsonSerializer.Serialize(new
+        {
+            type = "attachment", timestamp = "2026-10-19T01:02:00Z",
+            attachment = new
+            {
+                type = "queued_command", prompt = "<agent-message from=\"a20e\">\n報告…", commandMode = "prompt",
+                origin = new { kind = "peer", from = "a20e" }, isMeta = true,
+            },
+        })).Append(Assistant("m8", [ToolUse("t8", "Read", new { file_path = @"C:\ws\e.cs" })], "2026-10-19T01:02:01Z"))
+            .ToArray();
+        var digest = Digest(lines);
+        Assert.Equal(2, digest.Turns.Count);
+        Assert.Equal("二つ目の頼みごと", digest.CurrentTurn!.Prompt);   // 報告のあとの操作は、続いている頼みごとのもの
+    }
+
+    [Fact]
     public void Digest_TaskNotification_IsNotAPrompt()
     {
         // バックグラウンドの作業が終わると、Claude Code は user の行として通知を差し込む（実記録の形）。人間の頼みごとではない。

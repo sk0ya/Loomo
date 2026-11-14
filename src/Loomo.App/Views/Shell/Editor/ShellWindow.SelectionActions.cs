@@ -207,7 +207,14 @@ public partial class ShellWindow {
         },
         // :Gblame はトグル。このメニューは blame カラム上でしか出ないので、実行すれば必ず閉じる側に倒れる。
         () => control.ExecuteCommand("Gblame"),
-        CopyBlameCommitLinkAction(control.FilePath, blame.CommitHash));
+        CopyBlameCommitLinkAction(control.FilePath, blame.CommitHash),
+        // 最近コミットした行で、書いた頼みごとが分かっているもの（§43.6 A2a）。コミットの項目はそのまま、後ろに足す。
+        ClaudeProvenance.ForCommitLine(control.FilePath, blame.CommitHash, blame.OriginalLine) is { } write
+            ? more => {
+                more.Items.Add(new Separator());
+                AddClaudeRequestMenuItems(more, write, withShow: true);
+            }
+            : null);
     }
     /// <summary>blame の行のコミットへのリンクを写す動作（§24.74）。リポジトリはファイルから上へ .git を探して決める
     /// （Git ペインが対象にしているリポジトリとは限らない）。未コミットの行・リポジトリの外では出さない。</summary>

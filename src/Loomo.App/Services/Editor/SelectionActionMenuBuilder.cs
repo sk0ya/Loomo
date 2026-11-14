@@ -63,7 +63,7 @@ internal static class SelectionActionMenuBuilder
 
     public static void AddBlameCommitMenuItems(
         ContextMenu menu, string? commitHash, Action showDiff, Action showHistory, Action closeBlame,
-        Action? copyLink = null)
+        Action? copyLink = null, Action<ContextMenu>? addMore = null)
     {
         var shortHash = commitHash is { Length: > 7 } hash ? hash[..7] : commitHash;
         var diff = new MenuItem { Header = $"Diff で差分を表示（{shortHash}）" };
@@ -79,6 +79,8 @@ internal static class SelectionActionMenuBuilder
             link.Click += (_, _) => copyLink();
             menu.Items.Add(link);
         }
+        // コミットの項目の後ろに足すもの（その行を書いた頼みごと＝出自 §43.6 A2a）。
+        addMore?.Invoke(menu);
         menu.Items.Add(new Separator());
         var close = new MenuItem { Header = "Blame を閉じる", InputGestureText = ":Gblame" };
         close.Click += (_, _) => closeBlame();

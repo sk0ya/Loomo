@@ -58,6 +58,9 @@ public partial class ShellWindow {
             if (ActiveTerminalOutputs?.PreviousOf(output) is { } previous)
                 ShowDiff(new DiffOpenTarget.Comparison(TerminalCommandOutputs.Compare(previous, output)));
         };
+        _terminalSupport.PinnedRecordClosed += (_, _) => RequestTerminalSupportRefresh();
+        // ターンの右クリック →「この頼みごとの差分を開く」（§43.6 A3）。
+        _terminalSupport.RequestDiffRequested += (_, turn) => OpenClaudeTurnDiff(turn.SessionId, turn.PromptLine);
         _terminalSupport.CommandInsertRequested += (_, command) => SendRecentCommandToTerminal(command);
         _terminalSupport.GoToTerminalRequested += (_, _) => {
             if (_activeTerminalTab is { } tab)
@@ -114,6 +117,9 @@ public partial class ShellWindow {
     /// 場所の記録フォルダーの最新を当て推量すると、Loomo の外で動いている別の claude の会話を出してしまう。
     /// </summary>
     private async Task RefreshTerminalSupportClaudeAsync(TerminalSupportSubject subject) {
+        // 記録を留めている間（§43.6 A4）は、タブのセッションで上書きしない。
+        if (_terminalSupport.IsPinnedRecord)
+            return;
         if (_paneActivity.AgentSessionOf(subject.TabId) is { TranscriptPath: { Length: > 0 } hooked }) {
             await _terminalSupport.RefreshClaudeAsync(hooked, unresolvedReason: null);
             return;
@@ -142,7 +148,7 @@ public partial class ShellWindow {
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception) {
             match = new ClaudeSessionMatch(null, $"Claude Code のセッションを確かめられませんでした: {ex.Message}");
         }
-        if (_activeTerminalTab?.Id != subject.TabId)
+        if (_activeTerminalTab?.Id != subject.TabId || _terminalSupport.IsPinnedRecord)
             return;
         await _terminalSupport.RefreshClaudeAsync(
             match.Session is { } session ? ClaudeLiveSessions.TranscriptPath(session) : null, match.Reason);

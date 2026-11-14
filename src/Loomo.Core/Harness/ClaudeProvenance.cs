@@ -21,6 +21,18 @@ public sealed record ClaudeWrite(
 {
     /// <summary>頼みごとの 1 行目（行末の注記・一覧の題に使う）。</summary>
     public string PromptHead => ClaudeProvenance.Head(Prompt);
+
+    /// <summary>この書き込みの操作（tool_use）が記録のどこにあるか——頼みごと単位の差分（§43.6 A3）が中身を読み直すための場所。
+    /// サブエージェントの操作は <see cref="TranscriptPath"/>（本体の記録）ではなくサブエージェントの記録にある。</summary>
+    public string? SourcePath { get; init; }
+
+    /// <summary><see cref="SourcePath"/> の中の行番号（1 始まり）。</summary>
+    public int SourceLine { get; init; }
+
+    /// <summary>操作の結果（tool_result）の行番号（1 始まり・無ければ 0）。</summary>
+    public int ResultLine { get; init; }
+
+    public string? ToolUseId { get; init; }
 }
 
 /// <summary>
@@ -172,7 +184,7 @@ public static class ClaudeProvenance
     }
 
     /// <summary>中身で持ち主を決めてよい行か。括弧だけ・空行・<c>else</c> のような短い行はどの書き込みにもある。</summary>
-    internal static bool IsDistinctive(string line)
+    public static bool IsDistinctive(string line)
     {
         var trimmed = line.AsSpan().Trim();
         if (trimmed.Length < 6)

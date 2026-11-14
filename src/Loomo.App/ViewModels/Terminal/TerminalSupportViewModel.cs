@@ -195,6 +195,14 @@ public sealed partial class TerminalSupportViewModel : ObservableObject
         Func<TerminalCommandOutput, bool> comparable,
         DateTime nowUtc)
     {
+        if (IsPinnedRecord)
+        {
+            // 記録を留めている間は、同じタブが前に居るかぎりタブの様子で上書きしない。タブを替えたら、そのタブへ付いていく。
+            if (subject?.TabId == _pinnedTabId)
+                return;
+            IsPinnedRecord = false;
+            _tabId = null;
+        }
         HasTab = subject is not null;
         var mode = subject?.Mode ?? TerminalSupportMode.NoTab;
         IsClaude = mode == TerminalSupportMode.ClaudeCode;
@@ -421,6 +429,83 @@ public sealed partial class TerminalSupportViewModel : ObservableObject
         ClaudeTreeKind.Failure => "✗",
         _ => "",
     };
+
+    /// <summary>終わった会話も含め、記録を留めて見せている（§43.6 A4）。前面のタブのセッションではない。</summary>
+    [ObservableProperty] private bool _isPinnedRecord;
+
+    private Guid? _pinnedTabId;
+
+    /// <summary>留めていた記録を閉じた。ホストは前面のタブの様子を引き直す。</summary>
+    public event EventHandler? PinnedRecordClosed;
+
+    /// <summary>
+    /// 記録を留めて見せ、<paramref name="promptLine"/> のターンを開く（§43.6 A4：行 → 頼みごと → そのときの Claude の返事）。
+    /// 前面のタブで動いているセッションでなくてよい——終わったセッションの記録も同じツリーと本文で読める。
+    /// 読むのは 1 回だけ（動いているセッションの記録でも、留めている間は書き足しに付いていかない）。
+    /// <paramref name="frontTabId"/> のタブが前に居る間は留めたまま、タブを替えるか「タブへ戻る」で離す。
+    /// </summary>
+    internal async Task ShowRecordAsync(string transcriptPath, int promptLine, Guid? frontTabId)
+    {
+        _pinnedTabId = frontTabId;
+        IsPinnedRecord = true;
+        HasTab = true;
+        IsClaude = true;
+        IsProgram = false;
+        IsShell = false;
+        ClearClaude();
+        _agentState = null;
+        _agentTitle = null;
+        NowTone = TerminalSupportNowTone.Idle;
+        NowHeadline = "記録";
+        var turnId = "t" + promptLine;
+        _selectedNodeId = turnId;
+        _followLatestTurn = false;
+        await RefreshClaudeAsync(transcriptPath, unresolvedReason: null);
+        if (!IsPinnedRecord)
+            return;
+        if (_treeItems.TryGetValue(turnId, out var item))
+        {
+            item.IsExpanded = true;
+        }
+        else if (_digest is not null)
+        {
+            // そのターンが記録に無い（記録が詰め直された等）。最新のターンを見せる。
+            _selectedNodeId = null;
+            _followLatestTurn = true;
+            await RebuildConversationAsync();
+        }
+    }
+
+    [RelayCommand]
+    private void ClosePinnedRecord()
+    {
+        if (!IsPinnedRecord)
+            return;
+        IsPinnedRecord = false;
+        _tabId = null;
+        ClearClaude();
+        PinnedRecordClosed?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>ターン（頼みごと）の差分を開いてほしい（§43.6 A3）。引数は記録のセッション ID と、頼みごとの行番号。</summary>
+    public event EventHandler<(string SessionId, int PromptLine)>? RequestDiffRequested;
+
+    /// <summary>ツリーの行が属するターンの、頼みごとの行番号。節の id は <c>t&lt;行番号&gt;</c>／<c>t&lt;行番号&gt;/…</c>。ターンの外なら null。</summary>
+    internal static int? TurnLineOf(string? nodeId)
+    {
+        if (nodeId is not { Length: > 1 } || nodeId[0] != 't')
+            return null;
+        var end = nodeId.IndexOf('/');
+        return int.TryParse(end < 0 ? nodeId.AsSpan(1) : nodeId.AsSpan(1, end - 1), out var line) ? line : null;
+    }
+
+    internal bool CanOpenRequestDiff(ClaudeTreeItem? item) => _digest is not null && TurnLineOf(item?.Id) is not null;
+
+    internal void OpenRequestDiff(ClaudeTreeItem? item)
+    {
+        if (_digest is { } digest && TurnLineOf(item?.Id) is { } line)
+            RequestDiffRequested?.Invoke(this, (digest.SessionId, line));
+    }
 
     private static bool InTurn(string nodeId, string turnId)
         => nodeId == turnId || nodeId.StartsWith(turnId + "/", StringComparison.Ordinal);

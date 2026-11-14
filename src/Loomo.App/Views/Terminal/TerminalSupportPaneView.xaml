@@ -290,6 +290,10 @@
                                 </Style>
                             </TextBlock.Style>
                         </TextBlock>
+                        <!-- 留めている記録（§43.6 A4）から、前面のタブの様子へ戻る -->
+                        <Button DockPanel.Dock="Right" Style="{StaticResource SmallButton}" Margin="6,0,0,0" Content="タブへ戻る"
+                                Command="{Binding ClosePinnedRecordCommand}" ToolTip="留めている記録を閉じて、前面のタブに付いていく"
+                                Visibility="{Binding IsPinnedRecord, Converter={StaticResource BoolToVis}}" />
                         <Button DockPanel.Dock="Right" Style="{StaticResource SmallButton}" Margin="6,0,0,0" Content="記録"
                                 Command="{Binding OpenTranscriptCommand}" ToolTip="このセッションの記録（jsonl）をエディタで開く"
                                 Visibility="{Binding HasClaudeSession, Converter={StaticResource BoolToVis}}" />
@@ -379,7 +383,15 @@
                           Visibility="{Binding HasClaudeSession, Converter={StaticResource BoolToVis}}">
                     <TreeView.ItemTemplate>
                         <HierarchicalDataTemplate ItemsSource="{Binding Children}">
-                            <Grid ToolTip="{Binding Label}" Margin="0,0,4,0">
+                            <Grid ToolTip="{Binding Label}" Margin="0,0,4,0" Background="Transparent"
+                                  ContextMenuOpening="OnTreeRowContextMenuOpening">
+                                <!-- 頼みごと単位の差分（§43.6 A3）。ターンとその中の行で出す（それ以外は開く前に取り消す）。
+                                     メニューは行のテンプレートの中に置く——Style の Setter に置くと Click が結ばれない。 -->
+                                <Grid.ContextMenu>
+                                    <ContextMenu>
+                                        <MenuItem Header="この頼みごとの差分を開く" Click="OnTreeRowOpenRequestDiff" />
+                                    </ContextMenu>
+                                </Grid.ContextMenu>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="*" />

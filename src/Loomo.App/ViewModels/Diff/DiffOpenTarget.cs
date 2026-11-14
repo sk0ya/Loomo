@@ -17,7 +17,7 @@ namespace sk0ya.Loomo.App.ViewModels;
 /// </summary>
 public abstract record DiffOpenTarget
 {
-    private DiffOpenTarget() { }   // 派生はこの中の7つだけ（受け手の振り分けを閉じた集合にする）
+    private DiffOpenTarget() { }   // 派生はこの中の8つだけ（受け手の振り分けを閉じた集合にする）
 
     /// <summary>切り離しウィンドウのタブ名。<b>短く</b>——タブは何枚も並ぶので、長いと隣が潰れて
     /// どれがどれだか分からなくなる。ハッシュは7桁、飾りの語（「コミット」「作業ツリー」）は落とし、
@@ -105,6 +105,15 @@ public abstract record DiffOpenTarget
     public sealed record ComparisonSet(IReadOnlyList<DiffComparison> Values, string LeftTitle, string RightTitle) : DiffOpenTarget
     {
         public override string TitleFor(string? path) => $"{Trim(LeftTitle, Half)} ↔ {Trim(RightTitle, Half)}";
+    }
+
+    /// <summary>
+    /// 頼みごと単位の差分（§43.6 A3）：Claude Code への 1 つの頼みごとが書き換えたファイルを、頼みごとの前と後で比べる。
+    /// 中身は記録から組んだ素材（<see cref="DiffComparison"/>）で Git には紐づかない。<paramref name="Head"/> は頼みごとの 1 行目。
+    /// </summary>
+    public sealed record Request(IReadOnlyList<DiffComparison> Values, string Head) : DiffOpenTarget
+    {
+        public override string TitleFor(string? path) => Trim(WithFile(path, $" ← {Head}"));
     }
 
     /// <summary>タブ名の上限。日本語混じりでも一目で読める程度に詰める。</summary>
