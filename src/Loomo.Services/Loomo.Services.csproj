@@ -170,6 +170,9 @@
          全角文字の上のカーソルを 2 セル幅に・ブロックカーソルの下の文字を反転（2026-11-03 公開） -->
     <!-- 1.0.56: 常駐セッションへ付け直したとき、画面・スクロールバックの画像（Sixel・iTerm2・Kitty）を VT スナップショットで
          元の行・桁へ戻す（これまでは絵が消えて空の行だけが残った。2026-11-06 公開） -->
+    <!-- 1.0.57: 同期更新（?2026）で、描き終わったフレームが次のフレームの始まりと同じ塊に入っていても先に描く・watchdog を
+         Normal 優先度に。入力から描画までの計測ログ（環境変数 TERMINAL_LATENCY_TRACE=1 で %TEMP%\terminal-latency-<pid>.log）。
+         Claude Code の Alt+Enter の改行が時々遅い件の切り分け用（原因は未特定、2026-11-14 公開） -->
     <!-- 版は Directory.Build.props の TerminalPackageVersion（常駐ホストと共有するため一か所）。参照は eng/LocalTerminal.props
          （-p:UseLocalTerminal=true でプロジェクト参照へ切り替わる）。 -->
   </ItemGroup>
