@@ -218,9 +218,9 @@ public class DiffSideEditorPresenterTests : IDisposable
         RunSta(() =>
         {
             var events = new EditorDocumentEvents();
-            var source = new VimEditorControl();
+            var source = new VimEditorControl(new VimEditorControlOptions { WatchFileOnDisk = false });
             source.LoadFile(FilePath);
-            var mirror = new VimEditorControl();
+            var mirror = new VimEditorControl(new VimEditorControlOptions { WatchFileOnDisk = false });
             mirror.LoadFile(FilePath);
             using var sync = new EditorTextMirror(source, mirror, events);
 
@@ -245,7 +245,7 @@ public class DiffSideEditorPresenterTests : IDisposable
             new DiffSessionQuery(git), new DiffSessionCommandHandler(git), new LoomoSettings(),
             new GitCompareBaseViewModel(git));
         var presenter = new DiffSideEditorPresenter(() => vm, new Border(), new Border(), new VimStatusBar());
-        presenter.Configure(() => new VimEditorControl(), _ => { }, docs);
+        presenter.Configure(() => new VimEditorControl(new VimEditorControlOptions { WatchFileOnDisk = false }), _ => { }, docs);
 
         var show = vm.ShowWorkingTreeFileAsync(
             new GitChangeEntry("a.txt", null, ' ', 'M', IsUntracked: false, IsConflicted: false));
@@ -320,7 +320,7 @@ public class DiffSideEditorPresenterTests : IDisposable
         /// <param name="announce">false なら読み込みの知らせを出さない（知らせより先に打たれた場合の再現）。</param>
         public VimEditorControl OpenAsTab(string path, bool announce = true)
         {
-            var control = new VimEditorControl();
+            var control = new VimEditorControl(new VimEditorControlOptions { WatchFileOnDisk = false });
             control.LoadFile(path);
             _tabs[Path.GetFullPath(path)] = control;
             if (announce) Events.RaiseLoaded(control);

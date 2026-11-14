@@ -100,7 +100,7 @@ public sealed class TrailEditCommitTests : IDisposable
                 ? new TrailFilePosition(source, 41, 3)
                 : new TrailFilePosition(tab.PeekFilePath!, tab.Control.Caret.Line, tab.Control.Caret.Column));
             var excerpt = new EditorTab(Guid.NewGuid());
-            var view = new VimEditorControl();
+            var view = new VimEditorControl(new VimEditorControlOptions { WatchFileOnDisk = false });
             view.OpenVirtualDocument("抜粋", "// ── source.cs\nline", null);
             excerpt.SetControl(view);
             Replace(excerpt, "// ── source.cs", "// ── source.cs!");
@@ -154,7 +154,7 @@ public sealed class TrailEditCommitTests : IDisposable
     {
         var path = Path.Combine(_dir, name);
         File.WriteAllText(path, "on disk\n");
-        var control = new VimEditorControl();
+        var control = new VimEditorControl(new VimEditorControlOptions { WatchFileOnDisk = false });
         control.LoadFile(path);
         var tab = new EditorTab(Guid.NewGuid());
         tab.SetControl(control);

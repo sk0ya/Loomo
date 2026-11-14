@@ -21,7 +21,7 @@ public sealed class EditorDiskReloadTests
         _host.Run(() =>
         {
             var path = WriteTemp("a.txt", "one\n");
-            var control = new VimEditorControl();
+            var control = new VimEditorControl(new VimEditorControlOptions { WatchFileOnDisk = false });
             control.LoadFile(path);
             File.WriteAllText(path, "two\n");
 
@@ -39,7 +39,7 @@ public sealed class EditorDiskReloadTests
         _host.Run(() =>
         {
             var path = WriteTemp("c.txt", "disk\n");
-            var control = new VimEditorControl();
+            var control = new VimEditorControl(new VimEditorControlOptions { WatchFileOnDisk = false });
             control.LoadFile(path);
             // SetText は「読み込み」扱いで変更フラグが立たないので、編集として本文を差し替える。
             Assert.True(control.TryApplyLspTextEdits(

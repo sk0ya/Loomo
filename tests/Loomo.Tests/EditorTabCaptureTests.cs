@@ -61,7 +61,7 @@ public sealed class EditorTabCaptureTests
     {
         _host.Run(() =>
         {
-            var control = new VimEditorControl();
+            var control = new VimEditorControl(new VimEditorControlOptions { WatchFileOnDisk = false });
             control.SetText("scratch");
             var tab = new EditorTab(Guid.NewGuid());
             tab.SetControl(control);
@@ -150,7 +150,7 @@ public sealed class EditorTabCaptureTests
             var snapshot = WorkspaceSessionCoordinator.CaptureEditorTab(tab, tab.Id);
             Assert.Equal(new[] { new FoldSnapshot(4, 9, true) }, snapshot.ClosedFolds);
 
-            var restored = new VimEditorControl();
+            var restored = new VimEditorControl(new VimEditorControlOptions { WatchFileOnDisk = false });
             WorkspaceSessionCoordinator.RestoreEditor(restored, snapshot);
 
             var fold = Assert.Single(restored.GetClosedFolds());
@@ -170,7 +170,7 @@ public sealed class EditorTabCaptureTests
 
     private static EditorTab RealizedTab(string path)
     {
-        var control = new VimEditorControl();
+        var control = new VimEditorControl(new VimEditorControlOptions { WatchFileOnDisk = false });
         control.LoadFile(path);
         var tab = new EditorTab(Guid.NewGuid());
         tab.SetControl(control);
