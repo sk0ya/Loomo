@@ -2,18 +2,14 @@ namespace sk0ya.Loomo.App.Services;
 
 internal readonly record struct PaneStagePosition(PaneKind Kind, double X, double Y);
 
-/// <summary>ステージの袖候補、矩形位置からの左上ペイン選択、WPFツリー走査エラーの識別。</summary>
+/// <summary>袖候補、矩形位置からの左上ペイン選択、WPFツリー走査エラーの識別。</summary>
 internal static class StageCardPolicy
 {
     public static IReadOnlyList<PaneKind> WingCandidates(
-        IReadOnlyList<PaneKind> stageOrder,
-        bool stageActive,
-        Func<PaneKind, bool> onStage,
+        IReadOnlyList<PaneKind> order,
         Func<PaneKind, bool> sessionEnabled,
         Func<PaneKind, bool> shownInMain)
-        => (stageActive
-            ? stageOrder.Where(kind => !onStage(kind) && sessionEnabled(kind))
-            : stageOrder.Where(kind => sessionEnabled(kind) && !shownInMain(kind))).ToList();
+        => order.Where(kind => sessionEnabled(kind) && !shownInMain(kind)).ToList();
 
     public static PaneKind? TopLeftPane(
         IEnumerable<PaneStagePosition> positionedVisiblePanes,

@@ -30,7 +30,7 @@ public sealed class DockLayoutCoordinator
     public const double MaxRightWidth = 1200;
 
     /// <summary>帯に並べる順（＝ペインの並び順）。<b>ここに無い面はドックに出ない。</b>
-    /// 顔ぶれは集中モードの <c>StageOrder</c> と揃える——トレース（<see cref="PaneKind.Trace"/>）は
+    /// 顔ぶれは袖の <c>StageOrder</c> と揃える——トレース（<see cref="PaneKind.Trace"/>）は
     /// 部屋の面としては出しておらず、ビュー・スイッチャーにもコマンドパレットにも並ばないので、
     /// ドックの帯だけがその面を出す唯一の入口になっていた。
     /// <para>Diff も置かない——ドックでは差分は別ウィンドウで開く（<c>ShellWindow.ShowDiff</c>）。

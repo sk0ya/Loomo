@@ -1,5 +1,5 @@
 namespace sk0ya.Loomo.App.Views;
-/// <summary>ShellWindow: ペインのドラッグ＆ドロップ操作（タイトルバーからの掴み・袖/舞台からのドラッグ・ オーバーレイ上のプレビュー描画・ドロップ確定）。レイアウトツリーの構築は <c>ShellWindow.PaneLayout.cs</c>。</summary>
+/// <summary>ShellWindow: ペインのドラッグ＆ドロップ操作（タイトルバーからの掴み・袖からのドラッグ・ オーバーレイ上のプレビュー描画・ドロップ確定）。レイアウトツリーの構築は <c>ShellWindow.PaneLayout.cs</c>。</summary>
 public partial class ShellWindow {
     private PaneDragVisualPresenter? _paneDragVisuals;
     private PaneDragVisualPresenter DragVisuals
@@ -7,8 +7,6 @@ public partial class ShellWindow {
             PaneDragOverlay, DragGhostLayer, this, PaneLabel);
 
     private void OnPaneTitleMouseDown(object sender, MouseButtonEventArgs e) {
-        if (_stageActive)
-            return;
         if (sender is not FrameworkElement { Tag: string tag } || !Enum.TryParse<PaneKind>(tag, out var kind))
             return;
         // ドックでは中央も1枚なので、どの面もタイルの並べ替え対象ではない。
@@ -29,8 +27,6 @@ public partial class ShellWindow {
         _paneDragArmed = true;
     }
     private void OnPaneTitleMouseMove(object sender, MouseEventArgs e) {
-        if (_stageActive)
-            return;
         // ドックのヘッダーは「割り当てを変えるドラッグ」（DockPaneDrag.Arm で仕込み済み・しきい値の
         // 監視はウィンドウ側）なので、タイルの並べ替えには進ませない。
         if (_dockActive)
@@ -91,7 +87,7 @@ public partial class ShellWindow {
         BeginDragCapture();
     }
     private void BeginWingDrag(PaneKind source) {
-        if (_stageActive || VisibleLeafCount() < 1)
+        if (VisibleLeafCount() < 1)
             return;
         EnsureDragOverlay();
         _dragSource = source;
@@ -100,23 +96,6 @@ public partial class ShellWindow {
         _dragFromWing = true;
         _dragCenter = false;
         _dragSpan = false;
-        _paneDragging = true;
-        DragVisuals.HidePreview();
-        ShowDragGhost(source);
-        DragVisuals.MoveGhost(Mouse.GetPosition(DragGhostLayer));
-        BeginDragCapture();
-    }
-    private void BeginStageDrag(PaneKind source) {
-        if (!_stageActive || _overviewActive)
-            return;
-        EnsureDragOverlay();
-        _dragSource = source;
-        _dragTarget = null;
-        _dragZone = null;
-        _dragFromWing = true;
-        _dragCenter = false;
-        _dragSpan = false;
-        _stageDrag = true;
         _paneDragging = true;
         DragVisuals.HidePreview();
         ShowDragGhost(source);

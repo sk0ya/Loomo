@@ -26,8 +26,6 @@ public class WorkspaceListViewModelTests
         Assert.NotNull(activated);
         Assert.Equal(DisplayMode.Dock, activated.Mode);
         Assert.Equal(DisplayMode.Dock, WorkspaceSessionCoordinator.ResolveDisplayMode(activated));
-        Assert.False(activated.Stage?.IsActive);
-        Assert.Equal(PaneKind.Editor, activated.Stage?.Pane);
     }
 
     [Fact]
@@ -422,7 +420,7 @@ public class WorkspaceListViewModelTests
     }
 
     [Fact]
-    public void Workspace_state_round_trips_stage_snapshot()
+    public void Workspace_state_round_trips_wing_snapshot()
     {
         var path = Path.Combine(
             Path.GetTempPath(), $"loomo-workspaces-{Guid.NewGuid():N}.json");
@@ -430,11 +428,7 @@ public class WorkspaceListViewModelTests
         var workspace = new WorkspaceSnapshot
         {
             RootPath = "C:\\work",
-            Stage = new StageSnapshot
-            {
-                IsActive = true,
-                Pane = PaneKind.Diff
-            }
+            Stage = new StageSnapshot { WingWidth = 321, WingCollapsed = true }
         };
 
         store.Save(new WorkspaceState
@@ -444,8 +438,8 @@ public class WorkspaceListViewModelTests
         });
 
         var loaded = store.Load().Workspaces.Single();
-        Assert.True(loaded.Stage?.IsActive);
-        Assert.Equal(PaneKind.Diff, loaded.Stage?.Pane);
+        Assert.Equal(321, loaded.Stage?.WingWidth);
+        Assert.True(loaded.Stage?.WingCollapsed);
     }
 
     [Fact]
@@ -514,34 +508,6 @@ public class WorkspaceListViewModelTests
         Assert.Equal(@"C:\first\src", window.Items[0].WorkingDirectory);
         Assert.Equal("https://example.com/", window.Items[1].Url);
         Assert.Empty(store.LoadWorkspace(second.Id)!.DetachedWindows);
-    }
-
-    [Fact]
-    public void New_workspace_snapshot_defaults_to_stage_mode()
-    {
-        var snapshot = new WorkspaceSnapshot();
-
-        Assert.True(snapshot.Stage?.IsActive);
-        Assert.Equal(PaneKind.Editor, snapshot.Stage?.Pane);
-    }
-
-    [Fact]
-    public void Workspace_state_preserves_explicit_non_stage_mode()
-    {
-        var path = Path.Combine(
-            Path.GetTempPath(), $"loomo-workspaces-{Guid.NewGuid():N}.json");
-        var store = new WorkspaceStateStore(path);
-        var workspace = new WorkspaceSnapshot
-        {
-            RootPath = "C:\\work",
-            Stage = new StageSnapshot { IsActive = false }
-        };
-
-        store.Save(new WorkspaceState { Workspaces = [workspace] });
-
-        var loaded = store.Load().Workspaces.Single();
-        Assert.False(loaded.Stage?.IsActive);
-        Assert.Null(loaded.Stage?.Pane);
     }
 
     [Fact]

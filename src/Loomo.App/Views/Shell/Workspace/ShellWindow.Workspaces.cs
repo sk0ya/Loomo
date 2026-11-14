@@ -130,7 +130,6 @@ public partial class ShellWindow {
     }
     private async Task SwitchWorkspaceCoreAsync(
         WorkspaceSnapshot workspace, bool deferHydration, WorkspaceSwitchProfiler? profile = null) {
-        ClearStageModeForWorkspaceSwitch();
         _vm.SearchPanel.ClearQuery();
         DetachTerminalTabs();
         DetachEditorTabs();
@@ -160,9 +159,9 @@ public partial class ShellWindow {
         LoadEnabledSessions(workspace.EnabledSessions);
         _activeWingTab = workspace.ActiveWingTab;
         var restoredMode = WorkspaceSessionCoordinator.ResolveDisplayMode(workspace);
-        PrepareStageSnapshot(restoredMode == DisplayMode.Solo, workspace.Stage);
+        RestoreWingSnapshot(workspace.Stage);
         PrepareDockSnapshot(restoredMode == DisplayMode.Dock, workspace.Dock);
-        StartupProfiler.Mark("  復元:PrepareStageSnapshot");
+        StartupProfiler.Mark("  復元:PrepareDockSnapshot");
         profile?.Lap("viewModels");
         ApplyPaneLayout(workspace.PaneLayout);
         if (_isSpanMaximized)
@@ -196,12 +195,11 @@ public partial class ShellWindow {
         await RestoreBrowserTabsAsync(workspace);
         StartupProfiler.Mark("  復元:RestoreBrowserTabs");
         profile?.Lap("browser");
-        CompleteStageSnapshotRestore();
         CompleteDockSnapshotRestore();
         RestoreActivePane(workspace);
         if (workspace.DetachedWindows.Count > 0)
             Detached.Restore(workspace.DetachedWindows, RestoreDetachedItem);
-        StartupProfiler.Mark("  復元:CompleteStageSnapshotRestore");
+        StartupProfiler.Mark("  復元:CompleteDockSnapshotRestore");
         profile?.Lap("stage");
         // 棚の期限切れはタブを戻し終えてから落とす。切替の途中（前のタブを外し、新しいタブをまだ戻していない間）に
         // 保存が走ると、空のタブ一覧を復元元のスナップショットへ書き込んでしまう（§24.29）。
@@ -272,9 +270,8 @@ public partial class ShellWindow {
         snapshot.SearchTabs = _vm.SearchPanel.CaptureTabs();
         WorkspaceSessionCoordinator.CaptureDisplayState(
             snapshot, CurrentDisplayMode, _enabledSessions, _activeWingTab,
-            WorkspaceSessionCoordinator.CaptureStage(
-                _stageActive, _stagePane, _overviewActive, _wingWidth, _isWingCollapsed),
-            CaptureDockSnapshot(), _stageActive, _stagePane, _focusedRegion?.Pane);
+            WorkspaceSessionCoordinator.CaptureStage(_wingWidth, _isWingCollapsed),
+            CaptureDockSnapshot(), _focusedRegion?.Pane);
         WorkspaceSessionCoordinator.CaptureLayouts(
             snapshot, _layouts, _scratchLayout, _activeLayoutIndex, _layoutDirty,
             _editorViews?.Capture());

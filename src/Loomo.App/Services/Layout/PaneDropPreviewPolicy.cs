@@ -3,7 +3,7 @@ namespace sk0ya.Loomo.App.Services;
 internal readonly record struct PaneLayoutRect(double X, double Y, double Width, double Height);
 
 internal readonly record struct PaneDropSelection(DropZone Zone, bool Center, bool NearOuterEdge);
-internal enum PaneDropCommitKind { None, Stage, Wing, PlaceFromWing, MoveWithinLayout }
+internal enum PaneDropCommitKind { None, Wing, PlaceFromWing, MoveWithinLayout }
 internal readonly record struct PaneDropCommit(
     PaneDropCommitKind Kind, PaneKind Source, PaneKind? Target, DropZone? Zone, bool Center, bool Span);
 
@@ -12,10 +12,8 @@ internal static class PaneDropPreviewPolicy
 {
     public static PaneDropCommit ResolveCommit(
         PaneKind source, PaneKind? target, DropZone? zone, bool center, bool span,
-        bool fromWing, bool stageDrag, bool toWing)
+        bool fromWing, bool toWing)
     {
-        if (stageDrag)
-            return new(PaneDropCommitKind.Stage, source, target, zone, center, span);
         if (toWing)
             return new(PaneDropCommitKind.Wing, source, target, zone, center, span);
         if (target is not { } targetKind || targetKind == source)
@@ -68,30 +66,5 @@ internal static class PaneDropPreviewPolicy
         if (min == right) return DropZone.Right;
         if (min == above) return DropZone.Above;
         return DropZone.Below;
-    }
-}
-
-/// <summary>舞台ペインへのドロップで使う最小の2分割ツリーを構築する。</summary>
-internal static class PaneStageDropPolicy
-{
-    public static PaneNode CreateRoot(PaneKind source, PaneKind stage, DropZone zone)
-    {
-        var orientation = zone is DropZone.Left or DropZone.Right
-            ? SplitKind.Columns
-            : SplitKind.Rows;
-        var split = new PaneSplit { Orientation = orientation };
-        var stageLeaf = new PaneLeaf { Kind = stage };
-        var draggedLeaf = new PaneLeaf { Kind = source };
-        if (zone is DropZone.Left or DropZone.Above)
-        {
-            split.Children.Add(draggedLeaf);
-            split.Children.Add(stageLeaf);
-        }
-        else
-        {
-            split.Children.Add(stageLeaf);
-            split.Children.Add(draggedLeaf);
-        }
-        return split;
     }
 }

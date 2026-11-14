@@ -8,7 +8,6 @@
 /// <para>Diff ペインが出ていればそのペインへ。<b>隠れているときは別ウィンドウで開く</b>——差分を
 /// 見たいだけの一瞬のために、そこに置いてあったペイン（ターミナルやエディタ）を追い出して部屋の
 /// 配置を崩すのは対価が大きい。窓なら見終わって閉じれば元の配置がそのまま残る。
-/// 集中（袖）では「隠れている」ペインが無いのでそのまま舞台へ出す。
 /// <b>ドックでは Diff をペインに置かず、常に別ウィンドウ</b>——ドックの中央は1枚なので、差分を
 /// 出すと書いていたエディタが押し出される（<see cref="DockLayoutCoordinator.DockOrder"/> にも居ない）。</para>
 /// </summary>
@@ -35,9 +34,8 @@ public partial class ShellWindow {
             FocusPane(PaneKind.Diff);
             return;
         }
-        // 集中では袖に居るだけなので、そのまま舞台へ出す
-        // （EnsurePaneVisibleOrSwapTopLeft がモードごとの出し方を持っている）。
-        // 窓へ逃がすのは、ドック中か、分割でペインが配置から消えているとき。
+        // 窓へ逃がすのは、ドック中か、分割でペインが配置から消えているとき
+        // （出ていれば EnsurePaneVisibleOrSwapTopLeft がそのまま前に出す）。
         if (!_dockActive && IsPaneMaterialized(PaneKind.Diff)) {
             _ = _vm.DiffSession.ShowAsync(target);
             EnsurePaneVisibleOrSwapTopLeft(PaneKind.Diff);

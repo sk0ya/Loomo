@@ -19,15 +19,8 @@ internal static class PaneFocusNavigationPolicy
         => !isButton && pane is PaneKind.Debug or PaneKind.TsIde or PaneKind.Ai
             or PaneKind.Git or PaneKind.Diff or PaneKind.Trace;
 
-    public static PaneKind? ResolveRestorePane(
-        bool stageActive,
-        PaneKind stagePane,
-        PaneKind? workspacePane,
-        Func<PaneKind, bool> isAvailable)
-    {
-        var candidate = stageActive ? stagePane : workspacePane;
-        return candidate is { } pane && isAvailable(pane) ? pane : null;
-    }
+    public static PaneKind? ResolveRestorePane(PaneKind? workspacePane, Func<PaneKind, bool> isAvailable)
+        => workspacePane is { } pane && isAvailable(pane) ? pane : null;
 
     public static PaneFocusTarget? FindNeighbor(
         IReadOnlyList<PaneFocusCandidate> candidates,
@@ -81,9 +74,6 @@ internal static class PaneFocusNavigationPolicy
 
         return best;
     }
-
-    public static int StageCycleDirection(DropZone direction)
-        => direction is DropZone.Below or DropZone.Right ? 1 : -1;
 
     private static int IndexOf(IReadOnlyList<PaneFocusCandidate> candidates, PaneFocusTarget target)
     {

@@ -1,7 +1,7 @@
 namespace sk0ya.Loomo.App.Views;
 /// <summary>ShellWindow: ドックモード（袖なし＝IDE 風ツールウィンドウ）。中央は<b>タイル配置のまま</b>で、
 /// 下／右の領域へ割り当てたペインだけがタイルから抜け、右端の帯のアイコンで開閉する（アイコンがタブを兼ねる）。
-/// 集中モードと同じく<b>表示の差し替えだけ</b>で切替わり、レイアウトツリー（<c>_root</c>）には触れない——
+/// <b>表示の差し替えだけ</b>で切替わり、レイアウトツリー（<c>_root</c>）には触れない——
 /// 分割モードへ戻せば元のタイル配置・比率がそのまま戻る。状態は <see cref="DockLayoutCoordinator"/>。</summary>
 public partial class ShellWindow {
     private readonly DockLayoutCoordinator _dockMode = new();
@@ -87,8 +87,6 @@ public partial class ShellWindow {
         RefreshOpenPaneMenu();
     }
     private void EnterDockMode() {
-        if (_stageActive)
-            ExitStageMode();      // 舞台を畳んでタイルへ戻してから、そのタイルを中央に据える
         if (!_dockMode.Enter())
             return;
         _zoomedPane = null;
@@ -125,8 +123,7 @@ public partial class ShellWindow {
     // ===== 復元・保存 =====
 
     /// <summary>ワークスペース復元の前半：状態だけ入れて器を出す（中身は
-    /// <see cref="CompleteDockSnapshotRestore"/> で組む）。集中モードの
-    /// <c>PrepareStageSnapshot</c> と同じ二段構え。</summary>
+    /// <see cref="CompleteDockSnapshotRestore"/> で組む）。</summary>
     private void PrepareDockSnapshot(bool dock, DockSnapshot? snapshot) {
         ClearDockModeForWorkspaceSwitch();
         _dockMode.Restore(dock, snapshot);
@@ -155,16 +152,15 @@ public partial class ShellWindow {
         => DockLayoutCoordinator.PaneOrderForMode(StageModeCoordinator.StageOrder, _dockActive);
     /// <summary>ドックモードで、そのペインがいま見えているか。3領域とも「出ている1枚か」で決まる。</summary>
     private bool IsDockPaneShown(PaneKind kind) => _dockMode.IsOpen(kind);
-    /// <summary>実体を作って動かしておくべきか（＝画面のどこかに出ている）。集中モードは袖でも
-    /// 生きたまま縮小表示するので常に true。</summary>
+    /// <summary>実体を作って動かしておくべきか（＝画面のどこかに出ている）。</summary>
     private bool IsPaneMaterialized(PaneKind kind)
-        => _stageActive || (_dockActive ? IsDockPaneShown(kind) : IsPaneVisible(kind));
+        => _dockActive ? IsDockPaneShown(kind) : IsPaneVisible(kind);
     /// <summary>全画面・ズームのように「画面に出ている1枚」を要る操作の対象を、ドック中は
     /// <b>実際に出ている面</b>へ寄せる。畳んである面（閉じた中央を含む）を選ぶと、親も
     /// 表示も無い要素を全画面にしようとして落ちるだけなので、出ている面が1つも無ければ null。</summary>
     private PaneKind? DockShownPane(PaneKind? preferred)
         => _dockMode.ResolveShownPane(preferred);
-    /// <summary>ペインを現在の親に据え置ける集合（袖＝集中／分割、ドックの領域＝ドック）。
+    /// <summary>ペインを現在の親に据え置ける集合（袖＝分割、ドックの領域＝ドック）。
     /// 全画面（F11）中はどちらも畳んで対象1枚だけを出すので、据え置きは無し。</summary>
     private IReadOnlyCollection<PaneKind> PanesToKeepAttached()
         => _dockMode.PanesToKeepAttached(_paneFullscreen, WingKinds);

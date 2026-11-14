@@ -213,46 +213,28 @@ public static class WorkspaceSessionCoordinator
         snapshot.EditorViewLayout = editorViewLayout;
     }
 
-    /// <summary>表示モード、ステージ、ドック、選択位置をスナップショットへまとめる。</summary>
+    /// <summary>表示モード、袖、ドック、選択位置をスナップショットへまとめる。</summary>
     internal static void CaptureDisplayState(
         WorkspaceSnapshot snapshot,
         DisplayMode mode,
         IEnumerable<PaneKind> enabledSessions,
         WingTab activeWingTab,
-        StageSnapshot stage,
+        StageSnapshot wings,
         DockSnapshot dock,
-        bool stageActive,
-        PaneKind stagePane,
         PaneKind? focusedPane)
     {
         snapshot.Mode = mode;
         snapshot.EnabledSessions = enabledSessions.ToList();
         snapshot.ActiveWingTab = activeWingTab;
-        snapshot.Stage = stage;
+        snapshot.Stage = wings;
         snapshot.Dock = dock;
         // サイドバーへ一時的にフォーカスしていても、最後のメインペインという現在地は失わない。
-        snapshot.ActivePane = ResolveActivePane(stageActive, stagePane, focusedPane, snapshot.ActivePane);
+        snapshot.ActivePane = focusedPane ?? snapshot.ActivePane;
     }
 
-    /// <summary>表示中のステージ状態を永続化用スナップショットへ写す。</summary>
-    public static StageSnapshot CaptureStage(
-        bool isActive, PaneKind stagePane, bool overview, double wingWidth, bool wingCollapsed)
-        => new()
-        {
-            IsActive = isActive,
-            Pane = isActive ? stagePane : null,
-            Overview = isActive && overview,
-            WingWidth = wingWidth,
-            WingCollapsed = wingCollapsed,
-        };
-
-    /// <summary>復元するアクティブペイン。ステージ／現在のフォーカスがなければ保存値を使う。</summary>
-    public static PaneKind? ResolveActivePane(
-        bool stageActive, PaneKind stagePane, PaneKind? focusedPane, PaneKind? savedPane)
-        => stageActive ? stagePane : focusedPane ?? savedPane;
-
-    public static bool ResolveSoloMode(WorkspaceSnapshot workspace)
-        => ResolveDisplayMode(workspace) == DisplayMode.Solo;
+    /// <summary>袖の幅と折りたたみを永続化用スナップショットへ写す。</summary>
+    public static StageSnapshot CaptureStage(double wingWidth, bool wingCollapsed)
+        => new() { WingWidth = wingWidth, WingCollapsed = wingCollapsed };
 
     /// <summary>新しく開いた部屋の表示モード。<b>ドック</b>——初めて入る部屋で、面が1枚だけ
     /// 大きく出ている（集中）でも、名前の付いたタイルが組んである（分割）でもなく、
@@ -262,17 +244,11 @@ public static class WorkspaceSessionCoordinator
     /// 以降はその部屋が最後に居たモードが正本で、保存済みの部屋には一切触らない。</para></summary>
     public const DisplayMode DefaultDisplayMode = DisplayMode.Dock;
 
-    /// <summary>復元する表示モード。<c>Mode</c> の無い旧データは <c>Stage.IsActive</c> から移行する
-    /// （ドックは後から足したモードなので、旧データがドックになることはない——
-    /// <see cref="DefaultDisplayMode"/> をここへ持ち込まない理由でもある。既に保存のある部屋を
-    /// 新しい既定で塗り替えると、前に閉じたときの姿で開き直せなくなる）。</summary>
-    public static DisplayMode ResolveDisplayMode(WorkspaceSnapshot workspace) => workspace.Mode switch
-    {
-        DisplayMode.Solo => DisplayMode.Solo,
-        DisplayMode.Layout => DisplayMode.Layout,
-        DisplayMode.Dock => DisplayMode.Dock,
-        _ => workspace.Stage?.IsActive == true ? DisplayMode.Solo : DisplayMode.Layout,
-    };
+    /// <summary>復元する表示モード。ソロ（<see cref="DisplayMode.Solo"/>・2026-11-14 に撤去）と、<c>Mode</c> の無い
+    /// 旧データは分割として開く——舞台の裏に残っていたタイル配置がそのまま戻る。<see cref="DefaultDisplayMode"/> を
+    /// ここへ持ち込まない（既に保存のある部屋を新しい既定で塗り替えると、前に閉じたときの姿で開き直せなくなる）。</summary>
+    public static DisplayMode ResolveDisplayMode(WorkspaceSnapshot workspace)
+        => workspace.Mode == DisplayMode.Dock ? DisplayMode.Dock : DisplayMode.Layout;
 
     public static string NormalizeBrowserAddress(string? text, string defaultUrl)
     {

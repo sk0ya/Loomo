@@ -113,12 +113,6 @@
             </Setter>
         </Style>
 
-        <!-- 俯瞰はタブと同じ列にあるが、現在の表示を切り替える操作なので控えめなアウトラインにする。 -->
-        <Style x:Key="WingOverviewButton" TargetType="Button" BasedOn="{StaticResource SecondaryButton}">
-            <Setter Property="Padding" Value="9,3" />
-            <Setter Property="FontSize" Value="{DynamicResource Fs11}" />
-        </Style>
-
         <!-- ファイル一覧のカラム数切替。数字だけでなく分割レイアウトも線画で示す。 -->
         <Style x:Key="FilesColumnToggle" TargetType="RadioButton">
             <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
@@ -771,28 +765,15 @@
                             <!-- 行の文法を全セクションで揃える：[● 現在印 6px][8][アイコン 16px][7][ラベル]。
                                  見出しは PopupSectionLabel、区切りは見出しが担うので罫線は引かない。 -->
                             <StackPanel>
-                                <!-- 表示モードは3択なのでセグメント（1つの枠を3分割）にする。選択中だけ面で塗る。 -->
+                                <!-- 表示モードは2択なのでセグメント（1つの枠を2分割）にする。選択中だけ面で塗る。 -->
                                 <Border BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="4"
                                         Padding="2" Margin="2,2,2,0">
                                     <Grid>
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*" />
                                             <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="*" />
                                         </Grid.ColumnDefinitions>
-                                        <Button x:Name="ConcentratedModeChoice" Grid.Column="0"
-                                                Style="{StaticResource BranchMenuItem}" Click="OnChooseConcentratedMode"
-                                                HorizontalContentAlignment="Center" Padding="6,4"
-                                                ToolTip="1つの画面を大きく表示し、ほかは右側で待機させる">
-                                            <DockPanel>
-                                                <Path x:Name="ConcentratedModeIcon" Width="15" Height="13" Stretch="Uniform"
-                                                      StrokeThickness="1.1" Margin="0,0,7,0" VerticalAlignment="Center"
-                                                      Data="M0.5,0.5 H9 V12.5 H0.5 Z M11,0.5 H13.5 V5.5 H11 Z M11,7.5 H13.5 V12.5 H11 Z" />
-                                                <TextBlock x:Name="ConcentratedModeText" Text="集中" FontWeight="SemiBold"
-                                                           VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
-                                            </DockPanel>
-                                        </Button>
-                                        <Button x:Name="SplitModeChoice" Grid.Column="1"
+                                        <Button x:Name="SplitModeChoice" Grid.Column="0"
                                                 Style="{StaticResource BranchMenuItem}" Click="OnChooseSplitMode"
                                                 HorizontalContentAlignment="Center" Padding="6,4"
                                                 ToolTip="複数の画面を自由に並べて表示する">
@@ -806,7 +787,7 @@
                                         </Button>
                                         <!-- ドック：中央はタイルのまま、道具は下／右の領域へ。アイコンは
                                              「中央＋下辺＋右辺」＝ツールウィンドウの縁を表す。 -->
-                                        <Button x:Name="DockModeChoice" Grid.Column="2"
+                                        <Button x:Name="DockModeChoice" Grid.Column="1"
                                                 Style="{StaticResource BranchMenuItem}" Click="OnChooseDockMode"
                                                 HorizontalContentAlignment="Center" Padding="6,4"
                                                 ToolTip="道具の画面を下と右の領域にしまい、右端のアイコンで開閉する">
@@ -832,7 +813,7 @@
                                            Margin="10,0,10,4" TextWrapping="Wrap" />
                                 <UniformGrid x:Name="MainPaneChoices" Columns="2" />
 
-                                <!-- 配置は分割表示のときだけ意味を持つので、集中表示ではセクションごと畳む。 -->
+                                <!-- 配置は分割表示のときだけ意味を持つので、ドックではセクションごと畳む。 -->
                                 <StackPanel x:Name="LayoutSection">
                                     <DockPanel Margin="0,16,0,2">
                                         <Button x:Name="LayoutSaveToggle" DockPanel.Dock="Right" Content="＋ 現在の配置を保存"
@@ -910,8 +891,8 @@
                          WebView2 が 0 サイズ配置で落ちる原因にもなる。→ WebViewArrangePolicy）。 -->
                     <ColumnDefinition x:Name="CenterColumn" Width="*" MinWidth="160" />
                     <ColumnDefinition x:Name="WingSplitterColumn" Width="0" />       <!-- 袖幅スプリッター -->
-                    <ColumnDefinition x:Name="WingColumn" Width="Auto" />            <!-- 袖（ミニチュア）：両モード共通 -->
-                    <!-- ドックモード専用の3列。袖と同時には出ない（袖ありの集中／分割 ⇔ 袖なしのドック）ので、
+                    <ColumnDefinition x:Name="WingColumn" Width="Auto" />            <!-- 袖（ミニチュア）：分割のみ -->
+                    <!-- ドックモード専用の3列。袖と同時には出ない（袖ありの分割 ⇔ 袖なしのドック）ので、
                          ドック以外では幅0で畳んでおく。 -->
                     <ColumnDefinition x:Name="DockRightSplitterColumn" Width="0" />  <!-- 右ドック幅スプリッター -->
                     <ColumnDefinition x:Name="DockRightColumn" Width="0" />          <!-- 右ドック（ツールウィンドウ） -->
@@ -2690,20 +2671,12 @@
 
                 <!-- 袖（ミニチュア）の描画元：実体ペインを Main 領域サイズへレイアウトする非表示ホスト。
                      VisualBrush の描画元になるだけで自身は不可視（Opacity 0／最背面／ヒットテスト無効）。
-                     StageHost の表示状態に依らず常にアレンジさせたいので、StageHost の外（列2）に常設する
-                     （レイアウトモードで Main に出ていない有効セッションのミニチュアを描くため）。 -->
+                     レイアウトモードで Main に出ていない有効セッションのミニチュアを描くため、列2に常設する。 -->
                 <Grid x:Name="StageSourceArea" Grid.Column="2" Grid.ColumnSpan="3" Grid.RowSpan="3" Margin="10,8,6,10"
                       SizeChanged="OnStageSourceAreaSizeChanged"
                       Opacity="0" IsHitTestVisible="False" Panel.ZIndex="-1" />
 
-                <!-- ソロモード：1ペインを「舞台」に全面表示する（構築は ShellWindow.Stage.cs）。
-                     タイル表示（PaneHost）とは表示の差し替えだけで切替わり、レイアウトツリー（_root）には触れない。
-                     袖（ミニチュア）は両モード共通の WingHost（右の列）が持つ。 -->
-                <Grid x:Name="StageHost" Grid.Column="2" Visibility="Collapsed">
-                    <Grid x:Name="StageArea" Margin="10,8,6,10" />
-                </Grid>
-
-                <!-- 袖（ミニチュア）：ソロでもレイアウトでも右端に常設。生きたまま縮小表示する。
+                <!-- 袖（ミニチュア）：レイアウトモードの右端に常設。生きたまま縮小表示する。
                      有効だが Main に出ていないセッションを、**選択中のグループ（メイン／サブ）ぶんだけ**並べる
                      （Main に出ている／無効なものは出さない）。所属は固定＝StageModeCoordinator.MainGroup。
                      構築は ShellWindow.Stage.cs / Wings。 -->
@@ -2726,20 +2699,9 @@
                                   Data="{StaticResource WingIcon.Expanded}" />
                         </Button>
                         <Grid x:Name="WingToolbarActions" Grid.Column="1">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <!-- 起動直後のワークスペース復元が終わるまで出さない。ステージ状態が確定したら
-                                 UpdateWingHostVisibility が必要なときだけ表示する。 -->
-                            <Button x:Name="OverviewButton" Grid.Column="0" Visibility="Collapsed"
-                                    Style="{StaticResource WingOverviewButton}"
-                                    Padding="8,4" Margin="0,0,6,0" Content="⊞ すべての画面"
-                                    ToolTip="すべての画面を一覧表示（Ctrl+W z）"
-                                    Click="OnToggleOverview" />
                             <!-- タブ：袖に並べる顔ぶれの切替（メイン＝常時そばに置く道具／サブ＝用があるとき呼ぶ面／
                                  すべて＝両方を通しで）。所属は固定＝StageModeCoordinator.MainGroup。 -->
-                            <Border Grid.Column="1" Background="{DynamicResource Bg}"
+                            <Border Background="{DynamicResource Bg}"
                                     BorderBrush="{DynamicResource Border}" BorderThickness="1"
                                     CornerRadius="6" Padding="2,2,2,3">
                                 <Grid x:Name="WingTabs" SizeChanged="OnWingTabsSizeChanged">
@@ -2833,16 +2795,6 @@
                         <Border x:Name="DockDropPreview" Visibility="Collapsed" CornerRadius="2"
                                 BorderThickness="2" BorderBrush="{DynamicResource Accent}" />
                     </Canvas>
-                </Grid>
-
-                <!-- 俯瞰：全セッションをカードで一望する Exposé 風レイヤ（背景クリックで閉じる。ソロ専用） -->
-                <Grid x:Name="OverviewLayer" Grid.Column="2" Grid.ColumnSpan="3" Grid.RowSpan="3" Visibility="Collapsed"
-                      Background="#B2101010" MouseLeftButtonUp="OnOverviewBackgroundClick">
-                    <ScrollViewer VerticalScrollBarVisibility="Auto"
-                                  HorizontalScrollBarVisibility="Disabled" VerticalAlignment="Center">
-                        <WrapPanel x:Name="OverviewPanel" HorizontalAlignment="Center" MaxWidth="1100"
-                                   Margin="24" />
-                    </ScrollViewer>
                 </Grid>
 
                 <!-- ペインドラッグ中のスナップ風プレビュー用オーバーレイ（PaneHost と同じセルへ重ねる）。

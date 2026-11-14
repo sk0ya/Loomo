@@ -430,10 +430,10 @@ public sealed class WorkspaceSnapshot
     /// ターミナルの分割木は <see cref="TerminalViewLayout"/>。</summary>
     public ViewportNodeSnapshot? EditorViewLayout { get; set; }
 
-    /// <summary>レイアウトモードで最後に操作していたメインペイン。ソロでは <see cref="Stage"/> が正本。</summary>
+    /// <summary>レイアウトモードで最後に操作していたメインペイン。</summary>
     public PaneKind? ActivePane { get; set; }
 
-    /// <summary>表示モード（ソロ／レイアウト）。null の旧データは復元時に <see cref="Stage"/> から移行する。</summary>
+    /// <summary>表示モード（分割／ドック。旧ソロも数値のまま残る）。解釈は <c>WorkspaceSessionCoordinator.ResolveDisplayMode</c>。</summary>
     public DisplayMode? Mode { get; set; }
 
     /// <summary>有効なセッション（タイトルバーの表示トグルが ON のもの）。Main（タイル／舞台）と
@@ -445,8 +445,8 @@ public sealed class WorkspaceSnapshot
     /// どちらのグループかは固定（<c>StageModeCoordinator.MainGroup</c>）なので、保存するのは選択だけ。</summary>
     public WingTab ActiveWingTab { get; set; }
 
-    /// <summary>ソロモード（単一ステージ＋袖＋俯瞰）の表示状態。未保存の旧ワークスペースは既定でソロにする。</summary>
-    public StageSnapshot? Stage { get; set; } = StageSnapshot.Default();
+    /// <summary>レイアウトモードの袖の幅と折りたたみ。名前はソロ（舞台＋袖）表示があった頃のもの（保存の互換のため据え置き）。</summary>
+    public StageSnapshot? Stage { get; set; }
 
     /// <summary>ドックモード（IDE 風ツールウィンドウ）の表示状態。null の旧データは既定の割り当てで復元する。</summary>
     public DockSnapshot? Dock { get; set; }
@@ -780,7 +780,8 @@ public enum WingTab
 /// <summary>セッションの表示モード。値は JSON へ数値で永続化されるため末尾追加のみ可。</summary>
 public enum DisplayMode
 {
-    /// <summary>ソロ：1ペインを舞台に立て、他は袖でライブ待機（＋俯瞰）。</summary>
+    /// <summary>旧ソロ（舞台＋袖＋俯瞰）。2026-11-14 に撤去し、読み込み時は <see cref="Layout"/> として開く。
+    /// 数値で保存されるので、メンバーは消さずに残す。</summary>
     Solo,
     /// <summary>レイアウト：自由タイルで組み、名前付きで保存・Ctrl+T で巡回する。</summary>
     Layout,
@@ -811,17 +812,9 @@ public sealed class SavedLayout
         => new() { Orientation = "Rows", Children = children.ToList() };
 }
 
-/// <summary>ソロモード（単一ステージ＋袖＋俯瞰）の表示状態。</summary>
+/// <summary>レイアウトモードの袖の表示状態。名前はソロ（舞台＋袖）表示があった頃のもの。</summary>
 public sealed class StageSnapshot
 {
-    public static StageSnapshot Default() => new() { IsActive = true, Pane = PaneKind.Editor };
-
-    /// <summary>旧データ移行用：かつてステージモード中だったか（現在は <see cref="WorkspaceSnapshot.Mode"/> が正）。</summary>
-    public bool IsActive { get; set; }
-    /// <summary>舞台に立っているペイン。null なら復元時に既定選択へフォールバックする。</summary>
-    public PaneKind? Pane { get; set; }
-    /// <summary>俯瞰（全カード一望）レイヤを開いたまま離れたか。</summary>
-    public bool Overview { get; set; }
     /// <summary>袖の幅。null は旧データで、既定幅を使用する。</summary>
     public double? WingWidth { get; set; }
     /// <summary>袖をアイコン表示へ折りたたんだまま復元するか。</summary>

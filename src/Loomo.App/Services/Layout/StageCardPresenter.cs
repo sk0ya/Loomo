@@ -1,23 +1,18 @@
 namespace sk0ya.Loomo.App.Services;
 
-/// <summary>袖／俯瞰カードのサムネイル、見た目、hover・click・drag入力を組み立てる。</summary>
+/// <summary>袖カードのサムネイル、見た目、hover・click・drag入力を組み立てる。</summary>
 internal sealed class StageCardPresenter(
     FrameworkElement resources,
     StageThumbnailSourceController thumbnails,
     IReadOnlyDictionary<PaneKind, FrameworkElement> paneElements,
-    Action<Grid, PaneKind, bool> attachActivityBadge,
+    Action<Grid, PaneKind> attachActivityBadge,
     Action<PaneKind> beginDrag)
 {
     private const double CardAspect = 3.0 / 2.0;
     private const double RestOpacity = 0.90;
 
-    public Border BuildSessionCard(
-        PaneKind kind, double width, bool isOverview, bool iconOnly, bool onStage, Action onClick)
-        => BuildCard(kind, width, Thumbnail(kind), isOverview, iconOnly, onStage, onClick);
-
-    public Border BuildLayoutWingCard(
-        PaneKind kind, double width, bool iconOnly, bool onStage, Action onClick)
-        => BuildCard(kind, width, Thumbnail(kind), isOverview: false, iconOnly, onStage, onClick);
+    public Border BuildLayoutWingCard(PaneKind kind, double width, bool iconOnly, Action onClick)
+        => BuildCard(kind, width, Thumbnail(kind), iconOnly, onClick);
 
     public static IEnumerable<UIElement> ArrangeWingRows(
         IReadOnlyList<Border> cards, int columns, double gap)
@@ -48,8 +43,7 @@ internal sealed class StageCardPresenter(
     }
 
     private Border BuildCard(
-        PaneKind kind, double width, Brush thumbnail, bool isOverview, bool iconOnly,
-        bool onStage, Action onClick)
+        PaneKind kind, double width, Brush thumbnail, bool iconOnly, Action onClick)
     {
         var borderBrush = (Brush)resources.FindResource("Border");
         var accent = (Brush)resources.FindResource("Accent");
@@ -58,14 +52,13 @@ internal sealed class StageCardPresenter(
         {
             Width = width,
             Height = height,
-            Margin = isOverview ? new Thickness(10) : iconOnly ? new Thickness(0) : new Thickness(0, 4, 0, 4),
+            Margin = iconOnly ? new Thickness(0) : new Thickness(0, 4, 0, 4),
             CornerRadius = new CornerRadius(iconOnly ? 0 : 6),
             Background = iconOnly ? Brushes.Transparent : (Brush)resources.FindResource("Panel"),
-            BorderBrush = iconOnly ? Brushes.Transparent : onStage ? accent : borderBrush,
+            BorderBrush = iconOnly ? Brushes.Transparent : borderBrush,
             BorderThickness = iconOnly ? new Thickness(0) : new Thickness(1),
             Cursor = Cursors.Hand,
-            ToolTip = isOverview ? PaneVisibilityPresentation.Label(kind)
-                : $"{PaneVisibilityPresentation.Label(kind)} — クリックで舞台へ",
+            ToolTip = $"{PaneVisibilityPresentation.Label(kind)} — クリックで開く",
             Clip = new RectangleGeometry(new Rect(0, 0, width, height), iconOnly ? 0 : 6, iconOnly ? 0 : 6),
         };
         var root = new Grid { ClipToBounds = true };
@@ -97,15 +90,15 @@ internal sealed class StageCardPresenter(
                 {
                     Text = PaneVisibilityPresentation.Label(kind),
                     TextTrimming = TextTrimming.CharacterEllipsis,
-                    FontSize = UiFontManager.Scaled(isOverview ? 12 : 11),
+                    FontSize = UiFontManager.Scaled(11),
                     Margin = new Thickness(8, 3, 8, 3),
                     Foreground = Brushes.White,
                 },
             });
         }
         card.Child = root;
-        attachActivityBadge(root, kind, isOverview);
-        var rest = isOverview ? 1.0 : RestOpacity;
+        attachActivityBadge(root, kind);
+        var rest = RestOpacity;
         card.Opacity = rest;
         card.MouseEnter += (_, _) =>
         {
@@ -124,7 +117,7 @@ internal sealed class StageCardPresenter(
             }
             else
             {
-                card.BorderBrush = onStage ? accent : borderBrush;
+                card.BorderBrush = borderBrush;
             }
             card.Opacity = rest;
         };
@@ -144,7 +137,7 @@ internal sealed class StageCardPresenter(
         };
         card.PreviewMouseMove += (_, e) =>
         {
-            if (isOverview || !dragArmed || e.LeftButton != MouseButtonState.Pressed)
+            if (!dragArmed || e.LeftButton != MouseButtonState.Pressed)
                 return;
             var position = e.GetPosition(resources);
             if (Math.Abs(position.X - dragStart.X) < SystemParameters.MinimumHorizontalDragDistance

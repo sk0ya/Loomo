@@ -85,14 +85,11 @@ public partial class ShellWindow : IEditorSupportRenderHost {
     private bool CanRenderEditorSupport()
         => _editorSupport.Source is not null
            && EditorSupportRenderPolicy.ShouldRender(
-               _stageActive && _stagePane == PaneKind.EditorSupport,
                _dockActive ? IsDockPaneShown(PaneKind.EditorSupport) : IsPaneVisible(PaneKind.EditorSupport),
                IsEditorSupportInThumbnail());
     private void OpenEditorSupport(EditorTab sourceTab) {
         SwitchEditorSupportSource(sourceTab, force: true);
-        if (_stageActive)
-            SetStagePane(PaneKind.EditorSupport);   // ソロは舞台へ立てる
-        else if (_dockActive && _dockMode.IsDocked(PaneKind.EditorSupport))
+        if (_dockActive && _dockMode.IsDocked(PaneKind.EditorSupport))
             EnsureDockPaneShown(PaneKind.EditorSupport);   // ドックはその領域へ出す
         else
             ShowEditorSupportPane();                 // タイルは Editor の右隣へ開く
@@ -291,8 +288,5 @@ public partial class ShellWindow : IEditorSupportRenderHost {
         => EditorSupportRenderPolicy.IsInThumbnail(
             _dockActive,
             IsSessionEnabled(PaneKind.EditorSupport),
-            _stageActive,
-            _overviewActive,
-            _stagePane == PaneKind.EditorSupport,
             IsShownInMain(PaneKind.EditorSupport));
 }

@@ -16,7 +16,6 @@ public partial class ShellWindow {
     private GridLength _fullscreenSidebarSplitterWidth;
     private GridLength _fullscreenWingSplitterWidth;
     private GridLength _fullscreenWingWidth;
-    private Thickness _fullscreenStageMargin;
     private void TogglePaneFullscreen() {
         if (_paneFullscreen) {
             ExitPaneFullscreen();
@@ -24,11 +23,9 @@ public partial class ShellWindow {
         }
         // ドックモードでは下／右に住む道具も全画面にできる（対象を中央のタイルへ限らない）が、
         // 対象は「いま出ている面」に限る（畳んだ中央のように画面に居ない面は選ばない）。
-        var target = _stageActive
-            ? _stagePane
-            : _dockActive
-                ? DockShownPane(_focusedRegion?.Pane)
-                : _focusedRegion?.Pane ?? AllLeaves().FirstOrDefault(l => !l.Hidden)?.Kind;
+        var target = _dockActive
+            ? DockShownPane(_focusedRegion?.Pane)
+            : _focusedRegion?.Pane ?? AllLeaves().FirstOrDefault(l => !l.Hidden)?.Kind;
         // 画面に出ていない（＝親に載っていない）要素の PointToScreen は例外を投げるので、
         // 対象が見えていることを最後の砦として確かめる。
         if (target is not { } pane || !_paneElements.TryGetValue(pane, out var paneElement)
@@ -58,7 +55,6 @@ public partial class ShellWindow {
         _fullscreenSidebarSplitterWidth = SidebarSplitterColumn.Width;
         _fullscreenWingSplitterWidth = WingSplitterColumn.Width;
         _fullscreenWingWidth = WingColumn.Width;
-        _fullscreenStageMargin = StageArea.Margin;
         ActivityBarColumn.Width = new GridLength(0);
         TitleBarRow.Height = new GridLength(0);
         SidebarColumn.MinWidth = 0;
@@ -66,8 +62,6 @@ public partial class ShellWindow {
         SidebarSplitterColumn.Width = new GridLength(0);
         WingSplitterColumn.Width = new GridLength(0);
         WingColumn.Width = new GridLength(0);
-        StageArea.Margin = new Thickness(0);
-        _overviewActive = false;
         _zoomedPane = pane;
         RebuildPaneLayout();
         WindowState = WindowState.Normal;
@@ -87,7 +81,6 @@ public partial class ShellWindow {
         SidebarSplitterColumn.Width = _fullscreenSidebarSplitterWidth;
         WingSplitterColumn.Width = _fullscreenWingSplitterWidth;
         WingColumn.Width = _fullscreenWingWidth;
-        StageArea.Margin = _fullscreenStageMargin;
         _zoomedPane = _fullscreenPreviousZoomedPane;
         _paneFullscreen = false;
         _fullscreenPane = null;

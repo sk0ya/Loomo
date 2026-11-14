@@ -8,8 +8,8 @@ internal readonly record struct PaneMenuState(bool Active, bool Enabled, PaneMen
 internal static class PaneVisibilityPresentation
 {
     public static PaneKind? ResolveMainPane(
-        bool stageActive, PaneKind stagePane, bool dockActive, PaneKind? dockPane, PaneKind? topLeftPane)
-        => stageActive ? stagePane : dockActive ? dockPane : topLeftPane;
+        bool dockActive, PaneKind? dockPane, PaneKind? topLeftPane)
+        => dockActive ? dockPane : topLeftPane;
 
     public static string Label(PaneKind kind) => kind switch
     {

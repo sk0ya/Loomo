@@ -7,7 +7,6 @@ internal static class ShellLayoutPresentation
 {
     public static string ModeName(DisplayMode mode) => mode switch
     {
-        DisplayMode.Solo => "集中",
         DisplayMode.Dock => "ドック",
         _ => "分割",
     };

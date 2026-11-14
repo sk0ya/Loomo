@@ -13,8 +13,8 @@ public class PaneRevealPolicyTests
 {
     private static PaneRevealPlan Dock(bool binary, bool editorShown, bool supportShown, bool otherInCenter = false)
         => PaneRevealPolicy.ForOpenedFile(
-            binary, dockActive: true, stageActive: false,
-            editorVisible: false, supportVisible: false, editorOnStage: false, supportOnStage: false,
+            binary, dockActive: true,
+            editorVisible: false, supportVisible: false,
             editorDockShown: editorShown, supportDockShown: supportShown, otherInEditorDockRegion: otherInCenter);
 
     [Fact]
@@ -52,7 +52,7 @@ public class PaneRevealPolicyTests
     [Fact]
     public void 分割でEditorSupportが見えているときは何もしない()
         => Assert.Equal(PaneRevealAction.None, PaneRevealPolicy.ForOpenedFile(
-            false, dockActive: false, stageActive: false,
-            editorVisible: false, supportVisible: true, editorOnStage: false, supportOnStage: false,
+            false, dockActive: false,
+            editorVisible: false, supportVisible: true,
             editorDockShown: false, supportDockShown: false, otherInEditorDockRegion: false).Action);
 }

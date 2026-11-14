@@ -258,9 +258,9 @@ public static class CommandCatalog
         new CommandDescriptor("editor.emmet.expand", CatEdit, "Emmet: 略記を展開", null),
         new CommandDescriptor("editor.emmet.wrap", CatEdit, "Emmet: 選択を略記で囲む…", null),
 
-        // ===== 表示モード（ソロ／レイアウト） =====
-        new CommandDescriptor("stage.cycle", CatMode, "次へ切り替え（ソロ＝舞台／レイアウト＝保存レイアウト）", "Ctrl+T"),
-        new CommandDescriptor("mode.toggle", CatMode, "表示モードを切り替え（集中→分割→ドック）", "Ctrl+Shift+T"),
+        // ===== 表示モード（分割／ドック） =====
+        new CommandDescriptor("stage.cycle", CatMode, "次へ切り替え（分割＝保存レイアウト／ドック＝中央の面）", "Ctrl+T"),
+        new CommandDescriptor("mode.toggle", CatMode, "表示モードを切り替え（分割⇔ドック）", "Ctrl+Shift+T"),
 
         // ===== サイドバー（既定未割当。設定画面でキーを与えられる） =====
         new CommandDescriptor("sidebar.explorer", CatSidebar, "エクスプローラを開く", null),

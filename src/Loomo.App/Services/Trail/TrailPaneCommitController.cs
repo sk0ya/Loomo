@@ -6,7 +6,6 @@ namespace sk0ya.Loomo.App.Services;
 /// <summary>短時間に続くペイン移動をまとめ、最後にフォーカスされた位置だけを記録する。</summary>
 internal sealed class TrailPaneCommitController(
     Func<bool> isSuppressed,
-    Func<bool> isStageActive,
     Func<DisplayMode> currentMode,
     Func<PaneKind?> focusedPane,
     Action<PaneKind> commit)
@@ -18,7 +17,7 @@ internal sealed class TrailPaneCommitController(
 
     public void Request(PaneKind pane)
     {
-        if (isSuppressed() || isStageActive())
+        if (isSuppressed())
             return;
         var mode = currentMode();
         if (_lastPane == pane && _lastMode == mode)
@@ -58,7 +57,7 @@ internal sealed class TrailPaneCommitController(
                 return;
             _pendingPane = null;
             var mode = currentMode();
-            if (isSuppressed() || isStageActive()
+            if (isSuppressed()
                 || (_lastPane == pane && _lastMode == mode)
                 || focusedPane() != pane)
                 return;

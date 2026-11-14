@@ -23,7 +23,6 @@ public partial class ShellWindow {
             ActiveTrailFilePosition, TrailFilePositionOfOpenFile, CommitTrailCaret);
         _trailPaneCommit = new TrailPaneCommitController(
             () => _trailSuppressed,
-            () => _stageActive,
             () => CurrentDisplayMode,
             () => _focusedRegion?.Pane,
             CommitTrailPane);
@@ -58,7 +57,7 @@ public partial class ShellWindow {
         // 待っている編集を先に確定する：後から確定すると、編集の点が移った先の点より後ろに並ぶ。
         _trailEditCommit?.CommitPending();
         var mode = CurrentDisplayMode;
-        var stagePane = _stageActive ? _stagePane : (PaneKind?)null;
+        PaneKind? stagePane = null;   // 舞台（ソロ）は撤去済み。軌跡の列は旧データのために残っている
         var paneLayout = TrailLogic.SerializeLayout(_root is null ? null : ToSnapshot(_root));
         if (_trailCaret?.TakeDeparture(arriving) is { } left) {
             // 立っている場所から遠くで離れた：近くの点の行を書き換えず、離れた場所を別の点にする。
@@ -102,10 +101,8 @@ public partial class ShellWindow {
         _trailLastLayoutKey = CurrentTrailLayoutState().Key;
     }
     private TrailLayoutState CurrentTrailLayoutState() {
-        var mode = CurrentDisplayMode;
-        var stagePane = _stageActive ? _stagePane : (PaneKind?)null;
         var snapshot = _root is null ? null : ToSnapshot(_root);
-        return TrailLogic.CreateLayoutState(mode, stagePane, snapshot, CurrentDockKey());
+        return TrailLogic.CreateLayoutState(CurrentDisplayMode, stagePane: null, snapshot, CurrentDockKey());
     }
     /// <summary>タブの「どのファイルのどこか」。抜粋タブは仮想文書なので、キャレットの下の抜粋の元ファイルの
     /// 位置に直す（§35.3）——戻るときは元ファイルを開き直す（抜粋タブは軌跡の戻り先にならない）。</summary>
@@ -225,16 +222,12 @@ public partial class ShellWindow {
         pane => _paneElements.ContainsKey(pane),
         id => _terminalTabs.Any(t => t.Id == id),
         id => _vm.AiBar.SessionExists(id));
+    /// <summary>点を打ったときのタイル配置へ戻す。旧ソロ（撤去済み）の点は、舞台の裏にあったタイル配置へ戻すだけ。</summary>
     private void RestoreTrailDisplayContext(TrailEntryViewModel entry) {
-        if (_stageActive)
-            ExitStageMode();
         if (!string.IsNullOrWhiteSpace(entry.PaneLayout)) {
             // 壊れた1件だけ配置復元を省略し、対象へのジャンプは続ける。
             if (TrailLogic.TryDeserializeLayout(entry.PaneLayout, out var snapshot) && snapshot is not null)
                 ApplyPaneLayout(snapshot);
-        }
-        if (entry.Mode == DisplayMode.Solo) {
-            EnterStageMode(entry.StagePane);
         }
     }
     private async Task JumpToFileAsync(TrailEntryViewModel entry) {

@@ -1,19 +1,10 @@
 namespace sk0ya.Loomo.App.Views;
-/// <summary>ShellWindow: ソロモード（舞台＋袖）。1ペインを全面の「舞台」に立て、残りのペインは 右端の「袖」でペインを VisualBrush として縮小表示する。袖カードは実コントロールを 子に持たず、元の表示を描くだけなので、袖表示のためにペインを動かさない。 レイアウトモード（タイル表示／PaneHost）とは表示の差し替えだけで切替わり、 レイアウトツリー（_root）には一切触れない — レイアウトへ戻せば元のタイル配置・比率がそのまま戻る。 「俯瞰」は全セッションをカードで一望する Exposé 風レイヤ（クリックで舞台へダイブ）。 ソロ中に <c>FocusPane</c> が呼ばれると対象が自動で舞台に立つので、AI がファイルを 開いた・差分を出した等の既存フローがそのまま「舞台の自動転換」になる。</summary>
+/// <summary>ShellWindow: 表示モード（分割／ドック）の切り替えと、レイアウトモードの右端の「袖」（ペインの
+/// VisualBrush による縮小表示）の状態。袖カードは実コントロールを子に持たず元の表示を描くだけなので、
+/// 袖表示のためにペインを動かさない。かつてあったソロ（舞台＋袖＋俯瞰）は 2026-11-14 に外した——保存済みの
+/// ソロは分割として開く（<see cref="WorkspaceSessionCoordinator.ResolveDisplayMode"/>）。</summary>
 public partial class ShellWindow {
     private readonly StageModeCoordinator _stageMode = new();
-    private StageSurfacePresenter? _stageSurfacePresenter;
-    private StageSurfacePresenter StageSurfacePresentation
-        => _stageSurfacePresenter ??= new StageSurfacePresenter(
-            PaneHost, StageHost, StageArea, WingStrip, OverviewPanel, OverviewLayer,
-            StageThumbnailSources, StageCardPresentation, DetachPaneElementsExcept,
-            () => _stageActivityBadges.Clear(), BuildLiveSlot);
-    private bool _stageActive { get => _stageMode.Active; set => _stageMode.Active = value; }
-    private PaneKind _stagePane { get => _stageMode.Pane; set => _stageMode.Pane = value; }
-    private bool OnStage(PaneKind kind) => _stageMode.IsOnStage(kind);
-    private bool _overviewActive { get => _stageMode.Overview; set => _stageMode.Overview = value; }
-    private DispatcherTimer? _stageResizeTimer;
-    private Size _stageBuiltSize;
     private HashSet<PaneKind> _enabledSessions => _stageMode.EnabledSessions;
     /// <summary>袖で選択中のタブ（メイン／サブ／すべて）。所属は固定
     /// （<see cref="StageModeCoordinator.MainGroup"/>）で、切り替えるのは「どれを見るか」だけ。</summary>
@@ -32,140 +23,35 @@ public partial class ShellWindow {
     private double _wingWidth = DefaultWingWidth;
     private bool _isWingCollapsed;
     private double EffectiveWingWidth => _isWingCollapsed ? CollapsedWingWidth : _wingWidth;
-    private void OnToggleStageMode(object sender, RoutedEventArgs e) => ToggleDisplayMode();
-    /// <summary>いまの表示モード。3択（集中／分割／ドック）の唯一の導出点で、
-    /// <c>_stageActive</c>／<c>_dockActive</c> の組から判断する場所をここ以外に作らない。</summary>
-    private DisplayMode CurrentDisplayMode
-        => _stageActive ? DisplayMode.Solo : _dockActive ? DisplayMode.Dock : DisplayMode.Layout;
-    /// <summary>表示モードの UI 名。「表示」は付けない——ヘッダーやセグメントでは常にモード名として
-    /// 並ぶので、両方に付くと字数だけ増えて読み分けの助けにならない。</summary>
+    /// <summary>いまの表示モード（分割／ドック）。<c>_dockActive</c> から判断する場所をここ以外に作らない。</summary>
+    private DisplayMode CurrentDisplayMode => _dockActive ? DisplayMode.Dock : DisplayMode.Layout;
     // モード切替は「まだ選んでいる途中」の操作（切り替えてからメイン画面を選び直すことが多い）なので
     // ポップアップは閉じず、中身だけ作り直す。閉じるのは行き先を決める操作（メイン画面・配置）だけ。
-    private void OnChooseConcentratedMode(object sender, RoutedEventArgs e) {
-        if (!_stageActive) {
-            BeginTrailLayoutChange();
-            EnterStageMode();
-        }
-        RefreshOpenPaneMenu();
-    }
     private void OnChooseSplitMode(object sender, RoutedEventArgs e) {
-        if (_stageActive || _dockActive) {
+        if (_dockActive) {
             BeginTrailLayoutChange();
-            ExitStageMode();
             ExitDockMode();
         }
         RefreshOpenPaneMenu();
     }
-    /// <summary>ショートカット（mode.toggle）は3モードの巡回：集中 → 分割 → ドック → 集中。</summary>
+    /// <summary>ショートカット（mode.toggle）は2モードの往復：分割 ⇔ ドック。</summary>
     private void ToggleDisplayMode() {
         BeginTrailLayoutChange();
-        switch (CurrentDisplayMode) {
-            case DisplayMode.Solo:
-                ExitStageMode();    // → 分割
-                break;
-            case DisplayMode.Layout:
-                EnterDockMode();    // → ドック
-                break;
-            default:
-                ExitDockMode();
-                EnterStageMode();   // → 集中
-                break;
-        }
-    }
-    private void EnterStageMode()
-        => EnterStageMode(null);
-    private void EnterStageMode(PaneKind? pane) {
         if (_dockActive)
-            ExitDockMode();   // 舞台と袖なしのドックは同時に成り立たない
-        var selectedPane = StageModeCoordinator.ResolvePane(
-            [pane, _focusedRegion?.Pane, AllLeaves().FirstOrDefault(l => !l.Hidden)?.Kind],
-            _paneElements.ContainsKey);
-        if (!_stageMode.Enter(selectedPane))
-            return;
-        _zoomedPane = null;
-        PaneHost.Opacity = 0;
-        PaneHost.IsHitTestVisible = false;
-        StageHost.Visibility = Visibility.Visible;
-        StageHost.SizeChanged += OnStageHostSizeChanged;
-        UpdateModeButtons();
-        RebuildStage();
-        FocusPane(_stagePane);
-        SaveActiveWorkspaceSnapshot();
+            ExitDockMode();
+        else
+            EnterDockMode();
     }
-    private void ClearStageModeForWorkspaceSwitch() {
-        if (!_stageMode.Exit())
-            return;
-        StageHost.SizeChanged -= OnStageHostSizeChanged;
-        _stageResizeTimer?.Stop();
-        StageSurfacePresentation.Clear();
-        UpdateModeButtons();
-    }
-    private void PrepareStageSnapshot(bool solo, StageSnapshot? snapshot) {
-        ClearStageModeForWorkspaceSwitch();
+    /// <summary>袖の幅と折りたたみをワークスペースの保存値へ戻す（ソロ時代の <see cref="StageSnapshot"/> に同居している）。</summary>
+    private void RestoreWingSnapshot(StageSnapshot? snapshot) {
         _wingWidth = Math.Clamp(snapshot?.WingWidth ?? DefaultWingWidth, MinWingWidth, MaxWingWidth);
         _isWingCollapsed = snapshot?.WingCollapsed ?? false;
-        if (!solo)
-            return;
-        snapshot ??= StageSnapshot.Default();
-        var restoredPane = StageModeCoordinator.ResolvePane(
-            [snapshot.Pane], pane => _paneElements.ContainsKey(pane)
-                && (pane != PaneKind.Debug || _idePaneApplicable)
-                && (pane != PaneKind.TsIde || _tsIdePaneApplicable));
-        _stageMode.Restore(active: true, overview: snapshot.Overview, pane: restoredPane);
-        _zoomedPane = null;
-        PaneHost.Opacity = 0;
-        PaneHost.IsHitTestVisible = false;
-        StageHost.Visibility = Visibility.Visible;
-        StageHost.SizeChanged += OnStageHostSizeChanged;
-        UpdateModeButtons();
-    }
-    private void CompleteStageSnapshotRestore() {
-        if (!_stageActive)
-            return;
-        RebuildStage();
-        if (_stagePane == PaneKind.EditorSupport)
-            InvalidateEditorSupport();
-        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() => {
-            if (_stageActive && !_overviewActive)
-                FocusPane(_stagePane);
-        }));
-    }
-    private void ExitStageMode() {
-        if (!_stageMode.Exit())
-            return;
-        StageHost.SizeChanged -= OnStageHostSizeChanged;
-        _stageResizeTimer?.Stop();
-        StageSurfacePresentation.Clear();
-        UpdateModeButtons();
-        RebuildPaneLayout();
-        FocusPane(_stagePane);
-        foreach (var kind in new[] { PaneKind.Terminal, PaneKind.Debug, PaneKind.TsIde, PaneKind.Ai })
-            if (IsPaneVisible(kind))
-                MarkPaneActivitySeen(kind);
-        SaveActiveWorkspaceSnapshot();
-    }
-    private void SetStagePane(PaneKind kind) {
-        BeginTrailLayoutChange();   // 舞台を差し替える *前* の配置キーを捕まえないと軌跡に点が残らない
-        if (!_stageMode.Select(kind))
-            return;
-        RebuildStage();
-        if (kind == PaneKind.EditorSupport)
-            InvalidateEditorSupport();
-        MarkPaneActivitySeen(kind);   // 舞台に立った＝目に入ったので未確認バッジを流す
-        SaveActiveWorkspaceSnapshot();
     }
     private void CycleInActiveMode(int direction) {
-        if (_stageActive)
-            CycleStage(direction);
-        else if (_dockActive)
+        if (_dockActive)
             CycleDockCenter(direction);   // ドックは中央に立てる面を順に送る
         else
             CycleLayout(direction);
-    }
-    private void CycleStage(int direction) {
-        var next = StageModeCoordinator.CyclePane(StageModeCoordinator.StageOrder, _stagePane, direction);
-        SetStagePane(next);
-        FocusPane(next);
     }
     /// <summary>ペインを現在の親から外す。<paramref name="keep"/>（＝袖ミニチュアに据え置くもの）は触らない。</summary>
     private void DetachPaneElementsExcept(IReadOnlyCollection<PaneKind> keep) {
@@ -178,45 +64,10 @@ public partial class ShellWindow {
         if (WingHost.Visibility == Visibility.Visible)
             WingColumn.Width = new GridLength(EffectiveWingWidth);
         RebuildWings();
-        RebuildStageIfResized();
         SaveActiveWorkspaceSnapshot();
-    }
-    private void OnStageHostSizeChanged(object sender, SizeChangedEventArgs e) {
-        if (!_stageActive)
-            return;
-        QueueStageResize();
-    }
-    private void QueueStageResize() {
-        if (!_stageActive)
-            return;
-        if (_stageResizeTimer is null) {
-            _stageResizeTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
-            _stageResizeTimer.Tick += (_, _) => {
-                _stageResizeTimer!.Stop();
-                RebuildStageIfResized();
-            };
-        }
-        _stageResizeTimer.Stop();
-        _stageResizeTimer.Start();
-    }
-    /// <summary>
-    /// 舞台の再構築（袖ミニチュアの再描画を含む強制 UpdateLayout）は、サイドバー／ペインスプリッターの
-    /// ドラッグ中に呼ぶと GridSplitter のマウスキャプチャを奪ってドラッグが分断される
-    /// （§ScheduleLayoutWings と同種の不具合、192166d）。ドラッグ中はスキップし、DragCompleted 側から
-    /// 後追いで呼び直す。
-    /// </summary>
-    private void RebuildStageIfResized() {
-        if (!_stageActive || _paneSplitterDragging)
-            return;
-        var size = StageSurfacePresentation.VirtualSize(EffectiveWingWidth);
-        if (Math.Abs(size.Width - _stageBuiltSize.Width) > 1
-            || Math.Abs(size.Height - _stageBuiltSize.Height) > 1)
-            RebuildStage();
     }
     private bool IsSessionEnabled(PaneKind kind) => _enabledSessions.Contains(kind);
     private bool IsShownInMain(PaneKind kind) {
-        if (_stageActive)
-            return !_overviewActive && OnStage(kind);
         if (_dockActive)
             return IsDockPaneShown(kind);
         if (_zoomedPane is { } zoom)
@@ -255,54 +106,10 @@ public partial class ShellWindow {
     }
     private void RebuildSessionsView() {
         UpdatePaneToggleStates();
-        if (_stageActive)
-            RebuildStage();
-        else if (_dockActive)
+        if (_dockActive)
             RebuildDock();      // 袖なしなので組み直すのは帯とドックの領域
-        else {
+        else
             ScheduleLayoutWings();
-        }
         SaveActiveWorkspaceSnapshot();
-    }
-    private IEnumerable<PaneKind> OverviewKinds()
-        => StageModeCoordinator.StageOrder.Where(k => IsSessionEnabled(k) || OnStage(k));
-    private void RebuildStage() {
-        PaneLayoutDebugLog.Time("RebuildStage", RebuildStageCore);
-        UpdateEditorSupportFileWatch();   // 舞台・袖の入れ替えで見え方が変わる（§24.8）
-        SyncEditorSupportRenderability(); // 同じ理由で、描けずに持ち越した要求を拾い直す時でもある
-    }
-    private void RebuildStageCore() {
-        if (!_stageActive)
-            return;
-        var virtualSize = StageSurfacePresentation.VirtualSize(EffectiveWingWidth);
-        _stageBuiltSize = virtualSize;
-        // 袖ミニチュアは差分で寄せる（据え置けるものは親の付け替えもレイアウトも走らせない）。
-        // 舞台・俯瞰へ出すペインだけを親から外す。
-        IReadOnlyCollection<PaneKind> overviewKinds = _overviewActive
-            ? OverviewKinds().ToList()
-            : Array.Empty<PaneKind>();
-        IReadOnlyCollection<PaneKind> thumbnailKinds = _overviewActive ? overviewKinds : WingKinds();
-        StageSurfacePresentation.Rebuild(new StageSurfaceState(
-            _overviewActive,
-            _stagePane,
-            thumbnailKinds,
-            overviewKinds,
-            StageThumbnailPlanner.SourceSize(virtualSize.Width, CardAspect),
-            OverviewCardWidth,
-            kind => { SetStagePane(kind); FocusPane(kind); }));
-        RebuildWings();
-        UpdatePaneToggleStates();
-        UpdateWingHostVisibility();
-        ScheduleBrowserRealize(_activeBrowserTab);
-    }
-    private void OnToggleOverview(object sender, RoutedEventArgs e) => ToggleOverview();
-    private void ToggleOverview() {
-        if (!_stageMode.ToggleOverview())
-            return;
-        RebuildStage();
-    }
-    private void OnOverviewBackgroundClick(object sender, MouseButtonEventArgs e) {
-        if (_stageMode.CloseOverview())
-            RebuildStage();
     }
 }

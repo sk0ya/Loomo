@@ -110,7 +110,7 @@ public partial class ShellWindow {
         }
     }
 
-    /// <summary>そのペインへ今フォーカスを戻せるか（舞台中は表に出し直せるので可）。</summary>
+    /// <summary>そのペインへ今フォーカスを戻せるか（画面のどこかに出ているか）。</summary>
     private bool IsPaneFocusableNow(PaneKind kind)
         => _paneElements.ContainsKey(kind) && IsPaneMaterialized(kind);
     private static bool IsWithin(DependencyObject element, DependencyObject ancestor)
@@ -118,19 +118,6 @@ public partial class ShellWindow {
     private void OnWindowDeactivated(object? sender, EventArgs e)
         => _keyboard?.Reset();
     private void FocusPaneInDirection(DropZone direction) {
-        if (_stageActive && _focusedRegion?.Pane is { } stageFocused
-            && ViewsFor(stageFocused) is { LeafCount: > 1 } stageViews) {
-            if (stageViews.FocusInDirection(direction, PaneHost)
-                && stageViews.FocusedViewportId is { } viewportId) {
-                _focusedRegion = PaneFocusTarget.Viewport(stageFocused, viewportId);
-                SyncActiveFromViewport(stageFocused);
-                return;
-            }
-        }
-        if (_stageActive) {
-            CycleStage(PaneFocusNavigationPolicy.StageCycleDirection(direction));
-            return;
-        }
         if (PaneFocusNavigationPolicy.FindNeighbor(FocusTargets().ToList(), _focusedRegion, direction) is { } target)
             ApplyFocusTarget(target);
     }
@@ -203,9 +190,7 @@ public partial class ShellWindow {
         // パレットを閉じた後の「元へ戻す」が、画面に居ない面へフォーカスを当てて何も起きない。
         if (_dockActive && !DockLayoutCoordinator.IsDockable(kind))
             return;
-        if (_stageActive && kind != _stagePane)
-            SetStagePane(kind);
-        else if (_dockActive && !_dockMode.IsOpen(kind))
+        if (_dockActive && !_dockMode.IsOpen(kind))
             EnsureDockPaneShown(kind);   // 出ていない面へフォーカスが来たら、その領域に出して見せる
         _focusedRegion = PaneFocusTarget.Of(kind);
         if (_paneElements.TryGetValue(kind, out var pane) &&
@@ -288,14 +273,8 @@ public partial class ShellWindow {
     /// <summary>ワークスペース復元の最後に、見えている場所と内部の現在地を同じペインへ揃える。</summary>
     private void RestoreActivePane(WorkspaceSnapshot workspace) {
         var target = PaneFocusNavigationPolicy.ResolveRestorePane(
-            _stageActive, _stagePane, workspace.ActivePane,
-            pane => _paneElements.ContainsKey(pane) && (_stageActive || IsPaneMaterialized(pane)));
-        if (target is not { } pane)
-            return;
-        if (_overviewActive) {
-            _focusedRegion = PaneFocusTarget.Of(pane);
-            return;
-        }
-        FocusPane(pane);
+            workspace.ActivePane, pane => _paneElements.ContainsKey(pane) && IsPaneMaterialized(pane));
+        if (target is { } pane)
+            FocusPane(pane);
     }
 }

@@ -32,18 +32,18 @@ public partial class ShellWindow {
     private static string PaneIconKey(PaneKind kind) => $"PaneIcon.{kind}";
     private void UpdateMainPaneHeader() {
         var main = PaneVisibilityPresentation.ResolveMainPane(
-            _stageActive, _stagePane, _dockActive, _dockMode.CenterPane, TopLeftPane());
+            _dockActive, _dockMode.CenterPane, TopLeftPane());
         var layoutLabel = CurrentLayoutLabel();
         var modeLabel = ShellLayoutPresentation.ModeName(CurrentDisplayMode);
         MainPaneIcon.Data = main is { } kind && TryFindResource(PaneIconKey(kind)) is Geometry geo ? geo : null;
-        // 集中表示＝舞台のペイン名、分割表示＝配置名。名前の無い配置に「未保存の配置」と出すのは
+        // 分割表示＝配置名。名前の無い配置に「未保存の配置」と出すのは
         // 情報が無いのに幅だけ取るので、その場合はモード名だけにする。
-        // 集中もドックも「いま中央に立っている面」が現在地。分割だけが配置名を出す。
+        // ドックは「いま中央に立っている面」が現在地。分割だけが配置名を出す。
         // 中央を畳んだドックには「いま立っている面」が無い。名前の代わりに「選択」のような
         // 置き字を出すのは、名前の無い配置に「未保存の配置」と出すのと同じ空振りなので、
         // 言うことが無いときはモード名だけにする。
         var header = PaneVisibilityPresentation.MainHeader(
-            main, layoutLabel, UnsavedLayoutLabel, modeLabel, _stageActive || _dockActive);
+            main, layoutLabel, UnsavedLayoutLabel, modeLabel, _dockActive);
         MainPaneLabel.Text = header.Label;
         var hasDetail = header.HasDetail;
         MainPaneLabel.Visibility = hasDetail ? Visibility.Visible : Visibility.Collapsed;
@@ -106,9 +106,8 @@ public partial class ShellWindow {
         PaneTogglePopup.HorizontalOffset = Math.Min(0, MainPaneButton.ActualWidth - PaneTogglePopupRoot.Width);
         MainPaneChoices.Children.Clear();
         _paneMenuRows.Clear();
-        // 配置は分割表示にしか無い概念。集中表示では見出しごと畳む（見出しだけ残すと空セクションに見える）。
-        // 配置（タイルの組み方）は分割表示にしか無い概念。集中・ドックでは見出しごと畳む。
-        LayoutSection.Visibility = _stageActive || _dockActive ? Visibility.Collapsed : Visibility.Visible;
+        // 配置（タイルの組み方）は分割表示にしか無い概念。ドックでは見出しごと畳む（見出しだけ残すと空セクションに見える）。
+        LayoutSection.Visibility = _dockActive ? Visibility.Collapsed : Visibility.Visible;
         LayoutSaveRow.Visibility = Visibility.Collapsed;
         LayoutNameInput.Clear();
         BuildLayoutPopup();
@@ -144,7 +143,7 @@ public partial class ShellWindow {
         if (_paneMenuRows.Count == 0)
             return;
         var main = PaneVisibilityPresentation.ResolveMainPane(
-            _stageActive, _stagePane, _dockActive, _dockMode.CenterPane, TopLeftPane());
+            _dockActive, _dockMode.CenterPane, TopLeftPane());
         var accent = (Brush)FindResource("Accent");
         var fg = (Brush)FindResource("Fg");
         var fgDim = (Brush)FindResource("FgDim");
@@ -176,13 +175,8 @@ public partial class ShellWindow {
         }
         BeginTrailLayoutChange();
         _enabledSessions.Add(kind);
-        if (_stageActive) {
-            SetStagePane(kind);
-            FocusPane(kind);
-        } else {
-            SwapIntoTopLeft(kind);
-            FocusPane(kind);
-        }
+        SwapIntoTopLeft(kind);
+        FocusPane(kind);
         PaneTogglePopup.IsOpen = false;
         UpdatePaneToggleStates();
     }
@@ -236,7 +230,7 @@ public partial class ShellWindow {
     /// 「有効なまま非表示」＝袖のカードとして残すので、袖から掴み直せば元どおり戻せる。
     /// ドラッグ元が最後の1枚のときは受けない（舞台が空になる）。</summary>
     private void MovePaneToWing(PaneKind kind) {
-        if (_stageActive || _dockActive || !IsPaneVisible(kind) || VisibleLeafCount() <= 1)
+        if (_dockActive || !IsPaneVisible(kind) || VisibleLeafCount() <= 1)
             return;
         BeginTrailLayoutChange();
         _enabledSessions.Add(kind);   // 袖に並ぶのは「有効な」ペインだけ
@@ -254,25 +248,21 @@ public partial class ShellWindow {
     private void EnsureEditorPaneForOpenedFile(string? path) {
         var plan = PaneRevealPolicy.ForOpenedFile(
             path is not null && BinaryFileDetector.IsBinary(path),
-            _dockActive, _stageActive,
+            _dockActive,
             IsPaneVisible(PaneKind.Editor), IsPaneVisible(PaneKind.EditorSupport),
-            OnStage(PaneKind.Editor), OnStage(PaneKind.EditorSupport),
             IsDockPaneShown(PaneKind.Editor), IsDockPaneShown(PaneKind.EditorSupport),
             _dockMode.OpenPaneIn(_dockMode.RegionOf(PaneKind.Editor))
                 is { } inEditorRegion && inEditorRegion != PaneKind.Editor && inEditorRegion != PaneKind.EditorSupport);
         switch (plan.Action)
         {
             case PaneRevealAction.OpenDock: EnsureDockPaneShown(plan.Target); break;
-            case PaneRevealAction.SelectStage: SetStagePane(plan.Target); break;
             case PaneRevealAction.PlaceInLayout: PlacePaneByBehavior(plan.Target); break;
         }
     }
     private void EnsurePaneVisibleOrSwapTopLeft(PaneKind target) {
-        switch (PaneRevealPolicy.ForPane(
-            _stageActive, _dockActive, IsPaneVisible(target), OnStage(target)))
+        switch (PaneRevealPolicy.ForPane(_dockActive, IsPaneVisible(target)))
         {
             case PaneRevealAction.OpenDock: EnsureDockPaneShown(target); break;
-            case PaneRevealAction.SelectStage: SetStagePane(target); break;
             case PaneRevealAction.PlaceInLayout: PlacePaneByBehavior(target); break;
         }
     }

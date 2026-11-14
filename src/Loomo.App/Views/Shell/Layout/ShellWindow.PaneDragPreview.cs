@@ -9,38 +9,7 @@ public partial class ShellWindow {
             return;
         }
         DragVisuals.MoveGhost(e.GetPosition(DragGhostLayer));
-        if (_stageDrag)
-            UpdateStageDragPreview(e.GetPosition(PaneHost));
-        else
-            UpdateDragPreview(e.GetPosition(PaneHost));
-    }
-    private void UpdateStageDragPreview(Point pos) {
-        var rect = StageRectInPaneHost();
-        if (rect.Width <= 0 || rect.Height <= 0 || !rect.Contains(pos)) {
-            _dragTarget = null;
-            _dragZone = null;
-            _dragCenter = false;
-            DragVisuals.HidePreview();
-            Mouse.OverrideCursor = Cursors.No;
-            return;
-        }
-        Mouse.OverrideCursor = Cursors.Hand;
-        var relX = (pos.X - rect.X) / rect.Width;
-        var relY = (pos.Y - rect.Y) / rect.Height;
-        var selection = PaneDropPreviewPolicy.Select(relX, relY, allowCenter: true);
-        var zone = selection.Zone;
-        var center = selection.Center;
-        _dragTarget = _stagePane;
-        _dragZone = center ? null : zone;
-        _dragCenter = center;
-        DragVisuals.ShowPreview(
-            rect, center ? rect : ToRect(PaneDropPreviewPolicy.ZoneBounds(ToLayoutRect(rect), zone)));
-    }
-    private Rect StageRectInPaneHost() {
-        if (StageArea.ActualWidth <= 0 || StageArea.ActualHeight <= 0)
-            return Rect.Empty;
-        var topLeft = StageArea.TransformToVisual(PaneHost).Transform(new Point(0, 0));
-        return new Rect(topLeft, new Size(StageArea.ActualWidth, StageArea.ActualHeight));
+        UpdateDragPreview(e.GetPosition(PaneHost));
     }
     private void UpdateDragPreview(Point pos) {
         if (TryPreviewWingDrop(pos))
@@ -129,12 +98,9 @@ public partial class ShellWindow {
     private void OnDragCanvasMouseUp(object sender, MouseButtonEventArgs e) {
         var commit = PaneDropPreviewPolicy.ResolveCommit(
             _dragSource, _dragTarget, _dragZone, _dragCenter, _dragSpan,
-            _dragFromWing, _stageDrag, _dragToWing);
+            _dragFromWing, _dragToWing);
         EndPaneDrag();
         switch (commit.Kind) {
-            case PaneDropCommitKind.Stage:
-                HandleStageDrop(commit.Source, commit.Target, commit.Center, commit.Zone);
-                break;
             case PaneDropCommitKind.Wing:
                 MovePaneToWing(commit.Source);
                 break;
@@ -145,24 +111,6 @@ public partial class ShellWindow {
                 MovePane(commit.Source, moveTarget, zone, commit.Span);
                 break;
         }
-    }
-    private void HandleStageDrop(PaneKind source, PaneKind? target, bool center, DropZone? zone) {
-        if (target is not { } stage)   // 舞台の外でドロップ＝レイアウトは変えない
-            return;
-        if (center) {
-            SetStagePane(source);
-            FocusPane(source);
-            return;
-        }
-        if (zone is not { } z || source == stage)
-            return;
-        _enabledSessions.Add(source);
-        _enabledSessions.Add(stage);
-        _root = PaneStageDropPolicy.CreateRoot(source, stage, z);
-        ExitStageMode();        // 新しい _root でタイルを組み直す（→ レイアウトモード）
-        MarkLayoutDirty();      // ステージ解除後なので「未保存」印が立つ
-        FocusPane(source);
-        SaveActiveWorkspaceSnapshot();
     }
     private void OnDragCanvasLostCapture(object sender, MouseEventArgs e) {
         if (!_paneDragging)
@@ -184,7 +132,6 @@ public partial class ShellWindow {
     private void EndPaneDrag() {
         _paneDragging = false;
         _dragFromWing = false;
-        _stageDrag = false;
         _dragToWing = false;
         _dragCenter = false;
         _dragSpan = false;

@@ -38,13 +38,9 @@ public partial class ShellWindow {
         SyncEditorSupportRenderability(); // 同じ理由で、描けずに持ち越した要求を拾い直す時でもある
     }
     private void RebuildPaneLayoutCore() {
-        PaneLayoutDebugLog.Log($"RebuildPaneLayout() stageActive={_stageActive}", withCaller: true);
-        if (_stageActive) {
-            RebuildStage();
-            return;
-        }
+        PaneLayoutDebugLog.Log("RebuildPaneLayout()", withCaller: true);
         // ドックは中央も「1枚」。タイルの木（_root）は触らないまま、中央にその1枚を立てる
-        // （分割へ戻せば元の配置・比率がそのまま戻る＝舞台と同じ原則）。
+        // （分割へ戻せば元の配置・比率がそのまま戻る）。
         if (_dockActive) {
             DetachPaneElementsExcept(PanesToKeepAttached());
             RebuildDockCore();
@@ -168,16 +164,12 @@ public partial class ShellWindow {
         SaveActiveWorkspaceSnapshot();
     }
     private void MarkLayoutDirty() {
-        if (_stageActive || _layoutDirty)
+        if (_layoutDirty)
             return;
         _layoutDirty = true;
         UpdateModeButtons();
     }
     private void ToggleZoom() {
-        if (_stageActive) {
-            ToggleOverview();
-            return;
-        }
         if (_zoomedPane is not null) {
             ZoomPane(null);
             return;
@@ -194,8 +186,6 @@ public partial class ShellWindow {
             _vm.IsSecondarySidebarVisible = false;
             return;
         }
-        if (_stageActive)
-            return;
         // ドックでは「タイルからしまう」ではなく、いま居る領域を畳む（中央も同じ）。
         // ここで SetPaneVisible に流すと、見えているのは中央なのに畳まれるのは
         // 裏のタイルの木のほうで、押しても何も起きない操作になる。

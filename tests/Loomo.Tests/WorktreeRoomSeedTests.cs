@@ -302,7 +302,7 @@ public class WorktreeRoomListTests
             Children = [new() { Kind = PaneKind.Terminal, Weight = 2 }, new() { Kind = PaneKind.Git }],
         };
         current.Dock = new DockSnapshot { BottomPane = PaneKind.Diff, BottomHeight = 321, Configured = true };
-        current.Stage = new StageSnapshot { Pane = PaneKind.Browser, WingWidth = 333 };
+        current.Stage = new StageSnapshot { WingWidth = 333 };
         current.Layouts = [new SavedLayout { Name = "組み替え", Tree = new() { Kind = PaneKind.Git } }];
 
         sut.ActivateWorktree(To(worktree, main, main), current, _ => true);
@@ -314,7 +314,7 @@ public class WorktreeRoomListTests
         Assert.Equal(2, back.PaneLayout.Children[0].Weight);
         Assert.Equal(PaneKind.Diff, back.Dock!.BottomPane);
         Assert.Equal(321, back.Dock.BottomHeight);
-        Assert.Equal(PaneKind.Browser, back.Stage!.Pane);
+        Assert.Equal(333, back.Stage!.WingWidth);
         Assert.Equal("組み替え", Assert.Single(back.Layouts).Name);
         // タブはその部屋のもの。レイアウトは複製で、元の部屋と共有しない。
         Assert.Equal(Path.Combine(worktree, "only-here.txt"), Assert.Single(back.EditorTabs).FilePath);

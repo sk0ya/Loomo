@@ -4,11 +4,9 @@ public partial class ShellWindow : Window {
         base.OnRenderSizeChanged(sizeInfo);
         if (!IsLoaded || _paneFullscreen)
             return;
-        if (_stageActive)
-            QueueStageResize();
         // 袖のミニチュアは幅にしか追従しない（描画元の幅＝Main 領域の幅）。高さだけの変化でも
         // 組み直していると、窓の下辺を掴んだだけで1刻みごとにカードを全部作り直すことになる。
-        else if (!_dockActive && sizeInfo.WidthChanged && WingHost.Visibility == Visibility.Visible)
+        if (!_dockActive && sizeInfo.WidthChanged && WingHost.Visibility == Visibility.Visible)
             ScheduleLayoutWings();
     }
 
@@ -94,7 +92,6 @@ public partial class ShellWindow : Window {
     private PaneKind? _dragTarget;
     private DropZone? _dragZone;
     private bool _dragFromWing;
-    private bool _stageDrag;
     private bool _dragCenter;
     private bool _dragSpan;
     private bool _dragToWing;   // 袖の上で離す＝舞台から降ろして袖へしまう
@@ -240,7 +237,6 @@ public partial class ShellWindow : Window {
             _paneSplitterDragging = false;
             PaneLayoutDebugLog.Log($"SidebarSplitter DragCompleted -> SidebarColumn.Width={SidebarColumn.Width}");
             ScheduleLayoutWings();
-            RebuildStageIfResized();
         };
         WingSplitter.MouseDoubleClick += (_, e) => {
             SetWingWidth(DefaultWingWidth);
@@ -536,10 +532,8 @@ public partial class ShellWindow : Window {
         if (WingHost.Visibility == Visibility.Visible)
             WingColumn.Width = new GridLength(EffectiveWingWidth);
         WingSplitter.IsHitTestVisible = !_isWingCollapsed;
-        OverviewButton.Visibility = _stageActive && !_isWingCollapsed ? Visibility.Visible : Visibility.Collapsed;
         UpdateWingToolbar();
         RebuildWings();
-        RebuildStageIfResized();
         SaveActiveWorkspaceSnapshot();
     }
 
@@ -593,12 +587,11 @@ public partial class ShellWindow : Window {
             else {
                 LoadLayouts(System.Array.Empty<SavedLayout>(), scratch: null, activeIndex: -1, dirty: false);
                 ApplyIdePaneApplicability(System.Array.Empty<string>());
-                PrepareStageSnapshot(solo: true, StageSnapshot.Default());
+                RestoreWingSnapshot(null);
                 PrepareDockSnapshot(dock: false, snapshot: null);
                 ApplyDefaultLayout();
                 BrowserAddressSuggestions.SetText(DefaultBrowserUrl);
                 CreateBrowserTab(DefaultBrowserUrl);
-                CompleteStageSnapshotRestore();
             }
         } catch (Exception ex) {
             BrowserAddressSuggestions.SetText($"WebView2 initialization failed: {ex.Message}");

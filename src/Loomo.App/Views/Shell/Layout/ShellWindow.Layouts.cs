@@ -23,12 +23,10 @@ public partial class ShellWindow {
             return;
         var mode = CurrentDisplayMode;
         ApplyModeChoiceState(SplitModeChoice, SplitModeIcon, SplitModeText, mode == DisplayMode.Layout);
-        ApplyModeChoiceState(ConcentratedModeChoice, ConcentratedModeIcon, ConcentratedModeText, mode == DisplayMode.Solo);
         ApplyModeChoiceState(DockModeChoice, DockModeIcon, DockModeText, mode == DisplayMode.Dock);
         DisplayModeLabel.Text = ShellLayoutPresentation.ModeName(mode);
         // 1行に収める。折り返すとショートカットが途中で割れて読めなくなる。
         ModeDescription.Text = (mode switch {
-            DisplayMode.Solo => "1つを大きく、ほかは右側で待機。",
             DisplayMode.Dock => "中央はタイル、道具は下と右の領域へ。",
             _ => "複数の画面をタイル状に並べる。",
         })
@@ -51,7 +49,7 @@ public partial class ShellWindow {
         return UnsavedLayoutLabel;
     }
     private void CycleLayout(int direction) {
-        if (_stageActive || _dockActive)   // 配置（タイルの組み方）は分割表示だけの概念
+        if (_dockActive)   // 配置（タイルの組み方）は分割表示だけの概念
             return;
         CaptureLayoutSizes();
         var transition = LayoutCycleLogic.Advance(
@@ -78,14 +76,14 @@ public partial class ShellWindow {
             FocusPane(first);
     }
     private void LoadLayout(int index) {
-        if (index < 0 || index >= _layouts.Count || _stageActive)
+        if (index < 0 || index >= _layouts.Count)
             return;
         LoadLayoutAt(index);
         SaveActiveWorkspaceSnapshot();
     }
     private void SaveCurrentLayout(string name) {
         name = name.Trim();
-        if (name.Length == 0 || _stageActive || _root is null)
+        if (name.Length == 0 || _root is null)
             return;
         CaptureLayoutSizes();
         _activeLayoutIndex = LayoutCycleLogic.Save(_layouts, name, ToSnapshot(_root));

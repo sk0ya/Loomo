@@ -210,8 +210,7 @@ public partial class ShellWindow {
             FlashTaskbarUntilForeground();
     }
     private bool IsPaneWatched(PaneKind kind)
-        => _stageActive ? _stagePane == kind && !_overviewActive
-        : _dockActive ? IsDockPaneShown(kind)
+        => _dockActive ? IsDockPaneShown(kind)
         : IsPaneVisible(kind);
     private bool IsTerminalPaneWatched() => IsPaneWatched(PaneKind.Terminal);
     private bool IsAiPaneWatched() => IsPaneWatched(PaneKind.Ai);
@@ -282,11 +281,11 @@ public partial class ShellWindow {
         new SolidColorBrush(Color.FromRgb(0x2E, 0x9E, 0x5B));
     private static readonly Brush PaneActivityFailedBrush =
         new SolidColorBrush(Color.FromRgb(0xD9, 0x53, 0x4D));
-    private void AttachActivityBadge(Grid cardRoot, PaneKind kind, bool isOverview) {
+    private void AttachActivityBadge(Grid cardRoot, PaneKind kind) {
         if (kind is not (PaneKind.Terminal or PaneKind.Debug or PaneKind.TsIde or PaneKind.Ai))
             return;
         var label = new TextBlock {
-            FontSize = isOverview ? 12 : 11, FontWeight = FontWeights.SemiBold, Foreground = Brushes.White, };
+            FontSize = 11, FontWeight = FontWeights.SemiBold, Foreground = Brushes.White, };
         var chip = new Border {
             HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 5, 5, 0), Padding = new Thickness(7, 2, 7, 2), CornerRadius = new CornerRadius(9), Visibility = Visibility.Collapsed, IsHitTestVisible = false, Child = label, };
         cardRoot.Children.Add(chip);

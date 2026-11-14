@@ -4,21 +4,14 @@ namespace sk0ya.Loomo.Tests;
 
 public class WorkspaceSessionCoordinatorTests
 {
+    /// <summary>ソロ（撤去済み）と Mode の無い旧データは分割として開く。ドックだけがドック。</summary>
     [Theory]
-    [InlineData(DisplayMode.Solo, false, true)]
-    [InlineData(DisplayMode.Layout, true, false)]
-    [InlineData(null, true, true)]
-    [InlineData(null, false, false)]
-    public void ResolveSoloMode_migrates_legacy_stage_state(
-        DisplayMode? mode, bool legacyStage, bool expected)
-    {
-        var workspace = new WorkspaceSnapshot
-        {
-            Mode = mode,
-            Stage = new StageSnapshot { IsActive = legacyStage }
-        };
-        Assert.Equal(expected, WorkspaceSessionCoordinator.ResolveSoloMode(workspace));
-    }
+    [InlineData(DisplayMode.Solo, DisplayMode.Layout)]
+    [InlineData(DisplayMode.Layout, DisplayMode.Layout)]
+    [InlineData(DisplayMode.Dock, DisplayMode.Dock)]
+    [InlineData(null, DisplayMode.Layout)]
+    public void ResolveDisplayMode_opens_retired_solo_as_layout(DisplayMode? mode, DisplayMode expected)
+        => Assert.Equal(expected, WorkspaceSessionCoordinator.ResolveDisplayMode(new WorkspaceSnapshot { Mode = mode }));
 
     [Theory]
     [InlineData("", "about:blank")]

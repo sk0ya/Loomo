@@ -1,7 +1,6 @@
 namespace sk0ya.Loomo.App.Views;
-/// <summary>ShellWindow: ソロモード（舞台＋袖＋俯瞰）のカード／ミニチュア描画。袖・俯瞰カードの描画元の アレンジ、ライブ縮小カード（VisualBrush）、舞台スロットの生成。モード制御は ShellWindow.Stage.cs。</summary>
+/// <summary>ShellWindow: レイアウトモードの袖のカード／ミニチュア描画。袖カードの描画元のアレンジと、ライブ縮小カード（VisualBrush）の生成。袖の状態は ShellWindow.Stage.cs。</summary>
 public partial class ShellWindow {
-    private const double OverviewCardWidth = 320;
     private const double CardAspect = 3.0 / 2.0;
     private double _layoutWingSourceWidth;
     private bool _layoutWingBuildQueued;
@@ -13,7 +12,7 @@ public partial class ShellWindow {
     /// あるなら袖ごと畳んではいけない（畳むとタブに戻れなくなる）。</summary>
     private IReadOnlyList<PaneKind> WingCandidates()
         => StageCardPolicy.WingCandidates(
-            StageModeCoordinator.StageOrder, _stageActive, OnStage, IsSessionEnabled, IsShownInMain);
+            StageModeCoordinator.StageOrder, IsSessionEnabled, IsShownInMain);
     /// <summary>いま袖に並べるペイン（＝候補のうち選択中のタブぶん）。</summary>
     private IReadOnlyList<PaneKind> WingKinds()
         => WingCandidates().Where(InActiveWingTab).ToList();
@@ -24,7 +23,7 @@ public partial class ShellWindow {
     private StageCardPresenter StageCardPresentation
         => _stageCardPresenter ??= new StageCardPresenter(
             this, StageThumbnailSources, _paneElements, AttachActivityBadge,
-            kind => { if (_stageActive) BeginStageDrag(kind); else BeginWingDrag(kind); });
+            BeginWingDrag);
 
     /// <summary>描画元を全部捨て、通常レイアウトへペインを戻す。</summary>
     private void ClearThumbnailSources() => StageThumbnailSources.Clear();
@@ -47,23 +46,19 @@ public partial class ShellWindow {
         PaneLayoutDebugLog.Log("RebuildWings()", withCaller: true);
         if (CollapseWingsForFullscreen())
             return;
-        if (!_stageActive && (StageSourceArea.ActualWidth <= 0 || StageSourceArea.ActualHeight <= 0)) {
+        if (StageSourceArea.ActualWidth <= 0 || StageSourceArea.ActualHeight <= 0) {
             ScheduleLayoutWings();
             return;
         }
-        if (!_stageActive)
-            _layoutWingBuildPending = false;
+        _layoutWingBuildPending = false;
         WingStrip.Children.Clear();
-        if (!_stageActive)
-            BuildLayoutWingSources();
+        BuildLayoutWingSources();
         var cardLayout = StageThumbnailPlanner.PlanWingCards(
             _settings.Appearance.WingColumns, _isWingCollapsed, _wingWidth,
             WingScrollViewer?.ViewportWidth ?? 0, WingCardGap);
         var width = cardLayout.CardWidth;
         var cards = WingKinds()
-            .Select(kind => _stageActive
-                ? BuildSessionCard(kind, width, isOverview: false, iconOnly: _isWingCollapsed)
-                : BuildLayoutWingCard(kind, width, iconOnly: _isWingCollapsed))
+            .Select(kind => BuildLayoutWingCard(kind, width, iconOnly: _isWingCollapsed))
             .ToList();
         foreach (var row in StageCardPresenter.ArrangeWingRows(cards, cardLayout.Columns, WingCardGap))
             WingStrip.Children.Add(row);
@@ -95,7 +90,7 @@ public partial class ShellWindow {
             WingKinds(), StageThumbnailPlanner.SourceSize(_layoutWingSourceWidth, CardAspect));
     }
     /// <summary>袖を出さない状況（F11 の全画面、および袖なしのドックモード）なら畳んで true。
-    /// 舞台・通常どちらの再構築経路も最後に袖の幅／表示を組み直すので、そこで畳み直さないと
+    /// 再構築経路は最後に袖の幅／表示を組み直すので、そこで畳み直さないと
     /// <see cref="TogglePaneFullscreen"/> が 0 にした袖幅がそのまま元に戻ってしまう。
     /// カードは捨てずに据え置く（通常レイアウトの組み直しは ContextIdle 送りなので、捨てると
     /// 全画面を抜けた直後の数フレーム、幅だけ戻った空の袖が見える）。</summary>
@@ -110,8 +105,6 @@ public partial class ShellWindow {
         return true;
     }
     private void ScheduleLayoutWings() {
-        if (_stageActive)
-            return;
         if (CollapseWingsForFullscreen())
             return;
         if (_paneSplitterDragging) {
@@ -138,7 +131,7 @@ public partial class ShellWindow {
             _layoutWingBuildQueued = false;
             if (_paneSplitterDragging)
                 return;
-            if (_stageActive || !_layoutWingBuildPending)
+            if (!_layoutWingBuildPending)
                 return;
             if (StageSourceArea.ActualWidth <= 0 || StageSourceArea.ActualHeight <= 0)
                 return;
@@ -151,7 +144,7 @@ public partial class ShellWindow {
     private void OnStageSourceAreaSizeChanged(object sender, SizeChangedEventArgs e) {
         // 描画元の実効幅が変わる範囲だけ組み直す。最大仮想幅を超えるリサイズでは
         // 既存の描画元を再利用する。
-        if (_stageActive || e.NewSize.Width <= 0
+        if (e.NewSize.Width <= 0
             || !StageThumbnailPlanner.SourceSizeChanged(_layoutWingSourceWidth, e.NewSize.Width))
             return;
         PaneLayoutDebugLog.Log($"OnStageSourceAreaSizeChanged {_layoutWingSourceWidth:0.#} -> {e.NewSize.Width:0.#}");
@@ -180,16 +173,10 @@ public partial class ShellWindow {
         WingSplitterColumn.Width = WingHost.Visibility == Visibility.Visible ? new GridLength(6) : new GridLength(0);
         if (hasWings)
             WingColumn.Width = new GridLength(EffectiveWingWidth);
-        OverviewButton.Visibility = _stageActive && !_isWingCollapsed ? Visibility.Visible : Visibility.Collapsed;
         UpdateWingToolbar();
     }
-    private Border BuildSessionCard(PaneKind kind, double width, bool isOverview, bool iconOnly = false) {
-        return StageCardPresentation.BuildSessionCard(
-            kind, width, isOverview, iconOnly, isOverview && OnStage(kind),
-            () => { SetStagePane(kind); FocusPane(kind); });
-    }
     private Border BuildLayoutWingCard(PaneKind kind, double width, bool iconOnly = false) {
-        return StageCardPresentation.BuildLayoutWingCard(kind, width, iconOnly, onStage: false, onClick: () => {
+        return StageCardPresentation.BuildLayoutWingCard(kind, width, iconOnly, onClick: () => {
             if (_zoomedPane is not null) {
                 if (IsPaneVisible(kind))
                     ZoomPane(kind);   // ズーム中の袖カード＝そのペインを舞台（ズーム）へ昇格
@@ -236,13 +223,4 @@ public partial class ShellWindow {
         PaneKind.Browser => ActiveBrowserView.TryCore(),
         _ => null,
     };
-    private Border BuildLiveSlot(PaneKind kind) {
-        var element = _paneElements[kind];
-        element.Visibility = Visibility.Visible;
-        var host = new Grid();
-        host.SizeChanged += (_, e) => host.Clip = new RectangleGeometry(new Rect(e.NewSize), 7, 7);
-        host.Children.Add(element);
-        return new Border {
-            Background = (Brush)FindResource("Panel"), BorderBrush = (Brush)FindResource("Border"), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(8), Child = host, };
-    }
 }
