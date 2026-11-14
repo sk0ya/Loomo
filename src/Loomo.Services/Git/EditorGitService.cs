@@ -245,29 +245,8 @@ public sealed class EditorGitService : IEditorGitService
         var commitLines = new Dictionary<(string Hash, int OriginalLine), ClaudeWrite>();
         try
         {
-            if (uncommitted.Count == 0 && recent.Count == 0)
-                return;
-            var writes = _provenance!.WritesFor(filePath);
-            if (writes.Count == 0)
-                return;
-            foreach (var (line, write) in ClaudeProvenance.Attribute(uncommitted, writes))
-                lines[line] = ClaudeBlame.ToBlameLine(write, _provenance.HandleOf(write));
-
-            // コミットごとに結ぶ：そのコミットより後の書き込みは、その行を書いていない（あとから同じ中身を
-            // 書き直していても、コミットに入ったのは前の頼みごとのぶん）。続いている行を辿るのも同じコミットの中だけ。
-            foreach (var commit in recent.GroupBy(line => line.Hash, StringComparer.Ordinal))
-            {
-                var committedAt = commit.First().CommitTime!.Value.AddSeconds(1); // git の時刻は秒まで
-                var before = writes.Where(write => write.At is not { } at || at < committedAt).ToList();
-                var origins = commit.ToDictionary(line => line.Line);
-                foreach (var (line, write) in ClaudeProvenance.Attribute(commit.ToDictionary(l => l.Line, l => l.Text), before))
-                {
-                    if (!lines.TryGetValue(line, out var blame))
-                        continue;
-                    lines[line] = ClaudeBlame.WithRequest(blame, write);
-                    commitLines[(blame.CommitHash, origins[line].OriginalLine)] = write;
-                }
-            }
+            AddLiveClaudeLines(lines, filePath, uncommitted, recent, commitLines);
+            AddStoredClaudeLines(lines, filePath, committed, commitLines);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -276,6 +255,64 @@ public sealed class EditorGitService : IEditorGitService
         finally
         {
             _provenance!.SetCommitLines(filePath, commitLines);
+        }
+    }
+
+    /// <summary>
+    /// 置き場（§43.6 A2b）とのやり取り：いま記録から結べた行を覚え、記録からは結べなかったコミット済みの行
+    /// （索引の期間より前・記録が消えた）は、前に覚えた頼みごとで添える。
+    /// </summary>
+    private void AddStoredClaudeLines(Dictionary<int, EditorBlameLine> lines, string filePath,
+        IReadOnlyList<GitBlameSourceLine> committed, Dictionary<(string Hash, int OriginalLine), ClaudeWrite> commitLines)
+    {
+        if (_provenance!.Store is not { } store || committed.Count == 0)
+            return;
+        var stored = store.Load(filePath);
+        // 覚えていない行・別の頼みごとに結び直った行だけ書く（blame のたびに同じ行を書き直さない）。
+        var fresh = commitLines
+            .Where(pair => !stored.TryGetValue(pair.Key, out var known)
+                           || known.PromptLine != pair.Value.PromptLine || known.SessionId != pair.Value.SessionId)
+            .ToDictionary(pair => pair.Key, pair => pair.Value);
+        if (fresh.Count > 0)
+            store.Save(filePath, fresh);
+        if (stored.Count == 0)
+            return;
+        foreach (var line in committed)
+        {
+            var key = (line.Hash, line.OriginalLine);
+            if (commitLines.ContainsKey(key) || !stored.TryGetValue(key, out var write) || !lines.TryGetValue(line.Line, out var blame))
+                continue;
+            lines[line.Line] = ClaudeBlame.WithRequest(blame, write);
+            commitLines[key] = write;
+        }
+    }
+
+    private void AddLiveClaudeLines(Dictionary<int, EditorBlameLine> lines, string filePath,
+        IReadOnlyDictionary<int, string> uncommitted, List<GitBlameSourceLine> recent,
+        Dictionary<(string Hash, int OriginalLine), ClaudeWrite> commitLines)
+    {
+        if (uncommitted.Count == 0 && recent.Count == 0)
+            return;
+        var writes = _provenance!.WritesFor(filePath);
+        if (writes.Count == 0)
+            return;
+        foreach (var (line, write) in ClaudeProvenance.Attribute(uncommitted, writes))
+            lines[line] = ClaudeBlame.ToBlameLine(write, _provenance.HandleOf(write));
+
+        // コミットごとに結ぶ：そのコミットより後の書き込みは、その行を書いていない（あとから同じ中身を
+        // 書き直していても、コミットに入ったのは前の頼みごとのぶん）。続いている行を辿るのも同じコミットの中だけ。
+        foreach (var commit in recent.GroupBy(line => line.Hash, StringComparer.Ordinal))
+        {
+            var committedAt = commit.First().CommitTime!.Value.AddSeconds(1); // git の時刻は秒まで
+            var before = writes.Where(write => write.At is not { } at || at < committedAt).ToList();
+            var origins = commit.ToDictionary(line => line.Line);
+            foreach (var (line, write) in ClaudeProvenance.Attribute(commit.ToDictionary(l => l.Line, l => l.Text), before))
+            {
+                if (!lines.TryGetValue(line, out var blame))
+                    continue;
+                lines[line] = ClaudeBlame.WithRequest(blame, write);
+                commitLines[(blame.CommitHash, origins[line].OriginalLine)] = write;
+            }
         }
     }
 

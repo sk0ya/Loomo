@@ -33,6 +33,10 @@ public sealed record ClaudeWrite(
     public int ResultLine { get; init; }
 
     public string? ToolUseId { get; init; }
+
+    /// <summary>置き場から読み戻したもの（§43.6 A2b）。頼みごとの本文・セッション・位置だけで、足した行は持たない——
+    /// 元の記録はもう無いかもしれない。</summary>
+    public bool Stored { get; init; }
 }
 
 /// <summary>

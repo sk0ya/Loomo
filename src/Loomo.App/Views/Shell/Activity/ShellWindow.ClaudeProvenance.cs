@@ -9,7 +9,8 @@ namespace sk0ya.Loomo.App.Views;
 /// </summary>
 public partial class ShellWindow {
     private ClaudeProvenanceIndex? _claudeProvenance;
-    private ClaudeProvenanceIndex ClaudeProvenance => _claudeProvenance ??= new ClaudeProvenanceIndex(_workspace);
+    private ClaudeProvenanceIndex ClaudeProvenance => _claudeProvenance ??= new ClaudeProvenanceIndex(
+        _workspace, store: new ProvenanceStore(ProvenanceStore.DefaultPath()));
 
     /// <summary>blame の欄で Claude の行を押した：頼みごとを通知欄に出す（コミットの行なら差分が開く場所）。</summary>
     private void ShowClaudeBlameRequest(Editor.Controls.Git.EditorBlameLine blame) {
@@ -37,6 +38,14 @@ public partial class ShellWindow {
             show.Click += (_, _) => ShowClaudeRequest(write);
             menu.Items.Add(show);
         }
+        // 置き場から読み戻した頼みごと（§43.6 A2b）で、元の記録がもう無いもの：出せるのは本文だけ。
+        // 差分・変わった場所・会話・再開は記録が要るので並べない（押しても何も出ない項目を置かない）。
+        if (write.Stored && !File.Exists(write.TranscriptPath)) {
+            var gone = new MenuItem { Header = "（元の記録は消えています。残っているのは頼みごとの本文だけ）", IsEnabled = false };
+            menu.Items.Add(gone);
+            AddClaudeCopyRequestItem(menu, write);
+            return;
+        }
         var diff = new MenuItem { Header = "この頼みごとの差分を開く" };
         diff.Click += (_, _) => {
             ProvenanceUsage.Record("request.diff");
@@ -55,12 +64,7 @@ public partial class ShellWindow {
             OpenClaudeRequestPlaces(write);
         };
         menu.Items.Add(places);
-        var copy = new MenuItem { Header = "頼みごとの全文をコピー" };
-        copy.Click += (_, _) => {
-            ProvenanceUsage.Record("request.copy");
-            try { Clipboard.SetText(write.Prompt); } catch { /* クリップボード占有中は無視 */ }
-        };
-        menu.Items.Add(copy);
+        AddClaudeCopyRequestItem(menu, write);
         // セッション ID は記録のファイル名から来る文字列なので、シェルに打つ前に形を確かめる（UUID の文字だけ）。
         if (write.SessionId.Length is > 0 and <= 64 && write.SessionId.All(c => char.IsAsciiLetterOrDigit(c) || c == '-')) {
             var resume = new MenuItem { Header = "この会話を再開（新しいタブで claude --resume）" };
@@ -70,6 +74,15 @@ public partial class ShellWindow {
             };
             menu.Items.Add(resume);
         }
+    }
+
+    private void AddClaudeCopyRequestItem(ContextMenu menu, ClaudeWrite write) {
+        var copy = new MenuItem { Header = "頼みごとの全文をコピー" };
+        copy.Click += (_, _) => {
+            ProvenanceUsage.Record("request.copy");
+            try { Clipboard.SetText(write.Prompt); } catch { /* クリップボード占有中は無視 */ }
+        };
+        menu.Items.Add(copy);
     }
 
     private void AddClaudeBlameMenuItems(ContextMenu menu, VimEditorControl control, Editor.Controls.Git.EditorBlameLine blame) {
@@ -85,7 +98,7 @@ public partial class ShellWindow {
     /// <summary>頼みごと → その頼みごとの差分（§43.6 A3）。書き換えたファイルを、頼みごとの前と後で Diff ペインに並べる。
     /// 記録とバックアップを読むのは裏で。あとから変わったファイル・前後を組めず抜粋になったファイルは、一覧の見出しで言う。</summary>
     private async void OpenClaudeRequestDiff(ClaudeWrite origin) {
-        var writes = ClaudeProvenance.WritesOfRequest(origin);
+        IReadOnlyList<ClaudeWrite> writes = ClaudeProvenance.WritesOfRequest(origin);
         IReadOnlyList<DiffComparison> comparisons;
         try {
             comparisons = await Task.Run(() => ClaudeRequestComparisons.Build(

@@ -35,8 +35,12 @@ public sealed class ClaudeProvenanceIndex
     private readonly Dictionary<string, Dictionary<(string Hash, int OriginalLine), ClaudeWrite>> _commitLines = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<ClaudeWrite, int> _handleOf = new(ReferenceEqualityComparer.Instance);
 
-    public ClaudeProvenanceIndex(IWorkspaceService workspace, Func<string>? projectsRoot = null)
+    /// <summary>結んだ出自の置き場（§43.6 A2b）。無ければ覚えない（記録が消えたら線も消える）。</summary>
+    public IClaudeProvenanceStore? Store { get; }
+
+    public ClaudeProvenanceIndex(IWorkspaceService workspace, Func<string>? projectsRoot = null, IClaudeProvenanceStore? store = null)
     {
+        Store = store;
         _workspace = workspace;
         _projectsRoot = projectsRoot ?? ClaudeTranscriptLocator.DefaultProjectsRoot;
     }

@@ -62,7 +62,7 @@ path.** A syntax language registered into the editor must implement `ILineStateS
 re-tokenizes the whole file. Child-process output is read through `ChildProcessIo` (dedicated threads), never the
 thread pool.
 
-`%APPDATA%/Loomo/` holds `settings.json`, `workspaces/`, `trail.db`, `lsp-servers.json`, `formatters.json`.
+`%APPDATA%/Loomo/` holds `settings.json`, `workspaces/`, `trail.db`, `provenance.db` (§43), `lsp-servers.json`, `formatters.json`.
 
 ### sk0ya control libraries
 

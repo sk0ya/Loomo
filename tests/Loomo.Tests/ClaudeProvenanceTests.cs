@@ -345,6 +345,67 @@ public sealed class ClaudeProvenanceTests : IAsyncLifetime
         Assert.Null(index.ForCommitLine(file, blame[2].CommitHash, blame[2].OriginalLine));
     }
 
+    // ===== 記録が消えても残す（§43.6 A2b） =====
+
+    [Fact]
+    public async Task 記録が消えても_前に結んだコミットの行には頼みごとが出る()
+    {
+        var file = Path.Combine(_repo, "a.cs");
+        File.WriteAllText(file, "class A\n{\n}\n");
+        await MustRunAsync("add", "-A");
+        await MustRunAsync("commit", "-m", "first");
+        File.WriteAllText(file, "class A\n{\n    void AddedByClaude() { }\n}\n");
+        var transcript = WriteTranscript("s1", Prompt("メソッドを足して\n（詳細）"),
+            ToolUse("t1", "Edit", new { file_path = file, old_string = "{\n}", new_string = "{\n    void AddedByClaude() { }\n}" }),
+            Result("t1", "ok"));
+        await MustRunAsync("add", "-A");
+        await MustRunAsync("commit", "-m", "second");
+        var db = Path.Combine(_base, "provenance.db");
+        using (var store = new sk0ya.Loomo.App.Services.ProvenanceStore(db))
+        {
+            // 記録があるうちに blame を引く——ここで覚える。
+            var live = new EditorGitService(_git, () => null, new ClaudeProvenanceIndex(_workspace, () => _projects, store));
+            Assert.Equal("頼みごと「メソッドを足して」 · second", live.GetBlameLines(file)[2].Summary);
+        }
+
+        // Claude Code が記録を消した。Loomo も開き直した（置き場はファイルから読み直す）。
+        File.Delete(transcript);
+        using var reopened = new sk0ya.Loomo.App.Services.ProvenanceStore(db);
+        var index = new ClaudeProvenanceIndex(_workspace, () => _projects, reopened);
+
+        var blame = new EditorGitService(_git, () => null, index).GetBlameLines(file);
+
+        Assert.Equal("頼みごと「メソッドを足して」 · second", blame[2].Summary);
+        var write = index.ForCommitLine(file, blame[2].CommitHash, blame[2].OriginalLine);
+        Assert.NotNull(write);
+        Assert.True(write.Stored);
+        Assert.Equal("メソッドを足して\n（詳細）", write.Prompt);
+        Assert.Equal("s1", write.SessionId);
+        Assert.Equal("first", blame[0].Summary);   // 結んでいなかった行はそのまま
+    }
+
+    [Fact]
+    public void 置き場は_古い行を刈り_同じ鍵は上書きする()
+    {
+        var db = Path.Combine(_base, "prune.db");
+        var now = new DateTime(2026, 11, 14, 0, 0, 0, DateTimeKind.Utc);
+        var first = Write("最初の頼み", 1, "x") with { SessionId = "s1" };
+        var second = Write("あとの頼み", 2, "x") with { SessionId = "s1" };
+        using (var store = new sk0ya.Loomo.App.Services.ProvenanceStore(db, () => now))
+        {
+            store.Save(@"C:\ws\a.cs", new Dictionary<(string, int), ClaudeWrite> { [("abc1234", 3)] = first, [("abc1234", 4)] = first });
+            store.Save(@"C:\ws\a.cs", new Dictionary<(string, int), ClaudeWrite> { [("abc1234", 4)] = second });
+            var loaded = store.Load(@"c:\WS\a.cs");   // パスは大文字小文字を区別しない
+            Assert.Equal("最初の頼み", loaded[("abc1234", 3)].Prompt);
+            Assert.Equal("あとの頼み", loaded[("abc1234", 4)].Prompt);
+            Assert.Empty(store.Load(@"C:\ws\other.cs"));
+        }
+        // 保持期間を過ぎてから開くと消えている。
+        using var later = new sk0ya.Loomo.App.Services.ProvenanceStore(
+            db, () => now + sk0ya.Loomo.App.Services.ProvenanceStore.Retention + TimeSpan.FromDays(1));
+        Assert.Empty(later.Load(@"C:\ws\a.cs"));
+    }
+
     // ===== 道具 =====
 
     private static int _clock;
