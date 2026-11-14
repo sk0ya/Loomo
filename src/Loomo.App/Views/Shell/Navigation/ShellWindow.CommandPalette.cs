@@ -374,6 +374,7 @@ public partial class ShellWindow {
         list.Add(new("軌跡", "しおり一覧", OpenTrailBookmarks, Sc("trail.bookmarks"), "trail.bookmarks"));
         list.Add(new("軌跡", "この日のまとめ", ShowTrailDaySummary, Sc("trail.daySummary"), "trail.daySummary"));
         list.Add(new("軌跡", "留守中のまとめをもう一度表示", ReshowAwaySummary, Sc("trail.reshowAway"), "trail.reshowAway"));
+        list.Add(new("Claude Code", "Loomo の道具（MCP）を Claude Code に登録するコマンドをコピー", CopyLoomoMcpRegistrationCommand));
         list.Add(new("軌跡", "軌跡の展開ビューを開く／閉じる", ToggleTrailExpanded, Sc("trail.toggleExpanded"), "trail.toggleExpanded"));
         list.Add(new("タブ", "新しいターミナルタブ", () => OnTerminalNewTab(this, new RoutedEventArgs()), Sc("tab.newTerminal"), "tab.newTerminal"));
         list.Add(new("タブ", "新しいエディタタブ", () => OnEditorNewTab(this, new RoutedEventArgs()), Sc("tab.newEditor"), "tab.newEditor"));

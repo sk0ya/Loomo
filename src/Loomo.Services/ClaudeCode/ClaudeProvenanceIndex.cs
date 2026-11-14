@@ -89,6 +89,19 @@ public sealed class ClaudeProvenanceIndex
         }
     }
 
+    /// <summary>このワークスペースで、いちばん新しい「ファイルを書き換えた頼みごと」（その書き込みの 1 つ）。無ければ null。
+    /// 記録を読み直すので、UI スレッドから呼ばないこと。</summary>
+    public ClaudeWrite? LatestRequest()
+    {
+        lock (_gate)
+        {
+            Refresh();
+            return _sessions.Values
+                .SelectMany(entry => entry.Writes.Values.SelectMany(list => list))
+                .MaxBy(write => write.At ?? DateTimeOffset.MinValue);
+        }
+    }
+
     /// <summary>コミットしていない行（0 始まり → 中身）を、それを書いた頼みごとへ結ぶ。</summary>
     public Dictionary<int, ClaudeWrite> Attribute(string filePath, IReadOnlyDictionary<int, string> uncommitted)
         => uncommitted.Count == 0 ? [] : ClaudeProvenance.Attribute(uncommitted, WritesFor(filePath));

@@ -98,20 +98,22 @@ public partial class ShellWindow {
     /// <summary>頼みごと → その頼みごとの差分（§43.6 A3）。書き換えたファイルを、頼みごとの前と後で Diff ペインに並べる。
     /// 記録とバックアップを読むのは裏で。あとから変わったファイル・前後を組めず抜粋になったファイルは、一覧の見出しで言う。</summary>
     private async void OpenClaudeRequestDiff(ClaudeWrite origin) {
-        IReadOnlyList<ClaudeWrite> writes = ClaudeProvenance.WritesOfRequest(origin);
-        IReadOnlyList<DiffComparison> comparisons;
         try {
-            comparisons = await Task.Run(() => ClaudeRequestComparisons.Build(
-                ClaudeRequestDiffBuilder.Build(writes), origin, _workspace.ToDisplayPath));
+            if (await ShowClaudeRequestDiffAsync(origin) == 0)
+                ToastService.Info("この頼みごとの書き込みは、記録から読めませんでした");
         } catch (Exception ex) {
             ToastService.Error($"頼みごとの差分を組めませんでした: {ex.Message}");
-            return;
         }
-        if (comparisons.Count == 0) {
-            ToastService.Info("この頼みごとの書き込みは、記録から読めませんでした");
-            return;
-        }
-        ShowDiff(new DiffOpenTarget.Request(comparisons, origin.PromptHead));
+    }
+
+    /// <summary>頼みごとの差分を Diff に出す。返すのは出したファイルの数（0 なら何も出していない）。</summary>
+    private async Task<int> ShowClaudeRequestDiffAsync(ClaudeWrite origin) {
+        IReadOnlyList<ClaudeWrite> writes = ClaudeProvenance.WritesOfRequest(origin);
+        var comparisons = await Task.Run(() => ClaudeRequestComparisons.Build(
+            ClaudeRequestDiffBuilder.Build(writes), origin, _workspace.ToDisplayPath));
+        if (comparisons.Count > 0)
+            ShowDiff(new DiffOpenTarget.Request(comparisons, origin.PromptHead));
+        return comparisons.Count;
     }
 
     /// <summary>行 → 頼みごと → そのときの Claude の返事（§43.6 A4）。ターミナルサポートに記録を留めて、そのターンを開く。
