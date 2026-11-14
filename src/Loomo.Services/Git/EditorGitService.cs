@@ -5,6 +5,8 @@ using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using Editor.Controls.Git;
+using sk0ya.Loomo.Core.Harness;
+using sk0ya.Loomo.Services.ClaudeCode;
 
 namespace sk0ya.Loomo.Services;
 
@@ -34,10 +36,14 @@ public sealed class EditorGitService : IEditorGitService
     private readonly GitService _git;
     private readonly Func<EditorGutterBase?> _currentBase;
 
-    public EditorGitService(GitService git, Func<EditorGutterBase?> currentBase)
+    private readonly ClaudeProvenanceIndex? _provenance;
+
+    /// <param name="provenance">渡すと、blame がコミットしていない行を「それを書いた Claude Code の頼みごと」で埋める（§43）。</param>
+    public EditorGitService(GitService git, Func<EditorGutterBase?> currentBase, ClaudeProvenanceIndex? provenance = null)
     {
         _git = git;
         _currentBase = currentBase;
+        _provenance = provenance;
     }
 
     // エディタは背景（Task.Run）から呼ぶので、ここで待ってよい（インターフェースが同期）。
@@ -216,7 +222,47 @@ public sealed class EditorGitService : IEditorGitService
         if (FileFolder(filePath) is not { } folder)
             return [];
         var result = Run(folder, "blame", "--porcelain", "--", filePath);
-        return result.Success ? GitBlamePorcelainParser.Parse(result.Output) : [];
+        var lines = result.Success ? GitBlamePorcelainParser.Parse(result.Output) : [];
+        if (_provenance is not null)
+            AddClaudeLines(lines, filePath, result.Success ? GitBlamePorcelainParser.ParseUncommitted(result.Output) : UntrackedLines(folder, filePath));
+        return lines;
+    }
+
+    /// <summary>コミットしていない行を、それを書いた頼みごとで埋める（§43）。git が何も言えない行だけに足す。</summary>
+    private void AddClaudeLines(Dictionary<int, EditorBlameLine> lines, string filePath, IReadOnlyDictionary<int, string> uncommitted)
+    {
+        if (uncommitted.Count == 0)
+            return;
+        try
+        {
+            foreach (var (line, write) in _provenance!.Attribute(filePath, uncommitted))
+                lines[line] = ClaudeBlame.ToBlameLine(write, _provenance.HandleOf(write));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // 記録が読めなくても git の blame はそのまま出す。
+        }
+    }
+
+    /// <summary>まだ git に載っていないファイルは blame が失敗する。全行がコミットしていない行。</summary>
+    private Dictionary<int, string> UntrackedLines(string folder, string filePath)
+    {
+        const int maxLines = 20_000;
+        var result = new Dictionary<int, string>();
+        if (!File.Exists(filePath) || !Run(folder, "rev-parse", "--is-inside-work-tree").Success)
+            return result;
+        try
+        {
+            var number = 0;
+            foreach (var line in File.ReadLines(filePath))
+            {
+                result[number++] = line;
+                if (number >= maxLines)
+                    break;
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+        return result;
     }
 
     /// <summary>エディタ既定の実装と同じ見せ方：成功は stdout（空なら stderr）、失敗は <c>ERROR: …</c>。</summary>
@@ -467,6 +513,50 @@ public static class GitBlamePorcelainParser
 
         return result;
     }
+
+    /// <summary>コミットしていない行（hash が全て 0）だけを、0 始まりの行番号 → 中身で返す（§43 の出自の入力）。</summary>
+    public static Dictionary<int, string> ParseUncommitted(string blameOutput)
+    {
+        var result = new Dictionary<int, string>();
+        if (string.IsNullOrEmpty(blameOutput))
+            return result;
+        var uncommitted = false;
+        var resultLine = -1;
+        foreach (var raw in blameOutput.Split('\n'))
+        {
+            var line = raw.TrimEnd('\r');
+            if (line.Length == 0) continue;
+            if (line[0] == '\t')
+            {
+                if (uncommitted && resultLine >= 0)
+                    result[resultLine] = line[1..];
+                resultLine = -1;
+            }
+            else if (char.IsAsciiHexDigit(line[0]) && line.Length > 40 && line[40] == ' ')
+            {
+                var parts = line.Split(' ');
+                uncommitted = parts[0].All(c => c == '0');
+                resultLine = parts.Length > 2 && int.TryParse(parts[2], out var rl) ? rl - 1 : -1;
+            }
+        }
+        return result;
+    }
+}
+
+/// <summary>
+/// 出自（§43）をエディタの blame の行に載せる。エディタの <see cref="EditorBlameLine"/> は文字列と整数 1 つしか運べない
+/// ので、ハッシュの欄に印（<see cref="Marker"/>）、元の行番号の欄に索引の取っ手（<see cref="ClaudeProvenanceIndex.HandleOf"/>）を入れる。
+/// </summary>
+public static class ClaudeBlame
+{
+    /// <summary>ハッシュの欄に入れる印。16 進ではないので、コミットとして扱う経路（リンク・差分）には乗らない。</summary>
+    public const string Marker = "Claude";
+
+    public static bool IsClaude(EditorBlameLine blame) => blame.CommitHash == Marker;
+
+    public static EditorBlameLine ToBlameLine(ClaudeWrite write, int handle)
+        => new(Marker, write.FromSubagent ? "サブエージェント" : "頼みごと",
+            write.At?.LocalDateTime.ToString("yyyy-MM-dd HH:mm") ?? "", write.PromptHead, handle);
 }
 
 /// <summary>

@@ -180,7 +180,8 @@ public partial class ShellWindow {
     private VimEditorControl BuildEditorControl(EditorTab tab) {
         var control = new VimEditorControl(new VimEditorControlOptions {
             // エディタの git は全部 Loomo の GitService 経由（ワークツリーでも blame が出る）。ガターは共有の比較基準に合わせる（§24.11.1）。
-            GitServiceFactory = () => new sk0ya.Loomo.Services.EditorGitService(_git, () => _gutterBase.Current),
+            // コミットしていない行は、それを書いた Claude Code の頼みごとで埋める（§43）。
+            GitServiceFactory = () => new sk0ya.Loomo.Services.EditorGitService(_git, () => _gutterBase.Current, ClaudeProvenance),
             // 外での書き換えは Loomo がタブごとに見張って取り込む（§24.57）。エディタの監視も残すと、1回の
             // 書き換えに両方が反応し、未保存のタブでは Loomo のバーとエディタのモーダル確認が二重に出る。
             WatchFileOnDisk = false,

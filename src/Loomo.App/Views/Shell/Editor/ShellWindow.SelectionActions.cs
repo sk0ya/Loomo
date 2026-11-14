@@ -196,6 +196,10 @@ public partial class ShellWindow {
         return (label, () => _ = ShowGitHistoryAsync(path, lineRange: (start0 + 1, end0 + 1)));
     }
     private void AddBlameCommitMenuItems(ContextMenu menu, VimEditorControl control, Editor.Controls.Git.EditorBlameLine blame) {
+        if (sk0ya.Loomo.Services.ClaudeBlame.IsClaude(blame)) {
+            AddClaudeBlameMenuItems(menu, control, blame);
+            return;
+        }
         SelectionActionMenuBuilder.AddBlameCommitMenuItems(
             menu, blame.CommitHash, () => ShowBlameCommitDiff(control, blame), () => {
             if (control.FilePath is { Length: > 0 } p)
@@ -222,6 +226,10 @@ public partial class ShellWindow {
         return null;
     }
     private void ShowBlameCommitDiff(VimEditorControl control, Editor.Controls.Git.EditorBlameLine blame) {
+        if (sk0ya.Loomo.Services.ClaudeBlame.IsClaude(blame)) {
+            ShowClaudeBlameRequest(blame);
+            return;
+        }
         if (blame.CommitHash is not { Length: > 0 } hash) return;
         ShowDiff(new DiffOpenTarget.CommitFile(
             hash, $"コミット {DiffOpenTarget.Short(hash)}", control.FilePath, blame.OriginalLine));
