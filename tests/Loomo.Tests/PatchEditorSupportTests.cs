@@ -1,5 +1,4 @@
 using System.Linq;
-using sk0ya.Loomo.Ai;
 using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.Core.Diff;
 using Xunit;

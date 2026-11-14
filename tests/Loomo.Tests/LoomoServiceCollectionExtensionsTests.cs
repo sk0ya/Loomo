@@ -1,12 +1,9 @@
 using Microsoft.Extensions.DependencyInjection;
-using sk0ya.Loomo.Ai.Clients;
 using sk0ya.Loomo.App.DependencyInjection;
 using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.App.ViewModels;
 using sk0ya.Loomo.App.Views;
 using sk0ya.Loomo.Core.Abstractions;
-using sk0ya.Loomo.Core.Agent;
-using sk0ya.Loomo.Core.Tools;
 using sk0ya.Loomo.Services;
 
 namespace sk0ya.Loomo.Tests;
@@ -28,8 +25,7 @@ public sealed class LoomoServiceCollectionExtensionsTests
     [Fact]
     public void 機能別入口が担当する代表サービスをSingletonで登録する()
     {
-        AssertSingleton<AgentOrchestrator>(new ServiceCollection().AddLoomoCore());
-        AssertSingleton<OnnxGenAiEngine>(new ServiceCollection().AddLoomoAi());
+        AssertSingleton<WorkspaceService>(new ServiceCollection().AddLoomoCore());
         AssertSingleton<GitService>(new ServiceCollection().AddLoomoGit());
         AssertSingleton<EditorSupportResolver>(new ServiceCollection().AddLoomoEditorSupport());
         AssertSingleton<ShellWindow>(new ServiceCollection().AddLoomoPresentation());
@@ -44,12 +40,6 @@ public sealed class LoomoServiceCollectionExtensionsTests
         Assert.Same(
             provider.GetRequiredService<WorkspaceService>(),
             provider.GetRequiredService<IWorkspaceService>());
-        Assert.Same(
-            provider.GetRequiredService<LocalInferenceRouter>(),
-            provider.GetRequiredService<ILocalInferenceEngine>());
-        Assert.Same(
-            provider.GetRequiredService<LocalLlmWarmupService>(),
-            provider.GetRequiredService<IAiWarmup>());
     }
 
     [Fact]
@@ -72,7 +62,6 @@ public sealed class LoomoServiceCollectionExtensionsTests
         var services = new ServiceCollection();
         services
             .AddLoomoCore()
-            .AddLoomoAi()
             .AddLoomoGit()
             .AddLoomoEditorSupport()
             .AddLoomoPresentation();

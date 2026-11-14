@@ -1,14 +1,11 @@
-﻿using sk0ya.Loomo.Ai;
-using sk0ya.Loomo.Services.Formatting;
+﻿using sk0ya.Loomo.Services.Formatting;
 
 namespace sk0ya.Loomo.App.Services;
 
+public sealed record SettingsCommandResult(bool Success, string Message);
+
 public sealed record SettingsFormState
 {
-    public string Model { get; init; } = "";
-    public string ModelPath { get; init; } = "";
-    public int MaxTokens { get; init; }
-    public bool WarmupEnabled { get; init; }
     public bool VimEnabled { get; init; }
     public bool HighlightWhitespace { get; init; }
     public bool ShowLineNumbers { get; init; }
@@ -38,21 +35,13 @@ public sealed record SettingsFormState
     public bool GitAutoFetch { get; init; }
     public bool PersistUndoHistory { get; init; }
 
-    /// <summary>入力の先読みそのものを使うか（内蔵の予測とローカル LLM の両方をまとめて切る）。</summary>
+    /// <summary>入力の先読み（エディタ内蔵の予測）を使うか。</summary>
     public bool InlineSuggest { get; init; }
     public int TabWidth { get; init; }
     public bool UseSpacesForTab { get; init; }
     public string ImagePasteDirectory { get; init; } = "";
     public string ImagePasteFileName { get; init; } = "";
     public string ImagePasteAltText { get; init; } = "";
-    public bool AutoApprove { get; init; }
-    public bool RestrictToWorkspaceRoot { get; init; }
-
-    /// <summary>入力の先読みをローカル LLM でも行うか（エディタ内蔵の予測はこれと関係なく常に動く）。</summary>
-    public bool InlineCompletionEnabled { get; init; }
-
-    /// <summary>先読み用 FIM モデル（<c>.gguf</c>）のパス。</summary>
-    public string InlineCompletionModelPath { get; init; } = "";
 }
 
 /// <summary>設定フォームと永続化モデルの相互変換および保存を担当する。</summary>
@@ -69,10 +58,6 @@ public sealed class SettingsPersistenceHandler
 
     public SettingsFormState Load() => new()
     {
-        Model = _settings.Local.Model,
-        ModelPath = _settings.Local.ModelPath,
-        MaxTokens = _settings.Local.MaxTokens,
-        WarmupEnabled = _settings.WarmupEnabled,
         VimEnabled = _settings.Vim.Enabled,
         HighlightWhitespace = _settings.Editor.HighlightWhitespace,
         ShowLineNumbers = _settings.Editor.ShowLineNumbers,
@@ -102,21 +87,10 @@ public sealed class SettingsPersistenceHandler
         ImagePasteDirectory = _settings.Editor.ImagePasteDirectory,
         ImagePasteFileName = _settings.Editor.ImagePasteFileName,
         ImagePasteAltText = _settings.Editor.ImagePasteAltText,
-        AutoApprove = _settings.Safety.AutoApprove,
-        RestrictToWorkspaceRoot = _settings.Safety.RestrictToWorkspaceRoot,
-        InlineCompletionEnabled = _settings.InlineCompletion.Enabled,
-        InlineCompletionModelPath = _settings.InlineCompletion.ModelPath ?? "",
     };
 
     public SettingsCommandResult Save(SettingsFormState form)
     {
-        var model = form.Model.Trim();
-        if (model.Length > 0) _settings.Local.Model = model;
-        _settings.Local.ModelPath = form.ModelPath.Trim();
-        _settings.Local.ApiKey = null;
-        _settings.Local.MaxTokens = form.MaxTokens > 0 ? form.MaxTokens : 4096;
-        _settings.Provider = AiProvider.Local;
-        _settings.WarmupEnabled = form.WarmupEnabled;
         _settings.Vim.Enabled = form.VimEnabled;
         _settings.Editor.HighlightWhitespace = form.HighlightWhitespace;
         _settings.Editor.ShowLineNumbers = form.ShowLineNumbers;
@@ -146,12 +120,6 @@ public sealed class SettingsPersistenceHandler
         _settings.Editor.ImagePasteDirectory = form.ImagePasteDirectory.Trim();
         _settings.Editor.ImagePasteFileName = form.ImagePasteFileName.Trim();
         _settings.Editor.ImagePasteAltText = form.ImagePasteAltText.Trim();
-        _settings.Safety.AutoApprove = form.AutoApprove;
-        _settings.Safety.RestrictToWorkspaceRoot = form.RestrictToWorkspaceRoot;
-        var completionModel = form.InlineCompletionModelPath.Trim();
-        _settings.InlineCompletion.ModelPath = completionModel.Length == 0 ? null : completionModel;
-        // モデルが無いのに有効のままだと「効かない設定が入っている」状態になる。
-        _settings.InlineCompletion.Enabled = form.InlineCompletionEnabled && completionModel.Length > 0;
         try
         {
             _store.Save(_settings);

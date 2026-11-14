@@ -7,8 +7,6 @@ using System.Text;
 using Microsoft.Data.Sqlite;
 using Parquet;
 using Parquet.Serialization;
-using sk0ya.Loomo.Ai;
-
 namespace sk0ya.Loomo.App.Services;
 
 /// <summary>

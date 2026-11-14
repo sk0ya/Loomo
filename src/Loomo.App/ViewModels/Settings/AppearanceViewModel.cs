@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using CommunityToolkit.Mvvm.ComponentModel;
-using sk0ya.Loomo.Ai;
 using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.Core.Models;
 

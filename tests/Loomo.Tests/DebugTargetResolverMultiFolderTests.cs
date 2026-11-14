@@ -76,7 +76,7 @@ public sealed class DebugTargetResolverMultiFolderTests : IDisposable
     [Fact]
     public void FindBuildTarget_finds_csproj_in_secondary_folder_when_primary_has_none()
     {
-        var workspace = new WorkspaceService(new SafetySettings());
+        var workspace = new WorkspaceService();
         workspace.OpenFolder(_folderWithoutProject);
         workspace.AddFolder(_folderWithProject);
 

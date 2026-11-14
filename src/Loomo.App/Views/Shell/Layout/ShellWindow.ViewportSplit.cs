@@ -177,21 +177,6 @@ public partial class ShellWindow {
     private static bool EditorPathMatches(VimEditorControl editor, string? path)
         => ViewportSplitPolicy.EditorPathMatches(editor.FilePath, path);
 
-    /// <summary>
-    /// エディタからの先読み要求を FIM エンジンへ渡す。打鍵のたびに呼ばれ、古い要求は
-    /// エディタ側がキャンセルする。出せないときは null を返すだけ——先読みの失敗で
-    /// 入力が止まることがあってはならない。
-    /// </summary>
-    private async Task<Editor.Core.Completion.InlineSuggestion?> RequestInlineSuggestionAsync(
-        Editor.Core.Completion.InlineSuggestionContext context, CancellationToken ct)
-    {
-        var text = await _fimCompletion.CompleteAsync(
-            _settings.InlineCompletion, context.Lines, context.Line, context.Column, ct);
-        return text is null
-            ? null
-            : new Editor.Core.Completion.InlineSuggestion(text, Editor.Core.Completion.InlineSuggestionSource.External);
-    }
-
     private VimEditorControl BuildEditorControl(EditorTab tab) {
         var control = new VimEditorControl(new VimEditorControlOptions {
             // エディタの git は全部 Loomo の GitService 経由（ワークツリーでも blame が出る）。ガターは共有の比較基準に合わせる（§24.11.1）。
@@ -199,9 +184,6 @@ public partial class ShellWindow {
             // 外での書き換えは Loomo がタブごとに見張って取り込む（§24.57）。エディタの監視も残すと、1回の
             // 書き換えに両方が反応し、未保存のタブでは Loomo のバーとエディタのモーダル確認が二重に出る。
             WatchFileOnDisk = false,
-            // キャレットの先に薄く出す提案のうち、ローカル LLM（FIM）が作る方。
-            // エディタ内蔵の予測（既出行からの補完）はこれが無くても動き、先に出る。
-            InlineSuggestionProvider = RequestInlineSuggestionAsync,
             // ワークスペースフォルダーも文書の参照カウントもサーバーのプールもワークスペース側が知っている。
             LspWorkspace = _lspWorkspace, LspServerAdmin = _lspServerAdmin,
             EngineServices = _editorEngineServices,

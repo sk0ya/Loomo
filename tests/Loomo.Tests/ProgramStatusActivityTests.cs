@@ -174,7 +174,7 @@ public sealed class ProgramStatusActivityTests
         var working = Program("cargo", ProgramStatusState.Working, progress: 42);
         var entries = RunningEntries.Build(
             [new RunningTerminalSource(Tab, "pwsh", TerminalTabStatus.Empty, null, [working, waiting])],
-            [], [], [], aiBusy: false, aiStatus: null);
+            [], [], []);
 
         Assert.Equal(2, entries.Count);
         Assert.Equal(RunningEntries.AttentionGroup, entries[0].Group);

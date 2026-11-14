@@ -2,8 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
-using sk0ya.Loomo.Ai;
-
 namespace sk0ya.Loomo.App.Services;
 
 /// <summary>

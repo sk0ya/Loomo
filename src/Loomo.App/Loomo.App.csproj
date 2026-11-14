@@ -2,7 +2,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Loomo.Core\Loomo.Core.csproj" />
-    <ProjectReference Include="..\Loomo.Ai\Loomo.Ai.csproj" />
     <ProjectReference Include="..\Loomo.Services\Loomo.Services.csproj" />
     <ProjectReference Include="..\Loomo.CSharp\Loomo.CSharp.csproj" />
     <!-- Editor のローカル開発版。XAML コンパイラが Editor.Controls の型を直接解決できるよう、
@@ -17,22 +16,8 @@
                       Condition="'$(UseLocalEditor)' == 'false'" />
   </ItemGroup>
 
-  <!-- 先読みワーカー。参照は「一緒にビルドさせる」ためで、本体はそのアセンブリを使わない
-       （やり取りは標準入出力だけ）。apphost（.exe）は ProjectReference では運ばれないので明示的に置く。 -->
-  <ItemGroup>
-    <ProjectReference Include="../Loomo.Completion.Host/Loomo.Completion.Host.csproj" />
-  </ItemGroup>
-
-  <Target Name="CopyCompletionHostApphost" AfterTargets="Build">
-    <ItemGroup>
-      <CompletionHostApphost Include="$(MSBuildThisFileDirectory)../Loomo.Completion.Host/bin/$(Configuration)/sk0ya.Loomo.Completion.Host.exe" />
-    </ItemGroup>
-    <Copy SourceFiles="@(CompletionHostApphost)" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true"
-          Condition="Exists('%(CompletionHostApphost.FullPath)')" />
-  </Target>
-
   <!-- git・ssh の資格情報の問いを Loomo へ取り次ぐ exe（§24.101）。GIT_ASKPASS／SSH_ASKPASS がこれを指す。
-       参照は「一緒にビルドさせる」ためで、本体はそのアセンブリを使わない。apphost は先読みワーカーと同じく明示的に置く。 -->
+       参照は「一緒にビルドさせる」ためで、本体はそのアセンブリを使わない。apphost（.exe）は ProjectReference では運ばれないので明示的に置く。 -->
   <ItemGroup>
     <ProjectReference Include="../Loomo.AskPass/Loomo.AskPass.csproj" />
   </ItemGroup>

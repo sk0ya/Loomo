@@ -1,6 +1,4 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
-using sk0ya.Loomo.Ai;
-using sk0ya.Loomo.Ai.Clients;
 using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.App.ViewModels;
 using sk0ya.Loomo.App.Views;
@@ -8,11 +6,6 @@ using sk0ya.Loomo.CSharp.Configuration;
 using sk0ya.Loomo.CSharp.Projects;
 using sk0ya.Loomo.CSharp.Testing;
 using sk0ya.Loomo.Core.Abstractions;
-using sk0ya.Loomo.Core.Agent;
-using sk0ya.Loomo.Core.Observability;
-using sk0ya.Loomo.Core.Safety;
-using sk0ya.Loomo.Core.Tools;
-using sk0ya.Loomo.Core.Tools.Implementations;
 using sk0ya.Loomo.Services;
 using sk0ya.Loomo.Services.Search;
 
@@ -24,11 +17,9 @@ internal static class LoomoServiceCollectionExtensions
     {
         services.AddLogging();
 
-        // 実行中に変更される設定と、それを参照するポリシーはアプリ全体で同じ状態を共有する。
+        // 実行中に変更される設定はアプリ全体で同じ状態を共有する。
         services.AddSingleton<LoomoSettings>();
         services.AddSingleton<SettingsStore>();
-        services.AddSingleton(sp => sp.GetRequiredService<LoomoSettings>().Safety);
-        services.AddSingleton<ISafetyPolicy, SafetyPolicy>();
 
         AddAliasedSingleton<WorkspaceService, IWorkspaceService>(services);
         // 文書の本文検索の取り出し（§23.3.2）。本文を持たない PDF のページ（スキャン）は Windows の OCR で読む。
@@ -41,7 +32,6 @@ internal static class LoomoServiceCollectionExtensions
         services.AddSingleton<sk0ya.Loomo.Services.Terminal.PtyHostClient>();
         AddAliasedSingleton<EditorService, IEditorService>(services);
         AddAliasedSingleton<BrowserService, IBrowserService>(services);
-        AddAliasedSingleton<UiApprovalService, IApprovalService>(services);
 
         AddLoomoLsp(services);
         AddLoomoFormatting(services);
@@ -65,46 +55,6 @@ internal static class LoomoServiceCollectionExtensions
         services.AddSingleton<sk0ya.Loomo.Services.Debug.Js.JsDebugSessionFactory>();
         services.AddSingleton<ITestDiscoveryService,
             sk0ya.Loomo.CSharp.Testing.TestDiscoveryService>();
-
-        // ツール、会話、トレースは一つのエージェント実行状態を共有するため Singleton。
-        services.AddSingleton<IAgentTool, PwshTool>();
-        services.AddSingleton<IAgentTool, WriteFileTool>();
-        services.AddSingleton<IAgentTool, EditFileTool>();
-        services.AddSingleton<IAgentTool, WebSearchTool>();
-        services.AddSingleton<ToolRegistry>();
-        services.AddSingleton<ISubAgentRunner, SubAgentRunner>();
-        services.AddSingleton<ITraceSink>(sp =>
-        {
-            var obs = sp.GetRequiredService<LoomoSettings>().Observability;
-            return obs.EnableTracing
-                ? new JsonlTraceSink(maxSessions: obs.MaxSessions)
-                : NullTraceSink.Instance;
-        });
-        services.AddSingleton<AgentOrchestrator>();
-        services.AddSingleton<ConversationStore>();
-        services.AddSingleton<WorkflowStore>();
-        services.AddSingleton<TraceReader>();
-
-        return services;
-    }
-
-    public static IServiceCollection AddLoomoAi(this IServiceCollection services)
-    {
-        services.AddHttpClient("ai", c => c.Timeout = TimeSpan.FromMinutes(5));
-
-        // 推論エンジンはモデルをメモリに常駐させ、全ターンで再利用するため Singleton。
-        services.AddSingleton<OnnxGenAiEngine>();
-        services.AddSingleton<LlamaCppEngine>();
-        // 入力の先読み（FIM）は<b>別プロセス</b>で回す。同じプロセスに置くと、スレッド数を絞っても
-        // CPU・メモリ帯域・GC を UI スレッドと分け合い、打鍵が引っかかる（実測で単独 270ms の生成が
-        // アプリの中では 1.5〜3.9 秒に伸びた）。ここはその窓口で、プロセスの寿命も面倒を見る。
-        services.AddSingleton<sk0ya.Loomo.Ai.Completion.FimCompletionClient>();
-        AddAliasedSingleton<LocalInferenceRouter, ILocalInferenceEngine>(services);
-        services.AddSingleton<IAiClientFactory, AiClientFactory>();
-        services.AddSingleton<IContextWindowPolicy, SettingsContextWindowPolicy>();
-        services.AddSingleton(sp => new ModelCatalogService(sp.GetRequiredService<LoomoSettings>()));
-        services.AddSingleton(sp => new ModelDownloadService(
-            sp.GetRequiredService<System.Net.Http.IHttpClientFactory>().CreateClient("ai")));
 
         return services;
     }
@@ -195,17 +145,11 @@ internal static class LoomoServiceCollectionExtensions
         // WPF 画面と ViewModel はウィンドウ存続期間と一致し、選択状態を共有するため Singleton。
         services.AddSingleton<ThemeManager>();
         services.AddSingleton<UiFontManager>();
-        AddAliasedSingleton<LocalLlmWarmupService, IAiWarmup>(services);
         services.AddSingleton<AppBootstrapper>();
         services.AddSingleton<WorkspaceStateStore>();
         services.AddSingleton<RecentUsageService>();
         services.AddSingleton<RecentItemsViewModel>();
-        services.AddSingleton<PromptHistoryStore>();
-        services.AddSingleton<ModelFolderGateway>();
-        services.AddSingleton<ModelFolderPicker>();
-        services.AddSingleton<BlockedCommandsHandler>();
         services.AddSingleton<SettingsPersistenceHandler>();
-        services.AddSingleton<SettingsModelChoiceMapper>();
         services.AddSingleton<TabIconService>();
         // ブックマーク・履歴の行に出すサイトのアイコン（§21.5.1）。タブの favicon（TabIconService）と
         // 置き場を分けず、開いたページのぶんはここへ写して使い回す。
@@ -236,7 +180,7 @@ internal static class LoomoServiceCollectionExtensions
         services.AddSingleton<IQuickAccessService, WindowsQuickAccessService>();
         // ファイル一覧ペイン。操作の実体はツリーと同じ FolderTreeCommandHandler だが、
         // こちらは「ワークスペース外でも操作できる版」を渡す——外のフォルダーも開けるファイラなので、
-        // エージェント用の限定（§10）を人間に被せない。
+        // ワークスペース内への限定を被せない。
         // ハーネスペイン（§37）。解析結果のキャッシュは HarnessAnalyzer が持つので、両方とも1つきり。
         services.AddSingleton(sp => new HarnessAnalyzer(sp.GetRequiredService<IWorkspaceService>()));
         services.AddSingleton<HarnessPaneViewModel>();
@@ -252,9 +196,6 @@ internal static class LoomoServiceCollectionExtensions
             sp.GetRequiredService<RecentItemsViewModel>(),
             sp.GetRequiredService<GitWorkspaceStatus>(),
             sp.GetRequiredService<GitRepositoryChips>()));
-        services.AddSingleton<WorkflowToolRunner>();
-        services.AddSingleton<WorkflowViewModel>();
-        services.AddSingleton<AiBarViewModel>();
         // タブ一覧。見出しの設定ビューで選んだ「出す種別」を settings.json へ書き戻すので設定と保存先を渡す。
         services.AddSingleton(sp => new TabsViewModel(
             sp.GetRequiredService<TabIconService>(),
@@ -265,7 +206,6 @@ internal static class LoomoServiceCollectionExtensions
         services.AddSingleton(sp => new ActivityBarViewModel(
             sp.GetRequiredService<LoomoSettings>(),
             sp.GetRequiredService<SettingsStore>()));
-        services.AddSingleton<SessionsViewModel>();
         // Azure DevOps の Work Items（サイドバーの面・ActivityBar の 📋）。PAT は TaskAzure と同じ場所から読む。
         services.AddSingleton<AzureDevOpsPatStore>();
         services.AddSingleton(_ => new AzureDevOpsWorkItemClient());
@@ -283,7 +223,6 @@ internal static class LoomoServiceCollectionExtensions
         // キーバインド一覧（全コマンドの行＋グルーピング付き CollectionView の構築で実測 ~51ms）は
         // 設定画面を開くまで誰も見ない。ShellViewModel には Lazy で渡し、起動経路から外す。
         services.AddSingleton(sp => new Lazy<KeybindingsViewModel>(sp.GetRequiredService<KeybindingsViewModel>));
-        services.AddSingleton<TraceSessionViewModel>();
         // ブックマーク・履歴はワークスペースをまたぐ資産なので、アプリ単位の1ファイルに持つ。
         services.AddSingleton<BrowserLibraryStore>();
         services.AddSingleton<BrowserViewModel>();

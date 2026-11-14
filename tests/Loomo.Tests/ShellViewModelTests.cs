@@ -1,13 +1,9 @@
 ﻿using System.IO;
 using System.Linq;
-using sk0ya.Loomo.Ai;
 using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.App.ViewModels;
 using sk0ya.Loomo.CSharp.Projects;
-using sk0ya.Loomo.Core.Agent;
-using sk0ya.Loomo.Core.Observability;
 using sk0ya.Loomo.Core.Safety;
-using sk0ya.Loomo.Core.Tools;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace sk0ya.Loomo.Tests;
@@ -80,43 +76,13 @@ public class ShellViewModelTests
         ActivityBarViewModel? activityBar = null)
     {
         var workspace = new FakeWorkspaceService();
-        var folderTree = new FolderTreeViewModel(workspace, new FakeAiWarmup(),
-            new WorkflowStore(Path.Combine(Path.GetTempPath(), "loomo-test-workflows")),
+        var folderTree = new FolderTreeViewModel(workspace,
             new FolderTreeCommandHandler(workspace, new FileOperationHistory()), new FolderTreeQuery());
 
-        var approval = new UiApprovalService();
         var settings = new LoomoSettings();
-        var orchestrator = new AgentOrchestrator(
-            new FakeAiClientFactory(),
-            new ToolRegistry(Enumerable.Empty<IAgentTool>()),
-            approval,
-            new SafetyPolicy(new SafetySettings()),
-            NoopContextWindowPolicy.Instance,
-            NullLogger<AgentOrchestrator>.Instance);
-
-        var conversations = new ConversationStore(
-            Path.Combine(Path.GetTempPath(), "loomo-test-sessions"));
-
         // 保存先はテスト用の一時パス（コンストラクタでは I/O しない）
         var store = new SettingsStore(Path.Combine(Path.GetTempPath(), "loomo-test-settings.json"));
-        var modelCatalog = new ModelCatalogService(settings);
-        var modelDownload = new ModelDownloadService(new System.Net.Http.HttpClient());
-        var settingsEditor = new FakeEditorService();
-        var modelFolders = new ModelFolderGateway();
-        var settingsVm = new SettingsViewModel(settings, store, settingsEditor, modelCatalog, modelDownload,
-            new FakeAiWarmup(), new ModelFolderPicker(modelFolders), new BlockedCommandsHandler(settings, store, settingsEditor),
-            new SettingsPersistenceHandler(settings, store), new SettingsModelChoiceMapper());
-        var workflowStore = new WorkflowStore(
-            Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-loomo-workflows"));
-        var workflowRunner = new WorkflowToolRunner(
-            new FakeTerminalService(), new FakeWorkspaceService(), new FakeEditorService(),
-            new SafetyPolicy(new SafetySettings()));
-        var workflowVm = new WorkflowViewModel(orchestrator, approval, workflowStore, new FakeAiWarmup(), settings, workflowRunner, workspace);
-        var aiBar = new AiBarViewModel(orchestrator, approval, settings, settingsVm, conversations,
-            new PromptHistoryStore(Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-loomo-history.json")),
-            new FakeAiWarmup(), workflowVm);
-        var sessionsVm = new SessionsViewModel(conversations, aiBar,
-            new TraceReader(Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-loomo-traces")));
+        var settingsVm = new SettingsViewModel(new SettingsPersistenceHandler(settings, store));
         var appearanceVm = new AppearanceViewModel(settings, store, new ThemeManager(), new UiFontManager());
         var lspService = new sk0ya.Loomo.Services.Lsp.LspManagementService(new FakeTerminalService(), new sk0ya.Loomo.Services.Lsp.LspServerTable(null));
         var lspVm = new LspSettingsViewModel(lspService);
@@ -143,8 +109,6 @@ public class ShellViewModelTests
         var gitQuery = new GitSessionQuery(git);
         var gitSessionVm = new GitSessionViewModel(git, new FakeEditorService(),
             gitQuery, new GitSessionCommandHandler(git), new GitHistoryViewModel(gitQuery), rootSwitch);
-        var traceSessionVm = new TraceSessionViewModel(
-            new TraceReader(Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-loomo-traces")));
 
         var searchService = new sk0ya.Loomo.Services.Search.WorkspaceSearchService(workspace);
         var searchMapper = new SearchResultTreeMapper();
@@ -170,8 +134,8 @@ public class ShellViewModelTests
             new sk0ya.Loomo.Services.HarnessAnalyzer(workspace, Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-loomo-claude-projects")),
             workspace);
 
-        return new ShellViewModel(folderTree, filesVm, harnessVm, workspacesVm, aiBar, new TabsViewModel(), sessionsVm, settingsVm,
-            appearanceVm, lspVm, lspPromptVm, formatterVm, new Lazy<KeybindingsViewModel>(() => keyboardVm), gitPanelVm, gitSessionVm, diffSessionVm, traceSessionVm,
+        return new ShellViewModel(folderTree, filesVm, harnessVm, workspacesVm, new TabsViewModel(), settingsVm,
+            appearanceVm, lspVm, lspPromptVm, formatterVm, new Lazy<KeybindingsViewModel>(() => keyboardVm), gitPanelVm, gitSessionVm, diffSessionVm,
             new BrowserViewModel(new BrowserLibraryStore(
                 Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-loomo-browser.json"))),
             searchVm, debugVm, tsIdeVm,

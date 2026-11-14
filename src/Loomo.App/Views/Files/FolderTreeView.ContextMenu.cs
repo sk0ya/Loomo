@@ -305,27 +305,6 @@ public partial class FolderTreeView
             CurrentSelection(node));
     }
 
-    /// <summary>グループ分けの区切り線を、実際に見えている項目に合わせて出し分ける。
-    /// このメニューは項目の多くが条件付き表示（ファイル／フォルダ、Git 配下、ピン留め済み…）なので、
-    /// XAML に区切り線を静的に置くと「区切り線だけが2本続く」「先頭・末尾に区切り線が出る」といった
-    /// 見え方になる（WPF は Separator の表示可否を自動調整しない）。前に可視項目があり、かつ後ろにも
-    /// 可視項目が続く区切り線だけを残す。</summary>
-    private void OnTypoCheckClick(object sender, RoutedEventArgs e)
-    {
-        if (ContextNode(sender) is { IsDirectory: false } node && DataContext is FolderTreeViewModel vm)
-            vm.RequestTypoCheck(node);
-    }
-
-    private void OnFileAiClick(object sender, RoutedEventArgs e)
-    {
-        if (DataContext is not FolderTreeViewModel vm)
-            return;
-        var tag = (sender as MenuItem)?.Tag as string;
-        var action = FileContextMenuPolicy.ResolveFileAiAction(tag);
-        if (action is { } selectedAction)
-            vm.RequestFileAi(selectedAction, CurrentSelection(ContextNode(sender)));
-    }
-
     private void OnPinClick(object sender, RoutedEventArgs e)
     {
         if (ContextNode(sender) is { IsDirectory: true } node && DataContext is FolderTreeViewModel vm)

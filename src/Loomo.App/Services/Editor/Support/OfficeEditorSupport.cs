@@ -7,8 +7,6 @@ using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using ClosedXML.Excel;
-using sk0ya.Loomo.Ai;
-
 namespace sk0ya.Loomo.App.Services;
 
 /// <summary>

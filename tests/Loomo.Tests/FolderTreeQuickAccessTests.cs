@@ -2,8 +2,6 @@
 using System.IO;
 using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.App.ViewModels;
-using sk0ya.Loomo.Core.Agent;
-
 namespace sk0ya.Loomo.Tests;
 
 public sealed class FolderTreeQuickAccessTests : IDisposable
@@ -162,8 +160,7 @@ public sealed class FolderTreeQuickAccessTests : IDisposable
     }
 
     private FolderTreeViewModel CreateViewModel(IQuickAccessService quickAccess)
-        => new(_workspace, new FakeAiWarmup(),
-            new WorkflowStore(Path.Combine(Path.GetTempPath(), "loomo-quick-access-workflows")),
+        => new(_workspace,
             new FolderTreeCommandHandler(_workspace, new FileOperationHistory()),
             new FolderTreeQuery(), quickAccess: quickAccess);
 

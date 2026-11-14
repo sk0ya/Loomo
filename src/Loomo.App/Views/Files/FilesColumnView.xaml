@@ -1007,12 +1007,6 @@
                                 <MenuItem Header="Git Blame" Tag="GitBlame" Click="OnGitBlameClick" />
                                 <MenuItem Header=".gitignore に追加" Tag="GitIgnore" Click="OnAddToGitignoreClick" />
                             </MenuItem>
-                            <MenuItem Header="AI" Tag="AiMenu">
-                                <MenuItem Header="要約" Tag="FileAiSummarize" Click="OnFileAiClick" />
-                                <MenuItem Header="レビュー" Tag="FileAiReview" Click="OnFileAiClick" />
-                                <MenuItem Header="テスト生成" Tag="FileAiGenerateTests" Click="OnFileAiClick" />
-                                <MenuItem Header="関連ファイルを検索" Tag="FileAiFindRelated" Click="OnFileAiClick" />
-                            </MenuItem>
                             <Separator />
                             <MenuItem Header="ピン留めとワークスペース" Tag="AutoGroup">
                                 <MenuItem Header="ルートにピン留め" Tag="Pinnable" Click="OnPinClick" />

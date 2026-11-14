@@ -3,8 +3,6 @@ using System.Linq;
 using System.Windows.Data;
 using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.App.ViewModels;
-using sk0ya.Loomo.Core.Agent;
-
 namespace sk0ya.Loomo.Tests;
 
 /// <summary>
@@ -41,8 +39,7 @@ public sealed class FilesPaneTests : IDisposable
         _workspace.OpenFolder(_root);
 
         // ピン留めの持ち主はツリー。ペインは IFolderPinStore 越しに同じものを見る（§26.10）。
-        _tree = new FolderTreeViewModel(_workspace, new FakeAiWarmup(),
-            new WorkflowStore(Path.Combine(Path.GetTempPath(), "loomo-test-workflows")),
+        _tree = new FolderTreeViewModel(_workspace,
             new FolderTreeCommandHandler(_workspace, new FileOperationHistory()), new FolderTreeQuery());
         _tree.LoadRoot(_root);
     }

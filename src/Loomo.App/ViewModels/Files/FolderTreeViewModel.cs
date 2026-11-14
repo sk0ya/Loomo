@@ -11,7 +11,6 @@ using System.Windows.Media;
 using Microsoft.VisualBasic.FileIO;
 using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.Core.Abstractions;
-using sk0ya.Loomo.Core.Agent;
 using sk0ya.Loomo.Core.Files;
 using sk0ya.Loomo.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -22,8 +21,6 @@ namespace sk0ya.Loomo.App.ViewModels;
 public sealed partial class FolderTreeViewModel : ObservableObject
 {
     private readonly IWorkspaceService _workspace;
-    private readonly IAiWarmup _warmup;
-    private readonly WorkflowStore _workflows;
     private readonly FolderTreeCommandHandler _fileCommands;
     private readonly FolderTreeQuery _query;
     /// <summary>リポジトリの印（§40.7）。null（テスト）なら印を出さない。</summary>
@@ -142,17 +139,6 @@ public sealed partial class FolderTreeViewModel : ObservableObject
     /// <summary>ツリーに現在表示している（ピン留めで切替わり得る）ルート。検索の既定フォルダーに使う。</summary>
     public string? CurrentRoot => _currentRoot;
 
-    // FolderTree の「AI-誤字脱字チェック」要求。View（コンテキストメニュー）から発火し、ShellWindow が
-    // AIバーで /clear → 当該ファイルパスを渡して誤字脱字チェックのプロンプトを送信する。
-    public event EventHandler<string>? TypoCheckRequested;
-
-    // FolderTree の「AIワークフロー」要求。View（コンテキストメニュー）から発火し、ShellWindow が
-    // AIバーをワークフローモードへ切替えて、当該ファイルを構造化 input として実行する。
-    public event EventHandler<WorkflowRunRequest>? WorkflowRequested;
-
-    /// <summary>選択項目をAIバーの定型操作へ渡す要求。</summary>
-    public event EventHandler<FileAiRequest>? FileAiRequested;
-
     // FolderTree の「Git」>「Git Blame」要求（ファイルのみ）。View（コンテキストメニュー）から発火し、
     // ShellWindow がエディタペインでファイルを開いて VimEditorControl のネイティブ Git Blame を
     // トリガーする。引数はファイルのフルパス。
@@ -176,7 +162,7 @@ public sealed partial class FolderTreeViewModel : ObservableObject
     /// WorkspaceStateStore には複製せず、Explorer を正本として扱う。</summary>
     public IQuickAccessService QuickAccess => _quickAccess;
 
-    public FolderTreeViewModel(IWorkspaceService workspace, IAiWarmup warmup, WorkflowStore workflows,
+    public FolderTreeViewModel(IWorkspaceService workspace,
         FolderTreeCommandHandler fileCommands, FolderTreeQuery query,
         IShellFileOperations? shellOperations = null,
         IQuickAccessService? quickAccess = null,
@@ -189,8 +175,6 @@ public sealed partial class FolderTreeViewModel : ObservableObject
         _settings = settings;
         _settingsStore = settingsStore;
         _workspace = workspace;
-        _warmup = warmup;
-        _workflows = workflows;
         _fileCommands = fileCommands;
         _query = query;
         _shellOperations = shellOperations ?? new ShellFileOperations();
@@ -223,10 +207,6 @@ public sealed partial class FolderTreeViewModel : ObservableObject
         // 追加・削除（ボタン／「ワークスペースから削除」）だけなので、常に保存イベントを出してよい。
         RootStateChanged?.Invoke(this, EventArgs.Empty);
     }
-
-    /// <summary>AIの暖機が完了してモデルが使える状態か。「AI-誤字脱字チェック」メニューの出し分けに使う
-    /// （暖機中・モデル未ロード時はメニューを出さない）。</summary>
-    public bool IsAiReady => _warmup.IsReady;
 
     /// <summary>
     /// ワークスペースルートを確定（ツールのパス制限・ターミナルの基準はこのルート）し、

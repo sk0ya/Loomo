@@ -4,8 +4,6 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.App.ViewModels;
-using sk0ya.Loomo.Core.Agent;
-
 namespace sk0ya.Loomo.Tests;
 
 /// <summary>編集可能なアドレス欄はファイル一覧ペインの道具である（サイドバーのツリーではない）。
@@ -40,8 +38,7 @@ public sealed class FilesAddressBarTests : IDisposable
 
     private FilesColumnViewModel CreateColumn()
     {
-        var tree = new FolderTreeViewModel(_workspace, new FakeAiWarmup(),
-            new WorkflowStore(Path.Combine(Path.GetTempPath(), $"loomo-files-address-wf-{Guid.NewGuid():N}")),
+        var tree = new FolderTreeViewModel(_workspace,
             new FolderTreeCommandHandler(_workspace, new FileOperationHistory()), new FolderTreeQuery());
         var column = new FilesColumnViewModel(
             _workspace,

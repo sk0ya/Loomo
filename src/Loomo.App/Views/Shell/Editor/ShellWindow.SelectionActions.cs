@@ -56,13 +56,7 @@ public partial class ShellWindow {
             SelectionActionMenuBuilder.BuildDiffSendMenu(CompareEntries(
                 control, SelectionActionPresentation.SelectionSourceLabel(control?.FilePath),
                 e.SelectedText, e.HasSelection)),
-            !_vm.AiBar.IsBusy && !_vm.AiBar.IsWarmingUp,
-            () => {
-                EnsurePaneVisibleOrSwapTopLeft(PaneKind.Ai);
-                _vm.AiBar.AskAbout(e.SelectedText);
-            },
             text => _ = SearchSelectionInBrowserAsync(text, EditorSearchOrigin(control, text)),
-            AddWorkflowMenuItems,
             leadingItems: BuildClaudeSendMenuItem(control) is { } claude ? [claude] : null);
 
     /// <summary>1つの束を足す。中身が1つでも入ったときだけ、束の<b>前</b>に区切り線を1本入れる。
@@ -268,15 +262,9 @@ public partial class ShellWindow {
                 openLocation: location => _ = SendLocationToEditorAsync(location)),
             SelectionActionMenuBuilder.BuildDiffSendMenu(
                 CompareEntries(control: null, "ターミナルの選択", e.SelectedText, e.HasSelection)),
-            !_vm.AiBar.IsBusy && !_vm.AiBar.IsWarmingUp,
-            () => {
-                EnsurePaneVisibleOrSwapTopLeft(PaneKind.Ai);
-                _vm.AiBar.AskAbout(e.SelectedText);
-            },
             text => _ = SearchSelectionInBrowserAsync(text,
                 _terminalTabs.FirstOrDefault(t => ReferenceEquals(t.View, sender)) is { } tab
-                    ? new BrowserSearchOrigin.Terminal(text, tab.Id) : null),
-            AddWorkflowMenuItems));
+                    ? new BrowserSearchOrigin.Terminal(text, tab.Id) : null)));
     private async Task SendLocationToEditorAsync(SourceLocation location) {
         await OpenPathInEditorAsync(location.Path, location.Line, location.Column);
         FocusPane(PaneKind.Editor);
@@ -361,20 +349,6 @@ public partial class ShellWindow {
         SetPaneVisible(PaneKind.Terminal, true);
         _ = view.RunCommandAsync($"& {FileDragDrop.PowerShellQuote(path)}", CancellationToken.None);
         FocusPane(PaneKind.Terminal);
-    }
-    private void AddWorkflowMenuItems(ItemsControl menu, string input) {
-        var workflows = _vm.AiBar.Workflow.ListInputWorkflows().Select(workflow => (workflow.Id, workflow.Name));
-        SelectionActionMenuBuilder.AddWorkflowMenuItems(
-            menu, input, workflows, !_vm.AiBar.IsBusy && !_vm.AiBar.IsWarmingUp,
-            (id, value) => RunWorkflowWithInput(id, value));
-    }
-    private void RunWorkflowWithInput(string workflowId, string input)
-        => RunWorkflowWithInput(workflowId, WorkflowRunInput.FromText(input));
-    private void RunWorkflowWithInput(string workflowId, WorkflowRunInput input) {
-        EnsurePaneVisibleOrSwapTopLeft(PaneKind.Ai);
-        _vm.AiBar.Mode = AiBarMode.Workflow;
-        _vm.AiBar.IsExpanded = true;
-        _vm.AiBar.Workflow.RunWithInput(workflowId, input);
     }
     /// <summary>選んだ語を内蔵ブラウザで調べる。できたタブに<b>調べ始めた場所</b>を付ける（§41.12）——ブラウザサポートが
     /// 「戻る」と、ページのコードを「そこへ貼る」を出す。</summary>

@@ -28,7 +28,7 @@ public sealed class DiffAcrossRepositoriesTests : IDisposable
         var api = Repo(Path.Combine("work", "api"));
         File.WriteAllText(Path.Combine(app, "a.txt"), "changed");
         File.WriteAllText(Path.Combine(api, "a.txt"), "changed");
-        var workspace = new WorkspaceService(new SafetySettings());
+        var workspace = new WorkspaceService();
         workspace.OpenFolder(app);
         workspace.AddFolder(work);
         var git = new GitService(workspace);
@@ -65,7 +65,7 @@ public sealed class DiffAcrossRepositoriesTests : IDisposable
         Git(api, "add", "b.txt");
         Git(api, "commit", "-m", "api commit");
         var hash = Git(api, "rev-parse", "HEAD").Trim();
-        var workspace = new WorkspaceService(new SafetySettings());
+        var workspace = new WorkspaceService();
         workspace.OpenFolder(app);
         workspace.AddFolder(work);
         var git = new GitService(workspace);

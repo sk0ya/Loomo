@@ -16,8 +16,8 @@ internal readonly record struct PaneFocusCandidate(PaneFocusTarget Target, PaneL
 internal static class PaneFocusNavigationPolicy
 {
     public static bool ShouldRememberPaneFocus(PaneKind pane, bool isButton)
-        => !isButton && pane is PaneKind.Debug or PaneKind.TsIde or PaneKind.Ai
-            or PaneKind.Git or PaneKind.Diff or PaneKind.Trace;
+        => !isButton && pane is PaneKind.Debug or PaneKind.TsIde
+            or PaneKind.Git or PaneKind.Diff;
 
     public static PaneKind? ResolveRestorePane(PaneKind? workspacePane, Func<PaneKind, bool> isAvailable)
         => workspacePane is { } pane && isAvailable(pane) ? pane : null;

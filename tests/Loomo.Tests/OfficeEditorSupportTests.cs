@@ -7,7 +7,6 @@ using System.Text;
 using ClosedXML.Excel;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Wordprocessing;
-using sk0ya.Loomo.Ai;
 using sk0ya.Loomo.App.Services;
 
 namespace sk0ya.Loomo.Tests;

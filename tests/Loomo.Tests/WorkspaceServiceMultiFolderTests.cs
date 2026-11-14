@@ -14,7 +14,7 @@ public sealed class WorkspaceServiceMultiFolderTests
     [Fact]
     public void OpenFolder_sets_single_primary_folder()
     {
-        var service = new WorkspaceService(new SafetySettings());
+        var service = new WorkspaceService();
         service.OpenFolder(Primary);
 
         Assert.Equal(new[] { Primary }, service.Folders);
@@ -24,7 +24,7 @@ public sealed class WorkspaceServiceMultiFolderTests
     [Fact]
     public void AddFolder_appends_and_keeps_primary_unchanged()
     {
-        var service = new WorkspaceService(new SafetySettings());
+        var service = new WorkspaceService();
         service.OpenFolder(Primary);
         service.AddFolder(Secondary);
 
@@ -35,7 +35,7 @@ public sealed class WorkspaceServiceMultiFolderTests
     [Fact]
     public void AddFolder_ignores_duplicate()
     {
-        var service = new WorkspaceService(new SafetySettings());
+        var service = new WorkspaceService();
         service.OpenFolder(Primary);
         service.AddFolder(Secondary);
         service.AddFolder(Secondary);
@@ -46,7 +46,7 @@ public sealed class WorkspaceServiceMultiFolderTests
     [Fact]
     public void AddFolder_ignores_descendant_of_existing_folder()
     {
-        var service = new WorkspaceService(new SafetySettings());
+        var service = new WorkspaceService();
         service.OpenFolder(Primary);
         service.AddFolder(System.IO.Path.Combine(Primary, "sub"));
 
@@ -56,7 +56,7 @@ public sealed class WorkspaceServiceMultiFolderTests
     [Fact]
     public void AddFolder_ignores_ancestor_of_existing_folder()
     {
-        var service = new WorkspaceService(new SafetySettings());
+        var service = new WorkspaceService();
         service.OpenFolder(System.IO.Path.Combine(Primary, "sub"));
         service.AddFolder(Primary);
 
@@ -66,7 +66,7 @@ public sealed class WorkspaceServiceMultiFolderTests
     [Fact]
     public void RemoveFolder_removes_non_primary_folder()
     {
-        var service = new WorkspaceService(new SafetySettings());
+        var service = new WorkspaceService();
         service.OpenFolder(Primary);
         service.AddFolder(Secondary);
         service.RemoveFolder(Secondary);
@@ -77,7 +77,7 @@ public sealed class WorkspaceServiceMultiFolderTests
     [Fact]
     public void RemoveFolder_does_not_remove_primary()
     {
-        var service = new WorkspaceService(new SafetySettings());
+        var service = new WorkspaceService();
         service.OpenFolder(Primary);
         service.AddFolder(Secondary);
         service.RemoveFolder(Primary);
@@ -88,7 +88,7 @@ public sealed class WorkspaceServiceMultiFolderTests
     [Fact]
     public void FoldersChanged_fires_on_AddFolder_and_RemoveFolder()
     {
-        var service = new WorkspaceService(new SafetySettings());
+        var service = new WorkspaceService();
         service.OpenFolder(Primary);
         var fireCount = 0;
         service.FoldersChanged += (_, _) => fireCount++;
@@ -102,7 +102,7 @@ public sealed class WorkspaceServiceMultiFolderTests
     [Fact]
     public void ResolvePath_allows_absolute_path_under_added_secondary_folder()
     {
-        var service = new WorkspaceService(new SafetySettings { RestrictToWorkspaceRoot = true });
+        var service = new WorkspaceService();
         service.OpenFolder(Primary);
         service.AddFolder(Secondary);
 
@@ -115,7 +115,7 @@ public sealed class WorkspaceServiceMultiFolderTests
     [Fact]
     public void ResolvePath_throws_for_path_outside_all_folders()
     {
-        var service = new WorkspaceService(new SafetySettings { RestrictToWorkspaceRoot = true });
+        var service = new WorkspaceService();
         service.OpenFolder(Primary);
         service.AddFolder(Secondary);
 
@@ -126,7 +126,7 @@ public sealed class WorkspaceServiceMultiFolderTests
     [Fact]
     public void ResolvePath_relative_path_still_resolves_against_primary_only()
     {
-        var service = new WorkspaceService(new SafetySettings { RestrictToWorkspaceRoot = true });
+        var service = new WorkspaceService();
         service.OpenFolder(Primary);
         service.AddFolder(Secondary);
 

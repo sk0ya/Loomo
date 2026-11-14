@@ -12,7 +12,6 @@ using VGrid.Models;
 using VGrid.Services;
 using VGrid.ViewModels;
 using VGrid.VimEngine;
-using sk0ya.Loomo.Ai;
 using sk0ya.Loomo.Core.Models;
 
 namespace sk0ya.Loomo.App.Services;

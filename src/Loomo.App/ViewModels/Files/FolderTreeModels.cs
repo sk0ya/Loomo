@@ -1,7 +1,5 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using sk0ya.Loomo.App.Services;
-using sk0ya.Loomo.Core.Agent;
-
 namespace sk0ya.Loomo.App.ViewModels;
 
 // 「ターミナルへ送る」要求の対象。フォルダなら cd、ファイルならパスをプロンプトへ入力する。
@@ -12,7 +10,6 @@ public readonly record struct TerminalSetRequest(string FullPath, bool IsDirecto
 public readonly record struct FileCompareRequest(string LeftPath, string? RightPath);
 
 /// <summary>「AIワークフロー」コンテキストメニューからの実行要求。<see cref="Input"/> は構造化された実行入力。</summary>
-public readonly record struct WorkflowRunRequest(string WorkflowId, WorkflowRunInput Input);
 
 // FolderTree でのリネーム通知。OldPath/NewPath は正規化済みフルパス。IsDirectory ならフォルダの
 // リネーム（配下のファイルパスも OldPath → NewPath で付け替わる）。

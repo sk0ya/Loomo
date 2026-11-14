@@ -4,7 +4,7 @@ using sk0ya.Loomo.Core.Files;
 namespace sk0ya.Loomo.App.Services;
 
 /// <summary>動いているもの面（§24.54）の 1 行の種類。</summary>
-public enum RunningEntryKind { Terminal, Claude, Debug, IdeTask, LanguageServer, Ai }
+public enum RunningEntryKind { Terminal, Claude, Debug, IdeTask, LanguageServer }
 
 /// <summary>行の色合い。<see cref="Attention"/> は人の番（承認待ち・ブレークポイントで停止中）。</summary>
 public enum RunningEntryTone { Normal, Attention, Failed, Quiet }
@@ -51,9 +51,7 @@ internal static class RunningEntries
         IEnumerable<RunningTerminalSource> terminals,
         IEnumerable<RunningDebugSource> debugSessions,
         IEnumerable<RunningIdeTaskSource> ideTasks,
-        IEnumerable<LspServerRuntimeStatus> languageServers,
-        bool aiBusy,
-        string? aiStatus)
+        IEnumerable<LspServerRuntimeStatus> languageServers)
     {
         var entries = new List<RunningEntry>();
 
@@ -111,13 +109,6 @@ internal static class RunningEntries
             entries.Add(new RunningEntry(
                 $"idetask:{task.Pane}", RunningEntryKind.IdeTask,
                 task.Status.Length > 0 ? task.Status : "ビルド・テスト", task.Pane,
-                null, RunningEntryTone.Normal, CanStop: false, RunningGroup));
-        }
-
-        if (aiBusy)
-        {
-            entries.Add(new RunningEntry(
-                "ai", RunningEntryKind.Ai, "AI ペイン", string.IsNullOrWhiteSpace(aiStatus) ? "応答中" : aiStatus!,
                 null, RunningEntryTone.Normal, CanStop: false, RunningGroup));
         }
 

@@ -8,7 +8,6 @@ using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.App.ViewModels;
 using sk0ya.Loomo.App.Views;
 using sk0ya.Loomo.Core.Abstractions;
-using sk0ya.Loomo.Core.Agent;
 using sk0ya.Loomo.Core.Safety;
 using sk0ya.Loomo.Services;
 
@@ -42,9 +41,8 @@ public sealed class FolderTreeContextMenuTests : IDisposable
 
     private static (FolderTreeViewModel Sut, IWorkspaceService Workspace) CreateSut()
     {
-        var workspace = new WorkspaceService(new SafetySettings());
-        var sut = new FolderTreeViewModel(workspace, new FakeAiWarmup(),
-            new WorkflowStore(Path.Combine(Path.GetTempPath(), "loomo-test-workflows")),
+        var workspace = new WorkspaceService();
+        var sut = new FolderTreeViewModel(workspace,
             new FolderTreeCommandHandler(workspace, new FileOperationHistory()), new FolderTreeQuery());
         return (sut, workspace);
     }
@@ -217,10 +215,10 @@ public sealed class FolderTreeContextMenuTests : IDisposable
             var file = new MenuItem { Tag = "FileSystemOnly" };
             create.Items.Add(file);
             menu.Items.Add(create);
-            FileContextMenuPresenter.PrepareFolderTreeMenu(menu, false, false, false, null, null);
+            FileContextMenuPresenter.PrepareFolderTreeMenu(menu, false, false, null, null);
             Assert.Equal(Visibility.Collapsed, file.Visibility);
             Assert.Equal(Visibility.Collapsed, create.Visibility);
-            FileContextMenuPresenter.PrepareFolderTreeMenu(menu, true, false, false, null, null);
+            FileContextMenuPresenter.PrepareFolderTreeMenu(menu, true, false, null, null);
             Assert.Equal(Visibility.Visible, file.Visibility);
             Assert.Equal(Visibility.Visible, create.Visibility);
         });

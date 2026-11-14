@@ -10,7 +10,6 @@ internal static class BrowserContextMenuBuilder
         CoreWebView2 core,
         CoreWebView2ContextMenuRequestedEventArgs e,
         Dispatcher dispatcher,
-        Action<string> askAbout,
         Action<string> openNewTab,
         Action<string> openDetachedWindow,
         Action sendPageToEditor,
@@ -35,7 +34,6 @@ internal static class BrowserContextMenuBuilder
             if (target.HasSelection && !string.IsNullOrWhiteSpace(target.SelectionText))
             {
                 var selection = target.SelectionText;
-                children.Add(Command(core, dispatcher, "選択をAIへ送る", () => askAbout(selection)));
                 children.Add(Separator(core));
             }
             if (target.HasLinkUri && !string.IsNullOrWhiteSpace(target.LinkUri))

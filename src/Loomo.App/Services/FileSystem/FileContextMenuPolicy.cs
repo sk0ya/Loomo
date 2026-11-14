@@ -13,8 +13,7 @@ internal readonly record struct FileContextMenuState(
     bool CanPinToQuickAccess,
     bool CanUnpinFromQuickAccess,
     bool CanGit,
-    bool CanAddToGitignore,
-    bool CanRunAi)
+    bool CanAddToGitignore)
 {
     public bool HasSingleSelection => SelectionCount == 1;
 }
@@ -51,26 +50,12 @@ internal static class FileContextMenuPolicy
             "GitMenu" => state.CanGit,
             "GitBlame" => state.HasSingleSelection && !state.SingleIsDirectory && state.CanGit,
             "GitIgnore" => state.CanAddToGitignore,
-            "AiMenu" => state.SelectionCount > 0 && state.CanRunAi,
             // Undo/Redo は選択ではなく履歴で決まる。
             "UndoItem" or "RedoItem" => historyVisible,
             _ => true,
         };
 
-    public static bool ShouldShowAiMenu(bool isAiReady, int selectionCount, bool hasNonShellItem)
-        => isAiReady && selectionCount > 0 && hasNonShellItem;
-
     public static bool HasExactlyTwoFiles(int fileCount) => fileCount == 2;
-
-    public static FileAiAction? ResolveFileAiAction(string? tag)
-        => tag switch
-        {
-            "FileAiSummarize" => FileAiAction.Summarize,
-            "FileAiReview" => FileAiAction.Review,
-            "FileAiGenerateTests" => FileAiAction.GenerateTests,
-            "FileAiFindRelated" => FileAiAction.FindRelated,
-            _ => null,
-        };
 
     public static FileHistoryMenuPresentation FormatHistoryAction(string verb, string? description)
         => new(

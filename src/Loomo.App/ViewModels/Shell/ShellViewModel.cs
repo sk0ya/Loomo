@@ -33,7 +33,6 @@ public enum SettingsCategory
     Editor,
     Terminal,
     Browser,
-    Ai,
     Lsp,
     Formatter,
     StyleCop,
@@ -50,10 +49,8 @@ public sealed partial class ShellViewModel : ObservableObject
     /// <summary>ハーネスペイン（<see cref="Services.PaneKind.Harness"/>、§37）。</summary>
     public HarnessPaneViewModel Harness { get; }
     public WorkspaceListViewModel Workspaces { get; }
-    public AiBarViewModel AiBar { get; }
     public TabsViewModel Tabs { get; }
     public TodoTreeViewModel? TodoTree { get; }
-    public SessionsViewModel Sessions { get; }
     public RecentItemsViewModel Recent { get; }
     public SettingsViewModel Settings { get; }
     public AppearanceViewModel Appearance { get; }
@@ -84,7 +81,6 @@ public sealed partial class ShellViewModel : ObservableObject
     public GitPanelViewModel GitPanel { get; }
     public GitSessionViewModel GitSession { get; }
     public DiffSessionViewModel DiffSession { get; }
-    public TraceSessionViewModel TraceSession { get; }
     /// <summary>評価済みsolution／projectの構造表示。通常のFolderTreeとは別のC#ビューで、
     /// サイドバーの独立したパネル（<see cref="SidebarPanel.Solution"/>）として住む。</summary>
     public CSharpSolutionExplorerViewModel? CSharpSolutionExplorer { get; }
@@ -182,16 +178,14 @@ public sealed partial class ShellViewModel : ObservableObject
 
     /// <summary>設定ウィンドウで選択中のカテゴリ（左ナビ）。</summary>
     [ObservableProperty]
-    private SettingsCategory _settingsCategory = SettingsCategory.Ai;
+    private SettingsCategory _settingsCategory = SettingsCategory.Appearance;
 
     public ShellViewModel(
         FolderTreeViewModel folderTree,
         FilesPaneViewModel files,
         HarnessPaneViewModel harness,
         WorkspaceListViewModel workspaces,
-        AiBarViewModel aiBar,
         TabsViewModel tabs,
-        SessionsViewModel sessions,
         SettingsViewModel settings,
         AppearanceViewModel appearance,
         LspSettingsViewModel lsp,
@@ -201,7 +195,6 @@ public sealed partial class ShellViewModel : ObservableObject
         GitPanelViewModel gitPanel,
         GitSessionViewModel gitSession,
         DiffSessionViewModel diffSession,
-        TraceSessionViewModel traceSession,
         BrowserViewModel browser,
         SearchPanelViewModel searchPanel,
         DebugViewModel debug,
@@ -221,10 +214,8 @@ public sealed partial class ShellViewModel : ObservableObject
         Files = files;
         Harness = harness;
         Workspaces = workspaces;
-        AiBar = aiBar;
         Tabs = tabs;
         TodoTree = todoTree;
-        Sessions = sessions;
         Recent = recent ?? new RecentItemsViewModel(new RecentUsageService());
         Settings = settings;
         Appearance = appearance;
@@ -238,7 +229,6 @@ public sealed partial class ShellViewModel : ObservableObject
         GitPanel = gitPanel;
         GitSession = gitSession;
         DiffSession = diffSession;
-        TraceSession = traceSession;
         Browser = browser;
         SearchPanel = searchPanel;
         Debug = debug;
@@ -324,9 +314,6 @@ public sealed partial class ShellViewModel : ObservableObject
                 }
                 NormalizeSections();
             };
-
-        // 設定保存時に AIバーのプロバイダ表示を更新する。
-        Settings.Saved += AiBar.RefreshProviderLabel;
     }
 
     /// <summary>ActivityBar のエクスプローラアイコン。</summary>
@@ -415,7 +402,6 @@ public sealed partial class ShellViewModel : ObservableObject
         }
         SettingsCategory = category;
         IsSettingsOverlayOpen = true;
-        Settings.EnsureModelsLoaded();
     }
 
     /// <summary>

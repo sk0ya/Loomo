@@ -7,18 +7,14 @@ using System.Threading.Tasks;
 using sk0ya.Loomo.Core.Abstractions;
 using sk0ya.Loomo.Core.Files;
 using sk0ya.Loomo.Core.Models;
-using sk0ya.Loomo.Core.Safety;
 
 namespace sk0ya.Loomo.Services;
 
 /// <summary>ファイルシステムと FolderTree 選択状態を管理する IWorkspaceService 実装。</summary>
 public sealed class WorkspaceService : IWorkspaceService
 {
-    private readonly SafetySettings _safety;
     private string? _selectedPath;
     private readonly List<string> _folders = new();
-
-    public WorkspaceService(SafetySettings safety) => _safety = safety;
 
     public IReadOnlyList<string> Folders => _folders;
 
@@ -105,9 +101,9 @@ public sealed class WorkspaceService : IWorkspaceService
                 ? Path.GetFullPath(path)
                 : Path.GetFullPath(Path.Combine(root, path));
 
-        // 設計書 §10: ツールのアクセスはワークスペースフォルダー配下に限定（パストラバーサル防止）。
+        // ワークスペースフォルダー配下に限定する（パストラバーサル防止）。
         // マルチルート：プライマリ以外に AddFolder で追加したフォルダー配下も許可対象に含める。
-        if (_safety.RestrictToWorkspaceRoot && _folders.Count > 0 && !WorkspacePaths.Contains(_folders, full))
+        if (_folders.Count > 0 && !WorkspacePaths.Contains(_folders, full))
             throw new UnauthorizedAccessException(
                 $"ワークスペースフォルダー外へのアクセスは許可されていません: {full}");
 

@@ -7,8 +7,6 @@ using System.Windows.Threading;
 using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.App.ViewModels;
 using sk0ya.Loomo.App.Views;
-using sk0ya.Loomo.Core.Agent;
-
 namespace sk0ya.Loomo.Tests;
 
 /// <summary>住所欄（ファイル一覧のアドレスバー）の畳み方を実ビューで見る。
@@ -115,8 +113,7 @@ public sealed class FilesAddressDismissTests
 
         var workspace = new FakeWorkspaceService();
         workspace.OpenFolder(root);
-        var tree = new FolderTreeViewModel(workspace, new FakeAiWarmup(),
-            new WorkflowStore(Path.Combine(Path.GetTempPath(), $"loomo-address-wf-{Guid.NewGuid():N}")),
+        var tree = new FolderTreeViewModel(workspace,
             new FolderTreeCommandHandler(workspace, new FileOperationHistory()), new FolderTreeQuery());
         var column = new FilesColumnViewModel(
             workspace, FolderTreeCommandHandler.Unconfined(workspace, new FileOperationHistory()),

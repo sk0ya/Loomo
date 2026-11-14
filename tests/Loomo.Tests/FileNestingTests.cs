@@ -2,7 +2,6 @@ using System.IO;
 using System.Linq;
 using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.App.ViewModels;
-using sk0ya.Loomo.Core.Agent;
 using sk0ya.Loomo.Core.Files;
 using sk0ya.Loomo.Core.Safety;
 using sk0ya.Loomo.Core.Settings;
@@ -205,9 +204,8 @@ public sealed class FolderTreeFileNestingTests : IDisposable
     private (FolderTreeViewModel Sut, LoomoSettings Settings) CreateSut()
     {
         var settings = new LoomoSettings();
-        var workspace = new WorkspaceService(new SafetySettings());
-        var sut = new FolderTreeViewModel(workspace, new FakeAiWarmup(),
-            new WorkflowStore(Path.Combine(Path.GetTempPath(), "loomo-test-workflows")),
+        var workspace = new WorkspaceService();
+        var sut = new FolderTreeViewModel(workspace,
             new FolderTreeCommandHandler(workspace, new FileOperationHistory()), new FolderTreeQuery(),
             settings: settings, settingsStore: new SettingsStore(_settingsPath));
         return (sut, settings);

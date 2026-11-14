@@ -1,34 +1,19 @@
 ﻿using System.Collections.Generic;
 using System.Linq;
 using sk0ya.Loomo.Core.Models;
-using sk0ya.Loomo.Core.Observability;
-using sk0ya.Loomo.Core.Safety;
 
 namespace sk0ya.Loomo.Core.Settings;
 
 /// <summary>Loomo 全体のユーザー設定。settings.json から読み書きする。</summary>
 public sealed class LoomoSettings
 {
-    public const string DefaultLocalModel = "qwen3-4b-q4_k_m";
-
-    /// <summary>現在選択中のプロバイダ。</summary>
-    public AiProvider Provider { get; set; } = AiProvider.Local;
-
     /// <summary>UIのカラーテーマ（配色）。既定はダーク。</summary>
     public AppTheme Theme { get; set; } = AppTheme.Dark;
-
-    /// <summary>AIウォームアップを有効にするか。既定は有効。
-    /// 有効なら起動時／ワークスペース確定時に現在のローカルモデルをロードし、system プロンプト＋ツール定義の
-    /// 安定プレフィックスを常駐エンジンへ prefill して KV キャッシュを温める（初回ターンの prefill を
-    /// 払い直さず体感が速くなる）。暖機の実行中は AI への指示を受け付けない
-    /// （ローカル推論エンジンがモデルロード・prefill 中で占有されるため）。
-    /// 無効にすると暖機を一切行わず、最初のAIターンで通常どおりロード／prefill する。</summary>
-    public bool WarmupEnabled { get; set; } = true;
 
     /// <summary>アクセントカラーの上書き（"#RRGGBB" 等）。null/空ならテーマ既定のアクセントを使う。</summary>
     public string? AccentColor { get; set; }
 
-    /// <summary>「機能をペインに前面表示する」ときの配置の振る舞い（「AIへ送る」「ブラウザへ送る」
+    /// <summary>「機能をペインに前面表示する」ときの配置の振る舞い（「ブラウザへ送る」
     /// 「差分を開く」等の共通経路）。既定は <see cref="PaneOpenBehavior.Main"/>（左上と入れ替え＝従来動作）。</summary>
     public PaneOpenBehavior PaneOpenBehavior { get; set; } = PaneOpenBehavior.Main;
 
@@ -106,20 +91,11 @@ public sealed class LoomoSettings
     /// <summary>Azure DevOps 連携（ActivityBar の Work Items）。</summary>
     public AzureDevOpsSettings AzureDevOps { get; set; } = new();
 
-    /// <summary>コマンド実行・書込の安全設計（設計書 §10）。</summary>
-    public SafetySettings Safety { get; set; } = new();
-
-    /// <summary>AI操作トレース（観測性・設計書 §20）の設定。</summary>
-    public ObservabilitySettings Observability { get; set; } = new();
-
     /// <summary>埋め込み Vim エディタの設定。</summary>
     public VimSettings Vim { get; set; } = new();
 
     /// <summary>埋め込みエディタの表示設定。</summary>
     public EditorSettings Editor { get; set; } = new();
-
-    /// <summary>入力の先読み（キャレットの先に薄く出る提案）のうち、ローカル LLM が作る方の設定。</summary>
-    public InlineCompletionSettings InlineCompletion { get; set; } = new();
 
     /// <summary>キーボードショートカットのユーザー上書き（既定と異なるものだけ保持）。</summary>
     public KeybindingSettings Keybindings { get; set; } = new();
@@ -138,46 +114,6 @@ public sealed class LoomoSettings
     /// <c>LspServerTable</c>（%APPDATA%/Loomo/lsp-servers.json）が持ち、ここには「促しバーを今後出さない
     /// 拡張子」など Loomo の UI 状態だけを置く。</summary>
     public LspSettings Lsp { get; set; } = new();
-
-    /// <summary>ローカルLLM（in-process／CPU）。既定は llama.cpp バックエンドの Qwen3-4B GGUF Q4_K_M
-    /// （decode は ONNX と互角・prefill とロードは速い・モデル入手容易）。バックエンドは modelPath で
-    /// 振り分かる（<see cref="Clients.LocalInferenceRouter"/>：<c>.gguf</c>→llama.cpp／フォルダ→ONNX）。</summary>
-    public ProviderConfig Local { get; set; } = new()
-    {
-        Model = DefaultLocalModel,
-        MaxTokens = 4096
-    };
-
-    public ProviderConfig ConfigFor(AiProvider provider) => Local;
-}
-
-public sealed class ProviderConfig
-{
-    public string Model { get; set; } = "";
-
-    /// <summary>ローカル推論エンジンが読むモデルパス。GGUF なら <c>*.gguf</c> ファイル、ONNX Runtime GenAI
-    /// なら <c>genai_config.json</c> ＋ <c>*.onnx</c> ＋ tokenizer 一式を含むフォルダ。空なら未設定。</summary>
-    public string ModelPath { get; set; } = "";
-
-    /// <summary>APIキー。実運用では資格情報マネージャ等から注入する想定。</summary>
-    public string? ApiKey { get; set; }
-
-    /// <summary>1応答で生成させる最大トークン数（出力上限）。</summary>
-    public int MaxTokens { get; set; } = 4096;
-
-    /// <summary>
-    /// ローカル推論エンジンのコンテキスト窓の上書き。
-    /// 0 以下なら <see cref="Clients.ModelProfile.NumCtx"/>（モデル別の推奨値）を使う。
-    /// メモリ制約のある環境ではここで小さくできる。この実効値は履歴トリムの上限にも反映される。
-    /// </summary>
-    public int NumCtx { get; set; }
-
-    /// <summary>
-    /// モデルのコンテキストウィンドウ上限（入力+出力）。これを超えないよう送信前に古い履歴を切り詰める。
-    /// 実効 <c>num_ctx</c> とこの値の小さい方が実際のトリム上限になる。0以下でトリム無効。
-    /// </summary>
-    public int MaxContextTokens { get; set; } = 128_000;
-
 }
 
 /// <summary>言語サーバー（LSP）に関する Loomo 側の UI 設定。拡張子→サーバーの対応・カスタムサーバーは

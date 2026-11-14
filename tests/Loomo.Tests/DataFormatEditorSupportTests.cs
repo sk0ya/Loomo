@@ -1,4 +1,3 @@
-using sk0ya.Loomo.Ai;
 using sk0ya.Loomo.App.Services;
 
 namespace sk0ya.Loomo.Tests;

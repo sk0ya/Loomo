@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Windows.Input;
-using sk0ya.Loomo.Ai;
 using sk0ya.Loomo.App.Input;
 using sk0ya.Loomo.CSharp.Editor;
 using Xunit;

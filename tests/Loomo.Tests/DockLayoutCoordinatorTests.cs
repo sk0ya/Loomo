@@ -19,7 +19,6 @@ public class DockLayoutCoordinatorTests
     // ターミナルは中央＝自分で打つ面（下の高さでは打つ場所として足りない）。
     [InlineData(PaneKind.Terminal, DockRegion.Center)]
     [InlineData(PaneKind.Browser, DockRegion.Center)]
-    [InlineData(PaneKind.Ai, DockRegion.Center)]
     [InlineData(PaneKind.EditorSupport, DockRegion.Right)]
     [InlineData(PaneKind.Git, DockRegion.Bottom)]
     [InlineData(PaneKind.Debug, DockRegion.Bottom)]
@@ -33,13 +32,13 @@ public class DockLayoutCoordinatorTests
     /// <para>下の領域は主役を押しのけない高さしか取らないので、覗きに行く場所にはなっても
     /// 居座って打つ場所にはならない。打っている間はそれが主役——中央で本文と同じ大きさを取る。</para></summary>
     [Fact]
-    public void Terminal_is_a_center_pane_ahead_of_the_ai()
+    public void Terminal_is_a_center_pane_ahead_of_the_browser()
     {
         var dock = Active();
         var center = dock.PanesIn(DockRegion.Center).ToList();
 
         Assert.Equal(DockRegion.Center, dock.RegionOf(PaneKind.Terminal));
-        Assert.True(center.IndexOf(PaneKind.Terminal) < center.IndexOf(PaneKind.Ai));
+        Assert.True(center.IndexOf(PaneKind.Terminal) < center.IndexOf(PaneKind.Browser));
         Assert.Equal(PaneKind.Editor, center[0]);          // 中央の先頭＝立ち上がりに立つ面
         Assert.Equal(PaneKind.Terminal, center[1]);
         Assert.DoesNotContain(PaneKind.Terminal, dock.PanesIn(DockRegion.Bottom));
@@ -524,20 +523,20 @@ public class DockLayoutCoordinatorTests
         var dock = new DockLayoutCoordinator();
         dock.Restore(
             active: true,
-            regions: new[] { new KeyValuePair<PaneKind, DockRegion>(PaneKind.Ai, DockRegion.Right) },
+            regions: new[] { new KeyValuePair<PaneKind, DockRegion>(PaneKind.Search, DockRegion.Right) },
             centerPane: PaneKind.Browser,
             centerClosed: false,
             bottomPane: PaneKind.Git,
-            rightPane: PaneKind.Ai,
+            rightPane: PaneKind.Search,
             bottomHeight: 300,
             rightWidth: 400);
 
         Assert.True(dock.Active);
-        Assert.Equal(DockRegion.Right, dock.RegionOf(PaneKind.Ai));
+        Assert.Equal(DockRegion.Right, dock.RegionOf(PaneKind.Search));
         Assert.Equal(DockRegion.Bottom, dock.RegionOf(PaneKind.Git));   // 保存に無い面は既定のまま
         Assert.Equal(PaneKind.Browser, dock.CenterPane);
         Assert.Equal(PaneKind.Git, dock.BottomPane);
-        Assert.Equal(PaneKind.Ai, dock.RightPane);
+        Assert.Equal(PaneKind.Search, dock.RightPane);
         Assert.Equal(300, dock.BottomHeight);
         Assert.Equal(400, dock.RightWidth);
     }
@@ -600,12 +599,12 @@ public class DockLayoutCoordinatorTests
     {
         var dock = Active();
         dock.Toggle(PaneKind.Git);
-        dock.Place(PaneKind.Ai, DockRegion.Right);
+        dock.Place(PaneKind.Search, DockRegion.Right);
 
         Assert.True(dock.Exit());
         Assert.False(dock.Active);
         Assert.Equal(PaneKind.Git, dock.BottomPane);
-        Assert.Equal(DockRegion.Right, dock.RegionOf(PaneKind.Ai));
+        Assert.Equal(DockRegion.Right, dock.RegionOf(PaneKind.Search));
 
         Assert.True(dock.Enter());
         Assert.True(dock.IsOpen(PaneKind.Git));

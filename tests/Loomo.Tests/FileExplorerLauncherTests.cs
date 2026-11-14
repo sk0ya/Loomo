@@ -60,7 +60,7 @@ public sealed class FileExplorerLauncherTests : IDisposable
     [Fact]
     public void 余白の右クリックだけに現在フォルダーの項目を出す()
     {
-        var none = new FileContextMenuState(0, 0, false, false, false, false, false, false, false, false, false, false, false);
+        var none = new FileContextMenuState(0, 0, false, false, false, false, false, false, false, false, false, false);
 
         Assert.True(FileContextMenuPolicy.IsVisible("Background", none, historyVisible: false));
         Assert.False(FileContextMenuPolicy.IsVisible("Background", none with { SelectionCount = 1 }, historyVisible: false));

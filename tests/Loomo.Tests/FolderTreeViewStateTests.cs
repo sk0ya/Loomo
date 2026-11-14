@@ -2,7 +2,6 @@ using System.IO;
 using System.Linq;
 using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.App.ViewModels;
-using sk0ya.Loomo.Core.Agent;
 using sk0ya.Loomo.Core.Safety;
 using sk0ya.Loomo.Services;
 
@@ -46,9 +45,8 @@ public sealed class FolderTreeViewStateTests : IDisposable
 
     private static FolderTreeViewModel CreateSut()
     {
-        var workspace = new WorkspaceService(new SafetySettings());
-        return new FolderTreeViewModel(workspace, new FakeAiWarmup(),
-            new WorkflowStore(Path.Combine(Path.GetTempPath(), "loomo-test-workflows")),
+        var workspace = new WorkspaceService();
+        return new FolderTreeViewModel(workspace,
             new FolderTreeCommandHandler(workspace, new FileOperationHistory()), new FolderTreeQuery());
     }
 

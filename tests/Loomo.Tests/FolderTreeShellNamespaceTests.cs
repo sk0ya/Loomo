@@ -152,8 +152,7 @@ public sealed class FolderTreeShellNamespaceTests
         try
         {
             var workspace = new FakeWorkspaceService();
-            var sut = new FolderTreeViewModel(workspace, new FakeAiWarmup(),
-                new sk0ya.Loomo.Core.Agent.WorkflowStore(Path.Combine(Path.GetTempPath(), "loomo-shell-workflows")),
+            var sut = new FolderTreeViewModel(workspace,
                 new FolderTreeCommandHandler(workspace, new FileOperationHistory()), new FolderTreeQuery(new UnavailableShellProvider()));
 
             sut.LoadRoot(root);
@@ -206,7 +205,6 @@ public sealed class FolderTreeShellNamespaceTests
     }
 
     private static FolderTreeViewModel CreateSut(FakeWorkspaceService workspace, FolderTreeQuery query)
-        => new(workspace, new FakeAiWarmup(),
-            new sk0ya.Loomo.Core.Agent.WorkflowStore(Path.Combine(Path.GetTempPath(), "loomo-shell-workflows")),
+        => new(workspace,
             new FolderTreeCommandHandler(workspace, new FileOperationHistory()), query);
 }

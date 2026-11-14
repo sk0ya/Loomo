@@ -3,7 +3,6 @@ using sk0ya.Loomo.CSharp.Testing;
 using sk0ya.Loomo.CSharp.Debug;
 using sk0ya.Loomo.CSharp.LanguageServer;
 using sk0ya.Loomo.CSharp.Editor;
-using sk0ya.Loomo.Core.Agent;
 using sk0ya.Loomo.Core.Debug;
 
 namespace sk0ya.Loomo.Tests;
@@ -17,7 +16,7 @@ public sealed class CSharpAssemblyBoundaryTests
         Assert.Equal("sk0ya.Loomo.CSharp", typeof(ITestDiscoveryService).Assembly.GetName().Name);
         Assert.Equal("sk0ya.Loomo.CSharp", typeof(CSharpTrxResultParser).Assembly.GetName().Name);
 
-        var coreTypes = typeof(AgentOrchestrator).Assembly.GetExportedTypes();
+        var coreTypes = typeof(sk0ya.Loomo.Core.Files.WorkspacePaths).Assembly.GetExportedTypes();
         var legacyProjectNamespace = "sk0ya.Loomo." + "Core.Projects";
         Assert.DoesNotContain(coreTypes, type =>
             type.Namespace?.StartsWith(legacyProjectNamespace, StringComparison.Ordinal) == true);
@@ -72,7 +71,7 @@ public sealed class CSharpAssemblyBoundaryTests
         {
             typeof(sk0ya.Loomo.App.Views.ShellWindow).Assembly,
             typeof(sk0ya.Loomo.Services.Lsp.LspServerCatalog).Assembly,
-            typeof(AgentOrchestrator).Assembly,
+            typeof(sk0ya.Loomo.Core.Files.WorkspacePaths).Assembly,
         };
 
         foreach (var assembly in uiAndAdapterAssemblies)

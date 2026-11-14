@@ -1,6 +1,5 @@
 ﻿using System.IO;
 using Microsoft.Data.Sqlite;
-using sk0ya.Loomo.Ai;
 using sk0ya.Loomo.App.Layout;
 using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.App.ViewModels;

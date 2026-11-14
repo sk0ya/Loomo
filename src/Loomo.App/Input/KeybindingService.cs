@@ -1,8 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using sk0ya.Loomo.Ai;
-
 namespace sk0ya.Loomo.App.Input;
 
 /// <summary>1 コマンドの現在状態（設定画面・パレット表示用）。</summary>

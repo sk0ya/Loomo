@@ -1,5 +1,4 @@
 using Microsoft.Extensions.DependencyInjection;
-using sk0ya.Loomo.Ai;
 using sk0ya.Loomo.Services.Lsp;
 
 namespace sk0ya.Loomo.App.Services;
@@ -35,9 +34,5 @@ internal sealed class AppBootstrapper
         _themeManager.Apply(_settings.Theme, _settings.AccentColor);
         _fontManager.Apply(UiFontManager.Effective(_settings.Appearance.UiFontSize));
         StartupProfiler.Mark("テーマ適用完了");
-
-        // 設定ロード後に解決し、保存済みのモデル設定を使って暖機を開始する。
-        _services.GetRequiredService<LocalLlmWarmupService>();
-        StartupProfiler.Mark("ウォームアップ起動完了");
     }
 }

@@ -12,7 +12,7 @@ namespace sk0ya.Loomo.App.Services;
 /// 配色を差し替える <see cref="ThemeManager"/> と同じ流儀。
 ///
 /// 対象は WPF で組んだアプリ UI のみ。エディタ／ターミナルは各コントロールが持つ独自のフォントサイズ
-/// 設定（<see cref="sk0ya.Loomo.Ai.AppearanceSettings.EditorFontSize"/> など）で別管理し、この設定とは連動しない。
+/// 設定（<see cref="AppearanceSettings.EditorFontSize"/> など）で別管理し、この設定とは連動しない。
 /// Markdown プレビュー／ブラウザは WebView2 側の CSS のため、そもそもこのトークンの影響を受けない。</summary>
 public sealed class UiFontManager
 {

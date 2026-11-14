@@ -38,7 +38,7 @@ public sealed class DockLayoutCoordinator
     public static readonly PaneKind[] DockOrder =
     [
         PaneKind.Editor, PaneKind.Terminal, PaneKind.Browser, PaneKind.EditorSupport, PaneKind.Git,
-        PaneKind.Ai, PaneKind.Debug, PaneKind.TsIde, PaneKind.Search, PaneKind.Files, PaneKind.Harness,
+        PaneKind.Debug, PaneKind.TsIde, PaneKind.Search, PaneKind.Files, PaneKind.Harness,
         PaneKind.TerminalSupport, PaneKind.BrowserSupport,
     ];
 
@@ -48,20 +48,19 @@ public sealed class DockLayoutCoordinator
     /// だから保存・復元はここを通す。</para></summary>
     public static bool IsDockable(PaneKind kind) => Array.IndexOf(DockOrder, kind) >= 0;
 
-    /// <summary>既定の割り当て。<b>自分で打つ面</b>——書く（エディタ）・打つ（ターミナル）・読む（ブラウザ）・
-    /// 尋ねる（AI）——は中央に置き、手を動かさずに<b>眺める道具</b>（履歴・ビルド・検索・一覧）は下、
+    /// <summary>既定の割り当て。<b>自分で打つ面</b>——書く（エディタ）・打つ（ターミナル）・読む（ブラウザ）——
+    /// は中央に置き、手を動かさずに<b>眺める道具</b>（履歴・ビルド・検索・一覧）は下、
     /// 本文の脇に添える面は右へ置く。
     /// <para><b>ターミナルは下の道具ではなく中央の面。</b>下の領域は主役を押しのけない高さ
     /// （<see cref="DefaultBottomHeight"/>）で、覗きに行く場所としては足りても<b>居座って打つ場所</b>
     /// には足りない。打っている間はそれが主役なので、中央で本文と同じ大きさを取る——並びは
-    /// <see cref="DockOrder"/> のとおりエディタの次、AI より前。</para></summary>
+    /// <see cref="DockOrder"/> のとおりエディタの次。</para></summary>
     public static IReadOnlyDictionary<PaneKind, DockRegion> DefaultRegions { get; } =
         new Dictionary<PaneKind, DockRegion>
         {
             [PaneKind.Editor] = DockRegion.Center,
             [PaneKind.Terminal] = DockRegion.Center,
             [PaneKind.Browser] = DockRegion.Center,
-            [PaneKind.Ai] = DockRegion.Center,
             [PaneKind.EditorSupport] = DockRegion.Right,
             [PaneKind.Git] = DockRegion.Bottom,
             [PaneKind.Debug] = DockRegion.Bottom,

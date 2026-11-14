@@ -191,7 +191,7 @@ internal static class SelectionActionMenuBuilder
 
     /// <summary>
     /// 選んだテキストの「送る」を、FolderTree と同じ<b>「ペインへ送る」サブメニュー1つ</b>に畳む（§24.3）。子の見出しは
-    /// 受け取るペインの名前だけ（「AI」「ブラウザ」「エディタ（a.cs:12）」…）。<paramref name="leadingItems"/> は先頭
+    /// 受け取るペインの名前だけ（「ブラウザ」「エディタ（a.cs:12）」…）。<paramref name="leadingItems"/> は先頭
     /// （エディタの「Claude Code」）、<paramref name="trailingItems"/> は末尾に入る。
     /// Diff は FolderTree と同じく見比べる相手を選ぶ別のサブメニュー「Diffへ送る」としてその下に並べる。
     /// </summary>
@@ -201,10 +201,7 @@ internal static class SelectionActionMenuBuilder
         bool hasSelection,
         MenuItem? editorItem,
         MenuItem? diffItem,
-        bool aiAvailable,
-        Action askAi,
         Action<string> searchInBrowser,
-        Action<ItemsControl, string> addWorkflowItems,
         IEnumerable<MenuItem>? leadingItems = null,
         IEnumerable<MenuItem>? trailingItems = null)
     {
@@ -214,14 +211,6 @@ internal static class SelectionActionMenuBuilder
             send.Items.Add(item);
         if (hasText)
         {
-            var ask = new MenuItem
-            {
-                Header = "AI",
-                ToolTip = "選択テキストについてAIに尋ねる",
-                IsEnabled = aiAvailable,
-            };
-            ask.Click += (_, _) => askAi();
-            send.Items.Add(ask);
             var search = new MenuItem
             {
                 Header = "ブラウザ",
@@ -234,8 +223,6 @@ internal static class SelectionActionMenuBuilder
             send.Items.Add(editorItem);
         foreach (var item in trailingItems ?? [])
             send.Items.Add(item);
-        if (hasText)
-            addWorkflowItems(send, selectedText);
         if (send.Items.Count > 0)
             menu.Items.Add(send);
         if (diffItem is not null)
@@ -265,31 +252,5 @@ internal static class SelectionActionMenuBuilder
             parent.Items.Add(item);
         }
         return parent;
-    }
-
-    public static void AddWorkflowMenuItems(
-        ItemsControl menu,
-        string input,
-        IEnumerable<(string Id, string Name)> workflows,
-        bool aiAvailable,
-        Action<string, string> runWorkflow)
-    {
-        var entries = workflows.ToArray();
-        if (entries.Length == 0)
-            return;
-        var parent = new MenuItem
-        {
-            Header = "AIワークフロー",
-            ToolTip = "選択テキストを入力にしてワークフローを実行する",
-            IsEnabled = aiAvailable,
-        };
-        foreach (var workflow in entries)
-        {
-            var id = workflow.Id;
-            var item = new MenuItem { Header = workflow.Name };
-            item.Click += (_, _) => runWorkflow(id, input);
-            parent.Items.Add(item);
-        }
-        menu.Items.Add(parent);
     }
 }

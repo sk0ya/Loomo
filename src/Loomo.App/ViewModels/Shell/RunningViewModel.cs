@@ -58,7 +58,6 @@ public sealed partial class RunningItemViewModel : ObservableObject
             RunningEntryKind.Claude => "✳",
             RunningEntryKind.Debug => "🐞",
             RunningEntryKind.IdeTask => "⚙",
-            RunningEntryKind.Ai => "✦",
             _ => "◇",
         };
     }

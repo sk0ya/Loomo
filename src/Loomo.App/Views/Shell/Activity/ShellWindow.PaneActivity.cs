@@ -1,29 +1,14 @@
 namespace sk0ya.Loomo.App.Views;
-/// <summary>ShellWindow: ペイン活動インジケータ（袖＝周辺視野）。Terminal / IDE / TS IDE / AI の長い処理を
-/// 袖・俯瞰カードのバッジで知らせ、ペインを見ていない間も実行中／承認待ち／完了／失敗を
+/// <summary>ShellWindow: ペイン活動インジケータ（袖＝周辺視野）。Terminal / IDE / TS IDE の長い処理を
+/// 袖カードのバッジで知らせ、ペインを見ていない間も実行中／承認待ち／完了／失敗を
 /// 目の端で追えるようにする。ターミナルで動く Claude Code の作業中／入力待ちもここに出す（§24.1.1）。
-/// 未確認結果は対象ペインが舞台に立つと消える。</summary>
+/// 未確認結果は対象ペインが見えると消える。</summary>
 public partial class ShellWindow {
     private readonly PaneActivityTracker _paneActivity = new();
     /// <summary>ターミナルのどれかで最後に終わったコマンド（コマンド行・終了コード）。Git ペインの bisect が判定に使う（§24.100）。</summary>
     private (string Command, int? ExitCode)? _lastTerminalCommand;
     private readonly Dictionary<PaneKind, (Border Chip, TextBlock Label)> _stageActivityBadges = new();
 
-    private void HookAiActivity() {
-        _vm.AiBar.PropertyChanged += (_, e) => {
-            if (e.PropertyName is nameof(AiBarViewModel.IsBusy)
-                or nameof(AiBarViewModel.StatusText)
-                or nameof(AiBarViewModel.LastRunSucceeded))
-                OnAiActivityChanged(chatChanged: true);
-        };
-        _vm.AiBar.Workflow.PropertyChanged += (_, e) => {
-            if (e.PropertyName is nameof(WorkflowViewModel.IsRunning)
-                or nameof(WorkflowViewModel.RunStatus))
-                OnAiActivityChanged(chatChanged: false);
-        };
-        _vm.AiBar.Workflow.Approvals.CollectionChanged += (_, _) =>
-            UpdatePaneActivityBadge(PaneKind.Ai);
-    }
     private void HookIdeActivity(PaneKind kind, DebugManagerViewModelBase manager) {
         _paneActivity.TrackIdeTask(kind, manager.IsTaskRunning);
         manager.PropertyChanged += (_, e) => {
@@ -40,12 +25,6 @@ public partial class ShellWindow {
         UpdatePaneActivityBadge(kind);
     }
 
-    private void OnAiActivityChanged(bool chatChanged) {
-        _paneActivity.AiActivityChanged(
-            chatChanged, _vm.AiBar.IsBusy, _vm.AiBar.LastRunSucceeded,
-            _vm.AiBar.Workflow.IsRunning, _vm.AiBar.Workflow.RunStatus, IsAiPaneWatched());
-        UpdatePaneActivityBadge(PaneKind.Ai);
-    }
     /// <summary>可視ターミナルへ cd やインストールを打ち込む経路（TerminalService）に、前面が埋まっているかを
     /// 教える。Claude Code が居るタブへ cd を打てば、それが Claude への頼みごととして送信される。</summary>
     private void WireTerminalForegroundBusy()
@@ -213,7 +192,6 @@ public partial class ShellWindow {
         => _dockActive ? IsDockPaneShown(kind)
         : IsPaneVisible(kind);
     private bool IsTerminalPaneWatched() => IsPaneWatched(PaneKind.Terminal);
-    private bool IsAiPaneWatched() => IsPaneWatched(PaneKind.Ai);
     private void MarkPaneActivitySeen(PaneKind kind) {
         if (!_paneActivity.MarkSeen(kind))
             return;
@@ -230,9 +208,6 @@ public partial class ShellWindow {
         var activity = kind switch {
             PaneKind.Terminal => _paneActivity.AggregateTerminal(out exitCode, out progress),
             PaneKind.Debug or PaneKind.TsIde => AggregateIdeActivity(kind),
-            PaneKind.Ai => PaneActivityPresentation.AggregateAi(
-                _vm.AiBar.IsBusy, _vm.AiBar.Workflow.IsRunning, _vm.AiBar.StatusText,
-                _vm.AiBar.Workflow.Approvals.Count, _paneActivity.AiUnseenCompletion),
             _ => PaneActivityKind.None,
         };
         UpdateDockBarBadge(kind, activity);   // 袖なしのドックでは帯のアイコンが周辺視野（§24.1）
@@ -282,7 +257,7 @@ public partial class ShellWindow {
     private static readonly Brush PaneActivityFailedBrush =
         new SolidColorBrush(Color.FromRgb(0xD9, 0x53, 0x4D));
     private void AttachActivityBadge(Grid cardRoot, PaneKind kind) {
-        if (kind is not (PaneKind.Terminal or PaneKind.Debug or PaneKind.TsIde or PaneKind.Ai))
+        if (kind is not (PaneKind.Terminal or PaneKind.Debug or PaneKind.TsIde))
             return;
         var label = new TextBlock {
             FontSize = 11, FontWeight = FontWeights.SemiBold, Foreground = Brushes.White, };

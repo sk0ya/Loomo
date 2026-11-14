@@ -11,7 +11,6 @@ using System.Windows.Media;
 using Microsoft.VisualBasic.FileIO;
 using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.Core.Abstractions;
-using sk0ya.Loomo.Core.Agent;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
@@ -274,48 +273,6 @@ public sealed partial class FolderTreeViewModel
     {
         if (_fileCommands.EntryExists(node.FullPath, node.IsDirectory))
             RevealInFilesPaneRequested?.Invoke(this, node.FullPath);
-    }
-
-    /// <summary>指定ファイルの誤字脱字チェックを要求する（ShellWindow が AIバーで処理）。
-    /// AI が使える状態（暖機完了）かつ実在ファイルのときだけ発火する。</summary>
-    public void RequestTypoCheck(FileNodeViewModel node)
-    {
-        if (!node.IsDirectory && IsAiReady && _fileCommands.FileExists(node.FullPath))
-            TypoCheckRequested?.Invoke(this, node.FullPath);
-    }
-
-    /// <summary>選択ファイル／フォルダーをAI定型操作へ渡す。実体の読み取りと安全な除外は
-    /// 共通コンテキストビルダーで行うため、ここではシェル項目と空選択だけを弾く。</summary>
-    public void RequestFileAi(FileAiAction action, IEnumerable<FileNodeViewModel> nodes)
-    {
-        if (!IsAiReady)
-            return;
-        var paths = nodes.Where(node => !node.IsShellItem)
-            .Select(node => node.FullPath)
-            .Where(path => !string.IsNullOrWhiteSpace(path))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
-        if (paths.Count > 0)
-            FileAiRequested?.Invoke(this, new FileAiRequest(action, paths));
-    }
-
-    /// <summary>コンテキストメニューに出す「入力ありワークフロー」一覧。</summary>
-    public IReadOnlyList<WorkflowSummary> InputWorkflows() => _workflows.ListInputWorkflows();
-
-    /// <summary>指定ワークフローを、当該ファイルを構造化 input として実行するよう要求する
-    /// （ShellWindow が AIバーをワークフローモードへ切替えて処理）。実在ファイルのときだけ発火する。</summary>
-    public void RequestRunWorkflow(FileNodeViewModel? node, string workflowId)
-    {
-        if (node is { IsDirectory: false } && _fileCommands.FileExists(node.FullPath)
-            && !string.IsNullOrEmpty(workflowId))
-        {
-            var folderRoot = FolderRootFor(node.RootKey);
-            var relativePath = folderRoot is null
-                ? null
-                : Path.GetRelativePath(folderRoot, node.FullPath);
-            WorkflowRequested?.Invoke(this,
-                new WorkflowRunRequest(workflowId, WorkflowRunInput.FromFile(node.FullPath, relativePath)));
-        }
     }
 
     /// <summary>rootKey が属するワークスペースフォルダーの固定ルート（単一フォルダー時は

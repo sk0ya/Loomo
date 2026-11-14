@@ -1,6 +1,5 @@
 using System;
 using System.IO;
-using sk0ya.Loomo.Ai;
 using sk0ya.Loomo.App.ViewModels;
 using sk0ya.Loomo.Services.Lsp;
 using Xunit;

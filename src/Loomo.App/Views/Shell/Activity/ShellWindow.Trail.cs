@@ -27,7 +27,6 @@ public partial class ShellWindow {
             () => _focusedRegion?.Pane,
             CommitTrailPane);
         _vm.Trail.JumpRequested += (_, entry) => JumpToTrailEntry(entry);
-        _vm.AiBar.SessionActivated += (_, e) => RecordTrailSession(e.Id, e.Title);
         _git.OperationExecuted += (_, e) =>
             Dispatcher.BeginInvoke(new Action(() => RecordTrailGit(e.Command, e.Success)));
         _vm.Trail.Entries.CollectionChanged += (_, _) =>
@@ -184,12 +183,6 @@ public partial class ShellWindow {
             _vm.Trail.Record(target.Kind, target.Target, target.Label, target.Line, target.Column,
                 recordMode, recordStagePane, recordLayout));
     }
-    private void RecordTrailSession(string id, string title) {
-        if (string.IsNullOrWhiteSpace(id))
-            return;
-        RecordTrail((mode, stagePane, layout) =>
-            _vm.Trail.RecordSession(id, title, mode, stagePane, layout));
-    }
     private void RecordTrailPanel(SidebarPanel panel)
         => RecordTrail((mode, stagePane, layout) =>
             _vm.Trail.RecordPanel(panel.ToString(), TrailLogic.PanelDisplayName(panel), mode, stagePane, layout));
@@ -207,7 +200,7 @@ public partial class ShellWindow {
         _trailJumpCoordinator.Register(TrailEntryKind.Panel, entry => { JumpToPanel(entry); return Task.CompletedTask; });
         _trailJumpCoordinator.Register(TrailEntryKind.Terminal, entry => { JumpToTerminal(entry); return Task.CompletedTask; });
         _trailJumpCoordinator.Register(TrailEntryKind.Preview, JumpToPreviewAsync);
-        _trailJumpCoordinator.Register(TrailEntryKind.Session, entry => { JumpToSession(entry); return Task.CompletedTask; });
+        _trailJumpCoordinator.Register(TrailEntryKind.Session, _ => Task.CompletedTask);   // AI ペインの会話（撤去済み）。旧データの点は戻り先を持たない
         _trailJumpCoordinator.Register(TrailEntryKind.Layout, _ => Task.CompletedTask);
         _trailJumpCoordinator.Register(TrailEntryKind.Edit, JumpToFileAsync);
         _trailJumpCoordinator.Register(TrailEntryKind.Git, _ => Task.CompletedTask);
@@ -221,7 +214,7 @@ public partial class ShellWindow {
         entry.PaneLayout,
         pane => _paneElements.ContainsKey(pane),
         id => _terminalTabs.Any(t => t.Id == id),
-        id => _vm.AiBar.SessionExists(id));
+        _ => false);
     /// <summary>点を打ったときのタイル配置へ戻す。旧ソロ（撤去済み）の点は、舞台の裏にあったタイル配置へ戻すだけ。</summary>
     private void RestoreTrailDisplayContext(TrailEntryViewModel entry) {
         if (!string.IsNullOrWhiteSpace(entry.PaneLayout)) {
@@ -263,12 +256,6 @@ public partial class ShellWindow {
         if (!Enum.TryParse<SidebarPanel>(entry.Target, out var panel))
             return;
         _vm.RestorePanel(panel);   // 出せなくなったパネル（C# の消えた部屋）はそっと何もしない
-    }
-    private void JumpToSession(TrailEntryViewModel entry) {
-        if (!_vm.AiBar.RestoreSessionById(entry.Target))
-            return;   // 削除済みセッションは復元不能なので何もしない
-        EnsurePaneVisibleOrSwapTopLeft(PaneKind.Ai);
-        FocusPane(PaneKind.Ai);
     }
     private void JumpToTerminal(TrailEntryViewModel entry) {
         if (!Guid.TryParse(entry.Target, out var id) || _terminalTabs.All(t => t.Id != id))

@@ -4,7 +4,6 @@ using System.Linq;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Editor.Core.Lsp;
-using sk0ya.Loomo.Ai;
 using sk0ya.Loomo.Services.Lsp;
 
 namespace sk0ya.Loomo.App.ViewModels;

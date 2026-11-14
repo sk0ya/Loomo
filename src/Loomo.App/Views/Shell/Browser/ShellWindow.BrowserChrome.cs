@@ -210,10 +210,6 @@ public partial class ShellWindow {
     private void OnBrowserContextMenuRequested(CoreWebView2 core, CoreWebView2ContextMenuRequestedEventArgs e)
         => BrowserContextMenuBuilder.AddItems(
             core, e, Dispatcher,
-            selection => {
-                EnsurePaneVisibleOrSwapTopLeft(PaneKind.Ai);
-                _vm.AiBar.AskAbout(selection);
-            },
             link => {
                 _ = CreateBrowserTabAsync(link);
                 SaveActiveWorkspaceSnapshot();

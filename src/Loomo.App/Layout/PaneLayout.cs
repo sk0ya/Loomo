@@ -55,8 +55,6 @@ public static class PaneLayoutTree
         var root = new PaneSplit { Orientation = SplitKind.Rows };
         root.Children.Add(top);
         root.Children.Add(new PaneLeaf { Kind = PaneKind.Terminal });
-        // AI は既定で隠すが、リーフを残しておくことで表示時に元の位置へ戻せる。
-        root.Children.Add(new PaneLeaf { Kind = PaneKind.Ai, Hidden = true });
         return root;
     }
 

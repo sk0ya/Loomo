@@ -8,7 +8,6 @@ using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Threading;
-using sk0ya.Loomo.Ai;
 using sk0ya.Loomo.Core.Models;
 using VGrid.Commands;
 using VGrid.Editor;

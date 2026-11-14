@@ -3,7 +3,6 @@ using System.IO;
 using System.Text;
 using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.App.ViewModels;
-using sk0ya.Loomo.Core.Agent;
 using sk0ya.Loomo.Core.Safety;
 using sk0ya.Loomo.Services;
 
@@ -73,13 +72,12 @@ public sealed class FolderTreeRepositoryTests : IDisposable
 
     private (FolderTreeViewModel Tree, WorkspaceService Workspace) NewTree(string primary, params string[] more)
     {
-        var workspace = new WorkspaceService(new SafetySettings());
+        var workspace = new WorkspaceService();
         var catalog = new GitRepositoryCatalog(workspace);
         var git = new GitService(workspace, null, catalog);
         var status = new GitWorkspaceStatus(catalog, workspace);
         var chips = new GitRepositoryChips(status, null, action => action());
-        var tree = new FolderTreeViewModel(workspace, new FakeAiWarmup(),
-            new WorkflowStore(Path.Combine(_root, "wf")),
+        var tree = new FolderTreeViewModel(workspace,
             new FolderTreeCommandHandler(workspace, new FileOperationHistory()),
             new FolderTreeQuery(gitStatus: status), gitService: git, repositoryChips: chips);
         workspace.OpenFolder(primary);

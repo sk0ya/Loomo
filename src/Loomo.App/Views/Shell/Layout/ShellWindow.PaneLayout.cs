@@ -8,10 +8,8 @@ public partial class ShellWindow {
         _paneElements[PaneKind.Editor] = EditorPane;
         _paneElements[PaneKind.EditorSupport] = EditorSupportPane;
         _paneElements[PaneKind.Browser] = BrowserPane;
-        _paneElements[PaneKind.Ai] = AiPane;
         _paneElements[PaneKind.Git] = GitPane;
         _paneElements[PaneKind.Diff] = DiffPane;
-        _paneElements[PaneKind.Trace] = TracePane;
         _paneElements[PaneKind.Debug] = DebugPane;
         _paneElements[PaneKind.Search] = SearchPane;
         _paneElements[PaneKind.Files] = FilesPane;

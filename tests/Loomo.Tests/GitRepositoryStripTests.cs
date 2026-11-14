@@ -73,7 +73,7 @@ public sealed class GitRepositoryStripTests : IDisposable
 
     private (GitService Git, WorkspaceService Workspace) NewGit(string primary, params string[] more)
     {
-        var workspace = new WorkspaceService(new SafetySettings());
+        var workspace = new WorkspaceService();
         workspace.OpenFolder(primary);
         foreach (var folder in more) workspace.AddFolder(folder);
         return (new GitService(workspace), workspace);

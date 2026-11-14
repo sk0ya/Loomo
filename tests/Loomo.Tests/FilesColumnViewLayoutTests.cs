@@ -9,8 +9,6 @@ using System.Windows.Threading;
 using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.App.ViewModels;
 using sk0ya.Loomo.App.Views;
-using sk0ya.Loomo.Core.Agent;
-
 namespace sk0ya.Loomo.Tests;
 
 /// <summary>ファイル一覧の表示形式を実際のWPFビューへ適用したときのレイアウト検証。</summary>
@@ -35,8 +33,7 @@ public sealed class FilesColumnViewLayoutTests
 
             var workspace = new FakeWorkspaceService();
             workspace.OpenFolder(root);
-            var tree = new FolderTreeViewModel(workspace, new FakeAiWarmup(),
-                new WorkflowStore(Path.Combine(Path.GetTempPath(), $"loomo-layout-workflows-{Guid.NewGuid():N}")),
+            var tree = new FolderTreeViewModel(workspace,
                 new FolderTreeCommandHandler(workspace, new FileOperationHistory()), new FolderTreeQuery());
             tree.LoadRoot(root);
             var thumbnailService = new FixedThumbnailService();
@@ -189,8 +186,7 @@ public sealed class FilesColumnViewLayoutTests
 
             var workspace = new FakeWorkspaceService();
             workspace.OpenFolder(root);
-            var tree = new FolderTreeViewModel(workspace, new FakeAiWarmup(),
-                new WorkflowStore(Path.Combine(Path.GetTempPath(), $"loomo-grip-workflows-{Guid.NewGuid():N}")),
+            var tree = new FolderTreeViewModel(workspace,
                 new FolderTreeCommandHandler(workspace, new FileOperationHistory()), new FolderTreeQuery());
             tree.LoadRoot(root);
             var column = new FilesColumnViewModel(
@@ -293,8 +289,7 @@ public sealed class FilesColumnViewLayoutTests
 
             var workspace = new FakeWorkspaceService();
             workspace.OpenFolder(root);
-            var tree = new FolderTreeViewModel(workspace, new FakeAiWarmup(),
-                new WorkflowStore(Path.Combine(Path.GetTempPath(), $"loomo-fit-workflows-{Guid.NewGuid():N}")),
+            var tree = new FolderTreeViewModel(workspace,
                 new FolderTreeCommandHandler(workspace, new FileOperationHistory()), new FolderTreeQuery());
             tree.LoadRoot(root);
             var column = new FilesColumnViewModel(
@@ -409,8 +404,7 @@ public sealed class FilesColumnViewLayoutTests
 
             var workspace = new FakeWorkspaceService();
             workspace.OpenFolder(root);
-            var tree = new FolderTreeViewModel(workspace, new FakeAiWarmup(),
-                new WorkflowStore(Path.Combine(Path.GetTempPath(), $"loomo-auto-workflows-{Guid.NewGuid():N}")),
+            var tree = new FolderTreeViewModel(workspace,
                 new FolderTreeCommandHandler(workspace, new FileOperationHistory()), new FolderTreeQuery());
             tree.LoadRoot(root);
             var column = new FilesColumnViewModel(

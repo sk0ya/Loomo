@@ -6,8 +6,6 @@ using System.Text.Json;
 using Tomlyn;
 using Tomlyn.Model;
 using YamlDotNet.Serialization;
-using sk0ya.Loomo.Ai;
-
 namespace sk0ya.Loomo.App.Services;
 
 /// <summary>

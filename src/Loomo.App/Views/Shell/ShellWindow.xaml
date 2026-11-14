@@ -159,7 +159,6 @@
         <StreamGeometry x:Key="PaneIcon.Browser">M8,2.5 A5.5,5.5 0 1 0 8,13.5 A5.5,5.5 0 1 0 8,2.5 M2.5,8 H13.5 M8,2.5 C5.8,5.3 5.8,10.7 8,13.5 M8,2.5 C10.2,5.3 10.2,10.7 8,13.5</StreamGeometry>
         <StreamGeometry x:Key="PaneIcon.Git">M4.5,3.8 m-1.7,0 a1.7,1.7 0 1 0 3.4,0 a1.7,1.7 0 1 0 -3.4,0 M4.5,12.2 m-1.7,0 a1.7,1.7 0 1 0 3.4,0 a1.7,1.7 0 1 0 -3.4,0 M11.5,5.2 m-1.7,0 a1.7,1.7 0 1 0 3.4,0 a1.7,1.7 0 1 0 -3.4,0 M4.5,5.5 V10.5 M11.5,6.9 C11.5,9.2 4.5,8.3 4.5,10.5</StreamGeometry>
         <StreamGeometry x:Key="PaneIcon.Diff">M5,2.5 V7.5 M2.5,5 H7.5 M8.5,11.5 H13.5</StreamGeometry>
-        <StreamGeometry x:Key="PaneIcon.Ai">M8,1.5 L9.4,6.6 L14.5,8 L9.4,9.4 L8,14.5 L6.6,9.4 L1.5,8 L6.6,6.6 Z</StreamGeometry>
         <StreamGeometry x:Key="PaneIcon.Debug">M8,4.5 C6,4.5 5.2,6.3 5.2,8.5 C5.2,10.9 6.4,12.8 8,12.8 C9.6,12.8 10.8,10.9 10.8,8.5 C10.8,6.3 10,4.5 8,4.5 Z M8,4.7 V12.6 M5.3,7 L2.8,5.6 M5.1,9.2 H2.6 M5.3,11.2 L2.8,12.6 M10.7,7 L13.2,5.6 M10.9,9.2 H13.4 M10.7,11.2 L13.2,12.6 M6.7,4.8 L6,3.3 M9.3,4.8 L10,3.3</StreamGeometry>
         <StreamGeometry x:Key="PaneIcon.Search">M6.8,2.5 A4.3,4.3 0 1 0 6.8,11.1 A4.3,4.3 0 1 0 6.8,2.5 M9.9,9.9 L13.5,13.5</StreamGeometry>
         <!-- ファイル一覧：フォルダー＋行（＝中身を並べて見る面） -->
@@ -172,7 +171,6 @@
         <StreamGeometry x:Key="PaneIcon.TsIde">M8,1.5 L13.5,4.75 V11.25 L8,14.5 L2.5,11.25 V4.75 Z M8,5.6 C6.9,5.6 6.3,6.6 6.3,8 C6.3,9.5 7,10.6 8,10.6 C9,10.6 9.7,9.5 9.7,8 C9.7,6.6 9.1,5.6 8,5.6 Z M8,5.7 V10.5</StreamGeometry>
         <!-- トレース：時系列の点（＝AI操作の足跡を並べて読む面）。ドックの帯にも並ぶので、
              アイコンの無いペインが1つでもあると無地のボタンになる。 -->
-        <StreamGeometry x:Key="PaneIcon.Trace">M2.5,8 H13.5 M4.6,8 m-1.3,0 a1.3,1.3 0 1 0 2.6,0 a1.3,1.3 0 1 0 -2.6,0 M11.4,8 m-1.3,0 a1.3,1.3 0 1 0 2.6,0 a1.3,1.3 0 1 0 -2.6,0 M8,4.4 V5.6 M8,10.4 V11.6</StreamGeometry>
         <StreamGeometry x:Key="WingIcon.Expanded">M10.5,2.5 L5,8 L10.5,13.5</StreamGeometry>
         <StreamGeometry x:Key="WingIcon.Collapsed">M5.5,2.5 L11,8 L5.5,13.5</StreamGeometry>
 
@@ -2421,28 +2419,6 @@
                     <ContentControl x:Name="DiffSessionHost" DataContext="{Binding DiffSession}" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" Focusable="False" />
                 </DockPanel>
 
-                <!-- Trace : セッションペイン（AI操作トレースのタイムライン表示・読み取り専用） -->
-                <DockPanel x:Name="TracePane" Visibility="Collapsed" Background="{DynamicResource Panel}">
-                    <DockPanel Style="{StaticResource PaneHeaderBar}" LastChildFill="False"
-                               Tag="Trace" Cursor="SizeAll"
-                               PreviewMouseLeftButtonDown="OnPaneTitleMouseDown" PreviewMouseMove="OnPaneTitleMouseMove">
-                        <TextBlock DockPanel.Dock="Left" Style="{StaticResource PanelHeader}" Text="TRACE" />
-                        <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="30" Height="24"
-                                Content="—" FontSize="{DynamicResource Fs13}" ToolTip="このペインを隠す"
-                                Tag="Trace" Click="OnHidePane" />
-                        <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
-                            <Button Style="{StaticResource PaneHeaderToolButton}" Content="削除"
-                                    ToolTip="選択中セッションのトレースファイルを削除"
-                                    Command="{Binding TraceSession.DeleteSelectedCommand}" />
-                            <TextBlock Text="{Binding TraceSession.SummaryLabel}" VerticalAlignment="Center"
-                                       Margin="2,0,0,0" FontSize="{DynamicResource Fs11}" Foreground="{DynamicResource FgDim}"
-                                       TextTrimming="CharacterEllipsis" />
-                        </StackPanel>
-                    </DockPanel>
-                    <Border Style="{StaticResource PaneHeaderRule}" />
-                    <ContentControl x:Name="TraceSessionHost" DataContext="{Binding TraceSession}" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" Focusable="False" />
-                </DockPanel>
-
                 <!-- デバッグ : ペイン化（DAP / netcoredbg。出力・ブレークポイント・変数・コールスタック） -->
                 <DockPanel x:Name="DebugPane" Visibility="Collapsed" Background="{DynamicResource Panel}">
                     <DockPanel Style="{StaticResource PaneHeaderBar}" LastChildFill="False"
@@ -2605,66 +2581,6 @@
                     </DockPanel>
                     <Border Style="{StaticResource PaneHeaderRule}" />
                     <ContentControl x:Name="TsIdePaneHost" DataContext="{Binding TsIde}" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" Focusable="False" />
-                </DockPanel>
-
-                <!-- AI : ペイン化（トランスクリプト＋入力を1列にまとめる） -->
-                <DockPanel x:Name="AiPane" Visibility="Collapsed" Background="{DynamicResource Panel}">
-                    <DockPanel Style="{StaticResource PaneHeaderBar}" LastChildFill="False"
-                               Tag="Ai" Cursor="SizeAll"
-                               PreviewMouseLeftButtonDown="OnPaneTitleMouseDown" PreviewMouseMove="OnPaneTitleMouseMove">
-                        <TextBlock DockPanel.Dock="Left" Style="{StaticResource PanelHeader}" Text="AI" />
-                        <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Width="30" Height="24"
-                                Content="—" FontSize="{DynamicResource Fs13}" ToolTip="このペインを隠す"
-                                Tag="Ai" Click="OnHidePane" />
-                        <!-- チャット/ワークフロー切替（ヘッダー側）。DataContext は ShellViewModel なので AiBar 経由で束ねる。 -->
-                        <Border DockPanel.Dock="Left" Margin="10,0,0,0" VerticalAlignment="Center"
-                                Background="{DynamicResource BgAlt}" BorderBrush="{DynamicResource Border}"
-                                BorderThickness="1" CornerRadius="5" Padding="2,0">
-                            <StackPanel Orientation="Horizontal">
-                                <Button Content="チャット" Style="{StaticResource ModeSegButton}"
-                                        Command="{Binding AiBar.ShowChatModeCommand}"
-                                        Tag="{Binding AiBar.IsChatMode, Converter={StaticResource ActiveTagConverter}}" />
-                                <Button Content="ワークフロー" Style="{StaticResource ModeSegButton}" Margin="2,0,0,0"
-                                        Command="{Binding AiBar.ShowWorkflowModeCommand}"
-                                        Tag="{Binding AiBar.IsWorkflowMode, Converter={StaticResource ActiveTagConverter}}" />
-                            </StackPanel>
-                        </Border>
-                        <Button DockPanel.Dock="Left" Content="▶ 実行" Style="{StaticResource PaneHeaderToolButton}"
-                                Margin="8,0,0,0"
-                                Command="{Binding AiBar.Workflow.RunCommand}">
-                            <Button.Visibility>
-                                <MultiBinding Converter="{StaticResource AllTrueToVisibilityConverter}">
-                                    <Binding Path="AiBar.IsWorkflowMode" />
-                                    <Binding Path="AiBar.Workflow.IsRunning" Converter="{StaticResource InverseBool}" />
-                                </MultiBinding>
-                            </Button.Visibility>
-                        </Button>
-                        <Button DockPanel.Dock="Left" Content="停止" Style="{StaticResource PaneHeaderToolButton}"
-                                Margin="8,0,0,0" Background="#FF6E1E1E"
-                                Command="{Binding AiBar.Workflow.CancelCommand}">
-                            <Button.Visibility>
-                                <MultiBinding Converter="{StaticResource AllTrueToVisibilityConverter}">
-                                    <Binding Path="AiBar.IsWorkflowMode" />
-                                    <Binding Path="AiBar.Workflow.IsRunning" />
-                                </MultiBinding>
-                            </Button.Visibility>
-                        </Button>
-                    </DockPanel>
-                    <Border Style="{StaticResource PaneHeaderRule}" />
-                    <!-- AIセッション：チャット欄の左上に常設した ActivityBar 風アイコン。クリックで一覧を開閉する。 -->
-                    <Border DockPanel.Dock="Left" Background="{DynamicResource ActivityBarBg}">
-                        <Button Style="{StaticResource IconButton}" Content="💬" ToolTip="AIセッション一覧"
-                                Command="{Binding Sessions.ToggleOpenCommand}"
-                                VerticalAlignment="Top" />
-                    </Border>
-                    <!-- AIセッション一覧：左のアイコンのクリックで開閉する折りたたみサイドバー（既定は非表示）。 -->
-                    <Border DockPanel.Dock="Left" Width="280"
-                            BorderBrush="{DynamicResource Border}" BorderThickness="0,0,1,0"
-                            DataContext="{Binding Sessions}"
-                            Visibility="{Binding IsOpen, Converter={StaticResource BoolToVis}}">
-                        <ContentControl x:Name="AiSessionsHost" DataContext="{Binding}" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" Focusable="False" />
-                    </Border>
-                    <ContentControl x:Name="AiBarHost" DataContext="{Binding AiBar}" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" Focusable="False" />
                 </DockPanel>
 
                 </Grid>   <!-- /PaneHost -->

@@ -65,20 +65,6 @@ internal static class PaneActivityPresentation
         return unseenCompletion;
     }
 
-    public static PaneActivityKind AggregateAi(
-        bool chatBusy, bool workflowRunning, string statusText, int approvalCount,
-        PaneActivityKind unseenCompletion)
-    {
-        if (chatBusy || workflowRunning)
-        {
-            var waitingApproval = chatBusy
-                ? statusText.Contains("承認待ち", StringComparison.Ordinal)
-                : approvalCount > 0;
-            return waitingApproval ? PaneActivityKind.Approval : PaneActivityKind.Running;
-        }
-        return unseenCompletion;
-    }
-
     /// <summary>タブを1つのバッジへ集約する。承認を待っている Claude Code ＞ 人間の番を待っている Claude Code ＞
     /// 見ていない間に鳴ったベル ＞ 作業中の Claude Code ＞ 進捗を出しているコマンド ＞
     /// 実行中のコマンド ＞ 失敗 ＞ 成功。ベルは「呼ばれた」なので人間の番の次に置く。進捗はいちばん遅れているタブの値

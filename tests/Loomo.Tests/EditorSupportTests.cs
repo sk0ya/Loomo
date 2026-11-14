@@ -4,7 +4,6 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
-using sk0ya.Loomo.Ai;
 using sk0ya.Loomo.App.Services;
 
 namespace sk0ya.Loomo.Tests;

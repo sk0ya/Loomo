@@ -91,8 +91,7 @@ internal sealed class FilesColumnCommandController
             quickAccessReady && vm.CanPinToQuickAccess(selection),
             quickAccessReady && vm.CanUnpinFromQuickAccess(selection),
             vm.CanGitFor(single),
-            vm.CanAddToGitignoreFor(single),
-            vm.CanRunFileAi);
+            vm.CanAddToGitignoreFor(single));
     }
 
     internal async Task<QuickAccessMenuState?> RefreshQuickAccessMenuStateAsync(

@@ -11,7 +11,6 @@ using System.Windows.Media;
 using Microsoft.VisualBasic.FileIO;
 using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.Core.Abstractions;
-using sk0ya.Loomo.Core.Agent;
 using sk0ya.Loomo.Core.Files;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;

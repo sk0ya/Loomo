@@ -15,7 +15,6 @@ using Microsoft.Web.WebView2.Wpf;
 using sk0ya.Loomo.App.ViewModels;
 using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.App.Layout;
-using sk0ya.Loomo.Ai;
 using sk0ya.Loomo.Core.Abstractions;
 using sk0ya.Loomo.Services;
 using Editor.Controls;

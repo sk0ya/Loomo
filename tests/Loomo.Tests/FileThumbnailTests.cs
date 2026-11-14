@@ -3,8 +3,6 @@ using System.Collections.Concurrent;
 using System.Windows.Media;
 using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.App.ViewModels;
-using sk0ya.Loomo.Core.Agent;
-
 namespace sk0ya.Loomo.Tests;
 
 [Collection(WindowsShellTests.Name)]
@@ -244,8 +242,7 @@ public sealed class FileThumbnailTests
     {
         var workspace = new FakeWorkspaceService();
         workspace.OpenFolder(path);
-        var tree = new FolderTreeViewModel(workspace, new FakeAiWarmup(),
-            new WorkflowStore(Path.Combine(Path.GetTempPath(), $"loomo-thumb-workflows-{Guid.NewGuid():N}")),
+        var tree = new FolderTreeViewModel(workspace,
             new FolderTreeCommandHandler(workspace, new FileOperationHistory()), new FolderTreeQuery());
         tree.LoadRoot(path);
         var column = new FilesColumnViewModel(

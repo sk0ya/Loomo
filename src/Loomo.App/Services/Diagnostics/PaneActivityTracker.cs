@@ -44,8 +44,6 @@ internal sealed class PaneActivityTracker
     private readonly Dictionary<PaneKind, IdeState> _ides = new();
     private long _agentClock;
 
-    public PaneActivityKind AiUnseenCompletion { get; private set; }
-
     public void TrackIdeTask(PaneKind kind, bool isRunning)
         => _ides[kind] = new IdeState { TaskWasRunning = isRunning };
 
@@ -58,20 +56,6 @@ internal sealed class PaneActivityTracker
             state.TaskWasRunning, isRunning, paneWatched, status, state.UnseenCompletion);
         state.TaskWasRunning = next.TaskWasRunning;
         state.UnseenCompletion = next.UnseenCompletion;
-    }
-
-    public void AiActivityChanged(
-        bool chatChanged, bool chatBusy, bool? chatSucceeded,
-        bool workflowRunning, string workflowStatus, bool paneWatched)
-    {
-        if (chatChanged && !chatBusy && chatSucceeded is { } succeeded)
-            AiUnseenCompletion = PaneActivityPresentation.Completion(paneWatched, succeeded);
-        else if (!chatChanged && !workflowRunning && !string.IsNullOrWhiteSpace(workflowStatus))
-            AiUnseenCompletion = PaneActivityPresentation.Completion(
-                paneWatched, workflowStatus == "完了しました。");
-
-        if (chatBusy || workflowRunning)
-            AiUnseenCompletion = PaneActivityKind.None;
     }
 
     public bool TerminalCommandChanged(
@@ -312,11 +296,6 @@ internal sealed class PaneActivityTracker
                 state.AgentApproval = false;
                 state.UnseenBell = false;
             }
-            return true;
-        }
-        if (kind == PaneKind.Ai)
-        {
-            AiUnseenCompletion = PaneActivityKind.None;
             return true;
         }
         if (!_ides.TryGetValue(kind, out var ideState))

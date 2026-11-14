@@ -1,8 +1,6 @@
 using System.IO;
 using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.App.ViewModels;
-using sk0ya.Loomo.Core.Agent;
-
 namespace sk0ya.Loomo.Tests;
 
 /// <summary>
@@ -111,8 +109,7 @@ public sealed class FolderTreeSelectionPreviewPolicyTests : IDisposable
     public FolderTreeSelectionPreviewPolicyTests()
     {
         _workspace.OpenFolder(_root);
-        _tree = new FolderTreeViewModel(_workspace, new FakeAiWarmup(),
-            new WorkflowStore(Path.Combine(_root, "workflows")),
+        _tree = new FolderTreeViewModel(_workspace,
             new FolderTreeCommandHandler(_workspace, new FileOperationHistory()),
             new FolderTreeQuery());
     }

@@ -7,8 +7,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.App.ViewModels;
-using sk0ya.Loomo.Core.Agent;
-
 namespace sk0ya.Loomo.Tests;
 
 /// <summary>ロードマップの「Windowsシェル連携」はファイル一覧（エクスプローラー相当）の話だが、
@@ -34,8 +32,7 @@ public sealed class FilesPaneShellTests : IDisposable
         File.WriteAllText(Path.Combine(_root, "b.txt"), "b");
         _workspace.OpenFolder(_root);
 
-        _tree = new FolderTreeViewModel(_workspace, new FakeAiWarmup(),
-            new WorkflowStore(Path.Combine(Path.GetTempPath(), $"loomo-files-shell-wf-{Guid.NewGuid():N}")),
+        _tree = new FolderTreeViewModel(_workspace,
             new FolderTreeCommandHandler(_workspace, _history), new FolderTreeQuery(),
             shellOperations: _shell, quickAccess: _quickAccess);
         _tree.LoadRoot(_root);

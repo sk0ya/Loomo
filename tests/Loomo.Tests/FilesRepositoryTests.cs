@@ -3,7 +3,6 @@ using System.IO;
 using System.Text;
 using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.App.ViewModels;
-using sk0ya.Loomo.Core.Agent;
 using sk0ya.Loomo.Core.Safety;
 using sk0ya.Loomo.Services;
 
@@ -16,7 +15,7 @@ public sealed class FilesRepositoryTests : IDisposable
     private readonly string _work;
     private readonly string _api;
     private readonly string _web;
-    private readonly WorkspaceService _workspace = new(new SafetySettings());
+    private readonly WorkspaceService _workspace = new();
     private readonly GitRepositoryCatalog _catalog;
     private readonly GitWorkspaceStatus _status;
     private readonly GitRepositoryChips _chips;
@@ -33,8 +32,7 @@ public sealed class FilesRepositoryTests : IDisposable
         _catalog = new GitRepositoryCatalog(_workspace);
         _status = new GitWorkspaceStatus(_catalog, _workspace);
         _chips = new GitRepositoryChips(_status, null, action => action());
-        _tree = new FolderTreeViewModel(_workspace, new FakeAiWarmup(),
-            new WorkflowStore(Path.Combine(_root, "wf")),
+        _tree = new FolderTreeViewModel(_workspace,
             new FolderTreeCommandHandler(_workspace, new FileOperationHistory()),
             new FolderTreeQuery(gitStatus: _status), repositoryChips: _chips);
         _tree.LoadRoot(_work);

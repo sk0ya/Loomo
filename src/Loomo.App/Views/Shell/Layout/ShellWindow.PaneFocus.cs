@@ -219,18 +219,12 @@ public partial class ShellWindow {
             case PaneKind.Browser:
                 _activeBrowserTab?.View.Focus();
                 break;
-            case PaneKind.Ai:
-                PaneContent<AiBarView>(AiBarHost).FocusInput();
-                break;
             case PaneKind.Git:
                 // ペインの器ではなくコミット一覧へ落とす（そのまま j/k・Enter が効く）。
                 PaneContent<GitSessionView>(GitSessionHost).FocusCommitList();
                 break;
             case PaneKind.Diff:
                 PaneContent<DiffSessionView>(DiffSessionHost).Focus();
-                break;
-            case PaneKind.Trace:
-                PaneContent<TraceSessionView>(TraceSessionHost).Focus();
                 break;
             case PaneKind.Debug:
                 PaneFocusElementResolver.FocusFirstFocusable(DebugPane);

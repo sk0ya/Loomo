@@ -289,7 +289,6 @@ public partial class ShellWindow {
         DisposeClaudeHooks();
         DisposeEditWait();
         CancelFileDropOperations();
-        CancelFileAiPreparation();
         DisposeCSharpDiagnosticsWiring();
         _lspWorkspace.DiagnosticsPublished -= OnLspDiagnosticsPublished;
         // 外さないと、閉じたあとにサーバーが applyEdit を投げてきたとき死んだ Dispatcher を叩く。

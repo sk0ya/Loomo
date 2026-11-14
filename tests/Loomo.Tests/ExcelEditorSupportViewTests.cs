@@ -9,7 +9,6 @@ using System.Windows.Media;
 using System.Windows.Threading;
 using ClosedXML.Excel;
 using VGrid.Editor;
-using sk0ya.Loomo.Ai;
 using sk0ya.Loomo.App.Services;
 
 namespace sk0ya.Loomo.Tests;

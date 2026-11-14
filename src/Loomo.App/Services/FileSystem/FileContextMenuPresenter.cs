@@ -74,7 +74,6 @@ internal static class FileContextMenuPresenter
     public static void PrepareFolderTreeMenu(
         ContextMenu menu,
         bool fileSystemVisible,
-        bool showAi,
         bool showTwoFileDiff,
         string? undoDescription,
         string? redoDescription,
@@ -82,7 +81,6 @@ internal static class FileContextMenuPresenter
     {
         SetTaggedVisibility(menu, "FileSystemOnly", fileSystemVisible);
         SetTaggedVisibility(menu, "CompareTwoFolders", showTwoFolderDiff);
-        SetTaggedVisibility(menu, "AiMenu", showAi);
         if (FindMenuItem(menu, "DiffMenu") is { } diffMenu
             && FindMenuItem(diffMenu, "CompareTwo") is { } compareTwo)
             compareTwo.Visibility = showTwoFileDiff ? Visibility.Visible : Visibility.Collapsed;
@@ -97,13 +95,6 @@ internal static class FileContextMenuPresenter
         FileNodeViewModel? node,
         IReadOnlyList<FileNodeViewModel> selection)
     {
-        var showAi = vm is { IsAiReady: true }
-            && FileContextMenuPolicy.ShouldShowAiMenu(
-                true, selection.Count, selection.Any(item => !item.IsShellItem));
-
-        if (showAi && node is { IsDirectory: false } && File.Exists(node.FullPath))
-            PopulateWorkflowMenu(menu, vm!, node);
-
         if (vm is not null)
         {
             UpdateFolderTreeQuickAccessItems(menu, vm, selection);
@@ -114,7 +105,6 @@ internal static class FileContextMenuPresenter
         PrepareFolderTreeMenu(
             menu,
             node is null || !node.IsShellItem,
-            showAi,
             FileContextMenuPolicy.HasExactlyTwoFiles(selection.Count(item => !item.IsDirectory)),
             vm?.History.UndoDescription,
             vm?.History.RedoDescription,
@@ -229,26 +219,6 @@ internal static class FileContextMenuPresenter
             };
             item.Click += (_, _) => vm.SwitchRootOption(headerNode, option);
             switchMenu.Items.Add(item);
-        }
-    }
-
-    private static void PopulateWorkflowMenu(
-        ContextMenu menu, FolderTreeViewModel vm, FileNodeViewModel node)
-    {
-        var aiMenu = FindMenuItem(menu, "AiMenu");
-        var submenu = aiMenu is null ? null : FindMenuItem(aiMenu, "AiWorkflowMenu");
-        if (submenu is null)
-            return;
-
-        var workflows = vm.InputWorkflows();
-        submenu.Visibility = workflows.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
-        submenu.Items.Clear();
-        foreach (var workflow in workflows)
-        {
-            var id = workflow.Id;
-            var item = new MenuItem { Header = workflow.Name };
-            item.Click += (_, _) => vm.RequestRunWorkflow(node, id);
-            submenu.Items.Add(item);
         }
     }
 

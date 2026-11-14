@@ -4,7 +4,6 @@ using sk0ya.Loomo.App.DependencyInjection;
 using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.App.Views;
 using sk0ya.Loomo.App.ViewModels;
-using sk0ya.Loomo.Core.Observability;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace sk0ya.Loomo.App;
@@ -131,7 +130,6 @@ public partial class App : Application
     {
         services
             .AddLoomoCore()
-            .AddLoomoAi()
             .AddLoomoGit()
             .AddLoomoEditorSupport()
             .AddLoomoPresentation();

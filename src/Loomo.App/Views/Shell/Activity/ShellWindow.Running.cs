@@ -37,10 +37,6 @@ public partial class ShellWindow {
                     RequestRunningRefresh();
             };
         }
-        _vm.AiBar.PropertyChanged += (_, e) => {
-            if (e.PropertyName is nameof(AiBarViewModel.IsBusy) or nameof(AiBarViewModel.StatusText))
-                RequestRunningRefresh();
-        };
         RequestRunningRefresh();
     }
 
@@ -116,13 +112,11 @@ public partial class ShellWindow {
             }
         }
 
-        _runningActions["ai"] = (() => ShowPaneForRunning(PaneKind.Ai), null);
         var servers = _lspWorkspace.ServerStatuses;
         foreach (var server in servers)
             _runningActions[$"lsp:{server.Executable}|{server.Root}"] = (OpenLspSettingsForRunning, null);
 
-        var entries = RunningEntries.Build(terminals, sessions, ideTasks, servers,
-            _vm.AiBar.IsBusy, _vm.AiBar.StatusText);
+        var entries = RunningEntries.Build(terminals, sessions, ideTasks, servers);
         _vm.Running.Apply(entries, DateTime.UtcNow);
         UpdateRunningActivityMark();
     }

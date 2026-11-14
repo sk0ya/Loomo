@@ -84,7 +84,7 @@ public sealed class ZipFileOperationTests : IDisposable
     [Fact]
     public void 複数選択のZIPは一つの履歴としてUndoRedoできる()
     {
-        var workspace = new WorkspaceService(new SafetySettings());
+        var workspace = new WorkspaceService();
         workspace.OpenFolder(_root);
         var history = new FileOperationHistory();
         var commands = new FolderTreeCommandHandler(workspace, history);
@@ -125,7 +125,7 @@ public sealed class ZipFileOperationTests : IDisposable
         var folder = Directory.CreateDirectory(Path.Combine(_root, "folder")).FullName;
         var child = Path.Combine(folder, "child.txt");
         File.WriteAllText(child, "child");
-        var workspace = new WorkspaceService(new SafetySettings());
+        var workspace = new WorkspaceService();
         workspace.OpenFolder(_root);
         var commands = new FolderTreeCommandHandler(workspace, new FileOperationHistory());
 
@@ -142,7 +142,7 @@ public sealed class ZipFileOperationTests : IDisposable
     {
         var source = Path.Combine(_root, "cancel.txt");
         File.WriteAllText(source, new string('x', 1024));
-        var workspace = new WorkspaceService(new SafetySettings());
+        var workspace = new WorkspaceService();
         workspace.OpenFolder(_root);
         var commands = new FolderTreeCommandHandler(workspace, new FileOperationHistory());
         using var cancellation = new CancellationTokenSource();

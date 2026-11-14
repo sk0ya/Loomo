@@ -1,7 +1,6 @@
 ﻿using System;
 using System.IO;
 using System.Text.Json.Nodes;
-using sk0ya.Loomo.Ai;
 using Xunit;
 
 namespace sk0ya.Loomo.Tests;
@@ -61,21 +60,21 @@ public class SettingsStoreTests
         finally { File.Delete(path); }
     }
 
+    /// <summary>撤去した AI ペインの設定（local・safety・observability・inlineCompletion・warmupEnabled）が
+    /// 残った古い settings.json も、そこを読み捨てて残りを読める。</summary>
     [Fact]
-    public void Load_ignores_legacy_persisted_system_prompt()
+    public void Load_ignores_retired_ai_settings()
     {
         var path = Path.Combine(Path.GetTempPath(), $"loomo-settings-{Guid.NewGuid():N}.json");
         File.WriteAllText(path, """
             {
               "systemPrompt": "古い run_command プロンプト",
-              "local": {
-                "model": "phi4-mini:latest",
-                "baseUrl": "http://localhost:11434",
-                "numGpu": 99,
-                "thinking": true,
-                "thinkingEffort": "high",
-                "maxTokens": 1234
-              }
+              "warmupEnabled": false,
+              "local": { "model": "phi4-mini:latest", "maxTokens": 1234 },
+              "safety": { "autoApprove": true },
+              "observability": { "enableTracing": false },
+              "inlineCompletion": { "enabled": true, "modelPath": "C:\\m.gguf" },
+              "trailVisible": false
             }
             """);
 
@@ -84,10 +83,7 @@ public class SettingsStoreTests
             var settings = new LoomoSettings();
             new SettingsStore(path).Load(settings);
 
-            // systemPrompt / baseUrl / numGpu などの旧フィールドは読み捨て、残りは正しく反映される
-            // （システムプロンプトはユーザー設定ではなく AI 層の SystemPrompts が持つ）。
-            Assert.Equal("phi4-mini:latest", settings.Local.Model);
-            Assert.Equal(1234, settings.Local.MaxTokens);
+            Assert.False(settings.TrailVisible);
         }
         finally
         {
@@ -117,33 +113,7 @@ public class SettingsStoreTests
     }
 
     [Fact]
-    public void Load_migrates_legacy_default_model_to_current_default()
-    {
-        var path = Path.Combine(Path.GetTempPath(), $"loomo-settings-{Guid.NewGuid():N}.json");
-        File.WriteAllText(path, """
-            {
-              "local": {
-                "model": "llama3.1",
-                "baseUrl": "http://localhost:11434"
-              }
-            }
-            """);
-
-        try
-        {
-            var settings = new LoomoSettings();
-            new SettingsStore(path).Load(settings);
-
-            Assert.Equal(LoomoSettings.DefaultLocalModel, settings.Local.Model);
-        }
-        finally
-        {
-            File.Delete(path);
-        }
-    }
-
-    [Fact]
-    public void Save_does_not_persist_system_prompt()
+    public void Save_does_not_persist_retired_ai_settings()
     {
         var path = Path.Combine(Path.GetTempPath(), $"loomo-settings-{Guid.NewGuid():N}.json");
         try
@@ -151,11 +121,8 @@ public class SettingsStoreTests
             new SettingsStore(path).Save(new LoomoSettings());
 
             var json = JsonNode.Parse(File.ReadAllText(path))!.AsObject();
-            Assert.False(json.ContainsKey("systemPrompt"));
-            Assert.False(json["local"]!.AsObject().ContainsKey("baseUrl"));
-            Assert.False(json["local"]!.AsObject().ContainsKey("numGpu"));
-            Assert.False(json["local"]!.AsObject().ContainsKey("thinking"));
-            Assert.False(json["local"]!.AsObject().ContainsKey("thinkingEffort"));
+            foreach (var key in new[] { "systemPrompt", "local", "safety", "observability", "inlineCompletion", "warmupEnabled" })
+                Assert.False(json.ContainsKey(key), key);
         }
         finally
         {
@@ -281,30 +248,18 @@ public class SettingsStoreTests
     /// セクションごと往復することをここで固定する。
     /// </summary>
     [Fact]
-    public void Inline_completion_settings_survive_a_save_and_load_round_trip()
+    public void Inline_suggest_setting_survives_a_save_and_load_round_trip()
     {
         var path = Path.Combine(Path.GetTempPath(), $"loomo-settings-{Guid.NewGuid():N}.json");
         try
         {
             var saved = new LoomoSettings();
-            saved.InlineCompletion.Enabled = true;
-            saved.InlineCompletion.ModelPath = @"C:\models\completion\model.gguf";
-            saved.InlineCompletion.PrefixLines = 40;
-            saved.InlineCompletion.SuffixLines = 2;
-            saved.InlineCompletion.MaxTokens = 12;
-            saved.InlineCompletion.Threads = 4;
             saved.Editor.InlineSuggest = false;
             new SettingsStore(path).Save(saved);
 
             var loaded = new LoomoSettings();
             new SettingsStore(path).Load(loaded);
 
-            Assert.True(loaded.InlineCompletion.Enabled);
-            Assert.Equal(@"C:\models\completion\model.gguf", loaded.InlineCompletion.ModelPath);
-            Assert.Equal(40, loaded.InlineCompletion.PrefixLines);
-            Assert.Equal(2, loaded.InlineCompletion.SuffixLines);
-            Assert.Equal(12, loaded.InlineCompletion.MaxTokens);
-            Assert.Equal(4, loaded.InlineCompletion.Threads);
             Assert.False(loaded.Editor.InlineSuggest);
         }
         finally
@@ -332,49 +287,6 @@ public class SettingsStoreTests
             var legacy = new LoomoSettings();
             new SettingsStore(path).Load(legacy);
             Assert.True(legacy.Editor.LinkedEditing);
-        }
-        finally
-        {
-            File.Delete(path);
-        }
-    }
-
-    /// <summary>先読みの設定が無い古い settings.json は、既定（無効・内蔵の先読みは有効）のまま読める。</summary>
-    [Fact]
-    public void A_settings_file_without_the_inline_completion_section_keeps_the_defaults()
-    {
-        var path = Path.Combine(Path.GetTempPath(), $"loomo-settings-{Guid.NewGuid():N}.json");
-        File.WriteAllText(path, """
-            { "local": { "model": "qwen3-4b-q4_k_m" } }
-            """);
-        try
-        {
-            var settings = new LoomoSettings();
-            new SettingsStore(path).Load(settings);
-
-            Assert.False(settings.InlineCompletion.Enabled);
-            Assert.Null(settings.InlineCompletion.ModelPath);
-            Assert.True(settings.Editor.InlineSuggest);
-        }
-        finally
-        {
-            File.Delete(path);
-        }
-    }
-
-    [Theory]
-    [InlineData("{ \"inlineCompletion\": {} }")]
-    [InlineData("{ \"inlineCompletion\": { \"suffixLines\": -1 } }")]
-    public void Missing_or_invalid_inline_suffix_uses_the_fast_default(string json)
-    {
-        var path = Path.Combine(Path.GetTempPath(), $"loomo-settings-{Guid.NewGuid():N}.json");
-        File.WriteAllText(path, json);
-        try
-        {
-            var settings = new LoomoSettings();
-            new SettingsStore(path).Load(settings);
-
-            Assert.Equal(1, settings.InlineCompletion.SuffixLines);
         }
         finally
         {

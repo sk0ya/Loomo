@@ -8,8 +8,6 @@ using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using sk0ya.Loomo.Core.Models;
-using sk0ya.Loomo.Core.Observability;
-using sk0ya.Loomo.Core.Safety;
 using sk0ya.Loomo.Core.Settings;
 
 namespace sk0ya.Loomo.Services.Settings;
@@ -104,9 +102,6 @@ public sealed class SettingsStore
         /// <summary>サブペインの向き（横＝右／縦＝下）。null=旧設定（未指定）→ 既定（Horizontal）を維持。</summary>
         public PaneSubDirection? PaneSubDirection { get; set; }
 
-        /// <summary>AIウォームアップの有効/無効。null=旧設定（未指定）→ 既定（有効）を維持。</summary>
-        public bool? WarmupEnabled { get; set; }
-
         /// <summary>軌跡バーの表示ON/OFF。null=旧設定（未指定）→ 既定（表示）を維持。</summary>
         public bool? TrailVisible { get; set; }
 
@@ -131,9 +126,6 @@ public sealed class SettingsStore
         /// <summary>ブラウザのブックマークバーの表示ON/OFF。null=旧設定（未指定）→ 既定（表示）を維持。</summary>
         public bool? BrowserBookmarkBarVisible { get; set; }
 
-        public PersistedProvider Local { get; set; } = new();
-        public PersistedSafety Safety { get; set; } = new();
-        public PersistedObservability? Observability { get; set; }
         public PersistedVim? Vim { get; set; }
         public PersistedEditor? Editor { get; set; }
         public PersistedAppearance? Appearance { get; set; }
@@ -141,7 +133,6 @@ public sealed class SettingsStore
         public PersistedMouseGestures? MouseGestures { get; set; }
         public List<PersistedBrowserScript>? BrowserScripts { get; set; }
         public PersistedLsp? Lsp { get; set; }
-        public PersistedInlineCompletion? InlineCompletion { get; set; }
         public PersistedActivityBar? ActivityBar { get; set; }
         public PersistedTabsPanel? TabsPanel { get; set; }
         public PersistedTodoTree? TodoTree { get; set; }
@@ -154,7 +145,6 @@ public sealed class SettingsStore
             AccentColor = s.AccentColor,
             PaneOpenBehavior = s.PaneOpenBehavior,
             PaneSubDirection = s.PaneSubDirection,
-            WarmupEnabled = s.WarmupEnabled,
             TrailVisible = s.TrailVisible,
             TrailExpanded = s.TrailExpanded,
             GitCommitDetailVisible = s.GitCommitDetailVisible,
@@ -163,9 +153,6 @@ public sealed class SettingsStore
             GitLogColumns = PersistedGitLogColumns.From(s.GitLogColumns),
             GitLayout = PersistedGitPaneLayout.From(s.GitLayout),
             BrowserBookmarkBarVisible = s.BrowserBookmarkBarVisible,
-            Local = PersistedProvider.From(s.Local),
-            Safety = PersistedSafety.From(s.Safety),
-            Observability = PersistedObservability.From(s.Observability),
             Vim = PersistedVim.From(s.Vim),
             Editor = PersistedEditor.From(s.Editor),
             Appearance = PersistedAppearance.From(s.Appearance),
@@ -173,7 +160,6 @@ public sealed class SettingsStore
             MouseGestures = PersistedMouseGestures.From(s.MouseGestures),
             BrowserScripts = s.BrowserScripts.Select(PersistedBrowserScript.From).ToList(),
             Lsp = PersistedLsp.From(s.Lsp),
-            InlineCompletion = PersistedInlineCompletion.From(s.InlineCompletion),
             ActivityBar = PersistedActivityBar.From(s.ActivityBar),
             TabsPanel = PersistedTabsPanel.From(s.TabsPanel),
             TodoTree = PersistedTodoTree.From(s.TodoTree),
@@ -183,12 +169,10 @@ public sealed class SettingsStore
 
         public void ApplyTo(LoomoSettings s)
         {
-            s.Provider = AiProvider.Local;
             s.Theme = Theme;
             s.AccentColor = string.IsNullOrWhiteSpace(AccentColor) ? null : AccentColor;
             if (PaneOpenBehavior is { } pob) s.PaneOpenBehavior = pob; // 旧設定（null）は既定（Main）を維持
             if (PaneSubDirection is { } psd) s.PaneSubDirection = psd; // 旧設定（null）は既定（Horizontal＝右）を維持
-            if (WarmupEnabled is { } warm) s.WarmupEnabled = warm; // 旧設定（null）は既定（有効）を維持
             if (TrailVisible is { } trail) s.TrailVisible = trail; // 旧設定（null）は既定（表示）を維持
             if (TrailExpanded is { } trailExpanded) s.TrailExpanded = trailExpanded; // 同上（既定は閉じる）
             if (GitCommitDetailVisible is { } gitDetail) s.GitCommitDetailVisible = gitDetail; // 同上
@@ -197,12 +181,8 @@ public sealed class SettingsStore
             GitLogColumns?.ApplyTo(s.GitLogColumns);                                              // 同上
             GitLayout?.ApplyTo(s.GitLayout);                                                      // 同上
             if (BrowserBookmarkBarVisible is { } bookmarkBar) s.BrowserBookmarkBarVisible = bookmarkBar; // 同上
-            Local.ApplyTo(s.Local);
-            Safety.ApplyTo(s.Safety);
-            Observability?.ApplyTo(s.Observability); // 旧設定（null）は in-memory 既定を維持
             Vim?.ApplyTo(s.Vim);
             Editor?.ApplyTo(s.Editor); // 旧設定（null）は in-memory 既定を維持
-            InlineCompletion?.ApplyTo(s.InlineCompletion);
             Appearance?.ApplyTo(s.Appearance); // 旧設定（null）は in-memory 既定を維持
             Keybindings?.ApplyTo(s.Keybindings); // 旧設定（null）は既定割り当て（上書き無し）を維持
             MouseGestures?.ApplyTo(s.MouseGestures); // 旧設定（null）は既定のジェスチャーを維持
@@ -662,137 +642,6 @@ public sealed class SettingsStore
             e.InlineSuggest = InlineSuggest;
             e.TabWidth = TabWidth > 0 ? TabWidth : 2;
             e.UseSpacesForTab = UseSpacesForTab;
-        }
-    }
-
-    // ===== 入力の先読み（ローカル LLM 側）。モデルパスは平文で保持する。 =====
-
-    private sealed class PersistedInlineCompletion
-    {
-        public bool Enabled { get; set; }
-        public string? ModelPath { get; set; }
-        public int PrefixLines { get; set; } = 30;
-        public int SuffixLines { get; set; } = 1;
-        public int MaxTokens { get; set; } = 8;
-        public int Threads { get; set; }
-        public int PrefillThreads { get; set; }
-
-        public static PersistedInlineCompletion From(InlineCompletionSettings c) => new()
-        {
-            Enabled = c.Enabled,
-            ModelPath = c.ModelPath,
-            PrefixLines = c.PrefixLines,
-            SuffixLines = c.SuffixLines,
-            MaxTokens = c.MaxTokens,
-            Threads = c.Threads,
-            PrefillThreads = c.PrefillThreads,
-        };
-
-        public void ApplyTo(InlineCompletionSettings c)
-        {
-            c.Enabled = Enabled;
-            c.ModelPath = ModelPath;
-            c.PrefixLines = PrefixLines > 0 ? PrefixLines : 30;
-            c.SuffixLines = SuffixLines >= 0 ? SuffixLines : 1;
-            c.MaxTokens = MaxTokens > 0 ? MaxTokens : 8;
-            c.Threads = Threads;
-            c.PrefillThreads = PrefillThreads;
-        }
-    }
-
-    // ===== 観測性（§20）。平文で保持（秘匿情報ではない）。 =====
-
-    private sealed class PersistedObservability
-    {
-        public bool EnableTracing { get; set; } = true;
-        public int MaxSessions { get; set; } = 200;
-
-        public static PersistedObservability From(ObservabilitySettings o) => new()
-        {
-            EnableTracing = o.EnableTracing,
-            MaxSessions = o.MaxSessions,
-        };
-
-        public void ApplyTo(ObservabilitySettings o)
-        {
-            o.EnableTracing = EnableTracing;
-            o.MaxSessions = MaxSessions;
-        }
-    }
-
-    // ===== 安全設計（§10）。平文で保持（秘匿情報ではない）。 =====
-
-    private sealed class PersistedSafety
-    {
-        public bool AutoApprove { get; set; }
-        public bool RestrictToWorkspaceRoot { get; set; } = true;
-        public List<string>? BlockedCommandPatterns { get; set; }
-
-        public static PersistedSafety From(SafetySettings s) => new()
-        {
-            AutoApprove = s.AutoApprove,
-            RestrictToWorkspaceRoot = s.RestrictToWorkspaceRoot,
-            BlockedCommandPatterns = s.BlockedCommandPatterns.ToList(),
-        };
-
-        // 既存インスタンスを書き換える（DI シングルトンの参照を保つため置き換えない）
-        public void ApplyTo(SafetySettings s)
-        {
-            s.AutoApprove = AutoApprove;
-            s.RestrictToWorkspaceRoot = RestrictToWorkspaceRoot;
-            if (BlockedCommandPatterns is not null)
-            {
-                s.BlockedCommandPatterns.Clear();
-                s.BlockedCommandPatterns.AddRange(BlockedCommandPatterns);
-            }
-        }
-    }
-
-    private sealed class PersistedProvider
-    {
-        public string? Model { get; set; }
-
-        /// <summary>ONNX モデルフォルダの絶対パス。</summary>
-        public string? ModelPath { get; set; }
-        public string? ApiKeyEnc { get; set; }
-
-        public int MaxTokens { get; set; } = 4096;
-
-        // null = 旧設定/未指定 → 既定値を維持。0 = トリム無効（明示）。n>0 = その上限。
-        // 非nullable + 既定値だと「未指定」と「0=無効」と「明示値」を区別できないため int? にする。
-        public int? MaxContextTokens { get; set; }
-
-        /// <summary>num_ctx の上書き。null/0 = プロファイル既定を使う。</summary>
-        public int? NumCtx { get; set; }
-
-        public static PersistedProvider From(ProviderConfig c) => new()
-        {
-            Model = c.Model,
-            ModelPath = c.ModelPath,
-            ApiKeyEnc = Protect(c.ApiKey),
-            MaxTokens = c.MaxTokens,
-            MaxContextTokens = c.MaxContextTokens,
-            NumCtx = c.NumCtx,
-        };
-
-        public void ApplyTo(ProviderConfig c)
-        {
-            if (!string.IsNullOrEmpty(Model))
-                c.Model = IsLegacyDefaultModel(Model) ? LoomoSettings.DefaultLocalModel : Model;
-            if (!string.IsNullOrEmpty(ModelPath))
-                c.ModelPath = ModelPath;
-            c.ApiKey = Unprotect(ApiKeyEnc);
-            if (MaxTokens > 0) c.MaxTokens = MaxTokens;
-            // 値があれば適用（0=無効も尊重）。未指定(null)なら in-memory 既定を保つ。
-            if (MaxContextTokens is { } mct && mct >= 0) c.MaxContextTokens = mct;
-            if (NumCtx is { } nc && nc >= 0) c.NumCtx = nc;
-        }
-
-        private static bool IsLegacyDefaultModel(string model)
-        {
-            var id = model.Trim();
-            return string.Equals(id, "llama3.1", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(id, "llama3.1:latest", StringComparison.OrdinalIgnoreCase);
         }
     }
 }

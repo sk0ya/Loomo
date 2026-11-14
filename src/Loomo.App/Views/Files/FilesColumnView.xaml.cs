@@ -314,15 +314,6 @@ public partial class FilesColumnView : UserControl
             Vm?.RequestSearchInFolder(entry.FullPath);
     }
 
-    private void OnFileAiClick(object sender, RoutedEventArgs e)
-    {
-        if (Vm is null)
-            return;
-        var action = FileContextMenuPolicy.ResolveFileAiAction((sender as MenuItem)?.Tag as string);
-        if (action is { } selectedAction)
-            Vm.RequestFileAi(selectedAction, Selection());
-    }
-
     private void OnGitBlameClick(object sender, RoutedEventArgs e)
     {
         if (SingleSelection() is { IsDirectory: false } entry)

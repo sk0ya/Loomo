@@ -7,7 +7,7 @@ public sealed class StageModeCoordinator
     public static readonly PaneKind[] StageOrder =
     [
         PaneKind.Editor, PaneKind.Terminal, PaneKind.Browser, PaneKind.EditorSupport, PaneKind.Git,
-        PaneKind.Diff, PaneKind.Ai, PaneKind.Debug, PaneKind.TsIde, PaneKind.Search, PaneKind.Files,
+        PaneKind.Diff, PaneKind.Debug, PaneKind.TsIde, PaneKind.Search, PaneKind.Files,
         PaneKind.Harness, PaneKind.TerminalSupport, PaneKind.BrowserSupport,
     ];
 

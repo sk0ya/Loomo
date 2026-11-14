@@ -23,8 +23,7 @@ public class RunningEntriesTests
     {
         var entries = RunningEntries.Build(
             [Idle(Guid.NewGuid())], [], [],
-            [new LspServerRuntimeStatus("marksman.exe", @"C:\w", LspServerRuntimeState.Stopped, null, 0)],
-            aiBusy: false, aiStatus: null);
+            [new LspServerRuntimeStatus("marksman.exe", @"C:\w", LspServerRuntimeState.Stopped, null, 0)]);
 
         Assert.Empty(entries);
     }
@@ -38,11 +37,10 @@ public class RunningEntriesTests
              new RunningTerminalSource(claudeTab, "claude", TerminalTabStatus.Empty, ClaudeAgentState.NeedsApproval)],
             [new RunningDebugSource("IDE", Guid.NewGuid(), "App", IsBusy: true, IsStopped: false, Status: "実行中")],
             [],
-            [new LspServerRuntimeStatus(@"C:\tools\csharp-ls.exe", @"C:\work\app", LspServerRuntimeState.Ready, null, 0)],
-            aiBusy: true, aiStatus: "考え中");
+            [new LspServerRuntimeStatus(@"C:\tools\csharp-ls.exe", @"C:\work\app", LspServerRuntimeState.Ready, null, 0)]);
 
         Assert.Equal(
-            [RunningEntryKind.Claude, RunningEntryKind.Terminal, RunningEntryKind.Debug, RunningEntryKind.Ai,
+            [RunningEntryKind.Claude, RunningEntryKind.Terminal, RunningEntryKind.Debug,
              RunningEntryKind.LanguageServer],
             entries.Select(e => e.Kind));
         Assert.Equal(RunningEntries.AttentionGroup, entries[0].Group);
@@ -50,16 +48,16 @@ public class RunningEntriesTests
         Assert.False(entries[0].CanStop);          // 承認待ちの Claude に Ctrl+C は送らない
         Assert.Equal("npm run dev", entries[1].Title);
         Assert.True(entries[1].CanStop);
-        Assert.Equal("csharp-ls", entries[4].Title);
-        Assert.Equal("app · 準備完了", entries[4].Detail);
-        Assert.Equal(RunningEntries.ResidentGroup, entries[4].Group);
+        Assert.Equal("csharp-ls", entries[3].Title);
+        Assert.Equal("app · 準備完了", entries[3].Detail);
+        Assert.Equal(RunningEntries.ResidentGroup, entries[3].Group);
     }
 
     [Fact]
     public void Stopped_debug_session_is_your_turn()
     {
         var entries = RunningEntries.Build([], [new RunningDebugSource("TS IDE", Guid.NewGuid(), "web", false, true, "")],
-            [], [], false, null);
+            [], []);
 
         var entry = Assert.Single(entries);
         Assert.Equal(RunningEntries.AttentionGroup, entry.Group);
@@ -70,8 +68,7 @@ public class RunningEntriesTests
     public void Failed_server_is_marked_failed_with_error_in_tooltip()
     {
         var entries = RunningEntries.Build([], [], [],
-            [new LspServerRuntimeStatus("pyright.exe", @"C:\w", LspServerRuntimeState.Failed, "not found", 0)],
-            false, null);
+            [new LspServerRuntimeStatus("pyright.exe", @"C:\w", LspServerRuntimeState.Failed, "not found", 0)]);
 
         var entry = Assert.Single(entries);
         Assert.Equal(RunningEntryTone.Failed, entry.Tone);
@@ -85,12 +82,12 @@ public class RunningEntriesTests
         var a = Guid.NewGuid();
         var b = Guid.NewGuid();
 
-        vm.Apply(RunningEntries.Build([Running(a, "make"), Running(b, "test")], [], [], [], false, null), Now);
+        vm.Apply(RunningEntries.Build([Running(a, "make"), Running(b, "test")], [], [], []), Now);
         var rowA = vm.Items.Single(i => i.Key == $"terminal:{a}");
         Assert.Equal(2, vm.RunningCount);
         Assert.Equal("2分00秒", rowA.Elapsed);
 
-        vm.Apply(RunningEntries.Build([Running(a, "make all")], [], [], [], false, null), Now.AddSeconds(5));
+        vm.Apply(RunningEntries.Build([Running(a, "make all")], [], [], []), Now.AddSeconds(5));
         Assert.Same(rowA, Assert.Single(vm.Items));
         Assert.Equal("make all", rowA.Title);
         Assert.Equal("2分05秒", rowA.Elapsed);
@@ -107,10 +104,10 @@ public class RunningEntriesTests
         var tab = Guid.NewGuid();
         vm.Apply(RunningEntries.Build(
             [new RunningTerminalSource(tab, "claude", TerminalTabStatus.Empty, ClaudeAgentState.Working)],
-            [], [], [], false, null), Now);
+            [], [], []), Now);
         vm.Apply(RunningEntries.Build(
             [new RunningTerminalSource(tab, "claude", TerminalTabStatus.Empty, ClaudeAgentState.NeedsApproval)],
-            [], [], [], false, null), Now);
+            [], [], []), Now);
 
         var group = Assert.IsAssignableFrom<System.Windows.Data.CollectionViewGroup>(Assert.Single(vm.View.Groups!));
         Assert.Equal(RunningEntries.AttentionGroup, group.Name);
@@ -120,7 +117,10 @@ public class RunningEntriesTests
     public void Stop_command_is_ignored_for_rows_that_cannot_stop()
     {
         var vm = new RunningViewModel();
-        vm.Apply(RunningEntries.Build([], [], [], [], aiBusy: true, aiStatus: null), Now);
+        // 承認待ちの Claude の行は止められない（Ctrl+C を送らない）。
+        vm.Apply(RunningEntries.Build(
+            [new RunningTerminalSource(Guid.NewGuid(), "claude", TerminalTabStatus.Empty, ClaudeAgentState.NeedsApproval)],
+            [], [], []), Now);
         var stopped = false;
         vm.StopRequested += (_, _) => stopped = true;
 

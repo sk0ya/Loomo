@@ -25,7 +25,7 @@ public sealed class GitCompareByRepositoryTests : IDisposable
     {
         var a = Repo("a");
         var b = Repo("b");
-        var workspace = new WorkspaceService(new SafetySettings());
+        var workspace = new WorkspaceService();
         workspace.OpenFolder(a);
         workspace.AddFolder(b);
         var git = new GitService(workspace);
@@ -49,7 +49,7 @@ public sealed class GitCompareByRepositoryTests : IDisposable
     public void 復元は今のリポジトリの分を使い_無ければ旧い1つの保存を読む()
     {
         var a = Repo("a");
-        var workspace = new WorkspaceService(new SafetySettings());
+        var workspace = new WorkspaceService();
         workspace.OpenFolder(a);
         var git = new GitService(workspace);
         var vm = new GitCompareBaseViewModel(git);
