@@ -102,12 +102,13 @@ public static class DiffViewedMarks
         return -1;
     }
 
-    /// <summary>一覧の見出しに添える数（「見た 3/12」）。見たものが無ければ空。変わったものがあれば添える。</summary>
+    /// <summary>一覧の見出しに添える数（「見た 3/12」）。見たものが無ければ空。変わったものがあれば、行の印と同じ ● で短く添える
+    /// （一覧の列は狭く、「変わった 1」まで書くと見出しが切れる）。</summary>
     public static string Summary(IReadOnlyList<DiffViewedState> states)
     {
         var viewed = states.Count(s => s == DiffViewedState.Viewed);
         var changed = states.Count(s => s == DiffViewedState.ChangedSinceViewed);
         if (viewed == 0 && changed == 0) return "";
-        return changed > 0 ? $"見た {viewed}/{states.Count}・変わった {changed}" : $"見た {viewed}/{states.Count}";
+        return changed > 0 ? $"見た {viewed}/{states.Count}・● {changed}" : $"見た {viewed}/{states.Count}";
     }
 }

@@ -92,7 +92,7 @@ public sealed class DiffViewedMarksTests : IDisposable
     {
         Assert.Equal("", DiffViewedMarks.Summary([DiffViewedState.None, DiffViewedState.None]));
         Assert.Equal("見た 1/3", DiffViewedMarks.Summary([DiffViewedState.Viewed, DiffViewedState.None, DiffViewedState.None]));
-        Assert.Equal("見た 1/3・変わった 1",
+        Assert.Equal("見た 1/3・● 1",
             DiffViewedMarks.Summary([DiffViewedState.Viewed, DiffViewedState.ChangedSinceViewed, DiffViewedState.None]));
     }
 
@@ -137,7 +137,7 @@ public sealed class DiffViewedMarksTests : IDisposable
         var again = vm.ShowWorkingTreeFileAsync(Entry());
         PumpUntil(() => again.IsCompleted
             && DiffFileTreeNode.Leaves(vm.FileTree).Single().ViewedState == DiffViewedState.ChangedSinceViewed);
-        Assert.Contains("変わった 1", vm.FileListHeader);
+        Assert.Contains("● 1", vm.FileListHeader);
 
         var mark = vm.MarkViewedAndNextCommand.ExecuteAsync(null);
         PumpUntil(() => mark.IsCompleted);

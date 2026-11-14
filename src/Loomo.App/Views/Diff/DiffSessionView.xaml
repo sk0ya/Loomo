@@ -585,6 +585,8 @@
                                             <Button.Style>
                                                 <Style TargetType="Button" BasedOn="{StaticResource DiffCloseButton}">
                                                     <Setter Property="Visibility" Value="Collapsed" />
+                                                    <!-- 下地は塗らない（元の FlatButton はアクセント色で、印が重い札に見える）。 -->
+                                                    <Setter Property="Background" Value="Transparent" />
                                                     <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
                                                     <Style.Triggers>
                                                         <MultiDataTrigger>
