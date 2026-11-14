@@ -231,6 +231,18 @@ public sealed class TerminalSupportTests : IDisposable
     }
 
     [Fact]
+    public void Digest_CompactSummary_IsNotAPrompt()
+    {
+        // 会話を詰め直すと、要約が user の行として入る（実記録の形：isCompactSummary）。人間の頼みごとではない。
+        var lines = SampleSession().Append(JsonSerializer.Serialize(new
+        {
+            type = "user", timestamp = "2026-10-19T01:02:00Z", cwd = @"C:\ws", isCompactSummary = true, isVisibleInTranscriptOnly = true,
+            message = new { role = "user", content = "This session is being continued from a previous conversation that ran out of context." },
+        })).ToArray();
+        Assert.Equal(2, Digest(lines).Turns.Count);
+    }
+
+    [Fact]
     public void Digest_TaskNotification_IsNotAPrompt()
     {
         // バックグラウンドの作業が終わると、Claude Code は user の行として通知を差し込む（実記録の形）。人間の頼みごとではない。

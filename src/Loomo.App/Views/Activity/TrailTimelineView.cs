@@ -1,5 +1,6 @@
 using System.Collections.Specialized;
 using System.Windows.Automation;
+using sk0ya.Loomo.Services.ClaudeCode;
 using Shape = System.Windows.Shapes.Shape;
 using Rectangle = System.Windows.Shapes.Rectangle;
 using Line = System.Windows.Shapes.Line;
@@ -23,7 +24,18 @@ public sealed class TrailTimelineView : Grid
     private const double LaneHeight = 22;
     private const double SidePadding = 12;
     private const double NoteMaxWidth = 200;
-    private static readonly string[] LaneNames = ["移動", "コマンド", "しおり"];
+    private static readonly string[] LaneNames = ["移動", "コマンド", "しおり", "Claude"];
+    private const int ClaudeLane = 3;
+
+    /// <summary>その日に Claude Code がしたこと（§43.6 C）。すでに読んであるものを返すだけ（UI スレッドで呼ぶ）——読むのは
+    /// ホストが裏で行い、読み終わったら <see cref="RefreshClaude"/> で描き直させる。無ければ段は空。</summary>
+    public Func<DateOnly, IReadOnlyList<ClaudeTurnSpan>>? ClaudeTurnsProvider { get; set; }
+
+    /// <summary>Claude の段のターンを押した。</summary>
+    public event EventHandler<ClaudeTurnSpan>? ClaudeTurnClicked;
+
+    /// <summary>Claude の段の中身が変わった（裏の読み込みが終わった）。</summary>
+    public void RefreshClaude() => RequestRebuild();
 
     private readonly ScrollViewer _scroll;
     private readonly Canvas _canvas;
@@ -140,9 +152,11 @@ public sealed class TrailTimelineView : Grid
         var trail = _trail;
         var entries = trail.Entries.ToList();
         var runs = trail.LoadCommandRuns(trail.DisplayDate);
+        var turns = ClaudeTurnsProvider?.Invoke(trail.DisplayDate) ?? [];
         DateTime? now = trail.IsViewingPast ? null : DateTime.Now;
         var (start, end) = TrailTimelineLayout.Range(
-            entries.Select(e => e.Timestamp).Concat(runs.Select(r => r.Timestamp)), now);
+            entries.Select(e => e.Timestamp).Concat(runs.Select(r => r.Timestamp))
+                .Concat(turns.SelectMany(t => new[] { t.Start.LocalDateTime, t.End.LocalDateTime })), now);
         _start = start;
         var height = AxisHeight + LaneHeight * LaneNames.Length;
         _canvas.Width = TrailTimelineLayout.Width(start, end, _pixelsPerMinute) + SidePadding * 2;
@@ -165,6 +179,8 @@ public sealed class TrailTimelineView : Grid
         foreach (var run in runs)
             AddCommandMark(run);
         AddNotes(entries.Where(e => e.HasNote));
+        foreach (var turn in turns)
+            AddClaudeTurn(turn);
 
         ScrollIntoPlace(trail, current, now);
     }
@@ -232,6 +248,40 @@ public sealed class TrailTimelineView : Grid
         var hit = Hit(mark, tooltip, $"コマンド {run.Command} {outcome}", width: 10);
         hit.MouseLeftButtonUp += (_, e) => { e.Handled = true; _trail?.JumpToTime(run.Timestamp); };
         Place(hit, XOf(run.Timestamp), 1);
+    }
+
+    /// <summary>
+    /// Claude の段（§43.6 C）：頼みごと 1 つを、頼んだ時刻から最後の操作までの帯で。ファイルを書き換えたターンは塗り、
+    /// 書き換えていないターン（調べただけ・答えただけ）は枠だけ。人間の点（上の「移動」）とは段を分ける——同じ時刻の上で
+    /// 「頼んだ → Claude が書いた → 自分が見に行った」が縦に読める。押すと、書き換えたターンはその頼みごとの差分（§43.2.2）、
+    /// そうでないターンは会話のその場所（§43.2.3）。
+    /// </summary>
+    private void AddClaudeTurn(ClaudeTurnSpan turn)
+    {
+        var left = XOf(turn.Start.LocalDateTime);
+        var width = Math.Max(6, XOf(turn.End.LocalDateTime) - left);
+        var wrote = turn.FilesWritten > 0;
+        var bar = new Border { Height = 10, CornerRadius = new CornerRadius(2), VerticalAlignment = VerticalAlignment.Center, BorderThickness = new Thickness(1) };
+        bar.SetResourceReference(Border.BorderBrushProperty, "Accent");
+        if (wrote)
+            bar.SetResourceReference(Border.BackgroundProperty, "Accent");
+        var span = turn.End > turn.Start ? $"{turn.Start.LocalDateTime:HH:mm}〜{turn.End.LocalDateTime:HH:mm}" : $"{turn.Start.LocalDateTime:HH:mm}";
+        var did = wrote ? $"書き換えたファイル {turn.FilesWritten}・操作 {turn.ToolCalls}" : turn.ToolCalls > 0 ? $"操作 {turn.ToolCalls}（書き換えなし）" : "操作なし";
+        var hit = new Border
+        {
+            Width = width,
+            Height = LaneHeight,
+            Background = Brushes.Transparent,
+            Cursor = Cursors.Hand,
+            Child = bar,
+            ToolTip = $"{span}  {turn.PromptHead}\n{did}\n{(wrote ? "クリックでこの頼みごとの差分を開く" : "クリックでこの頼みごとの会話を読む")}",
+        };
+        ToolTipService.SetInitialShowDelay(hit, 150);
+        AutomationProperties.SetName(hit, $"Claude の頼みごと {turn.PromptHead}");
+        hit.MouseLeftButtonUp += (_, e) => { e.Handled = true; ClaudeTurnClicked?.Invoke(this, turn); };
+        Canvas.SetLeft(hit, left);
+        Canvas.SetTop(hit, LaneTop(ClaudeLane));
+        _canvas.Children.Add(hit);
     }
 
     /// <summary>しおりの段：リボン＋メモ。前のメモと重なるならメモは出さずリボンだけ（ツールチップで読める）。</summary>

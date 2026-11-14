@@ -116,10 +116,12 @@ public partial class ShellWindow {
 
     /// <summary>行 → 頼みごと → そのときの Claude の返事（§43.6 A4）。ターミナルサポートに記録を留めて、そのターンを開く。
     /// 再開（<c>--resume</c>）と違って何も動かさない——読むだけ。</summary>
-    private async void OpenClaudeTurnRecord(ClaudeWrite write) {
+    private void OpenClaudeTurnRecord(ClaudeWrite write) => OpenClaudeRecord(write.TranscriptPath, write.PromptLine);
+
+    private async void OpenClaudeRecord(string transcriptPath, int promptLine) {
         EnsurePaneVisibleOrSwapTopLeft(PaneKind.TerminalSupport);
         try {
-            await _terminalSupport.ShowRecordAsync(write.TranscriptPath, write.PromptLine, _activeTerminalTab?.Id);
+            await _terminalSupport.ShowRecordAsync(transcriptPath, promptLine, _activeTerminalTab?.Id);
         } catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) {
             ToastService.Error($"記録を読めませんでした: {ex.Message}");
         }
@@ -127,8 +129,8 @@ public partial class ShellWindow {
 
     /// <summary>ターミナルサポートのターンから（§39・§43.6 A3）。記録を読むのは裏で。ファイルを書き換えていない
     /// 頼みごと・索引の期間より古い記録は、そう言う。</summary>
-    private async void OpenClaudeTurnDiff(string sessionId, int promptLine) {
-        ProvenanceUsage.Record("turn.diff");
+    private async void OpenClaudeTurnDiff(string sessionId, int promptLine, string usageKey = "turn.diff") {
+        ProvenanceUsage.Record(usageKey);
         IReadOnlyList<ClaudeWrite> writes;
         try {
             writes = await Task.Run(() => ClaudeProvenance.WritesOfRequest(sessionId, promptLine));
@@ -141,6 +143,59 @@ public partial class ShellWindow {
             return;
         }
         OpenClaudeRequestDiff(writes[0]);
+    }
+
+    // ===== 軌跡の二声化（§43.6 C）：展開ビューの Claude の段 =====
+
+    private ClaudeDayActivity? _claudeDayActivity;
+    /// <summary>読み終えた日のターン。段を描くとき（UI スレッド）はここから引くだけ。</summary>
+    private (DateOnly Day, IReadOnlyList<ClaudeTurnSpan> Turns, DateTime LoadedUtc)? _claudeDayTurns;
+    private DateOnly? _claudeDayLoading;
+
+    /// <summary>読み直すまでの間。展開ビューは 1 分ごと・記録のたびに組み直すが、記録フォルダーを見に行くのはこの間隔まで。</summary>
+    private static readonly TimeSpan ClaudeDayTurnsMaxAge = TimeSpan.FromSeconds(20);
+
+    private void OnTrailTimelineLoaded(object sender, RoutedEventArgs e) {
+        if (TrailTimeline.ClaudeTurnsProvider is not null)
+            return;
+        TrailTimeline.ClaudeTurnsProvider = ClaudeTurnsOfDay;
+        TrailTimeline.ClaudeTurnClicked += (_, turn) => OpenClaudeTurnFromTrail(turn);
+    }
+
+    /// <summary>その日のターン。手元にあるものを返し、古ければ裏で読み直して、変わっていたら段を描き直させる。</summary>
+    private IReadOnlyList<ClaudeTurnSpan> ClaudeTurnsOfDay(DateOnly day) {
+        var known = _claudeDayTurns is { } cached && cached.Day == day ? cached : ((DateOnly, IReadOnlyList<ClaudeTurnSpan>, DateTime)?)null;
+        if ((known is null || DateTime.UtcNow - known.Value.Item3 > ClaudeDayTurnsMaxAge) && _claudeDayLoading != day)
+            _ = LoadClaudeTurnsAsync(day);
+        return known?.Item2 ?? [];
+    }
+
+    private async Task LoadClaudeTurnsAsync(DateOnly day) {
+        _claudeDayLoading = day;
+        var activity = _claudeDayActivity ??= new ClaudeDayActivity(_workspace);
+        IReadOnlyList<ClaudeTurnSpan> turns;
+        try {
+            turns = await Task.Run(() => activity.Read(day));
+        } catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) {
+            turns = [];
+        } finally {
+            if (_claudeDayLoading == day)
+                _claudeDayLoading = null;
+        }
+        var changed = _claudeDayTurns is not { } previous || previous.Day != day || !previous.Turns.SequenceEqual(turns);
+        _claudeDayTurns = (day, turns, DateTime.UtcNow);
+        if (changed)
+            TrailTimeline.RefreshClaude();
+    }
+
+    /// <summary>展開ビューの Claude の段を押した：書き換えたターンは頼みごとの差分、そうでなければ会話のその場所。</summary>
+    private void OpenClaudeTurnFromTrail(ClaudeTurnSpan turn) {
+        if (turn.FilesWritten > 0) {
+            OpenClaudeTurnDiff(turn.SessionId, turn.PromptLine, "trail.diff");
+            return;
+        }
+        ProvenanceUsage.Record("trail.read");
+        OpenClaudeRecord(turn.TranscriptPath, turn.PromptLine);
     }
 
     /// <summary>頼みごと → それで変わった場所。ファイルごとに 1 行、選ぶとその書き込みがいまある行へ行く

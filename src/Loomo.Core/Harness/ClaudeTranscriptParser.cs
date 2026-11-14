@@ -212,7 +212,9 @@ public static class ClaudeTranscriptParser
         if (!root.TryGetProperty("message", out var message) || message.ValueKind != JsonValueKind.Object
             || !message.TryGetProperty("content", out var content))
             return;
-        var isMeta = root.TryGetProperty("isMeta", out var meta) && meta.ValueKind == JsonValueKind.True;
+        // isMeta（Claude Code が差し込む注記）と、会話を詰め直したときの要約（isCompactSummary）は人間の頼みごとではない。
+        var isMeta = (root.TryGetProperty("isMeta", out var meta) && meta.ValueKind == JsonValueKind.True)
+            || (root.TryGetProperty("isCompactSummary", out var compact) && compact.ValueKind == JsonValueKind.True);
 
         if (content.ValueKind == JsonValueKind.String)
         {

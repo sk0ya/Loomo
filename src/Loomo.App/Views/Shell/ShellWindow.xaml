@@ -2957,7 +2957,7 @@
                 <StackPanel>
                 <!-- 展開ビュー（§27.14）：表示中の日を時刻の軸に並べ直す（移動・コマンドの成否・しおり）。
                      開閉は右クリック「展開ビュー」／パレット。見えている間だけ組み立てる。 -->
-                <views:TrailTimelineView DataContext="{Binding Trail}"
+                <views:TrailTimelineView x:Name="TrailTimeline" DataContext="{Binding Trail}" Loaded="OnTrailTimelineLoaded"
                                          Visibility="{Binding Expanded, Converter={StaticResource BoolToVis}}" />
                 <Rectangle Height="1" Fill="{DynamicResource Border}"
                            Visibility="{Binding Trail.Expanded, Converter={StaticResource BoolToVis}}" />
