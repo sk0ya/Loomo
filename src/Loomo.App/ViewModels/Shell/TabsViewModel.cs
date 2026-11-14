@@ -344,6 +344,23 @@ public sealed partial class TabsViewModel : ObservableObject
     /// <summary>「メモ…」：Terminal タブのメモを書く・消す（§24.73）。</summary>
     public event EventHandler<TabEntryViewModel>? TabNoteRequested;
 
+    /// <summary>「切り替えずに覗く」：Terminal タブの画面の末尾を見て 1 行送る（§24.108）。窓の中身は ShellWindow が作って <see cref="Peek"/> に入れる。</summary>
+    public event EventHandler<TabEntryViewModel>? TerminalPeekRequested;
+
+    /// <summary>いま開いている覗き窓。閉じていれば null。</summary>
+    [ObservableProperty] private TerminalPeekViewModel? _peek;
+
+    partial void OnPeekChanged(TerminalPeekViewModel? oldValue, TerminalPeekViewModel? newValue) => oldValue?.Dispose();
+
+    /// <summary>行の右クリック「切り替えずに覗く」（Terminal のみ）。窓を出す位置はビューが覚えておく。</summary>
+    public void RequestTerminalPeek(TabEntryViewModel? tab)
+    {
+        if (tab is { CanRename: true })
+            TerminalPeekRequested?.Invoke(this, tab);
+    }
+
+    public void ClosePeek() => Peek = null;
+
     /// <summary>Terminal タブの色が変わった（§24.63）。</summary>
     public event EventHandler<TabEntryViewModel>? TabColorChanged;
     /// <summary>「新しいタブ」：指定の種別で空のタブを1つ開く（見出しの＋・行の右クリック）。</summary>

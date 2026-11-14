@@ -118,8 +118,10 @@ public sealed partial class DiffSessionViewModel
     }
 
     /// <summary>ファイルの見出しの行。どのファイルか・増減の行数。</summary>
-    internal static DiffRowVm ContinuousFileHeader(DiffFileItem item, int added, int removed)
-        => new("Header", $"━━ {item.DisplayPath}　+{added} −{removed}", Owner: item);
+    internal static DiffRowVm ContinuousFileHeader(DiffFileItem item, int added, int removed, bool viewed = false)
+        => new("Header", viewed
+            ? $"━━ {item.DisplayPath}　+{added} −{removed}　✓ 見た（畳んだ）"
+            : $"━━ {item.DisplayPath}　+{added} −{removed}", Owner: item);
 
     /// <summary>一覧の全ファイルを 1 本にする。各ファイルの行は 1 ファイルの統合表示と同じ組み立て（パッチのキャッシュも共有）。</summary>
     private async Task<UnifiedContent> BuildContinuousContentAsync()
@@ -132,7 +134,10 @@ public sealed partial class DiffSessionViewModel
             if (parts.Count >= ContinuousMaxFiles || rowCount >= ContinuousMaxRows)
                 break;
             var content = await BuildUnifiedContentAsync(item, context: 3);   // 通しは常に折りたたむ
-            parts.Add(new ContinuousPart(item, content.Rows, content.Syntax, content.Inline));
+            // 見たファイル（§24.107）は見出しだけにして、まだ読んでいないところを詰めて読めるようにする。
+            // 印を付けた瞬間には組み直さない（読んでいた位置が飛ぶ）——次に組み直したときに畳む。
+            var viewed = ViewedStateOf(item) == DiffViewedState.Viewed;
+            parts.Add(new ContinuousPart(item, content.Rows, content.Syntax, content.Inline, viewed));
             rowCount += content.Rows.Count + 1;
         }
         // 移動はファイルをまたいで探す（クラスへの抽出は別のファイルへ移る）ので、つないだ後の行で調べ直す。
@@ -143,7 +148,7 @@ public sealed partial class DiffSessionViewModel
     /// <summary>1 ファイル分の行と、その行の構文・行内差分。</summary>
     internal sealed record ContinuousPart(
         DiffFileItem Item, IReadOnlyList<DiffRowVm> Rows,
-        IReadOnlyList<SyntaxToken[]?> Syntax, IReadOnlyList<IReadOnlyList<TextSpan>?> Inline);
+        IReadOnlyList<SyntaxToken[]?> Syntax, IReadOnlyList<IReadOnlyList<TextSpan>?> Inline, bool Viewed = false);
 
     /// <summary>ファイルごとの行を、見出しを挟んで 1 本につなぐ。構文・行内差分は行と 1 対 1 のまま（見出しは色なし）。</summary>
     private static UnifiedContent Join(IReadOnlyList<ContinuousPart> parts, int omittedFiles)
@@ -155,9 +160,11 @@ public sealed partial class DiffSessionViewModel
         {
             var added = part.Rows.Count(r => r.Kind == nameof(DiffLineKind.Added));
             var removed = part.Rows.Count(r => r.Kind == nameof(DiffLineKind.Removed));
-            rows.Add(ContinuousFileHeader(part.Item, added, removed));
+            rows.Add(ContinuousFileHeader(part.Item, added, removed, part.Viewed));
             syntax.Add(null);
             inline.Add(null);
+            if (part.Viewed)
+                continue;
             for (var i = 0; i < part.Rows.Count; i++)
             {
                 rows.Add(part.Rows[i] with { Owner = part.Item });

@@ -35,6 +35,9 @@ public sealed partial class RunningItemViewModel : ObservableObject
 
     public int GroupOrder => RunningEntries.GroupOrder(Group);
 
+    /// <summary>ターミナルのタブの行か（覗ける・§24.108）。Claude Code・プログラムの申告（§24.61）の行もタブのもの。</summary>
+    public bool CanPeek => Entry.Kind is RunningEntryKind.Terminal or RunningEntryKind.Claude;
+
     /// <summary>「あとで」に回してある（§24.71）。</summary>
     public bool IsSnoozed => Group == RunningEntries.SnoozedGroup;
 
@@ -48,6 +51,7 @@ public sealed partial class RunningItemViewModel : ObservableObject
         CanStop = entry.CanStop;
         Group = entry.Group;
         OnPropertyChanged(nameof(IsSnoozed));
+        OnPropertyChanged(nameof(CanPeek));
         Icon = entry.Kind switch
         {
             RunningEntryKind.Terminal => "▶",
@@ -93,6 +97,24 @@ public sealed partial class RunningViewModel : ObservableObject
 
     public event EventHandler<RunningItemViewModel>? ActivateRequested;
     public event EventHandler<RunningItemViewModel>? StopRequested;
+
+    /// <summary>行の「覗く」が押された（§24.108）。窓の中身は ShellWindow が作って <see cref="Peek"/> に入れる。</summary>
+    public event EventHandler<RunningItemViewModel>? PeekRequested;
+
+    /// <summary>いま開いている覗き窓。閉じていれば null。</summary>
+    [ObservableProperty] private TerminalPeekViewModel? _peek;
+
+    partial void OnPeekChanged(TerminalPeekViewModel? oldValue, TerminalPeekViewModel? newValue) => oldValue?.Dispose();
+
+    [RelayCommand]
+    private void RequestPeek(RunningItemViewModel? item)
+    {
+        if (item is { CanPeek: true })
+            PeekRequested?.Invoke(this, item);
+    }
+
+    /// <summary>覗き窓を閉じる。</summary>
+    public void ClosePeek() => Peek = null;
 
     /// <summary>「あとで」に回した行（鍵 → その時点の状態の鍵・§24.71）。保存はしない。</summary>
     private readonly Dictionary<string, string> _snoozed = new(StringComparer.Ordinal);

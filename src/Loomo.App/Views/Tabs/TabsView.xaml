@@ -202,6 +202,10 @@
                                   Command="{Binding PlacementTarget.Tag.RenameTabCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                   CommandParameter="{Binding}" />
                         <!-- ターミナルだけ：覚え書き（§24.73）。行の 3 行目とツールチップに出る -->
+                        <!-- ターミナルだけ：前に出さずに画面の末尾を見て 1 行送る（§24.108） -->
+                        <MenuItem Header="切り替えずに覗く"
+                                  Visibility="{Binding CanRename, Converter={StaticResource BoolToVis}}"
+                                  Click="OnPeekMenuClick" />
                         <MenuItem Header="メモ…"
                                   Visibility="{Binding CanRename, Converter={StaticResource BoolToVis}}"
                                   Command="{Binding PlacementTarget.Tag.EditTabNoteCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"

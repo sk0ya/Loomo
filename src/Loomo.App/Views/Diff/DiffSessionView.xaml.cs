@@ -514,6 +514,11 @@ public partial class DiffSessionView : UserControl, IDisposable
         catch { /* 他アプリがクリップボードを掴んでいるだけ。無視してよい。 */ }
     }
 
+    private void OnToggleViewed(object sender, RoutedEventArgs e)
+    {
+        if (Vm is { } vm && ContextItem(sender) is { } item) vm.ToggleViewedCommand.Execute(item);
+    }
+
     private void OnDiscardFile(object sender, RoutedEventArgs e)
     {
         if (Vm is { } vm && ContextItem(sender) is { } item) vm.DiscardCommand.Execute(item);

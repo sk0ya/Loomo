@@ -158,8 +158,9 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
     public DiffSessionViewModel(
         GitService git, IEditorService editor, IWorkspaceService workspace,
         DiffFileGateway files, DiffSessionQuery query, DiffSessionCommandHandler commands,
-        LoomoSettings settings, GitCompareBaseViewModel compareBase)
+        LoomoSettings settings, GitCompareBaseViewModel compareBase, DiffViewedStore? viewed = null)
     {
+        _viewed = viewed;
         _git = git;
         _editor = editor;
         _workspace = workspace;
@@ -398,14 +399,18 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
         foreach (var dir in DiffFileTreeNode.Directories(tree))
             dir.IsExpanded = !collapsed.Contains(dir.Key);
 
+        var viewedStates = SnapshotViewedStates();
+        _viewedGeneration++;   // 古い一覧への照らし合わせは捨てる
         _selectedNode = null;
         _fileNodes.Clear();
         Files.Clear();
-        foreach (var leaf in DiffFileTreeNode.Leaves(tree))
+        var leaves = DiffFileTreeNode.Leaves(tree).ToList();
+        foreach (var leaf in leaves)
         {
             _fileNodes[leaf.File!] = leaf;
             Files.Add(leaf.File!);
         }
+        CarryViewedStates(viewedStates, leaves);
         FileTree = tree;
     }
 
@@ -657,7 +662,9 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
         get
         {
             var head = Source == DiffSource.Compare ? $"比較（{_comparisons.Count}件）" : "変更ファイル";
-            return ActiveChangeFilter is { } term ? $"{head}・「{term}」を含む {Files.Count}/{_unfilteredFileCount}" : head;
+            head = ActiveChangeFilter is { } term ? $"{head}・「{term}」を含む {Files.Count}/{_unfilteredFileCount}" : head;
+            // 見た数（§24.107）。見たものが無いうちは何も足さない。
+            return _viewedSummary.Length > 0 ? $"{head}・{_viewedSummary}" : head;
         }
     }
 
@@ -1002,6 +1009,8 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
         if (!force && DiffSessionQuery.SameFiles(items, Files))
         {
             EmptyMessage = Files.Count > 0 ? "" : emptyMessage;
+            // 一覧が同じでも中身は変わり得る（増減の行数が同じ書き換え）。見た印は照らし直す（§24.107）。
+            _ = RecheckViewedAsync();
             if (IsGitMode && _commitRange is null)
                 await Conflict.LoadAsync(SelectedFile, LoadDiffAsync);
             return;
@@ -1022,7 +1031,9 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
         }
 
         EmptyMessage = Files.Count > 0 ? "" : emptyMessage;
+        UpdateViewedSummary();
         OnPropertyChanged(nameof(FileListHeader));
+        _ = RecheckViewedAsync();
 
         _reselectingSameFile = reselect is not null;
         try { SelectedFile = reselect ?? Files.FirstOrDefault(); }
@@ -1094,6 +1105,7 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
     private void ClearFiles(string emptyMessage)
     {
         ReplaceFileTree(Array.Empty<DiffFileTreeNode>());
+        UpdateViewedSummary();
         EmptyMessage = emptyMessage;
         OnPropertyChanged(nameof(FileListHeader));
         SelectedFile = null;

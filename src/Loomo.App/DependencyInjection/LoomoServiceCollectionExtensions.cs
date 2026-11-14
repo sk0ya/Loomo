@@ -145,6 +145,8 @@ internal static class LoomoServiceCollectionExtensions
         services.AddSingleton<DiffFileGateway>();
         services.AddSingleton<DiffSessionQuery>();
         services.AddSingleton<DiffSessionCommandHandler>();
+        // 差分の「見た」印の置き場（§24.107）。ペインと切り離し窓の VM が同じ表を見る。
+        services.AddSingleton(_ => new DiffViewedStore(DiffViewedStore.DefaultPath()));
         services.AddSingleton<DiffSessionViewModel>();
         // 切り離しウィンドウ用にもう1つ立てるための生成器（ペインの VM を奪わないため）。
         services.AddSingleton<DiffSessionFactory>();

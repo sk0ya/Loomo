@@ -190,6 +190,23 @@ internal sealed class HostSession
         return done.Wait(TimeSpan.FromSeconds(2)) ? result : Array.Empty<PtyProtocol.SearchMatch>();
     }
 
+    /// <summary>
+    /// 画面の末尾の <paramref name="lines"/> 行を文字で返す（§24.108・タブを切り替えずに覗く）。<see cref="Search"/> と同じく、
+    /// 画面モデルはこのセッションのスレッドでしか触れないので、そこへ頼んで最大 2 秒待つ。終わったセッション・待ち切れなかったときは null。
+    /// </summary>
+    public string? Tail(int lines)
+    {
+        var done = new ManualResetEventSlim();
+        string? result = null;
+        if (!Post(() =>
+            {
+                try { result = TerminalScreenTail.Last(_screen.CreatePlainTextSnapshot(), lines); }
+                finally { done.Set(); }
+            }))
+            return null;
+        return done.Wait(TimeSpan.FromSeconds(2)) ? result : null;
+    }
+
     /// <summary>本体がタブを閉じた・作り直した。シェルごと殺す。<paramref name="keepScreen"/> は最後の Loomo が正常に
     /// 終わって全部殺すとき（§34.13）：次の起動で同じタブに戻せるよう、画面を VT のまま残す。</summary>
     public void Kill(bool keepScreen = false)

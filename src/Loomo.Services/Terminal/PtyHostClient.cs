@@ -191,6 +191,19 @@ public sealed class PtyHostClient
                 TimeSpan.FromSeconds(2))?.Matches ?? new List<PtyProtocol.SearchMatch>();
         });
 
+    /// <summary>
+    /// ホストに頼んで、セッションの画面の末尾 <paramref name="lines"/> 行を文字で受け取る（§24.108・タブを切り替えずに覗く）。
+    /// ホストが動いていない・古くて知らない・答えが遅い（2 秒）・セッションが無いときは null。
+    /// </summary>
+    public Task<string?> TailAsync(Guid sessionId, int lines) =>
+        Task.Run(() =>
+        {
+            if (!IsHostRunning())
+                return null;
+            return Ask(new PtyProtocol.Request(PtyProtocol.Operation.Tail, sessionId, LineCount: lines),
+                TimeSpan.FromSeconds(2))?.ScreenText;
+        });
+
     public Task KillAsync(Guid sessionId) =>
         Task.Run(() => Ask(new PtyProtocol.Request(PtyProtocol.Operation.Kill, sessionId)));
 

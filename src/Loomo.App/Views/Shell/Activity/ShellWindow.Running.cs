@@ -17,6 +17,11 @@ public partial class ShellWindow {
         _vm.Running.StopRequested += (_, item) => {
             if (_runningActions.TryGetValue(item.Key, out var actions)) actions.Stop?.Invoke();
         };
+        _vm.Running.PeekRequested += (_, item) => {
+            if (TerminalTabIdOf(item.Key) is { } tabId)
+                _vm.Running.Peek = CreateTerminalPeek(tabId);
+        };
+        _vm.Tabs.TerminalPeekRequested += (_, entry) => _vm.Tabs.Peek = CreateTerminalPeek(entry.Id);
         // 「あとで」（§24.71）で人の番の数が変わったら、ActivityBar の印も付け直す。
         _vm.Running.AttentionChanged += (_, _) => UpdateRunningActivityMark();
         TerminalStatusChanged += RequestRunningRefresh;
@@ -37,6 +42,29 @@ public partial class ShellWindow {
                 RequestRunningRefresh();
         };
         RequestRunningRefresh();
+    }
+
+    /// <summary>
+    /// 行のタブを切り替えずに覗く（§24.108）。画面はホストの画面モデルから取り（表示中のタブでも、まだ表示していないタブでも同じ）、
+    /// 送るのはそのタブのビューへ。タブを前に出さず、ペインも動かさない。
+    /// </summary>
+    private TerminalPeekViewModel? CreateTerminalPeek(Guid tabId) {
+        if (_terminalTabs.FirstOrDefault(t => t.Id == tabId) is not { } tab)
+            return null;
+        var view = tab.View;
+        return new TerminalPeekViewModel(
+            tabId,
+            TerminalTabTitle(tabId) ?? "Terminal",
+            fetch: () => PersistentTerminalsEnabled
+                ? _ptyHost.TailAsync(tabId, TerminalPeekViewModel.Lines)
+                : Task.FromResult<string?>(null),
+            send: text => _terminalTabs.Any(t => t.Id == tabId) && view.SendTerminalInput(text));
+    }
+
+    /// <summary>動いているもの面の行の鍵（terminal:／claude:／program:）からタブの ID を引く。</summary>
+    internal static Guid? TerminalTabIdOf(string key) {
+        var parts = key.Split(':');
+        return parts.Length >= 2 && parts[0] is "terminal" or "claude" or "program" && Guid.TryParse(parts[1], out var id) ? id : null;
     }
 
     /// <summary>引き直しを予約する（すでに予約があれば何もしない）。</summary>

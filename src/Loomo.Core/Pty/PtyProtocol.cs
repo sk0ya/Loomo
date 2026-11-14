@@ -75,6 +75,12 @@ public static class PtyProtocol
         /// 検索パネルの横断検索がここへ頼む。足しただけの種類なので版は上げない——知らない古いホストは答えずに切るので、本体は「何も無い」として扱う。
         /// </summary>
         Search,
+        /// <summary>
+        /// セッションの画面の末尾の行を文字で返す（§24.108・タブを切り替えずに覗く）。表示中のタブでも、まだ表示していないタブでも、
+        /// 画面の正本はホストの画面モデルなので、ここへ頼む。足しただけの種類なので版は上げない——知らない古いホストは答えずに切り、
+        /// 本体は「覗けない」と出す。
+        /// </summary>
+        Tail,
     }
 
     /// <param name="Op">要求の種類。</param>
@@ -99,7 +105,8 @@ public static class PtyProtocol
         Dictionary<string, string?>? Environment = null,
         int ClientProcessId = 0,
         string? Query = null,
-        List<Guid>? SessionIds = null);
+        List<Guid>? SessionIds = null,
+        int LineCount = 0);
 
     /// <param name="Created">新しく作ったなら true、生きていたものに繋いだなら false。</param>
     /// <param name="Sessions">一覧の要求への答え。</param>
@@ -108,7 +115,7 @@ public static class PtyProtocol
     /// （Claude Code 等）がこのタブのものかを、親をたどって確かめるのに使う（§39.4.2）。足しただけの欄なので版は上げない——
     /// 知らない古いホストは 0 を返し、本体はそのとき PID なしの確かめ方に戻る。</param>
     public sealed record Response(bool Created = false, List<SessionInfo>? Sessions = null, bool InUse = false, int ShellProcessId = 0,
-        List<SearchMatch>? Matches = null);
+        List<SearchMatch>? Matches = null, string? ScreenText = null);
 
     /// <summary>検索（<see cref="Operation.Search"/>）で当たった 1 行。<paramref name="LineIndex"/> はホストの画面の文字にしたときの行番号で、
     /// 本体の端末の行番号とは揃わない——本体はタブを表示してから同じ行の文字で探し直す。</summary>

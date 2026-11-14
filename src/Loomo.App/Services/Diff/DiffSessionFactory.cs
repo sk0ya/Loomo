@@ -27,12 +27,14 @@ public sealed class DiffSessionFactory
     private readonly DiffSessionCommandHandler _commands;
     private readonly LoomoSettings _settings;
     private readonly GitCompareBaseViewModel _compareBase;
+    private readonly DiffViewedStore? _viewed;
 
     public DiffSessionFactory(
         GitService git, IEditorService editor, IWorkspaceService workspace,
         DiffFileGateway files, DiffSessionQuery query, DiffSessionCommandHandler commands,
-        LoomoSettings settings, GitCompareBaseViewModel compareBase)
+        LoomoSettings settings, GitCompareBaseViewModel compareBase, DiffViewedStore? viewed = null)
     {
+        _viewed = viewed;
         _git = git;
         _editor = editor;
         _workspace = workspace;
@@ -44,5 +46,5 @@ public sealed class DiffSessionFactory
     }
 
     public DiffSessionViewModel Create() =>
-        new(_git, _editor, _workspace, _files, _query, _commands, _settings, _compareBase);
+        new(_git, _editor, _workspace, _files, _query, _commands, _settings, _compareBase, _viewed);
 }

@@ -88,6 +88,10 @@ internal sealed class PtyHostServer(string pipeName, TimeSpan? idleExit, Action?
                 case PtyProtocol.Operation.Search:
                     client.Send(PtyProtocol.FrameType.Response, Json(new PtyProtocol.Response(Matches: Search(request))));
                     return;
+                case PtyProtocol.Operation.Tail:
+                    client.Send(PtyProtocol.FrameType.Response, Json(new PtyProtocol.Response(
+                        ScreenText: Find(request.SessionId)?.Tail(Math.Clamp(request.LineCount, 1, TerminalTailMaxLines)))));
+                    return;
                 case PtyProtocol.Operation.Kill:
                     // 外からの Kill は、誰も繋いでいないシェルにだけ効く。繋いでいる Loomo は自分の接続で殺す
                     // （タブを閉じた）ので、ここで繋がっているものを殺すと別の Loomo のシェルを奪うことになる。
@@ -343,6 +347,9 @@ internal sealed class PtyHostServer(string pipeName, TimeSpan? idleExit, Action?
 
     /// <summary>1 セッションから返す一致の上限（検索パネルは全体で 1000 件までしか並べない）。</summary>
     private const int TerminalSearchLimit = 500;
+
+    /// <summary>覗く（§24.108）ときに返す行の上限。</summary>
+    private const int TerminalTailMaxLines = 200;
 
     private List<PtyProtocol.SessionInfo> List()
     {

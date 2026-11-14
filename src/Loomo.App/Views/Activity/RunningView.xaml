@@ -38,6 +38,9 @@
                 <Grid.ContextMenu>
                     <!-- 行のテンプレートの中に置く（Style の Setter に置くと Click が結線されない）。 -->
                     <ContextMenu>
+                        <MenuItem Header="切り替えずに覗く"
+                                  Visibility="{Binding CanPeek, Converter={StaticResource RunningVisibility}}"
+                                  Click="OnPeekMenuClick" />
                         <MenuItem Header="あとで（状態が変わったら戻す）"
                                   Visibility="{Binding IsSnoozed, Converter={StaticResource InverseBoolToVis}}"
                                   Command="{Binding PlacementTarget.Tag.SnoozeCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
@@ -71,15 +74,29 @@
                                    Margin="6,1,0,0" VerticalAlignment="Top" />
                     </Grid>
                 </Button>
-                <!-- 止める：ターミナルは Ctrl+C を送る、デバッグはセッションを止める。 -->
-                <Button x:Name="StopButton" Content="■" Style="{StaticResource PaneHeaderGhostButton}"
-                        HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,4,0"
-                        ToolTip="止める（ターミナルは Ctrl+C を送る）" AutomationProperties.Name="止める"
-                        Visibility="{Binding CanStop, Converter={StaticResource RunningVisibility}}"
-                        Command="{Binding DataContext.StopCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                        CommandParameter="{Binding}" />
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,4,0">
+                    <!-- 覗く（§24.108）：タブを切り替えずに画面の末尾を読み、1 行送る。ターミナルの行にマウスを載せたときだけ出す
+                         （経過時間の上に被さるので、下地を塗る）。 -->
+                    <Button x:Name="PeekButton" Content="覗く" Style="{StaticResource PaneHeaderGhostButton}"
+                            Background="{DynamicResource BgAlt}" Visibility="Collapsed"
+                            ToolTip="このタブを切り替えずに、画面の末尾を見て 1 行送る" AutomationProperties.Name="覗く"
+                            Click="OnPeekClick" />
+                    <!-- 止める：ターミナルは Ctrl+C を送る、デバッグはセッションを止める。 -->
+                    <Button x:Name="StopButton" Content="■" Style="{StaticResource PaneHeaderGhostButton}"
+                            ToolTip="止める（ターミナルは Ctrl+C を送る）" AutomationProperties.Name="止める"
+                            Visibility="{Binding CanStop, Converter={StaticResource RunningVisibility}}"
+                            Command="{Binding DataContext.StopCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                            CommandParameter="{Binding}" />
+                </StackPanel>
             </Grid>
             <DataTemplate.Triggers>
+                <MultiDataTrigger>
+                    <MultiDataTrigger.Conditions>
+                        <Condition Binding="{Binding CanPeek}" Value="True" />
+                        <Condition Binding="{Binding IsMouseOver, ElementName=RowRoot}" Value="True" />
+                    </MultiDataTrigger.Conditions>
+                    <Setter TargetName="PeekButton" Property="Visibility" Value="Visible" />
+                </MultiDataTrigger>
                 <DataTrigger Binding="{Binding Tone}" Value="{x:Static svc:RunningEntryTone.Attention}">
                     <Setter TargetName="Icon" Property="Foreground" Value="{DynamicResource Accent}" />
                     <Setter TargetName="Detail" Property="Foreground" Value="{DynamicResource Accent}" />

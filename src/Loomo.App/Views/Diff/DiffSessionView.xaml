@@ -284,6 +284,8 @@
         <KeyBinding Key="F8" Modifiers="Shift" Command="{Binding JumpToPrevChangeCommand}" />
         <KeyBinding Key="Down" Modifiers="Alt" Command="{Binding JumpToNextChangeCommand}" />
         <KeyBinding Key="Up" Modifiers="Alt" Command="{Binding JumpToPrevChangeCommand}" />
+        <!-- 見たことにして次の未読へ（§24.107）。読み終えたら Alt+V、を繰り返せば一覧を上から片付けられる。 -->
+        <KeyBinding Key="V" Modifiers="Alt" Command="{Binding MarkViewedAndNextCommand}" />
     </UserControl.InputBindings>
 
     <DockPanel>
@@ -447,8 +449,16 @@
 
             <!-- 変更ファイル一覧 -->
             <DockPanel Grid.Column="0">
-                <TextBlock DockPanel.Dock="Top" Margin="8,2" FontSize="{DynamicResource Fs11}" FontWeight="SemiBold"
-                           Foreground="{DynamicResource FgDim}" Text="{Binding FileListHeader}" />
+                <!-- 見出し。見た印（§24.107）があれば「見た 3/12」を添え、右に「次の未読」を出す。 -->
+                <DockPanel DockPanel.Dock="Top" Margin="8,2,4,2">
+                    <Button DockPanel.Dock="Right" Style="{StaticResource PaneHeaderGhostButton}" Content="次の未読"
+                            ToolTip="まだ見ていない（見たあとに変わったものを含む）次のファイルへ。Alt+V で、いまのファイルを見たことにして次へ"
+                            Command="{Binding NextUnviewedCommand}"
+                            Visibility="{Binding SupportsViewedMarks, Converter={StaticResource BoolToVis}}" />
+                    <TextBlock FontSize="{DynamicResource Fs11}" FontWeight="SemiBold" VerticalAlignment="Center"
+                               TextTrimming="CharacterEllipsis"
+                               Foreground="{DynamicResource FgDim}" Text="{Binding FileListHeader}" />
+                </DockPanel>
                 <!-- 変更に含む語で絞る（§24.85）。追加・削除の行にその語を含むファイルだけを残し、左右並びの本文ではその語を塗る。
                      空のうちは薄い案内だけ（場所は取るが 1 行・一覧の真上に置いて何を絞るのかを近くで分からせる）。 -->
                 <Grid DockPanel.Dock="Top" Margin="6,0,6,4">
@@ -528,6 +538,9 @@
                                                 <MenuItem Header="クリップボードと比較" Click="OnCompareFileWithClipboard"
                                                           ToolTip="このファイルの現在の内容とクリップボードを比較する" />
                                                 <MenuItem Header="パスをコピー" Click="OnCopyFilePath" />
+                                                <MenuItem Header="見た印を付ける／外す" Click="OnToggleViewed"
+                                                          InputGestureText="Alt+V で付けて次へ"
+                                                          Visibility="{Binding CanMarkViewed, Converter={StaticResource BoolToVis}}" />
                                                 <Separator />
                                                 <!-- ストックした比較だけ「閉じる」で片づける（ほかの比較は残る）。 -->
                                                 <MenuItem Header="この比較を閉じる" Click="OnCloseComparison"
@@ -562,11 +575,54 @@
                                                 </Style>
                                             </Button.Style>
                                         </Button>
+                                        <!-- 見た印（§24.107）：✓ 見た／● 見たあとに変わった／○（マウスを載せたときだけ）まだ。押して付け外し。 -->
+                                        <Button DockPanel.Dock="Right" Content="{Binding ViewedGlyph}" ToolTip="{Binding ViewedToolTip}"
+                                                Margin="6,0,0,0" Padding="2,0" MinWidth="14"
+                                                AutomationProperties.Name="見た印"
+                                                Command="{Binding DataContext.ToggleViewedCommand,
+                                                    RelativeSource={RelativeSource AncestorType=TreeView}}"
+                                                CommandParameter="{Binding File}">
+                                            <Button.Style>
+                                                <Style TargetType="Button" BasedOn="{StaticResource DiffCloseButton}">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                    <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
+                                                    <Style.Triggers>
+                                                        <MultiDataTrigger>
+                                                            <MultiDataTrigger.Conditions>
+                                                                <Condition Binding="{Binding CanMarkViewed}" Value="True" />
+                                                                <Condition Binding="{Binding IsMouseOver,
+                                                                    RelativeSource={RelativeSource AncestorType=TreeViewItem}}" Value="True" />
+                                                            </MultiDataTrigger.Conditions>
+                                                            <Setter Property="Visibility" Value="Visible" />
+                                                        </MultiDataTrigger>
+                                                        <DataTrigger Binding="{Binding IsViewed}" Value="True">
+                                                            <Setter Property="Visibility" Value="Visible" />
+                                                            <Setter Property="Foreground" Value="{DynamicResource Success}" />
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding IsChangedSinceViewed}" Value="True">
+                                                            <Setter Property="Visibility" Value="Visible" />
+                                                            <Setter Property="Foreground" Value="{DynamicResource SymEnum}" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Button.Style>
+                                        </Button>
                                         <TextBlock DockPanel.Dock="Right" Text="{Binding File.Stats}" FontSize="{DynamicResource Fs11}"
                                                    Foreground="{DynamicResource FgDim}" Margin="8,0,0,0" VerticalAlignment="Center" />
                                         <TextBlock DockPanel.Dock="Right" Text="{Binding File.Badge}" FontSize="{DynamicResource Fs11}"
                                                    Foreground="{DynamicResource Accent}" Margin="8,0,0,0" VerticalAlignment="Center" />
-                                        <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                                        <!-- 見たファイルは名前を淡くして、まだ読むものを目立たせる（§24.107）。 -->
+                                        <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsViewed}" Value="True">
+                                                            <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
                                     </DockPanel>
                                 </Grid>
                             </HierarchicalDataTemplate>

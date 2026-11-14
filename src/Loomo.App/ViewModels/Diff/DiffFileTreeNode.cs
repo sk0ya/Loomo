@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using CommunityToolkit.Mvvm.ComponentModel;
+using sk0ya.Loomo.App.Services;
 
 namespace sk0ya.Loomo.App.ViewModels;
 
@@ -45,6 +46,43 @@ public sealed class DiffFileTreeNode : ObservableObject
         get => _isExpanded;
         set => SetProperty(ref _isExpanded, value);
     }
+
+    private DiffViewedState _viewedState;
+
+    /// <summary>このファイルをもう読んだか（§24.107）。VM が一覧を組むたび・読み直すたびにパッチの指紋で決め直す。</summary>
+    public DiffViewedState ViewedState
+    {
+        get => _viewedState;
+        set
+        {
+            if (!SetProperty(ref _viewedState, value)) return;
+            OnPropertyChanged(nameof(IsViewed));
+            OnPropertyChanged(nameof(IsChangedSinceViewed));
+            OnPropertyChanged(nameof(ViewedGlyph));
+            OnPropertyChanged(nameof(ViewedToolTip));
+        }
+    }
+
+    /// <summary>印を付けられる行か（アドホック比較・置き場の無いホストでは出さない）。一覧を組むときに VM が決める。</summary>
+    public bool CanMarkViewed { get; set; }
+
+    public bool IsViewed => _viewedState == DiffViewedState.Viewed;
+    public bool IsChangedSinceViewed => _viewedState == DiffViewedState.ChangedSinceViewed;
+
+    /// <summary>行の右端の印。まだ見ていないものは空（マウスを載せたときだけ ○ を出す・ビュー側）。</summary>
+    public string ViewedGlyph => _viewedState switch
+    {
+        DiffViewedState.Viewed => "✓",
+        DiffViewedState.ChangedSinceViewed => "●",
+        _ => "○",
+    };
+
+    public string ViewedToolTip => _viewedState switch
+    {
+        DiffViewedState.Viewed => "見た（押すと印を外す）",
+        DiffViewedState.ChangedSinceViewed => "見たあとに変わった（押すと、いまの中身を見たことにする）",
+        _ => "見たことにする（Alt+V で印を付けて次の未読へ）",
+    };
 
     /// <summary>TreeViewItem.IsSelected と TwoWay で結ぶ。VM 側から選択を移すときにも書く。</summary>
     public bool IsSelected

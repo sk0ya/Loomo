@@ -15,6 +15,35 @@ public partial class TabsView : UserControl
         // 設定ボタン（⚙）とポップアップを同じ旗へ TwoWay で結んでいるので、何もしないと
         // 自分のボタンでは閉じられない（閉じた直後に開き直す）。理由は PopupReopenGuard に。
         PopupReopenGuard.Track(TabsSettingsPopup);
+        DataContextChanged += (_, e) =>
+        {
+            if (e.OldValue is TabsViewModel old) old.PropertyChanged -= OnVmPropertyChanged;
+            if (e.NewValue is TabsViewModel now) now.PropertyChanged += OnVmPropertyChanged;
+        };
+    }
+
+    // ===== 切り替えずに覗く（§24.108） =====
+
+    private readonly TerminalPeekPopup _peek = new();
+    private UIElement? _peekAnchor;
+
+    private void OnPeekMenuClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is not MenuItem { DataContext: TabEntryViewModel tab, Parent: ContextMenu { PlacementTarget: UIElement row } }
+            || DataContext is not TabsViewModel vm)
+            return;
+        _peekAnchor = row;
+        _peek.RememberFocus();
+        vm.RequestTerminalPeek(tab);
+    }
+
+    private void OnVmPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(TabsViewModel.Peek) || sender is not TabsViewModel vm) return;
+        if (vm.Peek is { } peek)
+            _peek.Show(_peekAnchor ?? this, peek, vm.ClosePeek);
+        else
+            _peek.Close();
     }
 
     private void OnSettingsToggle(object sender, MouseButtonEventArgs e)
