@@ -110,6 +110,16 @@ public sealed class FaceTests : IDisposable
         Assert.NotEqual(first.Fingerprint, otherLine.Fingerprint);
     }
 
+    [Theory]
+    [InlineData("""{ }""", false)]
+    [InlineData("""{ "api": ["workspace", "open", "fs.read", "git"] }""", false)]   // 読む・置くだけ
+    [InlineData("""{ "api": ["open", "run"], "commands": { "x": "dir" } }""", true)] // 任意のコマンド
+    [InlineData("""{ "api": ["fs.read", "net"] }""", true)]                         // 読んだものを外へ送れる
+    [InlineData("""{ "api": ["motion"] }""", true)]
+    [InlineData("""{ "api": ["orders"] }""", true)]
+    public void 許しが要るのは_読む口と置く口の外を挙げた面だけ(string json, bool needs)
+        => Assert.Equal(needs, FaceManifest.Parse("a", json, out _)!.NeedsApproval);
+
     [Fact]
     public void 面のオリジンは面ごと_ほかのホストは面ではない()
     {

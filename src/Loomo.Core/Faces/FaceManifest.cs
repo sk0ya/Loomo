@@ -39,6 +39,11 @@ public static class FaceApi
 
     public static readonly IReadOnlyList<string> All = [Workspace, Open, FsRead, Git, Run, Net, Motion, Orders];
 
+    /// <summary>許しを聞かずに使える口：読むか、人間の前に置くだけで、外へも出られないもの。ここに無い口（<c>run</c>＝任意の
+    /// コマンド・<c>net</c>＝読んだ中身を外へ送れる・<c>motion</c>／<c>orders</c>＝裏で回す・作業ツリーへ当てる）を 1 つでも
+    /// 挙げた面だけ人間に聞く。新しい口は足した時点では聞く側——安全と言えるときだけここへ足す。</summary>
+    public static readonly IReadOnlyList<string> WithoutApproval = [Workspace, Open, FsRead, Git];
+
     /// <summary>許しを聞くカードに出す、人間向けの 1 行。</summary>
     public static string Describe(string api) => api switch
     {
@@ -69,6 +74,10 @@ public sealed record FaceManifest(
     public static bool IsValidId(string? id) => id is not null && IdPattern.IsMatch(id);
 
     public bool Allows(string api) => Api.Contains(api);
+
+    /// <summary>開く前に人間の許しが要るか。<see cref="FaceApi.WithoutApproval"/> の口だけの面は聞かずに開く
+    /// （書くのは Claude Code 自身の Write で、そちらの権限を通っている。面の側で増える力が無い）。</summary>
+    public bool NeedsApproval => Commands.Count > 0 || Api.Any(api => !FaceApi.WithoutApproval.Contains(api));
 
     public FaceCommand? Command(string name)
         => Commands.FirstOrDefault(command => string.Equals(command.Name, name, StringComparison.Ordinal));

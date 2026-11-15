@@ -359,7 +359,7 @@ public static class FaceGuide
 
         ## Where
         Folder: {{store.Root}}\<id>\      (id: lowercase letters, digits, hyphens; max 40 chars)
-          face.json    what the face is and what it may do (the user approves this once)
+          face.json    what the face is and what it may do
           index.html   the page (plus any css/js/images next to it; relative URLs work)
         Write the files with your normal file tools, then call the `show_face` tool with the id.
         While the face is open, saving a file in its folder reloads it.
@@ -373,7 +373,8 @@ public static class FaceGuide
             "ports": { "command": "Get-NetTCPConnection -State Listen | Select-Object LocalPort,OwningProcess | ConvertTo-Json", "timeoutSeconds": 20 }
           }
         }
-        - "api": the room APIs the page uses. Declare only what you need: the user sees this list before the face opens.
+        - "api": the room APIs the page uses. Declare only what you need. A face that declares only workspace, open, fs.read
+          and git opens at once; declaring run, net, motion or orders makes the user approve the list once before it opens.
             workspace  folders of the workspace, the file and line in front of the user
             open       open a workspace file in the editor / an http(s) URL in the browser pane
             fs.read    read files and list folders inside the workspace (read-only; there is no write API)
@@ -388,7 +389,7 @@ public static class FaceGuide
           ($env:LOOMO_ARGC = count); the text passed as `stdin` is in the PowerShell variable $LoomoInput (UTF-8;
           do not use $input). Optional per command: "cwd": "workspace" (default) | "face",
           "timeoutSeconds" (default 60, max 600). Prefer ConvertTo-Json output so the page can parse it.
-        - Changing "api" or "commands" asks the user to approve again. Changing index.html does not.
+        - For a face that needs approval, changing "api" or "commands" asks the user again. Changing index.html does not.
 
         ## The page API: window.loomo  (all methods return Promises)
         loomo.workspace.folders()              -> [{ path, name }]

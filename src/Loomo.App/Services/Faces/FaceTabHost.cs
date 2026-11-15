@@ -104,7 +104,7 @@ internal sealed class FaceTabHost : IDisposable
             SetStatus(FaceTabStatus.Broken);
             return;
         }
-        if (!_state.IsApproved(manifest))
+        if (manifest.NeedsApproval && !_state.IsApproved(manifest))
         {
             Unload();
             SetStatus(FaceTabStatus.NeedsApproval);

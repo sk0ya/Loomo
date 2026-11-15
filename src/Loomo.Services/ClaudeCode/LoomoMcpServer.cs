@@ -360,7 +360,7 @@ public sealed class LoomoMcpTools(ILoomoRoomHost host)
             new JsonObject()),
         Tool("show_face",
             "Show a face (written as described by face_guide) in Loomo's face pane. Does not take keyboard focus. "
-            + "If face.json cannot be read, the result says what to fix. The user approves a face's api and commands once before it opens.",
+            + "If face.json cannot be read, the result says what to fix. A face that declares run, net, motion or orders waits for the user's one-time approval before it opens; others open at once.",
             new JsonObject
             {
                 ["id"] = new JsonObject { ["type"] = "string", ["description"] = "The face id (its folder name)." },
