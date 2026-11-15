@@ -292,6 +292,7 @@ public partial class ShellWindow : Window {
         InitializeProblemsWiring();
         InitializeCSharpDiagnosticsWiring();
         InitializeRefactoringWiring();
+        InitializeWindowPlacement();
         StateChanged += OnWindowStateChanged;
         Closing += OnClosing;
         Closed += OnClosed;
@@ -580,6 +581,7 @@ public partial class ShellWindow : Window {
         } catch (Exception ex) {
             BrowserAddressSuggestions.SetText($"WebView2 initialization failed: {ex.Message}");
         }
+        RestoreStartupSpanMaximize();
         _ = Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(() => _vm.GitSession.EnsureLoaded()));
         _ = Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(EnsureDragOverlay));
         StartupProfiler.Mark("OnLoaded 完了");

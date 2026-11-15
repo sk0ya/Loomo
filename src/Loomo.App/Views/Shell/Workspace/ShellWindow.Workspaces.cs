@@ -279,8 +279,10 @@ public partial class ShellWindow {
             snapshot, _isSpanMaximized, _spanSavedRoot, _root,
             CaptureLayoutSizes, ToSnapshot);
     }
-    private void OnClosing(object? sender, CancelEventArgs e)
-        => SaveActiveWorkspaceSnapshot(immediate: true);
+    private void OnClosing(object? sender, CancelEventArgs e) {
+        SaveWindowPlacement();
+        SaveActiveWorkspaceSnapshot(immediate: true);
+    }
     private void OnClosed(object? sender, EventArgs e) {
         SaveAllUndoHistories();    // エディタを捨てる前に、取り消しの履歴を書き出して書き切る（§24.96）
         RememberAllEditorPositions();   // カーソル位置も同じく
@@ -307,6 +309,7 @@ public partial class ShellWindow {
     private void OnWindowStateChanged(object? sender, EventArgs e) {
         if (WindowState == WindowState.Maximized && _isSpanMaximized)
             ExitSpanState();
+        RememberShownWindowState();
         UpdateMaximizeGlyph();
     }
 }

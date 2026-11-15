@@ -39,6 +39,7 @@ public partial class ShellWindow {
         base.OnSourceInitialized(e);
         var source = (HwndSource)PresentationSource.FromVisual(this)!;
         source.AddHook(WndProc);
+        ApplyStartupPlacement(source.Handle);
         UpdateSpanButtonVisibility();
     }
     private const int WM_GETMINMAXINFO = 0x0024;
