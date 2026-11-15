@@ -31,6 +31,19 @@ internal static class EditorThemePresets
         "rosepinedawn" => RosePineDawn,
         "gruvboxlight" => GruvboxLight,
         "onelight" => OneLight,
+        "githubdark" => GitHubDark,
+        "catppuccinfrappe" => CatppuccinFrappe,
+        "catppuccinmacchiato" => CatppuccinMacchiato,
+        "kanagawadragon" => KanagawaDragon,
+        "palenight" => Palenight,
+        "oxocarbon" => Oxocarbon,
+        "poimandres" => Poimandres,
+        "vesper" => Vesper,
+        "githublight" => GitHubLight,
+        "tokyonightday" => TokyoNightDay,
+        "everforestlight" => EverforestLight,
+        "ayulight" => AyuLight,
+        "kanagawalotus" => KanagawaLotus,
         _ => null,
     };
 
@@ -121,6 +134,71 @@ internal static class EditorThemePresets
         Bg: "#FAFAFA", Fg: "#383A42", Dim: "#7C7F8A", Accent: "#4078F2",
         Keyword: "#A626A4", Str: "#50A14F", Number: "#986801", Type: "#C18401", Attribute: "#0184BC",
         Red: "#E45649", Yellow: "#C18401", Green: "#50A14F"));
+
+    private static readonly EditorTheme GitHubDark = Build(new Palette(
+        Bg: "#0D1117", Fg: "#E6EDF3", Dim: "#8B949E", Accent: "#58A6FF",
+        Keyword: "#FF7B72", Str: "#A5D6FF", Number: "#79C0FF", Type: "#FFA657", Attribute: "#D2A8FF",
+        Red: "#FF7B72", Yellow: "#D29922", Green: "#3FB950"));
+
+    private static readonly EditorTheme CatppuccinFrappe = Build(new Palette(
+        Bg: "#303446", Fg: "#C6D0F5", Dim: "#737994", Accent: "#8CAAEE",
+        Keyword: "#CA9EE6", Str: "#A6D189", Number: "#EF9F76", Type: "#E5C890", Attribute: "#99D1DB",
+        Red: "#E78284", Yellow: "#E5C890", Green: "#A6D189"));
+
+    private static readonly EditorTheme CatppuccinMacchiato = Build(new Palette(
+        Bg: "#24273A", Fg: "#CAD3F5", Dim: "#6E738D", Accent: "#8AADF4",
+        Keyword: "#C6A0F6", Str: "#A6DA95", Number: "#F5A97F", Type: "#EED49F", Attribute: "#91D7E3",
+        Red: "#ED8796", Yellow: "#EED49F", Green: "#A6DA95"));
+
+    private static readonly EditorTheme KanagawaDragon = Build(new Palette(
+        Bg: "#181616", Fg: "#C5C9C5", Dim: "#737C73", Accent: "#8BA4B0",
+        Keyword: "#8992A7", Str: "#8A9A7B", Number: "#A292A3", Type: "#8EA4A2", Attribute: "#B6927B",
+        Red: "#C4746E", Yellow: "#C4B28A", Green: "#87A987"));
+
+    private static readonly EditorTheme Palenight = Build(new Palette(
+        Bg: "#292D3E", Fg: "#BFC7D5", Dim: "#676E95", Accent: "#82AAFF",
+        Keyword: "#C792EA", Str: "#C3E88D", Number: "#F78C6C", Type: "#FFCB6B", Attribute: "#89DDFF",
+        Red: "#F07178", Yellow: "#FFCB6B", Green: "#C3E88D"));
+
+    private static readonly EditorTheme Oxocarbon = Build(new Palette(
+        Bg: "#161616", Fg: "#F2F4F8", Dim: "#8D8D8D", Accent: "#78A9FF",
+        Keyword: "#78A9FF", Str: "#BE95FF", Number: "#82CFFF", Type: "#3DDBD9", Attribute: "#FF7EB6",
+        Red: "#EE5396", Yellow: "#F1C21B", Green: "#42BE65"));
+
+    private static readonly EditorTheme Poimandres = Build(new Palette(
+        Bg: "#1B1E28", Fg: "#A6ACCD", Dim: "#767C9D", Accent: "#5DE4C7",
+        Keyword: "#91B4D5", Str: "#5DE4C7", Number: "#5FB3A1", Type: "#FFFAC2", Attribute: "#ADD7FF",
+        Red: "#D0679D", Yellow: "#FFFAC2", Green: "#5DE4C7"));
+
+    private static readonly EditorTheme Vesper = Build(new Palette(
+        Bg: "#101010", Fg: "#FFFFFF", Dim: "#8B8B8B", Accent: "#FFC799",
+        Keyword: "#A0A0A0", Str: "#99FFE4", Number: "#FFC799", Type: "#FFC799", Attribute: "#FFFFFF",
+        Red: "#FF8080", Yellow: "#FFC799", Green: "#99FFE4"));
+
+    private static readonly EditorTheme GitHubLight = Build(new Palette(
+        Bg: "#FFFFFF", Fg: "#1F2328", Dim: "#59636E", Accent: "#0969DA",
+        Keyword: "#CF222E", Str: "#0A3069", Number: "#0550AE", Type: "#953800", Attribute: "#8250DF",
+        Red: "#CF222E", Yellow: "#9A6700", Green: "#1A7F37"));
+
+    private static readonly EditorTheme TokyoNightDay = Build(new Palette(
+        Bg: "#E1E2E7", Fg: "#3760BF", Dim: "#848CB5", Accent: "#2E7DE9",
+        Keyword: "#9854F1", Str: "#587539", Number: "#B15C00", Type: "#007197", Attribute: "#2E7DE9",
+        Red: "#F52A65", Yellow: "#8C6C3E", Green: "#587539"));
+
+    private static readonly EditorTheme EverforestLight = Build(new Palette(
+        Bg: "#FDF6E3", Fg: "#5C6A72", Dim: "#939F91", Accent: "#8DA101",
+        Keyword: "#F85552", Str: "#8DA101", Number: "#DF69BA", Type: "#DFA000", Attribute: "#35A77C",
+        Red: "#F85552", Yellow: "#DFA000", Green: "#8DA101"));
+
+    private static readonly EditorTheme AyuLight = Build(new Palette(
+        Bg: "#F8F9FA", Fg: "#5C6166", Dim: "#8A9199", Accent: "#FFAA33",
+        Keyword: "#FA8D3E", Str: "#86B300", Number: "#A37ACC", Type: "#399EE6", Attribute: "#55B4D4",
+        Red: "#F07171", Yellow: "#F2AE49", Green: "#86B300"));
+
+    private static readonly EditorTheme KanagawaLotus = Build(new Palette(
+        Bg: "#F2ECBC", Fg: "#545464", Dim: "#8A8980", Accent: "#4D699B",
+        Keyword: "#624C83", Str: "#6F894E", Number: "#B35B79", Type: "#597B75", Attribute: "#4E8CA2",
+        Red: "#C84053", Yellow: "#77713F", Green: "#6F894E"));
 
     /// <summary>基準色から <see cref="EditorTheme"/> を組み立てる。地の色は背景←→文字色の混色で派生させ、
     /// ステータスバーの文字色はアクセントの明度から黒／白を選ぶ（明色アクセントでも文字が沈まないように）。</summary>

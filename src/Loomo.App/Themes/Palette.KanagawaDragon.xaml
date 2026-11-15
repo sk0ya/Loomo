@@ -1,0 +1,35 @@
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- ===== Color palette (Kanagawa Dragon) =====
+         キーは Palette.Dark.xaml と一対一で対応させること。 -->
+    <SolidColorBrush x:Key="Bg" Color="#FF181616" />
+    <SolidColorBrush x:Key="BgAlt" Color="#FF201D1D" />
+    <SolidColorBrush x:Key="Panel" Color="#FF181616" />
+    <SolidColorBrush x:Key="ActivityBarBg" Color="#FF282727" />
+    <SolidColorBrush x:Key="PaneHeaderBg" Color="#FF272525" />
+    <SolidColorBrush x:Key="Border" Color="#FF393836" />
+    <SolidColorBrush x:Key="Accent" Color="#FF8BA4B0" />
+    <SolidColorBrush x:Key="AccentHover" Color="#FFA3B8C2" />
+    <SolidColorBrush x:Key="AccentFg" Color="#FF212C31" />
+    <SolidColorBrush x:Key="Fg" Color="#FFC5C9C5" />
+    <SolidColorBrush x:Key="FgDim" Color="#FFA6A69C" />
+    <!-- 検索ヒット文字の強調背景 -->
+    <SolidColorBrush x:Key="SearchHighlight" Color="#80C4B28A" />
+    <!-- リストの選択行背景（複数選択はこの帯がつながる） -->
+    <SolidColorBrush x:Key="SelectionBg" Color="#FF2D4F67" />
+    <!-- 状態色（テスト成功/失敗など）。テーマごとに調整する。 -->
+    <SolidColorBrush x:Key="Success" Color="#FF87A987" />
+    <SolidColorBrush x:Key="Error" Color="#FFC4746E" />
+    <!-- コード構造アウトライン（EditorSupport）の種別バッジ色。 -->
+    <SolidColorBrush x:Key="SymNamespace" Color="#FF9E9B93" />
+    <SolidColorBrush x:Key="SymType" Color="#FF8EA4A2" />
+    <SolidColorBrush x:Key="SymInterface" Color="#FF8BA4B0" />
+    <SolidColorBrush x:Key="SymEnum" Color="#FFC4B28A" />
+    <SolidColorBrush x:Key="SymMethod" Color="#FF8992A7" />
+    <SolidColorBrush x:Key="SymProperty" Color="#FF7FB4CA" />
+    <SolidColorBrush x:Key="SymField" Color="#FF8A9A7B" />
+    <SolidColorBrush x:Key="SymConstant" Color="#FFB6927B" />
+
+</ResourceDictionary>

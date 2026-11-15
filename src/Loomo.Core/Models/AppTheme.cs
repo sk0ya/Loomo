@@ -18,6 +18,14 @@ public enum AppTheme
     EverforestDark,
     NightOwl,
     AyuDark,
+    GitHubDark,
+    CatppuccinFrappe,
+    CatppuccinMacchiato,
+    KanagawaDragon,
+    Palenight,
+    Oxocarbon,
+    Poimandres,
+    Vesper,
     HighContrast,
     // 明色系（IsLight() に必ず追加すること）
     Light,
@@ -25,7 +33,12 @@ public enum AppTheme
     CatppuccinLatte,
     RosePineDawn,
     GruvboxLight,
-    OneLight
+    OneLight,
+    GitHubLight,
+    TokyoNightDay,
+    EverforestLight,
+    AyuLight,
+    KanagawaLotus
 }
 
 /// <summary><see cref="AppTheme"/> の補助。</summary>
@@ -35,5 +48,7 @@ public static class AppThemeExtensions
     /// （TSV グリッド等）へ明暗どちらの配色を渡すかの判定に使う。</summary>
     public static bool IsLight(this AppTheme theme) =>
         theme is AppTheme.Light or AppTheme.SolarizedLight or AppTheme.CatppuccinLatte
-            or AppTheme.RosePineDawn or AppTheme.GruvboxLight or AppTheme.OneLight;
+            or AppTheme.RosePineDawn or AppTheme.GruvboxLight or AppTheme.OneLight
+            or AppTheme.GitHubLight or AppTheme.TokyoNightDay or AppTheme.EverforestLight
+            or AppTheme.AyuLight or AppTheme.KanagawaLotus;
 }

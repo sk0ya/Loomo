@@ -18,6 +18,7 @@ internal static class MarkdownPage
         var baseTag = string.IsNullOrEmpty(baseHref) ? "" : $"<base href=\"{MarkdownRenderer.EncodeAttribute(baseHref)}\">";
         var mermaidTheme = NormalizeStyle(styleName) is "Light" or "GitHub" or "SolarizedLight" or "CatppuccinLatte"
             or "RosePineDawn" or "GruvboxLight" or "OneLight"
+            or "TokyoNightDay" or "EverforestLight" or "AyuLight" or "KanagawaLotus"
             ? "default" : "dark";
 
         // 描画モード（ページ側 JS が読む）。marp は本文を空のステージにし、生 Markdown を JS へ渡す。
@@ -962,7 +963,7 @@ internal static class MarkdownPage
         {
             "dark" => "Dark",
             "light" => "Light",
-            "github" => "GitHub",
+            "github" or "githublight" => "GitHub",
             "nord" => "Nord",
             "tokyonight" => "TokyoNight",
             "onedark" => "OneDark",
@@ -980,6 +981,18 @@ internal static class MarkdownPage
             "rosepinedawn" => "RosePineDawn",
             "gruvboxlight" => "GruvboxLight",
             "onelight" => "OneLight",
+            "githubdark" => "GitHubDark",
+            "catppuccinfrappe" => "CatppuccinFrappe",
+            "catppuccinmacchiato" => "CatppuccinMacchiato",
+            "kanagawadragon" => "KanagawaDragon",
+            "palenight" => "Palenight",
+            "oxocarbon" => "Oxocarbon",
+            "poimandres" => "Poimandres",
+            "vesper" => "Vesper",
+            "tokyonightday" => "TokyoNightDay",
+            "everforestlight" => "EverforestLight",
+            "ayulight" => "AyuLight",
+            "kanagawalotus" => "KanagawaLotus",
             _ => "Dracula",
         };
 
@@ -1005,6 +1018,18 @@ internal static class MarkdownPage
         "RosePineDawn" => BaseCss("#FAF4ED", "#575279", "#F2E9E1", "#DFD8D0", "#907AA9", "#286983", "#B4637A", "#797593", "#3E7B7F"),
         "GruvboxLight" => BaseCss("#FBF1C7", "#3C3836", "#F2E5BC", "#D5C4A1", "#076678", "#B57614", "#9D0006", "#7C6F64", "#79740E"),
         "OneLight" => BaseCss("#FAFAFA", "#383A42", "#F0F0F1", "#D3D3D4", "#4078F2", "#A626A4", "#E45649", "#7C7F8A", "#50A14F"),
+        "GitHubDark" => BaseCss("#0D1117", "#E6EDF3", "#161B22", "#30363D", "#58A6FF", "#D2A8FF", "#FFA657", "#8B949E", "#7EE787"),
+        "CatppuccinFrappe" => BaseCss("#303446", "#C6D0F5", "#292C3C", "#414559", "#8CAAEE", "#CA9EE6", "#EF9F76", "#949CBB", "#A6D189"),
+        "CatppuccinMacchiato" => BaseCss("#24273A", "#CAD3F5", "#1E2030", "#363A4F", "#8AADF4", "#C6A0F6", "#F5A97F", "#939AB7", "#A6DA95"),
+        "KanagawaDragon" => BaseCss("#181616", "#C5C9C5", "#201D1D", "#393836", "#8BA4B0", "#8992A7", "#B6927B", "#A6A69C", "#8A9A7B"),
+        "Palenight" => BaseCss("#292D3E", "#BFC7D5", "#242837", "#3A3F58", "#82AAFF", "#C792EA", "#F78C6C", "#8087AB", "#C3E88D"),
+        "Oxocarbon" => BaseCss("#161616", "#F2F4F8", "#262626", "#393939", "#78A9FF", "#BE95FF", "#FF7EB6", "#A8A8A8", "#3DDBD9"),
+        "Poimandres" => BaseCss("#1B1E28", "#E4F0FB", "#171922", "#303340", "#ADD7FF", "#5DE4C7", "#FCC5E9", "#767C9D", "#89DDFF"),
+        "Vesper" => BaseCss("#101010", "#FFFFFF", "#161616", "#282828", "#FFC799", "#FFFFFF", "#FFC799", "#A0A0A0", "#99FFE4"),
+        "TokyoNightDay" => BaseCss("#E1E2E7", "#3760BF", "#D0D5E3", "#B4B8CF", "#2E7DE9", "#9854F1", "#B15C00", "#6172B0", "#587539"),
+        "EverforestLight" => BaseCss("#FDF6E3", "#5C6A72", "#F4F0D9", "#E0DCC7", "#3A94C5", "#8DA101", "#F57D26", "#939F91", "#35A77C"),
+        "AyuLight" => BaseCss("#F8F9FA", "#5C6166", "#F0F1F2", "#DCDDDE", "#399EE6", "#FA8D3E", "#A37ACC", "#8A9199", "#86B300"),
+        "KanagawaLotus" => BaseCss("#F2ECBC", "#545464", "#E7DBA0", "#D5CEA3", "#4D699B", "#624C83", "#CC6D00", "#8A8980", "#6F894E"),
         _ => BaseCss("#282A36", "#F8F8F2", "#1E1F29", "#44475A", "#8BE9FD", "#BD93F9", "#FFB86C", "#6272A4", "#50FA7B"),
     };
 

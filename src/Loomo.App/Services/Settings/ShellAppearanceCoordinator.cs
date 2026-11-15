@@ -155,6 +155,19 @@ public sealed class ShellAppearanceCoordinator
         "rosepinedawn" => MakeTerminalTheme("#575279", "#FAF4ED", RosePineDawnAnsiPalette, "#575279", "#FFDFDAD9"),
         "gruvboxlight" => MakeTerminalTheme("#3C3836", "#FBF1C7", GruvboxLightAnsiPalette, "#3C3836", "#FFDCC79A"),
         "onelight" => MakeTerminalTheme("#383A42", "#FAFAFA", OneLightAnsiPalette, "#4078F2", "#FFD7E4FB"),
+        "githubdark" => MakeTerminalTheme("#E6EDF3", "#0D1117", GitHubDarkAnsiPalette, "#2F81F7", "#DD264F78"),
+        "catppuccinfrappe" => MakeTerminalTheme("#C6D0F5", "#303446", CatppuccinFrappeAnsiPalette, "#F2D5CF", "#DD51576D"),
+        "catppuccinmacchiato" => MakeTerminalTheme("#CAD3F5", "#24273A", CatppuccinMacchiatoAnsiPalette, "#F4DBD6", "#DD494D64"),
+        "kanagawadragon" => MakeTerminalTheme("#C5C9C5", "#181616", KanagawaDragonAnsiPalette, "#C8C093", "#DD2D4F67"),
+        "palenight" => MakeTerminalTheme("#BFC7D5", "#292D3E", PalenightAnsiPalette, "#FFCC00", "#DD444267"),
+        "oxocarbon" => MakeTerminalTheme("#F2F4F8", "#161616", OxocarbonAnsiPalette, "#F2F4F8", "#DD393939"),
+        "poimandres" => MakeTerminalTheme("#A6ACCD", "#1B1E28", PoimandresAnsiPalette, "#A6ACCD", "#DD303340"),
+        "vesper" => MakeTerminalTheme("#FFFFFF", "#101010", VesperAnsiPalette, "#FFC799", "#DD343434"),
+        "githublight" => MakeTerminalTheme("#1F2328", "#FFFFFF", GitHubLightAnsiPalette, "#0969DA", "#FFDDF4FF"),
+        "tokyonightday" => MakeTerminalTheme("#3760BF", "#E1E2E7", TokyoNightDayAnsiPalette, "#3760BF", "#FFB7C1E3"),
+        "everforestlight" => MakeTerminalTheme("#5C6A72", "#FDF6E3", EverforestLightAnsiPalette, "#5C6A72", "#FFE6E9C4"),
+        "ayulight" => MakeTerminalTheme("#5C6166", "#F8F9FA", AyuLightAnsiPalette, "#FFAA33", "#FFD6E4F2"),
+        "kanagawalotus" => MakeTerminalTheme("#545464", "#F2ECBC", KanagawaLotusAnsiPalette, "#43436C", "#FFC9CBD1"),
         _ => MakeTerminalTheme("#D4D4D4", "#1E1E1E", DarkAnsiPalette, "#5FAFFF", "#DD2E5C8A"),
     };
 
@@ -165,6 +178,71 @@ public sealed class ShellAppearanceCoordinator
 
     private static Color ParseColor(string hex) => (Color)ColorConverter.ConvertFromString(hex)!;
 
+    private static readonly string[] GitHubDarkAnsiPalette =
+    [
+        "#484F58", "#FF7B72", "#3FB950", "#D29922", "#58A6FF", "#BC8CFF", "#39C5CF", "#B1BAC4",
+        "#6E7681", "#FFA198", "#56D364", "#E3B341", "#79C0FF", "#D2A8FF", "#56D4DD", "#FFFFFF"
+    ];
+    private static readonly string[] CatppuccinFrappeAnsiPalette =
+    [
+        "#51576D", "#E78284", "#A6D189", "#E5C890", "#8CAAEE", "#F4B8E4", "#81C8BE", "#B5BFE2",
+        "#626880", "#E78284", "#A6D189", "#E5C890", "#8CAAEE", "#F4B8E4", "#81C8BE", "#A5ADCE"
+    ];
+    private static readonly string[] CatppuccinMacchiatoAnsiPalette =
+    [
+        "#494D64", "#ED8796", "#A6DA95", "#EED49F", "#8AADF4", "#F5BDE6", "#8BD5CA", "#B8C0E0",
+        "#5B6078", "#ED8796", "#A6DA95", "#EED49F", "#8AADF4", "#F5BDE6", "#8BD5CA", "#A5ADCB"
+    ];
+    private static readonly string[] KanagawaDragonAnsiPalette =
+    [
+        "#0D0C0C", "#C4746E", "#8A9A7B", "#C4B28A", "#8BA4B0", "#A292A3", "#8EA4A2", "#C8C093",
+        "#A6A69C", "#E46876", "#87A987", "#E6C384", "#7FB4CA", "#938AA9", "#7AA89F", "#C5C9C5"
+    ];
+    private static readonly string[] PalenightAnsiPalette =
+    [
+        "#3A3F58", "#F07178", "#C3E88D", "#FFCB6B", "#82AAFF", "#C792EA", "#89DDFF", "#D0D0D0",
+        "#676E95", "#FF8B92", "#DDFFA7", "#FFE585", "#9CC4FF", "#E1ACFF", "#A3F7FF", "#FFFFFF"
+    ];
+    private static readonly string[] OxocarbonAnsiPalette =
+    [
+        "#262626", "#EE5396", "#42BE65", "#F1C21B", "#33B1FF", "#BE95FF", "#3DDBD9", "#DDE1E6",
+        "#525252", "#FF7EB6", "#6FDC8C", "#FDDC69", "#78A9FF", "#D4BBFF", "#08BDBA", "#FFFFFF"
+    ];
+    private static readonly string[] PoimandresAnsiPalette =
+    [
+        "#303340", "#D0679D", "#5DE4C7", "#FFFAC2", "#89DDFF", "#FCC5E9", "#ADD7FF", "#FFFFFF",
+        "#A6ACCD", "#D0679D", "#5DE4C7", "#FFFAC2", "#ADD7FF", "#FAE4FC", "#89DDFF", "#FFFFFF"
+    ];
+    private static readonly string[] VesperAnsiPalette =
+    [
+        "#1C1C1C", "#FF8080", "#99FFE4", "#FFC799", "#AAC4E6", "#D4B8E6", "#99FFE4", "#C8C8C8",
+        "#505050", "#FF9E9E", "#B8FFEC", "#FFD9B8", "#C4D8F0", "#E4CCF2", "#B8FFEC", "#FFFFFF"
+    ];
+    private static readonly string[] GitHubLightAnsiPalette =
+    [
+        "#24292F", "#CF222E", "#116329", "#4D2D00", "#0969DA", "#8250DF", "#1B7C83", "#6E7781",
+        "#57606A", "#A40E26", "#1A7F37", "#633C01", "#218BFF", "#A475F9", "#3192AA", "#8C959F"
+    ];
+    private static readonly string[] TokyoNightDayAnsiPalette =
+    [
+        "#B4B5B9", "#F52A65", "#587539", "#8C6C3E", "#2E7DE9", "#9854F1", "#007197", "#6172B0",
+        "#A1A6C5", "#F52A65", "#587539", "#8C6C3E", "#2E7DE9", "#9854F1", "#007197", "#3760BF"
+    ];
+    private static readonly string[] EverforestLightAnsiPalette =
+    [
+        "#5C6A72", "#F85552", "#8DA101", "#DFA000", "#3A94C5", "#DF69BA", "#35A77C", "#E0DCC7",
+        "#829181", "#F85552", "#8DA101", "#DFA000", "#3A94C5", "#DF69BA", "#35A77C", "#F4F0D9"
+    ];
+    private static readonly string[] AyuLightAnsiPalette =
+    [
+        "#000000", "#EA6C73", "#86B300", "#F2AE49", "#399EE6", "#A37ACC", "#4CBF99", "#C7C7C7",
+        "#686868", "#F07178", "#86B300", "#F2AE49", "#399EE6", "#A37ACC", "#4CBF99", "#D1D1D1"
+    ];
+    private static readonly string[] KanagawaLotusAnsiPalette =
+    [
+        "#1F1F28", "#C84053", "#6F894E", "#77713F", "#4D699B", "#B35B79", "#597B75", "#545464",
+        "#8A8980", "#D7474B", "#6E915F", "#836F4A", "#6693BF", "#624C83", "#5E857A", "#43436C"
+    ];
     private static readonly string[] DarkAnsiPalette =
     [
         "#0C0C0C", "#C50F1F", "#13A10E", "#C19C00", "#0037DA", "#881798", "#3A96DD", "#CCCCCC",
