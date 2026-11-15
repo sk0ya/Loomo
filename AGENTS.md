@@ -63,7 +63,7 @@ re-tokenizes the whole file. Child-process output is read through `ChildProcessI
 thread pool.
 
 `%APPDATA%/Loomo/` holds `settings.json`, `window.json` (main window placement), `workspaces/`, `trail.db`, `provenance.db` (§43), `faces/` + `faces-state.json` (§44.2), `motion/` (§44.3), `orders/` (§44.4; worktrees under
-`%LOCALAPPDATA%/Loomo/orders/`), `lsp-servers.json`, `formatters.json`.
+`%LOCALAPPDATA%/Loomo/orders/`), `themes/` (user color themes, §3), `lsp-servers.json`, `formatters.json`.
 
 ### sk0ya control libraries
 

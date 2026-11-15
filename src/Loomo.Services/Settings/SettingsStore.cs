@@ -94,6 +94,7 @@ public sealed class SettingsStore
     private sealed class PersistedSettings
     {
         public AppTheme Theme { get; set; }
+        public string? UserTheme { get; set; }
         public string? AccentColor { get; set; }
 
         /// <summary>機能をペインに前面表示するときの配置の振る舞い。null=旧設定（未指定）→ 既定（Main）を維持。</summary>
@@ -142,6 +143,7 @@ public sealed class SettingsStore
         public static PersistedSettings From(LoomoSettings s) => new()
         {
             Theme = s.Theme,
+            UserTheme = s.UserTheme,
             AccentColor = s.AccentColor,
             PaneOpenBehavior = s.PaneOpenBehavior,
             PaneSubDirection = s.PaneSubDirection,
@@ -170,6 +172,7 @@ public sealed class SettingsStore
         public void ApplyTo(LoomoSettings s)
         {
             s.Theme = Theme;
+            s.UserTheme = string.IsNullOrWhiteSpace(UserTheme) ? null : UserTheme;
             s.AccentColor = string.IsNullOrWhiteSpace(AccentColor) ? null : AccentColor;
             if (PaneOpenBehavior is { } pob) s.PaneOpenBehavior = pob; // 旧設定（null）は既定（Main）を維持
             if (PaneSubDirection is { } psd) s.PaneSubDirection = psd; // 旧設定（null）は既定（Horizontal＝右）を維持

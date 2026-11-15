@@ -267,6 +267,7 @@ public partial class ShellWindow : Window {
         vm.Settings.Saved += ApplyEditorSettingsToOpenEditorTabs;
         vm.Appearance.AppearanceChanged += ApplyAppearanceToOpenTabs;
         vm.Appearance.AppearanceChanged += RebuildWings;
+        vm.Appearance.OpenFileRequested += path => _ = OpenFileInNewEditorTabAsync(path);
         vm.Tabs.TabActivated += OnSidebarTabActivated;
         vm.Tabs.TabCloseRequested += OnSidebarTabCloseRequested;
         vm.Tabs.TabCloseOthersRequested += OnSidebarTabCloseOthersRequested;

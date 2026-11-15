@@ -31,7 +31,12 @@ internal sealed class AppBootstrapper
         _settingsStore.Load(_settings);
         StartupProfiler.Mark("設定ロード完了");
 
-        _themeManager.Apply(_settings.Theme, _settings.AccentColor);
+        // 自分のテーマ（%APPDATA%/Loomo/themes/*.json）は数ファイルの JSON なので起動時に読んでしまう。
+        // 見張りも始め、保存し直すとその場で当て直す（購読は外観パネルの VM）。
+        UserThemes.Reload();
+        UserThemes.StartWatching();
+        var userTheme = _settings.UserTheme is { } id ? UserThemes.TryGet(UserTheme.KeyPrefix + id) : null;
+        _themeManager.Apply(userTheme, _settings.Theme, _settings.AccentColor);
         _fontManager.Apply(UiFontManager.Effective(_settings.Appearance.UiFontSize));
         StartupProfiler.Mark("テーマ適用完了");
     }

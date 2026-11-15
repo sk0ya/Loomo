@@ -16,7 +16,8 @@ internal static class MarkdownPage
         var t = title != null ? MarkdownRenderer.Encode(title) : "Preview";
         var css = PreviewCss(styleName);
         var baseTag = string.IsNullOrEmpty(baseHref) ? "" : $"<base href=\"{MarkdownRenderer.EncodeAttribute(baseHref)}\">";
-        var mermaidTheme = NormalizeStyle(styleName) is "Light" or "GitHub" or "SolarizedLight" or "CatppuccinLatte"
+        var mermaidTheme = UserThemes.TryGet(NormalizeStyle(styleName)) is { } user ? (user.IsLight ? "default" : "dark")
+            : NormalizeStyle(styleName) is "Light" or "GitHub" or "SolarizedLight" or "CatppuccinLatte"
             or "RosePineDawn" or "GruvboxLight" or "OneLight"
             or "TokyoNightDay" or "EverforestLight" or "AyuLight" or "KanagawaLotus"
             ? "default" : "dark";
@@ -958,7 +959,10 @@ internal static class MarkdownPage
             """;
     }
 
+    /// <summary>保存名を正規の名前にする。自分のテーマ（<c>user:&lt;id&gt;</c>）はそのまま返す
+    /// （各 Css は <see cref="UserThemes.TryGet"/> で引いて基準色から組む）。</summary>
     public static string NormalizeStyle(string? styleName) =>
+        UserThemes.IsUserKey(styleName?.Trim()) ? styleName!.Trim() :
         styleName?.Trim().ToLowerInvariant() switch
         {
             "dark" => "Dark",
@@ -998,6 +1002,8 @@ internal static class MarkdownPage
 
     private static string PreviewCss(string styleName) => NormalizeStyle(styleName) switch
     {
+        var key when UserThemes.TryGet(key) is { } u => BaseCss(UserTheme.Hex(u.Bg), UserTheme.Hex(u.Fg), UserTheme.Hex(u.Panel), UserTheme.Hex(u.Border),
+            UserTheme.Hex(u.Blue), UserTheme.Hex(u.Keyword), UserTheme.Hex(u.Number), UserTheme.Hex(u.Dim), UserTheme.Hex(u.String)),
         "Light" => BaseCss("#FFFFFF", "#24292F", "#F6F8FA", "#D0D7DE", "#0969DA", "#8250DF", "#953800", "#57606A", "#116329"),
         "GitHub" => BaseCss("#FFFFFF", "#24292F", "#F6F8FA", "#D0D7DE", "#0969DA", "#24292F", "#CF222E", "#57606A", "#0550AE"),
         "Dark" => BaseCss("#1E1E1E", "#D4D4D4", "#252526", "#3C3C3C", "#4FC1FF", "#DCDCAA", "#CE9178", "#9CDCFE", "#B5CEA8"),

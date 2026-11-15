@@ -10,6 +10,10 @@ public sealed class LoomoSettings
     /// <summary>UIのカラーテーマ（配色）。既定はダーク。</summary>
     public AppTheme Theme { get; set; } = AppTheme.Dark;
 
+    /// <summary>自分のテーマ（<c>%APPDATA%/Loomo/themes/&lt;id&gt;.json</c> の id）。null なら <see cref="Theme"/> を使う。
+    /// ファイルが消えた・読めないときも <see cref="Theme"/> で開く（<see cref="Theme"/> は直前の同梱テーマのまま残す）。</summary>
+    public string? UserTheme { get; set; }
+
     /// <summary>アクセントカラーの上書き（"#RRGGBB" 等）。null/空ならテーマ既定のアクセントを使う。</summary>
     public string? AccentColor { get; set; }
 

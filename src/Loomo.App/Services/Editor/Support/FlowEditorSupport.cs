@@ -153,7 +153,7 @@ public sealed class FlowVisual : IEditorSupportVisual, IEditorSupportSettingsVis
 
     private void ApplyHostTheme(FlowWorkspaceControl view)
     {
-        var themeKey = _settings.Theme.IsLight()
+        var themeKey = ThemeManager.IsLightActive
             ? Flow.Services.ThemeService.LightThemeKey
             : Flow.Services.ThemeService.DarkThemeKey;
 

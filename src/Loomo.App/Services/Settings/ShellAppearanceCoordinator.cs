@@ -128,13 +128,19 @@ public sealed class ShellAppearanceCoordinator
     {
         "dark" => EditorTheme.Dark, "nord" => EditorTheme.Nord,
         "tokyonight" => EditorTheme.TokyoNight, "onedark" => EditorTheme.OneDark,
+        var other when UserThemes.TryGet(other) is { } user => EditorThemePresets.FromUser(user),
         var other => EditorThemePresets.TryGet(other) ?? EditorTheme.Dracula,
     };
 
     private static void SetOption(VimEditorControl control, string name, bool value)
         => control.ExecuteCommand($"set {(value ? "" : "no")}{name}");
 
-    private static TerminalColorTheme BuildTerminalColorTheme(string? name) => name?.Trim().ToLowerInvariant() switch
+    internal static TerminalColorTheme BuildTerminalColorTheme(string? name) => UserThemes.TryGet(name?.Trim()) is { } user
+        ? new TerminalColorTheme(user.Fg, user.Bg, user.Ansi.ToArray(), user.Accent,
+            Color.FromArgb(user.IsLight ? (byte)0xFF : (byte)0xDD, user.Selection.R, user.Selection.G, user.Selection.B))
+        : BuildBuiltInTerminalColorTheme(name);
+
+    private static TerminalColorTheme BuildBuiltInTerminalColorTheme(string? name) => name?.Trim().ToLowerInvariant() switch
     {
         "light" => MakeTerminalTheme("#1F1F1F", "#FFFFFF", LightAnsiPalette, "#1F1F1F", "#FFADD1FF"),
         "dracula" => MakeTerminalTheme("#F8F8F2", "#282A36", DraculaAnsiPalette, "#F8F8F0", "#DD5A5E7A"),

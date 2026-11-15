@@ -574,6 +574,26 @@
                                 <TextBlock Style="{StaticResource FieldLabel}" Text="カラーテーマ（アプリ全体）" Margin="0,0,0,4" />
                                 <ComboBox ItemsSource="{Binding Appearance.Themes}" SelectedItem="{Binding Appearance.SelectedTheme}"
                                           ItemTemplate="{StaticResource PresetItemTemplate}" />
+                                <!-- 自分のテーマ（themes/*.json）。★ 付きで各一覧の末尾に並ぶ。保存し直すとその場で塗り直す。 -->
+                                <WrapPanel Margin="0,6,0,0">
+                                    <Button Content="いまの配色から自分のテーマを作る" Command="{Binding Appearance.CreateUserThemeCommand}"
+                                            Margin="0,0,6,4"
+                                            ToolTip="いま選んでいるテーマの色を写した JSON を themes フォルダーに作り、アプリ全体・エディタ・ターミナル・プレビューのすべてでそれを選んでエディタで開きます。書き換えて保存すると、その場で色が変わります。" />
+                                    <Button Content="テーマのフォルダーを開く" Command="{Binding Appearance.OpenUserThemesFolderCommand}"
+                                            Margin="0,0,0,4" ToolTip="{Binding Appearance.UserThemesFolder}" />
+                                </WrapPanel>
+                                <TextBlock Text="{Binding Appearance.UserThemeErrors}" Foreground="{DynamicResource Error}"
+                                           TextWrapping="Wrap" FontSize="{DynamicResource Fs11}">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Style.Triggers>
+                                                <Trigger Property="Text" Value="">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                </Trigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
 
                                 <TextBlock Style="{StaticResource FieldLabel}" Text="アクセントカラー" Margin="0,10,0,4" />
                                 <ComboBox ItemsSource="{Binding Appearance.Accents}" SelectedItem="{Binding Appearance.SelectedAccent}"

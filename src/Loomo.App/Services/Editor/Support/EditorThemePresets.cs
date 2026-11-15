@@ -52,7 +52,18 @@ internal static class EditorThemePresets
     private sealed record Palette(
         string Bg, string Fg, string Dim, string Accent,
         string Keyword, string Str, string Number, string Type, string Attribute,
-        string Red, string Yellow, string Green);
+        string Red, string Yellow, string Green, string? Function = null);
+
+    /// <summary>自分のテーマ（<see cref="UserTheme"/>）からエディタの配色を作る。ファイルを保存し直すと
+    /// 別インスタンスになるので、同じインスタンスにだけ使い回す（タブごとに組み直さない）。</summary>
+    internal static EditorTheme FromUser(UserTheme theme) => UserCache.GetValue(theme, t => Build(new Palette(
+        Bg: UserTheme.Hex(t.Bg), Fg: UserTheme.Hex(t.Fg), Dim: UserTheme.Hex(t.Dim), Accent: UserTheme.Hex(t.Accent),
+        Keyword: UserTheme.Hex(t.Keyword), Str: UserTheme.Hex(t.String), Number: UserTheme.Hex(t.Number),
+        Type: UserTheme.Hex(t.Type), Attribute: UserTheme.Hex(t.Cyan),
+        Red: UserTheme.Hex(t.Red), Yellow: UserTheme.Hex(t.Yellow), Green: UserTheme.Hex(t.Green),
+        Function: UserTheme.Hex(t.Function))));
+
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<UserTheme, EditorTheme> UserCache = new();
 
     private static readonly EditorTheme SolarizedDark = Build(new Palette(
         Bg: "#002B36", Fg: "#93A1A1", Dim: "#586E75", Accent: "#268BD2",
@@ -268,7 +279,7 @@ internal static class EditorThemePresets
             TokenType = Brush(p.Type),
             TokenAttribute = Brush(p.Attribute),
             TokenIdentifier = Solid(fg),
-            TokenFunction = Solid(accent),
+            TokenFunction = p.Function is { } function ? Brush(function) : Solid(accent),
         };
     }
 

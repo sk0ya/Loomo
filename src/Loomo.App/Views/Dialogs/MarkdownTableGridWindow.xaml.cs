@@ -29,13 +29,13 @@ public partial class MarkdownTableGridWindow : Window
     /// <summary>閉じたあとに編集内容を本文へ反映するか（キャンセル時のみ false）。</summary>
     public bool Apply { get; private set; } = true;
 
-    private MarkdownTableGridWindow(MarkdownTableRegion region, AppTheme theme)
+    private MarkdownTableGridWindow(MarkdownTableRegion region, bool light)
     {
         InitializeComponent();
 
         _document = VGridTextSync.BuildDocument("table.md", region.Rows, DelimiterFormat.Tsv);
         _grid = new TsvEditorControl { IsVimModeEnabled = true };
-        ApplyTheme(_grid, theme);
+        ApplyTheme(_grid, light);
 
         var history = new CommandHistory();
         var gridViewModel = new TsvGridViewModel(history);
@@ -48,9 +48,9 @@ public partial class MarkdownTableGridWindow : Window
 
     /// <summary>テーブル編集ウィンドウを開く。反映が選ばれたら編集後の行列を返す（キャンセル時は null）。</summary>
     public static IReadOnlyList<IReadOnlyList<string>>? Edit(
-        Window owner, MarkdownTableRegion region, AppTheme theme)
+        Window owner, MarkdownTableRegion region, bool light)
     {
-        var window = new MarkdownTableGridWindow(region, theme) { Owner = owner };
+        var window = new MarkdownTableGridWindow(region, light) { Owner = owner };
         window.ShowDialog();
         return window.Apply ? window.ResultRows : null;
     }
@@ -59,10 +59,10 @@ public partial class MarkdownTableGridWindow : Window
     /// 空のグリッドでテーブル新規作成ウィンドウを開く。反映が選ばれたら入力後の行列を返す（キャンセル時は null）。
     /// 1 行目がヘッダとして扱われる（<see cref="MarkdownTableSync.SerializeTable"/> の規約）。
     /// </summary>
-    public static IReadOnlyList<IReadOnlyList<string>>? Insert(Window owner, AppTheme theme)
+    public static IReadOnlyList<IReadOnlyList<string>>? Insert(Window owner, bool light)
     {
         var region = MarkdownTableGridResultMapper.CreateEmptyRegion();
-        var window = new MarkdownTableGridWindow(region, theme)
+        var window = new MarkdownTableGridWindow(region, light)
         {
             Owner = owner,
             Title = "テーブルを挿入",
@@ -79,9 +79,8 @@ public partial class MarkdownTableGridWindow : Window
         MarkdownTableGridResultMapper.ToRows(_document);
 
     /// <summary>VGrid.Editor のテーマ辞書をグリッド自身の Resources へマージする（<see cref="VGridEditorSupport"/> と同じ流儀）。</summary>
-    private static void ApplyTheme(TsvEditorControl grid, AppTheme theme)
+    private static void ApplyTheme(TsvEditorControl grid, bool light)
     {
-        var light = theme.IsLight();
         var dict = new ResourceDictionary
         {
             Source = new Uri(

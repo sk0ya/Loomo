@@ -153,13 +153,13 @@ public partial class ShellWindow {
         if (!MarkdownTableDocumentEditor.TryFindAtCaret(
                 control.Text, control.Caret.Line, out var region))
             return;
-        var edited = MarkdownTableGridWindow.Edit(this, region, _settings.Theme);
+        var edited = MarkdownTableGridWindow.Edit(this, region, ThemeManager.IsLightActive);
         if (edited is null)
             return;   // キャンセル
         control.SetText(MarkdownTableDocumentEditor.ReplaceTable(control.Text, region, edited));
     }
     private void InsertMarkdownTable(VimEditorControl control) {
-        var edited = MarkdownTableGridWindow.Insert(this, _settings.Theme);
+        var edited = MarkdownTableGridWindow.Insert(this, ThemeManager.IsLightActive);
         if (edited is null)
             return;   // キャンセル
         var updatedText = MarkdownTableDocumentEditor.InsertTable(

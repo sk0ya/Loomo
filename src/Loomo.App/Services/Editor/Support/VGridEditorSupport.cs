@@ -89,7 +89,7 @@ public sealed class VGridVisual : IEditorSupportVisual, IEditorSupportSearchHigh
     /// </summary>
     private void ApplyTheme()
     {
-        var light = _settings.Theme.IsLight();
+        var light = ThemeManager.IsLightActive;
         if (_appliedLightTheme == light)
             return;
 

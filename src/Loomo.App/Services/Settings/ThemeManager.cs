@@ -21,7 +21,16 @@ public sealed class ThemeManager
     private const string FgDimKey = "FgDim";
 
     private AppTheme _theme = AppTheme.Dark;
+    private UserTheme? _userTheme;
     private string? _accent;
+
+    /// <summary>いま当たっている配色が明色か。テーマ切替に追随しない外部コントロール（TSV グリッド・
+    /// Excel・Markdown 表の編集窓など）へ明暗どちらの配色を渡すかはこれで決める。同梱テーマなら
+    /// <see cref="AppThemeExtensions.IsLight"/>、自分のテーマならその背景の明るさ。</summary>
+    public static bool IsLightActive { get; private set; }
+
+    /// <summary>コード側で組んだパレット辞書（自分のテーマ）。差し替えるときに目印にする。</summary>
+    private static ResourceDictionary? _builtPalette;
 
     /// <summary>テーマとアクセントをまとめて適用する（起動時に使用）。</summary>
     public void Apply(AppTheme theme, string? accentColor)
@@ -32,12 +41,42 @@ public sealed class ThemeManager
         ApplyAccent(accentColor);
     }
 
+    /// <summary>自分のテーマ（<see cref="UserTheme"/>）を当てる。見つからない（ファイルを消した・読めない）
+    /// ときは <paramref name="fallback"/> の同梱テーマで開く（起動時に画面が出ないまま落ちるのを防ぐ）。</summary>
+    public void Apply(UserTheme? userTheme, AppTheme fallback, string? accentColor)
+    {
+        _accent = accentColor;
+        if (userTheme is null) { Apply(fallback, accentColor); return; }
+        _theme = fallback;
+        ApplyUserTheme(userTheme);
+    }
+
     /// <summary>テーマ（パレット）だけを切り替える。現在のアクセント上書きは維持する。</summary>
     public void ApplyTheme(AppTheme theme)
     {
         _theme = theme;
+        _userTheme = null;
         ApplyPalette(theme);
         ApplyAccent(_accent);   // パレット差し替え後も上書きを保つ
+    }
+
+    /// <summary>自分のテーマへ切り替える（保存し直したときもこれで当て直す）。アクセント上書きは維持する。</summary>
+    public void ApplyUserTheme(UserTheme theme)
+    {
+        _userTheme = theme;
+        IsLightActive = theme.IsLight;
+        ViewModels.FileIcons.UseLightPalette = theme.IsLight;
+
+        var dict = new ResourceDictionary();
+        foreach (var (key, color) in theme.Ui)
+        {
+            var brush = new SolidColorBrush(color);
+            brush.Freeze();
+            dict[key] = brush;
+        }
+        ReplacePalette(dict);
+        _builtPalette = dict;
+        ApplyAccent(_accent);
     }
 
     /// <summary>アクセントカラーだけを切り替える。null/空ならテーマ既定へ戻す。</summary>
@@ -52,6 +91,7 @@ public sealed class ThemeManager
         // ファイル種別アイコンは DynamicResource を経由しない（描画済みの DrawingImage なので）ため、
         // 明暗どちらの配色を使うかをここで教える。切り替わった場合はツリー側が引き直す。
         ViewModels.FileIcons.UseLightPalette = theme.IsLight();
+        IsLightActive = theme.IsLight();
 
         var app = Application.Current;
         if (app is null) return;
@@ -62,10 +102,20 @@ public sealed class ThemeManager
         if (dict is null && theme != AppTheme.Dark)
             dict = LoadPalette(AppTheme.Dark);
         if (dict is null) return;
+        ReplacePalette(dict);
+        _builtPalette = null;
+    }
 
+    /// <summary>マージ辞書のパレットを差し替える。同梱テーマは Source（Palette.*.xaml）で、自分のテーマは
+    /// コードで組んだ辞書そのもので見分ける。</summary>
+    private static void ReplacePalette(ResourceDictionary dict)
+    {
+        var app = Application.Current;
+        if (app is null) return;
         var merged = app.Resources.MergedDictionaries;
         var existing = merged.FirstOrDefault(d =>
-            d.Source is { } s && s.OriginalString.Contains("Palette.", StringComparison.OrdinalIgnoreCase));
+            ReferenceEquals(d, _builtPalette)
+            || d.Source is { } s && s.OriginalString.Contains("Palette.", StringComparison.OrdinalIgnoreCase));
 
         if (existing is not null)
             merged[merged.IndexOf(existing)] = dict;   // パレットは Controls.xaml より前に保つ

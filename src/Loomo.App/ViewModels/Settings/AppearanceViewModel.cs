@@ -20,19 +20,19 @@ public sealed partial class AppearanceViewModel : ObservableObject
     private readonly UiFontManager _UiFontManager;
 
     /// <summary>アプリ全体のカラーテーマの選択肢。<see cref="AppTheme"/> に値を足すだけで増やせる。</summary>
-    public IReadOnlyList<PresetSwatch> Themes { get; }
+    public IReadOnlyList<PresetSwatch> Themes { get; private set; }
 
     /// <summary>アクセントカラーの選択肢。先頭は「テーマ既定」（Hex 空）。</summary>
     public IReadOnlyList<AccentSwatch> Accents { get; }
 
     /// <summary>エディタの配色テーマの選択肢。チップの色はライブラリ各プリセットの背景／文字／アクセント。</summary>
-    public IReadOnlyList<PresetSwatch> EditorThemes { get; }
+    public IReadOnlyList<PresetSwatch> EditorThemes { get; private set; }
 
     /// <summary>Markdownプレビューの配色テーマの選択肢。</summary>
-    public IReadOnlyList<PresetSwatch> PreviewThemes { get; }
+    public IReadOnlyList<PresetSwatch> PreviewThemes { get; private set; }
 
     /// <summary>ターミナルの配色テーマの選択肢（背景／文字色／カーソル色）。</summary>
-    public IReadOnlyList<PresetSwatch> TerminalThemes { get; }
+    public IReadOnlyList<PresetSwatch> TerminalThemes { get; private set; }
 
     /// <summary>アプリ UI 全体の基準フォントサイズ（本文の px）の選択肢。既定は 16px。</summary>
     public IReadOnlyList<FontSizeChoice> FontSizes { get; } = new[]
@@ -302,10 +302,13 @@ public sealed partial class AppearanceViewModel : ObservableObject
             new PresetSwatch("KanagawaLotus",     "Kanagawa Lotus",   "#F2ECBC", "#4D699B", "#545464"),
         };
 
+        // 同梱の選択肢を控え、自分のテーマ（themes/*.json）を後ろに足す。保存し直すと並べ直す。
+        InitUserThemes();
+
         // 初期選択は背面フィールドへ直接代入（プロパティ setter を介さず OnXxxChanged を発火させない）。
         var ap = settings.Appearance;
         _accentColor = settings.AccentColor ?? "";
-        _selectedTheme = Match(Themes, settings.Theme.ToString(), 0);
+        _selectedTheme = CurrentThemeChoice();
         _selectedAccent = Accents.FirstOrDefault(a => string.Equals(a.Hex, _accentColor, StringComparison.OrdinalIgnoreCase));
         _selectedEditorTheme = Match(EditorThemes, ap.EditorTheme, 0);
         _selectedPreviewTheme = Match(PreviewThemes, ap.MarkdownPreviewTheme, 0);
@@ -340,7 +343,19 @@ public sealed partial class AppearanceViewModel : ObservableObject
     /// <summary>アプリ全体テーマ：選択を即時適用＆永続化（アクセント上書きは維持される）。</summary>
     partial void OnSelectedThemeChanged(PresetSwatch value)
     {
-        if (value is null || !Enum.TryParse<AppTheme>(value.Key, out var theme) || _settings.Theme == theme) return;
+        if (value is null) return;
+        if (UserThemes.TryGet(value.Key) is { } user)
+        {
+            if (string.Equals(_settings.UserTheme, user.Id, StringComparison.OrdinalIgnoreCase)) return;
+            _settings.UserTheme = user.Id;
+            _themeManager.ApplyUserTheme(user);
+            Persist($"テーマを「{user.Name}」にしました");
+            AppearanceChanged?.Invoke();
+            return;
+        }
+        if (!Enum.TryParse<AppTheme>(value.Key, out var theme)
+            || (_settings.UserTheme is null && _settings.Theme == theme)) return;
+        _settings.UserTheme = null;
         _settings.Theme = theme;
         _themeManager.ApplyTheme(theme);
         Persist("テーマを変更しました");
