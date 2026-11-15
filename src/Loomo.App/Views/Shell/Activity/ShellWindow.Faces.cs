@@ -18,7 +18,11 @@ public partial class ShellWindow {
     private string? _faceLastActiveFile;
 
     private void InitializeFaces(IEditorSupportViewFactory viewFactory) {
-        _faceApi = new FaceRoomApi(_faceStore, _workspace, new FaceRoom(this));
+        InitializeMotion();
+        _faceApi = new FaceRoomApi(_faceStore, _workspace, new FaceRoom(this),
+            [new MotionFaceApi(this), new OrdersFaceApi(this)]);
+        // 本体の面（動き・言いつけ）を置く。無いとき・版が古いときだけ（§44.3・§44.4）。
+        _ = Task.Run(() => BuiltInFaces.Install(_faceStore));
         DeferPaneContent(FacePaneHost, () => {
             var view = new FacePaneView();
             view.Configure(_faceStore, _faceState, _faceApi, viewFactory, url => OpenUrlInNewBrowserTabAsync(url));

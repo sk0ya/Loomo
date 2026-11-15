@@ -92,6 +92,9 @@ public partial class ShellWindow {
         // 面（§44.2）：書き方を読む・出す。ファイルを書くのは Claude Code 自身。
         public string FaceGuide() => sk0ya.Loomo.Services.Faces.FaceGuide.Text(window._faceStore);
 
+        // 動き（§44.3）：見どころの書き方を読む。書くのは Claude Code 自身、許すのは人間。
+        public string MotionGuide() => sk0ya.Loomo.Services.Motion.MotionGuide.Text(window._motion.Store, window._workspace.PrimaryFolder);
+
         public Task<LoomoRoomResult> ShowFaceAsync(string id) => OnUi(() => window.ShowFaceFromClaudeAsync(id));
 
         public Task<LoomoRoomResult> ShowChangesAsync() => OnUi(async () => {

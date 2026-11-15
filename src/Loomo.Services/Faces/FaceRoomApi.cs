@@ -18,6 +18,16 @@ namespace sk0ya.Loomo.Services.Faces;
 /// <summary>面の頼みを断る理由。文はそのまま面のページ（の <c>Promise</c> の失敗）へ返る。</summary>
 public sealed class FaceApiException(string message) : Exception(message);
 
+/// <summary>本体の機能を面の口として足す（§44.3 の <c>motion</c>・§44.4 の <c>orders</c>）。<c>&lt;Api&gt;.&lt;名前&gt;</c> の頼みが届き、
+/// 面が <see cref="Api"/> を挙げていなければ届く前に断られる。</summary>
+public interface IFaceApiExtension
+{
+    string Api { get; }
+
+    /// <param name="method">口の名前を除いた部分（<c>motion.state</c> なら <c>state</c>）。</param>
+    Task<JsonNode?> CallAsync(string method, JsonObject? args, CancellationToken cancel);
+}
+
 /// <summary>面の口のうち、画面が要るもの（§44.2）。実装は App。どのスレッドから呼ばれてもよい——実装が Dispatcher を通す。</summary>
 public interface IFaceRoom
 {
@@ -42,7 +52,8 @@ public interface IFaceRoom
 /// （行は固定で、面から渡る値は環境変数と変数 <c>$LoomoInput</c> にしか入らない）・見えるターミナルには打たない・書く口は無い。
 /// WPF に依らない（画面が要るものは <see cref="IFaceRoom"/>）。
 /// </summary>
-public sealed class FaceRoomApi(FaceStore store, IWorkspaceService workspace, IFaceRoom room)
+public sealed class FaceRoomApi(FaceStore store, IWorkspaceService workspace, IFaceRoom room,
+    IReadOnlyList<IFaceApiExtension>? extensions = null)
 {
     public const int MaxReadBytes = 2 * 1024 * 1024;
     public const int MaxListEntries = 2000;
@@ -123,6 +134,12 @@ public sealed class FaceRoomApi(FaceStore store, IWorkspaceService workspace, IF
                 return true;
 
             default:
+                var dot = method.IndexOf('.');
+                if (dot > 0 && extensions?.FirstOrDefault(extension => extension.Api == method[..dot]) is { } owner)
+                {
+                    Require(face, owner.Api);
+                    return await owner.CallAsync(method[(dot + 1)..], args, cancel).ConfigureAwait(false);
+                }
                 throw new FaceApiException($"Unknown method: {method}");
         }
     }
@@ -362,6 +379,8 @@ public static class FaceGuide
             fs.read    read files and list folders inside the workspace (read-only; there is no write API)
             git        repositories and their status
             run        run the commands declared under "commands"
+            motion     Loomo's recorded "motion" of the workspace (see the motion_guide tool); read and record
+            orders     Loomo's standing orders and their tray; usually only the built-in "orders" face needs this
             net        let the page reach the network (without it every request outside the face folder is blocked,
                        so do not link CDN scripts or fonts unless you declare this)
         - "commands": fixed PowerShell command lines, run hidden (never in the user's visible terminal). The page cannot change

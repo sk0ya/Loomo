@@ -361,6 +361,7 @@ public sealed class FaceTests : IDisposable
         public Task<LoomoRoomResult> ShowUrlAsync(string url) => Task.FromResult(new LoomoRoomResult(true, ""));
         public Task<LoomoRoomResult> ShowChangesAsync() => Task.FromResult(new LoomoRoomResult(true, ""));
         public string FaceGuide() => Guide;
+        public string MotionGuide() => "";
 
         public Task<LoomoRoomResult> ShowFaceAsync(string id)
         {

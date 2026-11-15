@@ -124,6 +124,7 @@ public partial class ShellWindow {
         // 書き換えはタブの見張り（§24.57）が拾うが、監視が落ちていた・取りこぼした場合の網としてターンの終わりにも確かめる。
         // 未保存の編集があるタブは読み直さない（ReloadExistingTabIfChangedAsync の約束）。
         _ = RefreshOpenEditorTabsFromDiskAsync();
+        RecordMotionAfterTurn(tabId);   // 動きを録る（§44.3。許された見どころがあるときだけ・裏で）
         if (_activeTerminalTab?.Id == tabId)
             RefreshClaudeContext();
         if (!IsActive)

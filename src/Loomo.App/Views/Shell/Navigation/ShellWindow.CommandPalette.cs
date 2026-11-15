@@ -379,6 +379,12 @@ public partial class ShellWindow {
         list.Add(new("面", "面を生やす頼みごとの下書きをコピー", CopyFaceGrowPrompt));
         foreach (var (title, open) in FacePaletteEntries())
             list.Add(new("面", title, open));
+        // 動きで読む（§44.3）・言いつけ（§44.4）。
+        list.Add(new("動き", "動きを開く（変更を、行ではなく前と後の動きで読む）", () => OpenFace("motion")));
+        list.Add(new("動き", "動き：いま録る", RecordMotionNow));
+        list.Add(new("動き", "動き：見どころを編集", EditMotionProbes));
+        list.Add(new("動き", "動き：見どころを許す", ApproveMotionProbes));
+        list.Add(new("言いつけ", "言いつけを開く（盆から採る・捨てる）", () => OpenFace("orders")));
         list.Add(new("軌跡", "軌跡の展開ビューを開く／閉じる", ToggleTrailExpanded, Sc("trail.toggleExpanded"), "trail.toggleExpanded"));
         list.Add(new("タブ", "新しいターミナルタブ", () => OnTerminalNewTab(this, new RoutedEventArgs()), Sc("tab.newTerminal"), "tab.newTerminal"));
         list.Add(new("タブ", "新しいエディタタブ", () => OnEditorNewTab(this, new RoutedEventArgs()), Sc("tab.newEditor"), "tab.newEditor"));

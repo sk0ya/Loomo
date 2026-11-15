@@ -34,6 +34,9 @@ public interface ILoomoRoomHost
 
     /// <summary>面を「面」ペインに出す（§44.2）。定義が読めなければ、直せる理由を返す。</summary>
     Task<LoomoRoomResult> ShowFaceAsync(string id);
+
+    /// <summary>動きの見どころの書き方と、いまの見どころ（§44.3）。読むだけ。</summary>
+    string MotionGuide();
 }
 
 public sealed record LoomoRoomResult(bool Ok, string Message);
@@ -362,6 +365,10 @@ public sealed class LoomoMcpTools(ILoomoRoomHost host)
             {
                 ["id"] = new JsonObject { ["type"] = "string", ["description"] = "The face id (its folder name)." },
             }, "id"),
+        Tool("motion_guide",
+            "Read how Loomo records the workspace's \"motion\" (command output, test outcomes, pictures) after each of your turns, "
+            + "where the probes file is and which probes exist. Call it when the user asks to watch a build, tests or a screen as a probe. Read-only.",
+            new JsonObject()),
     ];
 
     public async Task<LoomoRoomResult> CallAsync(string name, JsonObject? arguments)
@@ -382,6 +389,8 @@ public sealed class LoomoMcpTools(ILoomoRoomHost host)
                     return await host.ShowChangesAsync().ConfigureAwait(false);
                 case "face_guide":
                     return new LoomoRoomResult(true, host.FaceGuide());
+                case "motion_guide":
+                    return new LoomoRoomResult(true, host.MotionGuide());
                 case "show_face":
                     if (Text(arguments, "id") is not { Length: > 0 } face)
                         return new LoomoRoomResult(false, "id is required.");

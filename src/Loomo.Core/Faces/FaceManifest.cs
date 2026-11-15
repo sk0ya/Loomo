@@ -32,8 +32,12 @@ public static class FaceApi
     public const string Run = "run";
     /// <summary>面のページがネットワークへ出る（既定では面のフォルダーの外を一切読めない）。</summary>
     public const string Net = "net";
+    /// <summary>動き（§44.3）：録ったものを読む・いま録る・頼みごとの差分を開く。</summary>
+    public const string Motion = "motion";
+    /// <summary>言いつけ（§44.4）：言いつけを置く・進める・盆から採る／捨てる。</summary>
+    public const string Orders = "orders";
 
-    public static readonly IReadOnlyList<string> All = [Workspace, Open, FsRead, Git, Run, Net];
+    public static readonly IReadOnlyList<string> All = [Workspace, Open, FsRead, Git, Run, Net, Motion, Orders];
 
     /// <summary>許しを聞くカードに出す、人間向けの 1 行。</summary>
     public static string Describe(string api) => api switch
@@ -44,6 +48,8 @@ public static class FaceApi
         Git => "リポジトリの一覧と状態（ブランチ・変更のあるファイル）を読む",
         Run => "下に書いてあるコマンドを裏で回す（見えるターミナルには打たない）",
         Net => "ネットワークへ出る（外のページ・スクリプトを読む、外へ送る）",
+        Motion => "録った動き（見どころの出力・テストの成否・絵）を読み、いまの作業ツリーで見どころを回して録る",
+        Orders => "言いつけを置く・外す・裏のワークツリーで Claude Code に進めさせる・仕上がりを作業ツリーへ当てる（採る）",
         _ => api,
     };
 }

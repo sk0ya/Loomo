@@ -527,6 +527,23 @@ internal static class FaceBridgeScript
               set: value => call('state.set', { value: value === undefined ? null : value }),
             }),
             toast: text => call('toast', { text: String(text) }),
+            motion: Object.freeze({
+              state: () => call('motion.state'),
+              snapshots: () => call('motion.snapshots'),
+              get: id => call('motion.get', { id }),
+              image: (id, file) => call('motion.image', { id, file }),
+              record: () => call('motion.record'),
+              openRequest: id => call('motion.openRequest', { id }),
+            }),
+            orders: Object.freeze({
+              state: () => call('orders.state'),
+              save: order => call('orders.save', order),
+              remove: id => call('orders.remove', { id }),
+              run: id => call('orders.run', { id }),
+              take: id => call('orders.take', { id }),
+              discard: id => call('orders.discard', { id }),
+              openDiff: id => call('orders.openDiff', { id }),
+            }),
             on: (name, handler) => {
               if (!handlers.has(name)) handlers.set(name, []);
               handlers.get(name).push(handler);
