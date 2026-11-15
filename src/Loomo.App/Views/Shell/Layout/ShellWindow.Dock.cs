@@ -292,6 +292,8 @@ public partial class ShellWindow {
             return;
         var data = new DataObject(DockDragFormat, kind.ToString());
         PaneLayoutDebugLog.Log($"[dockdrag] begin {kind}");
+        // ヘッダーを押して数ピクセル動いただけのドラッグを、面の上に重なった受け皿へ落とさない（DockDragOriginGuard）。
+        _dockDragOrigin = new DockDragOriginGuard(IsOverPane(kind, Mouse.GetPosition));
         // 帯の区画だけでなく、画面の実際の領域にも落とせるよう受け皿を被せる（運んでいる間だけ）。
         // 全画面（F11）中は領域が1枚しか無いので被せない。
         if (!_paneFullscreen) {
@@ -301,11 +303,24 @@ public partial class ShellWindow {
         try {
             DragDrop.DoDragDrop(source, data, DragDropEffects.Move);
         } finally {
+            _dockDragOrigin = null;
             DockDropOverlay.Visibility = Visibility.Collapsed;
             DockDropPreview.Visibility = Visibility.Collapsed;
             ClearDockZoneHighlights();
         }
     }
+    private DockDragOriginGuard? _dockDragOrigin;
+    /// <summary>位置が運んでいる面そのものの上か（その面が画面に出ていなければ false）。</summary>
+    private bool IsOverPane(PaneKind kind, Func<IInputElement, Point> positionIn) {
+        if (!_paneElements.TryGetValue(kind, out var element) || !element.IsVisible)
+            return false;
+        var point = positionIn(element);
+        return point.X >= 0 && point.Y >= 0 && point.X < element.ActualWidth && point.Y < element.ActualHeight;
+    }
+    /// <summary>受け皿の上のこの位置で落としてよいか（掴んだ面の上からまだ出ていなければ不可）。</summary>
+    private bool DockDropAllowedHere(PaneKind? kind, DragEventArgs e)
+        => kind is not { } pane || _dockDragOrigin is not { } origin
+           || origin.Allows(IsOverPane(pane, e.GetPosition));
     /// <summary>受け皿の上のどこへ落とすか。右・下の領域は開いていればその大きさ、閉じていれば器の端の帯。</summary>
     private (DockRegion Region, Rect Preview)? ResolveDockOverlayZone(DragEventArgs e) {
         static double Shown(FrameworkElement host, Func<FrameworkElement, double> size)
@@ -323,8 +338,11 @@ public partial class ShellWindow {
     private void OnDockOverlayDragOver(object sender, DragEventArgs e) {
         e.Handled = true;
         var zone = ResolveDockOverlayZone(e);
+        var kind = DockDragPayload(e.Data);
         // 今いる領域へ落としても何も起きないので、受けない（帯の区画と同じ判断）。
-        if (zone is not { } z || !DockLayoutPresentation.CanDrop(_dockMode, DockDragPayload(e.Data), z.Region)) {
+        // 掴んだ面の上からまだ出ていない間も受けない（押しただけの手ぶれで面が動かないように）。
+        if (zone is not { } z || !DockDropAllowedHere(kind, e)
+            || !DockLayoutPresentation.CanDrop(_dockMode, kind, z.Region)) {
             e.Effects = DragDropEffects.None;
             DockDropPreview.Visibility = Visibility.Collapsed;
             return;
@@ -341,8 +359,11 @@ public partial class ShellWindow {
     private void OnDockOverlayDrop(object sender, DragEventArgs e) {
         e.Handled = true;
         DockDropPreview.Visibility = Visibility.Collapsed;
-        if (DockDragPayload(e.Data) is { } kind && ResolveDockOverlayZone(e) is { } zone)
+        if (DockDragPayload(e.Data) is { } kind && DockDropAllowedHere(kind, e)
+            && ResolveDockOverlayZone(e) is { } zone) {
+            PaneLayoutDebugLog.Log($"[dockdrag] drop overlay={zone.Region} payload={kind}");
             PlaceDockPane(kind, zone.Region);
+        }
     }
     /// <summary>受け皿の塗り（アクセント色を薄めたもの）。</summary>
     private Brush TranslucentAccent(double opacity) {

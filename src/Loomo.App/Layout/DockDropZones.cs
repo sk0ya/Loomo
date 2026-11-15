@@ -38,3 +38,24 @@ public static class DockDropZones
         return Math.Min(band, extent * (1 - MinCenterRatio));
     }
 }
+
+/// <summary>掴んだ面の上から<b>まだ一度も出ていない</b>ドラッグでは落とさない。
+/// <para>ヘッダーを押してわずかに（ドラッグのしきい値の数ピクセル）動いただけでもドラッグは始まり、
+/// 指を離した場所へ落ちる。ふつうはそこが今いる領域なので何も起きないが、中央を畳んで下や右が器いっぱいに
+/// 広がっていると、<see cref="DockDropZones.MinCenterRatio"/> の「中央へ戻す受け皿」がその面の
+/// <b>上に重なる</b>——下の面のヘッダー（器の上端）や、右の面の左寄りを押しただけで面が中央へ移り、
+/// 運んだはずの面が元へ戻ったように見えていた（その姿がそのまま保存される）。
+/// 一度でも面の外へ出たドラッグは、運ぶ意思があるので受け皿どおりに落とす（畳んだ中央へも戻せる）。</para></summary>
+public sealed class DockDragOriginGuard(bool startedInsideSource)
+{
+    private bool _left = !startedInsideSource;
+
+    /// <param name="insideSource">いまの位置が掴んだ面の上か。</param>
+    /// <returns>ここで落としてよいか。</returns>
+    public bool Allows(bool insideSource)
+    {
+        if (!insideSource)
+            _left = true;
+        return _left;
+    }
+}

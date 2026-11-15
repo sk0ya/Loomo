@@ -50,6 +50,30 @@ public class DockDropZonesTests
     public void Center_stays_reachable_when_a_region_fills_the_area()
         => Assert.Equal(DockRegion.Center, DockDropZones.Resolve(Area, 0, 800, new Point(300, 100))!.Value.Region);
 
+    /// <summary>中央を畳んで下の面が器いっぱいのとき、その面のヘッダー（器の上端）は中央の受け皿に重なる。
+    /// 押しただけの手ぶれのドラッグはここで落ちるので、掴んだ面の上から出ていない間は落とさない。</summary>
+    [Fact]
+    public void Drag_that_never_left_its_pane_does_not_drop()
+    {
+        Assert.Equal(DockRegion.Center, DockDropZones.Resolve(Area, 0, 800, new Point(300, 10))!.Value.Region);
+        var guard = new DockDragOriginGuard(startedInsideSource: true);
+        Assert.False(guard.Allows(insideSource: true));
+    }
+
+    /// <summary>一度でも面の外へ出たドラッグは、面の上へ戻ってきても受け皿どおりに落とせる（畳んだ中央へ戻す道）。</summary>
+    [Fact]
+    public void Drag_that_left_its_pane_drops_anywhere()
+    {
+        var guard = new DockDragOriginGuard(startedInsideSource: true);
+        Assert.True(guard.Allows(insideSource: false));
+        Assert.True(guard.Allows(insideSource: true));
+    }
+
+    /// <summary>帯のアイコンから始めたドラッグ（面の外から）は最初から落とせる。</summary>
+    [Fact]
+    public void Drag_from_outside_the_pane_drops_immediately()
+        => Assert.True(new DockDragOriginGuard(startedInsideSource: false).Allows(insideSource: true));
+
     /// <summary>まだ測れていない器では判断しない。</summary>
     [Fact]
     public void Unmeasured_area_resolves_nothing()
