@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Claude Code と Loomo の MCP サーバーをつなぐ橋（設計 §43.6 D）。Claude Code が標準入出力の MCP サーバーとして起こし、
+    この exe は 1 行ごとの JSON-RPC を、いま動いている Loomo（%LOCALAPPDATA%\Loomo\mcp-endpoint.json のポートとトークン）へ
+    HTTP でそのまま渡す。道具の中身は一切持たない——ただの管。
+
+    なぜ要るか：定義が環境変数（LOOMO_MCP_URL）を参照する作りだと、その変数を持たずに生まれたシェル（常駐する端末＝§34 は
+    Loomo より何日も長生きする）と、ポートが移ったあとの古いシェルからつながらない。橋は呼ばれるたびにファイルを読む。
+
+    claude のセッションが続くあいだ動き続けるので、本体の bin から直接は起こさない（exe を掴んで以後のビルドが落ちる）。
+    本体が起動時に %LOCALAPPDATA%\Loomo\mcp-bridge\ へ写し（LoomoMcpBridgeInstaller）、登録するのはその場所。
+    写した先でも掴まれるので、依存は持たない（Loomo.Core も参照しない）。
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>sk0ya.Loomo.McpBridge</RootNamespace>
+    <AssemblyName>sk0ya.Loomo.McpBridge</AssemblyName>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <!-- 本体と同じ理由で出力パスを固定する（App の出力へ写すときに場所を組み立てるため）。 -->
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="sk0ya.Loomo.Tests" />
+  </ItemGroup>
+
+</Project>

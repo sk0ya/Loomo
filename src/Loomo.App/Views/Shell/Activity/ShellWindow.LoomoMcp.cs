@@ -19,6 +19,8 @@ public partial class ShellWindow {
         try {
             _loomoMcp = new LoomoMcpServer(new LoomoRoomHost(this));
             _loomoMcp.Start();
+            // Claude Code が起こす橋を、bin の外へ写しておく（起動を待たせない）。
+            _ = Task.Run(() => LoomoMcpBridgeInstaller.Install());
         } catch (Exception ex) when (ex is IOException or System.Net.Sockets.SocketException or UnauthorizedAccessException) {
             System.Diagnostics.Trace.WriteLine($"Loomo の MCP サーバーを開始できませんでした: {ex.Message}");
             _loomoMcp?.Dispose();
@@ -34,12 +36,17 @@ public partial class ShellWindow {
     /// <summary>Claude Code への登録はユーザーが自分で 1 回だけ打つ（ユーザーの設定 <c>~/.claude.json</c> に定義が 1 つ入る）。
     /// Loomo は黙って書かない——コマンドをクリップボードへ渡すところまで。</summary>
     private void CopyLoomoMcpRegistrationCommand() {
-        try { Clipboard.SetText(LoomoMcpServer.RegistrationCommand); }
+        // 登録するのは橋の場所（%LOCALAPPDATA% へ写したもの）。まだ写せていなければここで写す。
+        if (!LoomoMcpBridgeInstaller.Install()) {
+            ToastService.Error("Claude Code とつなぐ橋（sk0ya.Loomo.McpBridge.exe）を用意できませんでした");
+            return;
+        }
+        try { Clipboard.SetText(LoomoMcpBridgeInstaller.RegistrationCommand(LoomoMcpBridgeInstaller.InstalledExe)); }
         catch { ToastService.Error("クリップボードへコピーできませんでした"); return; }
         ToastService.Info(_loomoMcp is null
             ? "登録のコマンドをコピーしました（いまは MCP サーバーが動いていません。設定の Claude Code 連携を確かめてください）"
-            : "登録のコマンドをコピーしました。Loomo のターミナル（PowerShell）に貼って 1 回だけ実行してください。"
-              + "新しく開いたターミナルのタブで起動した claude から使えます");
+            : "登録のコマンドをコピーしました。ターミナル（PowerShell）に貼って 1 回だけ実行してください。"
+              + "そのあと起動した claude から使えます（開いてあるタブでも）");
     }
 
     /// <summary>操作のあと、フォーカスを元のペインへ戻す（Claude が物を置いても、人間の打鍵の行き先は変えない）。</summary>

@@ -99,7 +99,10 @@ so it must stay a no-op outside Loomo.
 `LoomoMcpServer` (§43.6 D) is a separate standard MCP server (the IDE protocol only exposes two tools to the model):
 tools that **place things in front of the human** (`show_file` / `show_url` / `show_changes`) and nothing else — no
 typing into the visible terminal, no closing tabs, no layout changes, no focus stealing. Loomo never writes the
-user's Claude config for it; the user registers once via the palette command.
+user's Claude config for it; the user registers once via the palette command. Claude Code reaches it through the
+stdio bridge `src/Loomo.McpBridge` (copied to `%LOCALAPPDATA%/Loomo/mcp-bridge/`), which re-reads
+`mcp-endpoint.json` on every call — **don't hand the endpoint to shells via environment variables**: resident
+shells (§34) predate them and outlive port changes.
 
 ### .NET Framework projects (§28.12)
 

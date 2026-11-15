@@ -36,9 +36,10 @@ public sealed record LoomoRoomResult(bool Ok, string Message);
 /// Loomo の MCP サーバー（§43.6 D）。IDE 連携（§38）の口はモデルに見えるツールが 2 つに限られるので、標準の MCP
 /// （Streamable HTTP・JSON 応答だけ）を別に立てる。127.0.0.1 だけで待ち、Bearer トークンの無い要求と、ブラウザからの
 /// 要求（<c>Origin</c> 付き）は断る。
-/// <para><b>ポートとトークンは前回と同じものを使う</b>（<c>%LOCALAPPDATA%/Loomo/mcp-endpoint.json</c>）。端末のシェルは
-/// Loomo より長生きする（§34）ので、再起動後も古いシェルの環境変数（<c>LOOMO_MCP_URL</c>・<c>LOOMO_MCP_TOKEN</c>）が
-/// そのまま通じるように。ポートが取られていれば空いているものへ移る。</para>
+/// <para><b>待っている場所はファイルに書く</b>（<c>%LOCALAPPDATA%/Loomo/mcp-endpoint.json</c> のポートとトークン）。Claude Code から
+/// は橋（<c>sk0ya.Loomo.McpBridge.exe</c>・標準入出力）越しに届き、橋は呼ばれるたびにこのファイルを読む。端末の環境変数では
+/// 渡さない——端末のシェルは Loomo より長生きする（§34）ので、変数を持たずに生まれたシェルやポートが移ったあとのシェルから
+/// つながらなくなる（2026-11-15 の不具合）。ポートとトークンは前回と同じものを使い、取られていれば空いているものへ移る。</para>
 /// <para>HttpListener（http.sys）は使わず、TCP の上で HTTP を最小限だけ話す——URL 予約や管理者権限が要らない
 /// （<see cref="ClaudeIdeServer"/> と同じ理由）。</para>
 /// </summary>
@@ -63,20 +64,6 @@ public sealed class LoomoMcpServer : IDisposable
     public string Token { get; private set; } = "";
     public bool IsRunning => _listener is not null;
     public string Url => $"http://127.0.0.1:{Port}/mcp";
-
-    /// <summary>端末に渡す環境変数。登録した定義（<see cref="RegistrationCommand"/>）がこれを参照する。</summary>
-    public IReadOnlyDictionary<string, string> TerminalEnvironment => IsRunning
-        ? new Dictionary<string, string> { ["LOOMO_MCP_URL"] = Url, ["LOOMO_MCP_TOKEN"] = Token }
-        : new Dictionary<string, string>();
-
-    /// <summary>
-    /// Claude Code への登録（ユーザーが自分で 1 回だけ打つ）。定義は環境変数を参照するだけで、ポートもトークンも書かれない。
-    /// Loomo の外で起動した claude では、既定値の閉じたポートへつなぎに行って失敗するだけ。PowerShell 用（単引用符で
-    /// <c>${…}</c> をそのまま渡す）。
-    /// </summary>
-    public const string RegistrationCommand =
-        "claude mcp add --transport http --scope user loomo '${LOOMO_MCP_URL:-http://127.0.0.1:9/mcp}' "
-        + "--header 'Authorization: Bearer ${LOOMO_MCP_TOKEN:-none}'";
 
     public void Start()
     {

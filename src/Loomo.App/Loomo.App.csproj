@@ -30,6 +30,23 @@
           Condition="Exists('%(AskPassApphost.FullPath)')" />
   </Target>
 
+  <!-- Claude Code と Loomo の MCP サーバーをつなぐ橋（§43.6 D）。参照は「一緒にビルドさせる」ためで、本体はそのアセンブリを
+       使わない。出力を $(OutDir)mcpbridge\ へ置き、本体が起動時に %LOCALAPPDATA% へ写す（LoomoMcpBridgeInstaller）
+       ——claude のセッションが続くあいだ動く exe に bin を掴ませないため。 -->
+  <ItemGroup>
+    <ProjectReference Include="../Loomo.McpBridge/Loomo.McpBridge.csproj"
+                      ReferenceOutputAssembly="false" Private="false" />
+  </ItemGroup>
+
+  <Target Name="CopyMcpBridge" AfterTargets="Build">
+    <ItemGroup>
+      <McpBridgeFiles Include="$(MSBuildThisFileDirectory)../Loomo.McpBridge/bin/$(Configuration)/sk0ya.Loomo.McpBridge.*"
+                      Exclude="$(MSBuildThisFileDirectory)../Loomo.McpBridge/bin/$(Configuration)/*.pdb" />
+    </ItemGroup>
+    <Copy SourceFiles="@(McpBridgeFiles)" DestinationFolder="$(OutDir)mcpbridge" SkipUnchangedFiles="true"
+          Condition="Exists('%(McpBridgeFiles.FullPath)')" />
+  </Target>
+
   <!-- 端末の常駐ホスト（§34）。参照は「一緒にビルドさせる」ためで、本体はそのアセンブリを使わない
        （やり取りは名前付きパイプだけ）。出力フォルダーごと $(OutDir)ptyhost\ へ置き、起動側
        （PtyHostLauncher）がそこから %LOCALAPPDATA% へ写して起こす——bin を掴ませないため。 -->

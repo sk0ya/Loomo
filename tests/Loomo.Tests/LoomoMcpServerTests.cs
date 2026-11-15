@@ -10,7 +10,7 @@ namespace sk0ya.Loomo.Tests;
 
 /// <summary>
 /// 部屋を Claude から使う口（§43.6 D）の MCP サーバー。トークンの無い要求・ブラウザからの要求は断る／道具は「置くだけ」の
-/// 3 つ／呼び出しはホストへ届き、結果がモデルへの一言で返る／再起動しても同じポートとトークン（古いシェルの環境変数が通じる）。
+/// 3 つ／呼び出しはホストへ届き、結果がモデルへの一言で返る／再起動しても同じポートとトークン。
 /// 画面の側（フォーカスを奪わない等）は対象外。
 /// </summary>
 public sealed class LoomoMcpServerTests : IDisposable
@@ -95,8 +95,6 @@ public sealed class LoomoMcpServerTests : IDisposable
         {
             first.Start();
             (port, token) = (first.Port, first.Token);
-            Assert.Equal($"http://127.0.0.1:{port}/mcp", first.TerminalEnvironment["LOOMO_MCP_URL"]);
-            Assert.Equal(token, first.TerminalEnvironment["LOOMO_MCP_TOKEN"]);
         }
 
         using var second = new LoomoMcpServer(_host, _endpoint);

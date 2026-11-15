@@ -65,10 +65,6 @@ public partial class ShellWindow {
         if (_claudeIde is { } server)
             foreach (var (key, value) in server.TerminalEnvironment)
                 environment[key] = value;
-        // 部屋を Claude から使う口（§43.6 D）。登録した MCP の定義がこの 2 つを参照する。
-        if (_loomoMcp is { } mcp)
-            foreach (var (key, value) in mcp.TerminalEnvironment)
-                environment[key] = value;
         if (_claudeHookPipeName is { } pipe)
             environment["LOOMO_CLAUDE_HOOK_PIPE"] = pipe;
         AddEditWaitEnvironment(environment);
