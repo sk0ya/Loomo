@@ -48,7 +48,7 @@ public sealed class LoomoMcpBridgeTests : IDisposable
         var replies = output.ToString().Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(Parse).ToList();
         Assert.Equal(3, replies.Count);
         Assert.Equal("2025-06-18", replies[0].GetProperty("result").GetProperty("protocolVersion").GetString());
-        Assert.Equal(["show_file", "show_url", "show_changes"],
+        Assert.Equal(["show_file", "show_url", "show_changes", "face_guide", "show_face"],
             replies[1].GetProperty("result").GetProperty("tools").EnumerateArray().Select(tool => tool.GetProperty("name").GetString()));
         Assert.Equal("c1", replies[2].GetProperty("id").GetString());
         Assert.False(replies[2].GetProperty("result").GetProperty("isError").GetBoolean());
@@ -177,6 +177,10 @@ public sealed class LoomoMcpBridgeTests : IDisposable
     private sealed class FakeHost : ILoomoRoomHost
     {
         public List<(string Kind, string Target, int Line)> Calls { get; } = [];
+
+        public string FaceGuide() => "guide";
+
+        public Task<LoomoRoomResult> ShowFaceAsync(string id) => Task.FromResult(new LoomoRoomResult(true, "shown"));
 
         public Task<LoomoRoomResult> ShowFileAsync(string path, int line)
         {

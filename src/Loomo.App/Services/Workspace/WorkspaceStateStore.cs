@@ -725,7 +725,10 @@ public enum PaneKind
     TerminalSupport,
     /// <summary>ブラウザサポートペイン。前に出ているブラウザのタブのページ（サイト）に合った道具を出す（§41）。
     /// Azure DevOps の PR → Diff ペイン・ファイル → 手元のクローンのように、ページを部屋の中へつなぐ。</summary>
-    BrowserSupport
+    BrowserSupport,
+    /// <summary>面のペイン。頼むと Claude が書く小さな HTML の道具（面）をタブで出す（§44.2）。
+    /// 面の実体は <c>%APPDATA%/Loomo/faces/</c> にあり、開いている面は部屋ではなく PC ごとに覚える。</summary>
+    Face
 }
 
 /// <summary>

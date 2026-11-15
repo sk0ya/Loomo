@@ -89,6 +89,11 @@ public partial class ShellWindow {
             return new LoomoRoomResult(true, $"Opened in a new tab of the browser pane: {uri.AbsoluteUri}");
         });
 
+        // 面（§44.2）：書き方を読む・出す。ファイルを書くのは Claude Code 自身。
+        public string FaceGuide() => sk0ya.Loomo.Services.Faces.FaceGuide.Text(window._faceStore);
+
+        public Task<LoomoRoomResult> ShowFaceAsync(string id) => OnUi(() => window.ShowFaceFromClaudeAsync(id));
+
         public Task<LoomoRoomResult> ShowChangesAsync() => OnUi(async () => {
             var origin = await Task.Run(() => window.ClaudeProvenance.LatestRequest());
             if (origin is null)

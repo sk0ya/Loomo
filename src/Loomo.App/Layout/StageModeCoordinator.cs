@@ -8,7 +8,7 @@ public sealed class StageModeCoordinator
     [
         PaneKind.Editor, PaneKind.Terminal, PaneKind.Browser, PaneKind.EditorSupport, PaneKind.Git,
         PaneKind.Diff, PaneKind.Debug, PaneKind.TsIde, PaneKind.Search, PaneKind.Files,
-        PaneKind.Harness, PaneKind.TerminalSupport, PaneKind.BrowserSupport,
+        PaneKind.Harness, PaneKind.TerminalSupport, PaneKind.BrowserSupport, PaneKind.Face,
     ];
 
     public static readonly PaneKind[] DefaultEnabledSessions =

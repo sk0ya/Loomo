@@ -159,6 +159,8 @@ public static class CommandCatalog
         new CommandDescriptor("pane.terminalSupport", CatPane, "ターミナルサポートを開く", null),
         // ブラウザサポートも既定キーなし（ブラウザの脇に出しておく面。§41）。
         new CommandDescriptor("pane.browserSupport", CatPane, "ブラウザサポートを開く", null),
+        // 面（頼むと生える道具・§44.2）も既定キーなし。
+        new CommandDescriptor("pane.face", CatPane, "面を開く", null),
 
         // ===== 検索 =====
         // pane.search は検索ペインの外では開く、検索ペイン内では次の対象へ切り替える。

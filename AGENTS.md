@@ -62,7 +62,8 @@ path.** A syntax language registered into the editor must implement `ILineStateS
 re-tokenizes the whole file. Child-process output is read through `ChildProcessIo` (dedicated threads), never the
 thread pool.
 
-`%APPDATA%/Loomo/` holds `settings.json`, `workspaces/`, `trail.db`, `provenance.db` (§43), `lsp-servers.json`, `formatters.json`.
+`%APPDATA%/Loomo/` holds `settings.json`, `workspaces/`, `trail.db`, `provenance.db` (§43), `faces/` + `faces-state.json` (§44.2),
+`lsp-servers.json`, `formatters.json`.
 
 ### sk0ya control libraries
 
@@ -97,12 +98,23 @@ the raw window title (`◐/◑` / `✳`). The hook script is installed into the 
 so it must stay a no-op outside Loomo.
 
 `LoomoMcpServer` (§43.6 D) is a separate standard MCP server (the IDE protocol only exposes two tools to the model):
-tools that **place things in front of the human** (`show_file` / `show_url` / `show_changes`) and nothing else — no
-typing into the visible terminal, no closing tabs, no layout changes, no focus stealing. Loomo never writes the
+tools that **place things in front of the human** (`show_file` / `show_url` / `show_changes` / `show_face`) plus the
+read-only `face_guide`, and nothing else — no typing into the visible terminal, no closing tabs, no layout changes, no
+focus stealing, no file-writing tools. Loomo never writes the
 user's Claude config for it; the user registers once via the palette command. Claude Code reaches it through the
 stdio bridge `src/Loomo.McpBridge` (copied to `%LOCALAPPDATA%/Loomo/mcp-bridge/`), which re-reads
 `mcp-endpoint.json` on every call — **don't hand the endpoint to shells via environment variables**: resident
 shells (§34) predate them and outlive port changes.
+
+### Faces (§44.2)
+
+A face is a small HTML tool Claude Code writes into `%APPDATA%/Loomo/faces/<id>/` (`face.json` + `index.html`); it shows
+up as a tab of the Face pane without rebuilding Loomo. The lines are held in `FaceRoomApi` / `FaceTabHost` — keep them
+when extending: each face has its own origin (`https://<id>.face.loomo`) and `window.loomo` exists only there; a face can
+use only the APIs and run only the named commands its `face.json` declares (fixed command line; page values arrive via
+`LOOMO_ARG_n` / `$LoomoInput`); the human approves that declaration once per fingerprint (stored outside the face folder);
+commands run hidden, never in the visible terminal; nothing is written into the user's repositories. A WebView2 inside a
+hidden pane never finishes initialising — load when visible, don't await it from an MCP call.
 
 ### .NET Framework projects (§28.12)
 

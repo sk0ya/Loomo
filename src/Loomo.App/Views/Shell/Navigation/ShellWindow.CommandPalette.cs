@@ -375,6 +375,10 @@ public partial class ShellWindow {
         list.Add(new("軌跡", "この日のまとめ", ShowTrailDaySummary, Sc("trail.daySummary"), "trail.daySummary"));
         list.Add(new("軌跡", "留守中のまとめをもう一度表示", ReshowAwaySummary, Sc("trail.reshowAway"), "trail.reshowAway"));
         list.Add(new("Claude Code", "Loomo の道具（MCP）を Claude Code に登録するコマンドをコピー", CopyLoomoMcpRegistrationCommand));
+        // 生える面（§44.2）：置いてある面を開く・生やす頼みごとの下書き。
+        list.Add(new("面", "面を生やす頼みごとの下書きをコピー", CopyFaceGrowPrompt));
+        foreach (var (title, open) in FacePaletteEntries())
+            list.Add(new("面", title, open));
         list.Add(new("軌跡", "軌跡の展開ビューを開く／閉じる", ToggleTrailExpanded, Sc("trail.toggleExpanded"), "trail.toggleExpanded"));
         list.Add(new("タブ", "新しいターミナルタブ", () => OnTerminalNewTab(this, new RoutedEventArgs()), Sc("tab.newTerminal"), "tab.newTerminal"));
         list.Add(new("タブ", "新しいエディタタブ", () => OnEditorNewTab(this, new RoutedEventArgs()), Sc("tab.newEditor"), "tab.newEditor"));

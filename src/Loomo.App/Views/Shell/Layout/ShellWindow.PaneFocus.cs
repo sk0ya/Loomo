@@ -247,6 +247,9 @@ public partial class ShellWindow {
             case PaneKind.BrowserSupport:
                 PaneFocusElementResolver.FocusFirstFocusable(BrowserSupportPane);
                 break;
+            case PaneKind.Face:
+                PaneContent<FacePaneView>(FacePaneHost).FocusActive();
+                break;
         }
         RecordTrailPane(kind);
     }

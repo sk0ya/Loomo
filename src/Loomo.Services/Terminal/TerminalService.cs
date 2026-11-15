@@ -238,7 +238,7 @@ public sealed class TerminalService : ITerminalService
     /// （エージェントのファイル作成は主に write_file/edit_file 経由でこの経路を通らない）。
     /// 設定に失敗してもコマンド実行自体は続行する（try/catch）。
     /// ハーネス（AgentCapabilityHarness）はこの TerminalService をそのまま使うので挙動が揃う。</summary>
-    private const string Utf8Preamble =
+    internal const string Utf8Preamble =
         "try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8; " +
         "$OutputEncoding = New-Object System.Text.UTF8Encoding $false; " +
         "$PSDefaultParameterValues['*:Encoding'] = 'utf8' } catch { }; ";
@@ -248,7 +248,7 @@ public sealed class TerminalService : ITerminalService
     /// UseShellExecute=false＋出力リダイレクトで起動すると再起動ブローカーがパイプを握り、
     /// WaitForExit が返らずハングするため。通常版 pwsh → 非WindowsApps の PATH 上 pwsh →
     /// System32 の Windows PowerShell、の順に実体のある exe を選ぶ。</summary>
-    private static readonly string ShellExecutable = ResolveShellExecutable();
+    internal static readonly string ShellExecutable = ResolveShellExecutable();
 
     /// <summary>フォールバック実行の安全網タイムアウト。通常は到達しない（ハング保険）。</summary>
     private static readonly TimeSpan FallbackTimeout = TimeSpan.FromMinutes(2);
