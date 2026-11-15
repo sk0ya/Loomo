@@ -173,6 +173,8 @@
     <!-- 1.0.57: 同期更新（?2026）で、描き終わったフレームが次のフレームの始まりと同じ塊に入っていても先に描く・watchdog を
          Normal 優先度に。入力から描画までの計測ログ（環境変数 TERMINAL_LATENCY_TRACE=1 で %TEMP%\terminal-latency-<pid>.log）。
          Claude Code の Alt+Enter の改行が時々遅い件の切り分け用（原因は未特定、2026-11-14 公開） -->
+    <!-- 1.0.58: セッションを作っている間（常駐ホストへの接続中）に窓・ドックの復元でビューの大きさが変わると、シェルの ConPTY が
+         復元前の大きさのまま残ってペインを動かすまで表示とずれていた。繋がった後に届ける（2026-11-15 公開） -->
     <!-- 版は Directory.Build.props の TerminalPackageVersion（常駐ホストと共有するため一か所）。参照は eng/LocalTerminal.props
          （-p:UseLocalTerminal=true でプロジェクト参照へ切り替わる）。 -->
   </ItemGroup>
