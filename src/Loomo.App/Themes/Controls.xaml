@@ -1725,13 +1725,15 @@
          何個も並べると青い壁になり、どれが主要でどれが危険かが読めなくなる（Diff ヘッダーがそうだった）。
          アイコンは Tag に Geometry を渡す（StaticResource の DiffIcon.* など）。Content を省けばアイコンだけの
          正方形ボタン、Tag を省けば文言だけになる。線の色は Foreground に追従するのでホバー・無効の色も揃う。 -->
+    <!-- 高さは MinHeight（固定の Height だと、文字サイズを上げたとき（22px など）に文字の上下が切れる）。
+         既定の文字サイズでは中身が最小の高さより低いので、見た目は変わらない。以下のヘッダー・セグメントの部品も同じ。 -->
     <Style x:Key="PaneHeaderGhostButton" TargetType="Button">
         <Setter Property="Foreground" Value="{DynamicResource Fg}" />
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="BorderBrush" Value="Transparent" />
         <Setter Property="Padding" Value="6,0" />
         <Setter Property="MinWidth" Value="24" />
-        <Setter Property="Height" Value="24" />
+        <Setter Property="MinHeight" Value="24" />
         <Setter Property="Margin" Value="0,0,2,0" />
         <Setter Property="FontSize" Value="{DynamicResource Fs12}" />
         <Setter Property="VerticalAlignment" Value="Center" />
@@ -1814,7 +1816,7 @@
         <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
         <Setter Property="FontSize" Value="{DynamicResource Fs12}" />
         <Setter Property="Padding" Value="9,0" />
-        <Setter Property="Height" Value="20" />
+        <Setter Property="MinHeight" Value="20" />
         <Setter Property="Cursor" Value="Hand" />
         <Setter Property="Template">
             <Setter.Value>
@@ -1844,7 +1846,7 @@
         <Setter Property="Foreground" Value="{DynamicResource FgDim}" />
         <Setter Property="FontSize" Value="{DynamicResource Fs12}" />
         <Setter Property="Padding" Value="9,0" />
-        <Setter Property="Height" Value="20" />
+        <Setter Property="MinHeight" Value="20" />
         <Setter Property="Cursor" Value="Hand" />
         <Setter Property="Template">
             <Setter.Value>
@@ -1876,7 +1878,7 @@
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="Padding" Value="6,0" />
         <Setter Property="MinWidth" Value="24" />
-        <Setter Property="Height" Value="24" />
+        <Setter Property="MinHeight" Value="24" />
         <Setter Property="Margin" Value="0,0,2,0" />
         <Setter Property="FontSize" Value="{DynamicResource Fs12}" />
         <Setter Property="VerticalAlignment" Value="Center" />
@@ -1938,7 +1940,7 @@
         <Setter Property="Foreground" Value="{DynamicResource Fg}" />
         <Setter Property="Padding" Value="6,0" />
         <Setter Property="MinWidth" Value="20" />
-        <Setter Property="Height" Value="20" />
+        <Setter Property="MinHeight" Value="20" />
         <Setter Property="FontSize" Value="{DynamicResource Fs12}" />
         <Setter Property="VerticalAlignment" Value="Center" />
         <Setter Property="Cursor" Value="Hand" />

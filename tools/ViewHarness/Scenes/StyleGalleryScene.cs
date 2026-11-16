@@ -43,9 +43,9 @@ public sealed class StyleGalleryScene : IScene
             Styled(new ToggleButton { Content = "ToolbarToggleButton", IsChecked = true }, "ToolbarToggleButton"),
             new CheckBox { Content = "チェック（暗黙のスタイル）", IsChecked = true, VerticalAlignment = VerticalAlignment.Center }));
 
-        var combo = new ComboBox { Width = 220, ItemsSource = new[] { "コンボ（暗黙のスタイル）", "2 つ目" }, SelectedIndex = 0 };
+        var combo = new ComboBox { MinWidth = 220, ItemsSource = new[] { "コンボ（暗黙のスタイル）", "2 つ目" }, SelectedIndex = 0 };
         panel.Children.Add(Row("入力",
-            new TextBox { Text = "テキストボックス（暗黙のスタイル）", Width = 300 },
+            new TextBox { Text = "テキストボックス（暗黙のスタイル）", MinWidth = 300 },
             combo));
 
         return new ScrollViewer { Content = panel, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
@@ -60,7 +60,7 @@ public sealed class StyleGalleryScene : IScene
     private static FrameworkElement Row(string label, params FrameworkElement[] items)
     {
         var row = new DockPanel { Margin = new Thickness(0, 14, 0, 0) };
-        var head = Styled(new TextBlock { Text = label, Width = 120, VerticalAlignment = VerticalAlignment.Center }, "FieldLabel");
+        var head = Styled(new TextBlock { Text = label, MinWidth = 120, Margin = new Thickness(0, 0, 12, 0), VerticalAlignment = VerticalAlignment.Center }, "FieldLabel");
         DockPanel.SetDock(head, Dock.Left);
         row.Children.Add(head);
         var wrap = new WrapPanel();
