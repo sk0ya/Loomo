@@ -232,6 +232,7 @@ public static class CommandCatalog
         // ===== Claude Code（§24.1.1・§38）=====
         new CommandDescriptor("claude.agents", CatClaude, "動いている Claude Code の一覧（承認待ち・入力待ちを先に）", null),
         new CommandDescriptor("claude.resumeSession", CatClaude, "Claude Code のセッションを再開…", null),
+        new CommandDescriptor("claude.reviewNote", CatClaude, "Claude への指摘を書く（カーソルの行に宛てて、次の頼みごとに添える）", null),
         new CommandDescriptor("claude.installHooks", CatClaude, "Claude Code のフックを設定（承認待ち・セッションを Loomo へ知らせる）", null),
         new CommandDescriptor("claude.uninstallHooks", CatClaude, "Claude Code のフックを外す", null),
 

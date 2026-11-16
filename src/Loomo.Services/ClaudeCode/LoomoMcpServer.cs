@@ -38,6 +38,10 @@ public interface ILoomoRoomHost
     /// <summary>動きの見どころの書き方と、いまの見どころ（§44.3）。読むだけ。</summary>
     string MotionGuide();
 
+    /// <summary>人間がいま見ているもの（前面のペイン・前に出ているファイルとカーソルの行・選択・開いているファイルの一覧）。
+    /// 読むだけ・中身は選択の範囲だけ（ファイル全体は読まない）（§45.5 P2）。</summary>
+    Task<LoomoRoomResult> WhatHumanSeesAsync() => Task.FromResult(new LoomoRoomResult(false, "Not available in this build."));
+
     /// <summary>
     /// 橋が名乗った居場所（環境変数のタブ・claude から上へたどった PID）から、この Loomo の客か・どのタブかを決める
     /// （§45.3 P0b・P0c）。自分のタブのシェルが祖先に無ければ null——橋は次の Loomo へ尋ねる。サーバーのスレッドから呼ばれる。
@@ -491,6 +495,11 @@ public sealed class LoomoMcpTools(ILoomoRoomHost host)
             {
                 ["id"] = new JsonObject { ["type"] = "string", ["description"] = "The face id (its folder name)." },
             }, "id"),
+        Tool("what_human_sees",
+            "Describe what the user is looking at right now in Loomo: the front pane, the file in the editor with the caret line, "
+            + "the selected text (only the selection), whether it has unsaved changes, and the other open files. Read-only. "
+            + "Call it when the user says \"this\", \"here\" or \"what I'm looking at\" and you need to see it.",
+            new JsonObject()),
         Tool("motion_guide",
             "Read how Loomo records the workspace's \"motion\" (command output, test outcomes, pictures) after each of your turns, "
             + "where the probes file is and which probes exist. Call it when the user asks to watch a build, tests or a screen as a probe. Read-only.",
@@ -517,6 +526,8 @@ public sealed class LoomoMcpTools(ILoomoRoomHost host)
                     return new LoomoRoomResult(true, host.FaceGuide());
                 case "motion_guide":
                     return new LoomoRoomResult(true, host.MotionGuide());
+                case "what_human_sees":
+                    return await host.WhatHumanSeesAsync().ConfigureAwait(false);
                 case "show_face":
                     if (Text(arguments, "id") is not { Length: > 0 } face)
                         return new LoomoRoomResult(false, "id is required.");

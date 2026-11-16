@@ -359,6 +359,8 @@ public partial class ShellWindow {
         list.Add(new("Claude Code", "Claude Code のフックを設定（承認待ち・セッションを Loomo へ知らせる）", InstallClaudeHooks,
             Sc("claude.installHooks"), "claude.installHooks"));
         list.Add(new("Claude Code", "Claude Code のフックを外す", UninstallClaudeHooks, Sc("claude.uninstallHooks"), "claude.uninstallHooks"));
+        list.Add(new("Claude Code", "Claude への指摘を書く（カーソルの行に宛てて、次の頼みごとに添える）", WriteReviewNoteForClaude,
+            Sc("claude.reviewNote"), "claude.reviewNote"));
         list.Add(new("エディタ", "この場所へのリンクをコピー（loomo://）", () => CopyLocationLink(),
             Sc("editor.copyLocationLink"), "editor.copyLocationLink"));
         list.Add(new("ペイン", "直前のペインへフォーカス（もう一度で元へ）", FocusPreviousPane,

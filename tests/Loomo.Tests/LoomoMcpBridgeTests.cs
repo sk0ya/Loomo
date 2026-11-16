@@ -48,7 +48,7 @@ public sealed class LoomoMcpBridgeTests : IDisposable
         var replies = output.ToString().Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(Parse).ToList();
         Assert.Equal(3, replies.Count);
         Assert.Equal("2025-06-18", replies[0].GetProperty("result").GetProperty("protocolVersion").GetString());
-        Assert.Equal(["show_file", "show_url", "show_changes", "face_guide", "show_face", "motion_guide"],
+        Assert.Equal(["show_file", "show_url", "show_changes", "face_guide", "show_face", "what_human_sees", "motion_guide"],
             replies[1].GetProperty("result").GetProperty("tools").EnumerateArray().Select(tool => tool.GetProperty("name").GetString()));
         Assert.Equal("c1", replies[2].GetProperty("id").GetString());
         Assert.False(replies[2].GetProperty("result").GetProperty("isError").GetBoolean());

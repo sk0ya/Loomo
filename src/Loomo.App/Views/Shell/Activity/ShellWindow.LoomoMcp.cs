@@ -161,6 +161,8 @@ public partial class ShellWindow {
 
         public Task<LoomoRoomResult> ShowFaceAsync(string id) => OnUi(() => window.ShowFaceFromClaudeAsync(id));
 
+        public Task<LoomoRoomResult> WhatHumanSeesAsync() => window.Dispatcher.InvokeAsync(window.DescribeHumanView).Task;
+
         public Task<LoomoRoomResult> ShowChangesAsync() => OnUi(async () => {
             var origin = await Task.Run(() => window.ClaudeProvenance.LatestRequest());
             if (origin is null)
