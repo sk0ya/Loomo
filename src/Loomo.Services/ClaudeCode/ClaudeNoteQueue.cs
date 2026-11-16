@@ -46,6 +46,33 @@ public sealed class ClaudeNoteQueue
         }
     }
 
+    /// <summary>取らずに見る（一覧に出す）。取ったものは消えない。</summary>
+    public IReadOnlyList<ClaudeNote> Peek(string sessionId)
+    {
+        lock (_gate)
+            return _bySession.TryGetValue(sessionId, out var list) ? list.ToList() : [];
+    }
+
+    /// <summary>溜まっているセッションの一覧（一覧画面用）。</summary>
+    public IReadOnlyList<string> Sessions()
+    {
+        lock (_gate)
+            return _bySession.Keys.ToList();
+    }
+
+    /// <summary>この知らせを取り消す（参照で一致するものを外す）。外れたら true。</summary>
+    public bool Discard(string sessionId, ClaudeNote note)
+    {
+        lock (_gate)
+        {
+            if (!_bySession.TryGetValue(sessionId, out var list) || !list.Remove(note))
+                return false;
+            if (list.Count == 0)
+                _bySession.Remove(sessionId);
+            return true;
+        }
+    }
+
     /// <summary>いま溜まっている件数（テストと、見出しに出す数）。</summary>
     public int Count(string sessionId)
     {

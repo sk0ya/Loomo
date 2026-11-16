@@ -68,4 +68,25 @@ public sealed class ClaudeNoteQueueTests
         Assert.Equal(ClaudeNoteQueue.MaxPerSession, first.Count);
         Assert.Empty(sut.Take("s1"));
     }
+
+    [Fact]
+    public void 見るだけでは消えず_取り消すと外れ_空になったセッションは一覧から消える()
+    {
+        var sut = new ClaudeNoteQueue();
+        var a = Note("a");
+        var b = Note("b");
+        sut.Add("s1", a);
+        sut.Add("s1", b);
+
+        Assert.Equal(["a", "b"], sut.Peek("s1").Select(n => n.Text));
+        Assert.Equal(2, sut.Count("s1"));                  // Peek は消さない
+        Assert.Equal(["s1"], sut.Sessions());
+
+        Assert.True(sut.Discard("s1", a));
+        Assert.False(sut.Discard("s1", a));                // 二度目は無い
+        Assert.Equal(["b"], sut.Peek("s1").Select(n => n.Text));
+
+        Assert.True(sut.Discard("s1", b));
+        Assert.Empty(sut.Sessions());                      // 空になったセッションは一覧にも出ない
+    }
 }
