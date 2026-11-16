@@ -306,7 +306,7 @@ public sealed class MarkdownEditorSupport : IEditorSupportIncrementalHtmlProvide
     public string RenderHtml(string filePath, string text)
     {
         var title = DescribeTitle(filePath);
-        var theme = _settings.EffectivePreviewTheme;
+        var theme = _settings.Appearance.MarkdownPreviewTheme;
         // 相対パス画像の解決先。ShellWindow が同じ Resolve のマップ先を仮想ホストへ割り当てる。
         var baseHref = MarkdownPreviewPaths.Resolve(_workspace.FolderForOrPrimary(filePath), filePath).BaseHref;
         // marp 文書だけスライド表示。生 Markdown をページへ渡して marp-core が描く（本文は空のステージ）。
@@ -333,7 +333,7 @@ public sealed class MarkdownEditorSupport : IEditorSupportIncrementalHtmlProvide
         return string.Join(
             "\n",
             filePath,
-            _settings.EffectivePreviewTheme,
+            _settings.Appearance.MarkdownPreviewTheme,
             MarkdownPreviewPaths.Resolve(_workspace.FolderForOrPrimary(filePath), filePath).BaseHref,
             marp ? "marp" : "document",
             marp && Presentation,

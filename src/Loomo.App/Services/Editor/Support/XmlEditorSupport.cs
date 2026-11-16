@@ -25,14 +25,14 @@ public sealed class XmlEditorSupport : IEditorSupportIncrementalHtmlProvider
 
     public string RenderHtml(string filePath, string text)
         => JsonPreviewPage.BuildPage(
-            XmlTreeRenderer.RenderTree(text), DescribeTitle(filePath), _settings.EffectivePreviewTheme);
+            XmlTreeRenderer.RenderTree(text), DescribeTitle(filePath), _settings.Appearance.MarkdownPreviewTheme);
 
     public string RenderBody(string filePath, string text) => XmlTreeRenderer.RenderTree(text);
 
     // ページの体裁（対象ファイル・テーマ）だけを鍵にする＝同じファイルを同じテーマで編集している間は
     // #json-root の差し替えだけで更新できる（JsonEditorSupport と同じ方針）。
     public string PageContextKey(string filePath, string text)
-        => string.Join("\n", filePath, _settings.EffectivePreviewTheme);
+        => string.Join("\n", filePath, _settings.Appearance.MarkdownPreviewTheme);
 }
 
 /// <summary>

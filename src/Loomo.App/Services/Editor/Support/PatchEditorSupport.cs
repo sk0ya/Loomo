@@ -27,12 +27,12 @@ public sealed class PatchEditorSupport : IEditorSupportIncrementalHtmlProvider
 
     public string RenderHtml(string filePath, string text)
         => PatchPreviewPage.BuildPage(RenderBody(filePath, text), DescribeTitle(filePath),
-            _settings.EffectivePreviewTheme);
+            _settings.Appearance.MarkdownPreviewTheme);
 
     public string RenderBody(string filePath, string text) => PatchRenderer.Render(PatchDocument.Parse(text));
 
     public string PageContextKey(string filePath, string text)
-        => string.Join("\n", filePath, _settings.EffectivePreviewTheme);
+        => string.Join("\n", filePath, _settings.Appearance.MarkdownPreviewTheme);
 }
 
 /// <summary>読み取ったパッチを HTML（#patch-root の中身）にする純ロジック。</summary>

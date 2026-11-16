@@ -32,34 +32,8 @@ public sealed partial class AppearanceViewModel
 
     public string UserThemesFolder => UserThemes.Folder;
 
-    /// <summary>エディタ・ターミナル・プレビューの配色をアプリ全体のテーマと別に選ぶか（既定は選ばない＝揃える）。</summary>
-    [ObservableProperty] private bool _perAreaThemes;
-
-    partial void OnPerAreaThemesChanged(bool value)
-    {
-        if (_settings.Appearance.PerAreaThemes == value) return;
-        _settings.Appearance.PerAreaThemes = value;
-        if (value)
-        {
-            // 個別に選び始めた時点では、いまの見た目（＝アプリ全体のテーマ）から始める（前に選んでいた古い個別の値へ飛ばない）。
-            var key = _settings.AppThemeKey;
-            var ap = _settings.Appearance;
-            if (EditorThemes.FirstOrDefault(c => string.Equals(c.Key, key, StringComparison.OrdinalIgnoreCase)) is { } e) ap.EditorTheme = e.Key;
-            if (TerminalThemes.FirstOrDefault(c => string.Equals(c.Key, key, StringComparison.OrdinalIgnoreCase)) is { } t) ap.TerminalTheme = t.Key;
-            if (PreviewThemes.FirstOrDefault(c => string.Equals(c.Key, key, StringComparison.OrdinalIgnoreCase)) is { } p) ap.MarkdownPreviewTheme = p.Key;
-            _selectedEditorTheme = Match(EditorThemes, ap.EditorTheme, 0);
-            _selectedTerminalTheme = Match(TerminalThemes, ap.TerminalTheme, 0);
-            _selectedPreviewTheme = Match(PreviewThemes, ap.MarkdownPreviewTheme, 0);
-            OnPropertyChanged(nameof(SelectedEditorTheme));
-            OnPropertyChanged(nameof(SelectedTerminalTheme));
-            OnPropertyChanged(nameof(SelectedPreviewTheme));
-        }
-        PersistAppearance(value ? "エディタ・ターミナル・プレビューを個別に選べるようにしました" : "エディタ・ターミナル・プレビューをテーマに揃えました");
-    }
-
     private void InitUserThemes()
     {
-        _perAreaThemes = _settings.Appearance.PerAreaThemes;
         _builtInThemes = Themes;
         _builtInEditorThemes = EditorThemes;
         _builtInPreviewThemes = PreviewThemes;

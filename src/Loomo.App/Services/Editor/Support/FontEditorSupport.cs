@@ -32,7 +32,7 @@ public sealed class FontEditorSupport : IEditorSupportHtmlProvider
 
     public string RenderHtml(string filePath, string text)
     {
-        var theme = _settings.EffectivePreviewTheme;
+        var theme = _settings.Appearance.MarkdownPreviewTheme;
         try
         {
             var (mime, format) = ResolveFormat(Path.GetExtension(filePath));

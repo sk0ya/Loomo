@@ -148,7 +148,7 @@ public partial class ShellWindow : IEditorSupportRenderHost {
     private async void OnOpenEditorSupportInBrowser(object sender, RoutedEventArgs e)
         => await EditorSupportBrowserExportCoordinator.OpenAsync(
             _editorSupport.Source, _editorSupportResolver, _editorSupport.Pipeline,
-            _workspace, _settings.EffectivePreviewTheme,
+            _workspace, _settings.Appearance.MarkdownPreviewTheme,
             OpenUrlInBrowserAsync, OpenEditorSupportSnapshotInBrowserAsync);
     private void OnEditorSupportSettingsClick(object sender, RoutedEventArgs e)
         => _editorSupport.CurrentSettingsVisual?.OpenSettings();
@@ -189,7 +189,7 @@ public partial class ShellWindow : IEditorSupportRenderHost {
         var caret = source.Control.Caret;
         var request = new EditorSupportRenderRequest(
             source, source.Control.FilePath, source.Control.Text, caret.Line, caret.Column,
-            GetLspDocument(source), _settings.EffectivePreviewTheme);
+            GetLspDocument(source), _settings.Appearance.MarkdownPreviewTheme);
         await EditorSupportEngine.RenderAsync(request, reason, EditorSupportFramePresenter.Apply, ct);
     }
     private CodeOutlineView EnsureCodeOutlineView() => EditorSupportOutlinePresenter.EnsureView();

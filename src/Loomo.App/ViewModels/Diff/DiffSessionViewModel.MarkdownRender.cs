@@ -107,7 +107,7 @@ public sealed partial class DiffSessionViewModel
         var title = $"差分: {Path.GetFileName(path)}";
         // 配色はプレビューと同じ設定から引く。読むのは<b>組み立てのときだけ</b>なので、外観設定の変更は
         // 次のファイル切替／モード切替（＝次の組み立て）から効く。
-        var theme = _settings.EffectivePreviewTheme;
+        var theme = _settings.Appearance.MarkdownPreviewTheme;
         var render = await Task.Run(() => MarkdownDiffPage.Build(lines, title, theme, baseHref, NoDiffMessage));
         return render with { MapFolder = mapFolder };
     }

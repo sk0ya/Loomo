@@ -164,7 +164,7 @@ public sealed class WordEditorSupport : IEditorSupportHtmlProvider, IEditorSuppo
 
     public string RenderHtml(string filePath, string text)
     {
-        var theme = _settings.EffectivePreviewTheme;
+        var theme = _settings.Appearance.MarkdownPreviewTheme;
         try
         {
             var body = OfficePreview.BodyStyle + "<div class=\"office-doc\">" + ConvertToHtml(filePath) + "</div>";

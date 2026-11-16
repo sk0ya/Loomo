@@ -14,16 +14,6 @@ public sealed class LoomoSettings
     /// ファイルが消えた・読めないときも <see cref="Theme"/> で開く（<see cref="Theme"/> は直前の同梱テーマのまま残す）。</summary>
     public string? UserTheme { get; set; }
 
-    /// <summary>アプリ全体のテーマを選択肢の鍵で表したもの（同梱＝列挙子の名前、自分のテーマ＝<c>user:&lt;id&gt;</c>）。
-    /// エディタ・ターミナル・プレビューの配色は、個別に選んでいない限りこれをそのまま使う（名前は各所で揃えてある）。</summary>
-    public string AppThemeKey => UserTheme is { Length: > 0 } id ? "user:" + id : Theme.ToString();
-
-    /// <summary>エディタ・ターミナル・Markdown プレビューで実際に使う配色名。テーマは部屋全体の色なので、
-    /// 既定ではアプリ全体のテーマに揃える。<see cref="AppearanceSettings.PerAreaThemes"/> のときだけ個別の選択を使う。</summary>
-    public string EffectiveEditorTheme => Appearance.PerAreaThemes ? Appearance.EditorTheme : AppThemeKey;
-    public string EffectiveTerminalTheme => Appearance.PerAreaThemes ? Appearance.TerminalTheme : AppThemeKey;
-    public string EffectivePreviewTheme => Appearance.PerAreaThemes ? Appearance.MarkdownPreviewTheme : AppThemeKey;
-
     /// <summary>アクセントカラーの上書き（"#RRGGBB" 等）。null/空ならテーマ既定のアクセントを使う。</summary>
     public string? AccentColor { get; set; }
 
@@ -464,10 +454,6 @@ public sealed class AppearanceSettings
 
     /// <summary>ターミナルの配色テーマ（背景/文字色のプリセット）。<c>Dark / Light / Dracula / Nord / SolarizedDark</c>。</summary>
     public string TerminalTheme { get; set; } = "Dark";
-
-    /// <summary>エディタ・ターミナル・Markdown プレビューの配色を、アプリ全体のテーマとは別に選ぶか。既定は選ばない
-    /// （アプリ全体のテーマ 1 つで部屋全体が変わる）。<see cref="EditorTheme"/> などはこれが true のときだけ効く。</summary>
-    public bool PerAreaThemes { get; set; }
 
     /// <summary>ターミナルのフォントファミリ。null/空ならコントロール既定。</summary>
     public string? TerminalFontFamily { get; set; }

@@ -176,7 +176,7 @@ public partial class ShellWindow : Window {
             // Claude の会話を読み物として描く（§39.4）。道具は Diff ペインと同じく部屋のプレビューのもの。
             var support = new TerminalSupportPaneView();
             support.ConfigureConversation(editorSupportViewFactory, EditorSupportPreviewFolder,
-                () => _settings.EffectivePreviewTheme);
+                () => _settings.Appearance.MarkdownPreviewTheme);
             support.PageLinkClicked += (_, href) => OnTerminalSupportConversationLink(href);
             return support;
         });

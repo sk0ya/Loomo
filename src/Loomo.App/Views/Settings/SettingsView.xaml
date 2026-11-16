@@ -573,7 +573,7 @@
                                 <Separator Margin="0,16,0,8" />
                                 <!-- テーマは部屋全体の色。ここで 1 つ選ぶと UI・エディタ・ターミナル・プレビューがまとめて変わる。
                                      自分のテーマは ★ 付きで一覧の末尾に並び、作る入口は選択欄のすぐ隣に置く。 -->
-                                <TextBlock Style="{StaticResource FieldLabel}" Text="カラーテーマ" Margin="0,0,0,4" />
+                                <TextBlock Style="{StaticResource FieldLabel}" Text="カラーテーマ（アプリ全体）" Margin="0,0,0,4" />
                                 <DockPanel>
                                     <Button DockPanel.Dock="Right" Content="自分で作る…" Click="OnOpenUserThemeEditor"
                                             Style="{StaticResource SecondaryButton}" Margin="6,0,0,0"
@@ -582,7 +582,7 @@
                                               ItemTemplate="{StaticResource PresetItemTemplate}" />
                                 </DockPanel>
                                 <TextBlock Style="{StaticResource FieldHint}" Margin="0,4,0,0"
-                                           Text="エディタ・ターミナル・Markdown プレビューも、このテーマの色で塗ります。" />
+                                           Text="アプリの UI の配色です。エディタ・ターミナル・Markdown プレビューは下でそれぞれ選べます。" />
                                 <TextBlock Text="{Binding Appearance.UserThemeErrors}" Foreground="{DynamicResource Error}"
                                            TextWrapping="Wrap" FontSize="{DynamicResource Fs11}">
                                     <TextBlock.Style>
@@ -603,18 +603,15 @@
                                 <TextBox Text="{Binding Appearance.AccentColor, UpdateSourceTrigger=LostFocus}"
                                          FontFamily="Cascadia Mono, Consolas" />
 
-                                <!-- 個別の配色は例外の扱い。チェックを入れた人にだけ選択欄を出す。 -->
-                                <CheckBox Content="エディタ・ターミナル・Markdown プレビューだけ別の配色にする" Margin="0,14,0,0"
-                                          IsChecked="{Binding Appearance.PerAreaThemes}" Foreground="{DynamicResource Fg}" />
-                                <StackPanel Margin="22,6,0,0"
-                                            Visibility="{Binding Appearance.PerAreaThemes, Converter={StaticResource BoolToVis}}">
-                                    <TextBlock Style="{StaticResource FieldLabel}" Text="エディタ" Margin="0,0,0,4" />
+                                <Separator Margin="0,16,0,8" />
+                                <StackPanel>
+                                    <TextBlock Style="{StaticResource FieldLabel}" Text="エディタ — テーマ" Margin="0,0,0,4" />
                                     <ComboBox ItemsSource="{Binding Appearance.EditorThemes}" SelectedItem="{Binding Appearance.SelectedEditorTheme}"
                                               ItemTemplate="{StaticResource PresetItemTemplate}" />
-                                    <TextBlock Style="{StaticResource FieldLabel}" Text="ターミナル" Margin="0,10,0,4" />
+                                    <TextBlock Style="{StaticResource FieldLabel}" Text="ターミナル — テーマ" Margin="0,10,0,4" />
                                     <ComboBox ItemsSource="{Binding Appearance.TerminalThemes}" SelectedItem="{Binding Appearance.SelectedTerminalTheme}"
                                               ItemTemplate="{StaticResource PresetItemTemplate}" />
-                                    <TextBlock Style="{StaticResource FieldLabel}" Text="Markdown プレビュー" Margin="0,10,0,4" />
+                                    <TextBlock Style="{StaticResource FieldLabel}" Text="Markdown プレビュー — テーマ" Margin="0,10,0,4" />
                                     <ComboBox ItemsSource="{Binding Appearance.PreviewThemes}" SelectedItem="{Binding Appearance.SelectedPreviewTheme}"
                                               ItemTemplate="{StaticResource PresetItemTemplate}" />
                                 </StackPanel>

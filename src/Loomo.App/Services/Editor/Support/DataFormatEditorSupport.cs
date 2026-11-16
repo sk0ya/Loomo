@@ -26,7 +26,7 @@ public sealed class YamlEditorSupport : IEditorSupportIncrementalHtmlProvider
 
     public string RenderHtml(string filePath, string text)
         => JsonPreviewPage.BuildPage(
-            RenderBody(filePath, text), DescribeTitle(filePath), _settings.EffectivePreviewTheme);
+            RenderBody(filePath, text), DescribeTitle(filePath), _settings.Appearance.MarkdownPreviewTheme);
 
     public string RenderBody(string filePath, string text)
         => DataFormatTree.Render(text, DataFormatTree.YamlToJson, "YAML");
@@ -34,7 +34,7 @@ public sealed class YamlEditorSupport : IEditorSupportIncrementalHtmlProvider
     // ページの体裁（対象ファイル・テーマ）だけを鍵にする＝同じファイルを同じテーマで編集している間は
     // #json-root の差し替えだけで更新できる（JsonEditorSupport と同じ方針）。
     public string PageContextKey(string filePath, string text)
-        => string.Join("\n", filePath, _settings.EffectivePreviewTheme);
+        => string.Join("\n", filePath, _settings.Appearance.MarkdownPreviewTheme);
 }
 
 /// <summary>
@@ -54,13 +54,13 @@ public sealed class TomlEditorSupport : IEditorSupportIncrementalHtmlProvider
 
     public string RenderHtml(string filePath, string text)
         => JsonPreviewPage.BuildPage(
-            RenderBody(filePath, text), DescribeTitle(filePath), _settings.EffectivePreviewTheme);
+            RenderBody(filePath, text), DescribeTitle(filePath), _settings.Appearance.MarkdownPreviewTheme);
 
     public string RenderBody(string filePath, string text)
         => DataFormatTree.Render(text, DataFormatTree.TomlToJson, "TOML");
 
     public string PageContextKey(string filePath, string text)
-        => string.Join("\n", filePath, _settings.EffectivePreviewTheme);
+        => string.Join("\n", filePath, _settings.Appearance.MarkdownPreviewTheme);
 }
 
 /// <summary>

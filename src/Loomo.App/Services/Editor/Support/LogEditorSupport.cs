@@ -24,14 +24,14 @@ public sealed class LogEditorSupport : IEditorSupportIncrementalHtmlProvider
 
     public string RenderHtml(string filePath, string text)
         => LogPreviewPage.BuildPage(LogRenderer.RenderLines(text), DescribeTitle(filePath),
-            _settings.EffectivePreviewTheme);
+            _settings.Appearance.MarkdownPreviewTheme);
 
     public string RenderBody(string filePath, string text) => LogRenderer.RenderLines(text);
 
     // ページの体裁（対象ファイル・テーマ）だけを鍵にする。本文そのものは含めない＝同じファイルを
     // 同じテーマで編集している間は #log-root の差し替えだけで更新できる。
     public string PageContextKey(string filePath, string text)
-        => string.Join("\n", filePath, _settings.EffectivePreviewTheme);
+        => string.Join("\n", filePath, _settings.Appearance.MarkdownPreviewTheme);
 }
 
 /// <summary>
