@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 画面の単体描画ハーネス（.claude/skills/ui-usability の「確かめる」で使う）。
+       Loomo 本体を起動せずに View を実物の VM・実物のテーマ／文字サイズで描いて PNG にし、
+       文字の欠け・既定ボタン・窓からのはみ出しを自動で拾って findings.txt に書く。
+       ソリューションには入れない（dotnet build sk0ya.Loomo.sln・dotnet test の対象外）。
+       TFM は Loomo.App と同じでなければ参照できない（NU1201）。 -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.17763.0</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>ViewHarness</RootNamespace>
+    <!-- Loomo.App の InternalsVisibleTo に合わせた名前にして、internal な VM・ビューも描けるようにする
+         （出力は tools/ViewHarness/bin/ の sk0ya.Loomo.Tests.exe。テストプロジェクトとは別物）。 -->
+    <AssemblyName>sk0ya.Loomo.Tests</AssemblyName>
+    <SatelliteResourceLanguages>ja</SatelliteResourceLanguages>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Loomo.App\Loomo.App.csproj" />
+  </ItemGroup>
+
+</Project>

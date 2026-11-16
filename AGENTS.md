@@ -31,6 +31,17 @@ dotnet test --filter "FullyQualifiedName~DiffUtil"
 - If a running Loomo locks `bin/Debug` and breaks the build, stop that `sk0ya.Loomo.App.exe` (only Loomo itself)
   and rebuild.
 
+## UI changes — usability is part of done
+
+Any change to a screen (pane, dialog, settings, detached window, pane-header button, context menu, face HTML) goes
+through the project skill `ui-usability` (`.claude/skills/ui-usability/SKILL.md`): before coding a new screen, an entry
+point move, or removing/hiding/merging an existing feature, write the user's step script and get agreement; build to
+its rules (labels say what the thing is, state and an exit are visible, Controls.xaml styles, `Fs*` tokens, palette
+keys, keyboard path); then verify before handing over — `tools/ui/Test-XamlChanges.ps1` (static), `tools/ViewHarness`
+(renders a view in every theme × font size and flags clipped text, unstyled buttons, overflow, low contrast; read
+every PNG), and the real app driven with `tools/ui/LoomoUi.psm1` (SendInput clicks/keys + screenshots) along the
+script. Report what was verified and what the human still needs to look at; "未確認" alone is not a report.
+
 ## Architecture
 
 One-way dependency **App → Services → Core**. `Loomo.Core` has no WPF: models and service interfaces. Adapters

@@ -70,8 +70,12 @@ ehthumbs.db
 Desktop.ini
 .DS_Store
 
-# Claude Code ランタイム状態
-.claude/
+# Claude Code ランタイム状態（worktrees・ロック等）。AGENTS.md から指しているプロジェクトスキルだけは
+# 他の PC でも同じ手順になるよう追跡する。
+.claude/*
+!.claude/skills/
+.claude/skills/*
+!.claude/skills/ui-usability/
 
 # ビルド時に取得・生成する同梱 Web アセット（Loomo.App.csproj の DownloadMermaid / BundleMarp ターゲット参照）
 src/Loomo.App/Assets/Web/mermaid.min.js
