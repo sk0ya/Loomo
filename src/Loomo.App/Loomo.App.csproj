@@ -45,6 +45,11 @@
     </ItemGroup>
     <Copy SourceFiles="@(McpBridgeFiles)" DestinationFolder="$(OutDir)mcpbridge" SkipUnchangedFiles="true"
           Condition="Exists('%(McpBridgeFiles.FullPath)')" />
+    <!-- ネイティブ版（AOT、§45.3 P0a）が建っていれば exe はそちらで上書きする。隣の dll と json は使われないが害も無い
+         （建たない PC へ戻ったとき、フレームワーク依存の exe がそのまま動くように残す）。 -->
+    <Copy SourceFiles="$(MSBuildThisFileDirectory)../Loomo.McpBridge/bin/$(Configuration)/native/sk0ya.Loomo.McpBridge.exe"
+          DestinationFolder="$(OutDir)mcpbridge"
+          Condition="Exists('$(MSBuildThisFileDirectory)../Loomo.McpBridge/bin/$(Configuration)/native/sk0ya.Loomo.McpBridge.exe')" />
   </Target>
 
   <!-- 端末の常駐ホスト（§34）。参照は「一緒にビルドさせる」ためで、本体はそのアセンブリを使わない

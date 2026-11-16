@@ -95,6 +95,36 @@ public partial class ShellWindow {
         // 動き（§44.3）：見どころの書き方を読む。書くのは Claude Code 自身、許すのは人間。
         public string MotionGuide() => sk0ya.Loomo.Services.Motion.MotionGuide.Text(window._motion.Store, window._workspace.PrimaryFolder);
 
+        /// <summary>
+        /// この Loomo の客か（§45.3 P0b・P0c）。環境変数のタブがこの Loomo のものならそれ。無い・違う（常駐で繋ぎ直したタブ・
+        /// 別の Loomo のタブ）なら、claude の祖先の PID の中に自分のタブのシェルを探す。シェルの表は並行に書かれる辞書なので、
+        /// UI スレッドを待たない。
+        /// </summary>
+        public LoomoCaller? Identify(Guid? tab, IReadOnlyList<int> ancestors) {
+            if (tab is { } hinted && window._terminalShells.ContainsKey(hinted))
+                return new LoomoCaller(hinted);
+            if (ancestors.Count == 0)
+                return null;
+            var shells = new Dictionary<int, Guid>();
+            foreach (var id in window._terminalShells.Keys)
+                if (window.TerminalShellProcessId(id) is { } shellPid and > 0)
+                    shells.TryAdd(shellPid, id);
+            foreach (var pid in ancestors) {
+                if (shells.TryGetValue(pid, out var id))
+                    return new LoomoCaller(id);
+                if (pid == Environment.ProcessId)
+                    return new LoomoCaller(null);   // この Loomo が起こした claude（タブのシェルの外）
+            }
+            return null;
+        }
+
+        /// <summary>フック（§45.3 P0a）。いまは前の版と同じ 2 つ（承認待ち・セッションの結び付け）を UI へ渡すだけで、返すものは無い。</summary>
+        public Task<System.Text.Json.Nodes.JsonObject?> HookAsync(LoomoCaller caller, System.Text.Json.Nodes.JsonObject hookEvent) {
+            if (caller.Tab is { } tab)
+                window.Dispatcher.BeginInvoke(() => window.OnClaudeHook(tab, hookEvent));
+            return Task.FromResult<System.Text.Json.Nodes.JsonObject?>(null);
+        }
+
         public Task<LoomoRoomResult> ShowFaceAsync(string id) => OnUi(() => window.ShowFaceFromClaudeAsync(id));
 
         public Task<LoomoRoomResult> ShowChangesAsync() => OnUi(async () => {

@@ -37,7 +37,19 @@ public interface ILoomoRoomHost
 
     /// <summary>動きの見どころの書き方と、いまの見どころ（§44.3）。読むだけ。</summary>
     string MotionGuide();
+
+    /// <summary>
+    /// 橋が名乗った居場所（環境変数のタブ・claude から上へたどった PID）から、この Loomo の客か・どのタブかを決める
+    /// （§45.3 P0b・P0c）。自分のタブのシェルが祖先に無ければ null——橋は次の Loomo へ尋ねる。サーバーのスレッドから呼ばれる。
+    /// </summary>
+    LoomoCaller? Identify(Guid? tab, IReadOnlyList<int> ancestors) => new(tab);
+
+    /// <summary>Claude Code のフックが 1 件届いた（§45.3 P0a）。返す JSON はそのままフックの出力になる（無ければ null）。</summary>
+    Task<JsonObject?> HookAsync(LoomoCaller caller, JsonObject hookEvent) => Task.FromResult<JsonObject?>(null);
 }
+
+/// <summary>橋の向こうの claude がどのタブの中か（分からなければ <see cref="Tab"/> は null）。</summary>
+public sealed record LoomoCaller(Guid? Tab);
 
 public sealed record LoomoRoomResult(bool Ok, string Message);
 
@@ -62,12 +74,27 @@ public sealed class LoomoMcpServer : IDisposable
     private readonly CancellationTokenSource _stop = new();
     private TcpListener? _listener;
 
+    private readonly ILoomoRoomHost _host;
+    private readonly int _processId;
+    private readonly Func<int, bool> _isLoomoAlive;
+
     public LoomoMcpServer(ILoomoRoomHost host, string? endpointFile = null)
+        : this(host, endpointFile, Environment.ProcessId, IsLoomoProcessAlive) { }
+
+    /// <summary>テスト用：自分の PID と「その PID の Loomo はまだ居るか」を差し替える（同じプロセスで 2 つの Loomo を演じる）。</summary>
+    internal LoomoMcpServer(ILoomoRoomHost host, string? endpointFile, int processId, Func<int, bool> isLoomoAlive)
     {
+        _host = host;
         _tools = new LoomoMcpTools(host);
+        _processId = processId;
+        _isLoomoAlive = isLoomoAlive;
         _endpointFile = endpointFile ?? Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Loomo", "mcp-endpoint.json");
     }
+
+    /// <summary>橋が名乗る居場所のヘッダー（<c>sk0ya.Loomo.McpBridge</c> の <c>LoomoLink</c> と同じ名前・小文字）。</summary>
+    internal const string PidsHeader = "x-loomo-pids";
+    internal const string TabHeader = "x-loomo-tab";
 
     public int Port { get; private set; }
     public string Token { get; private set; } = "";
@@ -142,13 +169,19 @@ public sealed class LoomoMcpServer : IDisposable
         // ブラウザのページからの要求は断る（DNS リバインディング対策。claude はこのヘッダーを付けない）。
         if (request.Headers.ContainsKey("origin"))
             return (403, null);
-        if (!request.Path.StartsWith("/mcp", StringComparison.Ordinal))
+        var isHook = request.Path.StartsWith("/hook", StringComparison.Ordinal);
+        if (!isHook && !request.Path.StartsWith("/mcp", StringComparison.Ordinal))
             return (404, null);
         if (!request.Headers.TryGetValue("authorization", out var auth) || !IsAuthorized(auth))
             return (401, null);
         // サーバーからの通知は出さないので、SSE の口（GET）もセッションの終了（DELETE）も無い。
         if (request.Method != "POST")
             return (405, null);
+        // 自分のタブの客か。違えば 421（Misdirected Request）——橋は次の Loomo へ尋ねる（Loomo を 2 つ動かしているとき）。
+        if (IdentifyCaller(request) is not { } caller)
+            return (421, null);
+        if (isHook)
+            return await HandleHookAsync(caller, request.Body).ConfigureAwait(false);
         JsonNode? message;
         try { message = JsonNode.Parse(request.Body); }
         catch (JsonException) { return (400, Error(null, -32700, "Parse error")); }
@@ -186,6 +219,31 @@ public sealed class LoomoMcpServer : IDisposable
         }
     }
 
+    /// <summary>名乗りが無い橋（前の版）は自分の客として扱う——前の版の Loomo と同じ振る舞い。</summary>
+    private LoomoCaller? IdentifyCaller(HttpRequest request)
+    {
+        var hasPids = request.Headers.TryGetValue(PidsHeader, out var pidsText);
+        var hasTab = request.Headers.TryGetValue(TabHeader, out var tabText);
+        if (!hasPids && !hasTab)
+            return new LoomoCaller(null);
+        var tab = Guid.TryParse(tabText, out var id) ? id : (Guid?)null;
+        var pids = (pidsText ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(text => int.TryParse(text, out var pid) ? pid : 0).Where(pid => pid > 0).Take(64).ToList();
+        try { return _host.Identify(tab, pids); }
+        catch (Exception ex) when (ex is InvalidOperationException or ObjectDisposedException) { return null; }
+    }
+
+    private async Task<(int Status, string? Body)> HandleHookAsync(LoomoCaller caller, string body)
+    {
+        JsonObject? hookEvent;
+        try { hookEvent = JsonNode.Parse(body) as JsonObject; }
+        catch (JsonException) { return (400, null); }
+        if (hookEvent is null)
+            return (400, null);
+        var output = await _host.HookAsync(caller, hookEvent).ConfigureAwait(false);
+        return (200, output?.ToJsonString());
+    }
+
     private bool IsAuthorized(string header)
     {
         const string prefix = "Bearer ";
@@ -211,7 +269,7 @@ public sealed class LoomoMcpServer : IDisposable
         var reason = status switch
         {
             200 => "OK", 202 => "Accepted", 400 => "Bad Request", 401 => "Unauthorized", 403 => "Forbidden",
-            404 => "Not Found", 405 => "Method Not Allowed", _ => "Error",
+            404 => "Not Found", 405 => "Method Not Allowed", 421 => "Misdirected Request", _ => "Error",
         };
         var head = new StringBuilder()
             .Append("HTTP/1.1 ").Append(status).Append(' ').Append(reason).Append("\r\n")
@@ -228,37 +286,103 @@ public sealed class LoomoMcpServer : IDisposable
         await stream.FlushAsync(cancel).ConfigureAwait(false);
     }
 
+    /// <summary>前回のポートとトークン（上の段＝最後に起動した Loomo のもの）。ポートが別の Loomo に取られていれば、開くときに移る。</summary>
     private (int Port, string? Token) ReadEndpoint()
+    {
+        var root = ReadEndpointFile();
+        if (root is null)
+            return (0, null);
+        var port = root["port"] is JsonValue p && p.TryGetValue<int>(out var n) && n is > 0 and < 65536 ? n : 0;
+        var token = root["token"] is JsonValue t && t.TryGetValue<string>(out var text)
+            && text is { Length: >= 16 } && text.All(char.IsAsciiLetterOrDigit) ? text : null;
+        return (port, token);
+    }
+
+    private JsonObject? ReadEndpointFile()
     {
         try
         {
             if (!File.Exists(_endpointFile))
-                return (0, null);
-            using var doc = JsonDocument.Parse(File.ReadAllText(_endpointFile));
-            var port = doc.RootElement.TryGetProperty("port", out var p) && p.TryGetInt32(out var n) && n is > 0 and < 65536 ? n : 0;
-            var token = doc.RootElement.TryGetProperty("token", out var t) && t.ValueKind == JsonValueKind.String
-                && t.GetString() is { Length: >= 16 } text && text.All(char.IsAsciiLetterOrDigit) ? text : null;
-            return (port, token);
+                return null;
+            return JsonNode.Parse(File.ReadAllText(_endpointFile)) as JsonObject;
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException) { return (0, null); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException) { return null; }
     }
 
-    private void WriteEndpoint()
+    /// <summary>
+    /// 待っている場所を書く（§45.3 P0c）。Loomo ごとに <c>instances</c> へ 1 項目（PID・ポート・トークン）を置き、もう居ない Loomo の
+    /// 項目は外す。上の段（<c>port</c>・<c>token</c>）には最後に起動したものを書く——前の版の橋はそこだけを読む。
+    /// 2 つの Loomo が同時に起動しても項目を消し合わないよう、名前付きのミューテックスの中で読み・書きする。
+    /// </summary>
+    private void WriteEndpoint() => UpdateEndpointFile(instances =>
     {
+        instances.Add(new JsonObject { ["pid"] = _processId, ["port"] = Port, ["token"] = Token });
+        return (Port, Token);
+    });
+
+    /// <summary>閉じるときに自分の項目を外す。上の段は残った Loomo の最後のものへ（居なければ自分のまま＝次の起動で同じポートを使う）。</summary>
+    private void RemoveEndpoint() => UpdateEndpointFile(instances =>
+    {
+        if (instances.LastOrDefault() is JsonObject last
+            && last["port"] is JsonValue p && p.TryGetValue<int>(out var port)
+            && last["token"] is JsonValue t && t.TryGetValue<string>(out var token) && token is not null)
+            return (port, token);
+        return (Port, Token);
+    });
+
+    private void UpdateEndpointFile(Func<JsonArray, (int Port, string Token)> change)
+    {
+        using var mutex = new Mutex(false, @"Local\loomo-mcp-endpoint");
+        var owned = false;
         try
         {
+            try { owned = mutex.WaitOne(TimeSpan.FromSeconds(2)); }
+            catch (AbandonedMutexException) { owned = true; }
+            var instances = new JsonArray();
+            if (ReadEndpointFile()?["instances"] is JsonArray existing)
+            {
+                foreach (var item in existing.OfType<JsonObject>())
+                {
+                    if (item["pid"] is JsonValue v && v.TryGetValue<int>(out var pid) && pid != _processId && _isLoomoAlive(pid))
+                        instances.Add(item.DeepClone());
+                }
+            }
+            var (port, token) = change(instances);
             Directory.CreateDirectory(Path.GetDirectoryName(_endpointFile)!);
-            File.WriteAllText(_endpointFile, new JsonObject { ["port"] = Port, ["token"] = Token }.ToJsonString());
+            var temp = _endpointFile + "." + _processId + ".tmp";
+            File.WriteAllText(temp, new JsonObject { ["port"] = port, ["token"] = token, ["instances"] = instances }.ToJsonString());
+            File.Move(temp, _endpointFile, overwrite: true);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             // 覚えられなくても今回は動く（次の起動でポートとトークンが変わるだけ）。
+        }
+        finally
+        {
+            if (owned)
+                mutex.ReleaseMutex();
+        }
+    }
+
+    private static bool IsLoomoProcessAlive(int pid)
+    {
+        try
+        {
+            using var process = System.Diagnostics.Process.GetProcessById(pid);
+            return !process.HasExited
+                   && string.Equals(process.ProcessName, "sk0ya.Loomo.App", StringComparison.OrdinalIgnoreCase);
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            return false;
         }
     }
 
     public void Dispose()
     {
         _stop.Cancel();
+        if (_listener is not null)
+            RemoveEndpoint();
         try { _listener?.Stop(); } catch (SocketException) { }
         _listener = null;
     }

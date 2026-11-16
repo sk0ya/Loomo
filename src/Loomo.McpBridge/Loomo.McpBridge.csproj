@@ -4,6 +4,7 @@
     Claude Code と Loomo の MCP サーバーをつなぐ橋（設計 §43.6 D）。Claude Code が標準入出力の MCP サーバーとして起こし、
     この exe は 1 行ごとの JSON-RPC を、いま動いている Loomo（%LOCALAPPDATA%\Loomo\mcp-endpoint.json のポートとトークン）へ
     HTTP でそのまま渡す。道具の中身は一切持たない——ただの管。
+    引数 hook で起こすと Claude Code のフックとして働く（§45.3 P0a。HookRelay）。
 
     なぜ要るか：定義が環境変数（LOOMO_MCP_URL）を参照する作りだと、その変数を持たずに生まれたシェル（常駐する端末＝§34 は
     Loomo より何日も長生きする）と、ポートが移ったあとの古いシェルからつながらない。橋は呼ばれるたびにファイルを読む。
@@ -22,7 +23,48 @@
     <!-- 本体と同じ理由で出力パスを固定する（App の出力へ写すときに場所を組み立てるため）。 -->
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <InvariantGlobalization>true</InvariantGlobalization>
+    <!-- AOT で困る書き方を警告で知らせる（ネイティブ版は下の PublishNativeBridge で別に建てる）。 -->
+    <IsAotCompatible>true</IsAotCompatible>
+    <!-- ネイティブ版に焼き込む .NET の版。AOT は実行時を exe に焼くので、PC の .NET を更新しても直らない——
+         既知の脆弱性（GHSA-p3jp-9v83-76w9、10.0.14 未満）を避けるため、ここで直った版を名指しする。 -->
+    <LoomoNativeRuntimeVersion>10.0.15</LoomoNativeRuntimeVersion>
+    <!-- ネイティブ版の中間フォルダー（obj\native\）を、どちらのビルドからもソースとして拾わない。 -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);obj\**</DefaultItemExcludes>
   </PropertyGroup>
+
+  <!--
+    ネイティブ版（AOT）。フックとしても起こされる（§45.3 P0a）ので、プロンプトを送るたびに起動の重さが乗る。
+    フレームワーク依存（通常のビルドの出力）は起動 ~70ms、AOT は ~15ms（2026-11-16 の実測）。建てば本体はそちらを運ぶ。
+    - 別プロセスの dotnet publish で建てる：ILCompiler は VS の C++ リンカーを vswhere で探すが、vswhere は PATH に無いことが
+      多い（あるときだけ見つかる）ので、その場所を PATH に足して起こす。中間フォルダーも復元も分ける（外のビルドの obj を
+      書き換えて毎回建て直しにならないように）。
+    - C++ のビルドツール（VS の「C++ によるデスクトップ開発」）が無い PC では建たない。失敗はビルドを止めず、本体は
+      フレームワーク依存の方を運ぶ（遅いが動く）。失敗しても印（stamp）は置くので、ソースが変わるまで試し直さない。
+  -->
+  <PropertyGroup Condition="'$(_LoomoNativeNested)' != 'true'">
+    <_LoomoNativeStamp>$(MSBuildProjectDirectory)\obj\native.stamp</_LoomoNativeStamp>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(_LoomoNativeNested)' == 'true'">
+    <KnownILCompilerPack Update="Microsoft.DotNet.ILCompiler" ILCompilerPackVersion="$(LoomoNativeRuntimeVersion)" />
+  </ItemGroup>
+
+  <Target Name="PublishNativeBridge" AfterTargets="Build"
+          Condition="'$(LoomoNativeBridge)' != 'false' and '$(_LoomoNativeNested)' != 'true'"
+          Inputs="@(Compile);$(MSBuildProjectFullPath)" Outputs="$(_LoomoNativeStamp)">
+    <!-- OutDir は本文の評価のあとで決まるので、場所はターゲットの中で組む。 -->
+    <PropertyGroup>
+      <_LoomoNativeDir>$(OutDir)native\</_LoomoNativeDir>
+    </PropertyGroup>
+    <Delete Files="$(_LoomoNativeDir)$(AssemblyName).exe" ContinueOnError="true" />
+    <Exec Command="set &quot;PATH=$(MSBuildProgramFiles32)\Microsoft Visual Studio\Installer;%PATH%&quot; &amp; set MSBUILDDISABLENODEREUSE=1 &amp; dotnet publish &quot;$(MSBuildProjectFullPath)&quot; -nologo -v:q -c Release -r win-x64 --self-contained -p:PublishAot=true -p:_LoomoNativeNested=true -p:RuntimeFrameworkVersion=$(LoomoNativeRuntimeVersion) -p:BaseIntermediateOutputPath=obj\native\ -p:OutDir=obj\native\bin\ -o &quot;$(_LoomoNativeDir).&quot;"
+          IgnoreExitCode="true" IgnoreStandardErrorWarningFormat="true" StandardOutputImportance="low">
+      <Output TaskParameter="ExitCode" PropertyName="_LoomoNativeExit" />
+    </Exec>
+    <Warning Condition="'$(_LoomoNativeExit)' != '0'"
+             Text="橋のネイティブ版（AOT）を建てられませんでした（終了コード $(_LoomoNativeExit)。C++ のビルドツールが無い PC では建ちません）。フレームワーク依存の版を使います（フックの起動が ~70ms 遅い）。" />
+    <Touch Files="$(_LoomoNativeStamp)" AlwaysCreate="true" />
+  </Target>
 
   <ItemGroup>
     <InternalsVisibleTo Include="sk0ya.Loomo.Tests" />

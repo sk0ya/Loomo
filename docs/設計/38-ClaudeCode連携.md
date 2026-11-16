@@ -61,6 +61,10 @@ Claude が承認の要る編集をするとき、IDE が繋がっていれば `o
 
 `Notification` と `SessionStart` の2つのフックを Loomo へ届ける（`ClaudeHookBridge`）。
 
+> **2026-11-16 から**：フックの本体は MCP の橋の exe（`sk0ya.Loomo.McpBridge.exe hook`）。環境変数ではなくプロセスの親子でタブを
+> 見分け、Loomo の MCP サーバーの `/hook` へ渡して答えを受け取れる（§45.3.1）。下の PowerShell のスクリプトとパイプは、前の版の
+> 設定のまま動いている claude と、MCP サーバーを切った Loomo のために残してある。
+
 - **経路**: フックのスクリプト（`%LOCALAPPDATA%\Loomo\claude\loomo-claude-hook.ps1`）が、Loomo のターミナルが
   渡す `LOOMO_TERMINAL_TAB`（どのタブか）と `LOOMO_CLAUDE_HOOK_PIPE`（宛先、ユーザーごとに固定名）を読み、
   フックの入力 JSON をタブ ID と一緒に1行で名前付きパイプへ送る。**どちらも無ければ即終了**——設定はユーザー全体に

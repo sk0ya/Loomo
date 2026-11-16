@@ -105,7 +105,7 @@ UI must `await`, never block. Formatting is CLI-first (`FormatterRegistry`, no b
 
 `ClaudeIdeServer`/`ClaudeIdeTools` speak Claude Code's private VS Code protocol — tool names and result strings
 (`FILE_SAVED`, `DIFF_REJECTED`, …) are theirs, don't rename. Answers go through the Dispatcher. Busy/idle comes from
-the raw window title (`◐/◑` / `✳`). The hook script is installed into the user's global `~/.claude/settings.json`,
+the raw window title (`◐/◑` / `✳`). The hook (`sk0ya.Loomo.McpBridge.exe hook`, §45.3.1; the old PowerShell script still works) is installed into the user's global `~/.claude/settings.json`,
 so it must stay a no-op outside Loomo.
 
 `LoomoMcpServer` (§43.6 D) is a separate standard MCP server (the IDE protocol only exposes two tools to the model):

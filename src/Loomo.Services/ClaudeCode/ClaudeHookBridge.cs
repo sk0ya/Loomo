@@ -119,7 +119,10 @@ public sealed class ClaudeHookBridge : IDisposable
 }
 
 /// <summary>Claude Code のユーザー設定（<c>~/.claude/settings.json</c>）へ Loomo のフックを足す・外す（§24.1.1）。
-/// 既存の設定・他のフックには触らず、Loomo のスクリプトを指す項目だけを足し引きする。</summary>
+/// 既存の設定・他のフックには触らず、Loomo のフックを指す項目だけを足し引きする。
+/// <para>フックの本体は橋の exe（<c>sk0ya.Loomo.McpBridge.exe hook</c>、§45.3 P0a）。前の版の PowerShell のスクリプトは、
+/// 入れ直すときに設定から外す（ファイルは消さない——その前から動いている claude はまだそれを起こすので）。
+/// 引数の「フックのパス」が <c>.ps1</c> ならスクリプトの、それ以外なら exe の書き方で設定に入れる。</para></summary>
 public static class ClaudeHookInstaller
 {
     public const string ScriptFileName = "loomo-claude-hook.ps1";
@@ -155,8 +158,15 @@ public static class ClaudeHookInstaller
     public static string SettingsPath(string? claudeConfigDirectory = null)
         => Path.Combine(claudeConfigDirectory ?? ClaudeIdeServer.DefaultClaudeConfigDirectory(), "settings.json");
 
-    public static string CommandFor(string scriptPath)
-        => $"powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"{scriptPath}\"";
+    public static string CommandFor(string hookPath)
+        => IsScript(hookPath)
+            ? $"powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"{hookPath}\""
+            : $"\"{hookPath}\" hook";
+
+    private static bool IsScript(string hookPath) => hookPath.EndsWith(".ps1", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>既定のフックのパス（橋の exe を写した先）。</summary>
+    public static string DefaultHookPath() => LoomoMcpBridgeInstaller.InstalledExe;
 
     /// <summary>入っているか（聞くフックすべてに Loomo のスクリプトを指す項目があるか）。</summary>
     public static bool IsInstalled(JsonObject settings, string scriptPath)
@@ -236,39 +246,59 @@ public static class ClaudeHookInstaller
         return removed;
     }
 
-    /// <summary>スクリプトを置き、設定ファイルへ足す（初回だけ元の設定を <c>.loomo-backup</c> に残す）。
-    /// 入れたなら true、既に入っていたなら false。</summary>
-    public static bool Install(string? claudeConfigDirectory = null, string? scriptPath = null)
+    /// <summary>フックを設定ファイルへ足す（初回だけ元の設定を <c>.loomo-backup</c> に残す）。前の版のスクリプトの項目は外す。
+    /// 変えたなら true、既に入っていたなら false。<paramref name="hookPath"/> を省くと橋の exe を写してからそれを使う。</summary>
+    public static bool Install(string? claudeConfigDirectory = null, string? hookPath = null)
     {
-        scriptPath ??= DefaultScriptPath();
-        Directory.CreateDirectory(Path.GetDirectoryName(scriptPath)!);
-        // PowerShell 5.1 は BOM の無い UTF-8 を ANSI として読むので、日本語のコメントのために BOM を付ける。
-        File.WriteAllText(scriptPath, Script, new UTF8Encoding(true));
+        if (hookPath is null)
+        {
+            if (!LoomoMcpBridgeInstaller.Install())
+                throw new IOException($"フックの本体（{LoomoMcpBridgeInstaller.ExeName}）を {LoomoMcpBridgeInstaller.InstallDirectory} に用意できませんでした。");
+            hookPath = DefaultHookPath();
+        }
+        if (IsScript(hookPath))
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(hookPath)!);
+            // PowerShell 5.1 は BOM の無い UTF-8 を ANSI として読むので、日本語のコメントのために BOM を付ける。
+            File.WriteAllText(hookPath, Script, new UTF8Encoding(true));
+        }
         var settingsPath = SettingsPath(claudeConfigDirectory);
         var settings = Load(settingsPath);
-        if (!AddTo(settings, scriptPath))
+        var changed = !IsScript(hookPath) && RemoveFrom(settings, DefaultScriptPath());
+        changed |= AddTo(settings, hookPath);
+        if (!changed)
             return false;
         Save(settingsPath, settings);
         return true;
     }
 
-    public static bool Uninstall(string? claudeConfigDirectory = null, string? scriptPath = null)
+    /// <summary>Loomo のフック（exe と前の版のスクリプトの両方）を外す。</summary>
+    public static bool Uninstall(string? claudeConfigDirectory = null, string? hookPath = null)
     {
-        scriptPath ??= DefaultScriptPath();
         var settingsPath = SettingsPath(claudeConfigDirectory);
         if (!File.Exists(settingsPath))
             return false;
         var settings = Load(settingsPath);
-        if (!RemoveFrom(settings, scriptPath))
+        var removed = RemoveFrom(settings, hookPath ?? DefaultHookPath());
+        removed |= RemoveFrom(settings, DefaultScriptPath());
+        if (!removed)
             return false;
         Save(settingsPath, settings);
         return true;
     }
 
-    public static bool IsInstalled(string? claudeConfigDirectory = null, string? scriptPath = null)
+    public static bool IsInstalled(string? claudeConfigDirectory = null, string? hookPath = null)
     {
         var settingsPath = SettingsPath(claudeConfigDirectory);
-        return File.Exists(settingsPath) && IsInstalled(Load(settingsPath), scriptPath ?? DefaultScriptPath());
+        return File.Exists(settingsPath) && IsInstalled(Load(settingsPath), hookPath ?? DefaultHookPath());
+    }
+
+    /// <summary>前の版（PowerShell のスクリプト）のフックが設定に残っているか。入れ直しを勧めるのに使う。</summary>
+    public static bool IsLegacyInstalled(string? claudeConfigDirectory = null)
+    {
+        var settingsPath = SettingsPath(claudeConfigDirectory);
+        return File.Exists(settingsPath)
+               && Events.Any(name => HasHook(Load(settingsPath), name, DefaultScriptPath()));
     }
 
     private static JsonObject Load(string path)

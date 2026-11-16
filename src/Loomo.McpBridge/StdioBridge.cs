@@ -1,4 +1,3 @@
-using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -18,19 +17,20 @@ namespace sk0ya.Loomo.McpBridge;
 /// </summary>
 internal sealed class StdioBridge : IDisposable
 {
-    private readonly string _endpointFile;
-    private readonly bool _insideLoomo;
-    private readonly HttpClient _http;
+    private readonly BridgeContext _context;
+    private readonly LoomoLink _link;
 
     public StdioBridge(string endpointFile, bool insideLoomo)
+        : this(endpointFile, BridgeContext.Unidentified(insideLoomo)) { }
+
+    public StdioBridge(string endpointFile, BridgeContext context)
     {
-        _endpointFile = endpointFile;
-        _insideLoomo = insideLoomo;
-        // 相手は 127.0.0.1 だけ。システムのプロキシは通さない。待つのはサーバーの打ち切り（30 秒）より少し長く。
-        _http = new HttpClient(new SocketsHttpHandler { UseProxy = false }) { Timeout = TimeSpan.FromSeconds(35) };
+        _context = context;
+        // 待つのはサーバーの打ち切り（30 秒）より少し長く。
+        _link = new LoomoLink(endpointFile, context, TimeSpan.FromSeconds(35));
     }
 
-    /// <summary>Loomo が待っている場所（<c>LoomoMcpServer</c> が書く。形は <c>{"port":…,"token":"…"}</c>）。</summary>
+    /// <summary>Loomo が待っている場所（<c>LoomoMcpServer</c> が書く。Loomo ごとの <c>{"pid","port","token"}</c> の一覧）。</summary>
     public static string DefaultEndpointFile => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Loomo", "mcp-endpoint.json");
 
@@ -64,29 +64,15 @@ internal sealed class StdioBridge : IDisposable
         }
         catch (JsonException) { return Error(null, -32700, "Parse error"); }
 
-        if (!_insideLoomo)
+        if (!_context.InsideLoomo)
             return AnswerOutsideLoomo(id, method, parameters);
-        if (ReadEndpoint() is not var (port, token))
+        var response = await _link.PostAsync("/mcp", line, cancel).ConfigureAwait(false);
+        if (response is null)
             return Unavailable(id, method);
-        try
-        {
-            using var request = new HttpRequestMessage(HttpMethod.Post, $"http://127.0.0.1:{port}/mcp")
-            {
-                Content = new StringContent(line, new UTF8Encoding(false), "application/json"),
-            };
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
-            using var response = await _http.SendAsync(request, cancel).ConfigureAwait(false);
-            var body = await response.Content.ReadAsStringAsync(cancel).ConfigureAwait(false);
-            // 中身があればそのまま返す（JSON-RPC のエラーも Loomo の言葉のまま）。通知への 202 は中身なし。
-            if (body.Length > 0)
-                return body;
-            return response.IsSuccessStatusCode ? null : Unavailable(id, method);
-        }
-        catch (Exception ex) when (ex is HttpRequestException or IOException
-                                   || (ex is OperationCanceledException && !cancel.IsCancellationRequested))
-        {
-            return Unavailable(id, method);
-        }
+        // 中身があればそのまま返す（JSON-RPC のエラーも Loomo の言葉のまま）。通知への 202 は中身なし。
+        if (response.Body.Length > 0)
+            return response.Body;
+        return response.Status is >= 200 and < 300 ? null : Unavailable(id, method);
     }
 
     /// <summary>Loomo の外：つながるが道具は無い。Loomo へは問い合わせない。</summary>
@@ -119,22 +105,6 @@ internal sealed class StdioBridge : IDisposable
         return method == "tools/call" ? ToolError(id, message) : Error(id, -32000, message);
     }
 
-    /// <summary>ポートとトークン。読めない・形が違うなら無し（確かめ方は書く側の <c>LoomoMcpServer</c> と同じ）。</summary>
-    private (int Port, string Token)? ReadEndpoint()
-    {
-        try
-        {
-            using var doc = JsonDocument.Parse(File.ReadAllText(_endpointFile));
-            if (doc.RootElement.ValueKind != JsonValueKind.Object
-                || !doc.RootElement.TryGetProperty("port", out var p) || !p.TryGetInt32(out var port) || port is <= 0 or >= 65536
-                || !doc.RootElement.TryGetProperty("token", out var t) || t.ValueKind != JsonValueKind.String
-                || t.GetString() is not { Length: >= 16 } token || !token.All(char.IsAsciiLetterOrDigit))
-                return null;
-            return (port, token);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException) { return null; }
-    }
-
     private static string ToolError(JsonNode id, string message) => Result(id, new JsonObject
     {
         ["content"] = new JsonArray(new JsonObject { ["type"] = "text", ["text"] = message }),
@@ -151,5 +121,5 @@ internal sealed class StdioBridge : IDisposable
             ["error"] = new JsonObject { ["code"] = code, ["message"] = message },
         }.ToJsonString();
 
-    public void Dispose() => _http.Dispose();
+    public void Dispose() => _link.Dispose();
 }
