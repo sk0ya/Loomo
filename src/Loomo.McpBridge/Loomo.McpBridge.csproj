@@ -51,7 +51,7 @@
 
   <Target Name="PublishNativeBridge" AfterTargets="Build"
           Condition="'$(LoomoNativeBridge)' != 'false' and '$(_LoomoNativeNested)' != 'true'"
-          Inputs="@(Compile);$(MSBuildProjectFullPath)" Outputs="$(_LoomoNativeStamp)">
+          Inputs="@(Compile);$(MSBuildProjectFullPath)" Outputs="$(OutDir)native\$(AssemblyName).exe">
     <!-- OutDir は本文の評価のあとで決まるので、場所はターゲットの中で組む。 -->
     <PropertyGroup>
       <_LoomoNativeDir>$(OutDir)native\</_LoomoNativeDir>

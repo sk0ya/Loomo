@@ -13,6 +13,24 @@ namespace sk0ya.Loomo.App.Views;
 public partial class ShellWindow {
     private LoomoMcpServer? _loomoMcp;
 
+    /// <summary>次の頼みごとに添える知らせ（§45.6 P3・§45.4 P1）。サーバーのスレッドからも読むので、待ち行列はスレッドセーフ。</summary>
+    private readonly ClaudeNoteQueue _claudeNotes = new();
+
+    /// <summary>UserPromptSubmit の答え：このセッションの知らせを 1 度だけ添える。無ければ null（フックは何も書かない）。</summary>
+    private System.Text.Json.Nodes.JsonObject? ClaudeNoteForPrompt(System.Text.Json.Nodes.JsonObject hookEvent) {
+        if ((string?)hookEvent["session_id"] is not { Length: > 0 } session)
+            return null;
+        var notes = _claudeNotes.Take(session);
+        if (notes.Count == 0)
+            return null;
+        return new System.Text.Json.Nodes.JsonObject {
+            ["hookSpecificOutput"] = new System.Text.Json.Nodes.JsonObject {
+                ["hookEventName"] = "UserPromptSubmit",
+                ["additionalContext"] = ClaudeNoteQueue.FormatContext(notes),
+            },
+        };
+    }
+
     private void InitializeLoomoMcp() {
         if (!_settings.ClaudeCodeIdeIntegration)
             return;
@@ -134,6 +152,8 @@ public partial class ShellWindow {
         /// <summary>フック（§45.3 P0a）。いまは前の版と同じ 2 つ（承認待ち・セッションの結び付け）を UI へ渡すだけで、返すものは無い。
         /// claude の中から起こされた claude のフックはタブに結ばない（タブのセッションが <c>claude -p</c> のものに替わってしまう）。</summary>
         public Task<System.Text.Json.Nodes.JsonObject?> HookAsync(LoomoCaller caller, System.Text.Json.Nodes.JsonObject hookEvent) {
+            if ((string?)hookEvent["hook_event_name"] == "UserPromptSubmit")
+                return Task.FromResult(window.ClaudeNoteForPrompt(hookEvent));
             if (caller.Tab is { } tab && !caller.Nested)
                 window.Dispatcher.BeginInvoke(() => window.OnClaudeHook(tab, hookEvent));
             return Task.FromResult<System.Text.Json.Nodes.JsonObject?>(null);

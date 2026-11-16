@@ -58,12 +58,16 @@ public partial class ShellWindow {
         });
     }
 
-    /// <summary>録れた（背景）。比べて、変わっていたら知らせ、悪い方へ変わっていたら言いつけを起こす。</summary>
+    /// <summary>録れた（背景）。比べて、変わっていたら知らせ、悪い方へ変わっていたら言いつけを起こす。
+    /// 悪い方へ変わったターンのことは、そのセッションの次の頼みごとに添える（§45.6 P3）。</summary>
     private void OnMotionRecorded(string folder, MotionSnapshot snapshot) {
         var probes = _motion.Store.LoadProbes(folder, out _);
         var changes = _motion.Store.Compare(folder, snapshot, probes);
         var headline = MotionDiff.Headline(changes);
         var worsened = MotionDiff.Worsened(changes);
+        if (worsened && headline is not null && snapshot.Trigger == MotionSnapshot.TriggerTurn && snapshot.SessionId is { } session)
+            _claudeNotes.Add(session, new ClaudeNote(ClaudeNote.KindMotionWorsened,
+                $"直前のターンのあと、動きが悪い方へ変わりました：{headline}。直すか、理由を確かめてください。", DateTimeOffset.Now));
         Dispatcher.BeginInvoke(DispatcherPriority.Background, () => {
             RealizedFacePane()?.Emit("motionRecorded", new JsonObject { ["id"] = snapshot.Id }, FaceApi.Motion);
             if (snapshot.OrderResultId is not null || headline is null)

@@ -128,8 +128,8 @@ public static class ClaudeHookInstaller
     public const string ScriptFileName = "loomo-claude-hook.ps1";
 
     /// <summary>Loomo が聞くフック。Notification＝承認待ちの区別、SessionStart＝どのタブがどのセッションか
-    /// （再開・コンテキスト量の表示に使う）。</summary>
-    public static readonly string[] Events = ["Notification", "SessionStart"];
+    /// （再開・コンテキスト量の表示に使う）、UserPromptSubmit＝次の頼みごとに Loomo の知らせ（動きの変化・指摘）を添える（§45.6）。</summary>
+    public static readonly string[] Events = ["Notification", "SessionStart", "UserPromptSubmit"];
 
     /// <summary>フックのスクリプト本体。LOOMO_* が無ければ（Loomo の外の claude）即終了する。</summary>
     public const string Script = """
