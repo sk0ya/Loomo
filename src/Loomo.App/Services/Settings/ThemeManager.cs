@@ -21,7 +21,7 @@ public sealed class ThemeManager
     private const string FgDimKey = "FgDim";
 
     private AppTheme _theme = AppTheme.Dark;
-    private UserTheme? _userTheme;
+    private CustomTheme? _userTheme;
     private string? _accent;
 
     /// <summary>いま当たっている配色が明色か。テーマ切替に追随しない外部コントロール（TSV グリッド・
@@ -41,9 +41,9 @@ public sealed class ThemeManager
         ApplyAccent(accentColor);
     }
 
-    /// <summary>自分のテーマ（<see cref="UserTheme"/>）を当てる。見つからない（ファイルを消した・読めない）
+    /// <summary>自分のテーマ（アプリの画面の <see cref="CustomTheme"/>）を当てる。見つからない（ファイルを消した・読めない）
     /// ときは <paramref name="fallback"/> の同梱テーマで開く（起動時に画面が出ないまま落ちるのを防ぐ）。</summary>
-    public void Apply(UserTheme? userTheme, AppTheme fallback, string? accentColor)
+    public void Apply(CustomTheme? userTheme, AppTheme fallback, string? accentColor)
     {
         _accent = accentColor;
         if (userTheme is null) { Apply(fallback, accentColor); return; }
@@ -61,14 +61,14 @@ public sealed class ThemeManager
     }
 
     /// <summary>自分のテーマへ切り替える（保存し直したときもこれで当て直す）。アクセント上書きは維持する。</summary>
-    public void ApplyUserTheme(UserTheme theme)
+    public void ApplyUserTheme(CustomTheme theme)
     {
         _userTheme = theme;
         IsLightActive = theme.IsLight;
         ViewModels.FileIcons.UseLightPalette = theme.IsLight;
 
         var dict = new ResourceDictionary();
-        foreach (var (key, color) in theme.Ui)
+        foreach (var (key, color) in AppPaletteBuilder.Build(theme))
         {
             var brush = new SolidColorBrush(color);
             brush.Freeze();

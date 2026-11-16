@@ -344,7 +344,7 @@ public sealed partial class AppearanceViewModel : ObservableObject
     partial void OnSelectedThemeChanged(PresetSwatch value)
     {
         if (value is null) return;
-        if (UserThemes.TryGet(value.Key) is { } user)
+        if (UserThemes.TryGet(CustomThemeKind.App, value.Key) is { } user)
         {
             if (string.Equals(_settings.UserTheme, user.Id, StringComparison.OrdinalIgnoreCase)) return;
             _settings.UserTheme = user.Id;

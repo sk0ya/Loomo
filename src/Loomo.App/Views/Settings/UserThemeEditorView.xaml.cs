@@ -14,8 +14,9 @@ using sk0ya.Loomo.App.ViewModels;
 namespace sk0ya.Loomo.App.Views;
 
 /// <summary>「自分のテーマ」編集画面の中身。設定・キーボードと同じ <see cref="SettingsWindow"/>（自前キャプション）に載せる。
-/// プレビューは <see cref="PreviewRoot"/> の Resources に派生した色を置き、中の見本は DynamicResource で塗る
-/// （部屋の本物のスタイル＝FlatButton 等もそのまま試し塗りされる）。部屋を見ながら詰められるよう、窓はモードレスで 1 枚だけ。</summary>
+/// 見本は種類ごとに 1 つ（アプリの画面・エディタ・ターミナル・Markdown プレビュー）で、<see cref="PreviewRoot"/> の
+/// Resources に決まった色を置き、中は DynamicResource で塗る（アプリの画面では部屋の本物のスタイル＝FlatButton 等も
+/// そのまま試し塗りされる）。部屋を見ながら詰められるよう、窓はモードレスで 1 枚だけ。</summary>
 public partial class UserThemeEditorView : UserControl
 {
     private static SettingsWindow? _open;
@@ -27,16 +28,17 @@ public partial class UserThemeEditorView : UserControl
     private readonly Button _autoButton = new() { Content = "自動に戻す", Margin = new Thickness(0, 10, 0, 0), HorizontalAlignment = HorizontalAlignment.Left };
     private ColorSlotViewModel? _activeSlot;
 
-    /// <summary>開く（開いていれば前へ出す）。</summary>
-    public static void Open(Window? owner, AppearanceViewModel appearance)
+    /// <summary>その種類で開く（開いていれば前へ出して、その種類へ切り替える）。</summary>
+    public static void Open(Window? owner, AppearanceViewModel appearance, CustomThemeKind kind)
     {
-        if (_open is { } existing)
+        if (_open is { Body.Content: UserThemeEditorView openView } existing)
         {
             if (existing.WindowState == WindowState.Minimized) existing.WindowState = WindowState.Normal;
             existing.Activate();
+            openView._vm.SelectedKind = openView._vm.Kinds.First(k => k.Kind == kind);
             return;
         }
-        var view = new UserThemeEditorView(new UserThemeEditorViewModel(appearance));
+        var view = new UserThemeEditorView(new UserThemeEditorViewModel(appearance, kind));
         var window = new SettingsWindow(view, "自分のテーマ")
         {
             Owner = owner,
@@ -95,36 +97,57 @@ public partial class UserThemeEditorView : UserControl
     private void OnVmPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(UserThemeEditorViewModel.Preview)) ApplyPreview(_vm.Preview);
+        else if (e.PropertyName == nameof(UserThemeEditorViewModel.SelectedKind)) { _pickerPopup.IsOpen = false; ShowUsage(null); }
     }
 
-    /// <summary>派生した色をプレビューの Resources に置く。ペインヘッダーの帯は部屋と同じく実行時の
-    /// アクセントの色味（<see cref="ThemeManager.PaneHeaderTint"/>）で作る（パレットの値は灰色の既定）。</summary>
-    private void ApplyPreview(UserTheme? theme)
+    /// <summary>決まった色を見本の Resources に置き、その種類の見本だけを出す。アプリの画面はパレットのキー
+    /// （ペインヘッダーの帯は実行時と同じ <see cref="ThemeManager.PaneHeaderTint"/>）、ほかは欄の鍵に C_ を付けたキー。</summary>
+    private void ApplyPreview(CustomTheme? theme)
     {
+        AppPreview.Visibility = Show(CustomThemeKind.App);
+        EditorPreview.Visibility = Show(CustomThemeKind.Editor);
+        TerminalPreview.Visibility = Show(CustomThemeKind.Terminal);
+        PreviewPreview.Visibility = Show(CustomThemeKind.Preview);
         if (theme is null) return;
+
         var dict = new ResourceDictionary();
         void Put(string key, Color c) => dict[key] = Frozen(c);
-        foreach (var (key, color) in theme.Ui) Put(key, color);
-        Put("PaneHeaderBg", ThemeManager.PaneHeaderTint(theme.Ui["Panel"], theme.Accent, theme.Dim));
-
-        Put("PvEditorBg", theme.Bg);
-        Put("PvEditorFg", theme.Fg);
-        Put("PvComment", theme.Dim);
-        Put("PvKeyword", theme.Keyword);
-        Put("PvString", theme.String);
-        Put("PvNumber", theme.Number);
-        Put("PvType", theme.Type);
-        Put("PvFunction", theme.Function);
-        Put("PvTermBg", theme.Bg);
-        Put("PvTermFg", theme.Fg);
-        for (var i = 0; i < theme.Ansi.Count; i++) Put($"PvAnsi{i}", theme.Ansi[i]);
+        foreach (var (key, color) in theme.Colors) Put("C_" + key, color);
+        switch (theme.Kind)
+        {
+            case CustomThemeKind.App:
+                var palette = AppPaletteBuilder.Build(theme);
+                foreach (var (key, color) in palette) Put(key, color);
+                Put("PaneHeaderBg", ThemeManager.PaneHeaderTint(palette["Panel"], palette["Accent"], palette["FgDim"]));
+                break;
+            case CustomThemeKind.Editor:
+                // エディタの部品は EditorThemePresets.Build と同じ決め方（行番号の帯・現在行・選択・検索・下の帯の文字）。
+                var bg = theme["background"];
+                var accent = theme["accent"];
+                var warning = theme["warning"];
+                Put("E_LineBg", CustomThemeFormat.Mix(bg, Colors.Black, theme.IsLight ? 0.035 : 0.06));
+                Put("E_CurrentLine", CustomThemeFormat.Mix(bg, theme["foreground"], 0.10));
+                Put("E_Selection", Color.FromArgb(0x66, accent.R, accent.G, accent.B));
+                Put("E_Search", Color.FromArgb(0xA0, warning.R, warning.G, warning.B));
+                static double L(Color c) => (0.299 * c.R + 0.587 * c.G + 0.114 * c.B) / 255.0;
+                Put("E_StatusFg", L(accent) > 0.55 ? Color.FromRgb(0x10, 0x10, 0x10) : Colors.White);
+                ErrorRun.TextDecorations = new TextDecorationCollection
+                {
+                    new TextDecoration(TextDecorationLocation.Underline,
+                        new Pen(Frozen(theme["error"]), 1.5) { DashStyle = new DashStyle(new double[] { 2, 1 }, 0) },
+                        1, TextDecorationUnit.Pixel, TextDecorationUnit.Pixel),
+                };
+                break;
+        }
         PreviewRoot.Resources = dict;
-        AnsiRow.ItemsSource = theme.Ansi.Select(Frozen).ToArray();
+        PreviewRoot.Background = Frozen(theme["background"]);
         _usageStroke = Frozen(theme.IsLight ? Color.FromRgb(0x10, 0x10, 0x10) : Colors.White);
         // 色を変えると見本の大きさも変わりうるので、囲みは並べ直しが済んでから描き直す。
         if (_shownSlot is not null)
             Dispatcher.BeginInvoke(() => ShowUsage(_shownSlot), System.Windows.Threading.DispatcherPriority.Loaded);
     }
+
+    private Visibility Show(CustomThemeKind kind) => _vm.Kind == kind ? Visibility.Visible : Visibility.Collapsed;
 
     private static SolidColorBrush Frozen(Color c)
     {
@@ -171,7 +194,7 @@ public partial class UserThemeEditorView : UserControl
         UsageLayer.Children.Clear();
         if (slot is null)
         {
-            PreviewCaption.Text = "プレビュー";
+            PreviewCaption.Text = "見本";
             return;
         }
         var count = 0;
@@ -198,8 +221,8 @@ public partial class UserThemeEditorView : UserControl
             count++;
         }
         PreviewCaption.Text = count > 0
-            ? $"プレビュー — 「{slot.Label}」が使われている所を点線で囲んでいます"
-            : $"プレビュー — 「{slot.Label}」はこの見本には出てきません";
+            ? $"見本 — 「{slot.Label}」が使われている所を点線で囲んでいます"
+            : $"見本 — 「{slot.Label}」はこの見本には出てきません";
     }
 
     private static IEnumerable<FrameworkElement> Tagged(DependencyObject root)

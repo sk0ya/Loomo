@@ -252,8 +252,8 @@ internal static class LogPreviewPage
     // 色味をそろえる。styleName の正規化は MarkdownPage と共有。
     private static string Css(string styleName) => MarkdownPage.NormalizeStyle(styleName) switch
     {
-        var key when UserThemes.TryGet(key) is { } u => Base(UserTheme.Hex(u.Bg), UserTheme.Hex(u.Fg), UserTheme.Hex(u.Panel), UserTheme.Hex(u.Border), UserTheme.Hex(u.Dim),
-            UserTheme.Hex(u.Red), UserTheme.Hex(u.Yellow), UserTheme.Hex(u.Blue), UserTheme.Hex(u.Dim)),
+        var key when UserThemes.TryGet(CustomThemeKind.Preview, key) is { } u => Base(u.Hex("background"), u.Hex("foreground"), u.Hex("codeBackground"), u.Hex("border"), u.Hex("dim"),
+            u.Hex("red"), u.Hex("yellow"), u.Hex("link"), u.Hex("dim")),
         "Light" => Base("#FFFFFF", "#24292F", "#F6F8FA", "#D0D7DE", "#6E7781",
                         "#CF222E", "#9A6700", "#0550AE", "#6E7781"),
         "GitHub" => Base("#FFFFFF", "#24292F", "#F6F8FA", "#D0D7DE", "#6E7781",

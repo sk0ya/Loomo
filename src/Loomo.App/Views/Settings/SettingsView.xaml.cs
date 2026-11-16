@@ -10,10 +10,12 @@ public partial class SettingsView : UserControl
 {
     public SettingsView() => InitializeComponent();
 
-    /// <summary>「自分のテーマを作る・編集する」：専用の編集画面を開く（モードレス・1 枚だけ）。</summary>
+    /// <summary>「自分で作る…」：押した欄（Tag＝種類）の自分のテーマの編集画面を開く（モードレス・1 枚だけ）。</summary>
     private void OnOpenUserThemeEditor(object sender, System.Windows.RoutedEventArgs e)
     {
         if (DataContext is ShellViewModel vm)
-            UserThemeEditorView.Open(System.Windows.Window.GetWindow(this), vm.Appearance);
+            UserThemeEditorView.Open(System.Windows.Window.GetWindow(this), vm.Appearance,
+                sender is System.Windows.FrameworkElement { Tag: string tag } && System.Enum.TryParse<sk0ya.Loomo.App.Services.CustomThemeKind>(tag, out var kind)
+                    ? kind : sk0ya.Loomo.App.Services.CustomThemeKind.App);
     }
 }

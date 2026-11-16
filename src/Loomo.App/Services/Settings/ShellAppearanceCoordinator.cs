@@ -128,17 +128,28 @@ public sealed class ShellAppearanceCoordinator
     {
         "dark" => EditorTheme.Dark, "nord" => EditorTheme.Nord,
         "tokyonight" => EditorTheme.TokyoNight, "onedark" => EditorTheme.OneDark,
-        var other when UserThemes.TryGet(other) is { } user => EditorThemePresets.FromUser(user),
+        var other when UserThemes.TryGet(CustomThemeKind.Editor, other) is { } user => EditorThemePresets.FromCustom(user),
         var other => EditorThemePresets.TryGet(other) ?? EditorTheme.Dracula,
     };
 
     private static void SetOption(VimEditorControl control, string name, bool value)
         => control.ExecuteCommand($"set {(value ? "" : "no")}{name}");
 
-    internal static TerminalColorTheme BuildTerminalColorTheme(string? name) => UserThemes.TryGet(name?.Trim()) is { } user
-        ? new TerminalColorTheme(user.Fg, user.Bg, user.Ansi.ToArray(), user.Accent,
-            Color.FromArgb(user.IsLight ? (byte)0xFF : (byte)0xDD, user.Selection.R, user.Selection.G, user.Selection.B))
-        : BuildBuiltInTerminalColorTheme(name);
+    internal static TerminalColorTheme BuildTerminalColorTheme(string? name) =>
+        UserThemes.TryGet(CustomThemeKind.Terminal, name) is { } user ? FromCustom(user) : BuildBuiltInTerminalColorTheme(name);
+
+    /// <summary>自分のターミナルのテーマ → 配色。ANSI の 16 色は欄の並び（黒・赤・緑・黄・青・紫・水色・白 → 明るい版）どおり。</summary>
+    private static TerminalColorTheme FromCustom(CustomTheme t)
+    {
+        string[] ansi =
+        [
+            "black", "red", "green", "yellow", "blue", "magenta", "cyan", "white",
+            "brightBlack", "brightRed", "brightGreen", "brightYellow", "brightBlue", "brightMagenta", "brightCyan", "brightWhite",
+        ];
+        var selection = t["selection"];
+        return new TerminalColorTheme(t["foreground"], t["background"], ansi.Select(k => t[k]).ToArray(), t["cursor"],
+            Color.FromArgb(t.IsLight ? (byte)0xFF : (byte)0xDD, selection.R, selection.G, selection.B));
+    }
 
     private static TerminalColorTheme BuildBuiltInTerminalColorTheme(string? name) => name?.Trim().ToLowerInvariant() switch
     {

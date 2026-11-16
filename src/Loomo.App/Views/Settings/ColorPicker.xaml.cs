@@ -81,7 +81,7 @@ public partial class ColorPicker : UserControl
         var color = FromHsv(_h, _s, _v);
         Preview.Background = new SolidColorBrush(color);
         SvHandle.Stroke = (0.299 * color.R + 0.587 * color.G + 0.114 * color.B) / 255.0 > 0.6 ? Brushes.Black : Brushes.White;
-        if (!HexBox.IsKeyboardFocused) HexBox.Text = UserTheme.Hex(color);
+        if (!HexBox.IsKeyboardFocused) HexBox.Text = CustomThemeFormat.Hex(color);
         HsvText.Text = $"H{_h:0} S{_s * 100:0} V{_v * 100:0}";
     }
 
@@ -123,12 +123,12 @@ public partial class ColorPicker : UserControl
 
     private void ApplyHex()
     {
-        if (UserThemeParser.TryParse(HexBox.Text, out var c))
+        if (CustomThemeFormat.TryParse(HexBox.Text, out var c))
         {
             FromColor(c, keepHue: true);
             Commit();
         }
-        HexBox.Text = UserTheme.Hex(FromHsv(_h, _s, _v));
+        HexBox.Text = CustomThemeFormat.Hex(FromHsv(_h, _s, _v));
     }
 
     private void OnPaletteClick(object sender, RoutedEventArgs e)

@@ -571,8 +571,8 @@ internal static class JsonPreviewPage
     // 色味をそろえる。styleName の正規化は MarkdownPage と共有。
     private static string Css(string styleName) => MarkdownPage.NormalizeStyle(styleName) switch
     {
-        var key when UserThemes.TryGet(key) is { } u => Base(UserTheme.Hex(u.Bg), UserTheme.Hex(u.Fg), UserTheme.Hex(u.Panel), UserTheme.Hex(u.Border), UserTheme.Hex(u.Dim),
-            UserTheme.Hex(u.Blue), UserTheme.Hex(u.String), UserTheme.Hex(u.Number), UserTheme.Hex(u.Keyword), UserTheme.Hex(u.Fg)),
+        var key when UserThemes.TryGet(CustomThemeKind.Preview, key) is { } u => Base(u.Hex("background"), u.Hex("foreground"), u.Hex("codeBackground"), u.Hex("border"), u.Hex("dim"),
+            u.Hex("link"), u.Hex("code"), u.Hex("strong"), u.Hex("heading"), u.Hex("foreground")),
         "Light" => Base("#FFFFFF", "#24292F", "#F6F8FA", "#D0D7DE", "#6E7781",
                         "#0550AE", "#0A3069", "#116329", "#CF222E", "#24292F"),
         "GitHub" => Base("#FFFFFF", "#24292F", "#F6F8FA", "#D0D7DE", "#6E7781",

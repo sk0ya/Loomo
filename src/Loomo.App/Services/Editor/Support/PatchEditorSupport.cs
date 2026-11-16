@@ -235,8 +235,8 @@ internal static class PatchPreviewPage
     // テーマ別パレット（bg, fg, panel, border, muted, add, del）。
     private static string Css(string styleName) => MarkdownPage.NormalizeStyle(styleName) switch
     {
-        var key when UserThemes.TryGet(key) is { } u => Base(UserTheme.Hex(u.Bg), UserTheme.Hex(u.Fg), UserTheme.Hex(u.Panel), UserTheme.Hex(u.Border), UserTheme.Hex(u.Dim),
-            UserTheme.Hex(u.Green), UserTheme.Hex(u.Red)),
+        var key when UserThemes.TryGet(CustomThemeKind.Preview, key) is { } u => Base(u.Hex("background"), u.Hex("foreground"), u.Hex("codeBackground"), u.Hex("border"), u.Hex("dim"),
+            u.Hex("green"), u.Hex("red")),
         "Light" or "GitHub" => Base("#FFFFFF", "#24292F", "#F6F8FA", "#D0D7DE", "#6E7781", "#1A7F37", "#CF222E"),
         "Dark" => Base("#1E1E1E", "#D4D4D4", "#252526", "#3C3C3C", "#858585", "#4EC9B0", "#F48771"),
         "Nord" => Base("#2E3440", "#D8DEE9", "#3B4252", "#4C566A", "#616E88", "#A3BE8C", "#BF616A"),

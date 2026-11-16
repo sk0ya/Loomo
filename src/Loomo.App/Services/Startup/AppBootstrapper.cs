@@ -35,7 +35,7 @@ internal sealed class AppBootstrapper
         // 見張りも始め、保存し直すとその場で当て直す（購読は外観パネルの VM）。
         UserThemes.Reload();
         UserThemes.StartWatching();
-        var userTheme = _settings.UserTheme is { } id ? UserThemes.TryGet(UserTheme.KeyPrefix + id) : null;
+        var userTheme = _settings.UserTheme is { } id ? UserThemes.TryGet(CustomThemeKind.App, CustomTheme.KeyPrefix + id) : null;
         _themeManager.Apply(userTheme, _settings.Theme, _settings.AccentColor);
         _fontManager.Apply(UiFontManager.Effective(_settings.Appearance.UiFontSize));
         StartupProfiler.Mark("テーマ適用完了");

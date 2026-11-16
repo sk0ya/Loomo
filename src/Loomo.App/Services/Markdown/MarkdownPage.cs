@@ -16,7 +16,7 @@ internal static class MarkdownPage
         var t = title != null ? MarkdownRenderer.Encode(title) : "Preview";
         var css = PreviewCss(styleName);
         var baseTag = string.IsNullOrEmpty(baseHref) ? "" : $"<base href=\"{MarkdownRenderer.EncodeAttribute(baseHref)}\">";
-        var mermaidTheme = UserThemes.TryGet(NormalizeStyle(styleName)) is { } user ? (user.IsLight ? "default" : "dark")
+        var mermaidTheme = UserThemes.TryGet(CustomThemeKind.Preview, NormalizeStyle(styleName)) is { } user ? (user.IsLight ? "default" : "dark")
             : NormalizeStyle(styleName) is "Light" or "GitHub" or "SolarizedLight" or "CatppuccinLatte"
             or "RosePineDawn" or "GruvboxLight" or "OneLight"
             or "TokyoNightDay" or "EverforestLight" or "AyuLight" or "KanagawaLotus"
@@ -960,7 +960,7 @@ internal static class MarkdownPage
     }
 
     /// <summary>保存名を正規の名前にする。自分のテーマ（<c>user:&lt;id&gt;</c>）はそのまま返す
-    /// （各 Css は <see cref="UserThemes.TryGet"/> で引いて基準色から組む）。</summary>
+    /// （各 Css は <see cref="UserThemes.TryGet"/> で Markdown プレビューのテーマを引いて組む）。</summary>
     public static string NormalizeStyle(string? styleName) =>
         UserThemes.IsUserKey(styleName?.Trim()) ? styleName!.Trim() :
         styleName?.Trim().ToLowerInvariant() switch
@@ -1000,43 +1000,54 @@ internal static class MarkdownPage
             _ => "Dracula",
         };
 
-    private static string PreviewCss(string styleName) => NormalizeStyle(styleName) switch
+    /// <summary>プレビューの配色（自分のテーマなら Markdown プレビューのテーマ、同梱なら下の表）。</summary>
+    private static string PreviewCss(string styleName)
     {
-        var key when UserThemes.TryGet(key) is { } u => BaseCss(UserTheme.Hex(u.Bg), UserTheme.Hex(u.Fg), UserTheme.Hex(u.Panel), UserTheme.Hex(u.Border),
-            UserTheme.Hex(u.Blue), UserTheme.Hex(u.Keyword), UserTheme.Hex(u.Number), UserTheme.Hex(u.Dim), UserTheme.Hex(u.String)),
-        "Light" => BaseCss("#FFFFFF", "#24292F", "#F6F8FA", "#D0D7DE", "#0969DA", "#8250DF", "#953800", "#57606A", "#116329"),
-        "GitHub" => BaseCss("#FFFFFF", "#24292F", "#F6F8FA", "#D0D7DE", "#0969DA", "#24292F", "#CF222E", "#57606A", "#0550AE"),
-        "Dark" => BaseCss("#1E1E1E", "#D4D4D4", "#252526", "#3C3C3C", "#4FC1FF", "#DCDCAA", "#CE9178", "#9CDCFE", "#B5CEA8"),
-        "Nord" => BaseCss("#2E3440", "#D8DEE9", "#3B4252", "#4C566A", "#88C0D0", "#81A1C1", "#D08770", "#616E88", "#A3BE8C"),
-        "TokyoNight" => BaseCss("#1A1B26", "#C0CAF5", "#24283B", "#414868", "#7AA2F7", "#BB9AF7", "#E0AF68", "#565F89", "#9ECE6A"),
-        "OneDark" => BaseCss("#282C34", "#ABB2BF", "#21252B", "#3E4451", "#61AFEF", "#C678DD", "#E5C07B", "#5C6370", "#98C379"),
-        "SolarizedDark" => BaseCss("#002B36", "#93A1A1", "#073642", "#586E75", "#268BD2", "#2AA198", "#CB4B16", "#586E75", "#859900"),
-        "Monokai" => BaseCss("#272822", "#F8F8F2", "#3E3D32", "#49483E", "#66D9EF", "#F92672", "#FD971F", "#75715E", "#A6E22E"),
-        "GruvboxDark" => BaseCss("#282828", "#EBDBB2", "#32302F", "#504945", "#83A598", "#FABD2F", "#FE8019", "#A89984", "#B8BB26"),
-        "CatppuccinMocha" => BaseCss("#1E1E2E", "#CDD6F4", "#181825", "#313244", "#89B4FA", "#CBA6F7", "#FAB387", "#9399B2", "#A6E3A1"),
-        "Kanagawa" => BaseCss("#1F1F28", "#DCD7BA", "#2A2A37", "#363646", "#7E9CD8", "#957FB8", "#FFA066", "#9C9A8E", "#98BB6C"),
-        "RosePine" => BaseCss("#191724", "#E0DEF4", "#1F1D2E", "#403D52", "#C4A7E7", "#9CCFD8", "#EBBCBA", "#908CAA", "#F6C177"),
-        "EverforestDark" => BaseCss("#2D353B", "#D3C6AA", "#343F44", "#475258", "#7FBBB3", "#A7C080", "#E69875", "#9DA9A0", "#DBBC7F"),
-        "NightOwl" => BaseCss("#011627", "#D6DEEB", "#0B2942", "#1D3B53", "#82AAFF", "#C792EA", "#F78C6C", "#8BA1B1", "#ADDB67"),
-        "AyuDark" => BaseCss("#0B0E14", "#BFBDB6", "#0F131A", "#1E232B", "#59C2FF", "#E6B450", "#F29668", "#8A9199", "#AAD94C"),
-        "SolarizedLight" => BaseCss("#FDF6E3", "#586E75", "#EEE8D5", "#DDD6C1", "#268BD2", "#2AA198", "#CB4B16", "#93A1A1", "#6D8A00"),
-        "CatppuccinLatte" => BaseCss("#EFF1F5", "#4C4F69", "#E6E9EF", "#CCD0DA", "#1E66F5", "#8839EF", "#D9730D", "#7C7F93", "#40A02B"),
-        "RosePineDawn" => BaseCss("#FAF4ED", "#575279", "#F2E9E1", "#DFD8D0", "#907AA9", "#286983", "#B4637A", "#797593", "#3E7B7F"),
-        "GruvboxLight" => BaseCss("#FBF1C7", "#3C3836", "#F2E5BC", "#D5C4A1", "#076678", "#B57614", "#9D0006", "#7C6F64", "#79740E"),
-        "OneLight" => BaseCss("#FAFAFA", "#383A42", "#F0F0F1", "#D3D3D4", "#4078F2", "#A626A4", "#E45649", "#7C7F8A", "#50A14F"),
-        "GitHubDark" => BaseCss("#0D1117", "#E6EDF3", "#161B22", "#30363D", "#58A6FF", "#D2A8FF", "#FFA657", "#8B949E", "#7EE787"),
-        "CatppuccinFrappe" => BaseCss("#303446", "#C6D0F5", "#292C3C", "#414559", "#8CAAEE", "#CA9EE6", "#EF9F76", "#949CBB", "#A6D189"),
-        "CatppuccinMacchiato" => BaseCss("#24273A", "#CAD3F5", "#1E2030", "#363A4F", "#8AADF4", "#C6A0F6", "#F5A97F", "#939AB7", "#A6DA95"),
-        "KanagawaDragon" => BaseCss("#181616", "#C5C9C5", "#201D1D", "#393836", "#8BA4B0", "#8992A7", "#B6927B", "#A6A69C", "#8A9A7B"),
-        "Palenight" => BaseCss("#292D3E", "#BFC7D5", "#242837", "#3A3F58", "#82AAFF", "#C792EA", "#F78C6C", "#8087AB", "#C3E88D"),
-        "Oxocarbon" => BaseCss("#161616", "#F2F4F8", "#262626", "#393939", "#78A9FF", "#BE95FF", "#FF7EB6", "#A8A8A8", "#3DDBD9"),
-        "Poimandres" => BaseCss("#1B1E28", "#E4F0FB", "#171922", "#303340", "#ADD7FF", "#5DE4C7", "#FCC5E9", "#767C9D", "#89DDFF"),
-        "Vesper" => BaseCss("#101010", "#FFFFFF", "#161616", "#282828", "#FFC799", "#FFFFFF", "#FFC799", "#A0A0A0", "#99FFE4"),
-        "TokyoNightDay" => BaseCss("#E1E2E7", "#3760BF", "#D0D5E3", "#B4B8CF", "#2E7DE9", "#9854F1", "#B15C00", "#6172B0", "#587539"),
-        "EverforestLight" => BaseCss("#FDF6E3", "#5C6A72", "#F4F0D9", "#E0DCC7", "#3A94C5", "#8DA101", "#F57D26", "#939F91", "#35A77C"),
-        "AyuLight" => BaseCss("#F8F9FA", "#5C6166", "#F0F1F2", "#DCDDDE", "#399EE6", "#FA8D3E", "#A37ACC", "#8A9199", "#86B300"),
-        "KanagawaLotus" => BaseCss("#F2ECBC", "#545464", "#E7DBA0", "#D5CEA3", "#4D699B", "#624C83", "#CC6D00", "#8A8980", "#6F894E"),
-        _ => BaseCss("#282A36", "#F8F8F2", "#1E1F29", "#44475A", "#8BE9FD", "#BD93F9", "#FFB86C", "#6272A4", "#50FA7B"),
+        var key = NormalizeStyle(styleName);
+        if (UserThemes.TryGet(CustomThemeKind.Preview, key) is { } u)
+            return BaseCss(u.Hex("background"), u.Hex("foreground"), u.Hex("codeBackground"), u.Hex("border"),
+                u.Hex("link"), u.Hex("heading"), u.Hex("strong"), u.Hex("dim"), u.Hex("code"));
+        var c = BuiltInPreviewColors(key);
+        return BaseCss(c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7], c[8]);
+    }
+
+    /// <summary>同梱のプレビュー配色 9 色（背景・文字・コードの背景・罫線・リンク・見出し・強調・控えめ・コード）。
+    /// 自分のテーマを「〜をもとに」作るときの写し元にもなる。</summary>
+    internal static string[] BuiltInPreviewColors(string styleName) => NormalizeStyle(styleName) switch
+    {
+        "Light" => ["#FFFFFF", "#24292F", "#F6F8FA", "#D0D7DE", "#0969DA", "#8250DF", "#953800", "#57606A", "#116329"],
+        "GitHub" => ["#FFFFFF", "#24292F", "#F6F8FA", "#D0D7DE", "#0969DA", "#24292F", "#CF222E", "#57606A", "#0550AE"],
+        "Dark" => ["#1E1E1E", "#D4D4D4", "#252526", "#3C3C3C", "#4FC1FF", "#DCDCAA", "#CE9178", "#9CDCFE", "#B5CEA8"],
+        "Nord" => ["#2E3440", "#D8DEE9", "#3B4252", "#4C566A", "#88C0D0", "#81A1C1", "#D08770", "#616E88", "#A3BE8C"],
+        "TokyoNight" => ["#1A1B26", "#C0CAF5", "#24283B", "#414868", "#7AA2F7", "#BB9AF7", "#E0AF68", "#565F89", "#9ECE6A"],
+        "OneDark" => ["#282C34", "#ABB2BF", "#21252B", "#3E4451", "#61AFEF", "#C678DD", "#E5C07B", "#5C6370", "#98C379"],
+        "SolarizedDark" => ["#002B36", "#93A1A1", "#073642", "#586E75", "#268BD2", "#2AA198", "#CB4B16", "#586E75", "#859900"],
+        "Monokai" => ["#272822", "#F8F8F2", "#3E3D32", "#49483E", "#66D9EF", "#F92672", "#FD971F", "#75715E", "#A6E22E"],
+        "GruvboxDark" => ["#282828", "#EBDBB2", "#32302F", "#504945", "#83A598", "#FABD2F", "#FE8019", "#A89984", "#B8BB26"],
+        "CatppuccinMocha" => ["#1E1E2E", "#CDD6F4", "#181825", "#313244", "#89B4FA", "#CBA6F7", "#FAB387", "#9399B2", "#A6E3A1"],
+        "Kanagawa" => ["#1F1F28", "#DCD7BA", "#2A2A37", "#363646", "#7E9CD8", "#957FB8", "#FFA066", "#9C9A8E", "#98BB6C"],
+        "RosePine" => ["#191724", "#E0DEF4", "#1F1D2E", "#403D52", "#C4A7E7", "#9CCFD8", "#EBBCBA", "#908CAA", "#F6C177"],
+        "EverforestDark" => ["#2D353B", "#D3C6AA", "#343F44", "#475258", "#7FBBB3", "#A7C080", "#E69875", "#9DA9A0", "#DBBC7F"],
+        "NightOwl" => ["#011627", "#D6DEEB", "#0B2942", "#1D3B53", "#82AAFF", "#C792EA", "#F78C6C", "#8BA1B1", "#ADDB67"],
+        "AyuDark" => ["#0B0E14", "#BFBDB6", "#0F131A", "#1E232B", "#59C2FF", "#E6B450", "#F29668", "#8A9199", "#AAD94C"],
+        "SolarizedLight" => ["#FDF6E3", "#586E75", "#EEE8D5", "#DDD6C1", "#268BD2", "#2AA198", "#CB4B16", "#93A1A1", "#6D8A00"],
+        "CatppuccinLatte" => ["#EFF1F5", "#4C4F69", "#E6E9EF", "#CCD0DA", "#1E66F5", "#8839EF", "#D9730D", "#7C7F93", "#40A02B"],
+        "RosePineDawn" => ["#FAF4ED", "#575279", "#F2E9E1", "#DFD8D0", "#907AA9", "#286983", "#B4637A", "#797593", "#3E7B7F"],
+        "GruvboxLight" => ["#FBF1C7", "#3C3836", "#F2E5BC", "#D5C4A1", "#076678", "#B57614", "#9D0006", "#7C6F64", "#79740E"],
+        "OneLight" => ["#FAFAFA", "#383A42", "#F0F0F1", "#D3D3D4", "#4078F2", "#A626A4", "#E45649", "#7C7F8A", "#50A14F"],
+        "GitHubDark" => ["#0D1117", "#E6EDF3", "#161B22", "#30363D", "#58A6FF", "#D2A8FF", "#FFA657", "#8B949E", "#7EE787"],
+        "CatppuccinFrappe" => ["#303446", "#C6D0F5", "#292C3C", "#414559", "#8CAAEE", "#CA9EE6", "#EF9F76", "#949CBB", "#A6D189"],
+        "CatppuccinMacchiato" => ["#24273A", "#CAD3F5", "#1E2030", "#363A4F", "#8AADF4", "#C6A0F6", "#F5A97F", "#939AB7", "#A6DA95"],
+        "KanagawaDragon" => ["#181616", "#C5C9C5", "#201D1D", "#393836", "#8BA4B0", "#8992A7", "#B6927B", "#A6A69C", "#8A9A7B"],
+        "Palenight" => ["#292D3E", "#BFC7D5", "#242837", "#3A3F58", "#82AAFF", "#C792EA", "#F78C6C", "#8087AB", "#C3E88D"],
+        "Oxocarbon" => ["#161616", "#F2F4F8", "#262626", "#393939", "#78A9FF", "#BE95FF", "#FF7EB6", "#A8A8A8", "#3DDBD9"],
+        "Poimandres" => ["#1B1E28", "#E4F0FB", "#171922", "#303340", "#ADD7FF", "#5DE4C7", "#FCC5E9", "#767C9D", "#89DDFF"],
+        "Vesper" => ["#101010", "#FFFFFF", "#161616", "#282828", "#FFC799", "#FFFFFF", "#FFC799", "#A0A0A0", "#99FFE4"],
+        "TokyoNightDay" => ["#E1E2E7", "#3760BF", "#D0D5E3", "#B4B8CF", "#2E7DE9", "#9854F1", "#B15C00", "#6172B0", "#587539"],
+        "EverforestLight" => ["#FDF6E3", "#5C6A72", "#F4F0D9", "#E0DCC7", "#3A94C5", "#8DA101", "#F57D26", "#939F91", "#35A77C"],
+        "AyuLight" => ["#F8F9FA", "#5C6166", "#F0F1F2", "#DCDDDE", "#399EE6", "#FA8D3E", "#A37ACC", "#8A9199", "#86B300"],
+        "KanagawaLotus" => ["#F2ECBC", "#545464", "#E7DBA0", "#D5CEA3", "#4D699B", "#624C83", "#CC6D00", "#8A8980", "#6F894E"],
+        _ => ["#282A36", "#F8F8F2", "#1E1F29", "#44475A", "#8BE9FD", "#BD93F9", "#FFB86C", "#6272A4", "#50FA7B"],
     };
 
     // 背景色の明度からネイティブ UI（既定スクロールバー等）の配色モードを決める。

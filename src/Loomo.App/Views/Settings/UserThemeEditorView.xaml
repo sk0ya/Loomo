@@ -27,7 +27,31 @@
             <Setter Property="Margin" Value="0,0,0,6" />
         </Style>
 
-        <!-- 色の欄 1 つ＝押せるタイル（色見本・名前・16 進／自動・⚠）。押すとピッカーが横に出る。 -->
+        <!-- 種類の切り替え（タブ）。選んでいるものはアクセントの下線。 -->
+        <Style x:Key="KindTabItem" TargetType="ListBoxItem">
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <Border x:Name="b" Padding="16,9,16,7" BorderThickness="0,0,0,2" BorderBrush="Transparent" Background="Transparent">
+                            <TextBlock x:Name="t" Text="{Binding Title}" Foreground="{DynamicResource FgDim}" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="t" Property="Foreground" Value="{DynamicResource Fg}" />
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="b" Property="BorderBrush" Value="{DynamicResource Accent}" />
+                                <Setter TargetName="t" Property="Foreground" Value="{DynamicResource Fg}" />
+                                <Setter TargetName="t" Property="FontWeight" Value="SemiBold" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- 色の欄 1 つ＝押せるタイル。押すとピッカーが横に出る。 -->
         <Style x:Key="SlotTile" TargetType="Button">
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="Background" Value="Transparent" />
@@ -48,9 +72,30 @@
                 </Setter.Value>
             </Setter>
         </Style>
+
+        <!-- 見本の中の等幅の行 -->
+        <Style x:Key="PvMono" TargetType="TextBlock">
+            <Setter Property="FontFamily" Value="Cascadia Mono, Consolas" />
+            <Setter Property="FontSize" Value="{DynamicResource Fs12}" />
+            <Setter Property="HorizontalAlignment" Value="Left" />
+            <Setter Property="Padding" Value="0,1" />
+        </Style>
     </UserControl.Resources>
 
     <DockPanel>
+        <!-- ===== 上：何のテーマを作るか ===== -->
+        <Border DockPanel.Dock="Top" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1" Padding="12,0">
+            <DockPanel>
+                <TextBlock Text="作るテーマ：" VerticalAlignment="Center" Foreground="{DynamicResource FgDim}" Margin="4,0,4,0" />
+                <ListBox ItemsSource="{Binding Kinds}" SelectedItem="{Binding SelectedKind}"
+                         ItemContainerStyle="{StaticResource KindTabItem}" Background="Transparent" BorderThickness="0">
+                    <ListBox.ItemsPanel>
+                        <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
+                    </ListBox.ItemsPanel>
+                </ListBox>
+            </DockPanel>
+        </Border>
+
         <!-- ===== 下の帯：状態と操作 ===== -->
         <Border DockPanel.Dock="Bottom" BorderBrush="{DynamicResource Border}" BorderThickness="0,1,0,0" Padding="16,10">
             <DockPanel>
@@ -60,9 +105,10 @@
                     <Button Content="保存" Command="{Binding SaveCommand}" Style="{StaticResource SecondaryButton}"
                             IsEnabled="{Binding IsDirty}" Margin="0,0,8,0"
                             ToolTip="ファイルへ保存します。このテーマを使っている所はその場で塗り直されます" />
-                    <Button Content="保存して部屋に当てる" Command="{Binding UseInRoomCommand}" Style="{StaticResource FlatButton}"
-                            IsEnabled="{Binding HasTheme}"
-                            ToolTip="保存して、アプリ全体・エディタ・ターミナル・プレビューのすべてでこのテーマを選びます" />
+                    <Button Command="{Binding UseInRoomCommand}" Style="{StaticResource FlatButton}" IsEnabled="{Binding HasTheme}"
+                            ToolTip="保存して、外観パネルのこの種類の欄でこのテーマを選びます">
+                        <TextBlock Text="{Binding KindTitle, StringFormat='保存して{0}に使う'}" />
+                    </Button>
                 </StackPanel>
                 <TextBlock Text="{Binding Status}" VerticalAlignment="Center" Foreground="{DynamicResource FgDim}"
                            TextTrimming="CharacterEllipsis" />
@@ -76,10 +122,11 @@
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
 
-            <!-- ===== 左：自分のテーマの一覧 ===== -->
+            <!-- ===== 左：この種類の自分のテーマ ===== -->
             <Border Grid.Column="0" Background="{DynamicResource BgAlt}" Padding="12,14">
                 <DockPanel>
-                    <TextBlock DockPanel.Dock="Top" Text="自分のテーマ" FontWeight="SemiBold" Margin="2,0,0,8" />
+                    <TextBlock DockPanel.Dock="Top" Text="{Binding KindTitle, StringFormat='自分の{0}のテーマ'}"
+                               FontWeight="SemiBold" Margin="2,0,0,8" TextWrapping="Wrap" />
                     <StackPanel DockPanel.Dock="Bottom" Margin="0,12,0,0">
                         <TextBlock Text="もとにするテーマ" Style="{StaticResource Caption}" />
                         <ComboBox ItemsSource="{Binding BaseChoices}" SelectedItem="{Binding SelectedBase}"
@@ -94,7 +141,7 @@
                         </UniformGrid>
                         <Button Content="JSON を開く" Command="{Binding OpenJsonCommand}" Style="{StaticResource SecondaryButton}"
                                 IsEnabled="{Binding HasTheme}" Margin="0,8,0,0"
-                                ToolTip="テーマのファイルを部屋のエディタで開きます（ui / ansi の直接指定など、この画面に無い項目を書くとき）" />
+                                ToolTip="テーマのファイルを部屋のエディタで開きます" />
                         <Button Content="フォルダーを開く" Command="{Binding OpenFolderCommand}" Style="{StaticResource SecondaryButton}"
                                 Margin="0,8,0,0" ToolTip="テーマのファイルが入っているフォルダーを開きます" />
                     </StackPanel>
@@ -106,16 +153,15 @@
 
             <!-- ===== 中央：色 ===== -->
             <Grid Grid.Column="1">
-                <TextBlock Margin="24" TextWrapping="Wrap" Foreground="{DynamicResource FgDim}"
-                           Visibility="{Binding HasTheme, Converter={StaticResource InverseBoolToVis}}"
-                           Text="まだ自分のテーマがありません。左下で「もとにするテーマ」を選んで「新しく作る」を押すと、その色を写したところから始められます。" />
+                <TextBlock Margin="24" TextWrapping="Wrap" Foreground="{DynamicResource FgDim}" Text="{Binding EmptyMessage}"
+                           Visibility="{Binding HasTheme, Converter={StaticResource InverseBoolToVis}}" />
                 <ScrollViewer VerticalScrollBarVisibility="Auto"
                               Visibility="{Binding HasTheme, Converter={StaticResource BoolToVis}}">
                     <StackPanel Margin="18,14,18,14">
                         <TextBlock Text="名前" Style="{StaticResource Caption}" />
                         <TextBox Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}" Padding="6,4" />
                         <TextBlock Margin="0,10,0,0" TextWrapping="Wrap" Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs12}"
-                                   Text="色を押すと選べます。色にカーソルを当てると、その色が使われている所を右のプレビューで囲んで示します。" />
+                                   Text="色を押すと選べます。色にカーソルを当てると、その色が使われている所を右の見本で囲んで示します。" />
 
                         <ItemsControl ItemsSource="{Binding Source={StaticResource GroupedSlots}}" Margin="-6,0,-6,0">
                             <ItemsControl.GroupStyle>
@@ -144,38 +190,38 @@
                                         <DockPanel>
                                             <Border DockPanel.Dock="Left" Width="30" Height="30" CornerRadius="5"
                                                     Background="{Binding Brush}" BorderBrush="{DynamicResource Border}" BorderThickness="1" />
-                                            <TextBlock DockPanel.Dock="Right" Text="⚠" VerticalAlignment="Center" Margin="4,0,2,0"
-                                                       Foreground="{DynamicResource Error}" ToolTip="{Binding Warning}"
-                                                       Visibility="{Binding Warning, Converter={StaticResource NonEmptyToVis}}" />
-                                            <Border DockPanel.Dock="Right" VerticalAlignment="Center" CornerRadius="3" Padding="5,1" Margin="4,0,0,0"
-                                                    BorderBrush="{DynamicResource Border}" BorderThickness="1"
-                                                    Visibility="{Binding IsAuto, Converter={StaticResource BoolToVis}}"
-                                                    ToolTip="ほかの色と背景の明暗から自動で決まっています。押して色を選ぶと自分の色になります">
-                                                <TextBlock Text="自動" Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs11}" />
-                                            </Border>
+                                            <!-- 名前は幅いっぱいに使う。⚠ は名前のすぐ後ろ、「自動」の札は 2 行目の頭に置く -->
                                             <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
-                                                <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis" />
-                                                <TextBlock Text="{Binding Usage}" Foreground="{DynamicResource FgDim}"
-                                                           FontSize="{DynamicResource Fs11}" TextTrimming="CharacterEllipsis" />
+                                                <DockPanel>
+                                                    <TextBlock DockPanel.Dock="Right" Text="⚠" Margin="4,0,0,0" Foreground="{DynamicResource Error}"
+                                                               ToolTip="{Binding Warning}"
+                                                               Visibility="{Binding Warning, Converter={StaticResource NonEmptyToVis}}" />
+                                                    <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis" />
+                                                </DockPanel>
+                                                <DockPanel>
+                                                    <Border DockPanel.Dock="Left" VerticalAlignment="Center" CornerRadius="3" Padding="4,0" Margin="0,1,5,0"
+                                                            BorderBrush="{DynamicResource Border}" BorderThickness="1"
+                                                            Visibility="{Binding IsAuto, Converter={StaticResource BoolToVis}}"
+                                                            ToolTip="ほかの色と背景の明暗から自動で決まっています。押して色を選ぶと自分の色になります">
+                                                        <TextBlock Text="自動" Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs10}" />
+                                                    </Border>
+                                                    <TextBlock Text="{Binding Usage}" Foreground="{DynamicResource FgDim}"
+                                                               FontSize="{DynamicResource Fs11}" TextTrimming="CharacterEllipsis" />
+                                                </DockPanel>
                                             </StackPanel>
                                         </DockPanel>
                                     </Button>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
-
-                        <TextBlock Margin="0,16,0,0" TextWrapping="Wrap" Foreground="{DynamicResource FgDim}"
-                                   FontSize="{DynamicResource Fs11}"
-                                   Visibility="{Binding HasOverrides, Converter={StaticResource BoolToVis}}"
-                                   Text="このテーマには ui / ansi の直接指定があります。この画面では触らずにそのまま残します（変えるときは「JSON を開く」）。" />
                     </StackPanel>
                 </ScrollViewer>
             </Grid>
 
-            <!-- ===== 右：プレビュー（自分の Resources に派生した色を持ち、中は DynamicResource で塗る）=====
-                 Tag="use:…" はその見本がどの色の欄を使っているか。色のタイルにカーソルを当てると、ここを見て囲む。 -->
+            <!-- ===== 右：見本（自分の Resources に決まった色を持ち、中は DynamicResource で塗る）=====
+                 Tag="use:…" はその見本がどの欄の色を使っているか。色のタイルにカーソルを当てると、ここを見て囲む。 -->
             <DockPanel Grid.Column="2" Margin="4,14,18,14">
-                <TextBlock x:Name="PreviewCaption" DockPanel.Dock="Top" Text="プレビュー" Style="{StaticResource Caption}"
+                <TextBlock x:Name="PreviewCaption" DockPanel.Dock="Top" Text="見本" Style="{StaticResource Caption}"
                            TextTrimming="CharacterEllipsis" />
                 <TextBlock DockPanel.Dock="Bottom" Text="{Binding ReadabilitySummary}" Margin="2,10,0,0" TextWrapping="Wrap"
                            FontSize="{DynamicResource Fs12}">
@@ -192,119 +238,242 @@
                 </TextBlock>
 
                 <Border x:Name="PreviewRoot" CornerRadius="8" ClipToBounds="True" BorderThickness="1"
-                        BorderBrush="{DynamicResource Border}" Background="{DynamicResource Bg}">
+                        BorderBrush="{DynamicResource Border}">
                     <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="38" />
-                            <ColumnDefinition Width="150" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="*" />
-                            <RowDefinition Height="Auto" />
-                        </Grid.RowDefinitions>
-
-                        <!-- アクティビティバー -->
-                        <Border Grid.Column="0" Grid.RowSpan="2" Background="{DynamicResource ActivityBarBg}">
-                            <StackPanel Margin="0,10,0,0">
-                                <Border Height="28" BorderBrush="{DynamicResource Accent}" BorderThickness="2,0,0,0" Tag="use:accent">
-                                    <Rectangle Width="14" Height="12" RadiusX="2" RadiusY="2" Fill="{DynamicResource Fg}" />
-                                </Border>
-                                <Rectangle Width="14" Height="14" RadiusX="7" RadiusY="7" Margin="0,12" Fill="{DynamicResource FgDim}" />
-                                <Rectangle Width="14" Height="12" RadiusX="2" RadiusY="2" Fill="{DynamicResource FgDim}" />
-                            </StackPanel>
-                        </Border>
-
-                        <!-- サイドバー -->
-                        <Border Grid.Column="1" Grid.RowSpan="2" Background="{DynamicResource Panel}"
-                                BorderBrush="{DynamicResource Border}" BorderThickness="0,0,1,0">
-                            <DockPanel>
-                                <Border DockPanel.Dock="Top" Background="{DynamicResource PaneHeaderBg}" Padding="10,7" Tag="use:accent">
-                                    <TextBlock Text="エクスプローラー" FontWeight="SemiBold" FontSize="{DynamicResource Fs12}" />
-                                </Border>
-                                <StackPanel Margin="0,6" TextElement.FontSize="{DynamicResource Fs12}" Tag="use:background">
-                                    <StackPanel Tag="use:foreground">
-                                        <TextBlock Text="▾ src" Margin="10,2" />
-                                        <TextBlock Text="App.cs" Margin="22,2" />
-                                    </StackPanel>
-                                    <Border Background="{DynamicResource SelectionBg}" Tag="use:accent">
-                                        <TextBlock Text="Theme.cs" Margin="22,2" />
+                        <!-- ===== アプリの画面 ===== -->
+                        <Grid x:Name="AppPreview" Background="{DynamicResource Bg}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="38" />
+                                <ColumnDefinition Width="160" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Border Grid.Column="0" Background="{DynamicResource ActivityBarBg}" Tag="use:activityBar">
+                                <StackPanel Margin="0,10,0,0">
+                                    <Border Height="28" BorderBrush="{DynamicResource Accent}" BorderThickness="2,0,0,0" Tag="use:accent">
+                                        <Rectangle Width="14" Height="12" RadiusX="2" RadiusY="2" Fill="{DynamicResource Fg}" />
                                     </Border>
-                                    <TextBlock Margin="22,2" HorizontalAlignment="Left" Tag="use:yellow"><Run Text="Ro" /><Run Text="om" Background="{DynamicResource SearchHighlight}" /><Run Text=".cs" /></TextBlock>
-                                    <TextBlock Text="README.md" Margin="22,2" HorizontalAlignment="Left" Foreground="{DynamicResource FgDim}" Tag="use:dim" />
-                                    <StackPanel Orientation="Horizontal" Margin="10,12,0,0">
-                                        <TextBlock Text="● 成功" Foreground="{DynamicResource Success}" Margin="0,0,10,0" Tag="use:green" />
-                                        <TextBlock Text="● 失敗" Foreground="{DynamicResource Error}" Tag="use:red" />
+                                    <Rectangle Width="14" Height="14" RadiusX="7" RadiusY="7" Margin="0,12" Fill="{DynamicResource FgDim}" />
+                                    <Rectangle Width="14" Height="12" RadiusX="2" RadiusY="2" Fill="{DynamicResource FgDim}" />
+                                </StackPanel>
+                            </Border>
+                            <Border Grid.Column="1" Background="{DynamicResource Panel}" BorderBrush="{DynamicResource Border}"
+                                    BorderThickness="0,0,1,0" Tag="use:background">
+                                <DockPanel>
+                                    <Border DockPanel.Dock="Top" Background="{DynamicResource PaneHeaderBg}" Padding="10,7" Tag="use:accent">
+                                        <TextBlock Text="エクスプローラー" FontWeight="SemiBold" FontSize="{DynamicResource Fs12}" />
+                                    </Border>
+                                    <StackPanel Margin="0,6" TextElement.FontSize="{DynamicResource Fs12}">
+                                        <StackPanel Tag="use:foreground">
+                                            <TextBlock Text="▾ src" Margin="10,2" />
+                                            <TextBlock Text="App.cs" Margin="22,2" />
+                                        </StackPanel>
+                                        <Border Background="{DynamicResource SelectionBg}" Tag="use:selection">
+                                            <TextBlock Text="Theme.cs" Margin="22,2" />
+                                        </Border>
+                                        <TextBlock Margin="22,2" HorizontalAlignment="Left" Tag="use:searchHighlight"><Run Text="Ro" /><Run Text="om" Background="{DynamicResource SearchHighlight}" /><Run Text=".cs" /></TextBlock>
+                                        <TextBlock Text="README.md" Margin="22,2" HorizontalAlignment="Left" Foreground="{DynamicResource FgDim}" Tag="use:dim" />
+                                        <TextBlock Text="構造" Foreground="{DynamicResource FgDim}" Margin="10,14,0,2" FontSize="{DynamicResource Fs11}" />
+                                        <TextBlock Margin="10,1" HorizontalAlignment="Left" Tag="use:symType"><Run Text="◆ " Foreground="{DynamicResource SymType}" /><Run Text="Theme" /></TextBlock>
+                                        <TextBlock Margin="10,1" HorizontalAlignment="Left" Tag="use:symInterface"><Run Text="◇ " Foreground="{DynamicResource SymInterface}" /><Run Text="ITheme" /></TextBlock>
+                                        <TextBlock Margin="10,1" HorizontalAlignment="Left" Tag="use:symMethod"><Run Text="ƒ " Foreground="{DynamicResource SymMethod}" /><Run Text="Apply" /></TextBlock>
+                                        <TextBlock Margin="10,1" HorizontalAlignment="Left" Tag="use:symProperty"><Run Text="▪ " Foreground="{DynamicResource SymProperty}" /><Run Text="Name" /></TextBlock>
+                                        <TextBlock Margin="10,1" HorizontalAlignment="Left" Tag="use:symField"><Run Text="▫ " Foreground="{DynamicResource SymField}" /><Run Text="_cache" /></TextBlock>
+                                        <TextBlock Margin="10,1" HorizontalAlignment="Left" Tag="use:symConstant"><Run Text="π " Foreground="{DynamicResource SymConstant}" /><Run Text="Depth" /></TextBlock>
+                                        <TextBlock Margin="10,1" HorizontalAlignment="Left" Tag="use:symEnum"><Run Text="≡ " Foreground="{DynamicResource SymEnum}" /><Run Text="Kind" /></TextBlock>
+                                        <TextBlock Margin="10,1" HorizontalAlignment="Left" Tag="use:symNamespace"><Run Text="{}{} " Foreground="{DynamicResource SymNamespace}" /><Run Text="Loomo" /></TextBlock>
                                     </StackPanel>
-                                    <Button Content="コミット" Style="{StaticResource FlatButton}" Margin="10,12,10,0" Padding="8,4" Tag="use:accent" />
-                                    <TextBlock Text="構造" Foreground="{DynamicResource FgDim}" Margin="10,14,0,2" FontSize="{DynamicResource Fs11}"
-                                               HorizontalAlignment="Left" Tag="use:dim" />
-                                    <TextBlock Margin="10,1" HorizontalAlignment="Left" Tag="use:type"><Run Text="◆ " Foreground="{DynamicResource SymType}" /><Run Text="Theme" /></TextBlock>
-                                    <TextBlock Margin="10,1" HorizontalAlignment="Left" Tag="use:keyword"><Run Text="ƒ " Foreground="{DynamicResource SymMethod}" /><Run Text="Greet" /></TextBlock>
-                                    <TextBlock Margin="10,1" HorizontalAlignment="Left" Tag="use:cyan"><Run Text="▪ " Foreground="{DynamicResource SymProperty}" /><Run Text="Depth" /></TextBlock>
+                                </DockPanel>
+                            </Border>
+                            <!-- 右：設定画面風（入力欄・ボタン・合否） -->
+                            <DockPanel Grid.Column="2" Background="{DynamicResource Panel}" Tag="use:background">
+                                <Border DockPanel.Dock="Top" Background="{DynamicResource PaneHeaderBg}" Padding="10,7" Tag="use:accent">
+                                    <TextBlock Text="テスト" FontWeight="SemiBold" FontSize="{DynamicResource Fs12}" />
+                                </Border>
+                                <StackPanel Margin="14,12" TextElement.FontSize="{DynamicResource Fs12}">
+                                    <TextBlock Text="絞り込み" Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs11}" Margin="0,0,0,4" HorizontalAlignment="Left" Tag="use:dim" />
+                                    <Border Background="{DynamicResource BgAlt}" BorderBrush="{DynamicResource Border}" BorderThickness="1"
+                                            CornerRadius="3" Padding="8,4" Tag="use:surface border">
+                                        <TextBlock Text="Theme" />
+                                    </Border>
+                                    <StackPanel Margin="0,12,0,0" Tag="use:foreground">
+                                        <TextBlock Margin="0,2"><Run Text="✓ " Foreground="{DynamicResource Success}" /><Run Text="色が保存できる" /></TextBlock>
+                                        <TextBlock Margin="0,2"><Run Text="✓ " Foreground="{DynamicResource Success}" /><Run Text="自動の色が決まる" /></TextBlock>
+                                        <TextBlock Margin="0,2"><Run Text="✗ " Foreground="{DynamicResource Error}" /><Run Text="読めない色を弾く" /></TextBlock>
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                                        <TextBlock Text="● 合格 2" Foreground="{DynamicResource Success}" Margin="0,0,12,0" Tag="use:success" />
+                                        <TextBlock Text="● 失敗 1" Foreground="{DynamicResource Error}" Tag="use:error" />
+                                    </StackPanel>
+                                    <Border Height="1" Background="{DynamicResource Border}" Margin="0,14" Tag="use:border" />
+                                    <StackPanel Orientation="Horizontal">
+                                        <Button Content="もう一度" Style="{StaticResource FlatButton}" Padding="12,5" Tag="use:accent" />
+                                        <Button Content="閉じる" Style="{StaticResource SecondaryButton}" Padding="12,5" Margin="8,0,0,0" />
+                                    </StackPanel>
+                                    <TextBlock Margin="0,16,0,0" TextWrapping="Wrap" Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs11}"
+                                               Text="エディタ・ターミナル・Markdown プレビューの中の色は、上の切り替えでそれぞれ作れます。" />
                                 </StackPanel>
                             </DockPanel>
-                        </Border>
+                        </Grid>
 
-                        <!-- エディタ（1 行ずつ分け、行ごとに使う色を Tag に持たせる） -->
-                        <DockPanel Grid.Column="2" Grid.Row="0" Background="{DynamicResource PvEditorBg}" Tag="use:background">
-                            <Border DockPanel.Dock="Top" Background="{DynamicResource PaneHeaderBg}" Padding="10,7" Tag="use:accent">
-                                <TextBlock FontSize="{DynamicResource Fs12}"><Run Text="Theme.cs" /><Run Text="   Room.cs" Foreground="{DynamicResource FgDim}" /></TextBlock>
+                        <!-- ===== エディタ ===== -->
+                        <DockPanel x:Name="EditorPreview" Background="{DynamicResource C_background}" Tag="use:background">
+                            <!-- 下の状態の帯 -->
+                            <Border DockPanel.Dock="Bottom" Background="{DynamicResource C_accent}" Padding="10,3" Tag="use:accent">
+                                <TextBlock Style="{StaticResource PvMono}" Foreground="{DynamicResource E_StatusFg}" Text="NORMAL   Theme.cs   5:11" />
                             </Border>
-                            <StackPanel Margin="12,10" HorizontalAlignment="Left" VerticalAlignment="Top" Tag="use:foreground">
+                            <Grid Margin="0,10,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="3" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
+                                    <RowDefinition Height="*" />
+                                </Grid.RowDefinitions>
+                                <Grid.Resources>
+                                    <Style x:Key="LineNo" TargetType="TextBlock" BasedOn="{StaticResource PvMono}">
+                                        <Setter Property="Foreground" Value="{DynamicResource C_comment}" />
+                                        <Setter Property="Padding" Value="12,1,8,1" />
+                                        <Setter Property="HorizontalAlignment" Value="Stretch" />
+                                        <Setter Property="TextAlignment" Value="Right" />
+                                        <Setter Property="Background" Value="{DynamicResource E_LineBg}" />
+                                        <Setter Property="Grid.Column" Value="0" />
+                                    </Style>
+                                    <Style x:Key="Code" TargetType="TextBlock" BasedOn="{StaticResource PvMono}">
+                                        <Setter Property="Foreground" Value="{DynamicResource C_foreground}" />
+                                        <Setter Property="Margin" Value="10,0,0,0" />
+                                        <Setter Property="Grid.Column" Value="2" />
+                                    </Style>
+                                </Grid.Resources>
+                                <!-- 行番号の帯（その色は背景から、数字はコメントの色） -->
+                                <Border Grid.Column="0" Grid.RowSpan="10" Background="{DynamicResource E_LineBg}" />
+                                <TextBlock Grid.Row="0" Style="{StaticResource LineNo}" Text="1" Tag="use:comment" />
+                                <TextBlock Grid.Row="1" Style="{StaticResource LineNo}" Text="2" />
+                                <TextBlock Grid.Row="2" Style="{StaticResource LineNo}" Text="3" />
+                                <TextBlock Grid.Row="3" Style="{StaticResource LineNo}" Text="4" />
+                                <TextBlock Grid.Row="4" Style="{StaticResource LineNo}" Text="5" Foreground="{DynamicResource C_foreground}" />
+                                <TextBlock Grid.Row="5" Style="{StaticResource LineNo}" Text="6" />
+                                <TextBlock Grid.Row="6" Style="{StaticResource LineNo}" Text="7" />
+                                <TextBlock Grid.Row="7" Style="{StaticResource LineNo}" Text="8" />
+                                <TextBlock Grid.Row="8" Style="{StaticResource LineNo}" Text="9" />
+                                <!-- 変更の印（行番号の右の細い帯）：追加・変更・削除 -->
+                                <Rectangle Grid.Row="5" Grid.Column="1" Fill="{DynamicResource C_added}" Tag="use:added" />
+                                <Rectangle Grid.Row="7" Grid.Column="1" Fill="{DynamicResource C_warning}" Tag="use:warning" />
+                                <Polygon Grid.Row="8" Grid.Column="1" Points="0,0 3,3 0,6" Fill="{DynamicResource C_error}" Tag="use:error" />
+                                <!-- カーソルのある行の下地 -->
+                                <Border Grid.Row="4" Grid.Column="2" Background="{DynamicResource E_CurrentLine}" />
+                                <TextBlock Grid.Row="0" Style="{StaticResource Code}" Tag="use:comment"><Run Foreground="{DynamicResource C_comment}" Text="// 部屋の色を決める" /></TextBlock>
+                                <TextBlock Grid.Row="1" Style="{StaticResource Code}" Tag="use:attribute"><Run Foreground="{DynamicResource C_attribute}" Text="[Serializable]" /></TextBlock>
+                                <TextBlock Grid.Row="2" Style="{StaticResource Code}" Tag="use:keyword type"><Run Foreground="{DynamicResource C_keyword}" Text="public class " /><Run Foreground="{DynamicResource C_type}" Text="Theme" /></TextBlock>
+                                <TextBlock Grid.Row="3" Style="{StaticResource Code}" Text="{}{" />
+                                <TextBlock Grid.Row="4" Style="{StaticResource Code}" Tag="use:keyword type number accent"><Run Text="    " /><Run Foreground="{DynamicResource C_keyword}" Text="const " /><Run Foreground="{DynamicResource C_type}" Text="int " /><Run Text="Depth" Background="{DynamicResource E_Selection}" /><Run Text=" = " /><Run Foreground="{DynamicResource C_number}" Text="42" /><Run Text=";" /><Run Text="▏" Foreground="{DynamicResource C_accent}" /></TextBlock>
+                                <TextBlock Grid.Row="5" Style="{StaticResource Code}" Tag="use:type function"><Run Text="    " /><Run Foreground="{DynamicResource C_type}" Text="string " /><Run Foreground="{DynamicResource C_function}" Text="Greet" /><Run Text="(" /><Run Foreground="{DynamicResource C_type}" Text="string " /><Run Text="n)" /></TextBlock>
+                                <TextBlock Grid.Row="6" Style="{StaticResource Code}" Tag="use:string warning"><Run Text="        =&gt; " /><Run Foreground="{DynamicResource C_string}" Text="$&quot;" /><Run Foreground="{DynamicResource C_string}" Text="ようこそ" Background="{DynamicResource E_Search}" /><Run Foreground="{DynamicResource C_string}" Text=" {n}&quot;" /><Run Text=";" /></TextBlock>
+                                <TextBlock Grid.Row="7" Style="{StaticResource Code}" Tag="use:error"><Run Text="    " /><Run Foreground="{DynamicResource C_keyword}" Text="int " /><Run Foreground="{DynamicResource C_function}" Text="Bad" /><Run Text="() =&gt; " /><Run x:Name="ErrorRun" Text="undefined" /><Run Text=";" /></TextBlock>
+                                <TextBlock Grid.Row="8" Style="{StaticResource Code}" Text="}" />
+                            </Grid>
+                        </DockPanel>
+
+                        <!-- ===== ターミナル ===== -->
+                        <DockPanel x:Name="TerminalPreview" Background="{DynamicResource C_background}" Tag="use:background">
+                            <!-- 16 色の見本（上 8＝標準、下 8＝明るい版） -->
+                            <StackPanel DockPanel.Dock="Bottom" Margin="12,0,12,12">
                                 <StackPanel.Resources>
-                                    <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
-                                        <Setter Property="Foreground" Value="{DynamicResource PvEditorFg}" />
-                                        <Setter Property="FontFamily" Value="Cascadia Mono, Consolas" />
-                                        <Setter Property="FontSize" Value="{DynamicResource Fs12}" />
-                                        <Setter Property="Margin" Value="0,1" />
-                                        <Setter Property="HorizontalAlignment" Value="Left" />
+                                    <Style TargetType="Border">
+                                        <Setter Property="Height" Value="14" />
+                                        <Setter Property="Margin" Value="1" />
+                                        <Setter Property="CornerRadius" Value="2" />
                                     </Style>
                                 </StackPanel.Resources>
-                                <TextBlock Tag="use:dim"><Run Foreground="{DynamicResource PvComment}" Text="1  // 部屋の色" /></TextBlock>
-                                <TextBlock Tag="use:keyword type"><Run Foreground="{DynamicResource PvComment}" Text="2  " /><Run Foreground="{DynamicResource PvKeyword}" Text="class " /><Run Foreground="{DynamicResource PvType}" Text="Theme" /></TextBlock>
-                                <TextBlock><Run Foreground="{DynamicResource PvComment}" Text="3  " /><Run Text="{}{" /></TextBlock>
-                                <TextBlock Tag="use:keyword type number"><Run Foreground="{DynamicResource PvComment}" Text="4    " /><Run Foreground="{DynamicResource PvKeyword}" Text="const " /><Run Foreground="{DynamicResource PvType}" Text="int " /><Run Text="Depth = " /><Run Foreground="{DynamicResource PvNumber}" Text="42" /><Run Text=";" /></TextBlock>
-                                <TextBlock Tag="use:type function"><Run Foreground="{DynamicResource PvComment}" Text="5    " /><Run Foreground="{DynamicResource PvType}" Text="string " /><Run Foreground="{DynamicResource PvFunction}" Text="Greet" /><Run Text="(" /><Run Foreground="{DynamicResource PvType}" Text="string " /><Run Text="n)" /></TextBlock>
-                                <TextBlock Tag="use:string"><Run Foreground="{DynamicResource PvComment}" Text="6      " /><Run Text="=&gt; " /><Run Foreground="{DynamicResource PvString}" Text="$&quot;ようこそ {n}&quot;" /><Run Text=";" /></TextBlock>
-                                <TextBlock><Run Foreground="{DynamicResource PvComment}" Text="7  " /><Run Text="}" /></TextBlock>
+                                <UniformGrid Columns="8">
+                                    <Border Background="{DynamicResource C_black}" Tag="use:black" ToolTip="黒" />
+                                    <Border Background="{DynamicResource C_red}" Tag="use:red" ToolTip="赤" />
+                                    <Border Background="{DynamicResource C_green}" Tag="use:green" ToolTip="緑" />
+                                    <Border Background="{DynamicResource C_yellow}" Tag="use:yellow" ToolTip="黄" />
+                                    <Border Background="{DynamicResource C_blue}" Tag="use:blue" ToolTip="青" />
+                                    <Border Background="{DynamicResource C_magenta}" Tag="use:magenta" ToolTip="紫" />
+                                    <Border Background="{DynamicResource C_cyan}" Tag="use:cyan" ToolTip="水色" />
+                                    <Border Background="{DynamicResource C_white}" Tag="use:white" ToolTip="白" />
+                                </UniformGrid>
+                                <UniformGrid Columns="8">
+                                    <Border Background="{DynamicResource C_brightBlack}" Tag="use:brightBlack" />
+                                    <Border Background="{DynamicResource C_brightRed}" Tag="use:brightRed" />
+                                    <Border Background="{DynamicResource C_brightGreen}" Tag="use:brightGreen" />
+                                    <Border Background="{DynamicResource C_brightYellow}" Tag="use:brightYellow" />
+                                    <Border Background="{DynamicResource C_brightBlue}" Tag="use:brightBlue" />
+                                    <Border Background="{DynamicResource C_brightMagenta}" Tag="use:brightMagenta" />
+                                    <Border Background="{DynamicResource C_brightCyan}" Tag="use:brightCyan" />
+                                    <Border Background="{DynamicResource C_brightWhite}" Tag="use:brightWhite" />
+                                </UniformGrid>
+                            </StackPanel>
+                            <StackPanel Margin="12,10,12,8">
+                                <StackPanel.Resources>
+                                    <Style TargetType="TextBlock" BasedOn="{StaticResource PvMono}">
+                                        <Setter Property="Foreground" Value="{DynamicResource C_foreground}" />
+                                    </Style>
+                                </StackPanel.Resources>
+                                <TextBlock Tag="use:green blue foreground"><Run Foreground="{DynamicResource C_green}" Text="PS " /><Run Foreground="{DynamicResource C_blue}" Text="C:\Projects\Loomo" /><Run Text="&gt; ls" /></TextBlock>
+                                <TextBlock Tag="use:blue green cyan magenta"><Run Foreground="{DynamicResource C_blue}" Text="src/  tests/  " /><Run Foreground="{DynamicResource C_green}" Text="build.ps1  " /><Run Foreground="{DynamicResource C_cyan}" Text="docs -&gt; ../docs  " /><Run Foreground="{DynamicResource C_magenta}" Text="loomo.sock" /></TextBlock>
+                                <TextBlock Tag="use:green blue foreground"><Run Foreground="{DynamicResource C_green}" Text="PS " /><Run Foreground="{DynamicResource C_blue}" Text="C:\Projects\Loomo" /><Run Text="&gt; git status --short" /></TextBlock>
+                                <TextBlock Tag="use:green"><Run Foreground="{DynamicResource C_green}" Text="A  src/NewTheme.cs" /></TextBlock>
+                                <TextBlock Tag="use:red"><Run Foreground="{DynamicResource C_red}" Text=" M src/Theme.cs" /></TextBlock>
+                                <TextBlock Tag="use:brightBlack"><Run Foreground="{DynamicResource C_brightBlack}" Text="# 2 件の変更" /></TextBlock>
+                                <TextBlock Tag="use:green blue foreground"><Run Foreground="{DynamicResource C_green}" Text="PS " /><Run Foreground="{DynamicResource C_blue}" Text="C:\Projects\Loomo" /><Run Text="&gt; dotnet test" /></TextBlock>
+                                <TextBlock Tag="use:green yellow red"><Run Foreground="{DynamicResource C_green}" Text="成功 5373  " /><Run Foreground="{DynamicResource C_yellow}" Text="警告 2  " /><Run Foreground="{DynamicResource C_red}" Text="失敗 0" /></TextBlock>
+                                <TextBlock Tag="use:brightRed brightGreen brightYellow brightBlue brightMagenta brightCyan brightWhite"><Run Foreground="{DynamicResource C_brightRed}" Text="強調 " /><Run Foreground="{DynamicResource C_brightGreen}" Text="強調 " /><Run Foreground="{DynamicResource C_brightYellow}" Text="強調 " /><Run Foreground="{DynamicResource C_brightBlue}" Text="強調 " /><Run Foreground="{DynamicResource C_brightMagenta}" Text="強調 " /><Run Foreground="{DynamicResource C_brightCyan}" Text="強調 " /><Run Foreground="{DynamicResource C_brightWhite}" Text="強調" /></TextBlock>
+                                <TextBlock Tag="use:selection cursor"><Run Foreground="{DynamicResource C_green}" Text="PS " /><Run Text="&gt; " /><Run Text="echo 選んだ所" Background="{DynamicResource C_selection}" /><Run Text=" " /><Run Text=" " Background="{DynamicResource C_cursor}" /></TextBlock>
+                                <TextBlock Tag="use:black white"><Run Text=" 黒の地に白 " Background="{DynamicResource C_black}" Foreground="{DynamicResource C_white}" /></TextBlock>
                             </StackPanel>
                         </DockPanel>
 
-                        <!-- ターミナル -->
-                        <DockPanel Grid.Column="2" Grid.Row="1" Background="{DynamicResource PvTermBg}" Tag="use:background">
-                            <Border DockPanel.Dock="Top" Background="{DynamicResource PaneHeaderBg}" Padding="10,5"
-                                    BorderBrush="{DynamicResource Border}" BorderThickness="0,1,0,0" Tag="use:accent">
-                                <TextBlock Text="ターミナル" FontSize="{DynamicResource Fs12}" />
-                            </Border>
-                            <ItemsControl DockPanel.Dock="Bottom" x:Name="AnsiRow" Margin="12,0,12,10"
-                                          Tag="use:red yellow green cyan blue magenta">
-                                <ItemsControl.ItemsPanel>
-                                    <ItemsPanelTemplate><UniformGrid Rows="1" Columns="16" /></ItemsPanelTemplate>
-                                </ItemsControl.ItemsPanel>
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate>
-                                        <Border Height="8" Margin="1,0" CornerRadius="2" Background="{Binding}" />
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                            <StackPanel Margin="12,8,12,8" HorizontalAlignment="Left">
+                        <!-- ===== Markdown プレビュー ===== -->
+                        <ScrollViewer x:Name="PreviewPreview" VerticalScrollBarVisibility="Auto" Background="{DynamicResource C_background}" Tag="use:background">
+                            <StackPanel Margin="20,16">
                                 <StackPanel.Resources>
                                     <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
-                                        <Setter Property="Foreground" Value="{DynamicResource PvTermFg}" />
-                                        <Setter Property="FontFamily" Value="Cascadia Mono, Consolas" />
-                                        <Setter Property="FontSize" Value="{DynamicResource Fs12}" />
-                                        <Setter Property="Margin" Value="0,1" />
+                                        <Setter Property="Foreground" Value="{DynamicResource C_foreground}" />
+                                        <Setter Property="TextWrapping" Value="Wrap" />
                                         <Setter Property="HorizontalAlignment" Value="Left" />
                                     </Style>
                                 </StackPanel.Resources>
-                                <TextBlock Tag="use:green blue"><Run Foreground="{DynamicResource PvAnsi2}" Text="PS" /><Run Foreground="{DynamicResource PvAnsi4}" Text=" ~\Loomo" /><Run Text="&gt; dotnet test" /></TextBlock>
-                                <TextBlock Tag="use:green yellow red"><Run Foreground="{DynamicResource PvAnsi2}" Text="成功 " /><Run Text="5373  " /><Run Foreground="{DynamicResource PvAnsi3}" Text="警告 " /><Run Text="2  " /><Run Foreground="{DynamicResource PvAnsi1}" Text="失敗 " /><Run Text="0" /></TextBlock>
+                                <TextBlock Text="部屋の色" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource C_heading}" Tag="use:heading" />
+                                <Border Height="1" Background="{DynamicResource C_border}" Margin="0,6,0,10" Tag="use:border" />
+                                <TextBlock Margin="0,0,0,8" Tag="use:foreground link strong"><Run Text="Loomo は" /><Run Text="人間の作業場" Foreground="{DynamicResource C_link}" TextDecorations="Underline" /><Run Text="です。色は" /><Run Text="自分で決められます" FontWeight="Bold" Foreground="{DynamicResource C_strong}" /><Run Text="。" /></TextBlock>
+                                <TextBlock Margin="0,0,0,10" Tag="use:code codeBackground"><Run Text="設定は " /><Run Text=" theme.json " Foreground="{DynamicResource C_code}" Background="{DynamicResource C_codeBackground}" FontFamily="Cascadia Mono, Consolas" /><Run Text=" に保存します。" /></TextBlock>
+                                <Border BorderBrush="{DynamicResource C_border}" BorderThickness="3,0,0,0" Padding="10,2" Margin="0,0,0,12" HorizontalAlignment="Left" Tag="use:dim">
+                                    <TextBlock Text="引用：書かない色は自動で決まります。" Foreground="{DynamicResource C_dim}" />
+                                </Border>
+                                <TextBlock Text="使い方" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource C_heading}" Margin="0,0,0,6" Tag="use:heading" />
+                                <Border Background="{DynamicResource C_codeBackground}" CornerRadius="4" Padding="10,8" Margin="0,0,0,12" Tag="use:codeBackground code">
+                                    <TextBlock FontFamily="Cascadia Mono, Consolas" Foreground="{DynamicResource C_code}" Text="loomo theme apply my-theme" />
+                                </Border>
+                                <Border BorderBrush="{DynamicResource C_border}" BorderThickness="1" HorizontalAlignment="Left" Margin="0,0,0,12" Tag="use:border">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="110" />
+                                            <ColumnDefinition Width="140" />
+                                        </Grid.ColumnDefinitions>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition /><RowDefinition />
+                                        </Grid.RowDefinitions>
+                                        <Border Grid.Row="0" Grid.Column="0" BorderBrush="{DynamicResource C_border}" BorderThickness="0,0,1,1" Padding="8,3"><TextBlock Text="種類" FontWeight="SemiBold" /></Border>
+                                        <Border Grid.Row="0" Grid.Column="1" BorderBrush="{DynamicResource C_border}" BorderThickness="0,0,0,1" Padding="8,3"><TextBlock Text="保存先" FontWeight="SemiBold" /></Border>
+                                        <Border Grid.Row="1" Grid.Column="0" BorderBrush="{DynamicResource C_border}" BorderThickness="0,0,1,0" Padding="8,3"><TextBlock Text="エディタ" /></Border>
+                                        <Border Grid.Row="1" Grid.Column="1" Padding="8,3"><TextBlock Text="themes/editor" /></Border>
+                                    </Grid>
+                                </Border>
+                                <TextBlock Text="ログ・差分の表示" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource C_heading}" Margin="0,0,0,6" />
+                                <TextBlock FontFamily="Cascadia Mono, Consolas" Tag="use:red"><Run Foreground="{DynamicResource C_red}" Text="ERROR 色が読めません" /></TextBlock>
+                                <TextBlock FontFamily="Cascadia Mono, Consolas" Tag="use:yellow"><Run Foreground="{DynamicResource C_yellow}" Text="WARN  コントラストが低い" /></TextBlock>
+                                <TextBlock FontFamily="Cascadia Mono, Consolas" Tag="use:green"><Run Foreground="{DynamicResource C_green}" Text="+ 追加した行" /></TextBlock>
                             </StackPanel>
-                        </DockPanel>
+                        </ScrollViewer>
 
-                        <!-- 色の使われ所を囲む層（色のタイルにカーソルを当てている間・ピッカーで選んでいる間だけ描く） -->
-                        <Canvas x:Name="UsageLayer" Grid.ColumnSpan="3" Grid.RowSpan="2" IsHitTestVisible="False" />
+                        <!-- 色の使われ所を囲む層 -->
+                        <Canvas x:Name="UsageLayer" IsHitTestVisible="False" />
                     </Grid>
                 </Border>
             </DockPanel>

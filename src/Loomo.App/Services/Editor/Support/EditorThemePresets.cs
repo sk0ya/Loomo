@@ -54,16 +54,16 @@ internal static class EditorThemePresets
         string Keyword, string Str, string Number, string Type, string Attribute,
         string Red, string Yellow, string Green, string? Function = null);
 
-    /// <summary>自分のテーマ（<see cref="UserTheme"/>）からエディタの配色を作る。ファイルを保存し直すと
-    /// 別インスタンスになるので、同じインスタンスにだけ使い回す（タブごとに組み直さない）。</summary>
-    internal static EditorTheme FromUser(UserTheme theme) => UserCache.GetValue(theme, t => Build(new Palette(
-        Bg: UserTheme.Hex(t.Bg), Fg: UserTheme.Hex(t.Fg), Dim: UserTheme.Hex(t.Dim), Accent: UserTheme.Hex(t.Accent),
-        Keyword: UserTheme.Hex(t.Keyword), Str: UserTheme.Hex(t.String), Number: UserTheme.Hex(t.Number),
-        Type: UserTheme.Hex(t.Type), Attribute: UserTheme.Hex(t.Cyan),
-        Red: UserTheme.Hex(t.Red), Yellow: UserTheme.Hex(t.Yellow), Green: UserTheme.Hex(t.Green),
-        Function: UserTheme.Hex(t.Function))));
+    /// <summary>自分のエディタのテーマ（<see cref="CustomTheme"/>）から配色を作る。欄は <see cref="Palette"/> と一対一
+    /// （<see cref="ThemeSchemas.Editor"/>）。保存し直すと別インスタンスになるので、同じインスタンスにだけ使い回す。</summary>
+    internal static EditorTheme FromCustom(CustomTheme t) => UserCache.GetValue(t, x => Build(new Palette(
+        Bg: x.Hex("background"), Fg: x.Hex("foreground"), Dim: x.Hex("comment"), Accent: x.Hex("accent"),
+        Keyword: x.Hex("keyword"), Str: x.Hex("string"), Number: x.Hex("number"),
+        Type: x.Hex("type"), Attribute: x.Hex("attribute"),
+        Red: x.Hex("error"), Yellow: x.Hex("warning"), Green: x.Hex("added"),
+        Function: x.Hex("function"))));
 
-    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<UserTheme, EditorTheme> UserCache = new();
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<CustomTheme, EditorTheme> UserCache = new();
 
     private static readonly EditorTheme SolarizedDark = Build(new Palette(
         Bg: "#002B36", Fg: "#93A1A1", Dim: "#586E75", Accent: "#268BD2",
