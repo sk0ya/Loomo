@@ -86,10 +86,14 @@ public sealed class ClaudeRoomLinkTests : IDisposable
         Assert.Equal(1, hostB.Shown);
         Assert.Equal([tabB], hostB.Callers.Select(c => c.Tab));
 
-        // どちらのタブでもない（別の Loomo のタブで、その Loomo が閉じている）：どの Loomo も答えない＝動いていない、と言う。
+        // どちらのタブでもない（Loomo が裏で起こした claude・閉じた Loomo のタブ）：どの Loomo も断る＝外と同じく道具は無い。
         using var stranger = new StdioBridge(_endpoint, Context(ancestors: [42, 333, 9]));
         var reply = JsonDocument.Parse((await stranger.HandleAsync(ListTools, CancellationToken.None))!).RootElement;
-        Assert.Equal(-32000, reply.GetProperty("error").GetProperty("code").GetInt32());
+        Assert.Equal(0, reply.GetProperty("result").GetProperty("tools").GetArrayLength());
+        Assert.Null(await new HookRelay(_endpoint, Context(ancestors: [42, 333, 9]), TimeSpan.FromSeconds(3))
+            .RelayAsync("""{"hook_event_name":"Notification"}""", CancellationToken.None));
+        Assert.Empty(hostA.Hooks);   // 断った客のフックはどちらにも届いていない
+        Assert.Empty(hostB.Hooks);
     }
 
     [Fact]

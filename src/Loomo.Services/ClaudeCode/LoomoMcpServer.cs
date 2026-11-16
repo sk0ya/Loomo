@@ -48,8 +48,10 @@ public interface ILoomoRoomHost
     Task<JsonObject?> HookAsync(LoomoCaller caller, JsonObject hookEvent) => Task.FromResult<JsonObject?>(null);
 }
 
-/// <summary>橋の向こうの claude がどのタブの中か（分からなければ <see cref="Tab"/> は null）。</summary>
-public sealed record LoomoCaller(Guid? Tab);
+/// <summary>橋の向こうの claude がどのタブの中か（分からなければ <see cref="Tab"/> は null）。
+/// <see cref="Nested"/> は、タブのシェルとの間に claude がもう 1 つ居る＝claude の中から起こされた claude（Bash ツールの
+/// <c>claude -p</c> など）。人間が向かっている claude ではないので、フックでタブの状態を動かさない。</summary>
+public sealed record LoomoCaller(Guid? Tab, bool Nested = false);
 
 public sealed record LoomoRoomResult(bool Ok, string Message);
 

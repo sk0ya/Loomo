@@ -509,6 +509,7 @@ public sealed class TerminalSupportTests : IDisposable
         Assert.Equal(22188, session.Pid);
         Assert.Equal("24da4bf8-6c69-445b-92cb-4d0e4de68906", session.SessionId);
         Assert.Equal(@"C:\Projects\Loomo", session.Cwd);
+        Assert.Equal("idle", session.Status);   // 復元直後の状態に使う（§45.3 P0e）
         Assert.Equal(
             Path.Combine(@"C:\root", "C--Projects-Loomo", "24da4bf8-6c69-445b-92cb-4d0e4de68906.jsonl"),
             ClaudeLiveSessions.TranscriptPath(session, @"C:\root"));

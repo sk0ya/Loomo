@@ -36,7 +36,7 @@ internal sealed class HookRelay(string endpointFile, BridgeContext context, Time
         try { response = await link.PostAsync("/hook", payload, limit.Token).ConfigureAwait(false); }
         catch (OperationCanceledException) { }
         if (response is not null)
-            return response.Status == 200 && response.Body.Length > 0 ? response.Body : null;
+            return response.Status == 200 && response.Body.Length > 0 ? response.Body : null;   // 421＝どのタブでもない：何もしない
 
         SendThroughLegacyPipe(hookEvent);
         return null;

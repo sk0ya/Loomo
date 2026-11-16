@@ -12,9 +12,9 @@ namespace sk0ya.Loomo.Services.ClaudeCode;
 /// <summary>
 /// 動いている Claude Code のプロセス1つ。Claude Code は起動中のプロセスごとに <c>~/.claude/sessions/&lt;pid&gt;.json</c> を
 /// 書き（2.1.30x で確認）、いまのセッション ID・場所・開始時刻を持つ。<c>/clear</c> で新しいセッションになれば
-/// セッション ID も書き換わる。
+/// セッション ID も書き換わる。<see cref="Status"/> は Claude Code が書く状態（2.1.31x で <c>idle</c>／<c>busy</c>）。
 /// </summary>
-public sealed record ClaudeLiveSession(int Pid, string SessionId, string Cwd, DateTimeOffset? StartedAt);
+public sealed record ClaudeLiveSession(int Pid, string SessionId, string Cwd, DateTimeOffset? StartedAt, string? Status = null);
 
 /// <summary>ターミナルのタブ1つ分の手がかり。</summary>
 /// <param name="WorkingDirectory">タブの場所（cwd）。</param>
@@ -87,7 +87,8 @@ public static class ClaudeLiveSessions
                 return null;
             DateTimeOffset? started = root.TryGetProperty("startedAt", out var s) && s.TryGetInt64(out var ms)
                 ? DateTimeOffset.FromUnixTimeMilliseconds(ms) : null;
-            return new ClaudeLiveSession(pidValue, sessionId, cwdValue, started);
+            var status = root.TryGetProperty("status", out var st) && st.ValueKind == JsonValueKind.String ? st.GetString() : null;
+            return new ClaudeLiveSession(pidValue, sessionId, cwdValue, started, status);
         }
         catch (JsonException) { return null; }
     }

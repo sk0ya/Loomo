@@ -1,3 +1,4 @@
+using sk0ya.Loomo.Services.ClaudeCode;
 using Terminal.Sessions;
 using Terminal.Tabs;
 
@@ -42,8 +43,44 @@ public partial class ShellWindow {
 
     private ITerminalSession RememberShell(Guid tabId, ITerminalSession session) {
         _terminalShells[tabId] = session;
+        if (session is sk0ya.Loomo.Services.Terminal.RemotePtySession)
+            DiscoverRestoredClaude(tabId);
         return session;
     }
+
+    /// <summary>
+    /// 常駐のシェルに繋いだタブで claude が動いていれば、そのセッションと状態を拾う（§45.3 P0e）。SessionStart のフックは
+    /// Loomo が居なかった間に済んでいて二度と来ず、待機中の claude はタイトルを書き直さないので、復元の直後は見えなかった。
+    /// シェルの子孫の対話の claude（<c>~/.claude/sessions/&lt;pid&gt;.json</c>）が 1 つだけのときに結ぶ。新しく立てたシェルでは
+    /// 何も見つからないだけ。繋いだ直後はシェルの PID がまだ来ていないことがあるので少し待ち、裏で調べる。
+    /// </summary>
+    private void DiscoverRestoredClaude(Guid tabId) => _ = Task.Run(async () => {
+        try {
+            await Task.Delay(TimeSpan.FromSeconds(2));
+            if (TerminalShellProcessId(tabId) is not { } shell)
+                return;
+            var processes = ClaudeLiveSessions.SnapshotParents();
+            var found = ClaudeLiveSessions.Read().Where(s => ClaudeLiveSessions.IsDescendantOf(s.Pid, shell, processes)).ToList();
+            if (found is not [var session])
+                return;
+            ClaudeCodeStatus? status = session.Status switch {
+                "idle" => ClaudeCodeStatus.Idle,
+                "busy" => ClaudeCodeStatus.Working,
+                _ => null,
+            };
+            var transcript = ClaudeLiveSessions.TranscriptPath(session);
+            await Dispatcher.InvokeAsync(() => {
+                if (_terminalTabs.All(tab => tab.Id != tabId))
+                    return;
+                ApplyClaudeTransition(tabId, _paneActivity.TerminalAgentDiscovered(tabId, session.SessionId, transcript, status));
+                if (_activeTerminalTab?.Id == tabId)
+                    RefreshClaudeContext();
+            });
+        } catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception
+                                     or InvalidOperationException or TaskCanceledException) {
+            System.Diagnostics.Trace.WriteLine($"復元したタブの Claude Code を確かめられませんでした: {ex.Message}");
+        }
+    });
 
     /// <summary>
     /// タブのシェルの PID（分からなければ null）。自前の ConPTY なら起動したプロセス、常駐ならホストが開いたときに返したもの。

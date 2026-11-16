@@ -110,7 +110,8 @@ internal sealed class LoomoLink : IDisposable
 
     public sealed record Response(int Status, string Body);
 
-    /// <summary>この客を自分のものと言った Loomo の答え。どの Loomo も答えなければ null。</summary>
+    /// <summary>この客を自分のものと言った Loomo の答え。どの Loomo にも届かなければ null。届いたがどれも「私のタブではない」と
+    /// 断ったなら 421 の答え——Loomo が裏で起こした claude（言いつけ）など。橋はそれを「外」として扱う。</summary>
     public async Task<Response?> PostAsync(string path, string body, CancellationToken cancel)
     {
         IReadOnlySet<int>? live;
@@ -119,6 +120,7 @@ internal sealed class LoomoLink : IDisposable
         var endpoints = LoomoEndpoints.Read(_endpointFile, live);
         if (_owner is { } owner)
             endpoints = endpoints.OrderBy(e => e.Pid == owner ? 0 : 1).ToList();
+        var refused = false;
         foreach (var endpoint in endpoints)
         {
             try
@@ -134,7 +136,10 @@ internal sealed class LoomoLink : IDisposable
                     request.Headers.TryAddWithoutValidation(TabHeader, tab);
                 using var response = await _http.SendAsync(request, cancel).ConfigureAwait(false);
                 if (response.StatusCode == HttpStatusCode.MisdirectedRequest)
+                {
+                    refused = true;
                     continue;
+                }
                 var text = await response.Content.ReadAsStringAsync(cancel).ConfigureAwait(false);
                 _owner = endpoint.Pid;
                 return new Response((int)response.StatusCode, text);
@@ -145,7 +150,7 @@ internal sealed class LoomoLink : IDisposable
                 // この Loomo は答えない（閉じた・固まった）。次へ。
             }
         }
-        return null;
+        return refused ? new Response((int)HttpStatusCode.MisdirectedRequest, "") : null;
     }
 
     public void Dispose() => _http.Dispose();

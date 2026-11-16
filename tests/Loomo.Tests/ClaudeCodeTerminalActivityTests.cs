@@ -226,4 +226,24 @@ public sealed class ClaudeCodeReferenceTests
         sut.TerminalTitleChanged(a, "◐ Other", false);
         Assert.Equal(a, sut.AgentTabFor(null));
     }
+
+    [Fact]
+    public void 常駐のシェルに見つけた_claude_は_状態が分からないときだけ_書かれた状態で始まる()
+    {
+        // 復元の直後：タイトルも申告もまだ。見つけた待機中の claude が一覧に出る（§45.3 P0e）。
+        var sut = new PaneActivityTracker();
+        var tab = Guid.NewGuid();
+        var found = sut.TerminalAgentDiscovered(tab, "s1", @"C:	\s1.jsonl", ClaudeCodeStatus.Idle);
+        Assert.True(found.ShouldRefresh);
+        Assert.Equal(("s1", @"C:	\s1.jsonl"), sut.AgentSessionOf(tab)!.Value);
+        Assert.Equal("s1", sut.RunningAgentSessionOf(tab));
+        Assert.Single(sut.AgentTabs());
+
+        // タイトルが先に来ていれば、状態はタイトルのまま（セッションだけ結ぶ）。
+        var other = Guid.NewGuid();
+        sut.TerminalTitleChanged(other, "◐ Fix tests", paneWatched: false);
+        sut.TerminalAgentDiscovered(other, "s2", null, ClaudeCodeStatus.Idle);
+        Assert.Equal(ClaudeAgentState.Working, sut.AgentTabs().Single(t => t.TabId == other).State);
+        Assert.Equal("s2", sut.AgentSessionOf(other)!.Value.SessionId);
+    }
 }

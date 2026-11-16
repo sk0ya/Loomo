@@ -212,6 +212,27 @@ internal sealed class PaneActivityTracker
         state.TranscriptPath = transcriptPath;
     }
 
+    /// <summary>
+    /// 常駐のシェルに繋ぎ直したタブで、シェルの下に動いている claude を見つけた（§45.3 P0e）。セッションを結び、状態がまだ
+    /// 分からなければ（タイトルの印も申告もまだ来ていない）Claude Code の書いた状態で始める——復元の直後、待機中の claude は
+    /// 次にタイトルが変わるまで見えなかった（§38.7）。タイトルか申告がもう来ていれば、状態はそちらのまま。
+    /// </summary>
+    public ClaudeCodeTitleTransition TerminalAgentDiscovered(Guid tabId, string sessionId, string? transcriptPath, ClaudeCodeStatus? status)
+    {
+        if (!_terminals.TryGetValue(tabId, out var state))
+            _terminals[tabId] = state = new TerminalState();
+        var changed = state.SessionId != sessionId;
+        state.SessionId = sessionId;
+        state.TranscriptPath = transcriptPath;
+        if (status is { } known && state.Agent is null && !state.AgentReportsStatus)
+        {
+            state.Agent = known;
+            state.AgentStamp = ++_agentClock;
+            changed = true;
+        }
+        return new ClaudeCodeTitleTransition(state.Agent, state.AgentUnseenTurn, changed, false);
+    }
+
     public (string SessionId, string? TranscriptPath)? AgentSessionOf(Guid tabId)
         => _terminals.TryGetValue(tabId, out var state) && state.SessionId is { } id ? (id, state.TranscriptPath) : null;
 

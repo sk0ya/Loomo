@@ -99,6 +99,8 @@ public partial class ShellWindow {
         /// この Loomo の客か（§45.3 P0b・P0c）。環境変数のタブがこの Loomo のものならそれ。無い・違う（常駐で繋ぎ直したタブ・
         /// 別の Loomo のタブ）なら、claude の祖先の PID の中に自分のタブのシェルを探す。シェルの表は並行に書かれる辞書なので、
         /// UI スレッドを待たない。
+        /// <para><b>タブのシェルを通らない claude は客にしない</b>——Loomo が裏で起こした claude（言いつけ＝§44.4）は祖先に Loomo が
+        /// 居るが、人間の画面に物を置かせない約束なので断る（橋は「外」と同じく道具の無い一覧を返す）。</para>
         /// </summary>
         public LoomoCaller? Identify(Guid? tab, IReadOnlyList<int> ancestors) {
             if (tab is { } hinted && window._terminalShells.ContainsKey(hinted))
@@ -109,18 +111,30 @@ public partial class ShellWindow {
             foreach (var id in window._terminalShells.Keys)
                 if (window.TerminalShellProcessId(id) is { } shellPid and > 0)
                     shells.TryAdd(shellPid, id);
-            foreach (var pid in ancestors) {
-                if (shells.TryGetValue(pid, out var id))
-                    return new LoomoCaller(id);
-                if (pid == Environment.ProcessId)
-                    return new LoomoCaller(null);   // この Loomo が起こした claude（タブのシェルの外）
-            }
+            for (var i = 0; i < ancestors.Count; i++)
+                if (shells.TryGetValue(ancestors[i], out var id))
+                    return new LoomoCaller(id, Nested: CountClaudes(ancestors.Take(i)) >= 2);
             return null;
         }
 
-        /// <summary>フック（§45.3 P0a）。いまは前の版と同じ 2 つ（承認待ち・セッションの結び付け）を UI へ渡すだけで、返すものは無い。</summary>
+        /// <summary>シェルより下の祖先のうち claude のプロセスの数（npm で入れた claude は node として動く）。</summary>
+        private static int CountClaudes(IEnumerable<int> pids) {
+            var count = 0;
+            foreach (var pid in pids) {
+                try {
+                    using var process = System.Diagnostics.Process.GetProcessById(pid);
+                    if (process.ProcessName is var name
+                        && (name.Equals("claude", StringComparison.OrdinalIgnoreCase) || name.Equals("node", StringComparison.OrdinalIgnoreCase)))
+                        count++;
+                } catch (Exception ex) when (ex is ArgumentException or InvalidOperationException) { }
+            }
+            return count;
+        }
+
+        /// <summary>フック（§45.3 P0a）。いまは前の版と同じ 2 つ（承認待ち・セッションの結び付け）を UI へ渡すだけで、返すものは無い。
+        /// claude の中から起こされた claude のフックはタブに結ばない（タブのセッションが <c>claude -p</c> のものに替わってしまう）。</summary>
         public Task<System.Text.Json.Nodes.JsonObject?> HookAsync(LoomoCaller caller, System.Text.Json.Nodes.JsonObject hookEvent) {
-            if (caller.Tab is { } tab)
+            if (caller.Tab is { } tab && !caller.Nested)
                 window.Dispatcher.BeginInvoke(() => window.OnClaudeHook(tab, hookEvent));
             return Task.FromResult<System.Text.Json.Nodes.JsonObject?>(null);
         }

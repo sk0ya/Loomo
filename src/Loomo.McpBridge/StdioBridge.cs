@@ -69,6 +69,8 @@ internal sealed class StdioBridge : IDisposable
         var response = await _link.PostAsync("/mcp", line, cancel).ConfigureAwait(false);
         if (response is null)
             return Unavailable(id, method);
+        if (response.Status == 421)
+            return AnswerOutsideLoomo(id, method, parameters);   // どの Loomo のタブでもない（Loomo が裏で起こした claude など）
         // 中身があればそのまま返す（JSON-RPC のエラーも Loomo の言葉のまま）。通知への 202 は中身なし。
         if (response.Body.Length > 0)
             return response.Body;
