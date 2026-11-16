@@ -110,7 +110,7 @@ so it must stay a no-op outside Loomo.
 
 `LoomoMcpServer` (§43.6 D) is a separate standard MCP server (the IDE protocol only exposes two tools to the model):
 tools that **place things in front of the human** (`show_file` / `show_url` / `show_changes` / `show_face`) plus the
-read-only `face_guide` / `motion_guide` / `what_human_sees` (what the human is looking at; §45.5), and nothing else — no typing into the visible terminal, no closing tabs, no layout changes, no
+read-only `face_guide` / `motion_guide` / `what_human_sees` / `debug_state` / `browser_errors` (what the human is looking at; §45.5), and nothing else — no typing into the visible terminal, no closing tabs, no layout changes, no
 focus stealing, no file-writing tools. Loomo never writes the
 user's Claude config for it; the user registers once via the palette command. Claude Code reaches it through the
 stdio bridge `src/Loomo.McpBridge` (copied to `%LOCALAPPDATA%/Loomo/mcp-bridge/`), which re-reads

@@ -59,7 +59,7 @@ public partial class ShellWindow {
             ["localHistory.label"] = LabelLocalHistoryVersion,
             ["localHistory.recent"] = ShowRecentLocalHistory, ["localHistory.restoreDeleted"] = RestoreDeletedFileFromLocalHistory,
             ["nuget.manage"] = () => OpenNuGetPackageManager(),
-            ["claude.agents"] = OpenClaudeAgents, ["github.pullRequests"] = OpenGitHubPullRequests, ["github.issues"] = OpenGitHubIssues, ["azure.pullRequests"] = OpenAzurePullRequests, ["claude.resumeSession"] = OpenClaudeSessions, ["claude.installHooks"] = InstallClaudeHooks, ["claude.uninstallHooks"] = UninstallClaudeHooks, ["claude.reviewNote"] = WriteReviewNoteForClaude, ["claude.status"] = OpenClaudeStatus,
+            ["claude.agents"] = OpenClaudeAgents, ["github.pullRequests"] = OpenGitHubPullRequests, ["github.issues"] = OpenGitHubIssues, ["azure.pullRequests"] = OpenAzurePullRequests, ["claude.resumeSession"] = OpenClaudeSessions, ["claude.installHooks"] = InstallClaudeHooks, ["claude.uninstallHooks"] = UninstallClaudeHooks, ["claude.reviewNote"] = WriteReviewNoteForClaude, ["claude.status"] = OpenClaudeStatus, ["definitions.export"] = ExportLoomoDefinitions, ["definitions.import"] = ImportLoomoDefinitions,
             ["editor.copyLocationLink"] = () => CopyLocationLink(),
             ["editor.inspectEncoding"] = InspectActiveFileEncoding,
             ["editor.save"] = SaveActiveEditor,

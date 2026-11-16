@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using sk0ya.Loomo.Core.Settings;
@@ -84,6 +84,7 @@ public static class CommandCatalog
         new("ブラウザ", "🌐", new[] { CatBrowser }),
         new("Git", "⑂", new[] { CatHosting }),
         new("軌跡", "🧭", new[] { CatTrail }),
+        new("Loomo", "🏠", new[] { "Loomo" }),
     };
 
     /// <summary>載っていない小分類の受け皿（カタログの書き漏れでも一覧から消えないように）。</summary>
@@ -232,6 +233,8 @@ public static class CommandCatalog
         // ===== Claude Code（§24.1.1・§38）=====
         new CommandDescriptor("claude.agents", CatClaude, "動いている Claude Code の一覧（承認待ち・入力待ちを先に）", null),
         new CommandDescriptor("claude.resumeSession", CatClaude, "Claude Code のセッションを再開…", null),
+        new CommandDescriptor("definitions.export", "Loomo", "定義を書き出す（面・見どころ・言いつけ。許しは含めない）", null),
+        new CommandDescriptor("definitions.import", "Loomo", "定義を取り込む（書き出したフォルダーから・許しは PC ごと）", null),
         new CommandDescriptor("claude.status", CatClaude, "Claude 接続の状態（フック・窓口・登録・添える知らせ）", null),
         new CommandDescriptor("claude.reviewNote", CatClaude, "Claude への指摘を書く（カーソルの行に宛てて、次の頼みごとに添える）", null),
         new CommandDescriptor("claude.installHooks", CatClaude, "Claude Code のフックを設定（承認待ち・セッションを Loomo へ知らせる）", null),

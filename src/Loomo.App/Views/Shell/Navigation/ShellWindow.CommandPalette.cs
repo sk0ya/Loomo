@@ -360,6 +360,8 @@ public partial class ShellWindow {
             Sc("claude.installHooks"), "claude.installHooks"));
         list.Add(new("Claude Code", "Claude Code のフックを外す", UninstallClaudeHooks, Sc("claude.uninstallHooks"), "claude.uninstallHooks"));
         list.Add(new("Claude Code", "Claude 接続の状態（フック・窓口・登録・添える知らせ）", OpenClaudeStatus, Sc("claude.status"), "claude.status"));
+        list.Add(new("Loomo", "定義を書き出す（面・見どころ・言いつけ。許しは含めない）", ExportLoomoDefinitions, null, "definitions.export"));
+        list.Add(new("Loomo", "定義を取り込む（書き出したフォルダーから・許しは PC ごと）", ImportLoomoDefinitions, null, "definitions.import"));
         list.Add(new("Claude Code", "Claude への指摘を書く（カーソルの行に宛てて、次の頼みごとに添える）", WriteReviewNoteForClaude,
             Sc("claude.reviewNote"), "claude.reviewNote"));
         list.Add(new("エディタ", "この場所へのリンクをコピー（loomo://）", () => CopyLocationLink(),

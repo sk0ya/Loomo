@@ -172,6 +172,8 @@ public partial class ShellWindow {
 
         public Task<LoomoRoomResult> DebugStateAsync() => window.Dispatcher.InvokeAsync(window.DescribeDebugState).Task;
 
+        public Task<LoomoRoomResult> BrowserErrorsAsync() => window.Dispatcher.InvokeAsync(window.DescribeBrowserErrors).Task;
+
         public Task<LoomoRoomResult> ShowChangesAsync() => OnUi(async () => {
             var origin = await Task.Run(() => window.ClaudeProvenance.LatestRequest());
             if (origin is null)

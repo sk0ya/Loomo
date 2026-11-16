@@ -17,8 +17,10 @@ public sealed class LoomoWebView2 : WebView2CompositionControl
         // 初期化完了は EnsureCoreWebView2Async の待ちが明ける前・Source への最初の遷移より前に届く。
         CoreWebView2InitializationCompleted += (_, e) =>
         {
-            if (e.IsSuccess && this.TryCore() is { } core)
+            if (e.IsSuccess && this.TryCore() is { } core) {
                 Services.LocalFileServer.Attach(core);
+                Services.Browser.BrowserConsoleWatch.Attach(core);   // ページのエラーを読む道具のため（§45.5）
+            }
         };
     }
 
