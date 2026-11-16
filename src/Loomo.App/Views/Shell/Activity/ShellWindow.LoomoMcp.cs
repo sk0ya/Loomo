@@ -24,6 +24,10 @@ public partial class ShellWindow {
         var notes = _claudeNotes.Take(session);
         if (notes.Count == 0)
             return null;
+        Dispatcher.BeginInvoke(() => {
+            if (_activeEditorTab is { IsRealized: true } active)
+                _pullRequestComments.RefreshExtraMarkers(active.Control);   // 渡した指摘の印は消す
+        });
         return new System.Text.Json.Nodes.JsonObject {
             ["hookSpecificOutput"] = new System.Text.Json.Nodes.JsonObject {
                 ["hookEventName"] = "UserPromptSubmit",
@@ -165,6 +169,8 @@ public partial class ShellWindow {
         public Task<LoomoRoomResult> ShowFaceAsync(string id) => OnUi(() => window.ShowFaceFromClaudeAsync(id));
 
         public Task<LoomoRoomResult> WhatHumanSeesAsync() => window.Dispatcher.InvokeAsync(window.DescribeHumanView).Task;
+
+        public Task<LoomoRoomResult> DebugStateAsync() => window.Dispatcher.InvokeAsync(window.DescribeDebugState).Task;
 
         public Task<LoomoRoomResult> ShowChangesAsync() => OnUi(async () => {
             var origin = await Task.Run(() => window.ClaudeProvenance.LatestRequest());

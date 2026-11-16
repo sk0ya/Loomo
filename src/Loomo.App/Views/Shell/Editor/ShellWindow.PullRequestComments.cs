@@ -13,6 +13,10 @@ public partial class ShellWindow {
             url => _ = ShowBrowserPaneAndNavigateAsync(url));
         // PR のページを開いたら、そのスレッドを先に読んでおく（右クリックの「手元で開く」を待たせない §42.3）。
         _vm.Browser.CurrentPageChanged += (_, _) => PrefetchReviewThreads(_vm.Browser.CurrentUrl);
+        // Claude への指摘（§45.4 P1）の印も、同じエディタの印に出す。
+        _pullRequestComments.ExtraMarkers = control => ReviewMarksFor(control.FilePath);
+        _pullRequestComments.ExtraTooltip = (control, line0) => ReviewTooltipFor(control.FilePath, line0);
+        _pullRequestComments.ExtraMarkerClicked = (_, _) => OpenReviewNotes();
     }
 
     /// <summary>Work Items と同じ接続（設定・PAT の候補）。設定が無い・繋がらないなら null（印を出さないだけ）。</summary>

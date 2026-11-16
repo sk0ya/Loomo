@@ -89,4 +89,18 @@ public sealed class ClaudeNoteQueueTests
         Assert.True(sut.Discard("s1", b));
         Assert.Empty(sut.Sessions());                      // 空になったセッションは一覧にも出ない
     }
+
+    [Fact]
+    public void 場所に宛てた指摘は_ファイルごとに_大文字小文字を問わず取り出せ_取り出しても消えない()
+    {
+        var sut = new ClaudeNoteQueue();
+        sut.Add("s1", new ClaudeNote(ClaudeNote.KindReview, "a", DateTimeOffset.UnixEpoch, Path: @"C:\w\a.cs", Line: 3));
+        sut.Add("s2", new ClaudeNote(ClaudeNote.KindReview, "b", DateTimeOffset.UnixEpoch, Path: @"c:\W\A.cs", Line: 9));
+        sut.Add("s2", new ClaudeNote(ClaudeNote.KindReview, "c", DateTimeOffset.UnixEpoch, Path: @"C:\w\other.cs", Line: 1));
+        sut.Add("s1", Note("場所なし"));
+
+        Assert.Equal(["a", "b"], sut.ReviewNotesFor(@"C:\w\a.cs").Select(n => n.Text));
+        Assert.Equal(["a", "b"], sut.ReviewNotesFor(@"C:\w\a.cs").Select(n => n.Text));   // 見るだけ
+        Assert.Empty(sut.ReviewNotesFor(@"C:\w\none.cs"));
+    }
 }

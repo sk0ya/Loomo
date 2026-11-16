@@ -58,13 +58,44 @@ internal sealed class PullRequestCommentController
         public Dictionary<int, List<(AzureDevOpsThread Thread, bool Exact)>> ByLine = new();
         public DispatcherTimer? Debounce;
         public int Generation;
+        /// <summary>PR の印（指摘の印と一緒に出し直すため、覚えておく）。</summary>
+        public IReadOnlyList<EditorNoteMarker> PrMarkers = [];
+    }
+
+    /// <summary>Claude への指摘（§45.4 P1）の印。PR の印と一緒に出す。エディタの行ごとに、そのファイルの指摘を返す。</summary>
+    internal Func<VimEditorControl, IReadOnlyList<EditorNoteMarker>>? ExtraMarkers { get; set; }
+
+    /// <summary>指摘の印の説明（PR の印が無い行）。</summary>
+    internal Func<VimEditorControl, int, object?>? ExtraTooltip { get; set; }
+
+    /// <summary>指摘の印を押した（PR の印が無い行）。</summary>
+    internal Action<VimEditorControl, int>? ExtraMarkerClicked { get; set; }
+
+    /// <summary>指摘が増えた・減った：このエディタの印を出し直す（PR の印は覚えてあるものをそのまま使う）。</summary>
+    internal void RefreshExtraMarkers(VimEditorControl control)
+        => Publish(control, _states.GetOrCreateValue(control).PrMarkers);
+
+    /// <summary>PR の印と指摘の印をまとめてエディタへ出す。印の有無（有効・無効）もまとめて決める。</summary>
+    private void Publish(VimEditorControl control, IReadOnlyList<EditorNoteMarker> prMarkers)
+    {
+        var state = _states.GetOrCreateValue(control);
+        state.PrMarkers = prMarkers;
+        var extra = ExtraMarkers?.Invoke(control) ?? [];
+        control.SetNoteMarkers(prMarkers.Concat(extra).ToList());
+        control.SetNoteMarkersEnabled(prMarkers.Count > 0 || extra.Count > 0);
     }
 
     internal void WireEditor(VimEditorControl control)
     {
         var state = _states.GetOrCreateValue(control);
-        control.NoteMarkerClicked += line0 => OpenThreadInBrowser(control, line0);
-        control.NoteToolTipContentProvider = line0 => BuildToolTip(control, line0);
+        control.NoteMarkerClicked += line0 =>
+        {
+            if (_states.TryGetValue(control, out var s) && s.ByLine.ContainsKey(line0))
+                OpenThreadInBrowser(control, line0);
+            else
+                ExtraMarkerClicked?.Invoke(control, line0);
+        };
+        control.NoteToolTipContentProvider = line0 => BuildToolTip(control, line0) ?? ExtraTooltip?.Invoke(control, line0);
         control.BufferChanged += (_, _) => ScheduleReanchor(control, state);
     }
 
@@ -80,18 +111,18 @@ internal sealed class PullRequestCommentController
         state.Comments = null;
         state.FileThreads = [];
         state.ByLine.Clear();
-        control.SetNoteMarkers([]);
+        Publish(control, []);
 
         if (await Task.Run(() => GitWorkTreeHeads.Find(path)) is not { Branch: { } branch } head || path is null)
         {
-            control.SetNoteMarkersEnabled(false);
+            Publish(control, []);
             return;
         }
         var comments = await PullRequestForAsync(head.Root, branch);
         if (generation != state.Generation)
             return;   // 待っている間に別のファイルを読み込んだ
         if (comments is null) {
-            control.SetNoteMarkersEnabled(false);
+            Publish(control, []);
             return;
         }
         var relative = "/" + Path.GetRelativePath(head.Root, path).Replace('\\', '/');
@@ -101,7 +132,7 @@ internal sealed class PullRequestCommentController
         state.Comments = comments;
         state.FileThreads = threads;
         state.RelativePath = relative;
-        control.SetNoteMarkersEnabled(threads.Count > 0);
+        Publish(control, []);
         if (threads.Count > 0)
             await ReanchorAsync(control, state, head.Root, generation);
     }
@@ -178,7 +209,7 @@ internal sealed class PullRequestCommentController
             list.Add((thread, match.Exact));
         }
         state.ByLine = byLine;
-        control.SetNoteMarkers(byLine.Select(pair => new EditorNoteMarker(pair.Key,
+        Publish(control, byLine.Select(pair => new EditorNoteMarker(pair.Key,
             pair.Value.Any(t => t.Item1.IsOpen) ? NoteMarkerKind.Open : NoteMarkerKind.Resolved,
             pair.Value.Count,
             PlainSummary(pair.Value))).ToList());

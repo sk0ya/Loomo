@@ -46,6 +46,18 @@ public sealed class ClaudeNoteQueue
         }
     }
 
+    /// <summary>ファイルの場所に宛てた指摘（エディタの印に出すもの）。どのセッションのものでも、取らずに見る。</summary>
+    public IReadOnlyList<ClaudeNote> ReviewNotesFor(string path)
+    {
+        lock (_gate)
+        {
+            return _bySession.Values.SelectMany(list => list)
+                .Where(note => note.Kind == ClaudeNote.KindReview && note.Path is { Length: > 0 }
+                               && string.Equals(note.Path, path, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+        }
+    }
+
     /// <summary>取らずに見る（一覧に出す）。取ったものは消えない。</summary>
     public IReadOnlyList<ClaudeNote> Peek(string sessionId)
     {
@@ -92,7 +104,7 @@ public sealed class ClaudeNoteQueue
 }
 
 /// <summary>1 件の知らせ。<see cref="Kind"/> は何の知らせか（読み手＝Claude が、どれを重く見るかを決める）。</summary>
-public sealed record ClaudeNote(string Kind, string Text, DateTimeOffset At)
+public sealed record ClaudeNote(string Kind, string Text, DateTimeOffset At, string? Path = null, int Line = 0)
 {
     public const string KindMotionWorsened = "動き";
     public const string KindReview = "指摘";

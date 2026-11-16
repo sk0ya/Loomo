@@ -42,6 +42,9 @@ public interface ILoomoRoomHost
     /// 読むだけ・中身は選択の範囲だけ（ファイル全体は読まない）（§45.5 P2）。</summary>
     Task<LoomoRoomResult> WhatHumanSeesAsync() => Task.FromResult(new LoomoRoomResult(false, "Not available in this build."));
 
+    /// <summary>デバッガが止まっている場所と、その場所の変数（§45.5 P2）。読むだけ。止まっていなければそう答える。</summary>
+    Task<LoomoRoomResult> DebugStateAsync() => Task.FromResult(new LoomoRoomResult(false, "Not available in this build."));
+
     /// <summary>
     /// 橋が名乗った居場所（環境変数のタブ・claude から上へたどった PID）から、この Loomo の客か・どのタブかを決める
     /// （§45.3 P0b・P0c）。自分のタブのシェルが祖先に無ければ null——橋は次の Loomo へ尋ねる。サーバーのスレッドから呼ばれる。
@@ -495,6 +498,10 @@ public sealed class LoomoMcpTools(ILoomoRoomHost host)
             {
                 ["id"] = new JsonObject { ["type"] = "string", ["description"] = "The face id (its folder name)." },
             }, "id"),
+        Tool("debug_state",
+            "Read the debugger in Loomo: whether it is paused, where (the call stack, top frames) and the variables of the selected frame "
+            + "(values cut short). Read-only. Call it when a debug session is paused and you need to know the state.",
+            new JsonObject()),
         Tool("what_human_sees",
             "Describe what the user is looking at right now in Loomo: the front pane, the file in the editor with the caret line, "
             + "the selected text (only the selection), whether it has unsaved changes, and the other open files. Read-only. "
@@ -528,6 +535,8 @@ public sealed class LoomoMcpTools(ILoomoRoomHost host)
                     return new LoomoRoomResult(true, host.MotionGuide());
                 case "what_human_sees":
                     return await host.WhatHumanSeesAsync().ConfigureAwait(false);
+                case "debug_state":
+                    return await host.DebugStateAsync().ConfigureAwait(false);
                 case "show_face":
                     if (Text(arguments, "id") is not { Length: > 0 } face)
                         return new LoomoRoomResult(false, "id is required.");

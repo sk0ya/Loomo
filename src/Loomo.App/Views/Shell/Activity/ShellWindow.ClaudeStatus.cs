@@ -69,8 +69,11 @@ public partial class ShellWindow {
                 items.Add(StatusItem($"知らせ（{note.Kind}・{shortId}）",
                     firstLine.Length > 70 ? firstLine[..70] + "…" : firstLine,
                     () => {
-                        if (_claudeNotes.Discard(captured.Session, captured.Note))
+                        if (_claudeNotes.Discard(captured.Session, captured.Note)) {
                             ToastService.Info("知らせを取り消しました");
+                            if (_activeEditorTab is { IsRealized: true } active)
+                                _pullRequestComments.RefreshExtraMarkers(active.Control);
+                        }
                     },
                     note.Text));
             }

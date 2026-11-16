@@ -1,4 +1,5 @@
 using System.Text;
+using Editor.Controls.Rendering;
 using sk0ya.Loomo.Services.ClaudeCode;
 
 namespace sk0ya.Loomo.App.Views;
@@ -39,6 +40,59 @@ public partial class ShellWindow {
         return new LoomoRoomResult(true, sb.ToString().TrimEnd());
     }
 
+    /// <summary>デバッガが止まっている場所と、選ばれたフレームの変数（§45.5 P2 `debug_state`）。UI スレッドで読む。値は短く切る。</summary>
+    internal LoomoRoomResult DescribeDebugState() {
+        const int MaxFrames = 10, MaxVariables = 30, MaxValue = 200;
+        var inspection = _vm.Debug.Inspection;
+        if (inspection is null || !inspection.IsStopped)
+            return new LoomoRoomResult(true, "The debugger is not paused at a location (no stopped session).");
+        var sb = new StringBuilder("Paused.");
+        sb.AppendLine();
+        sb.AppendLine("Call stack (top):");
+        foreach (var frame in inspection.CallStack.Take(MaxFrames))
+            sb.AppendLine($"- {frame.Name}  {frame.Location}".TrimEnd());
+        if (inspection.Variables.Count > 0) {
+            sb.AppendLine("Variables of the selected frame:");
+            foreach (var variable in inspection.Variables.Take(MaxVariables)) {
+                var value = variable.Value ?? "";
+                sb.AppendLine($"- {variable.Name} = {(value.Length > MaxValue ? value[..MaxValue] + "…" : value)}");
+            }
+        }
+        return new LoomoRoomResult(true, sb.ToString().TrimEnd());
+    }
+
+    /// <summary>このファイルに宛てた、まだ Claude に渡していない指摘の印（行ごと）。</summary>
+    private IReadOnlyList<EditorNoteMarker> ReviewMarksFor(string? path) {
+        if (string.IsNullOrEmpty(path))
+            return [];
+        return _claudeNotes.ReviewNotesFor(path)
+            .Where(note => note.Line > 0)
+            .GroupBy(note => note.Line - 1)
+            .OrderBy(group => group.Key)
+            .Select(group => new EditorNoteMarker(group.Key, NoteMarkerKind.Open, group.Count(),
+                FirstLine(group.First().Text)))
+            .ToList();
+    }
+
+    /// <summary>その行の指摘の説明（印の上に出す）。</summary>
+    private object? ReviewTooltipFor(string? path, int line0) {
+        if (string.IsNullOrEmpty(path))
+            return null;
+        var notes = _claudeNotes.ReviewNotesFor(path).Where(note => note.Line - 1 == line0).ToList();
+        if (notes.Count == 0)
+            return null;
+        return new System.Windows.Controls.TextBlock {
+            Text = string.Join("\n\n", notes.Select(note => note.Text)) + "\n\n（クリックで一覧・取り消し）",
+            TextWrapping = System.Windows.TextWrapping.Wrap,
+            MaxWidth = 520,
+        };
+    }
+
+    private static string FirstLine(string text) {
+        var line = text.Split('\n')[0];
+        return line.Length > 60 ? line[..60] + "…" : line;
+    }
+
     private void WriteReviewNoteForClaude() {
         if (_activeEditorTab is not { IsRealized: true } tab || tab.Control.FilePath is not { Length: > 0 } path) {
             ToastService.Info("指摘を書くファイルを前に出してください（カーソルの行に宛てます）");
@@ -60,7 +114,9 @@ public partial class ShellWindow {
             multiline: true);
         if (string.IsNullOrWhiteSpace(text))
             return;
-        _claudeNotes.Add(session, new ClaudeNote(ClaudeNote.KindReview, $"{where} について：{text.Trim()}", DateTimeOffset.Now));
+        _claudeNotes.Add(session, new ClaudeNote(ClaudeNote.KindReview, $"{where} について：{text.Trim()}", DateTimeOffset.Now,
+            Path: path, Line: line));
+        _pullRequestComments.RefreshExtraMarkers(tab.Control);
         ToastService.Info($"指摘を書きました（{where}）。Claude が次の頼みごとで読みます");
     }
 }
