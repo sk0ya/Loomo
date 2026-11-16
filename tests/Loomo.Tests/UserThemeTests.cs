@@ -195,8 +195,8 @@ public class UserThemeTests
 
         var muddy = Parse("""{ "background": "#808080", "foreground": "#9A9A9A", "keyword": "#858585" }""");
         var warnings = UserThemeEditorViewModel.Check(muddy).ToList();
-        Assert.Contains(warnings, w => w.StartsWith("文字が背景に対して読みにくい"));
-        Assert.Contains(warnings, w => w.Contains("キーワード"));
+        Assert.Contains(warnings, w => w.Key == "foreground");
+        Assert.Contains(warnings, w => w.Key == "keyword");
     }
 
     /// <summary>ピッカーの HSV ⇄ RGB が往復で色を崩さないこと（16 進で打った色がそのまま戻る）。</summary>

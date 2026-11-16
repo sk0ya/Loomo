@@ -25,7 +25,10 @@ public sealed partial class UserThemeEditorViewModel : ObservableObject, IDispos
 
     public ObservableCollection<AppearanceViewModel.PresetSwatch> Items { get; } = new();
     public ObservableCollection<ColorSlotViewModel> Slots { get; } = new();
-    public ObservableCollection<string> Warnings { get; } = new();
+
+    /// <summary>読みやすさのまとめ（1 行）。中身は各欄の ⚠（<see cref="ColorSlotViewModel.Warning"/>）が持つ。</summary>
+    [ObservableProperty] private string _readabilitySummary = "";
+    [ObservableProperty] private bool _hasReadabilityIssues;
 
     /// <summary>「新しく作る」の元にできる同梱テーマ。</summary>
     public IReadOnlyList<AppearanceViewModel.PresetSwatch> BaseChoices { get; }
@@ -71,7 +74,7 @@ public sealed partial class UserThemeEditorViewModel : ObservableObject, IDispos
         var keep = SelectedItem?.Key;
         _loading = true;
         Items.Clear();
-        foreach (var t in UserThemes.All)
+        foreach (var t in UserThemes.All.OrderBy(t => t.Name, StringComparer.CurrentCultureIgnoreCase))
             Items.Add(new AppearanceViewModel.PresetSwatch(t.Id, t.Name, UserTheme.Hex(t.Bg), UserTheme.Hex(t.Accent), UserTheme.Hex(t.Fg)));
         SelectedItem = Items.FirstOrDefault(i => i.Key == keep);
         _loading = false;
@@ -162,30 +165,41 @@ public sealed partial class UserThemeEditorViewModel : ObservableObject, IDispos
         try { theme = _draft.Derive(); }
         catch (FormatException ex) { Status = ex.Message; return; }
 
-        foreach (var slot in Slots) slot.ShowEffective(UserThemeDraft.Effective(theme, slot.Key));
+        var issues = Check(theme).ToDictionary(i => i.Key, i => i.Message);
+        foreach (var slot in Slots)
+        {
+            slot.ShowEffective(UserThemeDraft.Effective(theme, slot.Key));
+            slot.Warning = issues.GetValueOrDefault(slot.Key);
+        }
         Preview = theme;
 
-        Warnings.Clear();
-        foreach (var w in Check(theme)) Warnings.Add(w);
+        HasReadabilityIssues = issues.Count > 0;
+        ReadabilitySummary = issues.Count == 0
+            ? "読みやすさ：気になるところはありません"
+            : $"読みやすさ：{issues.Count} 色が背景に埋もれ気味（⚠ にカーソルで詳細）";
     }
 
-    /// <summary>読みやすさの注意。数字は WCAG のコントラスト比（本文は 4.5、補足や色の印は 3.0 が目安）。</summary>
-    internal static IEnumerable<string> Check(UserTheme t)
+    /// <summary>読みやすさの注意（欄の鍵と理由）。数字は WCAG のコントラスト比。本文は 4.5、補足の文字は 3.0 を目安にし、
+    /// 構文や印の色は 2.0 を切ったものだけ言う（定番テーマでも 2〜3 の色はよくあり、そこまで咎めると注意が読まれなくなる）。</summary>
+    internal static IEnumerable<(string Key, string Message)> Check(UserTheme t)
     {
         static double C(Color a, Color b) => ThemeManager.Contrast(a, b);
         var body = C(t.Bg, t.Fg);
-        if (body < 4.5) yield return $"文字が背景に対して読みにくい（{body:0.0}・目安 4.5 以上）";
+        if (body < 4.5) yield return ("foreground", $"本文が背景に対して読みにくい（コントラスト {body:0.0}・目安 4.5 以上）");
         var dim = C(t.Bg, t.Dim);
-        if (dim < 3.0) yield return $"控えめな文字が背景に埋もれる（{dim:0.0}・目安 3.0 以上）";
-        if (C(t.Bg, t.Accent) < 1.6) yield return $"アクセントが背景と見分けにくい（{C(t.Bg, t.Accent):0.0}）";
-        foreach (var (label, color) in new[]
+        if (dim < 3.0) yield return ("dim", $"控えめな文字が背景に埋もれる（コントラスト {dim:0.0}・目安 3.0 以上）");
+        var accent = C(t.Bg, t.Accent);
+        if (accent < 1.6) yield return ("accent", $"アクセントが背景と見分けにくい（コントラスト {accent:0.0}）");
+        foreach (var (key, label, color) in new[]
                  {
-                     ("キーワード", t.Keyword), ("文字列", t.String), ("数値", t.Number), ("型", t.Type), ("関数", t.Function),
-                     ("赤", t.Red), ("黄", t.Yellow), ("緑", t.Green),
+                     ("keyword", "キーワード", t.Keyword), ("string", "文字列", t.String), ("number", "数値", t.Number),
+                     ("type", "型", t.Type), ("function", "関数", t.Function),
+                     ("red", "赤", t.Red), ("yellow", "黄", t.Yellow), ("green", "緑", t.Green),
+                     ("cyan", "水色", t.Cyan), ("blue", "青", t.Blue), ("magenta", "紫", t.Magenta),
                  })
         {
             var c = C(t.Bg, color);
-            if (c < 3.0) yield return $"「{label}」が背景に埋もれる（{c:0.0}・目安 3.0 以上）";
+            if (c < 2.0) yield return (key, $"「{label}」が背景に埋もれ気味（コントラスト {c:0.0}・目安 2.0 以上）");
         }
     }
 
@@ -332,7 +346,19 @@ public sealed partial class ColorSlotViewModel : ObservableObject
     [ObservableProperty] private bool _isAuto;
     [ObservableProperty] private string _hex = "";
 
+    /// <summary>読みやすさの注意（無ければ null）。色見本の横に ⚠ で出し、理由はツールチップ。</summary>
+    [ObservableProperty] private string? _warning;
+
     public Brush Brush => new SolidColorBrush(Color);
+
+    /// <summary>色見本の下に出す 1 行（「#RRGGBB」／自動なら「自動 · #RRGGBB」）。</summary>
+    public string Detail => IsAuto ? $"自動 · {Hex}" : Hex;
+
+    /// <summary>自動に戻す（ピッカーの「自動に戻す」）。</summary>
+    public void ResetToAuto()
+    {
+        if (CanBeAuto) IsAuto = true;
+    }
 
     internal void Load(Color? value)
     {
@@ -354,6 +380,7 @@ public sealed partial class ColorSlotViewModel : ObservableObject
     partial void OnColorChanged(Color value)
     {
         OnPropertyChanged(nameof(Brush));
+        OnPropertyChanged(nameof(Detail));
         var hex = UserTheme.Hex(value);
         if (Hex != hex) { var q = _quiet; _quiet = true; Hex = hex; _quiet = q; }
         if (_quiet) return;
@@ -365,12 +392,14 @@ public sealed partial class ColorSlotViewModel : ObservableObject
 
     partial void OnHexChanged(string value)
     {
+        OnPropertyChanged(nameof(Detail));
         if (_quiet) return;
         if (UserThemeParser.TryParse(value, out var c) && c != Color) Color = c;
     }
 
     partial void OnIsAutoChanged(bool value)
     {
+        OnPropertyChanged(nameof(Detail));
         if (_quiet) return;
         if (value && !CanBeAuto) { IsAuto = false; return; }
         Edited?.Invoke(this);

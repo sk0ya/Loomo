@@ -14,6 +14,6 @@ public partial class SettingsView : UserControl
     private void OnOpenUserThemeEditor(object sender, System.Windows.RoutedEventArgs e)
     {
         if (DataContext is ShellViewModel vm)
-            UserThemeEditorWindow.Show(System.Windows.Window.GetWindow(this), vm.Appearance);
+            UserThemeEditorView.Open(System.Windows.Window.GetWindow(this), vm.Appearance);
     }
 }

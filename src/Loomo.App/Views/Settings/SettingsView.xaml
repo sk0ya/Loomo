@@ -576,10 +576,10 @@
                                           ItemTemplate="{StaticResource PresetItemTemplate}" />
                                 <!-- 自分のテーマ（themes/*.json）。★ 付きで各一覧の末尾に並ぶ。保存し直すとその場で塗り直す。 -->
                                 <WrapPanel Margin="0,6,0,0">
-                                    <Button Content="自分のテーマを作る・編集する…" Click="OnOpenUserThemeEditor"
+                                    <Button Content="自分のテーマを作る・編集する…" Click="OnOpenUserThemeEditor" Style="{StaticResource SecondaryButton}"
                                             Margin="0,0,6,4"
                                             ToolTip="専用の画面で、色見本とカラーピッカーを使って自分のテーマを作ります。部屋の UI・エディタ・ターミナルの見本がその場で塗り変わります。" />
-                                    <Button Content="テーマのフォルダーを開く" Command="{Binding Appearance.OpenUserThemesFolderCommand}"
+                                    <Button Content="テーマのフォルダーを開く" Command="{Binding Appearance.OpenUserThemesFolderCommand}" Style="{StaticResource SecondaryButton}"
                                             Margin="0,0,0,4" ToolTip="{Binding Appearance.UserThemesFolder}" />
                                 </WrapPanel>
                                 <TextBlock Text="{Binding Appearance.UserThemeErrors}" Foreground="{DynamicResource Error}"
