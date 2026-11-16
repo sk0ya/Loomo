@@ -14,13 +14,21 @@ namespace sk0ya.Loomo.App.ViewModels;
 
 /// <summary>「自分のテーマ」編集画面。上の切り替えで種類（アプリの画面・エディタ・ターミナル・Markdown プレビュー）を
 /// 選び、その種類の自分のテーマを作る・直す。左に保存済みのテーマ、中央にその種類の色の欄、右にその種類の見本。
-/// 編集は下書き（<see cref="CustomThemeDraft"/>）に溜め、保存したときだけファイルへ書く（保存すると
-/// <see cref="UserThemes"/> の見張りで、そのテーマを使っている所も塗り直る）。</summary>
+/// 編集は下書き（<see cref="CustomThemeDraft"/>）に溜め、少し待って自動でファイルへ書く（切り替える前・閉じる前にも
+/// 書き切る）。書くと <see cref="UserThemes"/> の見張りで、そのテーマを使っている所も塗り直る。「元に戻す」は
+/// 開いたときの色へ戻す。</summary>
 public sealed partial class UserThemeEditorViewModel : ObservableObject, IDisposable
 {
     private readonly AppearanceViewModel _appearance;
     private readonly Action _onCatalogChanged;
+    private readonly System.Windows.Threading.DispatcherTimer _saveTimer;
     private CustomThemeDraft _draft;
+    /// <summary>下書きの持ち主（読み込んだ元のテーマの id。種類は <c>_draft.Kind</c>）。自動保存はここへ書く。</summary>
+    private string? _draftId;
+    /// <summary>開いたときの下書き（「元に戻す」の戻り先）。</summary>
+    private CustomThemeDraft? _opened;
+    /// <summary>最後に自分で書いた中身（見張りの通知が自分の保存か、JSON の直接編集かを見分ける）。</summary>
+    private string? _lastWritten;
     private bool _loading;
 
     public sealed record KindTab(CustomThemeKind Kind, string Title);
@@ -38,6 +46,7 @@ public sealed partial class UserThemeEditorViewModel : ObservableObject, IDispos
     [ObservableProperty] private AppearanceViewModel.PresetSwatch? _selectedBase;
     [ObservableProperty] private string _name = "";
     [ObservableProperty] private bool _isDirty;
+    [ObservableProperty] private bool _canRevert;
     [ObservableProperty] private bool _hasTheme;
     [ObservableProperty] private string _status = "";
     [ObservableProperty] private string _readabilitySummary = "";
@@ -56,12 +65,18 @@ public sealed partial class UserThemeEditorViewModel : ObservableObject, IDispos
         _appearance = appearance;
         _selectedKind = Kinds.First(k => k.Kind == kind);
         _draft = new CustomThemeDraft(kind);
+        _saveTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
+        _saveTimer.Tick += (_, _) => SaveCore();
         _onCatalogChanged = () => Application.Current?.Dispatcher.BeginInvoke(OnCatalogChanged);
         UserThemes.Changed += _onCatalogChanged;
         EnterKind();
     }
 
-    public void Dispose() => UserThemes.Changed -= _onCatalogChanged;
+    public void Dispose()
+    {
+        Flush();
+        UserThemes.Changed -= _onCatalogChanged;
+    }
 
     /// <summary>種類を切り替えた（または開いた）とき：欄・一覧・もとにする候補を入れ替え、その欄でいま使っている
     /// 自分のテーマがあればそれを、無ければ先頭を開く。</summary>
@@ -82,9 +97,12 @@ public sealed partial class UserThemeEditorViewModel : ObservableObject, IDispos
         SelectedBase = BaseChoices.FirstOrDefault(c => c.Key == selectedKey) ?? BaseChoices.FirstOrDefault();
 
         _draft = new CustomThemeDraft(Kind);
+        _draftId = null;
+        _opened = null;
+        CanRevert = false;
         IsDirty = false;
         RefreshItems();
-        var current = UserThemes.IsUserKey(selectedKey) ? selectedKey![CustomTheme.KeyPrefix.Length..] : null;
+        var current = UserThemes.IsUserKey(selectedKey) ? selectedKey!.Trim()[CustomTheme.KeyPrefix.Length..] : null;
         _loading = true;
         SelectedItem = Items.FirstOrDefault(i => string.Equals(i.Key, current, StringComparison.OrdinalIgnoreCase)) ?? Items.FirstOrDefault();
         _loading = false;
@@ -98,7 +116,8 @@ public sealed partial class UserThemeEditorViewModel : ObservableObject, IDispos
     partial void OnSelectedKindChanged(KindTab? oldValue, KindTab newValue)
     {
         if (_loading || oldValue is null || oldValue.Kind == newValue.Kind) return;
-        if (IsDirty && !ConfirmLeave())
+        // 書き切れなかったら切り替えない（下書きは読み込んだ元＝前の種類のテーマへ書く。種類はもう新しい値）。
+        if (!Flush())
         {
             Application.Current?.Dispatcher.BeginInvoke(() => { _loading = true; SelectedKind = oldValue; _loading = false; });
             return;
@@ -113,25 +132,32 @@ public sealed partial class UserThemeEditorViewModel : ObservableObject, IDispos
         _loading = true;
         Items.Clear();
         foreach (var t in UserThemes.All(Kind).OrderBy(t => t.Name, StringComparer.CurrentCultureIgnoreCase))
-            Items.Add(new AppearanceViewModel.PresetSwatch(t.Id, t.Name,
-                AppearanceViewModel.Chip(t).Bg, AppearanceViewModel.Chip(t).Accent, AppearanceViewModel.Chip(t).Fg));
-        SelectedItem = Items.FirstOrDefault(i => i.Key == keep);
+        {
+            var chip = AppearanceViewModel.Chip(t);
+            Items.Add(new AppearanceViewModel.PresetSwatch(t.Id, t.Name, chip.Bg, chip.Accent, chip.Fg));
+        }
+        SelectedItem = Items.FirstOrDefault(i => string.Equals(i.Key, keep, StringComparison.OrdinalIgnoreCase));
         _loading = wasLoading;
         HasTheme = SelectedItem is not null;
     }
 
-    /// <summary>フォルダーが変わったとき（自分の保存も含む）。一覧を並べ直し、手を入れていなければ開いている
-    /// テーマもファイルから読み直す（JSON を直接書き換えた場合に画面を追従させる）。</summary>
+    /// <summary>フォルダーが変わったとき（自分の保存も含む）。一覧を並べ直し、JSON を直接書き換えられていたら
+    /// 開いているテーマもファイルから読み直す（自分で書いた中身のままなら読み直さない＝編集中の画面を揺らさない）。</summary>
     private void OnCatalogChanged()
     {
         RefreshItems();
-        if (SelectedItem is { } item && !IsDirty) LoadFromFile(item.Key);
+        if (SelectedItem is not { } item || IsDirty || !string.Equals(item.Key, _draftId, StringComparison.OrdinalIgnoreCase)) return;
+        string text;
+        try { text = File.ReadAllText(PathOf(_draft.Kind, item.Key)); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return; }
+        if (text != _lastWritten) LoadFromFile(item.Key);
     }
 
     partial void OnSelectedItemChanged(AppearanceViewModel.PresetSwatch? oldValue, AppearanceViewModel.PresetSwatch? newValue)
     {
         if (_loading) return;
-        if (IsDirty && oldValue is not null && !ConfirmLeave())
+        // 選択はもう新しいテーマへ移っているが、下書きは読み込んだ元（_draftId）へ書くので取り違えない。
+        if (!Flush())
         {
             Application.Current?.Dispatcher.BeginInvoke(() => { _loading = true; SelectedItem = oldValue; _loading = false; });
             return;
@@ -140,30 +166,31 @@ public sealed partial class UserThemeEditorViewModel : ObservableObject, IDispos
         if (newValue is not null) LoadFromFile(newValue.Key);
     }
 
-    /// <summary>保存していない変更があるとき、離れてよいか聞く。はい＝保存して進む、いいえ＝捨てて進む。</summary>
-    public bool ConfirmLeave()
+    /// <summary>まだ書いていない変更をいま書く（切り替える前・閉じる前）。書けなかったら false。</summary>
+    public bool Flush()
     {
-        if (!IsDirty) return true;
-        var answer = MessageBox.Show($"「{Name}」の変更を保存しますか？", "自分のテーマ",
-            MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
-        if (answer == MessageBoxResult.Cancel) return false;
-        if (answer == MessageBoxResult.Yes) return SaveCore();
-        IsDirty = false;
-        return true;
+        _saveTimer.Stop();
+        return !IsDirty || SaveCore();
     }
 
-    private string? CurrentId => SelectedItem?.Key;
-    private string PathOf(string id) => Path.Combine(UserThemes.FolderFor(Kind), id + ".json");
+    private static string PathOf(CustomThemeKind kind, string id) => Path.Combine(UserThemes.FolderFor(kind), id + ".json");
 
     private void LoadFromFile(string id)
     {
         try
         {
-            LoadDraft(CustomThemeDraft.FromJson(Kind, File.ReadAllText(PathOf(id))));
+            var text = File.ReadAllText(PathOf(Kind, id));
+            var draft = CustomThemeDraft.FromJson(Kind, text);
+            _draftId = id;
+            _lastWritten = text;
+            _opened = draft.Clone();
+            CanRevert = false;
+            LoadDraft(draft);
             Status = "";
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Text.Json.JsonException or FormatException)
         {
+            _draftId = null;   // 読めなかったテーマへは書かない（手で直している途中の JSON を上書きしない）
             Status = $"読めませんでした: {ex.Message}";
         }
     }
@@ -183,15 +210,25 @@ public sealed partial class UserThemeEditorViewModel : ObservableObject, IDispos
     {
         if (_loading) return;
         _draft.Name = string.IsNullOrWhiteSpace(value) ? "自分のテーマ" : value.Trim();
-        IsDirty = true;
+        MarkEdited();
     }
 
     private void OnSlotEdited(ColorSlotViewModel slot)
     {
         if (_loading) return;
         _draft.Values[slot.Key] = slot.IsAuto ? null : slot.Color;
-        IsDirty = true;
+        MarkEdited();
         Recompute();
+    }
+
+    /// <summary>手を入れた：少し待ってから自動で保存する（ピッカーのドラッグ中に毎回書かない）。</summary>
+    private void MarkEdited()
+    {
+        if (_draftId is null) return;
+        IsDirty = true;
+        CanRevert = true;
+        _saveTimer.Stop();
+        _saveTimer.Start();
     }
 
     /// <summary>下書きから色を決め直して、自動の欄の見本・見本の塗り・注意を更新する。</summary>
@@ -242,7 +279,7 @@ public sealed partial class UserThemeEditorViewModel : ObservableObject, IDispos
     [RelayCommand]
     private void NewTheme()
     {
-        if (!ConfirmLeave()) return;
+        if (!Flush()) return;
         var baseChoice = SelectedBase ?? BaseChoices.First();
         var draft = new CustomThemeDraft(Kind) { Name = $"{baseChoice.Name} をもとに" };
         foreach (var (k, v) in AppearanceViewModel.SeedFromBuiltIn(Kind, baseChoice.Key)) draft.Values[k] = v;
@@ -252,7 +289,7 @@ public sealed partial class UserThemeEditorViewModel : ObservableObject, IDispos
     [RelayCommand]
     private void Duplicate()
     {
-        if (CurrentId is null || !ConfirmLeave()) return;
+        if (_draftId is null || !Flush()) return;
         var copy = _draft.Clone();
         copy.Name = $"{_draft.Name} のコピー";
         CreateFile(copy, $"「{copy.Name}」を作りました");
@@ -266,9 +303,8 @@ public sealed partial class UserThemeEditorViewModel : ObservableObject, IDispos
             Directory.CreateDirectory(folder);
             var id = "my-theme";
             for (var i = 2; File.Exists(Path.Combine(folder, id + ".json")); i++) id = $"my-theme-{i}";
-            File.WriteAllText(PathOf(id), draft.ToJson(), new UTF8Encoding(false));
+            File.WriteAllText(PathOf(Kind, id), draft.ToJson(), new UTF8Encoding(false));
             UserThemes.Reload();
-            IsDirty = false;
             RefreshItems();
             SelectedItem = Items.FirstOrDefault(i => i.Key == id);
             Status = message;
@@ -279,19 +315,21 @@ public sealed partial class UserThemeEditorViewModel : ObservableObject, IDispos
         }
     }
 
-    [RelayCommand]
-    private void Save() => SaveCore();
-
+    /// <summary>下書きを、読み込んだ元のテーマ（種類と id）へ書く。切り替えの途中で種類・選択がもう新しい値に
+    /// なっていても、書く先は下書きの持ち主から決めるので取り違えない。</summary>
     private bool SaveCore()
     {
-        if (CurrentId is not { } id) return false;
+        _saveTimer.Stop();
+        if (_draftId is not { } id) return false;
         try
         {
-            File.WriteAllText(PathOf(id), _draft.ToJson(), new UTF8Encoding(false));
+            var json = _draft.ToJson();
+            File.WriteAllText(PathOf(_draft.Kind, id), json, new UTF8Encoding(false));
+            _lastWritten = json;
             IsDirty = false;
             UserThemes.Reload();
-            RefreshItems();
-            Status = "保存しました";
+            if (_draft.Kind == Kind) RefreshItems();
+            Status = "自動で保存しました";
             return true;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -301,31 +339,37 @@ public sealed partial class UserThemeEditorViewModel : ObservableObject, IDispos
         }
     }
 
-    /// <summary>保存して、外観パネルのこの種類の欄でこのテーマを選ぶ。</summary>
+    /// <summary>外観パネルのこの種類の欄でこのテーマを選ぶ。</summary>
     [RelayCommand]
     private void UseInRoom()
     {
-        if (CurrentId is not { } id || IsDirty && !SaveCore()) return;
+        if (_draftId is not { } id || !Flush()) return;
         _appearance.UseUserTheme(Kind, id);
         Status = $"「{Name}」を{KindTitle}に使いました";
     }
 
+    /// <summary>このテーマを開いたときの色へ戻す（戻した状態もそのまま保存する）。</summary>
     [RelayCommand]
     private void Revert()
     {
-        if (CurrentId is { } id) LoadFromFile(id);
+        if (_opened is null || _draftId is null) return;
+        LoadDraft(_opened.Clone());
+        CanRevert = false;
+        if (SaveCore()) Status = "開いたときの色に戻しました";
     }
 
     [RelayCommand]
     private void Delete()
     {
-        if (CurrentId is not { } id) return;
+        if (_draftId is not { } id) return;
         if (MessageBox.Show($"「{Name}」を削除しますか？", "自分のテーマ",
                 MessageBoxButton.OKCancel, MessageBoxImage.Warning) != MessageBoxResult.OK) return;
         try
         {
-            File.Delete(PathOf(id));
+            _saveTimer.Stop();
+            File.Delete(PathOf(_draft.Kind, id));
             IsDirty = false;
+            _draftId = null;
             UserThemes.Reload();
             RefreshItems();
             SelectedItem = Items.FirstOrDefault();
@@ -345,7 +389,7 @@ public sealed partial class UserThemeEditorViewModel : ObservableObject, IDispos
     [RelayCommand]
     private void OpenJson()
     {
-        if (CurrentId is { } id && (!IsDirty || SaveCore())) _appearance.RequestOpenFile(PathOf(id));
+        if (_draftId is { } id && Flush()) _appearance.RequestOpenFile(PathOf(_draft.Kind, id));
     }
 }
 

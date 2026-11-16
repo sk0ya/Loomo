@@ -101,13 +101,11 @@
             <DockPanel>
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
                     <Button Content="元に戻す" Command="{Binding RevertCommand}" Style="{StaticResource SecondaryButton}"
-                            IsEnabled="{Binding IsDirty}" Margin="0,0,8,0" ToolTip="保存した状態へ戻します" />
-                    <Button Content="保存" Command="{Binding SaveCommand}" Style="{StaticResource SecondaryButton}"
-                            IsEnabled="{Binding IsDirty}" Margin="0,0,8,0"
-                            ToolTip="ファイルへ保存します。このテーマを使っている所はその場で塗り直されます" />
+                            IsEnabled="{Binding CanRevert}" Margin="0,0,8,0"
+                            ToolTip="このテーマを開いたときの色へ戻します（変更は自動で保存されています）" />
                     <Button Command="{Binding UseInRoomCommand}" Style="{StaticResource FlatButton}" IsEnabled="{Binding HasTheme}"
-                            ToolTip="保存して、外観パネルのこの種類の欄でこのテーマを選びます">
-                        <TextBlock Text="{Binding KindTitle, StringFormat='保存して{0}に使う'}" />
+                            ToolTip="外観パネルのこの種類の欄でこのテーマを選びます">
+                        <TextBlock Text="{Binding KindTitle, StringFormat='{}{0}に使う'}" />
                     </Button>
                 </StackPanel>
                 <TextBlock Text="{Binding Status}" VerticalAlignment="Center" Foreground="{DynamicResource FgDim}"

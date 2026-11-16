@@ -139,17 +139,14 @@ public sealed class ShellAppearanceCoordinator
         UserThemes.TryGet(CustomThemeKind.Terminal, name) is { } user ? FromCustom(user) : BuildBuiltInTerminalColorTheme(name);
 
     /// <summary>自分のターミナルのテーマ → 配色。ANSI の 16 色は欄の並び（黒・赤・緑・黄・青・紫・水色・白 → 明るい版）どおり。</summary>
-    private static TerminalColorTheme FromCustom(CustomTheme t)
+    private static TerminalColorTheme FromCustom(CustomTheme t) => TerminalUserCache.GetValue(t, x =>
     {
-        string[] ansi =
-        [
-            "black", "red", "green", "yellow", "blue", "magenta", "cyan", "white",
-            "brightBlack", "brightRed", "brightGreen", "brightYellow", "brightBlue", "brightMagenta", "brightCyan", "brightWhite",
-        ];
-        var selection = t["selection"];
-        return new TerminalColorTheme(t["foreground"], t["background"], ansi.Select(k => t[k]).ToArray(), t["cursor"],
-            Color.FromArgb(t.IsLight ? (byte)0xFF : (byte)0xDD, selection.R, selection.G, selection.B));
-    }
+        var selection = x["selection"];
+        return new TerminalColorTheme(x["foreground"], x["background"], ThemeSchemas.AnsiKeys.Select(k => x[k]).ToArray(), x["cursor"],
+            Color.FromArgb(x.IsLight ? (byte)0xFF : (byte)0xDD, selection.R, selection.G, selection.B));
+    });
+
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<CustomTheme, TerminalColorTheme> TerminalUserCache = new();
 
     private static TerminalColorTheme BuildBuiltInTerminalColorTheme(string? name) => name?.Trim().ToLowerInvariant() switch
     {

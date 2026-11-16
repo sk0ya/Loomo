@@ -101,8 +101,28 @@ public partial class UserThemeEditorView : UserControl
     }
 
     /// <summary>決まった色を見本の Resources に置き、その種類の見本だけを出す。アプリの画面はパレットのキー
-    /// （ペインヘッダーの帯は実行時と同じ <see cref="ThemeManager.PaneHeaderTint"/>）、ほかは欄の鍵に C_ を付けたキー。</summary>
+    /// （ペインヘッダーの帯も <see cref="AppPaletteBuilder"/> が実行時と同じ式で作る）、エディタは
+    /// <see cref="EditorThemePresets.FromCustom"/> が作る本物の配色、ほかは欄の鍵に C_ を付けたキー。
+    /// ピッカーのドラッグでは色が立て続けに変わるので、描き直しは 1 フレームに 1 回へまとめ、辞書は差し替えずに
+    /// 変わった鍵だけ書き換える（辞書ごと替えると見本の DynamicResource が全部引き直しになる）。</summary>
     private void ApplyPreview(CustomTheme? theme)
+    {
+        _pendingPreview = theme;
+        if (_previewQueued) return;
+        _previewQueued = true;
+        Dispatcher.BeginInvoke(() =>
+        {
+            _previewQueued = false;
+            ApplyPreviewNow(_pendingPreview);
+        }, System.Windows.Threading.DispatcherPriority.Render);
+    }
+
+    private CustomTheme? _pendingPreview;
+    private bool _previewQueued;
+    private readonly ResourceDictionary _previewResources = new();
+    private readonly Dictionary<string, Color> _previewColors = new();
+
+    private void ApplyPreviewNow(CustomTheme? theme)
     {
         AppPreview.Visibility = Show(CustomThemeKind.App);
         EditorPreview.Visibility = Show(CustomThemeKind.Editor);
@@ -110,27 +130,28 @@ public partial class UserThemeEditorView : UserControl
         PreviewPreview.Visibility = Show(CustomThemeKind.Preview);
         if (theme is null) return;
 
-        var dict = new ResourceDictionary();
-        void Put(string key, Color c) => dict[key] = Frozen(c);
+        void Put(string key, Color c)
+        {
+            if (_previewColors.TryGetValue(key, out var old) && old == c) return;
+            _previewColors[key] = c;
+            _previewResources[key] = Frozen(c);
+        }
+        void PutBrush(string key, Brush brush) => Put(key, brush is SolidColorBrush b ? b.Color : Colors.Magenta);
+
         foreach (var (key, color) in theme.Colors) Put("C_" + key, color);
         switch (theme.Kind)
         {
             case CustomThemeKind.App:
-                var palette = AppPaletteBuilder.Build(theme);
-                foreach (var (key, color) in palette) Put(key, color);
-                Put("PaneHeaderBg", ThemeManager.PaneHeaderTint(palette["Panel"], palette["Accent"], palette["FgDim"]));
+                foreach (var (key, color) in AppPaletteBuilder.Build(theme)) Put(key, color);
                 break;
             case CustomThemeKind.Editor:
-                // エディタの部品は EditorThemePresets.Build と同じ決め方（行番号の帯・現在行・選択・検索・下の帯の文字）。
-                var bg = theme["background"];
-                var accent = theme["accent"];
-                var warning = theme["warning"];
-                Put("E_LineBg", CustomThemeFormat.Mix(bg, Colors.Black, theme.IsLight ? 0.035 : 0.06));
-                Put("E_CurrentLine", CustomThemeFormat.Mix(bg, theme["foreground"], 0.10));
-                Put("E_Selection", Color.FromArgb(0x66, accent.R, accent.G, accent.B));
-                Put("E_Search", Color.FromArgb(0xA0, warning.R, warning.G, warning.B));
-                static double L(Color c) => (0.299 * c.R + 0.587 * c.G + 0.114 * c.B) / 255.0;
-                Put("E_StatusFg", L(accent) > 0.55 ? Color.FromRgb(0x10, 0x10, 0x10) : Colors.White);
+                // 本物のエディタと同じ配色（行番号の帯・現在行・選択・検索・下の帯の文字）。
+                var editor = EditorThemePresets.FromCustom(theme);
+                PutBrush("E_LineBg", editor.LineNumberBg);
+                PutBrush("E_CurrentLine", editor.CurrentLineBg);
+                PutBrush("E_Selection", editor.SelectionBg);
+                PutBrush("E_Search", editor.SearchHighlightBg);
+                PutBrush("E_StatusFg", editor.StatusBarFg);
                 ErrorRun.TextDecorations = new TextDecorationCollection
                 {
                     new TextDecoration(TextDecorationLocation.Underline,
@@ -139,7 +160,7 @@ public partial class UserThemeEditorView : UserControl
                 };
                 break;
         }
-        PreviewRoot.Resources = dict;
+        if (!ReferenceEquals(PreviewRoot.Resources, _previewResources)) PreviewRoot.Resources = _previewResources;
         PreviewRoot.Background = Frozen(theme["background"]);
         _usageStroke = Frozen(theme.IsLight ? Color.FromRgb(0x10, 0x10, 0x10) : Colors.White);
         // 色を変えると見本の大きさも変わりうるので、囲みは並べ直しが済んでから描き直す。
@@ -237,6 +258,9 @@ public partial class UserThemeEditorView : UserControl
 
     private void OnWindowClosing(object? sender, CancelEventArgs e)
     {
-        if (!_vm.ConfirmLeave()) e.Cancel = true;
+        // 自動保存の書き残しをここで書き切る。書けなかったときだけ、閉じてよいか聞く。
+        if (!_vm.Flush() && MessageBox.Show("変更を保存できませんでした。保存せずに閉じますか？", "自分のテーマ",
+                MessageBoxButton.OKCancel, MessageBoxImage.Warning) != MessageBoxResult.OK)
+            e.Cancel = true;
     }
 }

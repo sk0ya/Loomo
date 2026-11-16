@@ -70,7 +70,29 @@ public sealed partial class AppearanceViewModel
         EditorThemes = _builtInEditorThemes.Concat(Chips(CustomThemeKind.Editor)).ToArray();
         TerminalThemes = _builtInTerminalThemes.Concat(Chips(CustomThemeKind.Terminal)).ToArray();
         PreviewThemes = _builtInPreviewThemes.Concat(Chips(CustomThemeKind.Preview)).ToArray();
-        UserThemeErrors = UserThemes.Errors.Count == 0 ? "" : "読めなかったテーマ：\n" + string.Join("\n", UserThemes.Errors);
+        var problems = UserThemes.Errors.Concat(MissingUserThemes()).ToArray();
+        UserThemeErrors = problems.Length == 0 ? "" : "読めなかったテーマ：\n" + string.Join("\n", problems);
+    }
+
+    /// <summary>欄で選んでいる自分のテーマが見つからないとき（消した・名前を変えた・前の形のまま）、その欄は既定の
+    /// 配色（一覧の先頭／アプリ全体は同梱のテーマ）で塗られる。黙って色が変わらないよう理由を並べる。</summary>
+    private IEnumerable<string> MissingUserThemes()
+    {
+        var ap = _settings.Appearance;
+        var saved = new (CustomThemeKind Kind, string? Key)[]
+        {
+            (CustomThemeKind.App, _settings.UserTheme is { } id ? CustomTheme.KeyPrefix + id : null),
+            (CustomThemeKind.Editor, ap.EditorTheme),
+            (CustomThemeKind.Terminal, ap.TerminalTheme),
+            (CustomThemeKind.Preview, ap.MarkdownPreviewTheme),
+        };
+        foreach (var (kind, key) in saved)
+        {
+            if (!UserThemes.IsUserKey(key) || UserThemes.TryGet(kind, key) is not null) continue;
+            var schema = ThemeSchemas.For(kind);
+            var name = key!.Trim()[CustomTheme.KeyPrefix.Length..];
+            yield return $"{schema.Title}で選んでいた「{name}」が {schema.Folder}/ に見つかりません（いまは既定の配色です）";
+        }
     }
 
     /// <summary>いまのアプリ全体テーマに当たる選択肢。自分のテーマが消えていたら同梱の <see cref="LoomoSettings.Theme"/>。</summary>
@@ -197,17 +219,13 @@ public sealed partial class AppearanceViewModel
             case CustomThemeKind.Terminal:
             {
                 var t = ShellAppearanceCoordinator.BuildTerminalColorTheme(key);
-                string[] ansi =
-                [
-                    "black", "red", "green", "yellow", "blue", "magenta", "cyan", "white",
-                    "brightBlack", "brightRed", "brightGreen", "brightYellow", "brightBlue", "brightMagenta", "brightCyan", "brightWhite",
-                ];
+                var ansi = ThemeSchemas.AnsiKeys;
                 var values = new Dictionary<string, Color>
                 {
                     ["background"] = t.Background, ["foreground"] = t.Foreground, ["cursor"] = t.Cursor,
                     ["selection"] = Opaque(t.SelectionBackground),
                 };
-                for (var i = 0; i < ansi.Length; i++) values[ansi[i]] = t.AnsiPalette[i];
+                for (var i = 0; i < ansi.Count; i++) values[ansi[i]] = t.AnsiPalette[i];
                 return values;
             }
             default:

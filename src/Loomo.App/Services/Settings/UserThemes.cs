@@ -163,6 +163,9 @@ public static class ThemeSchemas
         ["ログ・差分の表示"] = "ログ（.log）やパッチ（.patch）を表示するときの色です。",
     });
 
+    /// <summary>ターミナルの ANSI 16 色の欄の鍵（0〜15 の順）。<see cref="Terminal"/> の欄の並びから取る。</summary>
+    public static IReadOnlyList<string> AnsiKeys { get; } = Terminal.Slots.Skip(4).Select(s => s.Key).ToArray();
+
     public static ThemeSchema For(CustomThemeKind kind) => kind switch
     {
         CustomThemeKind.App => App,
@@ -233,7 +236,9 @@ public static class CustomThemeFormat
                 ?? throw new FormatException($"\"{p.Name}\" は{schema.Title}のテーマに無い鍵です");
             if (p.Value.ValueKind == JsonValueKind.Null) continue;
             if (p.Value.ValueKind != JsonValueKind.String || !TryParse(p.Value.GetString(), out var c))
-                throw new FormatException($"\"{p.Name}\" の色が読めません（\"#RRGGBB\" で書いてください）");
+                throw new FormatException(p.Value.ValueKind == JsonValueKind.String && p.Value.GetString()!.Trim().TrimStart('#').Length == 8
+                    ? $"\"{p.Name}\" は 8 桁です。透明度は使えないので \"#RRGGBB\" の 6 桁で書いてください"
+                    : $"\"{p.Name}\" の色が読めません（\"#RRGGBB\" で書いてください）");
             values[slot.Key] = c;
         }
         return Resolve(kind, id, path, name, values);
@@ -298,14 +303,14 @@ public static class CustomThemeFormat
 
     public static Color Parse(string hex) => TryParse(hex, out var c) ? c : System.Windows.Media.Colors.Magenta;
 
-    /// <summary>"#RRGGBB"（"#RGB"・"#AARRGGBB" も可）を読む。アルファは捨てる（テーマの色は不透明で扱う）。</summary>
+    /// <summary>"#RRGGBB"（"#RGB" も可）を読む。テーマの色は不透明で扱う。8 桁は読まない：VS Code・CSS は
+    /// #RRGGBBAA、WPF は #AARRGGBB で、どちらで読んでも片方から貼った色を黙って別の色にしてしまうため。</summary>
     public static bool TryParse(string? text, out Color color)
     {
         color = default;
         var s = text?.Trim().TrimStart('#');
         if (s is null) return false;
         if (s.Length == 3) s = string.Concat(s.Select(ch => new string(ch, 2)));
-        if (s.Length == 8) s = s[2..];
         if (s.Length != 6 || !int.TryParse(s, System.Globalization.NumberStyles.HexNumber, null, out var v)) return false;
         color = Color.FromRgb((byte)(v >> 16), (byte)(v >> 8), (byte)v);
         return true;
@@ -401,7 +406,7 @@ public static class UserThemes
     public static event Action? Changed;
 
     public static bool IsUserKey(string? key) =>
-        key is not null && key.StartsWith(CustomTheme.KeyPrefix, StringComparison.OrdinalIgnoreCase);
+        key is not null && key.AsSpan().TrimStart().StartsWith(CustomTheme.KeyPrefix, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>選択肢の保存値（<c>user:&lt;id&gt;</c>）からその種類のテーマを引く。それ以外の値・見つからないときは null。</summary>
     public static CustomTheme? TryGet(CustomThemeKind kind, string? key)
@@ -436,6 +441,11 @@ public static class UserThemes
             }
             all[schema.Kind] = list.ToImmutable();
         }
+        // 前の形（themes 直下の「部屋全体」テーマ）は読まない。黙って消えたように見えないよう、理由を出す。
+        if (Directory.Exists(Folder))
+            foreach (var path in Directory.EnumerateFiles(Folder, "*.json").OrderBy(p => p, StringComparer.OrdinalIgnoreCase))
+                errors.Add($"{System.IO.Path.GetFileName(path)}：前の形（部屋全体を 1 つで塗る）のテーマは読みません。" +
+                           "外観パネルの各欄の「自分で作る…」から種類ごとに作り直してください");
         _all = all.ToImmutable();
         _errors = errors.ToImmutable();
     }
@@ -481,8 +491,8 @@ public static class UserThemes
 }
 
 /// <summary>アプリの画面のテーマ → パレット（<c>Palette.Dark.xaml</c> と同じキー）。同梱テーマに課している決まり
-/// （AccentFg は <see cref="ThemeManager.AccentForeground"/>、ペインヘッダーの帯は本体とのコントラスト 1.18 前後で
-/// 暗色は明るく・明色は暗く）をここで満たす。</summary>
+/// （AccentFg は <see cref="ThemeManager.AccentForeground"/>、ペインヘッダーの帯は実行時と同じ
+/// <see cref="ThemeManager.PaneHeaderTint"/>）をここで満たす。</summary>
 public static class AppPaletteBuilder
 {
     public static IReadOnlyDictionary<string, Color> Build(CustomTheme t)
@@ -495,10 +505,9 @@ public static class AppPaletteBuilder
             : CustomThemeFormat.Mix(accent, Colors.White, 0.18);
 
         var bg = t["background"];
-        var edge = t.IsLight ? Colors.Black : Colors.White;
-        var header = bg;
-        for (var k = 0.0; k <= 1.0 && ThemeManager.Contrast(bg, header) < 1.18; k += 0.002)
-            header = CustomThemeFormat.Mix(bg, edge, k);
+        // 実行時は ThemeManager.ApplyPaneHeader が同じ式で上書きする。ここでもその値にしておけば、
+        // 辞書だけで塗る見本（編集画面）も実行時と同じ帯になる。
+        var header = ThemeManager.PaneHeaderTint(bg, accent, t["dim"]);
 
         var search = t["searchHighlight"];
         return new Dictionary<string, Color>

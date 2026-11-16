@@ -99,9 +99,8 @@ public class UserThemeTests
         Assert.Equal(PaletteKeys().OrderBy(k => k), p.Keys.OrderBy(k => k));
         Assert.Equal(ThemeManager.AccentForeground(p["Accent"]), p["AccentFg"]);
         Assert.True(ThemeManager.Contrast(p["Accent"], p["AccentFg"]) >= 4.5);
-        Assert.InRange(ThemeManager.Contrast(p["Panel"], p["PaneHeaderBg"]), 1.12, 1.26);
-        static double L(Color c) => (0.299 * c.R + 0.587 * c.G + 0.114 * c.B) / 255.0;
-        Assert.Equal(!t.IsLight, L(p["PaneHeaderBg"]) > L(p["Panel"]));
+        // ペインヘッダーの帯は実行時（ThemeManager.ApplyPaneHeader）と同じ値。
+        Assert.Equal(ThemeManager.PaneHeaderTint(p["Panel"], p["Accent"], p["FgDim"]), p["PaneHeaderBg"]);
         Assert.True(ThemeManager.Contrast(p["SelectionBg"], p["Fg"]) >= Math.Min(3.0, ThemeManager.Contrast(p["Bg"], p["Fg"])));
     }
 
@@ -163,11 +162,16 @@ public class UserThemeTests
             Assert.Equal(Color.FromRgb(0xFF, 0x00, 0xAA), ((SolidColorBrush)editor.TokenKeyword).Color);
             Assert.Equal(Color.FromRgb(0x11, 0x22, 0x33), ((SolidColorBrush)editor.Background).Color);
 
-            var terminal = ShellAppearanceCoordinator.BuildTerminalColorTheme("user:term");
+            var terminal = ShellAppearanceCoordinator.BuildTerminalColorTheme(" user:term ");   // 前後の空白は無視
             Assert.Equal(Color.FromRgb(0x01, 0x02, 0x03), terminal.Background);
             Assert.Equal(Color.FromRgb(0xAA, 0x00, 0x00), terminal.AnsiPalette[1]);
 
             Assert.Contains("#FAFAFA", MarkdownPage.BuildPage("<p>x</p>", "x.md", "user:doc"));
+
+            // 前の形（themes 直下の部屋全体テーマ）は読まないが、黙って消さずに理由を出す。
+            File.WriteAllText(Path.Combine(folder, "old.json"), """{ "background": "#000000", "foreground": "#FFFFFF" }""");
+            UserThemes.Reload();
+            Assert.Contains(UserThemes.Errors, e => e.StartsWith("old.json：前の形"));
 
             // 消えたテーマは既定へ落ちる（例外にならない）。
             Assert.Same(EditorTheme.Dracula, ShellAppearanceCoordinator.ResolveEditorTheme("user:gone"));
@@ -247,6 +251,29 @@ public class UserThemeTests
             var preview = MarkdownPage.NormalizeStyle(name);
             Assert.True(theme is AppTheme.Dracula || preview != "Dracula", $"{theme}: プレビューが既定へ落ちた");
         }
+    }
+
+    /// <summary>8 桁の 16 進は #RRGGBBAA（VS Code・CSS）と #AARRGGBB（WPF）のどちらとも決められないので読まない
+    /// （貼った色を黙って別の色にしない）。JSON では 6 桁で書くよう理由を出す。</summary>
+    [Fact]
+    public void 八桁の16進は読まずに理由を出す()
+    {
+        Assert.False(CustomThemeFormat.TryParse("#264F78CC", out _));
+        Assert.True(CustomThemeFormat.TryParse(" #abc ", out var c));
+        Assert.Equal(Color.FromRgb(0xAA, 0xBB, 0xCC), c);
+        var ex = Assert.Throws<FormatException>(() =>
+            Read(CustomThemeKind.Editor, """{ "background": "#264F78CC", "foreground": "#FFFFFF" }"""));
+        Assert.Contains("6 桁", ex.Message);
+    }
+
+    [Fact]
+    public void ANSIの鍵はターミナルの欄の並びどおり16色()
+    {
+        Assert.Equal(16, ThemeSchemas.AnsiKeys.Count);
+        Assert.Equal("black", ThemeSchemas.AnsiKeys[0]);
+        Assert.Equal("white", ThemeSchemas.AnsiKeys[7]);
+        Assert.Equal("brightBlack", ThemeSchemas.AnsiKeys[8]);
+        Assert.Equal("brightWhite", ThemeSchemas.AnsiKeys[15]);
     }
 
     /// <summary>ピッカーの HSV ⇄ RGB が往復で色を崩さないこと（16 進で打った色がそのまま戻る）。</summary>
