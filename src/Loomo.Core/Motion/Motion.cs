@@ -154,6 +154,9 @@ public sealed record MotionSnapshot(
 {
     public const string TriggerTurn = "turn";
     public const string TriggerManual = "manual";
+    /// <summary>Claude のターンが終わる直前（Stop フック）に録ったもの。「壊れたら直させる」（§45.6）の判定に使う。
+    /// 添える知らせの元にはしない（判定の結果を Stop の返事で直接伝えるため）。</summary>
+    public const string TriggerStop = "stop";
     public const string TriggerOrder = "order";
 
     /// <summary>録ったときの作業ツリーの印（HEAD と変更のあるファイル）。同じなら、ターンの終わりに録り直さない。</summary>

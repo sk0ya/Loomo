@@ -20,6 +20,7 @@ public partial class ShellWindow {
     private System.Text.Json.Nodes.JsonObject? ClaudeNoteForPrompt(System.Text.Json.Nodes.JsonObject hookEvent) {
         if ((string?)hookEvent["session_id"] is not { Length: > 0 } session)
             return null;
+        _continuations.TryRemove(session, out _);   // 新しい頼みごと：続けさせた回数を数え直す（§45.6）
         var notes = _claudeNotes.Take(session);
         if (notes.Count == 0)
             return null;
@@ -154,6 +155,8 @@ public partial class ShellWindow {
         public Task<System.Text.Json.Nodes.JsonObject?> HookAsync(LoomoCaller caller, System.Text.Json.Nodes.JsonObject hookEvent) {
             if ((string?)hookEvent["hook_event_name"] == "UserPromptSubmit")
                 return Task.FromResult(window.ClaudeNoteForPrompt(hookEvent));
+            if ((string?)hookEvent["hook_event_name"] == "Stop")
+                return window.ClaudeStopDecisionAsync(caller, hookEvent);
             if (caller.Tab is { } tab && !caller.Nested)
                 window.Dispatcher.BeginInvoke(() => window.OnClaudeHook(tab, hookEvent));
             return Task.FromResult<System.Text.Json.Nodes.JsonObject?>(null);

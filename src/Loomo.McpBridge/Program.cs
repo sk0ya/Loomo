@@ -11,7 +11,11 @@ if (args.Length > 0 && args[0] == "hook")
     {
         using var stdin = new StreamReader(Console.OpenStandardInput(), utf8);
         var payload = await stdin.ReadToEndAsync();
-        var relay = new HookRelay(StdioBridge.DefaultEndpointFile, BridgeContext.Detect(), TimeSpan.FromSeconds(3));
+        // Stop は Loomo が動きを録り終えるまで待つ（§45.6）。それ以外は短く（プロンプトごとに乗る）。
+        var isStop = System.Text.Json.Nodes.JsonNode.Parse(payload) is System.Text.Json.Nodes.JsonObject o
+                     && (string?)o["hook_event_name"] == "Stop";
+        var relay = new HookRelay(StdioBridge.DefaultEndpointFile, BridgeContext.Detect(),
+            TimeSpan.FromSeconds(isStop ? 95 : 3));
         if (await relay.RelayAsync(payload, CancellationToken.None) is { } reply)
         {
             using var stdout = new StreamWriter(Console.OpenStandardOutput(), utf8);

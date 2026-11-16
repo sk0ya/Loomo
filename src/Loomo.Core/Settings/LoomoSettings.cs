@@ -53,6 +53,10 @@ public sealed class LoomoSettings
     /// 既定は ON。切り替えは Loomo の再起動後に効く（開いているターミナルの環境変数は変えられないため）。</summary>
     public bool ClaudeCodeIdeIntegration { get; set; } = true;
 
+    /// <summary>動きが悪い方へ変わったら、Claude に直させる（§45.6 P3）。ターンの終わりに動きを録り、悪くなっていれば
+    /// Claude のターンを続けさせる（1 つの頼みごとで最大 2 回）。既定は切（止まる判断を Claude に渡すのは人間が決める）。</summary>
+    public bool ClaudeContinueOnBrokenMotion { get; set; } = false;
+
     /// <summary>Git ペインの下段「コミット詳細」（選択コミットの <c>git show --stat</c>）を表示するか。
     /// 既定は表示。Git ペインのタイトル領域のトグルからここへ書き戻され、次回起動でも保たれる。</summary>
     public bool GitCommitDetailVisible { get; set; } = true;

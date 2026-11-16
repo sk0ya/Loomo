@@ -129,7 +129,11 @@ public static class ClaudeHookInstaller
 
     /// <summary>Loomo が聞くフック。Notification＝承認待ちの区別、SessionStart＝どのタブがどのセッションか
     /// （再開・コンテキスト量の表示に使う）、UserPromptSubmit＝次の頼みごとに Loomo の知らせ（動きの変化・指摘）を添える（§45.6）。</summary>
-    public static readonly string[] Events = ["Notification", "SessionStart", "UserPromptSubmit"];
+    public static readonly string[] Events = ["Notification", "SessionStart", "UserPromptSubmit", "Stop"];
+
+    /// <summary>フックの待ち時間（秒）。Stop は動きを録り終えるまで待つので長い（§45.6）。他は短いまま。</summary>
+    public const int StopTimeoutSeconds = 100;
+    public const int DefaultTimeoutSeconds = 10;
 
     /// <summary>フックのスクリプト本体。LOOMO_* が無ければ（Loomo の外の claude）即終了する。</summary>
     public const string Script = """
@@ -202,7 +206,7 @@ public static class ClaudeHookInstaller
             {
                 ["type"] = "command",
                 ["command"] = CommandFor(scriptPath),
-                ["timeout"] = 10,
+                ["timeout"] = eventName == "Stop" ? StopTimeoutSeconds : DefaultTimeoutSeconds,
             }),
         });
     }

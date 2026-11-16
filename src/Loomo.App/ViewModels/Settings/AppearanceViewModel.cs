@@ -97,6 +97,7 @@ public sealed partial class AppearanceViewModel : ObservableObject
     [ObservableProperty] private bool _persistentTerminalSessions;
     [ObservableProperty] private bool _notifyLongTerminalCommands;
     [ObservableProperty] private bool _claudeCodeIdeIntegration;
+    [ObservableProperty] private bool _claudeContinueOnBrokenMotion;
 
     /// <summary>アクセント上書きを反映中の再入を防ぐフラグ（コンボ選択 ⇄ AccentColor の往復ループ回避）。</summary>
     private bool _syncingAccent;
@@ -345,6 +346,7 @@ public sealed partial class AppearanceViewModel : ObservableObject
         _persistentTerminalSessions = _settings.PersistentTerminalSessions;
         _notifyLongTerminalCommands = _settings.NotifyLongTerminalCommands;
         _claudeCodeIdeIntegration = _settings.ClaudeCodeIdeIntegration;
+        _claudeContinueOnBrokenMotion = _settings.ClaudeContinueOnBrokenMotion;
     }
 
     /// <summary>Key が保存値と一致する選択肢を返す。無ければ <paramref name="fallbackIndex"/> 番目（既定）。</summary>
@@ -518,6 +520,15 @@ public sealed partial class AppearanceViewModel : ObservableObject
         if (_settings.Appearance.TerminalLineTimeOnHover == value) return;
         _settings.Appearance.TerminalLineTimeOnHover = value;
         PersistAppearance(value ? "ターミナルの行に出た時刻を出します" : "ターミナルの行に出た時刻を出しません");
+    }
+
+    partial void OnClaudeContinueOnBrokenMotionChanged(bool value)
+    {
+        if (_settings.ClaudeContinueOnBrokenMotion == value) return;
+        _settings.ClaudeContinueOnBrokenMotion = value;
+        Persist(value
+            ? "動きが悪くなったら Claude に直させます（ターンの終わりに動きを録ります）"
+            : "動きが悪くなっても Claude を止めません");
     }
 
     partial void OnClaudeCodeIdeIntegrationChanged(bool value)

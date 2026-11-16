@@ -158,7 +158,7 @@ public sealed class ClaudeRoomLinkTests : IDisposable
         var config = Path.Combine(_directory, "claude");
         Directory.CreateDirectory(config);
         var exe = Path.Combine(_directory, "mcp-bridge", "sk0ya.Loomo.McpBridge.exe");
-        var legacy = JsonNode.Parse("""{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"x"}]}]}}""")!.AsObject();
+        var legacy = JsonNode.Parse("""{"hooks":{"PostToolUse":[{"hooks":[{"type":"command","command":"x"}]}]}}""")!.AsObject();
         ClaudeHookInstaller.AddTo(legacy, ClaudeHookInstaller.DefaultScriptPath());
         File.WriteAllText(Path.Combine(config, "settings.json"), legacy.ToJsonString());
         Assert.True(ClaudeHookInstaller.IsLegacyInstalled(config));
@@ -173,7 +173,7 @@ public sealed class ClaudeRoomLinkTests : IDisposable
         Assert.Equal(ClaudeHookInstaller.Events.Length, commands.Count);
         Assert.False(ClaudeHookInstaller.IsLegacyInstalled(config));
         Assert.True(ClaudeHookInstaller.IsInstalled(config, exe));
-        Assert.NotNull(settings["hooks"]!["Stop"]);   // 人のフックは残る
+        Assert.NotNull(settings["hooks"]!["PostToolUse"]);   // 人のフックは残る
         Assert.False(ClaudeHookInstaller.Install(config, exe));
 
         Assert.True(ClaudeHookInstaller.Uninstall(config, exe));

@@ -855,6 +855,14 @@
                                 <TextBlock Style="{StaticResource FieldHint}"
                                            Text="切り替えは Loomo の再起動後に効きます。" />
 
+                                <CheckBox Margin="0,12,0,0"
+                                          IsChecked="{Binding Appearance.ClaudeContinueOnBrokenMotion}"
+                                          ToolTip="動きの記録（§44.3）で悪い方へ変わったら、ターンを終えようとしている Claude に直すよう続けさせます（1 つの頼みごとで最大 2 回）。既定は切。">
+                                    <TextBlock Text="動きが悪くなったら Claude に直させる（既定は切）" TextWrapping="Wrap" />
+                                </CheckBox>
+                                <TextBlock Style="{StaticResource FieldHint}"
+                                           Text="ターンの終わりに動きを録るので、少し待ってから Claude が止まります。" />
+
                                 <TextBlock Text="{Binding Appearance.Status}" Foreground="{DynamicResource FgDim}"
                                            Margin="0,14,0,0" TextWrapping="Wrap" FontSize="{DynamicResource Fs11}" />
                             </StackPanel>
