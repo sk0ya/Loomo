@@ -18,7 +18,7 @@ public sealed class EditorFooterScene : IScene
 
     public string Name => "editor-footer";
     public string Description => "エディタのフッター（ステータスバー）をエディタのテーマごとに";
-    public Size Size => new(1100, 90 * Themes.Length);
+    public Size Size => new(1100, 90 * Themes.Length + 3 * 34 + 20);
 
     public FrameworkElement Build()
     {
@@ -48,6 +48,23 @@ public sealed class EditorFooterScene : IScene
             bar.UpdateStatus("\"ShellWindow.xaml.cs\" 1234L written");
             bar.UpdateCursor(new CursorPosition(41, 7), 1234);
             if (i == 0) bar.ShowCompletions(["edit", "enew", "echo"], 1);
+            root.Children.Add(bar);
+            root.Children.Add(new Border { Height = 10 });
+        }
+
+        // 狭いペイン：ファイル名だけが省略され、[dos] [utf-8] [+] は残る（メッセージは残りの幅で省略）。
+        foreach (var width in new[] { 640.0, 440.0, 330.0 })
+        {
+            var bar = new VimStatusBar
+            {
+                Theme = (EditorTheme)method.Invoke(null, ["light"])!,
+                Width = width,
+                HorizontalAlignment = HorizontalAlignment.Left,
+            };
+            bar.UpdateFile(@"C:\work\my-theme-2.json", modified: true, "dos", "utf-8");
+            bar.UpdateGitBranch("main");
+            bar.UpdateStatus("\"my-theme-2.json\" 39L written");
+            bar.UpdateCursor(new CursorPosition(0, 0), 39);
             root.Children.Add(bar);
             root.Children.Add(new Border { Height = 10 });
         }
