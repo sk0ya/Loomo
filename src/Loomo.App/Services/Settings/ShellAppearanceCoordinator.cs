@@ -97,7 +97,7 @@ public sealed class ShellAppearanceCoordinator
     public void ApplyTerminalAppearance(TerminalTabView view)
     {
         var appearance = _settings.Appearance;
-        view.SetColorTheme(BuildTerminalColorTheme(appearance.TerminalTheme));
+        view.SetColorTheme(BuildTerminalColorTheme(_settings.EffectiveTerminalTheme));
         var family = string.IsNullOrWhiteSpace(appearance.TerminalFontFamily)
             ? view.FontFamilyName : appearance.TerminalFontFamily;
         var size = appearance.TerminalFontSize > 0 ? appearance.TerminalFontSize : view.TerminalFontSize;
@@ -110,7 +110,7 @@ public sealed class ShellAppearanceCoordinator
     {
         var accent = _accentColor();
         var selection = new SolidColorBrush(Color.FromArgb(0x99, accent.R, accent.G, accent.B));
-        var baseTheme = ResolveEditorTheme(_settings.Appearance.EditorTheme);
+        var baseTheme = ResolveEditorTheme(_settings.EffectiveEditorTheme);
         var clone = new EditorTheme();
         foreach (var property in typeof(EditorTheme).GetProperties(BindingFlags.Public | BindingFlags.Instance))
         {

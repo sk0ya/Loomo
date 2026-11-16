@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
 using System.Windows;
@@ -85,7 +86,7 @@ public partial class UserThemeEditorView : UserControl
             HorizontalOffset = 8,
             PopupAnimation = PopupAnimation.Fade,
         };
-        _pickerPopup.Closed += (_, _) => { BindingOperations.ClearBinding(_picker, ColorPicker.SelectedColorProperty); _activeSlot = null; };
+        _pickerPopup.Closed += (_, _) => { BindingOperations.ClearBinding(_picker, ColorPicker.SelectedColorProperty); _activeSlot = null; ShowUsage(null); };
 
         vm.PropertyChanged += OnVmPropertyChanged;
         ApplyPreview(vm.Preview);
@@ -119,6 +120,10 @@ public partial class UserThemeEditorView : UserControl
         for (var i = 0; i < theme.Ansi.Count; i++) Put($"PvAnsi{i}", theme.Ansi[i]);
         PreviewRoot.Resources = dict;
         AnsiRow.ItemsSource = theme.Ansi.Select(Frozen).ToArray();
+        _usageStroke = Frozen(theme.IsLight ? Color.FromRgb(0x10, 0x10, 0x10) : Colors.White);
+        // 色を変えると見本の大きさも変わりうるので、囲みは並べ直しが済んでから描き直す。
+        if (_shownSlot is not null)
+            Dispatcher.BeginInvoke(() => ShowUsage(_shownSlot), System.Windows.Threading.DispatcherPriority.Loaded);
     }
 
     private static SolidColorBrush Frozen(Color c)
@@ -142,6 +147,69 @@ public partial class UserThemeEditorView : UserControl
             new Binding(nameof(ColorSlotViewModel.Color)) { Source = slot, Mode = BindingMode.TwoWay });
         _pickerPopup.PlacementTarget = target;
         _pickerPopup.IsOpen = true;
+        ShowUsage(slot);
+    }
+
+    // ===== 色の使われ所をプレビューで囲む =====
+
+    private ColorSlotViewModel? _shownSlot;
+    private Brush _usageStroke = Brushes.White;
+
+    private void OnSlotMouseEnter(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        if (sender is FrameworkElement { DataContext: ColorSlotViewModel slot }) ShowUsage(slot);
+    }
+
+    /// <summary>カーソルが離れたら、ピッカーで選んでいる欄があればそちらへ戻す。</summary>
+    private void OnSlotMouseLeave(object sender, System.Windows.Input.MouseEventArgs e) => ShowUsage(_activeSlot);
+
+    /// <summary>その欄の色を使っている見本（Tag="use:…" に鍵を含むもの）を点線で囲み、見出しに何の色かを出す。
+    /// null なら囲みを消す。</summary>
+    private void ShowUsage(ColorSlotViewModel? slot)
+    {
+        _shownSlot = slot;
+        UsageLayer.Children.Clear();
+        if (slot is null)
+        {
+            PreviewCaption.Text = "プレビュー";
+            return;
+        }
+        var count = 0;
+        foreach (var element in Tagged(PreviewRoot))
+        {
+            if (element.Tag is not string tag || !tag.StartsWith("use:", StringComparison.Ordinal)
+                || !tag[4..].Split(' ').Contains(slot.Key) || !element.IsVisible) continue;
+            var bounds = element.TransformToVisual(UsageLayer).TransformBounds(new Rect(element.RenderSize));
+            bounds.Inflate(2, 2);
+            var box = new System.Windows.Shapes.Rectangle
+            {
+                Width = Math.Max(0, bounds.Width),
+                Height = Math.Max(0, bounds.Height),
+                Stroke = _usageStroke,
+                StrokeThickness = 2,
+                StrokeDashArray = new DoubleCollection { 3, 2 },
+                RadiusX = 4,
+                RadiusY = 4,
+                Fill = new SolidColorBrush(Color.FromArgb(0x22, slot.Color.R, slot.Color.G, slot.Color.B)),
+            };
+            Canvas.SetLeft(box, bounds.X);
+            Canvas.SetTop(box, bounds.Y);
+            UsageLayer.Children.Add(box);
+            count++;
+        }
+        PreviewCaption.Text = count > 0
+            ? $"プレビュー — 「{slot.Label}」が使われている所を点線で囲んでいます"
+            : $"プレビュー — 「{slot.Label}」はこの見本には出てきません";
+    }
+
+    private static IEnumerable<FrameworkElement> Tagged(DependencyObject root)
+    {
+        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            if (child is FrameworkElement { Tag: string } fe) yield return fe;
+            foreach (var nested in Tagged(child)) yield return nested;
+        }
     }
 
     private void OnWindowClosing(object? sender, CancelEventArgs e)

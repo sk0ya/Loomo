@@ -24,7 +24,7 @@ public sealed class NdjsonEditorSupport : IEditorSupportIncrementalHtmlProvider
 
     public string RenderHtml(string filePath, string text)
         => JsonPreviewPage.BuildPage(
-            RenderBody(filePath, text), DescribeTitle(filePath), _settings.Appearance.MarkdownPreviewTheme);
+            RenderBody(filePath, text), DescribeTitle(filePath), _settings.EffectivePreviewTheme);
 
     public string RenderBody(string filePath, string text)
         => JsonTreeRenderer.RenderTree(NdjsonToJsonArray(text));
@@ -32,7 +32,7 @@ public sealed class NdjsonEditorSupport : IEditorSupportIncrementalHtmlProvider
     // ページの体裁（対象ファイル・テーマ）だけを鍵にする＝同じファイルを同じテーマで編集している間は
     // #json-root の差し替えだけで更新できる（JsonEditorSupport と同じ方針）。
     public string PageContextKey(string filePath, string text)
-        => string.Join("\n", filePath, _settings.Appearance.MarkdownPreviewTheme);
+        => string.Join("\n", filePath, _settings.EffectivePreviewTheme);
 
     /// <summary>1 行 1 レコードのレコード数上限。超過分は捨てて末尾に注記を入れる（巨大ファイルで UI を固めない）。</summary>
     private const int MaxRecords = 50_000;

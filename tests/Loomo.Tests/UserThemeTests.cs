@@ -199,6 +199,44 @@ public class UserThemeTests
         Assert.Contains(warnings, w => w.Key == "keyword");
     }
 
+    /// <summary>エディタ・ターミナル・プレビューは、個別に選ぶと決めない限りアプリ全体のテーマに揃う
+    /// （同梱テーマは名前、自分のテーマは user:id）。個別の値は「個別に選ぶ」の間だけ効く。</summary>
+    [Fact]
+    public void エディタとターミナルとプレビューはテーマに揃う()
+    {
+        var s = new sk0ya.Loomo.Core.Settings.LoomoSettings { Theme = AppTheme.Nord };
+        s.Appearance.EditorTheme = "Monokai";
+        s.Appearance.TerminalTheme = "Light";
+        s.Appearance.MarkdownPreviewTheme = "GitHub";
+
+        Assert.Equal("Nord", s.EffectiveEditorTheme);
+        Assert.Equal("Nord", s.EffectiveTerminalTheme);
+        Assert.Equal("Nord", s.EffectivePreviewTheme);
+
+        s.UserTheme = "mine";
+        Assert.Equal("user:mine", s.EffectiveEditorTheme);
+
+        s.Appearance.PerAreaThemes = true;
+        Assert.Equal("Monokai", s.EffectiveEditorTheme);
+        Assert.Equal("Light", s.EffectiveTerminalTheme);
+        Assert.Equal("GitHub", s.EffectivePreviewTheme);
+    }
+
+    /// <summary>テーマ名をそのまま配ると、どの同梱テーマもエディタ・ターミナル・プレビューで既定（Dracula / Dark）へ
+    /// 落ちずに自分の配色になること（高コントラストのプレビューだけは専用が無いので Dark）。</summary>
+    [Fact]
+    public void どの同梱テーマも各所で自分の配色に解決される()
+    {
+        foreach (var theme in Enum.GetValues<AppTheme>())
+        {
+            var name = theme.ToString();
+            if (theme is not AppTheme.Dracula)
+                Assert.NotSame(Editor.Controls.Themes.EditorTheme.Dracula, ShellAppearanceCoordinator.ResolveEditorTheme(name));
+            var preview = MarkdownPage.NormalizeStyle(name);
+            Assert.True(theme is AppTheme.Dracula || preview != "Dracula", $"{theme}: プレビューが既定へ落ちた");
+        }
+    }
+
     /// <summary>ピッカーの HSV ⇄ RGB が往復で色を崩さないこと（16 進で打った色がそのまま戻る）。</summary>
     [Theory]
     [InlineData("#000000")]

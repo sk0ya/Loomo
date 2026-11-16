@@ -965,7 +965,7 @@ internal static class MarkdownPage
         UserThemes.IsUserKey(styleName?.Trim()) ? styleName!.Trim() :
         styleName?.Trim().ToLowerInvariant() switch
         {
-            "dark" => "Dark",
+            "dark" or "highcontrast" => "Dark",
             "light" => "Light",
             "github" or "githublight" => "GitHub",
             "nord" => "Nord",

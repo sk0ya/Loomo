@@ -29,7 +29,7 @@ public sealed class JsonEditorSupport : IEditorSupportIncrementalHtmlProvider
 
     public string RenderHtml(string filePath, string text)
         => JsonPreviewPage.BuildPage(JsonTreeRenderer.RenderTree(text, Validate(filePath, text)),
-            DescribeTitle(filePath), _settings.Appearance.MarkdownPreviewTheme);
+            DescribeTitle(filePath), _settings.EffectivePreviewTheme);
 
     public string RenderBody(string filePath, string text)
         => JsonTreeRenderer.RenderTree(text, Validate(filePath, text));
@@ -44,7 +44,7 @@ public sealed class JsonEditorSupport : IEditorSupportIncrementalHtmlProvider
     // ページの体裁（対象ファイル・テーマ）だけを鍵にする。本文そのものは含めない＝同じファイルを
     // 同じテーマで編集している間は #json-root の差し替えだけで更新できる。
     public string PageContextKey(string filePath, string text)
-        => string.Join("\n", filePath, _settings.Appearance.MarkdownPreviewTheme);
+        => string.Join("\n", filePath, _settings.EffectivePreviewTheme);
 }
 
 /// <summary>

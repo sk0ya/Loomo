@@ -287,7 +287,7 @@ public sealed class SqliteEditorSupport : IEditorSupportHtmlProvider
 
     public string RenderHtml(string filePath, string text)
     {
-        var theme = _settings.Appearance.MarkdownPreviewTheme;
+        var theme = _settings.EffectivePreviewTheme;
         try
         {
             var tables = SqlitePreviewReader.Read(filePath);
@@ -333,7 +333,7 @@ public sealed class ParquetEditorSupport : IEditorSupportHtmlProvider
 
     public string RenderHtml(string filePath, string text)
     {
-        var theme = _settings.Appearance.MarkdownPreviewTheme;
+        var theme = _settings.EffectivePreviewTheme;
         try
         {
             var preview = ParquetPreviewReader.Read(filePath);

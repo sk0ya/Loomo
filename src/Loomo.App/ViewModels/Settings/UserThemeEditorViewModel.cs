@@ -317,6 +317,10 @@ public sealed partial class UserThemeEditorViewModel : ObservableObject, IDispos
         }
     }
 
+    /// <summary>テーマのファイルが入っているフォルダーをエクスプローラーで開く。</summary>
+    [RelayCommand]
+    private void OpenFolder() => _appearance.OpenUserThemesFolderCommand.Execute(null);
+
     /// <summary>JSON を直接開く（ui / ansi の直接指定など、画面に出していない項目を書きたいとき）。</summary>
     [RelayCommand]
     private void OpenJson()
@@ -337,6 +341,8 @@ public sealed partial class ColorSlotViewModel : ObservableObject
     public string Label => Info.Label;
     public string Group => Info.Group;
     public string Hint => Info.Hint;
+    public string Usage => Info.Usage;
+    public string GroupDescription => UserThemeDraft.GroupDescriptions.GetValueOrDefault(Info.Group, "");
     public bool CanBeAuto => !Info.Required;
 
     /// <summary>書き換えられた（ピッカー・16 進・自動の切替）。</summary>

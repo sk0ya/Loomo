@@ -202,7 +202,7 @@ internal sealed class DetachedEditorSupportView : Grid, IDisposable
         var cts = _renderCts = new CancellationTokenSource();
         var ct = cts.Token;
 
-        var theme = _settings.Appearance.MarkdownPreviewTheme;
+        var theme = _settings.EffectivePreviewTheme;
         var filePath = _source.FilePath;
         // 解決は本体と同じ Resolver を通す（Registry を直に引くと Hex/コードのフォールバックが抜ける）。
         var selection = string.IsNullOrEmpty(filePath) ? null : _resolver.Resolve(filePath);

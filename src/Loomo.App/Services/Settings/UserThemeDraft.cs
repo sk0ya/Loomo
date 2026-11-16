@@ -18,24 +18,32 @@ public sealed class UserThemeDraft
     /// <summary>基準色の欄。並びは編集画面の並び（JSON に書く並びも同じ）。</summary>
     public static readonly IReadOnlyList<SlotInfo> SlotInfos =
     [
-        new("background", "背景", "基本", true, "部屋全体の地の色"),
-        new("foreground", "文字", "基本", true, "本文の文字色"),
-        new("dim", "控えめな文字", "基本", false, "補足・コメント・行番号（自動＝背景と文字の中間）"),
-        new("accent", "アクセント", "基本", false, "選択中の印・ボタン・カーソル（自動＝青）"),
-        new("red", "赤", "6 色", false, "エラー・削除・ターミナルの赤"),
-        new("yellow", "黄", "6 色", false, "警告・検索ヒット・ターミナルの黄"),
-        new("green", "緑", "6 色", false, "成功・追加・ターミナルの緑"),
-        new("cyan", "水色", "6 色", false, "プロパティ・ターミナルの水色"),
-        new("blue", "青", "6 色", false, "リンク・ターミナルの青"),
-        new("magenta", "紫", "6 色", false, "ターミナルの紫"),
-        new("keyword", "キーワード", "構文", false, "if / class など（自動＝紫）"),
-        new("string", "文字列", "構文", false, "\"…\"（自動＝緑）"),
-        new("number", "数値", "構文", false, "123・定数（自動＝黄）"),
-        new("type", "型", "構文", false, "クラス名・型名（自動＝水色）"),
-        new("function", "関数", "構文", false, "関数・メソッド名（自動＝青）"),
+        new("background", "背景", "背景・文字・アクセント", true, "地の色", "部屋全体の地の色（エディタ・ターミナルの背景も）"),
+        new("foreground", "文字", "背景・文字・アクセント", true, "本文", "本文・コードの文字色"),
+        new("dim", "控えめな文字", "背景・文字・アクセント", false, "補足・コメント", "補足の文字・コメント・行番号。自動なら背景と文字の中間"),
+        new("accent", "アクセント", "背景・文字・アクセント", false, "選択・ボタン", "選択中の印・ボタン・選択行・ペインの見出しの色味。自動なら青"),
+        new("red", "赤", "エラー・警告・成功とターミナルの色", false, "エラー・削除", "エラー・テストの失敗・削除行と、ターミナルの赤"),
+        new("yellow", "黄", "エラー・警告・成功とターミナルの色", false, "警告・検索", "警告・検索ヒットの下地と、ターミナルの黄"),
+        new("green", "緑", "エラー・警告・成功とターミナルの色", false, "成功・追加", "成功・テストの合格・追加行と、ターミナルの緑"),
+        new("cyan", "水色", "エラー・警告・成功とターミナルの色", false, "プロパティ", "構造の一覧のプロパティの印と、ターミナルの水色"),
+        new("blue", "青", "エラー・警告・成功とターミナルの色", false, "リンク・パス", "リンクと、ターミナルの青（パスやディレクトリ）"),
+        new("magenta", "紫", "エラー・警告・成功とターミナルの色", false, "ターミナル", "ターミナルの紫"),
+        new("keyword", "キーワード", "コードの色分け", false, "class・if", "class・if・const など。自動なら紫"),
+        new("string", "文字列", "コードの色分け", false, "\"…\"", "\"…\" で囲んだ文字列。自動なら緑"),
+        new("number", "数値", "コードの色分け", false, "42・定数", "数値・定数。自動なら黄"),
+        new("type", "型", "コードの色分け", false, "クラス名", "クラス名・型名。自動なら水色"),
+        new("function", "関数", "コードの色分け", false, "メソッド名", "関数・メソッドの名前。自動なら青"),
     ];
 
-    public sealed record SlotInfo(string Key, string Label, string Group, bool Required, string Hint);
+    public sealed record SlotInfo(string Key, string Label, string Group, bool Required, string Usage, string Hint);
+
+    /// <summary>グループの見出しの下に出す 1 行の説明（何の色の集まりか）。</summary>
+    public static readonly IReadOnlyDictionary<string, string> GroupDescriptions = new Dictionary<string, string>
+    {
+        ["背景・文字・アクセント"] = "部屋全体の見た目は、ほぼこの 4 色で決まります。",
+        ["エラー・警告・成功とターミナルの色"] = "失敗やエラーは赤、警告は黄、成功は緑で出ます。ターミナルに出る色付きの文字も、この 6 色から作ります。",
+        ["コードの色分け"] = "エディタでコードに付く色です。「自動」のままなら、上の 6 色から取ります。",
+    };
 
     public string Name { get; set; } = "自分のテーマ";
 

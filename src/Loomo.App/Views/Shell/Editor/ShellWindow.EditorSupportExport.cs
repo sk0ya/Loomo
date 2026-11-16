@@ -30,7 +30,7 @@ public partial class ShellWindow {
         try {
             var portable = await _editorSupport.Pipeline.RenderPortableHtmlAsync(provider,
                 EditorSupportContext.For(_workspace, filePath, text, null,
-                    _settings.Appearance.MarkdownPreviewTheme), sourceDir, assetsDir);
+                    _settings.EffectivePreviewTheme), sourceDir, assetsDir);
             if (portable is null)
                 return;
             await File.WriteAllTextAsync(target, portable, System.Text.Encoding.UTF8);
@@ -76,7 +76,7 @@ public partial class ShellWindow {
         try {
             var markdown = await _editorSupport.Pipeline.RenderMarkdownAsync(provider,
                 EditorSupportContext.For(_workspace, filePath, text, null,
-                    _settings.Appearance.MarkdownPreviewTheme));
+                    _settings.EffectivePreviewTheme));
             if (markdown is null)
                 return;
             await File.WriteAllTextAsync(dialog.FileName, markdown, System.Text.Encoding.UTF8);

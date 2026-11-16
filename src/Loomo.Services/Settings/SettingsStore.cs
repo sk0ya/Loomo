@@ -527,6 +527,9 @@ public sealed class SettingsStore
         /// <summary>袖の列数（1／2）。0＝旧設定（未指定）→ 既定（1列）を維持。</summary>
         public int WingColumns { get; set; }
 
+        /// <summary>エディタ・ターミナル・プレビューの配色を個別に選ぶか。null＝旧設定 → 既定（選ばない＝テーマに揃える）。</summary>
+        public bool? PerAreaThemes { get; set; }
+
         public static PersistedAppearance From(AppearanceSettings a) => new()
         {
             EditorTheme = a.EditorTheme,
@@ -538,6 +541,7 @@ public sealed class SettingsStore
             TerminalFontSize = a.TerminalFontSize,
             UiFontSize = a.UiFontSize,
             WingColumns = a.WingColumns,
+            PerAreaThemes = a.PerAreaThemes,
         };
 
         public void ApplyTo(AppearanceSettings a)
@@ -550,6 +554,7 @@ public sealed class SettingsStore
             a.TerminalFontFamily = string.IsNullOrWhiteSpace(TerminalFontFamily) ? null : TerminalFontFamily;
             if (TerminalFontSize > 0) a.TerminalFontSize = TerminalFontSize;
             if (UiFontSize > 0) a.UiFontSize = UiFontSize;
+            if (PerAreaThemes is { } perArea) a.PerAreaThemes = perArea;
             if (WingColumns > 0) a.WingColumns = WingColumns;   // 0＝旧設定（未指定）は既定（1列）のまま
         }
     }
