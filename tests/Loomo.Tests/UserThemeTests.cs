@@ -154,6 +154,67 @@ public class UserThemeTests
         });
     }
 
+    /// <summary>編集画面の下書き：読んで書き戻すと、手で決めた色・自動・ui/ansi の直接指定がそのまま残ること
+    /// （画面に出していない項目を保存で消さない）。</summary>
+    [Fact]
+    public void 下書きは読んで書き戻しても中身が変わらない()
+    {
+        var ansi = string.Join(", ", Enumerable.Range(0, 16).Select(i => $"\"#{i:X2}0000\""));
+        var json = $$"""
+            {
+              // 手書きのコメント
+              "name": "わたしの色",
+              "background": "#101820", "foreground": "#E0E6F0", "accent": "#FF8800",
+              "keyword": "#C080FF",
+              "ui": { "Border": "#334455" },
+              "ansi": [{{ansi}}],
+            }
+            """;
+        var draft = UserThemeDraft.FromJson(json);
+        Assert.Equal("わたしの色", draft.Name);
+        Assert.Null(draft.Slots["dim"]);                       // 書いていない欄は自動のまま
+        Assert.Equal(Color.FromRgb(0xFF, 0x88, 0x00), draft.Slots["accent"]);
+        Assert.True(draft.HasOverrides);
+
+        var again = UserThemeDraft.FromJson(draft.ToJson());
+        Assert.Equal(draft.Name, again.Name);
+        Assert.Equal(draft.Slots, again.Slots);
+
+        var before = Parse(json);
+        var after = Parse(draft.ToJson());
+        Assert.Equal(before.Ui, after.Ui);
+        Assert.Equal(before.Ansi, after.Ansi);
+        Assert.Equal(before.Keyword, after.Keyword);
+    }
+
+    [Fact]
+    public void 読みにくい組み合わせには注意が出る()
+    {
+        var readable = Parse("""{ "background": "#1E1E1E", "foreground": "#D4D4D4" }""");
+        Assert.Empty(UserThemeEditorViewModel.Check(readable));
+
+        var muddy = Parse("""{ "background": "#808080", "foreground": "#9A9A9A", "keyword": "#858585" }""");
+        var warnings = UserThemeEditorViewModel.Check(muddy).ToList();
+        Assert.Contains(warnings, w => w.StartsWith("文字が背景に対して読みにくい"));
+        Assert.Contains(warnings, w => w.Contains("キーワード"));
+    }
+
+    /// <summary>ピッカーの HSV ⇄ RGB が往復で色を崩さないこと（16 進で打った色がそのまま戻る）。</summary>
+    [Theory]
+    [InlineData("#000000")]
+    [InlineData("#FFFFFF")]
+    [InlineData("#808080")]
+    [InlineData("#FF0000")]
+    [InlineData("#5DE4C7")]
+    [InlineData("#C4746E")]
+    [InlineData("#1E66F5")]
+    public void ピッカーのHSV変換は往復で色を崩さない(string hex)
+    {
+        Assert.True(UserThemeParser.TryParse(hex, out var c));
+        var (h, s, v) = sk0ya.Loomo.App.Views.ColorPicker.ToHsv(c);
+        Assert.Equal(c, sk0ya.Loomo.App.Views.ColorPicker.FromHsv(h, s, v));
+    }
+
     private static void RunSta(Action body)
     {
         Exception? ex = null;

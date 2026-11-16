@@ -9,4 +9,11 @@ namespace sk0ya.Loomo.App.Views;
 public partial class SettingsView : UserControl
 {
     public SettingsView() => InitializeComponent();
+
+    /// <summary>「自分のテーマを作る・編集する」：専用の編集画面を開く（モードレス・1 枚だけ）。</summary>
+    private void OnOpenUserThemeEditor(object sender, System.Windows.RoutedEventArgs e)
+    {
+        if (DataContext is ShellViewModel vm)
+            UserThemeEditorWindow.Show(System.Windows.Window.GetWindow(this), vm.Appearance);
+    }
 }

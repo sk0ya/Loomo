@@ -94,45 +94,24 @@ public sealed partial class AppearanceViewModel
         AppearanceChanged?.Invoke();
     }
 
-    /// <summary>いまの配色をもとに自分のテーマを 1 つ作り、4 つの選択肢すべてで選んで、エディタで開く。
-    /// 以後はそのファイルを書き換えて保存するだけで色が変わる。</summary>
-    [RelayCommand]
-    private void CreateUserTheme()
+    /// <summary>同梱テーマの選択肢（自分のテーマを含まない）。編集画面の「〜をもとに作る」に使う。</summary>
+    public IReadOnlyList<PresetSwatch> BuiltInThemeChoices => _builtInThemes;
+
+    /// <summary>自分のテーマを、アプリ全体・エディタ・ターミナル・プレビューのすべてで選ぶ（編集画面の「部屋に当てる」）。</summary>
+    public void UseUserTheme(string id)
     {
-        try
-        {
-            Directory.CreateDirectory(UserThemes.Folder);
-            var id = "my-theme";
-            for (var i = 2; File.Exists(Path.Combine(UserThemes.Folder, id + ".json")); i++) id = $"my-theme-{i}";
-            var path = Path.Combine(UserThemes.Folder, id + ".json");
-
-            var current = _settings.UserTheme is { } userId ? UserThemes.TryGet(UserTheme.KeyPrefix + userId) : null;
-            var baseName = current?.Name ?? SelectedTheme?.Name ?? _settings.Theme.ToString();
-            var name = $"{baseName} をもとに";
-            var json = current is not null
-                ? Regex.Replace(File.ReadAllText(current.Path), "\"name\"\\s*:\\s*\"(?:[^\"\\\\]|\\\\.)*\"",
-                    "\"name\": " + Quote(name).Replace("$", "$$"))
-                : SeedFromBuiltIn(_settings.Theme, name);
-            File.WriteAllText(path, json, new UTF8Encoding(false));
-
-            UserThemes.Reload();
-            RefreshUserThemes();
-            var key = UserTheme.KeyPrefix + id;
-            if (Themes.FirstOrDefault(c => c.Key == key) is { } chip)
-            {
-                SelectedTheme = chip;
-                SelectedEditorTheme = EditorThemes.First(c => c.Key == key);
-                SelectedTerminalTheme = TerminalThemes.First(c => c.Key == key);
-                SelectedPreviewTheme = PreviewThemes.First(c => c.Key == key);
-            }
-            OpenFileRequested?.Invoke(path);
-            Status = $"{Path.GetFileName(path)} を作りました。書き換えて保存すると、その場で色が変わります";
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            Status = $"テーマを作れませんでした: {ex.Message}";
-        }
+        UserThemes.Reload();
+        RefreshUserThemes();
+        var key = UserTheme.KeyPrefix + id;
+        if (Themes.FirstOrDefault(c => string.Equals(c.Key, key, StringComparison.OrdinalIgnoreCase)) is not { } chip) return;
+        SelectedTheme = chip;
+        SelectedEditorTheme = EditorThemes.First(c => c.Key == chip.Key);
+        SelectedTerminalTheme = TerminalThemes.First(c => c.Key == chip.Key);
+        SelectedPreviewTheme = PreviewThemes.First(c => c.Key == chip.Key);
     }
+
+    /// <summary>ファイルを部屋のエディタで開く（編集画面の「JSON を開く」）。</summary>
+    public void RequestOpenFile(string path) => OpenFileRequested?.Invoke(path);
 
     /// <summary>JSON の文字列にする（日本語をエスケープしない＝書き換える人が読めるように）。</summary>
     private static string Quote(string text) => JsonSerializer.Serialize(text,
