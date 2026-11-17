@@ -20,7 +20,7 @@ public sealed class GitRepositoryStripTests : IDisposable
     }
 
     [Fact]
-    public void 帯はフォルダーの順に_リポジトリと管理外のフォルダーと入れ子のリポジトリを並べる()
+    public async Task 帯はフォルダーの順に_リポジトリと管理外のフォルダーと入れ子のリポジトリを並べる()
     {
         var app = Repo("app");
         var work = Dir("work");
@@ -28,6 +28,7 @@ public sealed class GitRepositoryStripTests : IDisposable
         var web = Repo(Path.Combine("work", "web"));
         var (git, workspace) = NewGit(app, work);
         var strip = new GitRepositoryStripViewModel(git, workspace);
+        await strip.RebuildCompleted;   // 背景の作り直しが後から選択を書き換えないように
 
         var items = strip.Build(workspace.Folders, git.Repositories.Repositories);
 
@@ -39,13 +40,14 @@ public sealed class GitRepositoryStripTests : IDisposable
     }
 
     [Fact]
-    public void 帯で選ぶとGitの対象がそのリポジトリになり_入れ子のリポジトリも選べる()
+    public async Task 帯で選ぶとGitの対象がそのリポジトリになり_入れ子のリポジトリも選べる()
     {
         var app = Repo("app");
         var work = Dir("work");
         var api = Repo(Path.Combine("work", "api"));
         var (git, workspace) = NewGit(app, work);
         var strip = new GitRepositoryStripViewModel(git, workspace);
+        await strip.RebuildCompleted;   // 背景の作り直しが後から選択を書き換えないように
         strip.Apply(strip.Build(workspace.Folders, git.Repositories.Repositories));
 
         strip.SelectedItem = strip.Items.Single(i => i.Root == api);

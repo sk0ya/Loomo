@@ -39,6 +39,7 @@ public sealed partial class GitRepositoryStripViewModel : ObservableObject
     private bool _selecting;
     private int _rebuildGeneration;
     private DispatcherTimer? _noticeTimer;
+    private Task? _rebuilding;
 
     [ObservableProperty] private IReadOnlyList<GitRepositoryStripItem> _items = Array.Empty<GitRepositoryStripItem>();
     [ObservableProperty] private GitRepositoryStripItem? _selectedItem;
@@ -67,13 +68,17 @@ public sealed partial class GitRepositoryStripViewModel : ObservableObject
     {
         var generation = ++_rebuildGeneration;
         var folders = _workspace.Folders.ToArray();
-        _ = Task.Run(() => Build(folders, _git.Repositories.Repositories))
+        _rebuilding = Task.Run(() => Build(folders, _git.Repositories.Repositories))
             .ContinueWith(task =>
             {
                 if (task.IsFaulted || generation != _rebuildGeneration) return;
                 UiDispatch.Post(() => Apply(task.Result));
             }, TaskScheduler.Default);
     }
+
+    /// <summary>直前の <see cref="Rebuild"/> が終わるまでの待ち（テスト用）。UI スレッドの外では <see cref="Apply"/> が
+    /// 選択と項目を書き換えるので、選ぶ前に終わらせておく必要がある。</summary>
+    internal Task RebuildCompleted => _rebuilding ?? Task.CompletedTask;
 
     /// <summary>項目を組む（純関数・テスト用に internal）：ワークスペースフォルダーの順に、フォルダーを含むリポジトリ
     /// （無ければ管理外のフォルダー）→その下の入れ子のリポジトリ。</summary>
