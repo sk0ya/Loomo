@@ -55,6 +55,8 @@ public partial class ShellWindow {
             copyLink.Click += (_, _) => _vm.Tabs.CopyBrowserLinkCommand.Execute(tab);
             menu.Items.Add(copyLink);
         }
+        if (tab.Kind == TabEntryKind.Editor)
+            AddEditorFileMenuItems(menu, tab);
         menu.IsOpen = true;
     }
 

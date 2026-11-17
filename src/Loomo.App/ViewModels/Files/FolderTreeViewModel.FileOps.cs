@@ -68,6 +68,45 @@ public sealed partial class FolderTreeViewModel
         EntryDeleted?.Invoke(this, path);
     }
 
+    // ツリーのノードを持たない呼び出し元（エディタペインの見出し）向けの、パス指定版。
+    // 中身は上の node 版と同じ経路（ResolvePath・履歴・ツリー更新・開いているタブの追従）を通す。
+
+    /// <summary>パスで指定した項目の名前を変更し、変更後のフルパスを返す。</summary>
+    public string RenameEntryAtPath(string fullPath, bool isDirectory, string newName)
+    {
+        EnsureFileSystemPath(fullPath);
+        var oldPath = _workspace.ResolvePath(fullPath);
+        var newPath = _fileCommands.Rename(oldPath, newName, isDirectory);
+        if (string.Equals(oldPath, newPath, StringComparison.Ordinal)) return oldPath;
+        RefreshWorkspace();
+        EntryRenamed?.Invoke(this, new EntryRenamedEventArgs(oldPath, newPath, isDirectory));
+        return newPath;
+    }
+
+    /// <summary>パスで指定した項目をゴミ箱へ送る（完全削除ではない）。</summary>
+    public void DeleteEntryAtPath(string fullPath, bool isDirectory)
+    {
+        EnsureFileSystemPath(fullPath);
+        var path = _workspace.ResolvePath(fullPath);
+        _fileCommands.Delete(path, isDirectory);
+        RefreshWorkspace();
+        EntryDeleted?.Invoke(this, path);
+    }
+
+    /// <summary>パスで指定した項目をファイル一覧ペインで開くよう要求する（ShellWindow が処理）。実在するときだけ。</summary>
+    public void RequestRevealPathInFilesPane(string fullPath, bool isDirectory)
+    {
+        if (_fileCommands.EntryExists(fullPath, isDirectory))
+            RevealInFilesPaneRequested?.Invoke(this, fullPath);
+    }
+
+    /// <summary>フォルダーを可視ターミナルで cd するよう要求する（ShellWindow が処理）。実在するときだけ。</summary>
+    public void RequestSetFolderInTerminal(string fullPath)
+    {
+        if (_fileCommands.DirectoryExists(fullPath))
+            SetInTerminalRequested?.Invoke(this, new TerminalSetRequest(fullPath, true));
+    }
+
     /// <summary>クリップボードのファイル／フォルダを targetDirectory 直下へコピー（move=false）または
     /// 移動（move=true）し、貼り付け先のフルパスを返す。貼り付け先は ResolvePath でワークスペースルート
     /// 配下に限定する（コピー元は外部＝Explorer からでも受け付ける）。同名衝突は上書きせず
