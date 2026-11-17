@@ -1154,7 +1154,7 @@ public sealed partial class TabsViewModel : ObservableObject
     private void CopyPath(TabEntryViewModel? tab)
     {
         if (tab?.FilePath is { Length: > 0 } path)
-            Clipboard.SetText(path);
+            ClipboardText.Set(path);
     }
 
     /// <summary>ブラウザのタブの URL を写す（§24.46）。タブを前に出さずに済む。</summary>

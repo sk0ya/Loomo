@@ -7,9 +7,9 @@ using sk0ya.Loomo.App.ViewModels;
 namespace sk0ya.Loomo.App.Views;
 
 /// <summary>ShellWindow: エディタペインの見出し（見ているファイルのパス）の右クリックに足す、ファイルの操作。
-/// 並びは「コピー」「場所を開く」「ファイル操作」の 3 群。ツリー・ファイル一覧と同じ経路
-/// （<see cref="FolderTreeViewModel"/> の node 版と同じ検証・履歴・タブ追従）へ流し、挙動を分けない。
-/// 実在しないファイルでは「ファイル操作」群を出さず、Explorer の「表示」だけは最も近い親で動かす。</summary>
+/// 項目の名前と入れ子（「パスをコピー」「ペインへ送る」「Git」）はフォルダーツリーの右クリックと揃える。
+/// 操作はツリー・ファイル一覧と同じ経路（<see cref="FolderTreeViewModel"/> のパス指定版）へ流し、挙動を分けない。
+/// 実在しないファイルでは「名前の変更」「削除」「Git」を出さない。</summary>
 public partial class ShellWindow {
     private void AddEditorFileMenuItems(ContextMenu menu, TabEntryViewModel tab) {
         if (!tab.HasRealFile || tab.FilePath is not { Length: > 0 } path)
@@ -19,30 +19,42 @@ public partial class ShellWindow {
         var folderExists = !string.IsNullOrEmpty(folder) && Directory.Exists(folder);
 
         menu.Items.Add(new Separator());
-        AddEditorFileItem(menu, "パスをコピー", () => _vm.Tabs.CopyPathCommand.Execute(tab));
-        AddEditorFileItem(menu, "相対パスをコピー", () => Clipboard.SetText(_workspace.ToDisplayPath(path)),
-            enabled: _workspace.Contains(path));
+        AddEditorFileItem(menu, "エクスプローラーで表示", () => _vm.Tabs.RevealInExplorerCommand.Execute(tab));
+
+        var send = AddEditorFileSubmenu(menu, "ペインへ送る");
+        AddEditorFileItem(send, "ターミナル", () => _vm.FolderTree.RequestSetFolderInTerminal(folder!), enabled: folderExists);
+        AddEditorFileItem(send, "ファイル一覧", () => _vm.FolderTree.RequestRevealPathInFilesPane(path, isDirectory: false),
+            enabled: exists);
 
         menu.Items.Add(new Separator());
-        AddEditorFileItem(menu, "エクスプローラーで表示", () => _vm.Tabs.RevealInExplorerCommand.Execute(tab));
-        AddEditorFileItem(menu, "ファイル一覧で表示", () => _vm.FolderTree.RequestRevealPathInFilesPane(path, isDirectory: false),
-            enabled: exists);
-        AddEditorFileItem(menu, "このフォルダーをターミナルで開く", () => _vm.FolderTree.RequestSetFolderInTerminal(folder!),
-            enabled: folderExists);
+        var copy = AddEditorFileSubmenu(menu, "パスをコピー");
+        AddEditorFileItem(copy, "フルパス", () => ClipboardText.Set(path));
+        AddEditorFileItem(copy, "相対パス", () => ClipboardText.Set(_workspace.ToDisplayPath(path)),
+            enabled: _workspace.Contains(path));
+        AddEditorFileItem(copy, "名前", () => ClipboardText.Set(Path.GetFileName(path)));
 
         if (!exists)
             return;
         menu.Items.Add(new Separator());
-        AddEditorFileItem(menu, "名前を変更…", () => RenameEditorFile(path));
-        AddEditorFileItem(menu, "削除…（ゴミ箱へ）", () => DeleteEditorFile(path));
-        if (_vm.FolderTree.CanGitForPath(path))
-            AddEditorFileItem(menu, "Git の履歴", () => _vm.FolderTree.RequestGitHistory(path, isDirectory: false));
+        AddEditorFileItem(menu, "名前の変更", () => RenameEditorFile(path));
+        AddEditorFileItem(menu, "削除", () => DeleteEditorFile(path));
+        if (_vm.FolderTree.CanGitForPath(path)) {
+            var git = AddEditorFileSubmenu(menu, "Git");
+            AddEditorFileItem(git, "履歴を表示", () => _vm.FolderTree.RequestGitHistory(path, isDirectory: false));
+            AddEditorFileItem(git, "Git Blame", () => _vm.FolderTree.RequestGitBlame(path));
+        }
     }
 
-    private static void AddEditorFileItem(ContextMenu menu, string header, Action run, bool enabled = true) {
+    private static void AddEditorFileItem(ItemsControl parent, string header, Action run, bool enabled = true) {
         var item = new MenuItem { Header = header, IsEnabled = enabled };
         item.Click += (_, _) => run();
-        menu.Items.Add(item);
+        parent.Items.Add(item);
+    }
+
+    private static MenuItem AddEditorFileSubmenu(ItemsControl parent, string header) {
+        var item = new MenuItem { Header = header };
+        parent.Items.Add(item);
+        return item;
     }
 
     private void RenameEditorFile(string path) {
