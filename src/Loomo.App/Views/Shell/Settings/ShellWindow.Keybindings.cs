@@ -245,9 +245,8 @@ public partial class ShellWindow {
             control.ShowStatusMessage("仮想ドキュメントは Ctrl+S では保存できません。");
             return;
         }
-        if (control.FilePath is not { Length: > 0 })
-            return;
-
+        // 無題のタブ（パスなし）も :w と同じく、SaveFileAsync が保存先のダイアログを出す。
+        // ここで黙って戻ると、Ctrl+S は何も起きず、人は「一回保存されなかった」と見る。
         try
         {
             await _editor.SaveFileAsync(control);
