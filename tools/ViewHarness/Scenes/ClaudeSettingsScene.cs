@@ -1,49 +1,41 @@
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
+using sk0ya.Loomo.App.Services;
+using sk0ya.Loomo.App.ViewModels;
+using sk0ya.Loomo.App.Views;
+using sk0ya.Loomo.Core.Settings;
+using sk0ya.Loomo.Services.Settings;
 
 namespace ViewHarness.Scenes;
 
-/// <summary>設定 → Claude Code の欄に足した「動きが悪くなったら Claude に直させる」の行（2026-11-17）と、その説明。
-/// 既存の IDE 連携の行と同じ並びで置き、文字サイズを上げたときに文字が切れないか・既定の色で読めるかを見る。</summary>
+/// <summary>設定 → 外観の下の「Claude Code」欄（<see cref="ClaudeCodeSettingsSection"/>）を、本物の部品と本物の
+/// <see cref="AppearanceViewModel"/> で描く。既定の状態、2 つの項目を入れ替えた状態を撮る。
+/// 設定は一時フォルダーの SettingsStore へ書く（%APPDATA% は触らない）。</summary>
 public sealed class ClaudeSettingsScene : IScene
 {
+    private AppearanceViewModel? _appearance;
+
     public string Name => "claude-settings";
-    public string Description => "設定の Claude Code 欄（IDE 連携・動きが悪くなったら直させる）の行と説明";
+    public string Description => "設定の Claude Code 欄（本物の ClaudeCodeSettingsSection）：既定・項目を入れ替えた状態";
     public Size Size => new(560, 440);
 
     public FrameworkElement Build()
     {
-        var root = new StackPanel { Margin = new Thickness(16) };
-        root.Children.Add(new TextBlock
+        var settings = new LoomoSettings();
+        var store = new SettingsStore(Path.Combine(Path.GetTempPath(), "loomo-vh-claude-settings.json"));
+        _appearance = new AppearanceViewModel(settings, store, new ThemeManager(), new UiFontManager());
+        return new Border
         {
-            Text = "Claude Code",
-            Style = (Style)Application.Current.FindResource("FieldHint"),
-            Margin = new Thickness(0, 0, 0, 6),
-        });
-        root.Children.Add(new CheckBox
-        {
-            IsChecked = true,
-            Content = new TextBlock { Text = "Claude Code と IDE 連携する（選択・診断・編集の提案）", TextWrapping = TextWrapping.Wrap },
-        });
-        root.Children.Add(new TextBlock
-        {
-            Text = "切り替えは Loomo の再起動後に効きます。",
-            Style = (Style)Application.Current.FindResource("FieldHint"),
-        });
+            Padding = new Thickness(16),
+            Child = new ClaudeCodeSettingsSection { DataContext = _appearance },
+        };
+    }
 
-        root.Children.Add(new CheckBox
-        {
-            Margin = new Thickness(0, 12, 0, 0),
-            IsChecked = false,
-            Content = new TextBlock { Text = "動きが悪くなったら Claude に直させる（既定は切）", TextWrapping = TextWrapping.Wrap },
-            ToolTip = "動きの記録（§44.3）で悪い方へ変わったら、ターンを終えようとしている Claude に直すよう続けさせます（1 つの頼みごとで最大 2 回）。既定は切。",
-        });
-        root.Children.Add(new TextBlock
-        {
-            Text = "ターンの終わりに動きを録るので、少し待ってから Claude が止まります。",
-            Style = (Style)Application.Current.FindResource("FieldHint"),
-            TextWrapping = TextWrapping.Wrap,
-        });
-        return root;
+    public IEnumerable<SceneStep> Steps(FrameworkElement root)
+    {
+        var vm = _appearance!;
+        yield return new SceneStep("motion-on", () => vm.ClaudeContinueOnBrokenMotion = true);
+        yield return new SceneStep("ide-off", () => vm.ClaudeCodeIdeIntegration = false);
     }
 }

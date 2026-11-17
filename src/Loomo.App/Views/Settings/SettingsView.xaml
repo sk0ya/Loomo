@@ -847,21 +847,7 @@
                                 <TextBlock Style="{StaticResource FieldHint}"
                                            Text="切り替えは次に開くタブから効きます。" />
 
-                                <CheckBox Margin="0,12,0,0"
-                                          IsChecked="{Binding Appearance.ClaudeCodeIdeIntegration}"
-                                          ToolTip="Loomo のターミナルで起動した claude が自動で Loomo に繋ぎます。エディタの選択と問題一覧の診断が Claude に届き、編集の提案を差分で受け入れ／却下できます（VS Code 拡張と同じ仕組み）。">
-                                    <TextBlock Text="Claude Code と IDE 連携する（選択・診断・編集の提案）" TextWrapping="Wrap" />
-                                </CheckBox>
-                                <TextBlock Style="{StaticResource FieldHint}"
-                                           Text="切り替えは Loomo の再起動後に効きます。" />
-
-                                <CheckBox Margin="0,12,0,0"
-                                          IsChecked="{Binding Appearance.ClaudeContinueOnBrokenMotion}"
-                                          ToolTip="動きの記録（§44.3）で悪い方へ変わったら、ターンを終えようとしている Claude に直すよう続けさせます（1 つの頼みごとで最大 2 回）。既定は切。">
-                                    <TextBlock Text="動きが悪くなったら Claude に直させる（既定は切）" TextWrapping="Wrap" />
-                                </CheckBox>
-                                <TextBlock Style="{StaticResource FieldHint}"
-                                           Text="ターンの終わりに動きを録るので、少し待ってから Claude が止まります。" />
+                                <local:ClaudeCodeSettingsSection DataContext="{Binding Appearance}" />
 
                                 <TextBlock Text="{Binding Appearance.Status}" Foreground="{DynamicResource FgDim}"
                                            Margin="0,14,0,0" TextWrapping="Wrap" FontSize="{DynamicResource Fs11}" />
