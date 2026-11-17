@@ -1,4 +1,5 @@
-﻿using System;
+﻿using sk0ya.Loomo.App.Views;
+using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
@@ -223,7 +224,7 @@ public sealed partial class KeybindingsViewModel : ObservableObject
     internal static bool Confirm(string message)
     {
         if (Application.Current is null) return true;
-        return MessageBox.Show(message, "Loomo", MessageBoxButton.OKCancel, MessageBoxImage.Question)
+        return LoomoMessageBox.Show(message, "Loomo", MessageBoxButton.OKCancel, MessageBoxImage.Question)
             == MessageBoxResult.OK;
     }
 }

@@ -356,7 +356,7 @@ public partial class FilesColumnView : UserControl
     /// <summary>選択をまとめてゴミ箱へ送る（確認は1回だけ）。</summary>
     private void DeleteEntries(IReadOnlyList<FileEntryViewModel> entries)
         => _fileCommands.DeleteEntries(Vm, entries, message =>
-            MessageBox.Show(message, "削除の確認", MessageBoxButton.OKCancel, MessageBoxImage.Warning)
+            LoomoMessageBox.Show(message, "削除の確認", MessageBoxButton.OKCancel, MessageBoxImage.Warning)
             == MessageBoxResult.OK);
 
     private void OnDuplicateClick(object sender, RoutedEventArgs e) => DuplicateEntries(Selection());

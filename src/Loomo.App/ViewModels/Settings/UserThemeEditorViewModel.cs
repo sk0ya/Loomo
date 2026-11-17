@@ -1,3 +1,4 @@
+using sk0ya.Loomo.App.Views;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -362,7 +363,7 @@ public sealed partial class UserThemeEditorViewModel : ObservableObject, IDispos
     private void Delete()
     {
         if (_draftId is not { } id) return;
-        if (MessageBox.Show($"「{Name}」を削除しますか？", "自分のテーマ",
+        if (LoomoMessageBox.Show($"「{Name}」を削除しますか？", "自分のテーマ",
                 MessageBoxButton.OKCancel, MessageBoxImage.Warning) != MessageBoxResult.OK) return;
         try
         {

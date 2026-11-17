@@ -1,4 +1,5 @@
-﻿using System;
+﻿using sk0ya.Loomo.App.Views;
+using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
@@ -1171,7 +1172,7 @@ public sealed partial class DiffSessionViewModel : ObservableObject, IDisposable
         if (item?.Entry is not { } entry || _commitRange is not null) return;
 
         var detail = entry.IsUntracked ? "未追跡ファイルなので削除されます。" : "作業ツリーの変更が失われます。";
-        var answer = MessageBox.Show(
+        var answer = LoomoMessageBox.Show(
             Application.Current?.MainWindow!,
             $"{item.DisplayPath} の変更を破棄しますか？\n{detail}",
             "変更の破棄", MessageBoxButton.YesNo, MessageBoxImage.Warning);

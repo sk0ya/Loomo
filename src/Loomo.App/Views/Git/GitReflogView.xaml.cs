@@ -35,7 +35,7 @@ public partial class GitReflogView : UserControl
         allowEmpty: request.AllowEmpty, multiline: request.Multiline);
 
     private bool Confirm(GitOperationConfirmation request) =>
-        MessageBox.Show(Window.GetWindow(this), request.Message, request.Title,
+        LoomoMessageBox.Show(Window.GetWindow(this), request.Message, request.Title,
             MessageBoxButton.YesNo,
             request.Severity == GitConfirmationSeverity.Warning
                 ? MessageBoxImage.Warning : MessageBoxImage.Question) == MessageBoxResult.Yes;

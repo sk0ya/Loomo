@@ -14,7 +14,7 @@ internal static class WorkspaceSwitcherActionPresenter
         Action close)
     {
         close();
-        var answer = MessageBox.Show(owner,
+        var answer = LoomoMessageBox.Show(owner,
             $"「{folder.Owner.Label}」からフォルダー {folder.Path} を取り除きますか？\n" +
             "フォルダ自体は削除されません。", "ワークスペースフォルダーの削除",
             MessageBoxButton.OKCancel, MessageBoxImage.Warning);

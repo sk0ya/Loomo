@@ -181,6 +181,6 @@ public partial class ShellWindow
         => remotes.OrderBy(r => string.Equals(r.Name, "origin", StringComparison.OrdinalIgnoreCase) ? 0 : 1);
 
     private void ShowAzureError(string title, string reason)
-        => MessageBox.Show(this, string.IsNullOrWhiteSpace(reason) ? title : $"{title}\n\n{reason.Trim()}",
+        => LoomoMessageBox.Show(this, string.IsNullOrWhiteSpace(reason) ? title : $"{title}\n\n{reason.Trim()}",
             "Azure DevOps", MessageBoxButton.OK, MessageBoxImage.Warning);
 }

@@ -259,7 +259,7 @@ public partial class UserThemeEditorView : UserControl
     private void OnWindowClosing(object? sender, CancelEventArgs e)
     {
         // 自動保存の書き残しをここで書き切る。書けなかったときだけ、閉じてよいか聞く。
-        if (!_vm.Flush() && MessageBox.Show("変更を保存できませんでした。保存せずに閉じますか？", "自分のテーマ",
+        if (!_vm.Flush() && LoomoMessageBox.Show("変更を保存できませんでした。保存せずに閉じますか？", "自分のテーマ",
                 MessageBoxButton.OKCancel, MessageBoxImage.Warning) != MessageBoxResult.OK)
             e.Cancel = true;
     }

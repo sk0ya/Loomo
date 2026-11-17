@@ -126,7 +126,7 @@ public partial class ShellWindow {
         }
         var lines = string.Join("\n\n", probes.Select(probe =>
             $"■ {probe.Title}（{(probe.EveryTurn ? "ターンが終わるたび" : "手で")}・{probe.TimeoutSeconds} 秒まで）\n{probe.Command}"));
-        var answer = MessageBox.Show(this,
+        var answer = LoomoMessageBox.Show(this,
             $"次のコマンドを、このワークスペースで裏で回して動きを録ります（見えるターミナルには打ちません）。\n\n{lines}\n\n許しますか？",
             "動き：見どころを許す", MessageBoxButton.YesNo, MessageBoxImage.Question);
         if (answer != MessageBoxResult.Yes)

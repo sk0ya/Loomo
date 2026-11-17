@@ -55,7 +55,7 @@ public partial class ShellWindow {
                 if (_workspace.Folders.Any(f => WorkspacePaths.IsWithin(f, path) && WorkspacePaths.IsWithin(path, f)))
                     return;   // もう入っている
                 if (!_vm.FolderTree.AddFolderToWorkspace(path))
-                    MessageBox.Show(this,
+                    LoomoMessageBox.Show(this,
                         "このワークツリーはワークスペースのフォルダーと親子関係にあるため、フォルダーとして追加できません。\n" +
                         "（リポジトリの中に置いたワークツリーは「ワークスペースとして開く」を使ってください）",
                         "フォルダーとして追加", MessageBoxButton.OK, MessageBoxImage.Information);

@@ -18,7 +18,7 @@ public partial class ShellWindow {
             ToastService.Info("最後のワークスペースは削除できません（常に1つは開いている必要があります）。");
             return;
         }
-        var result = MessageBox.Show( this, $"ワークスペース「{entry.Label}」を一覧から削除しますか？\n" +
+        var result = LoomoMessageBox.Show( this, $"ワークスペース「{entry.Label}」を一覧から削除しますか？\n" +
             "フォルダ自体は削除されません（タブ・レイアウトの保存状態は失われます）。", "ワークスペースの削除", MessageBoxButton.OKCancel, MessageBoxImage.Warning);
         if (result == MessageBoxResult.OK)
             _vm.Workspaces.RemoveWorkspaceCommand.Execute(entry);

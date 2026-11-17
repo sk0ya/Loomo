@@ -223,7 +223,7 @@ public partial class ShellWindow {
     /// <summary>保存済みのログイン情報を全部消す。<b>消すのはブラウザ自身にやらせる</b>——
     /// Login Data は稼働中の WebView2 が掴んでいて、こちらから書き換えるとプロファイルを壊す。</summary>
     private async Task ClearSavedPasswordsAsync() {
-        if (MessageBox.Show(this,
+        if (LoomoMessageBox.Show(this,
                 "このブラウザに保存されたログイン情報をすべて削除します。元に戻せません。",
                 "保存済みのログイン情報を削除", MessageBoxButton.OKCancel, MessageBoxImage.Warning)
             != MessageBoxResult.OK)

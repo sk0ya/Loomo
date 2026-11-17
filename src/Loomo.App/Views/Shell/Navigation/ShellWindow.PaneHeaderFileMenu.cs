@@ -67,7 +67,7 @@ public partial class ShellWindow {
 
     private void DeleteEditorFile(string path) {
         var message = FileContextMenuPolicy.FormatDeleteConfirmation(1, singleIsDirectory: false, Path.GetFileName(path));
-        if (MessageBox.Show(this, message, "削除の確認", MessageBoxButton.OKCancel, MessageBoxImage.Warning)
+        if (LoomoMessageBox.Show(this, message, "削除の確認", MessageBoxButton.OKCancel, MessageBoxImage.Warning)
             != MessageBoxResult.OK)
             return;
         try { _vm.FolderTree.DeleteEntryAtPath(path, isDirectory: false); }

@@ -406,8 +406,8 @@ public partial class SearchPanelView : UserControl
         var message = $"書き換えた {changed.Count} 行を {files} ファイルへ書き戻しますか？\n" +
                       "検索した後に変わっていた行は飛ばします（元に戻すにはファイルごとに Undo かローカル履歴を使ってください）。";
         var answer = owner is null
-            ? MessageBox.Show(message, "検索結果を書き戻す", MessageBoxButton.OKCancel, MessageBoxImage.Question)
-            : MessageBox.Show(owner, message, "検索結果を書き戻す", MessageBoxButton.OKCancel, MessageBoxImage.Question);
+            ? LoomoMessageBox.Show(message, "検索結果を書き戻す", MessageBoxButton.OKCancel, MessageBoxImage.Question)
+            : LoomoMessageBox.Show(owner, message, "検索結果を書き戻す", MessageBoxButton.OKCancel, MessageBoxImage.Question);
         if (answer != MessageBoxResult.OK) return;
         vm.ApplyLineEdits();
         // 結果は状態欄に書くが、続く検索し直しがすぐ件数で上書きするので、トーストでも言う（実機で確かめて分かった）。

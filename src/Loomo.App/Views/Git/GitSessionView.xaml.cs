@@ -69,7 +69,7 @@ public partial class GitSessionView : UserControl
         allowEmpty: request.AllowEmpty, multiline: request.Multiline);
 
     private bool ConfirmGitOperation(GitOperationConfirmation request) =>
-        MessageBox.Show(Window.GetWindow(this), request.Message, request.Title,
+        LoomoMessageBox.Show(Window.GetWindow(this), request.Message, request.Title,
             MessageBoxButton.YesNo,
             request.Severity == GitConfirmationSeverity.Warning
                 ? MessageBoxImage.Warning : MessageBoxImage.Question) == MessageBoxResult.Yes;
@@ -280,7 +280,7 @@ public partial class GitSessionView : UserControl
             return;
         var outcome = await vm.DeleteBranchesAsync(result.Branches, result.Force);
         if (outcome.Failed.Count > 0)
-            MessageBox.Show(Window.GetWindow(this),
+            LoomoMessageBox.Show(Window.GetWindow(this),
                 $"{outcome.Deleted} 本を削除しました。消せなかったもの：{Environment.NewLine}{Environment.NewLine}"
                 + string.Join(Environment.NewLine, outcome.Failed),
                 "ブランチの片付け", MessageBoxButton.OK, MessageBoxImage.Warning);

@@ -22,7 +22,7 @@ public partial class ShellWindow
         _vm.GitPanel.ProblemLookup = path => CurrentProblemCounts().For(path);
         // パッチを当てる前の確認（§24.38.1）。
         _vm.GitPanel.ConfirmPatch = (title, message) =>
-            MessageBox.Show(this, message, title, MessageBoxButton.OKCancel, MessageBoxImage.Question) == MessageBoxResult.OK;
+            LoomoMessageBox.Show(this, message, title, MessageBoxButton.OKCancel, MessageBoxImage.Question) == MessageBoxResult.OK;
     }
 
     private bool _problemMarksPending;

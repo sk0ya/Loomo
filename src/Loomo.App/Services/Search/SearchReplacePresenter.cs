@@ -1,3 +1,4 @@
+using sk0ya.Loomo.App.Views;
 using System.Windows;
 using System.Windows.Controls;
 using sk0ya.Loomo.App.ViewModels;
@@ -12,7 +13,7 @@ internal static class SearchReplacePresenter
         if (group.Count == 0)
             return;
 
-        var confirm = MessageBox.Show(
+        var confirm = LoomoMessageBox.Show(
             owner,
             $"「{group.FileName}」内の {group.Count} 件を置換しますか？\nこの操作は元に戻せません。",
             "置換の確認", MessageBoxButton.OKCancel, MessageBoxImage.Warning);
@@ -55,7 +56,7 @@ internal static class SearchReplacePresenter
         if (matchCount == 0)
             return false;
 
-        var confirm = MessageBox.Show(
+        var confirm = LoomoMessageBox.Show(
             owner,
             $"{groups.Count} ファイルの {matchCount} 件を置換しますか？\nこの操作は元に戻せません。",
             "置換の確認", MessageBoxButton.OKCancel, MessageBoxImage.Warning);

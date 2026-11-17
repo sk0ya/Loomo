@@ -108,7 +108,7 @@ public partial class FolderTreeView
         FolderTreeFileCommandController.DeleteEntries(
             DataContext as FolderTreeViewModel,
             nodes,
-            message => MessageBox.Show(message, "削除の確認", MessageBoxButton.OKCancel, MessageBoxImage.Warning)
+            message => LoomoMessageBox.Show(message, "削除の確認", MessageBoxButton.OKCancel, MessageBoxImage.Warning)
                 == MessageBoxResult.OK,
             ClearMultiSelection);
     }

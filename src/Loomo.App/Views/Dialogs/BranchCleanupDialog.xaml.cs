@@ -70,7 +70,7 @@ public partial class BranchCleanupDialog : Window
         var message = unmerged > 0
             ? $"{remove.Count} 本のブランチを削除します。うち {unmerged} 本は既定ブランチへ取り込まれていないので -D で消します（コミットが失われることがあります）。\n続けますか？"
             : $"{remove.Count} 本のブランチを削除します（リモートのブランチは残ります）。\n続けますか？";
-        if (MessageBox.Show(this, message, "ブランチの片付け", MessageBoxButton.OKCancel,
+        if (LoomoMessageBox.Show(this, message, "ブランチの片付け", MessageBoxButton.OKCancel,
                 unmerged > 0 ? MessageBoxImage.Warning : MessageBoxImage.Question) != MessageBoxResult.OK)
             return;
         DialogResult = true;

@@ -345,6 +345,6 @@ public partial class ShellWindow
     }
 
     private void ShowGitHubError(string title, string reason)
-        => MessageBox.Show(this, string.IsNullOrWhiteSpace(reason) ? title : $"{title}\n\n{reason.Trim()}",
+        => LoomoMessageBox.Show(this, string.IsNullOrWhiteSpace(reason) ? title : $"{title}\n\n{reason.Trim()}",
             "GitHub", MessageBoxButton.OK, MessageBoxImage.Warning);
 }

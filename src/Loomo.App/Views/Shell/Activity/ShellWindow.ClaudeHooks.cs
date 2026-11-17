@@ -73,21 +73,21 @@ public partial class ShellWindow {
     private void InstallClaudeHooks() {
         try {
             var added = ClaudeHookInstaller.Install();
-            MessageBox.Show(this, added
+            LoomoMessageBox.Show(this, added
                     ? $"Claude Code のフックを設定しました。\n{ClaudeHookInstaller.SettingsPath()}\n\n次に起動する claude から、承認待ちが袖のバッジに出ます。元の設定は settings.json.loomo-backup に残してあります。"
                     : "Claude Code のフックは設定済みです。",
                 "Claude Code", MessageBoxButton.OK, MessageBoxImage.Information);
         } catch (Exception ex) {
-            MessageBox.Show(this, $"フックを設定できませんでした: {ex.Message}", "Claude Code", MessageBoxButton.OK, MessageBoxImage.Warning);
+            LoomoMessageBox.Show(this, $"フックを設定できませんでした: {ex.Message}", "Claude Code", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
     }
     private void UninstallClaudeHooks() {
         try {
             var removed = ClaudeHookInstaller.Uninstall();
-            MessageBox.Show(this, removed ? "Claude Code のフックを外しました。" : "Loomo のフックは設定されていません。",
+            LoomoMessageBox.Show(this, removed ? "Claude Code のフックを外しました。" : "Loomo のフックは設定されていません。",
                 "Claude Code", MessageBoxButton.OK, MessageBoxImage.Information);
         } catch (Exception ex) {
-            MessageBox.Show(this, $"フックを外せませんでした: {ex.Message}", "Claude Code", MessageBoxButton.OK, MessageBoxImage.Warning);
+            LoomoMessageBox.Show(this, $"フックを外せませんでした: {ex.Message}", "Claude Code", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
     }
 

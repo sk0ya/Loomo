@@ -1,3 +1,4 @@
+using sk0ya.Loomo.App.Views;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -448,7 +449,7 @@ public sealed partial class DiffSessionViewModel
             return;
         }
 
-        var answer = MessageBox.Show(
+        var answer = LoomoMessageBox.Show(
             Application.Current?.MainWindow!,
             $"{item.DisplayPath} の選んだ {reduced.LineCount} 行ぶんの変更を破棄しますか？\n作業ツリーのその変更が失われます。",
             "変更の破棄", MessageBoxButton.YesNo, MessageBoxImage.Warning);
@@ -483,7 +484,7 @@ public sealed partial class DiffSessionViewModel
             SetStatus("打ち消す変更がありません（変更の行を選んでください）。", isError: false);
             return;
         }
-        var answer = MessageBox.Show(
+        var answer = LoomoMessageBox.Show(
             Application.Current?.MainWindow!,
             $"{item.DisplayPath} の選んだ {reduced.LineCount} 行ぶんの変更を、作業ツリーで打ち消しますか？\n" +
             "このコミットのその変更だけを逆向きに当てます（コミットは作らず、ステージにも触りません）。",

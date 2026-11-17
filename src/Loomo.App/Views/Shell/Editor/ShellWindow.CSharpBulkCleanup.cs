@@ -68,7 +68,7 @@ public partial class ShellWindow
                       "using整理・整形・行末空白・改行を .editorconfig に沿って適用します（未使用usingの削除は Fix All で）。\n" +
                       "Ctrl+Z 1 回で全ファイルを元に戻せます。";
         if (result.GeneratedSkipped > 0) message += $"\n生成コード {result.GeneratedSkipped} ファイルは対象外です。";
-        if (MessageBox.Show(this, message, $"コードスタイルを一括適用（{scopeLabel}）",
+        if (LoomoMessageBox.Show(this, message, $"コードスタイルを一括適用（{scopeLabel}）",
                 MessageBoxButton.OKCancel, MessageBoxImage.Question) != MessageBoxResult.OK)
         {
             ShowRefactorStatus("コード整理を取り消しました。");

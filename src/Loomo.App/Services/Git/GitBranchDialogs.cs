@@ -13,7 +13,7 @@ internal static class GitBranchDialogs
 {
     /// <summary>強制プッシュの確認。履歴の置き換えとleaseの効き目を明示する。</summary>
     public static bool ConfirmForcePush(Window? owner, string target) =>
-        MessageBox.Show(owner,
+        LoomoMessageBox.Show(owner,
             $"{target} をリモートへ強制的に上書きします（--force-with-lease）。\n\n" +
             "リモートの履歴はこちらの内容で置き換わります。\n" +
             "最後に取得した位置からリモートが進んでいた場合は、上書きせずに中止します。\n\n実行しますか？",
@@ -28,7 +28,7 @@ internal static class GitBranchDialogs
         var list = string.Join("\n", files.Take(shown).Select(f => "  " + f))
                    + (files.Count > shown ? $"\n  ほか {files.Count - shown} 件" : "");
         var what = untracked ? "追跡していないファイル" : "未コミットの変更";
-        var answer = MessageBox.Show(owner,
+        var answer = LoomoMessageBox.Show(owner,
             $"{branch} へ切り替えると、次の{what}が上書きされるため、git が切替を止めました。\n\n{list}\n\n" +
             "［はい］変更をスタッシュに退避して切り替える（Git パネルのスタッシュから戻せます）\n" +
             "［いいえ］変更を持ったまま切り替える（git checkout -m。ぶつかる箇所は衝突として残ります）\n" +
@@ -45,7 +45,7 @@ internal static class GitBranchDialogs
 
     /// <summary>ローカル削除と取り違えないよう、リモートブランチ削除を明示して確認する。</summary>
     public static bool ConfirmDeleteRemoteBranch(Window? owner, string remoteBranch) =>
-        MessageBox.Show(owner,
+        LoomoMessageBox.Show(owner,
             $"リモート上のブランチ {remoteBranch} を削除します。\n" +
             "リモートから消えるため、他の人の作業にも影響します。\n\n実行しますか？",
             "リモートブランチの削除", MessageBoxButton.YesNo, MessageBoxImage.Warning) == MessageBoxResult.Yes;

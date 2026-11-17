@@ -155,7 +155,7 @@ public partial class GitSessionView
         if (vanished)
             await vm.PruneWorktreesAsync();
         if (failed.Count > 0)
-            MessageBox.Show(Window.GetWindow(this),
+            LoomoMessageBox.Show(Window.GetWindow(this),
                 $"{removed} 件を削除しました。消せなかったもの：{Environment.NewLine}{Environment.NewLine}"
                 + string.Join(Environment.NewLine, failed),
                 "ワークツリーの片付け", MessageBoxButton.OK, MessageBoxImage.Warning);
@@ -193,7 +193,7 @@ public partial class GitSessionView
         if (picker.ShowDialog(Window.GetWindow(this)) != true)
             return;
         if (await vm.RepairWorktreeAsync(worktree, picker.FolderName) is { } problem)
-            MessageBox.Show(Window.GetWindow(this), problem, "ワークツリーを繋ぎ直す", MessageBoxButton.OK, MessageBoxImage.Warning);
+            LoomoMessageBox.Show(Window.GetWindow(this), problem, "ワークツリーを繋ぎ直す", MessageBoxButton.OK, MessageBoxImage.Warning);
     }
 
     private async void OnWorktreeUnlock(object sender, RoutedEventArgs e)
@@ -214,7 +214,7 @@ public partial class GitSessionView
             return;
         if (worktree.IsLocked)
         {
-            MessageBox.Show(Window.GetWindow(this),
+            LoomoMessageBox.Show(Window.GetWindow(this),
                 $"{worktree.DisplayName} はロックされています。先に「ロック解除」してください。",
                 "ワークツリーの削除", MessageBoxButton.OK, MessageBoxImage.Information);
             return;

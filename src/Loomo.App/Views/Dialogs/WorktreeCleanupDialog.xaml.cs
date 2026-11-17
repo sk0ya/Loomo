@@ -72,7 +72,7 @@ public partial class WorktreeCleanupDialog : Window
         var message = _model.DiscardChanges && _model.ToRemove.Any(r => r.Worktree.IsDirty)
             ? $"{count} 件のワークツリーを削除します。未コミットの変更があるものも、変更ごと消えます（復元できません）。\n続けますか？"
             : $"{count} 件のワークツリーを削除します（フォルダーと部屋が片付きます。ブランチは残ります）。\n続けますか？";
-        if (MessageBox.Show(this, message, "ワークツリーの片付け", MessageBoxButton.OKCancel,
+        if (LoomoMessageBox.Show(this, message, "ワークツリーの片付け", MessageBoxButton.OKCancel,
                 _model.DiscardChanges ? MessageBoxImage.Warning : MessageBoxImage.Question) != MessageBoxResult.OK)
             return;
         DialogResult = true;

@@ -1,3 +1,4 @@
+using sk0ya.Loomo.App.Views;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -869,7 +870,7 @@ public sealed partial class GitPanelViewModel : ObservableObject
     private async Task StashDropAsync(GitStashEntry? stash)
     {
         if (stash is null) return;
-        var answer = MessageBox.Show(
+        var answer = LoomoMessageBox.Show(
             Application.Current?.MainWindow!,
             $"{stash.Ref} を破棄しますか？\n{stash.Description}\n復元できません。",
             "スタッシュの破棄", MessageBoxButton.YesNo, MessageBoxImage.Warning);
@@ -1194,7 +1195,7 @@ public sealed partial class GitPanelViewModel : ObservableObject
     {
         if (UntrustedRepositoryPath is not { Length: > 0 } path)
             return;
-        var answer = MessageBox.Show(
+        var answer = LoomoMessageBox.Show(
             $"このリポジトリは今のユーザーの持ち物ではないため、git が扱いを拒否しています。\n\n  {path}\n\n" +
             "信頼すると、ユーザー全体の git 設定（~/.gitconfig）に次を足します：\n\n" +
             $"  git config --global --add safe.directory {path}\n\n" +
@@ -1377,7 +1378,7 @@ public sealed partial class GitPanelViewModel : ObservableObject
         // ビュー側でも出さないが、基準がブランチ／分岐点のときは概念として存在しない操作なので二重に塞ぐ。
         if (item is null || !Capabilities.CanDiscard) return;
         var detail = item.Entry.IsUntracked ? "未追跡ファイルなので削除されます。" : "作業ツリーの変更が失われます。";
-        var answer = MessageBox.Show(
+        var answer = LoomoMessageBox.Show(
             Application.Current?.MainWindow!,
             $"{item.Entry.Path} の変更を破棄しますか？\n{detail}",
             "変更の破棄", MessageBoxButton.YesNo, MessageBoxImage.Warning);

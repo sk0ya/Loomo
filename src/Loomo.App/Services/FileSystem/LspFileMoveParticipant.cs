@@ -1,3 +1,4 @@
+using sk0ya.Loomo.App.Views;
 using System.Windows;
 using Editor.Core.Lsp;
 using sk0ya.Loomo.Core.Settings;
@@ -205,8 +206,8 @@ public sealed class LspFileMoveParticipant : IFileMoveParticipant
             "はい: 更新して移動する\nいいえ: 参照は更新せずに移動する\n\n" +
             "毎回確認するかどうかは 設定 › 言語サーバー (LSP) で変えられます。";
         var answer = owner is null
-            ? MessageBox.Show(message, "参照の更新", MessageBoxButton.YesNo, MessageBoxImage.Question)
-            : MessageBox.Show(owner, message, "参照の更新", MessageBoxButton.YesNo, MessageBoxImage.Question);
+            ? LoomoMessageBox.Show(message, "参照の更新", MessageBoxButton.YesNo, MessageBoxImage.Question)
+            : LoomoMessageBox.Show(owner, message, "参照の更新", MessageBoxButton.YesNo, MessageBoxImage.Question);
         return answer == MessageBoxResult.Yes ? FileMoveReferenceAnswer.Update : FileMoveReferenceAnswer.Skip;
     }
 }

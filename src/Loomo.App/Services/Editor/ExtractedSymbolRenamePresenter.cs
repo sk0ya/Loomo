@@ -27,7 +27,7 @@ internal static class ExtractedSymbolRenamePresenter
             if (ExtractedSymbolName.IsValidIdentifier(chosen))
                 return (ExtractedSymbolName.Rename(changes, generated, chosen), false);
 
-            MessageBox.Show(owner, "識別子として使えない名前です。", "リファクタリング",
+            LoomoMessageBox.Show(owner, "識別子として使えない名前です。", "リファクタリング",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
         }
     }
