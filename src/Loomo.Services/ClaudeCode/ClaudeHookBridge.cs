@@ -301,8 +301,10 @@ public static class ClaudeHookInstaller
     public static bool IsLegacyInstalled(string? claudeConfigDirectory = null)
     {
         var settingsPath = SettingsPath(claudeConfigDirectory);
-        return File.Exists(settingsPath)
-               && Events.Any(name => HasHook(Load(settingsPath), name, DefaultScriptPath()));
+        if (!File.Exists(settingsPath))
+            return false;
+        var settings = Load(settingsPath);   // 設定は 1 度だけ読む（イベントごとに読み直さない）
+        return Events.Any(name => HasHook(settings, name, DefaultScriptPath()));
     }
 
     private static JsonObject Load(string path)

@@ -16,7 +16,8 @@ public partial class ShellWindow {
     /// <summary>次の頼みごとに添える知らせ（§45.6 P3・§45.4 P1）。サーバーのスレッドからも読むので、待ち行列はスレッドセーフ。</summary>
     private readonly ClaudeNoteQueue _claudeNotes = new();
 
-    /// <summary>UserPromptSubmit の答え：このセッションの知らせを 1 度だけ添える。無ければ null（フックは何も書かない）。</summary>
+    /// <summary>UserPromptSubmit の答え：このセッションの知らせを添える（1 件は 2 回まで。返事が橋に届かなかった回の保険に、重複を許す）。
+    /// 無ければ null（フックは何も書かない）。</summary>
     private System.Text.Json.Nodes.JsonObject? ClaudeNoteForPrompt(System.Text.Json.Nodes.JsonObject hookEvent) {
         if ((string?)hookEvent["session_id"] is not { Length: > 0 } session)
             return null;

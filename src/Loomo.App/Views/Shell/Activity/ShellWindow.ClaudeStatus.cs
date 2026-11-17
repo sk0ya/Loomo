@@ -16,11 +16,12 @@ public partial class ShellWindow {
         new(category, title, run) { Detail = detail };
 
     /// <summary>接続の状態を一覧にする。行を選ぶとその場の操作を行う。</summary>
-    private void OpenClaudeStatus() {
+    private async void OpenClaudeStatus() {
+        // ~/.claude.json は UI スレッドで読まない（大きい・同期フォルダーに在る場合に止まる）。背景で読んでから開く。
+        var registered = await Task.Run(ClaudeCodeRegistered);
         var hooks = ClaudeHookInstaller.IsLegacyInstalled() ? "古い版（入れ直すと新しくなります）"
             : ClaudeHookInstaller.IsInstalled() ? "入っている" : "入っていない";
         var window = _loomoMcp is null ? "止まっています" : "動いています";
-        var registered = ClaudeCodeRegistered();
         var agents = _paneActivity.AgentTabs().Count;
         var pending = PendingReviewCount();
 

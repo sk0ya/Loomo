@@ -39,7 +39,9 @@ public partial class ShellWindow {
             var counts = LoomoDefinitions.Import(dialog.FolderName, LoomoAppDataRoot());
             ToastService.Info($"定義を取り込みました：面 {counts.Faces}・見どころ {counts.Probes}・言いつけ {counts.Orders}。"
                 + "面と見どころは、この PC で一度許すまで走りません");
-        } catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException) {
+        } catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException
+                                        or System.Text.Json.JsonException or InvalidOperationException) {
+            // 壊れた JSON（JsonException）や version の型違い（InvalidOperationException）もここで受けて、UI スレッドの未処理例外にしない。
             ToastService.Error($"定義を取り込めませんでした：{ex.Message}");
         }
     }

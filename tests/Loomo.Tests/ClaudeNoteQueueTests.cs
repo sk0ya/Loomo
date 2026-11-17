@@ -3,20 +3,21 @@ using sk0ya.Loomo.Services.ClaudeCode;
 
 namespace sk0ya.Loomo.Tests;
 
-/// <summary>次の頼みごとに添える知らせの待ち行列（§45.6 P3）。セッションごとに一度だけ取れる・溜めすぎない・空の宛先は持たない。</summary>
+/// <summary>次の頼みごとに添える知らせの待ち行列（§45.6 P3）。各知らせは 2 回まで添えられて消える（届かなかった場合の保険）・溜めすぎない・空の宛先は持たない。</summary>
 public sealed class ClaudeNoteQueueTests
 {
     private static ClaudeNote Note(string text) => new(ClaudeNote.KindMotionWorsened, text, DateTimeOffset.UnixEpoch);
 
     [Fact]
-    public void 知らせはセッションごとに_一度だけ取れて_取ったら消える()
+    public void 知らせは各_2回まで添えられて_使い切ると消え_別のセッションは残る()
     {
         var sut = new ClaudeNoteQueue();
         sut.Add("s1", Note("テストが落ちた"));
         sut.Add("s2", Note("別のセッション"));
 
         Assert.Equal(["テストが落ちた"], sut.Take("s1").Select(n => n.Text));
-        Assert.Empty(sut.Take("s1"));                     // 二度目は無い
+        Assert.Equal(["テストが落ちた"], sut.Take("s1").Select(n => n.Text));   // 1 回目が届かなかった場合の保険
+        Assert.Empty(sut.Take("s1"));                     // 使い切った
         Assert.Equal(1, sut.Count("s2"));                 // 別のセッションのものは残る
     }
 
@@ -63,9 +64,9 @@ public sealed class ClaudeNoteQueueTests
         })).ToArray();
         Task.WaitAll(writers);
 
-        // 最大 8 件で止まる（溜めすぎない）。取り合っても両方が同じものを返すことはない。
-        var first = sut.Take("s1");
-        Assert.Equal(ClaudeNoteQueue.MaxPerSession, first.Count);
+        // 最大 8 件で止まる（溜めすぎない）。2 回までは同じ 8 件が返り、そのあとは空。
+        Assert.Equal(ClaudeNoteQueue.MaxPerSession, sut.Take("s1").Count);
+        Assert.Equal(ClaudeNoteQueue.MaxPerSession, sut.Take("s1").Count);
         Assert.Empty(sut.Take("s1"));
     }
 

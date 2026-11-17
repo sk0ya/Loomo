@@ -58,9 +58,10 @@ public sealed class BrowserConsoleLogTests
     [InlineData("http://127.0.0.1:8080/x", true)]
     [InlineData("https://file.loomo/C:/Projects/app/index.html", true)]
     [InlineData("file:///C:/Projects/app/index.html", true)]
+    [InlineData("file:///C:/Users/koya/Documents/secret.html", false)]
     [InlineData("https://example.com/", false)]
     [InlineData("https://dev.azure.com/org/project", false)]
     [InlineData("", false)]
     public void 読んでよいのはローカルのページだけ(string url, bool expected)
-        => Assert.Equal(expected, BrowserConsoleLog.IsLocalPage(url));
+        => Assert.Equal(expected, BrowserConsoleLog.IsLocalPage(url, ["C:\\Projects\\app"]));
 }

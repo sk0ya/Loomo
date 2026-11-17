@@ -98,14 +98,15 @@ public sealed class BrowserConsoleLog
 
     /// <summary>
     /// このページのエラーを読んでよいか（§45.5）。ローカルのページ（localhost・Loomo のファイル・ワークスペースのファイル）だけ。
+    /// <c>file://</c> は<b>ワークスペースのフォルダーの中</b>のものだけ（ワークスペース外のファイルは読まない）。
     /// ほかのサイトのページの中身は、サインインしていることがあるので読まない。
     /// </summary>
-    public static bool IsLocalPage(string? url)
+    public static bool IsLocalPage(string? url, IReadOnlyList<string>? workspaceFolders)
     {
         if (string.IsNullOrEmpty(url) || !Uri.TryCreate(url, UriKind.Absolute, out var uri))
             return false;
         if (uri.IsFile)
-            return true;
+            return sk0ya.Loomo.Core.Files.WorkspacePaths.Contains(workspaceFolders, uri.LocalPath);
         return uri.Host is "localhost" or "127.0.0.1" or "::1" || uri.Host.EndsWith(".loomo", StringComparison.OrdinalIgnoreCase);
     }
 

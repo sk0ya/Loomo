@@ -6,7 +6,7 @@ namespace sk0ya.Loomo.App.Views;
 
 /// <summary>
 /// ShellWindow: ブラウザのページのエラーを Claude が読む（§45.5 P2 `browser_errors`）。読むのは<b>ローカルのページだけ</b>
-/// （localhost・Loomo のファイル・ワークスペースのファイル）。ほかのサイトは、サインインしていることがあるので読まない。
+/// （localhost・Loomo のファイル・ワークスペースのフォルダーの中のファイル）。ほかのサイトは、サインインしていることがあるので読まない。
 /// </summary>
 public partial class ShellWindow {
     /// <summary>ブラウザペインの前に出ているページのエラーと警告（UI スレッドで読む）。</summary>
@@ -15,7 +15,7 @@ public partial class ShellWindow {
         if (core is null)
             return new LoomoRoomResult(true, "The browser pane has no page in front (nothing to read).");
         var url = core.Source;
-        if (!BrowserConsoleLog.IsLocalPage(url))
+        if (!BrowserConsoleLog.IsLocalPage(url, _workspace.Folders))
             return new LoomoRoomResult(true,
                 "The page in the browser pane is not a local page (localhost, Loomo's files or the workspace). "
                 + "Loomo does not read other sites' pages.");

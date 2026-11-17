@@ -348,8 +348,12 @@ public sealed class LoomoMcpServer : IDisposable
         var owned = false;
         try
         {
-            try { owned = mutex.WaitOne(TimeSpan.FromSeconds(2)); }
+            try { owned = mutex.WaitOne(TimeSpan.FromSeconds(10)); }
             catch (AbandonedMutexException) { owned = true; }
+            // 取れなければ書かない：ミューテックス無しで読んで書くと、もう一方の Loomo の項目を消してしまう（§45.3 P0c）。
+            // この Loomo の項目は書けないだけで、次に書き換わるとき（別の Loomo の起動・終了）に入る。
+            if (!owned)
+                return;
             var instances = new JsonArray();
             if (ReadEndpointFile()?["instances"] is JsonArray existing)
             {

@@ -68,11 +68,22 @@ public sealed partial class GitRepositoryStripViewModel : ObservableObject
     {
         var generation = ++_rebuildGeneration;
         var folders = _workspace.Folders.ToArray();
-        _rebuilding = Task.Run(() => Build(folders, _git.Repositories.Repositories))
+        // 完了の印は Apply が終わったあとに置く（テストの待ちが、投稿された Apply より前に抜けないように）。
+        var applied = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _rebuilding = applied.Task;
+        Task.Run(() => Build(folders, _git.Repositories.Repositories))
             .ContinueWith(task =>
             {
-                if (task.IsFaulted || generation != _rebuildGeneration) return;
-                UiDispatch.Post(() => Apply(task.Result));
+                if (task.IsFaulted || generation != _rebuildGeneration)
+                {
+                    applied.TrySetResult();
+                    return;
+                }
+                UiDispatch.Post(() =>
+                {
+                    try { Apply(task.Result); }
+                    finally { applied.TrySetResult(); }
+                });
             }, TaskScheduler.Default);
     }
 
