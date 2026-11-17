@@ -15,14 +15,13 @@ public partial class ShellWindow {
         if (!tab.HasRealFile || tab.FilePath is not { Length: > 0 } path)
             return;
         var exists = File.Exists(path);
-        var folder = Path.GetDirectoryName(path);
-        var folderExists = !string.IsNullOrEmpty(folder) && Directory.Exists(folder);
 
         menu.Items.Add(new Separator());
         AddEditorFileItem(menu, "エクスプローラーで表示", () => _vm.Tabs.RevealInExplorerCommand.Execute(tab));
 
         var send = AddEditorFileSubmenu(menu, "ペインへ送る");
-        AddEditorFileItem(send, "ターミナル", () => _vm.FolderTree.RequestSetFolderInTerminal(folder!), enabled: folderExists);
+        AddEditorFileItem(send, "ターミナル", () => _vm.FolderTree.RequestSetPathInTerminal(path, isDirectory: false),
+            enabled: exists);
         AddEditorFileItem(send, "ファイル一覧", () => _vm.FolderTree.RequestRevealPathInFilesPane(path, isDirectory: false),
             enabled: exists);
 

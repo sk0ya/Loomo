@@ -100,11 +100,12 @@ public sealed partial class FolderTreeViewModel
             RevealInFilesPaneRequested?.Invoke(this, fullPath);
     }
 
-    /// <summary>フォルダーを可視ターミナルで cd するよう要求する（ShellWindow が処理）。実在するときだけ。</summary>
-    public void RequestSetFolderInTerminal(string fullPath)
+    /// <summary>パスで指定した項目を可視ターミナルへセットするよう要求する（ShellWindow が処理）。
+    /// ノード版 <see cref="RequestSetInTerminal"/> と同じ。実在するときだけ。</summary>
+    public void RequestSetPathInTerminal(string fullPath, bool isDirectory)
     {
-        if (_fileCommands.DirectoryExists(fullPath))
-            SetInTerminalRequested?.Invoke(this, new TerminalSetRequest(fullPath, true));
+        if (_fileCommands.EntryExists(fullPath, isDirectory))
+            SetInTerminalRequested?.Invoke(this, new TerminalSetRequest(fullPath, isDirectory));
     }
 
     /// <summary>クリップボードのファイル／フォルダを targetDirectory 直下へコピー（move=false）または
