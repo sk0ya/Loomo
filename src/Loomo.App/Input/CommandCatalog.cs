@@ -233,6 +233,7 @@ public static class CommandCatalog
         // ===== Claude Code（§24.1.1・§38）=====
         new CommandDescriptor("claude.agents", CatClaude, "動いている Claude Code の一覧（承認待ち・入力待ちを先に）", null),
         new CommandDescriptor("claude.resumeSession", CatClaude, "Claude Code のセッションを再開…", null),
+        new CommandDescriptor("claude.sendLocation", CatClaude, "エディタの場所を Claude Code へ渡す（@参照・送信はしない）", "Alt+K"),
         new CommandDescriptor("definitions.export", "Loomo", "定義を書き出す（面・見どころ・言いつけ。許しは含めない）", null),
         new CommandDescriptor("definitions.import", "Loomo", "定義を取り込む（書き出したフォルダーから・許しは PC ごと）", null),
         new CommandDescriptor("claude.status", CatClaude, "Claude 接続の状態（フック・窓口・登録・添える知らせ）", null),

@@ -517,6 +517,9 @@
                                         <MenuItem Header="前回の出力と比べる" IsEnabled="{Binding CanCompare}"
                                                   Command="{Binding PlacementTarget.Tag.CompareOutputCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                                   CommandParameter="{Binding}" />
+                                        <MenuItem Header="Claude Code へ渡す（送信はしない）"
+                                                  Command="{Binding PlacementTarget.Tag.SendOutputToClaudeCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                  CommandParameter="{Binding}" />
                                         <MenuItem Header="プロンプトへ入れる（Enter は押さない）"
                                                   Command="{Binding PlacementTarget.Tag.InsertCommandCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                                   CommandParameter="{Binding}" />
@@ -575,5 +578,12 @@
             </Border>
             <Grid x:Name="OutputHost" Visibility="{Binding HasRuns, Converter={StaticResource BoolToVis}}" />
         </DockPanel>
+
+        <!-- 知らせ（Claude Code へ渡せなかった理由など）。下に重ねて出す。 -->
+        <Border Grid.RowSpan="2" VerticalAlignment="Bottom" Margin="8" Padding="8,5"
+                Background="{DynamicResource BgAlt}" CornerRadius="4"
+                Visibility="{Binding HasNotice, Converter={StaticResource BoolToVis}}">
+            <TextBlock Style="{StaticResource Dim}" TextWrapping="Wrap" Text="{Binding Notice}" />
+        </Border>
     </Grid>
 </UserControl>

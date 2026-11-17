@@ -127,6 +127,12 @@ public sealed partial class TerminalSupportViewModel : ObservableObject
     private bool _followLatestTurn = true;
     private string? _renderedKey;
 
+    /// <summary>ターミナル側の一言（Claude Code へ渡せなかった理由など）。空なら出さない。</summary>
+    [ObservableProperty] private string _notice = "";
+    public bool HasNotice => Notice.Length > 0;
+    partial void OnNoticeChanged(string value) => OnPropertyChanged(nameof(HasNotice));
+    public void ReportNotice(string message) => Notice = message;
+
     partial void OnShowRepliesChanged(bool value) => _ = RebuildConversationAsync();
     partial void OnShowChangesChanged(bool value) => _ = RebuildConversationAsync();
     partial void OnShowAgentsChanged(bool value) => _ = RebuildConversationAsync();
@@ -162,6 +168,8 @@ public sealed partial class TerminalSupportViewModel : ObservableObject
     public event EventHandler<TerminalCommandOutput>? OutputOpenRequested;
     /// <summary>コマンドの出力を前回と比べてほしい。</summary>
     public event EventHandler<TerminalCommandOutput>? OutputCompareRequested;
+    /// <summary>コマンドの出力を Claude Code へ渡してほしい（一時ファイル＋@参照、送信はしない）。</summary>
+    public event EventHandler<TerminalCommandOutput>? OutputToClaudeRequested;
     /// <summary>コマンドをプロンプトへ入れてほしい（Enter は送らない、§24.3 の「送る」）。</summary>
     public event EventHandler<string>? CommandInsertRequested;
     /// <summary>追従しているタブへ行きたい。</summary>
@@ -627,6 +635,12 @@ public sealed partial class TerminalSupportViewModel : ObservableObject
     private void OpenOutput(TerminalSupportRunRow? row)
     {
         if (row is not null) OutputOpenRequested?.Invoke(this, row.Output);
+    }
+
+    [RelayCommand]
+    private void SendOutputToClaude(TerminalSupportRunRow? row)
+    {
+        if (row is not null) OutputToClaudeRequested?.Invoke(this, row.Output);
     }
 
     [RelayCommand]

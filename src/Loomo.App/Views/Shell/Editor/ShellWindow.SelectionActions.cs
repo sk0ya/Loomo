@@ -279,7 +279,8 @@ public partial class ShellWindow {
                 CompareEntries(control: null, "ターミナルの選択", e.SelectedText, e.HasSelection)),
             text => _ = SearchSelectionInBrowserAsync(text,
                 _terminalTabs.FirstOrDefault(t => ReferenceEquals(t.View, sender)) is { } tab
-                    ? new BrowserSearchOrigin.Terminal(text, tab.Id) : null)));
+                    ? new BrowserSearchOrigin.Terminal(text, tab.Id) : null),
+            leadingItems: BuildTerminalClaudeSendItem(e.SelectedText, e.HasSelection) is { } claude ? [claude] : null));
     private async Task SendLocationToEditorAsync(SourceLocation location) {
         await OpenPathInEditorAsync(location.Path, location.Line, location.Column);
         FocusPane(PaneKind.Editor);

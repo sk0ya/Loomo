@@ -34,6 +34,8 @@ public partial class ShellWindow {
     }
 
     private void InitializeTerminalSupport() {
+        // Claude Code へ渡した一時ファイルの掃除（一日より前のもの）。ファイル I/O なので UI スレッドの外で。
+        _ = Task.Run(() => sk0ya.Loomo.App.Services.ClaudeHandoffFiles.PruneOld(TimeSpan.FromDays(1)));
         TerminalSupportPane.DataContext = _terminalSupport;
         TerminalSupportPaneHost.DataContext = _terminalSupport;
         _terminalSupport.SetDisplayPath(path => _workspace.ToDisplayPath(path));
@@ -54,6 +56,7 @@ public partial class ShellWindow {
 
         _terminalSupport.FileOpenRequested += (_, path) => _ = OpenPathInEditorAsync(path, 0, 0);
         _terminalSupport.OutputOpenRequested += (_, output) => _ = OpenTerminalOutputInEditorAsync(output);
+        _terminalSupport.OutputToClaudeRequested += (_, output) => _ = HandTerminalOutputToClaudeAsync(output);
         _terminalSupport.OutputCompareRequested += (_, output) => {
             if (ActiveTerminalOutputs?.PreviousOf(output) is { } previous)
                 ShowDiff(new DiffOpenTarget.Comparison(TerminalCommandOutputs.Compare(previous, output)));
