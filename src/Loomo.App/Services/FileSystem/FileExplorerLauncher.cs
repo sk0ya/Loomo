@@ -30,6 +30,31 @@ internal static class FileExplorerLauncher
             StartExplorer(argument);
     }
 
+    /// <summary>消えたファイルでも動く「表示」。存在すればそのまま <see cref="RevealInExplorer"/>、無ければ
+    /// 最も近い存在する親フォルダーを開く（削除済みのタブから Explorer が空振りしないように）。</summary>
+    public static void RevealNearestExisting(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+            return;
+        string fullPath;
+        try { fullPath = Path.GetFullPath(path); }
+        catch { return; }
+
+        if (File.Exists(fullPath) || Directory.Exists(fullPath))
+        {
+            RevealInExplorer(fullPath);
+            return;
+        }
+        for (var parent = Path.GetDirectoryName(fullPath); !string.IsNullOrEmpty(parent); parent = Path.GetDirectoryName(parent))
+        {
+            if (Directory.Exists(parent))
+            {
+                OpenInExplorer(parent);
+                return;
+            }
+        }
+    }
+
     /// <summary>explorer.exe に渡す引数。存在しないものは null。ファイルは開く／表示とも親で選択する。
     /// ドライブ直下のように親が無いフォルダーは、選択ではなくそのまま開く。</summary>
     internal static string? ExplorerArgument(string? path, bool reveal)

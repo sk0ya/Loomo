@@ -350,6 +350,10 @@
                 <DataTrigger Binding="{Binding IsPreview}" Value="True">
                     <Setter TargetName="EntryTitle" Property="FontStyle" Value="Italic" />
                 </DataTrigger>
+                <!-- 外で削除されたファイルのタブは取り消し線（残しているが、もう無いことを見出しで示す） -->
+                <DataTrigger Binding="{Binding IsMissing}" Value="True">
+                    <Setter TargetName="EntryTitle" Property="TextDecorations" Value="Strikethrough" />
+                </DataTrigger>
             </DataTemplate.Triggers>
         </DataTemplate>
 

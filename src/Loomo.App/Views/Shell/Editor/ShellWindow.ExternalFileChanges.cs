@@ -130,6 +130,11 @@ public partial class ShellWindow {
         var current = await Task.Run(() => ExternalFileChangePolicy.Fingerprint(path));
         if (!IsStillWatched(control, tab, path))
             return;
+        // 消えた／戻ったの反映：見出しの「削除済み」を合わせる（変わったときだけ再描画する）。
+        if (tab is not null
+            && _vm.Tabs.EditorTabs.FirstOrDefault(t => t.Id == tab.Id) is { } vmTab
+            && vmTab.IsMissing != !File.Exists(path))
+            UpdateEditorTab(tab);
         if (known is null) {
             // 基準が無い（読み込みの指紋を取り損ねた）：比べようがないので、いまを基準にするだけ。
             if (current is not null)

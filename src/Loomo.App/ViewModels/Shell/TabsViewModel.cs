@@ -79,6 +79,10 @@ public sealed partial class TabEntryViewModel : ObservableObject
     /// パスから名前を組み立てるので見出しとは別にここで持つ。</summary>
     [ObservableProperty] private bool _isModified;
 
+    /// <summary>実ファイルがディスクから消えている（Editor タブのみ）。見出しを取り消し線にし、
+    /// 「エクスプローラーで表示」は最も近い存在する親フォルダーを開く。</summary>
+    [ObservableProperty] private bool _isMissing;
+
     /// <summary>実ファイルの絶対パス（Editor タブのみ。Untitled／仮想ドキュメントは null）。
     /// 「パスをコピー」「エクスプローラーで表示」の表示可否・対象に使う。</summary>
     [ObservableProperty]
@@ -845,7 +849,7 @@ public sealed partial class TabsViewModel : ObservableObject
             EditorTabs.Add(tab);
     }
 
-    public void UpdateEditorTab(Guid id, string? path, bool isModified)
+    public void UpdateEditorTab(Guid id, string? path, bool isModified, bool isMissing = false)
     {
         var tab = EditorTabs.FirstOrDefault(t => t.Id == id);
         if (tab is null) return;
@@ -857,6 +861,7 @@ public sealed partial class TabsViewModel : ObservableObject
             title += " *";
 
         tab.IsModified = isModified;
+        tab.IsMissing = isMissing;
         tab.Title = title;
         tab.SetFileIcon(FileIconIndexFor(path));
         tab.FilePath = RealFilePath(path);
@@ -1169,7 +1174,8 @@ public sealed partial class TabsViewModel : ObservableObject
     [RelayCommand]
     private void RevealInExplorer(TabEntryViewModel? tab)
     {
-        if (tab?.FilePath is { Length: > 0 } path && File.Exists(path))
-            Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{path}\"") { UseShellExecute = true });
+        // 消えたファイルは選べないので、最も近い存在する親フォルダーを開く（何も起きないのを防ぐ）。
+        if (tab?.FilePath is { Length: > 0 } path)
+            FileExplorerLauncher.RevealNearestExisting(path);
     }
 }

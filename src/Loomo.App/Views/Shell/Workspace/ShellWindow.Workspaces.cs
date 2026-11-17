@@ -76,7 +76,11 @@ public partial class ShellWindow {
         var title = tab.Control.IsVirtualDocument && !string.IsNullOrEmpty(tab.VirtualTitle)
             ? tab.VirtualTitle
             : tab.Control.FilePath;
-        _vm.Tabs.UpdateEditorTab(tab.Id, title, tab.Control.IsModified);
+        // 実ファイルがディスクから消えている（仮想ドキュメントは対象外）＝見出しに「削除済み」を出す。
+        var isMissing = !tab.Control.IsVirtualDocument
+            && tab.Control.FilePath is { Length: > 0 } filePath
+            && !File.Exists(filePath);
+        _vm.Tabs.UpdateEditorTab(tab.Id, title, tab.Control.IsModified, isMissing);
         SaveActiveWorkspaceSnapshot();
     }
     private void OnWorkspaceActivated(object? sender, WorkspaceSnapshot workspace)

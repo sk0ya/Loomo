@@ -185,6 +185,7 @@ public sealed class SingleFileWatcher : IDisposable
             watcher.Changed += OnFileEvent;
             watcher.Created += OnFileEvent;   // 書き換えが「削除→作成」で来るエディタがある
             watcher.Renamed += OnFileEvent;   // 一時ファイルへ書いて置き換える保存もこちらで届く
+            watcher.Deleted += OnFileEvent;   // 削除もここで届く（タブに「削除済み」を出すため）
             watcher.Error += OnWatcherError;  // 監視そのものが死ぬ経路（下の HandleWatcherError）
             watcher.EnableRaisingEvents = true;
             _watcher = watcher;
