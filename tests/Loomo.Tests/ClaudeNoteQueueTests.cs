@@ -1,4 +1,5 @@
 using System.Linq;
+using System.Threading.Tasks;
 using sk0ya.Loomo.Services.ClaudeCode;
 
 namespace sk0ya.Loomo.Tests;
@@ -54,7 +55,7 @@ public sealed class ClaudeNoteQueueTests
     }
 
     [Fact]
-    public void 同じ待ち行列を別のスレッドから同時に触っても_取りこぼさず二重に取らない()
+    public async Task 同じ待ち行列を別のスレッドから同時に触っても_取りこぼさず二重に取らない()
     {
         var sut = new ClaudeNoteQueue();
         var writers = Enumerable.Range(0, 4).Select(_ => Task.Run(() =>
@@ -62,7 +63,7 @@ public sealed class ClaudeNoteQueueTests
             for (var i = 0; i < 1000; i++)
                 sut.Add("s1", Note("x"));
         })).ToArray();
-        Task.WaitAll(writers);
+        await Task.WhenAll(writers);
 
         // 最大 8 件で止まる（溜めすぎない）。2 回までは同じ 8 件が返り、そのあとは空。
         Assert.Equal(ClaudeNoteQueue.MaxPerSession, sut.Take("s1").Count);
