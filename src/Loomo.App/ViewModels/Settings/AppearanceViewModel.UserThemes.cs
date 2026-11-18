@@ -115,10 +115,12 @@ public sealed partial class AppearanceViewModel
         // 選択は背面フィールドへ直接戻す（setter を通すと保存・再適用が走る）。一覧の差し替えで
         // コンボボックスが選択を null にしてくることがあるので、保存値から引き直す。
         var ap = _settings.Appearance;
+#pragma warning disable MVVMTK0034 // 生成プロパティを避けて背面フィールドへ直接書くのが目的
         _selectedTheme = CurrentThemeChoice();
         _selectedEditorTheme = Match(EditorThemes, ap.EditorTheme, 0);
         _selectedPreviewTheme = Match(PreviewThemes, ap.MarkdownPreviewTheme, 0);
         _selectedTerminalTheme = Match(TerminalThemes, ap.TerminalTheme, 0);
+#pragma warning restore MVVMTK0034
         OnPropertyChanged(nameof(SelectedTheme));
         OnPropertyChanged(nameof(SelectedEditorTheme));
         OnPropertyChanged(nameof(SelectedPreviewTheme));
