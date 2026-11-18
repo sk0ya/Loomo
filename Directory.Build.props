@@ -27,10 +27,10 @@
          1.0.106（Vim の移動・挿入の打鍵あたりの費用。§31.20）（2026-10-24 公開）。
          1.0.112（フッター〔VimStatusBar〕の地と文字をエディタのテーマで塗る・狭いときファイル名と印を優先して残す）（2026-11-16 公開）を nuget.org 最新版として使用する。 -->
     <UseLocalEditor Condition="'$(UseLocalEditor)' == ''">false</UseLocalEditor>
-    <EditorPackageVersion Condition="'$(EditorPackageVersion)' == ''">1.0.113</EditorPackageVersion>
+    <EditorPackageVersion Condition="'$(EditorPackageVersion)' == ''">1.0.115</EditorPackageVersion>
     <!-- sk0ya.Terminal.Controls の版。本体（Loomo.Services）と端末の常駐ホスト（Loomo.Pty.Host、§34）が
          同じ版を参照するので、ここ一か所で決める。版ごとの変更点は Loomo.Services.csproj の注記にある。 -->
-    <TerminalPackageVersion Condition="'$(TerminalPackageVersion)' == ''">1.0.58</TerminalPackageVersion>
+    <TerminalPackageVersion Condition="'$(TerminalPackageVersion)' == ''">1.0.59</TerminalPackageVersion>
     <!-- Terminal 側を同時に直しながら動かすときだけ -p:UseLocalTerminal=true として C:\Projects\Terminal の
          プロジェクト参照へ切り替える（Editor の UseLocalEditor と同じ）。パッケージが運んでいた同梱の ConPTY
          （conpty.dll と x64\OpenConsole.exe）はプロジェクト参照では流れて来ないので、その間だけ Microsoft の
