@@ -107,3 +107,14 @@
 - 11-13 以降に版が出ていなかったもの：Zed・Windows Terminal・GitButler・GitLens・zellij・Ghostty・WezTerm・Helix・lazygit・kitty・Warp・Alacritty・Tabby・Files・
   Git Extensions・Yaak・jj・SourceGit・Trilium・tmux・yazi（Zen 1.24.2b・PowerToys v0.103.3151・atuin v18.24.8・gh-dash v4.26.3 は前回読了）。Logseq と Neovim は nightly だけ。
 - 見ていないもの：Chrome／Edge DevTools、Cursor／Windsurf（AI が主役）、Arc（開発停止）、Notion（クラウド前提）。理由は前回までと同じ。
+
+## 実装済み（2026-11-19）
+
+推した 4 件をすべて入れた（3 の Loomo 側だけは Editor の公開待ち）。設計は §24.109・§24.110。
+
+| 推す | 設計 | 状態 |
+|---|---|---|
+| 1. ブラウザの画面に印を付けて Claude Code へ | §24.110 の 1 | コミット済み。実機でパレットから開き、印を付けて渡すまで確かめた。右クリックの入口は未確認 |
+| 2. 失敗したテストの期待値と実際を Diff で | §24.110 の 2 | コミット済み。実機では押していない（使い捨てのワークスペースでテストの実行が止まったため） |
+| 3. Markdown へ落としてリンク | §24.110 の 3 | Editor に `TryGetInsertionPositionFromPoint` を足してコミット（未公開）。Loomo 側はローカルの Editor で実機まで確かめたが、公開まで作業ツリーに置いてある |
+| 4. `other.md#見出し` で見出しに着地 | §24.109 | コミット済み。実機でプレビューのリンクから見出しの行に着くことを確かめた |
