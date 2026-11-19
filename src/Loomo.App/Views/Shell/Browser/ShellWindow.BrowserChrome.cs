@@ -227,7 +227,8 @@ public partial class ShellWindow {
             url => {
                 try { Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }); }
                 catch { ToastService.Error("既定のブラウザを起動できませんでした。"); }
-            });
+            },
+            BrowserScreenToClaudeAction());
 
     /// <summary>表示中のページを Markdown にしてエディタタブで開く（読む・引用する・貼り直すための素材化）。
     /// 拡張子を .md にしてあるので、そのまま EditorSupport のプレビューにも載る。</summary>

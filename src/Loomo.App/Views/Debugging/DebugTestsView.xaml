@@ -9,6 +9,12 @@
         <ContextMenu x:Key="CopyItemMenu" x:Shared="False">
             <MenuItem Header="コピー" Click="OnCopyItemClick" />
         </ContextMenu>
+        <!-- テストの行：失敗のメッセージから期待値と実際を読めたときだけ「Diff で比べる」を出す（§24.110）。 -->
+        <ContextMenu x:Key="TestItemMenu" x:Shared="False">
+            <MenuItem Header="期待値と実際を Diff で比べる" Click="OnCompareAssertionClick"
+                      Visibility="{Binding HasAssertion, Converter={StaticResource BoolToVis}}" />
+            <MenuItem Header="コピー" Click="OnCopyItemClick" />
+        </ContextMenu>
 
         <!-- テストツリーの行内 ▶（実行）ボタン。テーマ追従の透明背景＋ホバーで BgAlt にする（IconButton をコンパクト化）。 -->
         <Style x:Key="RunGlyphButton" TargetType="Button" BasedOn="{StaticResource IconButton}">
@@ -248,7 +254,7 @@
 
                 <!-- 葉（テスト） -->
                 <DataTemplate DataType="{x:Type vm:TestItemViewModel}">
-                    <Grid ContextMenu="{StaticResource CopyItemMenu}">
+                    <Grid ContextMenu="{StaticResource TestItemMenu}">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="*" />

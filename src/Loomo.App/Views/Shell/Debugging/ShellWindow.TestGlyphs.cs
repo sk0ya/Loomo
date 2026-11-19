@@ -22,7 +22,12 @@ public partial class ShellWindow {
         _vm.Debug.PyTests.TestsChanged += _testGlyphController.SyncAll;
         // ワークスペースが変われば「どのファイルがテストソースか」の記憶も捨てる。
         _workspace.FoldersChanged += (_, _) => _testGlyphController.ResetColumns();
+        // 失敗したテストの期待値と実際を Diff ペインへ（§24.110）。どのテスト一覧（別窓も）からでもここで受ける。
+        DebugTestsView.CompareRequested += OnTestAssertionCompareRequested;
+        Closed += (_, _) => DebugTestsView.CompareRequested -= OnTestAssertionCompareRequested;
     }
+    private void OnTestAssertionCompareRequested(DiffComparison comparison)
+        => ShowDiff(new DiffOpenTarget.Comparison(comparison));
     /// <summary>そのファイルのテストを持つエクスプローラ（.ts/.js 系→TS IDE、.py→IDE ペインの pytest 枠、それ以外→dotnet）。
     /// ペインの振り分けはデバッグ（<see cref="ManagerForPath"/>）と同じ表を使う——同じファイルが両方に属することはない。</summary>
     private ITestExplorer TestExplorerForPath(string? path)

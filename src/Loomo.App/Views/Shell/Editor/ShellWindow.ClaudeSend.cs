@@ -77,10 +77,15 @@ public partial class ShellWindow {
     /// <param name="report">知らせを出す場所。ターミナル由来なら<c>_terminalSupport.ReportNotice</c>（既定はブラウザの状態欄）。</param>
     private async Task HandToClaudeAsync(string fileName, string markdown, Action<string>? report = null) {
         report ??= _browserSupport.ReportStatus;
-        if (ClaudeTerminalTab() is not { } tab) {
-            report("Claude Code が動いているターミナルがありません。ターミナルで claude を起動してください。");
-            return;
-        }
+        if (await HandFileToClaudeAsync(fileName, path => File.WriteAllTextAsync(path, markdown)) is { } error)
+            report(error);
+    }
+
+    /// <summary>一時フォルダーに書いて <c>@参照</c> を Claude Code の入力欄へ入れる（送信はしない）。失敗したら理由、うまくいけば null。
+    /// 文字（PR の本文・ターミナルの選択）も画像（ブラウザの画面・§24.110）もここを通る。</summary>
+    private async Task<string?> HandFileToClaudeAsync(string fileName, Func<string, Task> write) {
+        if (ClaudeTerminalTab() is not { } tab)
+            return "Claude Code が動いているターミナルがありません。ターミナルで claude を起動してください。";
         var folder = ClaudeHandoffFiles.Folder;
         // 同じ秒に二度渡されても上書きしないよう、名前に短い一意の印を入れる。
         // 名前にはリポジトリが入る（owner/repo の / や プロジェクト名の記号はファイル名に使えない字に置き換える）。
@@ -90,13 +95,13 @@ public partial class ShellWindow {
         var path = Path.Combine(folder, new string(named.Select(c => invalid.Contains(c) ? '-' : c).ToArray()));
         try {
             Directory.CreateDirectory(folder);
-            await File.WriteAllTextAsync(path, markdown);
+            await write(path);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) {
-            report($"渡すものを書けませんでした: {ex.Message}");
-            return;
+            return $"渡すものを書けませんでした: {ex.Message}";
         }
         SendReferenceToClaude(tab, path, null, null);
+        return null;
     }
 
     private void SendReferenceToClaude(TerminalTab tab, string path, int? start, int? end) {

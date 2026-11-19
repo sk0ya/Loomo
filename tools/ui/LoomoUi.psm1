@@ -136,6 +136,27 @@ namespace LoomoUi
 
         public static void Move(int x, int y) { SetCursorPos(x, y); }
 
+        /// <summary>押したまま動かして離す（OLE のドラッグ＆ドロップも通るよう、刻んで動かし、離す前に待つ）。</summary>
+        public static void Drag(int x1, int y1, int x2, int y2, bool shift)
+        {
+            SetCursorPos(x1, y1);
+            Thread.Sleep(80);
+            Send(MouseInput(0x0002));
+            Thread.Sleep(80);
+            const int steps = 24;
+            for (var i = 1; i <= steps; i++)
+            {
+                SetCursorPos(x1 + (x2 - x1) * i / steps, y1 + (y2 - y1) * i / steps);
+                Send(MouseInput(0x0001));
+                Thread.Sleep(20);
+            }
+            if (shift) { Send(Key(0x10, 0, 0)); Thread.Sleep(60); Send(MouseInput(0x0001)); }
+            Thread.Sleep(300);
+            Send(MouseInput(0x0004));
+            if (shift) Send(Key(0x10, 0, 2));
+            Thread.Sleep(120);
+        }
+
         static INPUT MouseInput(uint flags) { var i = new INPUT { type = 0 }; i.u.mi.dwFlags = flags; return i; }
         static INPUT Key(ushort vk, ushort scan, uint flags) { var i = new INPUT { type = 1 }; i.u.ki.wVk = vk; i.u.ki.wScan = scan; i.u.ki.dwFlags = flags; return i; }
         static void Send(params INPUT[] inputs) { SendInput((uint)inputs.Length, inputs, Marshal.SizeOf(typeof(INPUT))); }
@@ -251,6 +272,16 @@ function Move-LoomoPointer {
     [LoomoUi.Native]::Move($w.Left + $X, $w.Top + $Y)
 }
 
+function Invoke-LoomoDrag {
+    <# 窓内の座標（Save-LoomoShot の画像の px）から別の座標へ、押したまま動かして離す。-Shift で離す前に Shift を押す。 #>
+    param([string]$Title, [Parameter(Mandatory)][int]$FromX, [Parameter(Mandatory)][int]$FromY,
+          [Parameter(Mandatory)][int]$ToX, [Parameter(Mandatory)][int]$ToY, [switch]$Shift)
+    $w = Resolve-LoomoWindow $Title
+    [LoomoUi.Native]::Foreground($w.Handle, $w.ProcessId)
+    [LoomoUi.Native]::EnsureForeground($w.ProcessId)
+    [LoomoUi.Native]::Drag($w.Left + $FromX, $w.Top + $FromY, $w.Left + $ToX, $w.Top + $ToY, [bool]$Shift)
+}
+
 function Send-LoomoKeys {
     <# -Keys 'Ctrl+Shift+P' / 'Esc' / 'Tab' のような組み合わせ、または -Text で文字列（IME を通さず Unicode で）を送る。 #>
     param([string]$Title, [string]$Keys, [string]$Text)
@@ -285,4 +316,4 @@ function Send-LoomoKeys {
     }
 }
 
-Export-ModuleMember -Function Get-LoomoWindow, Save-LoomoShot, Find-LoomoElement, Invoke-LoomoClick, Move-LoomoPointer, Send-LoomoKeys
+Export-ModuleMember -Function Get-LoomoWindow, Save-LoomoShot, Find-LoomoElement, Invoke-LoomoClick, Invoke-LoomoDrag, Move-LoomoPointer, Send-LoomoKeys

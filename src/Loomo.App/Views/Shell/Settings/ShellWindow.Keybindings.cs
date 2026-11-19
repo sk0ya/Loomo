@@ -60,6 +60,7 @@ public partial class ShellWindow {
             ["localHistory.recent"] = ShowRecentLocalHistory, ["localHistory.restoreDeleted"] = RestoreDeletedFileFromLocalHistory,
             ["nuget.manage"] = () => OpenNuGetPackageManager(),
             ["claude.sendLocation"] = SendEditorLocationToClaude,
+            ["claude.browserScreen"] = () => { _ = HandBrowserScreenToClaudeAsync(); },
             ["claude.agents"] = OpenClaudeAgents, ["github.pullRequests"] = OpenGitHubPullRequests, ["github.issues"] = OpenGitHubIssues, ["azure.pullRequests"] = OpenAzurePullRequests, ["claude.resumeSession"] = OpenClaudeSessions, ["claude.installHooks"] = InstallClaudeHooks, ["claude.uninstallHooks"] = UninstallClaudeHooks, ["claude.reviewNote"] = WriteReviewNoteForClaude, ["claude.status"] = OpenClaudeStatus, ["definitions.export"] = ExportLoomoDefinitions, ["definitions.import"] = ImportLoomoDefinitions,
             ["editor.copyLocationLink"] = () => CopyLocationLink(),
             ["editor.inspectEncoding"] = InspectActiveFileEncoding,
@@ -109,6 +110,8 @@ public partial class ShellWindow {
         // Alt+K（エディタの場所を Claude へ）はエディタにフォーカスがあるときだけ。Loomo がエディタより先に取る。
         // エディタの外（ターミナルなど）では false を返し、キーは素通しになる。
         "claude.sendLocation" => IsEditorFocused(),
+        // ブラウザの画面を Claude へ（§24.110）。ブラウザのタブがあればどこからでも（パレットから呼ぶのが主）。
+        "claude.browserScreen" => _activeBrowserTab is not null,
         // ブラウザのコマンド（§24.105）。写すだけのものはタブがあればどこからでも。ページを動かす・閉じるものは
         // ブラウザにフォーカスがあるときだけ——Alt+← を割り当てても、エディタで押したキーを裏のブラウザが食わないように。
         "browser.copyLink" or "browser.copyUrl" => _activeBrowserTab is not null,

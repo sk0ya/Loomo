@@ -2,6 +2,7 @@ using System.IO;
 using System.Linq;
 using CommunityToolkit.Mvvm.ComponentModel;
 using System.Collections.ObjectModel;
+using sk0ya.Loomo.App.Services;
 using sk0ya.Loomo.Core.Files;
 
 namespace sk0ya.Loomo.App.ViewModels;
@@ -92,10 +93,14 @@ public sealed partial class TestItemViewModel : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(Glyph))]
     [NotifyPropertyChangedFor(nameof(HasMessage))]
+    [NotifyPropertyChangedFor(nameof(Assertion))]
+    [NotifyPropertyChangedFor(nameof(HasAssertion))]
     private TestStatus _status = TestStatus.NotRun;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasMessage))]
+    [NotifyPropertyChangedFor(nameof(Assertion))]
+    [NotifyPropertyChangedFor(nameof(HasAssertion))]
     private string? _message;
 
     [ObservableProperty]
@@ -152,6 +157,11 @@ public sealed partial class TestItemViewModel : ObservableObject
 
     /// <summary>失敗していて表示すべきメッセージがあるか（一覧の 2 行目の出し分け）。</summary>
     public bool HasMessage => Status == TestStatus.Failed && !string.IsNullOrEmpty(Message);
+
+    /// <summary>失敗のメッセージから読み取れた期待値と実際（§24.110）。読めなければ null——右クリックの「期待値と実際を Diff で比べる」を出さない。</summary>
+    internal TestAssertionValues? Assertion => HasMessage ? TestAssertionMessage.TryParse(Message) : null;
+
+    public bool HasAssertion => Assertion is not null;
 
     /// <summary>実行結果（TRX）を反映する。位置はスタックトレースから取れたときだけ更新する。</summary>
     public void Update(TestStatus status, string? message, string? sourcePath, int line,

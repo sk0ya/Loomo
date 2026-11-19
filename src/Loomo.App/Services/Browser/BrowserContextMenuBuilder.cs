@@ -19,7 +19,8 @@ internal static class BrowserContextMenuBuilder
         Action toggleBookmarkBar,
         Action openFind,
         Action<string> copyUrl,
-        Action<string> openExternalBrowser)
+        Action<string> openExternalBrowser,
+        Action? sendScreenToClaude = null)
     {
         try
         {
@@ -44,6 +45,9 @@ internal static class BrowserContextMenuBuilder
                 children.Add(Separator(core));
             }
             children.Add(Command(core, dispatcher, "このページをエディタへ送る（Markdown）", sendPageToEditor));
+            // 見えている画面に印を付けて Claude Code へ（§24.110）。Claude Code が動いているタブがあるときだけ渡される。
+            if (sendScreenToClaude is not null)
+                children.Add(Command(core, dispatcher, "この画面を Claude Code へ渡す…", sendScreenToClaude));
             children.Add(Command(core, dispatcher,
                 isBookmarked ? "ブックマークを外す" : "ブックマークに追加", toggleBookmark));
             children.Add(Command(core, dispatcher, bookmarkBarMenuText, toggleBookmarkBar));

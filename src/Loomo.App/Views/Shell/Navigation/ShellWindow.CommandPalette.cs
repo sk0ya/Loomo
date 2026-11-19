@@ -397,6 +397,10 @@ public partial class ShellWindow {
         if (_activeBrowserTab is not null) {
             list.Add(new("ブラウザ", "ページのリンクをコピー（Markdown / HTML）", CopyActiveBrowserLink, Sc("browser.copyLink"), "browser.copyLink"));
             list.Add(new("ブラウザ", "ページの URL をコピー", CopyActiveBrowserUrl, Sc("browser.copyUrl"), "browser.copyUrl"));
+            // 見えている画面に印を付けて Claude Code へ（§24.110）。Claude Code が動いているタブがあるときだけ出す。
+            if (ClaudeTerminalTab() is not null)
+                list.Add(new("Claude Code", "ブラウザの画面に印を付けて Claude Code へ渡す（@参照・送信はしない）",
+                    () => _ = HandBrowserScreenToClaudeAsync(), Sc("claude.browserScreen"), "claude.browserScreen"));
             // 設定から足したスクリプトのコマンド（§24.106）。
             foreach (var script in _settings.BrowserScripts) {
                 var id = script.Id;
