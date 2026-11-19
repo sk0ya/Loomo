@@ -54,6 +54,43 @@ public static class FileLinkResolver
         if (string.IsNullOrWhiteSpace(path))
             return false;
 
+        if (TryResolvePath(path, currentDocumentPath, baseFolder, out fullPath, out line, out column, out isDirectory))
+            return true;
+
+        // `setup.md#インストール`・`Foo.cs#L12`：# 以下は場所の印。名前に # を含むファイル（`C#.md`）もあるので、
+        // まず全体で探し（上）、見つからなければ後ろの # から順に切って探す。
+        for (var hash = path.LastIndexOf('#'); hash > 0; hash = path.LastIndexOf('#', hash - 1))
+        {
+            if (!TryResolvePath(path[..hash], currentDocumentPath, baseFolder, out fullPath, out line, out column, out isDirectory))
+                continue;
+            if (!isDirectory && line == 0)
+                line = LinkFragment.LineOf(fullPath, path[(hash + 1)..]);
+            return true;
+        }
+
+        fullPath = "";
+        line = 0;
+        column = 0;
+        isDirectory = false;
+        return false;
+    }
+
+    private static bool TryResolvePath(
+        string path,
+        string? currentDocumentPath,
+        string? baseFolder,
+        out string fullPath,
+        out int line,
+        out int column,
+        out bool isDirectory)
+    {
+        fullPath = "";
+        line = 0;
+        column = 0;
+        isDirectory = false;
+        if (string.IsNullOrWhiteSpace(path))
+            return false;
+
         var match = TrailingLineColumn.Match(path);
         if (match.Success && !LooksLikeWindowsDrivePrefix(path, match))
         {

@@ -51,7 +51,7 @@ public static class LinkOpenTargetResolver
             if (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps)
                 return new LinkOpenTarget(LinkOpenTargetKind.Url, uri.AbsoluteUri, 0, 0);
             if (uri.IsFile)
-                target = uri.LocalPath;   // file:// は実在確認を通したいのでパスへ戻す
+                target = uri.LocalPath + uri.Fragment;   // file:// は実在確認を通したいのでパスへ戻す（#見出し・#L12 は残す）
             else
                 return LinkOpenTarget.None;   // mailto: 等は別ウィンドウの担当外（既定の外部起動に任せる）
         }

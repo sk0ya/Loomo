@@ -85,7 +85,7 @@ internal static class EditorSupportLinkController
 
         if (Uri.TryCreate(href.Trim(), UriKind.Absolute, out var fileUri) && fileUri.IsFile)
         {
-            await openFile(fileUri.LocalPath, 0, 0);
+            await openFile(fileUri.LocalPath, LinkFragment.LineOf(fileUri.LocalPath, Uri.UnescapeDataString(fileUri.Fragment.TrimStart('#'))), 0);
             return;
         }
 
