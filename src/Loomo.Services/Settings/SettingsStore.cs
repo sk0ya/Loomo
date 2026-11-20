@@ -211,6 +211,8 @@ public sealed class SettingsStore
 
     private sealed class PersistedTodoTree
     {
+        /// <summary>1 = 文書の既定が .md になった版（2026-11-20）。それより前は文書欄が既定の空欄のまま保存されていた。</summary>
+        public int Format { get; set; }
         public bool GroupByTag { get; set; }
         public string? ExcludeGlob { get; set; }
         public string? CodeExtensions { get; set; }
@@ -218,6 +220,7 @@ public sealed class SettingsStore
         public List<string>? HiddenTags { get; set; }
         public static PersistedTodoTree From(TodoTreeSettings settings) => new()
         {
+            Format = 1,
             GroupByTag = settings.GroupByTag,
             ExcludeGlob = settings.ExcludeGlob,
             CodeExtensions = settings.CodeExtensions,
@@ -229,7 +232,9 @@ public sealed class SettingsStore
             settings.GroupByTag = GroupByTag;
             settings.ExcludeGlob = ExcludeGlob ?? "";
             settings.CodeExtensions = CodeExtensions ?? TodoTreeSettings.DefaultCodeExtensions;
-            settings.DocumentExtensions = DocumentExtensions ?? "";
+            // 旧版の空欄は「既定のまま」だったので、新しい既定（.md）へ上げる。
+            settings.DocumentExtensions = DocumentExtensions is null || (Format < 1 && DocumentExtensions.Length == 0)
+                ? TodoTreeSettings.DefaultDocumentExtensions : DocumentExtensions;
             settings.HiddenTags = HiddenTags?.Where(t => t is "TODO" or "FIXME" or "HACK" or "NOTE").Distinct().ToList() ?? new();
         }
     }

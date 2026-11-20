@@ -43,10 +43,9 @@ public sealed class TodoTreeViewTests(WpfViewHost host)
                     Layout(view);
                     Assert.Equal(((SolidColorBrush)palette["BgAlt"]).Color, ((SolidColorBrush)view.Background).Color);
                     var tree = (TreeView)view.FindName("TodoTree");
-                    var folder = Assert.IsType<TreeViewItem>(tree.ItemContainerGenerator.ContainerFromIndex(0));
-                    Assert.Equal("src / Components / Forms", Assert.IsType<TodoFolder>(folder.DataContext).Name);
-                    Assert.True(folder.IsExpanded);
-                    var group = Assert.IsType<TreeViewItem>(folder.ItemContainerGenerator.ContainerFromIndex(0));
+                    // ファイル 1 つだけのフォルダー区間は、ファイルの行 1 行へ畳まれる。
+                    var group = Assert.IsType<TreeViewItem>(tree.ItemContainerGenerator.ContainerFromIndex(0));
+                    Assert.Equal("src / Components / Forms", Assert.IsType<TodoGroup>(group.DataContext).Folder);
                     Assert.True(group.IsExpanded);
                     Assert.Equal(3, group.Items.Count);
                     Assert.False(vm!.IsFilterVisible);

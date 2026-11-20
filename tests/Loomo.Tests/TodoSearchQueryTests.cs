@@ -22,8 +22,8 @@ public sealed class TodoSearchQueryTests : IDisposable
     {
         Write("sample.cs", "var s = \"TODO string\"; // FIXME: 修正\n/*\n TODO: 複数行\n*/\nvar raw = \"\"\"\n// TODO raw\n\"\"\";\nvar verbatim = @\"\n// NOTE string\n\";\n/* HACK: 手直し */ var value = \"NOTE string\";\n// TODO: one FIXME: two");
         var result = await Search();
-        Assert.Equal(["FIXME", "TODO", "HACK", "TODO", "FIXME"], result.Entries.Select(e => e.Tag));
-        Assert.Equal([1, 3, 11, 12, 12], result.Entries.Select(e => e.Hit.Line));
+        Assert.Equal(["FIXME", "TODO", "HACK", "TODO"], result.Entries.Select(e => e.Tag));
+        Assert.Equal([1, 3, 11, 12], result.Entries.Select(e => e.Hit.Line));
         Assert.Equal("手直し", result.Entries[2].Body);
         Assert.All(result.Entries, e => Assert.Equal(e.Tag, e.Hit.LineText.Substring(e.Hit.Column - 1, e.Tag.Length)));
     }
@@ -38,6 +38,27 @@ public sealed class TodoSearchQueryTests : IDisposable
         Write(name, content);
         var result = await Search();
         Assert.Equal(tags.Split(','), result.Entries.Select(e => e.Tag));
+    }
+
+    [Fact]
+    public async Task コメントの途中にあるタグやコロンの無いタグは拾わない()
+    {
+        Write("sample.cs", string.Join("\n", "// see the TODO: list", "// TODO 後で", "int x; // HACK: 末尾のコメント",
+            "/// TODO(koya): 担当付き", "// 説明 FIXME: 文中"));
+        var result = await Search();
+        Assert.Equal(["HACK", "TODO"], result.Entries.Select(e => e.Tag));
+        Assert.Equal("担当付き", result.Entries[1].Body);
+    }
+
+    [Fact]
+    public async Task 文書は行頭と箇条書きのタグだけを拾う()
+    {
+        Write("notes.md", string.Join("\n", "- TODO: 書く", "- [ ] FIXME: 直す", "1. NOTE: 残す", "> TODO: 引用",
+            "この TODO: は文中", "| TODO: 表 |", "TODO リストを作る", "## HACK: 見出し"));
+        var result = await Search("", ".md");
+        Assert.Equal(["TODO", "FIXME", "NOTE", "TODO", "HACK"], result.Entries.Select(e => e.Tag));
+        Assert.Equal([1, 2, 3, 4, 8], result.Entries.Select(e => e.Hit.Line));
+        Assert.Equal("直す", result.Entries[1].Body);
     }
 
     [Fact]

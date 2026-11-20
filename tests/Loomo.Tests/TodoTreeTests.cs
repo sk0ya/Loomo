@@ -7,19 +7,18 @@ namespace sk0ya.Loomo.Tests;
 
 public sealed class TodoTreeTests
 {
-    [Fact]
-    public void 同じ行の複数タグと日本語の後ろの列を重複せず返す()
+    [Theory]
+    [InlineData("// 日本語 TODO: 修正", null)]
+    [InlineData("TODOS: NOTED: todo: FIXME_flag:", null)]
+    [InlineData("TODO 後で", null)]
+    [InlineData("  // TODO: 修正 FIXME: 確認", "TODO")]
+    [InlineData("- [x] NOTE：全角コロン", "NOTE")]
+    [InlineData("# FIXME(koya): 担当付き", "FIXME")]
+    public void タグは行頭に置きコロンを付けたものだけを拾う(string line, string? tag)
     {
-        var hit = new ContentSearchHit("a.cs", "a.cs", 3, 1, "// 日本語 TODO: 修正 FIXME: 確認");
+        var hit = new ContentSearchHit("a.md", "a.md", 3, 1, line);
         var entries = TodoTreeViewModel.Parse([hit, hit]);
-        Assert.Equal(["TODO", "FIXME"], entries.Select(e => e.Tag));
-        Assert.Equal([8, 17], entries.Select(e => e.Hit.Column));
-    }
-    [Fact]
-    public void 単語の一部や小文字はタグとして拾わない()
-    {
-        var entries = TodoTreeViewModel.Parse([new("a", "a", 1, 1, "TODOS NOTED todo FIXME_flag HACK")]);
-        Assert.Equal("HACK", Assert.Single(entries).Tag);
+        Assert.Equal(tag is null ? [] : [tag], entries.Select(e => e.Tag));
     }
     [Fact]
     public void 既存配置への追加と移動後の保存を維持する()
@@ -70,7 +69,7 @@ public sealed class TodoTreeTests
     public async Task 除外条件と検索上限を渡し切り詰めを表示する()
     {
         var search = new StubSearch { Handler = _ => Task.FromResult<IReadOnlyList<ContentSearchHit>>(
-            Enumerable.Range(1, TodoTreeViewModel.ResultLimit + 1).Select(i => new ContentSearchHit("a", "a", i, 1, "TODO")).ToList()) };
+            Enumerable.Range(1, TodoTreeViewModel.ResultLimit + 1).Select(i => new ContentSearchHit("a", "a", i, 1, "TODO: x")).ToList()) };
         using var vm = new TodoTreeViewModel(search, new FakeWorkspaceService("root"));
         vm.ExcludeGlob = "**/generated/**";
         await vm.RefreshCommand.ExecuteAsync(null);
@@ -83,7 +82,8 @@ public sealed class TodoTreeTests
     [InlineData("// TODO: 入力を確認する", "入力を確認する")]
     [InlineData("<!-- TODO: 文言を修正 -->", "文言を修正")]
     [InlineData("/* TODO: 手直し */", "手直し")]
-    [InlineData("// TODO: first FIXME: second", "first")]
+    [InlineData("// TODO: first FIXME: second", "first FIXME: second")]
+    [InlineData("// TODO(koya): 担当付き", "担当付き")]
     public void 表示の本文だけを整えて原文と列を維持する(string line, string expected)
     {
         var entry = TodoTreeViewModel.Parse([new("a", "a", 1, 1, line)])[0];
@@ -172,6 +172,24 @@ public sealed class TodoTreeTests
         finally { System.IO.File.Delete(path); }
     }
 
+    [Theory]
+    [InlineData("{\"todoTree\":{\"documentExtensions\":\"\"}}", ".md")]
+    [InlineData("{\"todoTree\":{\"format\":1,\"documentExtensions\":\"\"}}", "")]
+    [InlineData("{\"todoTree\":{\"documentExtensions\":\".txt\"}}", ".txt")]
+    [InlineData("{}", ".md")]
+    public void 文書の既定はmdで旧版の空欄も既定へ上げる(string json, string expected)
+    {
+        var path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"todo-settings-{Guid.NewGuid():N}.json");
+        try
+        {
+            System.IO.File.WriteAllText(path, json);
+            var loaded = new LoomoSettings();
+            new sk0ya.Loomo.Services.Settings.SettingsStore(path).Load(loaded);
+            Assert.Equal(expected, loaded.TodoTree.DocumentExtensions);
+        }
+        finally { System.IO.File.Delete(path); }
+    }
+
     [Fact]
     public async Task フォルダー階層と直下ファイルを分け配下の件数を集計する()
     {
@@ -188,16 +206,16 @@ public sealed class TodoTreeTests
         var src = Assert.IsType<TodoFolder>(vm.TreeItems[0]);
         Assert.Equal("src", src.Name);
         Assert.Equal(3, src.Count);
-        Assert.Equal(new[] { "api", "ui" }, src.Children.Cast<TodoFolder>().Select(f => f.Name));
-        Assert.Equal(2, ((TodoFolder)src.Children[1]).Count);
+        // ファイル 1 つだけのフォルダーはファイルの行へ畳む。
+        Assert.Equal(new[] { "api", "ui" }, src.Children.Cast<TodoGroup>().Select(g => g.Folder));
+        Assert.Equal(2, ((TodoGroup)src.Children[1]).Count);
         Assert.Equal("README.md", Assert.IsType<TodoGroup>(vm.TreeItems[1]).Title);
         vm.CollapseAllCommand.Execute(null);
         Assert.False(src.IsExpanded);
         vm.NextCommand.Execute(null);
         Assert.Equal("src/api/Server.cs", vm.SelectedEntry!.Hit.RelativePath);
         Assert.True(src.IsExpanded);
-        Assert.True(((TodoFolder)src.Children[0]).IsExpanded);
-        Assert.True(((TodoGroup)((TodoFolder)src.Children[0]).Children[0]).IsExpanded);
+        Assert.True(((TodoGroup)src.Children[0]).IsExpanded);
         vm.NextCommand.Execute(null);
         Assert.Equal("src/ui/Window.cs", vm.SelectedEntry!.Hit.RelativePath);
         vm.NextCommand.Execute(null);
@@ -231,7 +249,7 @@ public sealed class TodoTreeTests
     {
         var root = @"C:\TodoWorkspace";
         var search = new StubSearch { Handler = _ => Task.FromResult<IReadOnlyList<ContentSearchHit>>([
-            new(root + @"\src\App.cs", "src/App.cs", 1, 1, "TODO: one")]) };
+            new(root + @"\src\App.cs", "src/App.cs", 1, 1, "TODO: one"), new(root + @"\src\Lib.cs", "src/Lib.cs", 1, 1, "TODO: two")]) };
         using var vm = new TodoTreeViewModel(search, new FakeWorkspaceService(root));
         await vm.RefreshCommand.ExecuteAsync(null);
         var folder = Assert.IsType<TodoFolder>(Assert.Single(vm.TreeItems));
@@ -265,7 +283,7 @@ public sealed class TodoTreeTests
     }
 
     [Fact]
-    public async Task 単一の子フォルダーが続く区間をまとめても移動先を維持する()
+    public async Task ファイル1つだけのフォルダー区間はファイルの行へまとめても移動先を維持する()
     {
         var root = @"C:\TodoWorkspace";
         var full = root + @"\src\Components\Forms\Entry.cs";
@@ -273,17 +291,31 @@ public sealed class TodoTreeTests
             new(full, "src/Components/Forms/Entry.cs", 7, 1, "TODO: one")]) };
         using var vm = new TodoTreeViewModel(search, new FakeWorkspaceService(root));
         await vm.RefreshCommand.ExecuteAsync(null);
+        var file = Assert.IsType<TodoGroup>(Assert.Single(vm.TreeItems));
+        Assert.Equal("src / Components / Forms", file.Folder);
+        Assert.Equal("Entry.cs", file.Title);
+        vm.CollapseAllCommand.Execute(null);
+        vm.NextCommand.Execute(null);
+        Assert.True(file.IsExpanded);
+        Assert.Equal(full, vm.SelectedEntry!.Hit.FullPath);
+        Assert.Equal(7, vm.SelectedEntry.Hit.Line);
+    }
+
+    [Fact]
+    public async Task 単一の子フォルダーが続く区間を1行へまとめる()
+    {
+        var root = @"C:\TodoWorkspace";
+        var search = new StubSearch { Handler = _ => Task.FromResult<IReadOnlyList<ContentSearchHit>>([
+            new(root + @"\src\Components\Forms\Entry.cs", "src/Components/Forms/Entry.cs", 1, 1, "TODO: one"),
+            new(root + @"\src\Components\Forms\Field.cs", "src/Components/Forms/Field.cs", 1, 1, "TODO: two")]) };
+        using var vm = new TodoTreeViewModel(search, new FakeWorkspaceService(root));
+        await vm.RefreshCommand.ExecuteAsync(null);
         var folder = Assert.IsType<TodoFolder>(Assert.Single(vm.TreeItems));
         Assert.Equal("src / Components / Forms", folder.Name);
         Assert.Equal(root + @"\src\Components\Forms", folder.FullPath);
         Assert.Equal(3, folder.Paths.Count);
-        Assert.Equal(1, folder.Count);
-        Assert.IsType<TodoGroup>(Assert.Single(folder.Children));
-        vm.CollapseAllCommand.Execute(null);
-        vm.NextCommand.Execute(null);
-        Assert.True(folder.IsExpanded);
-        Assert.Equal(full, vm.SelectedEntry!.Hit.FullPath);
-        Assert.Equal(7, vm.SelectedEntry.Hit.Line);
+        Assert.Equal(2, folder.Count);
+        Assert.All(folder.Children, child => Assert.Equal("", Assert.IsType<TodoGroup>(child).Folder));
     }
 
     [Fact]
@@ -298,10 +330,8 @@ public sealed class TodoTreeTests
         await vm.RefreshCommand.ExecuteAsync(null);
         var src = Assert.IsType<TodoFolder>(Assert.Single(vm.TreeItems));
         Assert.Equal("src", src.Name);
-        Assert.Equal(3, src.Children.Count);
-        Assert.Equal("Components / Forms", Assert.IsType<TodoFolder>(src.Children[0]).Name);
-        Assert.Equal("Other", Assert.IsType<TodoFolder>(src.Children[1]).Name);
-        Assert.Equal("App.cs", Assert.IsType<TodoGroup>(src.Children[2]).Title);
+        Assert.Equal(new[] { "/App.cs", "Components / Forms/Entry.cs", "Other/App.cs" },
+            src.Children.Cast<TodoGroup>().Select(g => g.Folder + "/" + g.Title));
     }
 
     [Fact]
@@ -310,6 +340,7 @@ public sealed class TodoTreeTests
         var root = @"C:\TodoWorkspace";
         var search = new StubSearch { Handler = _ => Task.FromResult<IReadOnlyList<ContentSearchHit>>([
             new(root + @"\src\Components\Forms\Entry.cs", "src/Components/Forms/Entry.cs", 1, 1, "TODO: one"),
+            new(root + @"\src\Components\Forms\Field.cs", "src/Components/Forms/Field.cs", 1, 1, "TODO: one b"),
             new(root + @"\src\Other\App.cs", "src/Other/App.cs", 1, 1, "TODO: two")]) };
         using var vm = new TodoTreeViewModel(search, new FakeWorkspaceService(root));
         await vm.RefreshCommand.ExecuteAsync(null);

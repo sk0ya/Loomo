@@ -9,12 +9,12 @@ public interface ITodoSearchService
     Task<TodoSearchResult> SearchAsync(TodoSearchOptions options, CancellationToken ct);
 }
 
-/// <summary>拡張子で候補を限定し、コードは文書全体の字句解析からコメント内のタグだけを採用する。</summary>
+/// <summary>拡張子で候補を限定し、コードは文書全体の字句解析からコメントの先頭にあるタグだけ、
+/// 文書は行頭（箇条書き等の直後）にあるタグだけを採用する。書き方は <see cref="TodoTagSyntax"/>。</summary>
 public sealed class TodoSearchQuery(IWorkspaceSearchService search, IWorkspaceService workspace) : ITodoSearchService
 {
     private const int CandidateLimit = 20000;
     private const long MaxFileBytes = 2 * 1024 * 1024;
-    private static readonly Regex Tags = new(TodoTreeViewModel.TagPattern, RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
 
     private static SyntaxEngine CreateEngine()
     {
@@ -52,7 +52,7 @@ public sealed class TodoSearchQuery(IWorkspaceSearchService search, IWorkspaceSe
         var code = ParseExtensions(options.CodeExtensions).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var extensions = code.Concat(ParseExtensions(options.DocumentExtensions)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
         if (extensions.Length == 0) return new([]);
-        var candidates = await search.GrepAsync(TodoTreeViewModel.TagPattern,
+        var candidates = await search.GrepAsync(TodoTagSyntax.CandidatePattern,
             new GrepOptions(CaseSensitive: true, UseRegex: true, ExcludeGlob: options.ExcludeGlob,
                 MaxResults: CandidateLimit + 1, Extensions: extensions), ct);
         var entries = new List<TodoEntry>();
@@ -73,26 +73,36 @@ public sealed class TodoSearchQuery(IWorkspaceSearchService search, IWorkspaceSe
                 for (var line = 0; line < lines.Length; line++)
                 {
                     ct.ThrowIfCancellationRequested();
-                    foreach (Match match in Tags.Matches(lines[line]))
+                    var text = lines[line];
+                    if (isCode)
                     {
-                        int? end = null;
-                        if (isCode)
+                        if (!tokens!.TryGetValue(line, out var spans)) continue;
+                        // コメントは字句器によって語ごとに割れることがあるので、隣接するコメントをつないで 1 つとして見る。
+                        var comments = spans.Where(t => t.Kind == TokenKind.Comment && t.Length > 0).OrderBy(t => t.StartColumn).ToList();
+                        for (var i = 0; i < comments.Count; i++)
                         {
-                            if (!tokens!.TryGetValue(line, out var spans)) continue;
-                            var comment = spans.FirstOrDefault(t => t.Kind == TokenKind.Comment
-                                && t.StartColumn <= match.Index && t.StartColumn + t.Length >= match.Index + match.Length);
-                            if (comment.Length == 0) continue;
-                            end = comment.StartColumn + comment.Length;
+                            var start = comments[i].StartColumn;
+                            var stop = start + comments[i].Length;
+                            while (i + 1 < comments.Count && comments[i + 1].StartColumn <= stop)
+                                stop = Math.Max(stop, comments[++i].StartColumn + comments[i].Length);
+                            if (start >= text.Length || TodoTagSyntax.Find(text, start, stop) is not { } match) continue;
+                            if (Add(match, Math.Min(stop, text.Length))) return Truncated();
                         }
-                        entries.Add(new(match.Value, new(file.Key, file.First().RelativePath, line + 1, match.Index + 1, lines[line]), end));
-                        if (entries.Count > options.MaxResults)
-                            return new(entries.Take(options.MaxResults).ToArray(), true, Notice());
+                    }
+                    else if (TodoTagSyntax.Find(text) is { } match && Add(match, null)) return Truncated();
+
+                    bool Add(Match match, int? end)
+                    {
+                        entries.Add(new(match.Groups["tag"].Value, new(file.Key, file.First().RelativePath, line + 1, match.Index + 1, text), end));
+                        return entries.Count > options.MaxResults;
                     }
                 }
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { skipped++; }
         }
         return new(entries, false, Notice());
+
+        TodoSearchResult Truncated() => new(entries.Take(options.MaxResults).ToArray(), true, Notice());
 
         string? Notice()
         {

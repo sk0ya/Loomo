@@ -18,12 +18,11 @@ public sealed partial class TodoEntry : ObservableObject
     {
         get
         {
-            var start = Math.Clamp(Hit.Column - 1 + Tag.Length, 0, Hit.LineText.Length);
+            // タグ・担当者・コロンの後ろだけを表示する。原文やコピー内容には手を加えない。
+            var tagLength = Math.Max(TodoTagSyntax.LengthAt(Hit.LineText, Hit.Column - 1), Tag.Length);
+            var start = Math.Clamp(Hit.Column - 1 + tagLength, 0, Hit.LineText.Length);
             var end = Math.Clamp(ContentEndColumn ?? Hit.LineText.Length, start, Hit.LineText.Length);
-            var body = Hit.LineText[start..end].TrimStart(' ', '\t', ':', '：', '-');
-            // タグの後ろだけを表示する。原文やコピー内容には手を加えない。
-            var next = Regex.Match(body, TodoTreeViewModel.TagPattern);
-            if (next.Success) body = body[..next.Index].TrimEnd();
+            var body = Hit.LineText[start..end].Trim();
             foreach (var suffix in new[] { "-->", "*/" })
                 if (body.EndsWith(suffix, StringComparison.Ordinal)) body = body[..^suffix.Length].TrimEnd();
             return string.IsNullOrWhiteSpace(body) ? "（内容なし）" : body;
@@ -44,6 +43,11 @@ public sealed partial class TodoGroup : ObservableObject
     public string FullPath { get; }
     public string Key => ByTag ? $"tag:{Name}" : $"file:{FullPath}";
     public string Title => ByTag ? Name : Path.GetFileName(Name);
+    /// <summary>ファイル 1 つだけのフォルダーをこの行へまとめたときの「src / ui」。並べ直すたびに付け直す。</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(FolderSuffix))]
+    private string _folder = "";
+    public string FolderSuffix => Folder.Length == 0 ? "" : "  " + Folder;
     public string Directory => ByTag ? "" : Path.GetDirectoryName(Name) ?? "";
     public ObservableCollection<TodoEntry> Entries { get; }
     public int Count => Entries.Count;

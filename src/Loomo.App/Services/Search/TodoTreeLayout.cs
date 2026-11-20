@@ -11,6 +11,7 @@ public static class TodoTreeLayout
             .Where(g => g.Count() > 1).Select(g => g.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
         foreach (var group in groups)
         {
+            group.Folder = "";
             var root = workspace.FolderFor(group.FullPath);
             var relative = root is null ? group.Name : Path.GetRelativePath(root, group.FullPath);
             var parts = relative.Replace('\\', '/').Split('/', StringSplitOptions.RemoveEmptyEntries);
@@ -44,18 +45,27 @@ public static class TodoTreeLayout
         }
     }
 
-    /// <summary>直下がフォルダー1つだけの区間を1行へまとめる。複数ルートの境界は残す。</summary>
-    private static TodoFolder Compact(TodoFolder folder, bool preserveRoot = false)
+    /// <summary>直下がフォルダー1つだけの区間を1行へまとめ、ファイル1つだけのフォルダーはファイルの行へ畳む
+    /// （「Window.cs  src / ui」の1行）。複数ルートの境界は残す。</summary>
+    private static object Compact(TodoFolder folder, bool preserveRoot = false)
     {
         for (var i = 0; i < folder.Children.Count; i++)
             if (folder.Children[i] is TodoFolder child)
                 folder.Children[i] = Compact(child);
-        if (preserveRoot || folder.Children.Count != 1 || folder.Children[0] is not TodoFolder only)
-            return folder;
-        var compact = new TodoFolder($"{folder.Name} / {only.Name}", only.FullPath,
-            folder.Paths.Concat(only.Paths).ToList());
-        foreach (var child in only.Children) compact.Children.Add(child);
-        return compact;
+        if (preserveRoot || folder.Children.Count != 1) return folder;
+        switch (folder.Children[0])
+        {
+            case TodoGroup file:
+                file.Folder = file.Folder.Length == 0 ? folder.Name : $"{folder.Name} / {file.Folder}";
+                return file;
+            case TodoFolder only:
+                var compact = new TodoFolder($"{folder.Name} / {only.Name}", only.FullPath,
+                    folder.Paths.Concat(only.Paths).ToList());
+                foreach (var child in only.Children) compact.Children.Add(child);
+                return compact;
+            default:
+                return folder;
+        }
     }
 
     private static string RootName(string root)
@@ -68,7 +78,7 @@ public static class TodoTreeLayout
     private static void Sort(IList<object> items)
     {
         var sorted = items.OrderBy(item => item is TodoFolder ? 0 : 1)
-            .ThenBy(item => item is TodoFolder folder ? folder.Name : ((TodoGroup)item).Title,
+            .ThenBy(item => item is TodoFolder folder ? folder.Name : ((TodoGroup)item).Folder + "/" + ((TodoGroup)item).Title,
                 StringComparer.OrdinalIgnoreCase).ToList();
         items.Clear();
         foreach (var item in sorted)

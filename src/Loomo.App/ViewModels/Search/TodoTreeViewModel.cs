@@ -7,9 +7,7 @@ namespace sk0ya.Loomo.App.ViewModels;
 /// <summary>TODO の検索・表示条件・選択。自動更新では同じ行とグループを再利用する。</summary>
 public sealed partial class TodoTreeViewModel : ObservableObject, IDisposable
 {
-    public const string TagPattern = @"\b(TODO|FIXME|HACK|NOTE)\b";
     public const int ResultLimit = 2000;
-    private static readonly Regex Tags = new(TagPattern, RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
     private readonly ITodoSearchService _search;
     private readonly IWorkspaceService _workspace;
     private readonly LoomoSettings? _settings;
@@ -35,7 +33,7 @@ public sealed partial class TodoTreeViewModel : ObservableObject, IDisposable
         _groupByTag = settings?.TodoTree.GroupByTag ?? false;
         _excludeGlob = settings?.TodoTree.ExcludeGlob ?? "";
         CodeExtensions = settings?.TodoTree.CodeExtensions ?? TodoTreeSettings.DefaultCodeExtensions;
-        DocumentExtensions = settings?.TodoTree.DocumentExtensions ?? "";
+        DocumentExtensions = settings?.TodoTree.DocumentExtensions ?? TodoTreeSettings.DefaultDocumentExtensions;
         foreach (var tag in TagFilters)
         {
             tag.IsEnabled = settings?.TodoTree.HiddenTags.Contains(tag.Tag) != true;
@@ -80,7 +78,7 @@ public sealed partial class TodoTreeViewModel : ObservableObject, IDisposable
     public string EmptyDescription => _error ?? (_workspace.Folders.Count == 0
         ? "開いたフォルダーの TODO をここに表示します。"
         : IsFiltered || HasExclusion ? "絞り込みや除外条件を解除して確認できます。"
-        : "指定した拡張子のコメント内を検索します。対象は「…」の検索設定で変更できます。");
+        : "コメントや箇条書きの先頭に「TODO:」の形で書いたものを集めます。対象の拡張子は「…」の検索設定で変更できます。");
 
     public string CodeExtensions { get; private set; }
     public string DocumentExtensions { get; private set; }
@@ -163,10 +161,11 @@ public sealed partial class TodoTreeViewModel : ObservableObject, IDisposable
         }
     }
 
+    /// <summary>文書と同じ規則（行頭のタグ＋コロン）で 1 行から TODO を取り出す。</summary>
     public static IReadOnlyList<TodoEntry> Parse(IEnumerable<ContentSearchHit> hits)
-        => hits.SelectMany(hit => Tags.Matches(hit.LineText).Cast<Match>()
-            .Select(match => new TodoEntry(match.Value, hit with { Column = match.Index + 1 })))
-            .DistinctBy(entry => entry.Key).ToList();
+        => hits.Select(hit => TodoTagSyntax.Find(hit.LineText) is { } match
+                ? new TodoEntry(match.Groups["tag"].Value, hit with { Column = match.Index + 1 }) : null)
+            .OfType<TodoEntry>().DistinctBy(entry => entry.Key).ToList();
 
     private void RebuildGroups()
     {

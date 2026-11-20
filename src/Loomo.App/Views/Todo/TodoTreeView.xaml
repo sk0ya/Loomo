@@ -58,7 +58,9 @@
                     </Style></Image.Style>
                 </Image>
                 <TextBlock Grid.Column="1" TextTrimming="CharacterEllipsis" VerticalAlignment="Center">
-                    <Run Text="{Binding Title, Mode=OneWay}" FontWeight="SemiBold" />
+                    <!-- ファイル 1 つだけのフォルダーはこの行へ畳み、フォルダーはファイル名の後ろに薄く置く
+                         （幅が足りないときに省略されるのはフォルダー側で、ファイル名は残る）。 -->
+                    <Run Text="{Binding Title, Mode=OneWay}" FontWeight="SemiBold" /><Run Text="{Binding FolderSuffix, Mode=OneWay}" Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs11}" />
                 </TextBlock>
                 <TextBlock Grid.Column="2" Text="{Binding Count}" Foreground="{DynamicResource FgDim}"
                            FontSize="{DynamicResource Fs11}" Margin="8,0,6,0" VerticalAlignment="Center" />
@@ -131,9 +133,13 @@
                         <Button DockPanel.Dock="Right" Content="×" Style="{StaticResource PaneHeaderGhostButton}" Click="OnCloseExclusion" ToolTip="検索設定を閉じる" />
                         <TextBlock Text="TODO の検索設定" FontWeight="SemiBold" VerticalAlignment="Center" />
                     </DockPanel>
+                    <TextBlock Text="拾う書き方: // TODO: 直す　- TODO: 書く　- [ ] FIXME(名前): 確認" TextWrapping="Wrap"
+                               Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs10}" Margin="0,0,0,2" />
+                    <TextBlock Text="タグはコメントや行の先頭に置き、後ろにコロンを付けます。文中の TODO は拾いません。" TextWrapping="Wrap"
+                               Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs10}" Margin="0,0,0,10" />
                     <TextBlock Text="コード（コメント内のみ）" Margin="0,0,0,4" />
                     <TextBox x:Name="CodeExtensionsBox" Text="{Binding CodeExtensions, Mode=OneWay}" TextWrapping="Wrap" MaxHeight="100" VerticalScrollBarVisibility="Auto" AutomationProperties.Name="コメントを検索する拡張子" />
-                    <TextBlock Text="文書（本文を検索・空欄なら対象外）" Margin="0,10,0,4" />
+                    <TextBlock Text="文書（行頭や箇条書きの TODO: を検索・空欄なら対象外）" Margin="0,10,0,4" />
                     <TextBox x:Name="DocumentExtensionsBox" Text="{Binding DocumentExtensions, Mode=OneWay}" AutomationProperties.Name="本文を検索する文書の拡張子" />
                     <TextBlock Text="例: .md .txt　拡張子をスペースで区切って指定" Foreground="{DynamicResource FgDim}" FontSize="{DynamicResource Fs10}" Margin="0,4,0,0" />
                     <TextBlock Text="除外するパス" Margin="0,10,0,4" />

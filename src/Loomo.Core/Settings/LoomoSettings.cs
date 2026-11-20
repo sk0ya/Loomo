@@ -490,6 +490,7 @@ public sealed class TodoTreeSettings
     public bool GroupByTag { get; set; }
     public string ExcludeGlob { get; set; } = "";
     public string CodeExtensions { get; set; } = DefaultCodeExtensions;
-    public string DocumentExtensions { get; set; } = "";
+    public const string DefaultDocumentExtensions = ".md";
+    public string DocumentExtensions { get; set; } = DefaultDocumentExtensions;
     public List<string> HiddenTags { get; set; } = new();
 }
