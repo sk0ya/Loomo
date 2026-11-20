@@ -70,20 +70,25 @@ public sealed class TodoSearchQuery(IWorkspaceSearchService search, IWorkspaceSe
                 var isCode = code.Contains(Path.GetExtension(file.Key));
                 engine.DetectLanguage(file.Key);
                 var tokens = isCode ? engine.Tokenize(lines).ToDictionary(l => l.Line, l => l.Tokens) : null;
+                var inFence = false;
                 for (var line = 0; line < lines.Length; line++)
                 {
                     ct.ThrowIfCancellationRequested();
                     var text = lines[line];
+                    // 文書のコードフェンスの中は見本のコードなので拾わない。
+                    if (!isCode && TodoTagSyntax.IsFence(text)) { inFence = !inFence; continue; }
+                    if (inFence || !TodoTagSyntax.HasTag(text)) continue;
                     if (isCode)
                     {
                         if (!tokens!.TryGetValue(line, out var spans)) continue;
-                        // コメントは字句器によって語ごとに割れることがあるので、隣接するコメントをつないで 1 つとして見る。
+                        // コメントは字句器によって語ごとに割れることがあるので、隣接する（間が空白だけの）コメントを
+                        // つないで 1 つとして見る。つながないと文中のタグがコメントの先頭に見えてしまう。
                         var comments = spans.Where(t => t.Kind == TokenKind.Comment && t.Length > 0).OrderBy(t => t.StartColumn).ToList();
                         for (var i = 0; i < comments.Count; i++)
                         {
                             var start = comments[i].StartColumn;
                             var stop = start + comments[i].Length;
-                            while (i + 1 < comments.Count && comments[i + 1].StartColumn <= stop)
+                            while (i + 1 < comments.Count && OnlySpaces(text, stop, comments[i + 1].StartColumn))
                                 stop = Math.Max(stop, comments[++i].StartColumn + comments[i].Length);
                             if (start >= text.Length || TodoTagSyntax.Find(text, start, stop) is not { } match) continue;
                             if (Add(match, Math.Min(stop, text.Length))) return Truncated();
@@ -101,6 +106,13 @@ public sealed class TodoSearchQuery(IWorkspaceSearchService search, IWorkspaceSe
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { skipped++; }
         }
         return new(entries, false, Notice());
+
+        static bool OnlySpaces(string text, int from, int to)
+        {
+            for (var i = from; i < to && i < text.Length; i++)
+                if (!char.IsWhiteSpace(text[i])) return false;
+            return true;
+        }
 
         TodoSearchResult Truncated() => new(entries.Take(options.MaxResults).ToArray(), true, Notice());
 

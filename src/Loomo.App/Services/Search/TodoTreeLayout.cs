@@ -77,8 +77,10 @@ public static class TodoTreeLayout
 
     private static void Sort(IList<object> items)
     {
-        var sorted = items.OrderBy(item => item is TodoFolder ? 0 : 1)
-            .ThenBy(item => item is TodoFolder folder ? folder.Name : ((TodoGroup)item).Folder + "/" + ((TodoGroup)item).Title,
+        // フォルダーを畳んだファイルの行はフォルダーとして扱い、フォルダーの並びにフォルダー名で混ぜる。
+        var sorted = items.OrderBy(item => item is TodoFolder || item is TodoGroup { Folder.Length: > 0 } ? 0 : 1)
+            .ThenBy(item => item is TodoFolder folder ? folder.Name
+                : item is TodoGroup { Folder.Length: > 0 } folded ? folded.Folder + " / " + folded.Title : ((TodoGroup)item).Title,
                 StringComparer.OrdinalIgnoreCase).ToList();
         items.Clear();
         foreach (var item in sorted)

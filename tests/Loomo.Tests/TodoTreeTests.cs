@@ -330,7 +330,8 @@ public sealed class TodoTreeTests
         await vm.RefreshCommand.ExecuteAsync(null);
         var src = Assert.IsType<TodoFolder>(Assert.Single(vm.TreeItems));
         Assert.Equal("src", src.Name);
-        Assert.Equal(new[] { "/App.cs", "Components / Forms/Entry.cs", "Other/App.cs" },
+        // フォルダーを畳んだ行はフォルダーの並びに入り、直下のファイルはその後ろ。
+        Assert.Equal(new[] { "Components / Forms/Entry.cs", "Other/App.cs", "/App.cs" },
             src.Children.Cast<TodoGroup>().Select(g => g.Folder + "/" + g.Title));
     }
 

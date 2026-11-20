@@ -22,7 +22,8 @@ public sealed partial class TodoEntry : ObservableObject
             var tagLength = Math.Max(TodoTagSyntax.LengthAt(Hit.LineText, Hit.Column - 1), Tag.Length);
             var start = Math.Clamp(Hit.Column - 1 + tagLength, 0, Hit.LineText.Length);
             var end = Math.Clamp(ContentEndColumn ?? Hit.LineText.Length, start, Hit.LineText.Length);
-            var body = Hit.LineText[start..end].Trim();
+            // 列がタグを指していない（LengthAt=0）行でも区切りの記号を本文に残さない。
+            var body = Hit.LineText[start..end].Trim().TrimStart(':', '：').TrimStart();
             foreach (var suffix in new[] { "-->", "*/" })
                 if (body.EndsWith(suffix, StringComparison.Ordinal)) body = body[..^suffix.Length].TrimEnd();
             return string.IsNullOrWhiteSpace(body) ? "（内容なし）" : body;

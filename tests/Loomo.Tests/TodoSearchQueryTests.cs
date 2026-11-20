@@ -62,6 +62,14 @@ public sealed class TodoSearchQueryTests : IDisposable
     }
 
     [Fact]
+    public async Task 文書のコードフェンスの中は拾わない()
+    {
+        Write("readme.md", string.Join("\n", "- TODO: 前", "```cs", "// TODO: 見本", "# FIXME: 見本", "```", "~~~", "- NOTE: 見本", "~~~", "- HACK: 後"));
+        var result = await Search("", ".md");
+        Assert.Equal(["TODO", "HACK"], result.Entries.Select(e => e.Tag));
+    }
+
+    [Fact]
     public async Task 拡張子を限定し文書の本文検索は明示指定時だけ行う()
     {
         Write("a.CS", "// TODO: code");
