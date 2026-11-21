@@ -4,7 +4,7 @@ using sk0ya.Loomo.Services.Viewers;
 
 namespace sk0ya.Loomo.App.Services;
 
-/// <summary>ビューア 1 つがいまどう見えるか。</summary>
+/// <summary>Viewer 1 つがいまどう見えるか。</summary>
 internal enum ViewerTabStatus
 {
     /// <summary>まだ読んでいない。</summary>
@@ -18,11 +18,11 @@ internal enum ViewerTabStatus
 }
 
 /// <summary>
-/// ビューア 1 つ＝WebView2 1 つ（§44.2）。ビューアのフォルダーをビューアだけのオリジン（<c>https://&lt;id&gt;.viewer.loomo</c>）で答え、
+/// Viewer 1 つ＝WebView2 1 つ（§44.2）。ViewerのフォルダーをViewerだけのオリジン（<c>https://&lt;id&gt;.viewer.loomo</c>）で答え、
 /// ページに <c>window.loomo</c> を差し込み、届いた頼みを <see cref="ViewerRoomApi"/> へ渡す。
-/// <para><b>線引き</b>：許される前はページを読み込まない／頼みはビューアのオリジンから届いたものだけ聞く／ビューアの外への遷移は
-/// させない（http(s) のリンクはブラウザペインへ）／<c>net</c> を挙げていないビューアの外向きの要求は全部断る／
-/// ページが替わる・ビューアを閉じるときは走っているコマンドを止める。</para>
+/// <para><b>線引き</b>：許される前はページを読み込まない／頼みはViewerのオリジンから届いたものだけ聞く／Viewerの外への遷移は
+/// させない（http(s) のリンクはブラウザペインへ）／<c>net</c> を挙げていないViewerの外向きの要求は全部断る／
+/// ページが替わる・Viewerを閉じるときは走っているコマンドを止める。</para>
 /// </summary>
 internal sealed class ViewerTabHost : IDisposable
 {
@@ -61,7 +61,7 @@ internal sealed class ViewerTabHost : IDisposable
             _reloadTimer.Stop();
             _ = RefreshAsync(reload: true);
         };
-        // 隠れているペインの中では WebView2 の初期化が終わらない（待つと、ビューアを出した側＝MCP の呼び出しが返らない）。
+        // 隠れているペインの中では WebView2 の初期化が終わらない（待つと、Viewerを出した側＝MCP の呼び出しが返らない）。
         // 読み込みは見えたときに回す。
         _host.IsVisibleChanged += OnHostVisibleChanged;
         Watch();
@@ -165,7 +165,7 @@ internal sealed class ViewerTabHost : IDisposable
 
     public void Focus() => _web?.Focus();
 
-    /// <summary>部屋の出来事をページへ（<c>loomo.on</c>）。その口を挙げていないビューアには流さない。</summary>
+    /// <summary>部屋の出来事をページへ（<c>loomo.on</c>）。その口を挙げていないViewerには流さない。</summary>
     public void Emit(string name, JsonNode? data, string requiredApi)
     {
         if (Status != ViewerTabStatus.Running || Manifest?.Allows(requiredApi) != true)
@@ -224,7 +224,7 @@ internal sealed class ViewerTabHost : IDisposable
         if (!await _factory.InitializeAsync(web) || web.TryCore() is not { } core)
             return false;
         core.Settings.IsStatusBarEnabled = false;
-        // ビューアのフォルダーをビューアのオリジンで答え、ほかの行き先は（net を挙げていなければ）全部断る。
+        // ViewerのフォルダーをViewerのオリジンで答え、ほかの行き先は（net を挙げていなければ）全部断る。
         core.AddWebResourceRequestedFilter("*", CoreWebView2WebResourceContext.All,
             CoreWebView2WebResourceRequestSourceKinds.All);
         core.WebResourceRequested += OnWebResourceRequested;
@@ -232,7 +232,7 @@ internal sealed class ViewerTabHost : IDisposable
         {
             if (ViewerUrl.IsOf(Id, e.Uri) || e.Uri.StartsWith("about:", StringComparison.OrdinalIgnoreCase))
                 return;
-            e.Cancel = true;   // ビューアの WebView はビューアのページだけを出す
+            e.Cancel = true;   // Viewerの WebView はViewerのページだけを出す
             if (e.IsUserInitiated && IsWebUrl(e.Uri))
                 _ = _openUrl(e.Uri);
         };
@@ -251,7 +251,7 @@ internal sealed class ViewerTabHost : IDisposable
             {
                 Unload();
                 Status = ViewerTabStatus.Pending;
-                _ = RefreshAsync();   // 落ちたのは Chromium 側。同じビューアを組み直す
+                _ = RefreshAsync();   // 落ちたのは Chromium 側。同じViewerを組み直す
             });
         };
         try { await core.AddScriptToExecuteOnDocumentCreatedAsync(ViewerBridgeScript.Script); }
@@ -273,7 +273,7 @@ internal sealed class ViewerTabHost : IDisposable
                 core.RemoveScriptToExecuteOnDocumentCreated(old);
             _themeScriptId = await core.AddScriptToExecuteOnDocumentCreatedAsync(ViewerBridgeScript.ThemeScript(ViewerTheme.Current()));
         }
-        catch (Exception ex) when (ex is InvalidOperationException or COMException) { /* 色が無くてもビューアは動く */ }
+        catch (Exception ex) when (ex is InvalidOperationException or COMException) { /* 色が無くてもViewerは動く */ }
     }
 
     private async void OnWebResourceRequested(object? sender, CoreWebView2WebResourceRequestedEventArgs e)
@@ -316,7 +316,7 @@ internal sealed class ViewerTabHost : IDisposable
 
     private async void OnWebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
     {
-        // ビューアのオリジンのページから届いたものだけ聞く（中の iframe や、遷移の隙間の別ページから届いたものは捨てる）。
+        // Viewerのオリジンのページから届いたものだけ聞く（中の iframe や、遷移の隙間の別ページから届いたものは捨てる）。
         if (Manifest is not { } viewer || Status != ViewerTabStatus.Running || !ViewerUrl.IsOf(Id, e.Source))
             return;
         JsonObject? message;
@@ -340,7 +340,7 @@ internal sealed class ViewerTabHost : IDisposable
         }
         catch (OperationCanceledException)
         {
-            return;   // ページが替わった・ビューアを閉じた
+            return;   // ページが替わった・Viewerを閉じた
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException or JsonException)
         {
@@ -391,7 +391,7 @@ internal sealed class ViewerTabHost : IDisposable
         catch (Exception ex) when (ex is InvalidOperationException or COMException or ArgumentException) { }
     }
 
-    /// <summary>ビューアのフォルダーを見張り、書き直されたら読み直す（置き場のファイルは除く——自分の書き込みで回り続ける）。</summary>
+    /// <summary>Viewerのフォルダーを見張り、書き直されたら読み直す（置き場のファイルは除く——自分の書き込みで回り続ける）。</summary>
     private void Watch()
     {
         try
@@ -438,7 +438,7 @@ internal sealed class ViewerTabHost : IDisposable
     }
 }
 
-/// <summary>ビューアに渡す部屋の色（テーマの鍵 → CSS の色）。</summary>
+/// <summary>Viewerに渡す部屋の色（テーマの鍵 → CSS の色）。</summary>
 internal sealed record ViewerTheme(string Bg, string Panel, string Fg, string FgDim, string Accent, string Border, double FontSize)
 {
     public static ViewerTheme Current()
@@ -453,7 +453,7 @@ internal sealed record ViewerTheme(string Bg, string Panel, string Fg, string Fg
     }
 }
 
-/// <summary>ビューアのページへ差し込むスクリプト（<c>window.loomo</c>、§44.2）。中身は <c>postMessage</c> の往復だけ。</summary>
+/// <summary>Viewerのページへ差し込むスクリプト（<c>window.loomo</c>、§44.2）。中身は <c>postMessage</c> の往復だけ。</summary>
 internal static class ViewerBridgeScript
 {
     public static string ThemeScript(ViewerTheme theme)

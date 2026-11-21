@@ -13,7 +13,7 @@ using sk0ya.Loomo.Services.Motion;
 
 namespace sk0ya.Loomo.Services.Orders;
 
-/// <summary>言いつけを断る・進められない理由（人間向けの日本語。面の Promise の失敗としてそのまま出る）。</summary>
+/// <summary>言いつけを断る・進められない理由（人間向けの日本語。Viewerの Promise の失敗としてそのまま出る）。</summary>
 public sealed class OrderException(string message) : Exception(message);
 
 /// <summary>

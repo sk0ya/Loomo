@@ -5,9 +5,9 @@ using System.Text.Json;
 namespace sk0ya.Loomo.Services.Viewers;
 
 /// <summary>
-/// Loomo が自分で置くビューア（§44.3・§44.4）。<b>本体の機能も、生やせるものはビューアとして生やす</b>——部屋の口（<c>window.loomo</c>）で
+/// Loomo が自分で置くViewer（§44.3・§44.4）。<b>本体の機能も、生やせるものはViewerとして生やす</b>——部屋の口（<c>window.loomo</c>）で
 /// 足りるかの試金石で、足りなければ口のほうを直す。置くのは起動時、無いとき・版が古いときだけ（人間や Claude が書き直した
-/// ビューアを黙って戻さない：<c>viewer.json</c> の <c>builtIn</c> が同じか新しければ触らない）。許しはほかのビューアと同じく 1 回聞く。
+/// Viewerを黙って戻さない：<c>viewer.json</c> の <c>builtIn</c> が同じか新しければ触らない）。許しはほかのViewerと同じく 1 回聞く。
 /// </summary>
 public static class BuiltInViewers
 {
@@ -38,7 +38,7 @@ public static class BuiltInViewers
         {
             using var document = JsonDocument.Parse(File.ReadAllText(manifestPath),
                 new JsonDocumentOptions { AllowTrailingCommas = true, CommentHandling = JsonCommentHandling.Skip });
-            // builtIn が無い＝人間や Claude が同じ名前で作ったビューア。上書きしない。
+            // builtIn が無い＝人間や Claude が同じ名前で作ったViewer。上書きしない。
             return document.RootElement.TryGetProperty("builtIn", out var value) && value.TryGetInt32(out var n) ? n : int.MaxValue;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)

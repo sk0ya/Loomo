@@ -113,7 +113,7 @@ public partial class ShellWindow {
             return new LoomoRoomResult(true, $"Opened in a new tab of the browser pane: {uri.AbsoluteUri}");
         });
 
-        // ビューア（§44.2）：書き方を読む・出す。ファイルを書くのは Claude Code 自身。
+        // Viewer（§44.2）：書き方を読む・出す。ファイルを書くのは Claude Code 自身。
         public string ViewerGuide() => sk0ya.Loomo.Services.Viewers.ViewerGuide.Text(window._viewerStore);
 
         // 動き（§44.3）：見どころの書き方を読む。書くのは Claude Code 自身、許すのは人間。

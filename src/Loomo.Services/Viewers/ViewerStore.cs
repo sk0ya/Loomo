@@ -8,21 +8,21 @@ using sk0ya.Loomo.Core.Viewers;
 
 namespace sk0ya.Loomo.Services.Viewers;
 
-/// <summary>読めたビューア、または読めなかった理由（書いた Claude がそのまま直せる英語）。</summary>
+/// <summary>読めたViewer、または読めなかった理由（書いた Claude がそのまま直せる英語）。</summary>
 public sealed record ViewerEntry(string Id, ViewerManifest? Manifest, string? Error)
 {
     public string Title => Manifest?.Title ?? Id;
 }
 
 /// <summary>
-/// ビューアの置き場（§44.2）。<c>%APPDATA%/Loomo/viewers/&lt;id&gt;/</c> に <c>viewer.json</c> と <c>index.html</c>。
+/// Viewerの置き場（§44.2）。<c>%APPDATA%/Loomo/viewers/&lt;id&gt;/</c> に <c>viewer.json</c> と <c>index.html</c>。
 /// <b>ワークスペースの中には置かない</b>——人のリポジトリに頼まれずにファイルを増やさない。
-/// ディスクを読むので UI スレッドの打鍵の経路からは呼ばない（ビューアを開く・一覧を出すときだけ）。
+/// ディスクを読むので UI スレッドの打鍵の経路からは呼ばない（Viewerを開く・一覧を出すときだけ）。
 /// </summary>
 public sealed class ViewerStore
 {
     public const string ManifestFileName = "viewer.json";
-    /// <summary>ビューアごとの小さな置き場（<c>loomo.state</c>）。ビューアのフォルダーの中に置き、ページには配らない。</summary>
+    /// <summary>Viewerごとの小さな置き場（<c>loomo.state</c>）。Viewerのフォルダーの中に置き、ページには配らない。</summary>
     public const string StateFileName = ".state.json";
     public const int MaxStateBytes = 256 * 1024;
 
@@ -36,7 +36,7 @@ public sealed class ViewerStore
 
     public string FolderOf(string id) => Path.Combine(Root, id);
 
-    /// <summary>置いてあるビューアを全部（名前順）。<c>viewer.json</c> の無いフォルダーはビューアではない。</summary>
+    /// <summary>置いてあるViewerを全部（名前順）。<c>viewer.json</c> の無いフォルダーはViewerではない。</summary>
     public IReadOnlyList<ViewerEntry> List()
     {
         try
@@ -76,7 +76,7 @@ public sealed class ViewerStore
         }
     }
 
-    /// <summary>ビューアのページが頼んだ相対パスを、ビューアのフォルダーの中のファイルへ解く。外へ出るパス・置き場のファイル・
+    /// <summary>Viewerのページが頼んだ相対パスを、Viewerのフォルダーの中のファイルへ解く。外へ出るパス・置き場のファイル・
     /// 無いファイルは null。</summary>
     public string? ResolveFile(string id, string relativePath)
     {
@@ -98,7 +98,7 @@ public sealed class ViewerStore
         }
     }
 
-    /// <summary>ビューアの置き場の中身（JSON の文字列。無ければ <c>null</c> という JSON）。</summary>
+    /// <summary>Viewerの置き場の中身（JSON の文字列。無ければ <c>null</c> という JSON）。</summary>
     public string ReadState(string id)
     {
         try
@@ -137,13 +137,13 @@ public sealed class ViewerStore
 }
 
 /// <summary>
-/// ビューアについてこの PC が覚えていること（§44.2）：<b>許した指紋</b>・開いているビューア・開いた回数（日別）。
-/// <c>%APPDATA%/Loomo/viewers-state.json</c> 1 つ。ビューアのフォルダーの中には置かない——ビューアを書く Claude が
-/// 自分で自分を許せてしまう。読み書きはビューアを開く・閉じるときだけで、小さいのでその場で書く。
+/// Viewerについてこの PC が覚えていること（§44.2）：<b>許した指紋</b>・開いているViewer・開いた回数（日別）。
+/// <c>%APPDATA%/Loomo/viewers-state.json</c> 1 つ。Viewerのフォルダーの中には置かない——Viewerを書く Claude が
+/// 自分で自分を許せてしまう。読み書きはViewerを開く・閉じるときだけで、小さいのでその場で書く。
 /// </summary>
 public sealed class ViewerRoomState
 {
-    /// <summary>これだけ開かれなかったビューアは「枯れたビューア」へ下げる（消さない。開けば戻る）。</summary>
+    /// <summary>これだけ開かれなかったViewerは「枯れたViewer」へ下げる（消さない。開けば戻る）。</summary>
     public const int WitherDays = 30;
     private const int KeepUsageDays = 120;
 
@@ -187,7 +187,7 @@ public sealed class ViewerRoomState
             File.WriteAllText(temp, _root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
             File.Move(temp, _path, overwrite: true);
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { /* 覚えられなくてもビューアは動く */ }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { /* 覚えられなくてもViewerは動く */ }
     }
 
     public bool IsApproved(ViewerManifest manifest)
@@ -206,7 +206,7 @@ public sealed class ViewerRoomState
         }
     }
 
-    /// <summary>開いているビューア（タブの並び順）と、前に出ているビューア。</summary>
+    /// <summary>開いているViewer（タブの並び順）と、前に出ているViewer。</summary>
     public (IReadOnlyList<string> Open, string? Active) OpenViewers
     {
         get
@@ -232,7 +232,7 @@ public sealed class ViewerRoomState
         }
     }
 
-    /// <summary>ビューアを開いた（タブを新しく出した）ことを数える。</summary>
+    /// <summary>Viewerを開いた（タブを新しく出した）ことを数える。</summary>
     public void RecordOpened(string id, DateTime today)
     {
         lock (_gate)

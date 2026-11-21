@@ -8,10 +8,10 @@ using System.Text.Json.Nodes;
 namespace sk0ya.Loomo.Services.Definitions;
 
 /// <summary>
-/// 定義の持ち出し・持ち込み（§45.9 P5）：ビューア・見どころ・言いつけの<b>定義</b>を、人が選んだフォルダーへ書き出し、別の PC で取り込む。
-/// <para>持ち出すのは定義だけ：ビューアの <c>viewer.json</c> と <c>index.html</c>、見どころの <c>probes.json</c>、言いつけの <c>orders.json</c>。
+/// 定義の持ち出し・持ち込み（§45.9 P5）：Viewer・見どころ・言いつけの<b>定義</b>を、人が選んだフォルダーへ書き出し、別の PC で取り込む。
+/// <para>持ち出すのは定義だけ：Viewerの <c>viewer.json</c> と <c>index.html</c>、見どころの <c>probes.json</c>、言いつけの <c>orders.json</c>。
 /// <b>許し（承認の指紋）・録った動き・言いつけの盆・作業ツリーは持ち出さない</b>——許しを持ち込むと、別の PC で黙って回ることになるため。
-/// 取り込んだビューアは、その PC で人が一度許すまで走らない（許しは PC ごとの置き場にあるので、指紋が合わなければ聞き直される）。</para>
+/// 取り込んだViewerは、その PC で人が一度許すまで走らない（許しは PC ごとの置き場にあるので、指紋が合わなければ聞き直される）。</para>
 /// <para>フォルダーの形：<c>loomo-definitions.json</c>（版・書き出した時刻・件数）と、<c>viewers/&lt;id&gt;/</c>・<c>motion/&lt;key&gt;/probes.json</c>・
 /// <c>orders/&lt;key&gt;/orders.json</c>。取り込みは同じ形を読むだけで、フォルダーの外には書かない。</para>
 /// </summary>
@@ -20,7 +20,7 @@ public static class LoomoDefinitions
     public const string ManifestFileName = "loomo-definitions.json";
     public const int Version = 1;
 
-    /// <summary>ビューアの中で持ち出すファイル（ビューアの状態は PC ごと・許しは別の置き場）。</summary>
+    /// <summary>Viewerの中で持ち出すファイル（Viewerの状態は PC ごと・許しは別の置き場）。</summary>
     private static readonly HashSet<string> ViewerFiles = new(StringComparer.OrdinalIgnoreCase) { "viewer.json", "index.html" };
 
     public sealed record Counts(int Viewers, int Probes, int Orders);
@@ -36,7 +36,7 @@ public static class LoomoDefinitions
             foreach (var dir in Directory.GetDirectories(viewerRoot))
             {
                 if (!File.Exists(Path.Combine(dir, "viewer.json")))
-                    continue;   // ビューアではないフォルダー
+                    continue;   // Viewerではないフォルダー
                 var dest = Path.Combine(target, "viewers", Path.GetFileName(dir));
                 Directory.CreateDirectory(dest);
                 foreach (var file in Directory.GetFiles(dir).Where(f => ViewerFiles.Contains(Path.GetFileName(f))))

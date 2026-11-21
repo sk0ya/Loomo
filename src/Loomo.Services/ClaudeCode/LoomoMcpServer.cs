@@ -29,10 +29,10 @@ public interface ILoomoRoomHost
     /// <summary>このワークスペースで、いちばん新しい「ファイルを書き換えた頼みごと」の差分を Diff に出す。</summary>
     Task<LoomoRoomResult> ShowChangesAsync();
 
-    /// <summary>ビューアの書き方（置き場所・<c>viewer.json</c> の形・ページの API）。読むだけ（§44.2）。</summary>
+    /// <summary>Viewerの書き方（置き場所・<c>viewer.json</c> の形・ページの API）。読むだけ（§44.2）。</summary>
     string ViewerGuide();
 
-    /// <summary>ビューアを「ビューア」ペインに出す（§44.2）。定義が読めなければ、直せる理由を返す。</summary>
+    /// <summary>Viewerを「Viewer」ペインに出す（§44.2）。定義が読めなければ、直せる理由を返す。</summary>
     Task<LoomoRoomResult> ShowViewerAsync(string id);
 
     /// <summary>動きの見どころの書き方と、いまの見どころ（§44.3）。読むだけ。</summary>
@@ -461,8 +461,8 @@ public sealed class LoomoMcpServer : IDisposable
 }
 
 /// <summary>
-/// モデルに見せる道具（§43.6 D・§44.2）。<b>置く</b>道具（ファイル・URL・差分・ビューア）と、ビューアの書き方を<b>読む</b>道具だけ
-/// ——見えるターミナルに打つ・タブを閉じる・配置を変える・ファイルを書く道具は出さない（主役は人間、§38.1。ビューアのファイルを
+/// モデルに見せる道具（§43.6 D・§44.2）。<b>置く</b>道具（ファイル・URL・差分・Viewer）と、Viewerの書き方を<b>読む</b>道具だけ
+/// ——見えるターミナルに打つ・タブを閉じる・配置を変える・ファイルを書く道具は出さない（主役は人間、§38.1。Viewerのファイルを
 /// 書くのは Claude Code 自身の道具）。引数の確かめ（ワークスペースの中か・http/https か）はホスト側。
 /// </summary>
 public sealed class LoomoMcpTools(ILoomoRoomHost host)

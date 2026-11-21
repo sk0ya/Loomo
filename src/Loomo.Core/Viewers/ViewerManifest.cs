@@ -5,9 +5,9 @@ using System.Text.RegularExpressions;
 
 namespace sk0ya.Loomo.Core.Viewers;
 
-/// <summary>ビューアが <c>viewer.json</c> に名前つきで書いたコマンド 1 つ（§44.2）。ビューアが回せるのはこれだけ——
-/// 行は固定で、ビューアから渡る値は環境変数（<c>LOOMO_ARG_1</c>…）と変数 <c>$LoomoInput</c> にしか入らない。</summary>
-/// <param name="Cwd"><c>workspace</c>（既定。ワークスペースの主フォルダー）か <c>viewer</c>（ビューアのフォルダー）。</param>
+/// <summary>Viewerが <c>viewer.json</c> に名前つきで書いたコマンド 1 つ（§44.2）。Viewerが回せるのはこれだけ——
+/// 行は固定で、Viewerから渡る値は環境変数（<c>LOOMO_ARG_1</c>…）と変数 <c>$LoomoInput</c> にしか入らない。</summary>
+/// <param name="Cwd"><c>workspace</c>（既定。ワークスペースの主フォルダー）か <c>viewer</c>（Viewerのフォルダー）。</param>
 public sealed record ViewerCommand(string Name, string Command, string Cwd, int TimeoutSeconds)
 {
     public const string CwdWorkspace = "workspace";
@@ -16,8 +16,8 @@ public sealed record ViewerCommand(string Name, string Command, string Cwd, int 
     public const int MaxTimeoutSeconds = 600;
 }
 
-/// <summary>ビューアが使える部屋の口の名前（<c>viewer.json</c> の <c>api</c>）。ここに無い名前は読み捨てる。
-/// <c>state</c>・<c>toast</c> はビューアの中で閉じるので、挙げなくても使える。</summary>
+/// <summary>Viewerが使える部屋の口の名前（<c>viewer.json</c> の <c>api</c>）。ここに無い名前は読み捨てる。
+/// <c>state</c>・<c>toast</c> はViewerの中で閉じるので、挙げなくても使える。</summary>
 public static class ViewerApi
 {
     /// <summary>フォルダーの一覧・前に出ているファイルと行。</summary>
@@ -30,7 +30,7 @@ public static class ViewerApi
     public const string Git = "git";
     /// <summary><c>commands</c> に書いたコマンドを裏で回す。</summary>
     public const string Run = "run";
-    /// <summary>ビューアのページがネットワークへ出る（既定ではビューアのフォルダーの外を一切読めない）。</summary>
+    /// <summary>Viewerのページがネットワークへ出る（既定ではViewerのフォルダーの外を一切読めない）。</summary>
     public const string Net = "net";
     /// <summary>動き（§44.3）：録ったものを読む・いま録る・頼みごとの差分を開く。</summary>
     public const string Motion = "motion";
@@ -41,7 +41,7 @@ public static class ViewerApi
 
     /// <summary>許しを聞かずに使える口：読むか、人間の前に置くだけで、外へも出られないもの。ここに無い口（<c>run</c>＝任意の
     /// コマンド・<c>net</c>＝読んだ中身を外へ送れる・<c>motion</c>／<c>orders</c>＝裏で回す・作業ツリーへ当てる）を 1 つでも
-    /// 挙げたビューアだけ人間に聞く。新しい口は足した時点では聞く側——安全と言えるときだけここへ足す。</summary>
+    /// 挙げたViewerだけ人間に聞く。新しい口は足した時点では聞く側——安全と言えるときだけここへ足す。</summary>
     public static readonly IReadOnlyList<string> WithoutApproval = [Workspace, Open, FsRead, Git];
 
     /// <summary>許しを聞くカードに出す、人間向けの 1 行。</summary>
@@ -60,7 +60,7 @@ public static class ViewerApi
 }
 
 /// <summary>
-/// ビューアの定義（<c>viewer.json</c>、§44.2）。<b>ビューアにできることの上限はここが決める</b>——使う口（<see cref="Api"/>）と
+/// Viewerの定義（<c>viewer.json</c>、§44.2）。<b>Viewerにできることの上限はここが決める</b>——使う口（<see cref="Api"/>）と
 /// 回せるコマンド（<see cref="Commands"/>）。人間が許すのはこの 2 つの指紋（<see cref="Fingerprint"/>）で、
 /// 題・説明・<c>index.html</c> の書き直しでは聞き直さない。I/O なし。
 /// </summary>
@@ -70,13 +70,13 @@ public sealed record ViewerManifest(
     private static readonly Regex IdPattern = new("^[a-z0-9][a-z0-9-]{0,39}$", RegexOptions.CultureInvariant);
     private static readonly Regex CommandNamePattern = new("^[A-Za-z0-9][A-Za-z0-9_.-]{0,39}$", RegexOptions.CultureInvariant);
 
-    /// <summary>ビューアの名前（＝フォルダー名・オリジンの一部）。小文字の英数字とハイフンだけ——そのままホスト名に載る。</summary>
+    /// <summary>Viewerの名前（＝フォルダー名・オリジンの一部）。小文字の英数字とハイフンだけ——そのままホスト名に載る。</summary>
     public static bool IsValidId(string? id) => id is not null && IdPattern.IsMatch(id);
 
     public bool Allows(string api) => Api.Contains(api);
 
-    /// <summary>開く前に人間の許しが要るか。<see cref="ViewerApi.WithoutApproval"/> の口だけのビューアは聞かずに開く
-    /// （書くのは Claude Code 自身の Write で、そちらの権限を通っている。ビューアの側で増える力が無い）。</summary>
+    /// <summary>開く前に人間の許しが要るか。<see cref="ViewerApi.WithoutApproval"/> の口だけのViewerは聞かずに開く
+    /// （書くのは Claude Code 自身の Write で、そちらの権限を通っている。Viewerの側で増える力が無い）。</summary>
     public bool NeedsApproval => Commands.Count > 0 || Api.Any(api => !ViewerApi.WithoutApproval.Contains(api));
 
     public ViewerCommand? Command(string name)
@@ -206,7 +206,7 @@ public sealed record ViewerManifest(
         => element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
 }
 
-/// <summary>ビューアのページの URL（<c>https://&lt;id&gt;.viewer.loomo/…</c>）。ビューアごとにオリジンを分ける——<c>file.loomo</c>
+/// <summary>Viewerのページの URL（<c>https://&lt;id&gt;.viewer.loomo/…</c>）。Viewerごとにオリジンを分ける——<c>file.loomo</c>
 /// （手元の HTML はどれも同じオリジン）やネットのページから、部屋の口に届かせない（§44.2）。</summary>
 public static class ViewerUrl
 {
@@ -216,11 +216,11 @@ public static class ViewerUrl
 
     public static string Index(string id) => Origin(id) + "/index.html";
 
-    /// <summary>そのビューアのオリジンの URL か。</summary>
+    /// <summary>そのViewerのオリジンの URL か。</summary>
     public static bool IsOf(string id, string? uri)
         => TryParse(uri, out var owner, out _) && string.Equals(owner, id, StringComparison.Ordinal);
 
-    /// <summary>URL をビューアの名前と、ビューアのフォルダーからの相対パス（<c>/</c> 区切り・空なら <c>index.html</c>）に分ける。</summary>
+    /// <summary>URL をViewerの名前と、Viewerのフォルダーからの相対パス（<c>/</c> 区切り・空なら <c>index.html</c>）に分ける。</summary>
     public static bool TryParse(string? uri, out string id, out string relativePath)
     {
         id = "";

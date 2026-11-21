@@ -173,7 +173,7 @@ public partial class ShellWindow {
     // LoadFile の後にもう一度呼べるよう、同じパスの二度目は捨てる。
     private void OnActiveEditorFileChanged(EditorTab tab) {
         UpdateExternalChangeBar();   // 外で書き換わった未保存のタブなら、上端のバーを出す（§24.57）
-        NotifyViewersActiveFileChanged(tab.PeekFilePath);   // 出ているビューアへ（§44.2）
+        NotifyViewersActiveFileChanged(tab.PeekFilePath);   // 出ているViewerへ（§44.2）
         var filePath = tab.IsRealized ? tab.Control.FilePath : tab.PeekFilePath;
         _vm.Debug.Problems.CurrentFilePath = filePath;
         _vm.TsIde.Problems.CurrentFilePath = filePath;

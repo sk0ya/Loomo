@@ -15,11 +15,11 @@ using sk0ya.Loomo.Services.Terminal;
 
 namespace sk0ya.Loomo.Services.Viewers;
 
-/// <summary>ビューアの頼みを断る理由。文はそのままビューアのページ（の <c>Promise</c> の失敗）へ返る。</summary>
+/// <summary>Viewerの頼みを断る理由。文はそのままViewerのページ（の <c>Promise</c> の失敗）へ返る。</summary>
 public sealed class ViewerApiException(string message) : Exception(message);
 
-/// <summary>本体の機能をビューアの口として足す（§44.3 の <c>motion</c>・§44.4 の <c>orders</c>）。<c>&lt;Api&gt;.&lt;名前&gt;</c> の頼みが届き、
-/// ビューアが <see cref="Api"/> を挙げていなければ届く前に断られる。</summary>
+/// <summary>本体の機能をViewerの口として足す（§44.3 の <c>motion</c>・§44.4 の <c>orders</c>）。<c>&lt;Api&gt;.&lt;名前&gt;</c> の頼みが届き、
+/// Viewerが <see cref="Api"/> を挙げていなければ届く前に断られる。</summary>
 public interface IViewerApiExtension
 {
     string Api { get; }
@@ -28,7 +28,7 @@ public interface IViewerApiExtension
     Task<JsonNode?> CallAsync(string method, JsonObject? args, CancellationToken cancel);
 }
 
-/// <summary>ビューアの口のうち、画面が要るもの（§44.2）。実装は App。どのスレッドから呼ばれてもよい——実装が Dispatcher を通す。</summary>
+/// <summary>Viewerの口のうち、画面が要るもの（§44.2）。実装は App。どのスレッドから呼ばれてもよい——実装が Dispatcher を通す。</summary>
 public interface IViewerRoom
 {
     /// <summary>前に出ているエディタのファイル（<c>{ path, line, column }</c>。行と桁は 1 始まり）。無ければ null。</summary>
@@ -47,9 +47,9 @@ public interface IViewerRoom
 }
 
 /// <summary>
-/// ビューアのページから届いた頼み（<c>window.loomo.*</c>）を捌く（§44.2）。<b>線引きはここ</b>：
+/// Viewerのページから届いた頼み（<c>window.loomo.*</c>）を捌く（§44.2）。<b>線引きはここ</b>：
 /// 口は <c>viewer.json</c> が挙げたものだけ・読めるのはワークスペースの中だけ・回せるのは名前つきで書いたコマンドだけ
-/// （行は固定で、ビューアから渡る値は環境変数と変数 <c>$LoomoInput</c> にしか入らない）・見えるターミナルには打たない・書く口は無い。
+/// （行は固定で、Viewerから渡る値は環境変数と変数 <c>$LoomoInput</c> にしか入らない）・見えるターミナルには打たない・書く口は無い。
 /// WPF に依らない（画面が要るものは <see cref="IViewerRoom"/>）。
 /// </summary>
 public sealed class ViewerRoomApi(ViewerStore store, IWorkspaceService workspace, IViewerRoom room,
@@ -249,8 +249,8 @@ public sealed class ViewerRoomApi(ViewerStore store, IWorkspaceService workspace
 public sealed record ViewerCommandResult(int ExitCode, string Output, bool TimedOut);
 
 /// <summary>
-/// ビューアのコマンドを裏の PowerShell で回す（§44.2）。見えるターミナルには流さない（<c>TerminalService.RunCommandAsync</c> と同じ殻）。
-/// <b>行は <c>viewer.json</c> のまま</b>——ビューアから渡る値は <c>LOOMO_ARG_1</c>…（と個数の <c>LOOMO_ARGC</c>）・<c>$LoomoInput</c> にだけ入るので、
+/// Viewerのコマンドを裏の PowerShell で回す（§44.2）。見えるターミナルには流さない（<c>TerminalService.RunCommandAsync</c> と同じ殻）。
+/// <b>行は <c>viewer.json</c> のまま</b>——Viewerから渡る値は <c>LOOMO_ARG_1</c>…（と個数の <c>LOOMO_ARGC</c>）・<c>$LoomoInput</c> にだけ入るので、
 /// 人間が許した行と違うものは走らない。出力は専用スレッドで読む（<see cref="ChildProcessIo"/>）。
 /// </summary>
 public static class ViewerCommandRunner
@@ -281,7 +281,7 @@ public static class ViewerCommandRunner
         info.ArgumentList.Add("-ExecutionPolicy");
         info.ArgumentList.Add("Bypass");
         info.ArgumentList.Add("-Command");
-        // ビューアが渡した文字（stdin）は、先に UTF-8 で読み切って $LoomoInput に入れておく。PowerShell の $input は
+        // Viewerが渡した文字（stdin）は、先に UTF-8 で読み切って $LoomoInput に入れておく。PowerShell の $input は
         // コンソールのコードページ（日本語環境では cp932）で読むので化け、起動後に InputEncoding を変えても効かない。
         info.ArgumentList.Add(TerminalService.Utf8Preamble + InputPreamble + command.Command);
         info.Environment["LOOMO_ARGC"] = args.Count.ToString();
@@ -292,7 +292,7 @@ public static class ViewerCommandRunner
             foreach (var (name, value) in environment)
                 info.Environment[name] = value;
         }
-        // 常駐ノードが出力のパイプを握ると EOF が来ない（dotnet build をビューアから回したとき）。
+        // 常駐ノードが出力のパイプを握ると EOF が来ない（dotnet build をViewerから回したとき）。
         info.Environment["MSBUILDDISABLENODEREUSE"] = "1";
 
         using var process = new Process { StartInfo = info };
@@ -313,11 +313,11 @@ public static class ViewerCommandRunner
             var clean = TerminalTextSanitizer.RemoveAnsiEscapes(line);
             lock (gate)
                 output.AppendLine(clean);
-            try { onLine(clean); } catch { /* ビューアが閉じたあとの 1 行は捨てる */ }
+            try { onLine(clean); } catch { /* Viewerが閉じたあとの 1 行は捨てる */ }
         }
         var pumps = Task.WhenAll(
-            ChildProcessIo.PumpLinesAsync(process.StandardOutput, Append, "ビューアのコマンド:stdout"),
-            ChildProcessIo.PumpLinesAsync(process.StandardError, Append, "ビューアのコマンド:stderr"));
+            ChildProcessIo.PumpLinesAsync(process.StandardOutput, Append, "Viewerのコマンド:stdout"),
+            ChildProcessIo.PumpLinesAsync(process.StandardError, Append, "Viewerのコマンド:stderr"));
         try
         {
             if (!string.IsNullOrEmpty(stdin))
@@ -347,7 +347,7 @@ public static class ViewerCommandRunner
     }
 }
 
-/// <summary>ビューアの書き方（§44.2）。MCP の <c>viewer_guide</c> がモデルへ返す——だから英語。</summary>
+/// <summary>Viewerの書き方（§44.2）。MCP の <c>viewer_guide</c> がモデルへ返す——だから英語。</summary>
 public static class ViewerGuide
 {
     public static string Text(ViewerStore store) => $$"""

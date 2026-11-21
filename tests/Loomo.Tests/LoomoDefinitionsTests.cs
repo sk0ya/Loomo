@@ -20,7 +20,7 @@ public sealed class LoomoDefinitionsTests : IDisposable
         var export = Path.Combine(_root, "export");
         var pc2 = Path.Combine(_root, "pc2");
 
-        // この PC の定義と、持ち出してはいけないもの（許し・録った動き・盆・ビューアの状態）
+        // この PC の定義と、持ち出してはいけないもの（許し・録った動き・盆・Viewerの状態）
         Put(pc1, "viewers/dash/viewer.json", "{\"id\":\"dash\"}");
         Put(pc1, "viewers/dash/index.html", "<p>x</p>");
         Put(pc1, "viewers/dash/.state.json", "{\"secret\":1}");

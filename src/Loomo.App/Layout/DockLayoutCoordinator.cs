@@ -73,7 +73,7 @@ public sealed class DockLayoutCoordinator
             [PaneKind.TerminalSupport] = DockRegion.Right,
             // ブラウザの脇に添える面（§41）。
             [PaneKind.BrowserSupport] = DockRegion.Right,
-            // 面は脇に出しておく小さな道具（§44.2）。
+            // Viewerは脇に出しておく小さな道具（§44.2）。
             [PaneKind.Viewer] = DockRegion.Right,
         };
 

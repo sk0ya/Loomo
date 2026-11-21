@@ -12,8 +12,8 @@ using sk0ya.Loomo.Services.Viewers;
 namespace sk0ya.Loomo.Tests;
 
 /// <summary>
-/// 生えるビューア（§44.2）。定義の読み方と許しの指紋／ビューアのオリジン／置き場（ビューアのフォルダーの外へ出ない）／PC が覚えること
-/// （許し・開いているビューア・枯れ方）／部屋の口の線引き（挙げていない口は断る・ワークスペースの外は読めない・書いていない
+/// 生えるViewer（§44.2）。定義の読み方と許しの指紋／Viewerのオリジン／置き場（Viewerのフォルダーの外へ出ない）／PC が覚えること
+/// （許し・開いているViewer・枯れ方）／部屋の口の線引き（挙げていない口は断る・ワークスペースの外は読めない・書いていない
 /// コマンドは回せない・行は固定で引数は環境変数に入る）。画面（WebView2・許しのカード）は対象外。
 /// </summary>
 public sealed class ViewerTests : IDisposable
@@ -117,11 +117,11 @@ public sealed class ViewerTests : IDisposable
     [InlineData("""{ "api": ["fs.read", "net"] }""", true)]                         // 読んだものを外へ送れる
     [InlineData("""{ "api": ["motion"] }""", true)]
     [InlineData("""{ "api": ["orders"] }""", true)]
-    public void 許しが要るのは_読む口と置く口の外を挙げたビューアだけ(string json, bool needs)
+    public void 許しが要るのは_読む口と置く口の外を挙げたViewerだけ(string json, bool needs)
         => Assert.Equal(needs, ViewerManifest.Parse("a", json, out _)!.NeedsApproval);
 
     [Fact]
-    public void ビューアのオリジンはビューアごと_ほかのホストはビューアではない()
+    public void ViewerのオリジンはViewerごと_ほかのホストはViewerではない()
     {
         Assert.True(ViewerUrl.TryParse("https://ports.viewer.loomo/", out var id, out var path));
         Assert.Equal(("ports", "index.html"), (id, path));
@@ -138,7 +138,7 @@ public sealed class ViewerTests : IDisposable
     // ── 置き場 ───────────────────────────────────────────────
 
     [Fact]
-    public void 置き場はビューアのフォルダーの中だけを答える()
+    public void 置き場はViewerのフォルダーの中だけを答える()
     {
         Place("ports", "{}");
         Directory.CreateDirectory(Path.Combine(_root, "ports", "js"));
@@ -155,7 +155,7 @@ public sealed class ViewerTests : IDisposable
     }
 
     [Fact]
-    public void 一覧は_viewer_json_のあるフォルダーだけ_読めないビューアは理由つきで並ぶ()
+    public void 一覧は_viewer_json_のあるフォルダーだけ_読めないViewerは理由つきで並ぶ()
     {
         Place("b-viewer", """{ "title": "B" }""");
         Directory.CreateDirectory(Path.Combine(_root, "not-a-viewer"));
@@ -174,7 +174,7 @@ public sealed class ViewerTests : IDisposable
     }
 
     [Fact]
-    public void 許しは指紋ごと_定義が変わったら聞き直す_開いているビューアと回数は起動をまたぐ()
+    public void 許しは指紋ごと_定義が変わったら聞き直す_開いているViewerと回数は起動をまたぐ()
     {
         var path = Path.Combine(_root, "state.json");
         var viewer = Place("ports", """{ "api": ["open"] }""");
@@ -197,7 +197,7 @@ public sealed class ViewerTests : IDisposable
     }
 
     [Fact]
-    public void 三十日開かなかったビューアは枯れる_開けば戻る()
+    public void 三十日開かなかったViewerは枯れる_開けば戻る()
     {
         var state = new ViewerRoomState(Path.Combine(_root, "state.json"));
         var created = new DateTime(2026, 10, 1);
@@ -323,7 +323,7 @@ public sealed class ViewerTests : IDisposable
     // ── Claude から ─────────────────────────────────────────
 
     [Fact]
-    public async Task 書き方の道具は_置き場所と口と_いまあるビューアを返す()
+    public async Task 書き方の道具は_置き場所と口と_いまあるViewerを返す()
     {
         Place("ports", """{ "title": "Ports", "description": "握っているポート" }""");
         _room.Guide = ViewerGuide.Text(_store);

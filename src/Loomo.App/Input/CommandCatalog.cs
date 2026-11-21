@@ -160,8 +160,8 @@ public static class CommandCatalog
         new CommandDescriptor("pane.terminalSupport", CatPane, "ターミナルサポートを開く", null),
         // ブラウザサポートも既定キーなし（ブラウザの脇に出しておく面。§41）。
         new CommandDescriptor("pane.browserSupport", CatPane, "ブラウザサポートを開く", null),
-        // 面（頼むと生える道具・§44.2）も既定キーなし。
-        new CommandDescriptor("pane.viewer", CatPane, "面を開く", null),
+        // Viewer（頼むと生える道具・§44.2）も既定キーなし。
+        new CommandDescriptor("pane.viewer", CatPane, "Viewerを開く", null),
 
         // ===== 検索 =====
         // pane.search は検索ペインの外では開く、検索ペイン内では次の対象へ切り替える。
@@ -235,7 +235,7 @@ public static class CommandCatalog
         new CommandDescriptor("claude.resumeSession", CatClaude, "Claude Code のセッションを再開…", null),
         new CommandDescriptor("claude.sendLocation", CatClaude, "エディタの場所を Claude Code へ渡す（@参照・送信はしない）", "Alt+K"),
         new CommandDescriptor("claude.browserScreen", CatClaude, "ブラウザの画面に印を付けて Claude Code へ渡す（@参照・送信はしない）", null),
-        new CommandDescriptor("definitions.export", "Loomo", "定義を書き出す（面・見どころ・言いつけ。許しは含めない）", null),
+        new CommandDescriptor("definitions.export", "Loomo", "定義を書き出す（Viewer・見どころ・言いつけ。許しは含めない）", null),
         new CommandDescriptor("definitions.import", "Loomo", "定義を取り込む（書き出したフォルダーから・許しは PC ごと）", null),
         new CommandDescriptor("claude.status", CatClaude, "Claude 接続の状態（フック・窓口・登録・添える知らせ）", null),
         new CommandDescriptor("claude.reviewNote", CatClaude, "Claude への指摘を書く（カーソルの行に宛てて、次の頼みごとに添える）", null),

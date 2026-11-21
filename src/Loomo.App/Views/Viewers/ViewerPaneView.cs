@@ -5,10 +5,10 @@ using sk0ya.Loomo.Services.Viewers;
 namespace sk0ya.Loomo.App.Views;
 
 /// <summary>
-/// 「ビューア」ペインの中身（§44.2）。ビューア 1 つ＝タブ 1 つ。上にタブの並びと「＋」（置いてあるビューアの一覧・ビューアのフォルダー・
-/// 生やす頼みごとの下書き）、下に前に出ているビューアのページ。ページを出せないとき（まだ許していない・定義が読めない・
-/// ビューアが 1 つも無い）は、同じ場所にカードを出す。
-/// <para>読み込むのは<b>前に出ているビューアだけ</b>——復元したタブは選ばれるまでページを作らない。</para>
+/// 「Viewer」ペインの中身（§44.2）。Viewer 1 つ＝タブ 1 つ。上にタブの並びと「＋」（置いてあるViewerの一覧・Viewerのフォルダー・
+/// 生やす頼みごとの下書き）、下に前に出ているViewerのページ。ページを出せないとき（まだ許していない・定義が読めない・
+/// Viewerが 1 つも無い）は、同じ場所にカードを出す。
+/// <para>読み込むのは<b>前に出ているViewerだけ</b>——復元したタブは選ばれるまでページを作らない。</para>
 /// XAML を持たない（部品が少なく、色と字の大きさは部屋のトークンをそのまま引く）。
 /// </summary>
 internal sealed class ViewerPaneView : UserControl
@@ -29,7 +29,7 @@ internal sealed class ViewerPaneView : UserControl
         Focusable = true;
         SetResourceReference(BackgroundProperty, "Panel");
 
-        var add = new Button { Content = "＋", ToolTip = "ビューアを開く・ビューアのフォルダー・ビューアを生やす", Width = 28, Padding = new Thickness(0) };
+        var add = new Button { Content = "＋", ToolTip = "Viewerを開く・Viewerのフォルダー・Viewerを生やす", Width = 28, Padding = new Thickness(0) };
         add.SetResourceReference(StyleProperty, "PaneHeaderGhostButton");
         add.Click += (_, _) => OpenMenu(add);
         DockPanel.SetDock(add, Dock.Right);
@@ -57,7 +57,7 @@ internal sealed class ViewerPaneView : UserControl
         Content = root;
     }
 
-    /// <summary>「ビューアを生やす」を押した（頼みごとの下書きを渡すのは部屋の仕事）。</summary>
+    /// <summary>「Viewerを生やす」を押した（頼みごとの下書きを渡すのは部屋の仕事）。</summary>
     public event EventHandler? GrowRequested;
 
     public IReadOnlyList<string> OpenIds => _viewers.Select(viewer => viewer.Id).ToArray();
@@ -70,7 +70,7 @@ internal sealed class ViewerPaneView : UserControl
         _api = api;
         _factory = factory;
         _openUrl = openUrl;
-        // 前に開いていたビューアを戻す（数えない・前に出ていた 1 つだけ読み込む）。
+        // 前に開いていたViewerを戻す（数えない・前に出ていた 1 つだけ読み込む）。
         var (open, active) = state.OpenViewers;
         foreach (var id in open)
             _ = AddTab(id).PeekAsync();
@@ -79,7 +79,7 @@ internal sealed class ViewerPaneView : UserControl
         RenderCard();
     }
 
-    /// <summary>ビューアをタブに出す（すでに出ていればそれを前へ）。定義が読めなくてもタブは出す——理由がカードに出る。</summary>
+    /// <summary>Viewerをタブに出す（すでに出ていればそれを前へ）。定義が読めなくてもタブは出す——理由がカードに出る。</summary>
     public async Task<ViewerTabHost?> ShowViewerAsync(string id)
     {
         if (_store is null || _state is null || !ViewerManifest.IsValidId(id))
@@ -96,7 +96,7 @@ internal sealed class ViewerPaneView : UserControl
         return viewer;
     }
 
-    /// <summary>部屋の出来事を、出ているビューアへ流す。</summary>
+    /// <summary>部屋の出来事を、出ているViewerへ流す。</summary>
     public void Emit(string name, JsonNode? data, string requiredApi)
     {
         foreach (var viewer in _viewers)
@@ -177,7 +177,7 @@ internal sealed class ViewerPaneView : UserControl
             title.SetResourceReference(TextBlock.FontSizeProperty, "Fs12");
             title.SetResourceReference(TextBlock.ForegroundProperty, isActive ? "Fg" : "FgDim");
 
-            var close = new Button { Content = "×", ToolTip = "このビューアを閉じる（ビューアそのものは消えません）", Margin = new Thickness(0, 0, 4, 0) };
+            var close = new Button { Content = "×", ToolTip = "このViewerを閉じる（Viewerそのものは消えません）", Margin = new Thickness(0, 0, 4, 0) };
             close.SetResourceReference(StyleProperty, "PaneHeaderTabClose");
             close.Click += (_, e) =>
             {
@@ -226,26 +226,26 @@ internal sealed class ViewerPaneView : UserControl
     private UIElement EmptyCard()
     {
         var panel = CardPanel();
-        panel.Children.Add(Line("ビューアはまだ出ていません", "Fs14", "Fg", bold: true));
+        panel.Children.Add(Line("Viewerはまだ出ていません", "Fs14", "Fg", bold: true));
         panel.Children.Add(Line(
-            "ビューアは、頼むと生える小さな道具です。ターミナルの Claude Code に「〜を一覧するビューアがほしい」のように頼むと、"
+            "Viewerは、頼むと生える小さな道具です。ターミナルの Claude Code に「〜を一覧するViewerがほしい」のように頼むと、"
             + "Claude が小さな HTML を書いて、ここに出します。Loomo の再ビルドは要りません。", "Fs12", "FgDim"));
-        var grow = new Button { Content = "ビューアを生やす頼みごとの下書きをコピー", HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 10, 0, 0) };
+        var grow = new Button { Content = "Viewerを生やす頼みごとの下書きをコピー", HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 10, 0, 0) };
         grow.SetResourceReference(StyleProperty, "SecondaryButton");
         grow.Click += (_, _) => GrowRequested?.Invoke(this, EventArgs.Empty);
         panel.Children.Add(grow);
         if (_store?.List() is { Count: > 0 })
-            panel.Children.Add(Line("置いてあるビューアは、右上の「＋」から開けます。", "Fs12", "FgDim"));
+            panel.Children.Add(Line("置いてあるViewerは、右上の「＋」から開けます。", "Fs12", "FgDim"));
         return panel;
     }
 
     private UIElement ApprovalCard(ViewerTabHost viewer, ViewerManifest manifest)
     {
         var panel = CardPanel();
-        panel.Children.Add(Line($"ビューア「{manifest.Title}」を開きますか？", "Fs14", "Fg", bold: true));
+        panel.Children.Add(Line($"Viewer「{manifest.Title}」を開きますか？", "Fs14", "Fg", bold: true));
         if (manifest.Description.Length > 0)
             panel.Children.Add(Line(manifest.Description, "Fs12", "FgDim"));
-        panel.Children.Add(Line("このビューアが部屋でできること", "Fs11", "FgDim", bold: true, top: 12));
+        panel.Children.Add(Line("このViewerが部屋でできること", "Fs11", "FgDim", bold: true, top: 12));
         if (manifest.Api.Count == 0)
             panel.Children.Add(Line("・何もしない（自分のページを出すだけ）", "Fs12", "Fg"));
         foreach (var api in manifest.Api)
@@ -255,7 +255,7 @@ internal sealed class ViewerPaneView : UserControl
             panel.Children.Add(Line("回せるコマンド（この行のとおりにだけ走ります）", "Fs11", "FgDim", bold: true, top: 12));
             foreach (var command in manifest.Commands)
             {
-                panel.Children.Add(Line(command.Name + (command.Cwd == ViewerCommand.CwdViewer ? "（ビューアのフォルダーで）" : "（ワークスペースで）"),
+                panel.Children.Add(Line(command.Name + (command.Cwd == ViewerCommand.CwdViewer ? "（Viewerのフォルダーで）" : "（ワークスペースで）"),
                     "Fs11", "FgDim", top: 6));
                 var line = Line(command.Command, "Fs12", "Fg");
                 line.FontFamily = new FontFamily("Cascadia Mono, Consolas");
@@ -280,11 +280,11 @@ internal sealed class ViewerPaneView : UserControl
     private UIElement BrokenCard(ViewerTabHost viewer)
     {
         var panel = CardPanel();
-        panel.Children.Add(Line($"ビューア「{viewer.Id}」を読めません", "Fs14", "Fg", bold: true));
+        panel.Children.Add(Line($"Viewer「{viewer.Id}」を読めません", "Fs14", "Fg", bold: true));
         var reason = Line(viewer.Error ?? "", "Fs12", "Fg");
         reason.FontFamily = new FontFamily("Cascadia Mono, Consolas");
         panel.Children.Add(reason);
-        panel.Children.Add(Line("ビューアのフォルダーの中身が直ると、ここは自動で読み直します。", "Fs11", "FgDim", top: 10));
+        panel.Children.Add(Line("Viewerのフォルダーの中身が直ると、ここは自動で読み直します。", "Fs11", "FgDim", top: 10));
         return panel;
     }
 
@@ -304,7 +304,7 @@ internal sealed class ViewerPaneView : UserControl
         return block;
     }
 
-    /// <summary>「＋」のメニュー。置いてあるビューアを全部（枯れたものは下へ分ける）。メニューは押したときに組む。</summary>
+    /// <summary>「＋」のメニュー。置いてあるViewerを全部（枯れたものは下へ分ける）。メニューは押したときに組む。</summary>
     private void OpenMenu(Button anchor)
     {
         if (_store is null || _state is null)
@@ -321,19 +321,19 @@ internal sealed class ViewerPaneView : UserControl
                 menu.Items.Add(ViewerItem(entry, ""));
         }
         if (viewers.Count == 0)
-            menu.Items.Add(new MenuItem { Header = "（ビューアはまだありません）", IsEnabled = false });
+            menu.Items.Add(new MenuItem { Header = "（Viewerはまだありません）", IsEnabled = false });
         if (withered.Count > 0)
         {
             menu.Items.Add(new Separator());
-            menu.Items.Add(new MenuItem { Header = $"枯れたビューア（{ViewerRoomState.WitherDays} 日開いていない）", IsEnabled = false });
+            menu.Items.Add(new MenuItem { Header = $"枯れたViewer（{ViewerRoomState.WitherDays} 日開いていない）", IsEnabled = false });
             foreach (var entry in withered)
                 menu.Items.Add(ViewerItem(entry, "　"));
         }
         menu.Items.Add(new Separator());
-        var grow = new MenuItem { Header = "ビューアを生やす頼みごとの下書きをコピー" };
+        var grow = new MenuItem { Header = "Viewerを生やす頼みごとの下書きをコピー" };
         grow.Click += (_, _) => GrowRequested?.Invoke(this, EventArgs.Empty);
         menu.Items.Add(grow);
-        var folder = new MenuItem { Header = "ビューアのフォルダーを開く" };
+        var folder = new MenuItem { Header = "Viewerのフォルダーを開く" };
         folder.Click += (_, _) =>
         {
             try
@@ -343,7 +343,7 @@ internal sealed class ViewerPaneView : UserControl
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or Win32Exception)
             {
-                ToastService.Error("ビューアのフォルダーを開けませんでした");
+                ToastService.Error("Viewerのフォルダーを開けませんでした");
             }
         };
         menu.Items.Add(folder);

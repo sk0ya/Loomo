@@ -16,7 +16,7 @@ namespace sk0ya.Loomo.App.Views;
 /// <item>動きが悪い方へ変わったら（テストが落ちるようになった等）、きっかけが「動き」の言いつけを裏のワークツリーで進める。</item>
 /// <item>毎日の時刻の言いつけを、時刻が来たら進める（Loomo が動いている間だけ・1 日の回数と使用量の線の内側で）。</item>
 /// </list>
-/// 見せるビューアは本体に作らず、<see cref="BuiltInViewers"/> が置くビューア（「動き」「言いつけ」）として生やす——口は
+/// 見せるViewerは本体に作らず、<see cref="BuiltInViewers"/> が置くViewer（「動き」「言いつけ」）として生やす——口は
 /// <see cref="MotionViewerApi"/>・<see cref="OrdersViewerApi"/>。
 /// </summary>
 public partial class ShellWindow {
@@ -111,7 +111,7 @@ public partial class ShellWindow {
         }
     }
 
-    /// <summary>見どころの行を人間が許す。行をそのまま見せて聞く（ビューアの許しと同じく、行が変わったら聞き直す）。</summary>
+    /// <summary>見どころの行を人間が許す。行をそのまま見せて聞く（Viewerの許しと同じく、行が変わったら聞き直す）。</summary>
     private void ApproveMotionProbes() {
         if (_workspace.PrimaryFolder is not { } folder)
             return;
@@ -185,7 +185,7 @@ public partial class ShellWindow {
             }
             Dispatcher.Invoke(() => {
                 var text = result.Status switch {
-                    OrderResult.Done => $"言いつけ「{orderId}」が仕上がりました（{result.Files} ファイル）。言いつけのビューアの盆から採るか捨てます",
+                    OrderResult.Done => $"言いつけ「{orderId}」が仕上がりました（{result.Files} ファイル）。言いつけのViewerの盆から採るか捨てます",
                     OrderResult.Empty => $"言いつけ「{orderId}」は変更なしで終わりました",
                     _ => $"言いつけ「{orderId}」は失敗しました：{Head(result.Summary)}",
                 };
@@ -212,7 +212,7 @@ public partial class ShellWindow {
         static string Head(string text) => text.Split('\n')[0] is { Length: > 120 } line ? line[..120] + "…" : text.Split('\n')[0];
     }
 
-    // ── ビューアの口 ───────────────────────────────────────────────
+    // ── Viewerの口 ───────────────────────────────────────────────
 
     private static readonly JsonSerializerOptions ViewerJson = new(JsonSerializerDefaults.Web);
 
