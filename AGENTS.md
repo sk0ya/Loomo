@@ -126,6 +126,9 @@ use only the APIs and run only the named commands its `viewer.json` declares (fi
 `LOOMO_ARG_n` / `$LoomoInput`); the human approves that declaration once per fingerprint (stored outside the viewer folder);
 commands run hidden, never in the visible terminal; nothing is written into the user's repositories. A WebView2 inside a
 hidden pane never finishes initialising — load when visible, don't await it from an MCP call.
+The human can also hand the Viewer pane any path or URL; `ViewerTargets.Classify` alone decides how it is shown (page /
+EditorSupport / program window / browser / read-only editor / a `file-<ext>` viewer Claude made via `ViewerGenerator`, only
+on request). A program's window is overlaid on the tab, never `SetParent`/owned (cross-process input queues would hang Loomo).
 Room features that need a view are grown as built-in viewers (`BuiltInViewers`: 動き §44.3, 言いつけ §44.4) on top of
 `IViewerApiExtension` APIs (`motion`, `orders`) instead of WPF views. Standing orders run `claude -p` in a hidden worktree
 and never touch the human's working tree until 採る (`cherry-pick --no-commit`, conflict forecast first); never push.

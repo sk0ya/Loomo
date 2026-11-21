@@ -18,6 +18,7 @@ internal sealed class ViewerProgramTab : ViewerTabBase
     private IntPtr _window;
     private IntPtr _originalStyle;
     private bool _shown;
+    private bool _topmost;
     private NativeRect _lastRect;
     private Window? _owner;
     private CancellationTokenSource? _starting;
@@ -199,10 +200,16 @@ internal sealed class ViewerProgramTab : ViewerTabBase
         if (!ReferenceEquals(owner, _owner))
         {
             if (_owner is not null)
+            {
                 _owner.Activated -= OnOwnerActivated;
+                _owner.Deactivated -= OnOwnerDeactivated;
+            }
             _owner = owner;
             if (_owner is not null)
+            {
                 _owner.Activated += OnOwnerActivated;
+                _owner.Deactivated += OnOwnerDeactivated;
+            }
         }
         var show = CanShow && owner is { WindowState: not WindowState.Minimized } && Host.ActualWidth > 4 && Host.ActualHeight > 4
                    && PresentationSource.FromVisual(Host) is not null;
@@ -212,6 +219,11 @@ internal sealed class ViewerProgramTab : ViewerTabBase
             {
                 ShowWindowAsync(_window, SwHide);
                 _shown = false;
+            }
+            if (_topmost)
+            {
+                SetWindowPos(_window, HwndNoTopmost, 0, 0, 0, 0, SwpNoMove | SwpNoSize | SwpNoActivate | SwpAsyncWindowPos);
+                _topmost = false;
             }
             return;
         }
@@ -230,23 +242,72 @@ internal sealed class ViewerProgramTab : ViewerTabBase
         _shown = true;
         _lastRect = rect;
         if (!wasShown || force)
-            PutOwnerBelow();
+            BringAboveOwnerSoon();
     }
 
-    /// <summary>Loomo が前に出た：Loomo を重ねた窓のすぐ下へ回す（重ねた窓を他のアプリより前へは出さない）。</summary>
+    /// <summary>Loomo が前に出た：重ねた窓をそのすぐ上へ戻す。</summary>
     private void OnOwnerActivated(object? sender, EventArgs e)
     {
         if (_shown)
-            PutOwnerBelow();
+            BringAboveOwner();
     }
 
-    private void PutOwnerBelow()
+    /// <summary>
+    /// 重ねた窓を Loomo の<b>すぐ上</b>に保つ。Windows は前面の窓より上へ、よそのプロセスの窓を並べ替えさせない（HWND_TOP は
+    /// 成功を返しても上がらなかった・実機で確認）。そこで Loomo が前に出ている間だけ「最前面」にし（PowerToys の Always On Top と
+    /// 同じやり方）、Loomo が裏へ回ったら最前面を外して Loomo のすぐ上へ戻す——他のアプリより前には残さない。
+    /// 相手が固まっているときは相手のスレッドに預ける（同期で頼むと Loomo まで止まる）。
+    /// </summary>
+    private void BringAboveOwner()
+    {
+        if (_owner is null || _window == IntPtr.Zero)
+            return;
+        if (_owner.IsActive)
+        {
+            SetWindowPos(_window, HwndTopmost, 0, 0, 0, 0, PlaceFlags());
+            _topmost = true;
+        }
+        else
+            DropBelowFront();
+    }
+
+    /// <summary>最前面を外し、Loomo のすぐ上（＝Loomo の上にある窓のすぐ下）へ置く。</summary>
+    private void DropBelowFront()
     {
         if (_owner is null || _window == IntPtr.Zero)
             return;
         var ownerHandle = new WindowInteropHelper(_owner).Handle;
-        if (ownerHandle != IntPtr.Zero)
-            SetWindowPos(ownerHandle, _window, 0, 0, 0, 0, SwpNoMove | SwpNoSize | SwpNoActivate);
+        if (ownerHandle == IntPtr.Zero)
+            return;
+        var above = GetWindow(ownerHandle, GwHwndPrev);
+        // 最前面でない窓の後ろへ置くと、最前面も外れる（SetWindowPos の決まり）。上が無い・自分・最前面の窓なら最前面を外すだけ。
+        var insertAfter = above == IntPtr.Zero || above == _window || (GetWindowLongPtr(above, GwlExStyle).ToInt64() & WsExTopmost) != 0
+            ? HwndNoTopmost
+            : above;
+        SetWindowPos(_window, insertAfter, 0, 0, 0, 0, PlaceFlags());
+        _topmost = false;
+    }
+
+    private uint PlaceFlags() => SwpNoMove | SwpNoSize | SwpNoActivate | (IsHungAppWindow(_window) ? SwpAsyncWindowPos : 0);
+
+    private void OnOwnerDeactivated(object? sender, EventArgs e)
+    {
+        if (_shown || _topmost)
+            DropBelowFront();
+    }
+
+    /// <summary>隠していた窓を出した直後は、表示が相手のスレッドで済むのを待ってからもう一度並べ直す。</summary>
+    private void BringAboveOwnerSoon()
+    {
+        BringAboveOwner();
+        var timer = new DispatcherTimer(DispatcherPriority.Background, Dispatcher) { Interval = TimeSpan.FromMilliseconds(150) };
+        timer.Tick += (_, _) =>
+        {
+            timer.Stop();
+            if (_shown && !Disposed)
+                BringAboveOwner();
+        };
+        timer.Start();
     }
 
     /// <summary>重ねるのをやめ、枠を戻して素の窓に戻す。</summary>
@@ -254,14 +315,18 @@ internal sealed class ViewerProgramTab : ViewerTabBase
     {
         _sync.Stop();
         if (_owner is not null)
+        {
             _owner.Activated -= OnOwnerActivated;
+            _owner.Deactivated -= OnOwnerDeactivated;
+        }
         _owner = null;
         if (_window == IntPtr.Zero)
             return;
         if (IsWindow(_window))
         {
             SetWindowLongPtr(_window, GwlStyle, _originalStyle);
-            SetWindowPos(_window, IntPtr.Zero, 0, 0, 0, 0, SwpNoMove | SwpNoSize | SwpNoZOrder | SwpNoActivate | SwpFrameChanged | SwpAsyncWindowPos);
+            SetWindowPos(_window, HwndNoTopmost, 0, 0, 0, 0, SwpNoMove | SwpNoSize | SwpNoActivate | SwpFrameChanged | SwpAsyncWindowPos);
+            _topmost = false;
             ShowWindowAsync(_window, SwShowNoActivate);
         }
         _window = IntPtr.Zero;
@@ -272,7 +337,10 @@ internal sealed class ViewerProgramTab : ViewerTabBase
     {
         // 入れ物が替わる：窓はそのまま。次の Sync で新しい入れ物の場所へ合わせる。
         if (_owner is not null)
+        {
             _owner.Activated -= OnOwnerActivated;
+            _owner.Deactivated -= OnOwnerDeactivated;
+        }
         _owner = null;
     }
 
@@ -302,9 +370,14 @@ internal sealed class ViewerProgramTab : ViewerTabBase
     // ── Win32 ───────────────────────────────────────────────
 
     private const int GwlStyle = -16;
+    private const int GwlExStyle = -20;
+    private const long WsExTopmost = 0x00000008;
+    private static readonly IntPtr HwndTopmost = new(-1);
+    private static readonly IntPtr HwndNoTopmost = new(-2);
     private const long WsCaption = 0x00C00000;
     private const long WsThickFrame = 0x00040000;
     private const uint GwOwner = 4;
+    private const uint GwHwndPrev = 3;
     private const int SwHide = 0;
     private const int SwShowNoActivate = 4;
     private const uint SwpNoSize = 0x0001;
@@ -340,6 +413,10 @@ internal sealed class ViewerProgramTab : ViewerTabBase
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool IsWindow(IntPtr hwnd);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool IsHungAppWindow(IntPtr hwnd);
 
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]

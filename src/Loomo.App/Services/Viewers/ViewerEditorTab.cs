@@ -65,7 +65,10 @@ internal sealed class ViewerEditorTab : ViewerTabBase
 
     private void Build()
     {
-        var label = ViewerCards.Line("テキストとして表示しています（読むだけ）", "Fs11", "FgDim", top: 0);
+        var label = ViewerCards.Line("テキストとして表示（読むだけ）", "Fs11", "FgDim", top: 0);
+        label.TextWrapping = TextWrapping.NoWrap;
+        label.TextTrimming = TextTrimming.CharacterEllipsis;   // 狭いペインではボタンを優先して省く（全文はツールチップ）
+        label.ToolTip = "見せ方の決まっていないファイルを、テキストとして読むだけで表示しています";
         label.VerticalAlignment = VerticalAlignment.Center;
         label.Margin = new Thickness(8, 0, 8, 0);
         var edit = ViewerCards.Button("エディタで開く", "SecondaryButton", () => _openInEditor(TargetPath!), "ViewerTextOpenInEditor");
@@ -74,7 +77,7 @@ internal sealed class ViewerEditorTab : ViewerTabBase
         foreach (var button in new[] { edit, generate })
         {
             button.Margin = new Thickness(0, 2, 6, 2);
-            button.SetResourceReference(FrameworkElement.StyleProperty, "SmallButton");
+            button.SetResourceReference(FrameworkElement.StyleProperty, "PaneHeaderGhostButton");
         }
         var bar = new DockPanel { LastChildFill = true };
         DockPanel.SetDock(generate, Dock.Right);

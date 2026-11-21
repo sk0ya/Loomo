@@ -13,6 +13,7 @@ internal static class PaneTabDragPolicy
         "Editor" => TabEntryKind.Editor,
         "Terminal" => TabEntryKind.Terminal,
         "Browser" => TabEntryKind.Browser,
+        "Viewer" => TabEntryKind.Viewer,
         _ => null,
     };
 }

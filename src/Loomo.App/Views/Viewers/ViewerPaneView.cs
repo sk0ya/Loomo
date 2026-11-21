@@ -437,7 +437,8 @@ internal sealed class ViewerPaneView : UserControl
         var panel = ViewerCards.Panel();
         panel.Children.Add(ViewerCards.Line("パスを指定して Viewer で開く", "Fs14", "Fg", bold: true));
         panel.Children.Add(ViewerCards.Line("ファイル・フォルダーのパスか URL（ドロップでも渡せます）", "Fs11", "FgDim", top: 8));
-        var box = _pathBox ?? new TextBox { MinWidth = 360, Margin = new Thickness(0, 4, 0, 0) };
+        // 長いパスも全部見えるよう折り返す（Enter は改行ではなく「開く」）。
+        var box = _pathBox ?? new TextBox { MinWidth = 360, Margin = new Thickness(0, 4, 0, 0), TextWrapping = TextWrapping.Wrap, AcceptsReturn = false };
         if (box.Parent is Panel oldParent)
             oldParent.Children.Remove(box);
         AutomationProperties.SetAutomationId(box, "ViewerPathBox");

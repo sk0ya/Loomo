@@ -87,11 +87,16 @@ internal static class ViewerCards
         return button;
     }
 
-    public static StackPanel Buttons(params UIElement[] buttons)
+    /// <summary>ボタンの並び。幅が足りなければ折り返す（文字を大きくしても切れない）。</summary>
+    public static WrapPanel Buttons(params UIElement[] buttons)
     {
-        var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 12, 0, 0) };
+        var row = new WrapPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 12, 0, 0) };
         foreach (var button in buttons)
+        {
+            if (button is FrameworkElement element)
+                element.Margin = new Thickness(0, 0, 8, 6);
             row.Children.Add(button);
+        }
         return row;
     }
 }

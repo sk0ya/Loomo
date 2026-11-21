@@ -1,4 +1,5 @@
 using System.Windows.Automation;
+using sk0ya.Loomo.Core.Viewers;
 using sk0ya.Loomo.Services.Viewers;
 
 namespace sk0ya.Loomo.App.Services;
@@ -51,7 +52,7 @@ internal sealed class ViewerGeneratingTab : ViewerTabBase
     public override UIElement? BuildCard()
     {
         var target = TargetPath!;
-        var kind = Directory.Exists(target) ? "フォルダー" : ViewerTargets.ExtensionLabel(target);
+        var kind = _viewerId == ViewerPath.GeneratedPrefix + "folder" ? "フォルダー" : ViewerTargets.ExtensionLabel(target);
         var panel = ViewerCards.Panel();
         switch (_phase)
         {
