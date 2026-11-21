@@ -177,6 +177,8 @@ public partial class ShellWindow {
     private static bool EditorPathMatches(VimEditorControl editor, string? path)
         => ViewportSplitPolicy.EditorPathMatches(editor.FilePath, path);
 
+    private Services.EditorTodoHighlighter? _todoHighlighter;
+
     private VimEditorControl BuildEditorControl(EditorTab tab) {
         var control = new VimEditorControl(new VimEditorControlOptions {
             // エディタの git は全部 Loomo の GitService 経由（ワークツリーでも blame が出る）。ガターは共有の比較基準に合わせる（§24.11.1）。
@@ -185,6 +187,8 @@ public partial class ShellWindow {
             // 外での書き換えは Loomo がタブごとに見張って取り込む（§24.57）。エディタの監視も残すと、1回の
             // 書き換えに両方が反応し、未保存のタブでは Loomo のバーとエディタのモーダル確認が二重に出る。
             WatchFileOnDisk = false,
+            // TODO Tree が拾う書き方のタグを、本文の中でも強調する。
+            LineHighlightProvider = (_todoHighlighter ??= new(() => _settings.TodoTree)).Highlight,
             // ワークスペースフォルダーも文書の参照カウントもサーバーのプールもワークスペース側が知っている。
             LspWorkspace = _lspWorkspace, LspServerAdmin = _lspServerAdmin,
             EngineServices = _editorEngineServices,

@@ -1,3 +1,5 @@
+using Editor.Core.Syntax;
+
 namespace sk0ya.Loomo.App.Services;
 
 /// <summary>TODO として拾う書き方。文章中の「TODO リスト」などを拾わないよう、タグは行頭
@@ -30,6 +32,30 @@ public static class TodoTagSyntax
         for (var match = Tag.Match(line, headStart); match.Success && match.Index + match.Length <= limit; match = match.NextMatch())
             if (Head.IsMatch(line.AsSpan(headStart, match.Index - headStart))) return match;
         return null;
+    }
+
+    /// <summary>コードの 1 行から、コメントの先頭にあるタグを返す（End はそのコメントの終わりの列）。
+    /// コメントは字句器によって語ごとに割れることがあるので、隣接する（間が空白だけの）コメントを
+    /// つないで 1 つとして見る。つながないと文中のタグがコメントの先頭に見えてしまう。</summary>
+    public static IEnumerable<(Match Match, int End)> FindInCode(string line, IEnumerable<SyntaxToken> tokens)
+    {
+        var comments = tokens.Where(t => t.Kind == TokenKind.Comment && t.Length > 0).OrderBy(t => t.StartColumn).ToList();
+        for (var i = 0; i < comments.Count; i++)
+        {
+            var start = comments[i].StartColumn;
+            var stop = start + comments[i].Length;
+            while (i + 1 < comments.Count && OnlySpaces(line, stop, comments[i + 1].StartColumn))
+                stop = Math.Max(stop, comments[++i].StartColumn + comments[i].Length);
+            if (start < line.Length && Find(line, start, stop) is { } match)
+                yield return (match, Math.Min(stop, line.Length));
+        }
+    }
+
+    private static bool OnlySpaces(string text, int from, int to)
+    {
+        for (var i = from; i < to && i < text.Length; i++)
+            if (!char.IsWhiteSpace(text[i])) return false;
+        return true;
     }
 
     /// <summary>行の <paramref name="index"/>（0 始まり）にあるタグ・担当者・コロンの長さ。タグでなければ 0。</summary>

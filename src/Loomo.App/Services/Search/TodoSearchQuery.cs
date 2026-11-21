@@ -81,18 +81,8 @@ public sealed class TodoSearchQuery(IWorkspaceSearchService search, IWorkspaceSe
                     if (isCode)
                     {
                         if (!tokens!.TryGetValue(line, out var spans)) continue;
-                        // コメントは字句器によって語ごとに割れることがあるので、隣接する（間が空白だけの）コメントを
-                        // つないで 1 つとして見る。つながないと文中のタグがコメントの先頭に見えてしまう。
-                        var comments = spans.Where(t => t.Kind == TokenKind.Comment && t.Length > 0).OrderBy(t => t.StartColumn).ToList();
-                        for (var i = 0; i < comments.Count; i++)
-                        {
-                            var start = comments[i].StartColumn;
-                            var stop = start + comments[i].Length;
-                            while (i + 1 < comments.Count && OnlySpaces(text, stop, comments[i + 1].StartColumn))
-                                stop = Math.Max(stop, comments[++i].StartColumn + comments[i].Length);
-                            if (start >= text.Length || TodoTagSyntax.Find(text, start, stop) is not { } match) continue;
-                            if (Add(match, Math.Min(stop, text.Length))) return Truncated();
-                        }
+                        foreach (var (match, stop) in TodoTagSyntax.FindInCode(text, spans))
+                            if (Add(match, stop)) return Truncated();
                     }
                     else if (TodoTagSyntax.Find(text) is { } match && Add(match, null)) return Truncated();
 
@@ -106,13 +96,6 @@ public sealed class TodoSearchQuery(IWorkspaceSearchService search, IWorkspaceSe
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { skipped++; }
         }
         return new(entries, false, Notice());
-
-        static bool OnlySpaces(string text, int from, int to)
-        {
-            for (var i = from; i < to && i < text.Length; i++)
-                if (!char.IsWhiteSpace(text[i])) return false;
-            return true;
-        }
 
         TodoSearchResult Truncated() => new(entries.Take(options.MaxResults).ToArray(), true, Notice());
 
