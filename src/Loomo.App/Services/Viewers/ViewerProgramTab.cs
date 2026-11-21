@@ -80,6 +80,7 @@ internal sealed class ViewerProgramTab : ViewerTabBase
             return;
         _phase = Phase.Starting;
         SetStatus(ViewerTabStatus.Pending);
+        CloseLaunched();   // 前に起動したもの（窓を待ちきれなかったもの）を残さない
         using var starting = _starting = new CancellationTokenSource(TimeSpan.FromSeconds(20));
         try
         {
@@ -346,6 +347,21 @@ internal sealed class ViewerProgramTab : ViewerTabBase
 
     private void OnShutdown(object? sender, EventArgs e) => Dispose();
 
+    /// <summary>Loomo が起動したプロセスを終わらせて手放す（保存の確認はプログラムに任せる）。</summary>
+    private void CloseLaunched()
+    {
+        if (_process is not { } process)
+            return;
+        _process = null;
+        try
+        {
+            if (!process.HasExited)
+                process.CloseMainWindow();
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or Win32Exception) { }
+        process.Dispose();
+    }
+
     public override void Dispose()
     {
         if (Disposed)
@@ -354,15 +370,7 @@ internal sealed class ViewerProgramTab : ViewerTabBase
         _starting?.Cancel();
         var window = _window;
         Release();
-        // Loomo が起動したものは終わらせる（保存の確認はプログラムに任せる）。
-        try
-        {
-            if (_process is { HasExited: false } process)
-                process.CloseMainWindow();
-        }
-        catch (Exception ex) when (ex is InvalidOperationException or Win32Exception) { }
-        _process?.Dispose();
-        _process = null;
+        CloseLaunched();
         _ = window;
         base.Dispose();
     }

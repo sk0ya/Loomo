@@ -7,8 +7,10 @@ namespace sk0ya.Loomo.App.Services;
 /// <summary>
 /// パスから開いた HTML の頁（§44.2「パスから開く」）。頁のあるフォルダーを、そのフォルダーだけのオリジン
 /// （<c>https://&lt;パスの指紋&gt;.page.loomo/</c>）で答え、<b>部屋の API（<c>window.loomo</c>）は差し込まない</b>。
-/// <para>API が無いので部屋の中身を読む手段が無く、外へ出て困るものも無い——ネットへの要求はそのまま通す（CDN のスクリプトも
-/// 読める）。頁の外への遷移はさせず、ユーザーが押した http(s) のリンクはブラウザペインへ。フォルダーの中が書き換わったら読み直す。</para>
+/// <para><b>ネットには出さない</b>：頁はそのフォルダー（と下）のファイルを読めるので、外へ出られると隣のファイル（ダウンロード
+/// フォルダーの別の書類・リポジトリの <c>.git/config</c> など）を読んで送れてしまう。自分のオリジンと <c>data:</c>・<c>blob:</c> 以外の
+/// 要求は断り、WebSocket・WebRTC は頁に渡さず、中の iframe も外へは行かせない。頁の外への遷移はさせず、ユーザーが押した http(s)
+/// のリンクはブラウザペインへ。フォルダーの中が書き換わったら読み直す。</para>
 /// </summary>
 internal sealed class ViewerPageTab : ViewerTabBase
 {
@@ -56,7 +58,7 @@ internal sealed class ViewerPageTab : ViewerTabBase
         return $"https://{hostName}/" + string.Join('/', relative.Split('/').Select(Uri.EscapeDataString));
     }
 
-    public override string ToolTip => TargetPath + "\nHTML の頁として表示（部屋の API なし）";
+    public override string ToolTip => TargetPath + "\nHTML の頁として表示（部屋の API なし・ネットには出ない）";
 
     public override UIElement? BuildCard()
     {
@@ -140,13 +142,28 @@ internal sealed class ViewerPageTab : ViewerTabBase
         }
         core.NavigationStarting += (_, e) =>
         {
-            if (IsOwnPage(e.Uri) || e.Uri.StartsWith("about:", StringComparison.OrdinalIgnoreCase)
-                || e.Uri.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
+            if (IsLocal(e.Uri))
                 return;
             e.Cancel = true;   // 頁の外へは出ない
             if (e.IsUserInitiated && IsWebUrl(e.Uri))
                 _ = _openUrl(e.Uri);
         };
+        core.FrameNavigationStarting += (_, e) =>
+        {
+            if (!IsLocal(e.Uri))
+                e.Cancel = true;   // 中の iframe も外へは行かせない
+        };
+        // 外向きの要求は全部断る（自分のオリジンはフォルダーの割り当てが答える）。
+        core.AddWebResourceRequestedFilter("*", CoreWebView2WebResourceContext.All, CoreWebView2WebResourceRequestSourceKinds.All);
+        core.WebResourceRequested += (_, e) =>
+        {
+            if (IsLocal(e.Request.Uri))
+                return;
+            try { e.Response = core.Environment.CreateWebResourceResponse(null, 403, "Forbidden", ""); }
+            catch (Exception ex) when (ex is InvalidOperationException or COMException or ArgumentException) { }
+        };
+        try { await core.AddScriptToExecuteOnDocumentCreatedAsync(NoSocketsScript); }
+        catch (Exception ex) when (ex is InvalidOperationException or COMException) { return false; }
         core.NewWindowRequested += (_, e) =>
         {
             e.Handled = true;
@@ -166,9 +183,21 @@ internal sealed class ViewerPageTab : ViewerTabBase
         return true;
     }
 
+    /// <summary>WebSocket・WebRTC は要求の見張り（WebResourceRequested）を通らないので、頁から使えなくする。</summary>
+    private const string NoSocketsScript =
+        "(() => { for (const k of ['WebSocket', 'WebTransport', 'RTCPeerConnection', 'webkitRTCPeerConnection', 'EventSource']) {"
+        + " try { Object.defineProperty(window, k, { value: undefined, configurable: false, writable: false }); } catch (e) {} } })();";
+
     private bool IsOwnPage(string uri)
         => Uri.TryCreate(uri, UriKind.Absolute, out var parsed)
+           && parsed.Scheme == Uri.UriSchemeHttps
            && string.Equals(parsed.Host, _hostName, StringComparison.OrdinalIgnoreCase);
+
+    private bool IsLocal(string uri)
+        => IsOwnPage(uri)
+           || uri.StartsWith("about:", StringComparison.OrdinalIgnoreCase)
+           || uri.StartsWith("data:", StringComparison.OrdinalIgnoreCase)
+           || uri.StartsWith("blob:", StringComparison.OrdinalIgnoreCase);
 
     private static bool IsWebUrl(string uri)
         => Uri.TryCreate(uri, UriKind.Absolute, out var parsed)

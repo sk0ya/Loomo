@@ -212,6 +212,38 @@ public sealed class ViewerPathTests : IDisposable
         Assert.Contains("53 51 00 4C", ViewerGenerator.Prompt(_store, binary, "file-bin", note: null));
     }
 
+    [Fact]
+    public async Task 作らせる_作業フォルダーはそのViewerのフォルダーだけ_書けたら成功()
+    {
+        var target = Put("talk.srt", "1");
+        string? workedIn = null;
+        var result = await ViewerGenerator.GenerateAsync(_store, target, "file-srt", null, (folder, _, _) =>
+        {
+            workedIn = folder;
+            File.WriteAllText(Path.Combine(folder, "viewer.json"), """{ "api": ["target"] }""");
+            File.WriteAllText(Path.Combine(folder, "index.html"), "<p>srt</p>");
+            return Task.FromResult((0, "done"));
+        }, CancellationToken.None);
+        Assert.True(result.Ok, result.Message);
+        Assert.Equal(_store.FolderOf("file-srt"), workedIn);
+    }
+
+    [Fact]
+    public async Task 作らせる_途中で終わった_作り直しで何も変わらなければ失敗と言う()
+    {
+        var target = Put("talk.srt", "1");
+        var failed = await ViewerGenerator.GenerateAsync(_store, target, "file-srt", null,
+            (_, _, _) => Task.FromResult((1, "not logged in")), CancellationToken.None);
+        Assert.False(failed.Ok);
+        Assert.Contains("not logged in", failed.Message);
+
+        Place("file-srt", """{ "api": ["target"] }""");   // 作り直し：古い定義と頁がもうある
+        var unchanged = await ViewerGenerator.GenerateAsync(_store, target, "file-srt", "直して",
+            (_, _, _) => Task.FromResult((0, "nothing to do")), CancellationToken.None);
+        Assert.False(unchanged.Ok);
+        Assert.Contains("書き換わりませんでした", unchanged.Message);
+    }
+
     // ── TABS ────────────────────────────────────────────────
 
     [Fact]

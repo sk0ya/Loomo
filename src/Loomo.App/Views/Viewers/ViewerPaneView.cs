@@ -266,8 +266,8 @@ internal sealed class ViewerPaneView : UserControl
         if (sender is not ViewerGeneratingTab generating || _factory is null || generating.TargetPath is not { } path)
             return;
         var replacement = _factory.ForViewer(generating.ViewerId, _contentHost, path);
+        // 前に出ていれば Replace → Activate が読み込む（まだ読んでいないタブは前へ出たときに読む）。ここで重ねて読まない。
         Replace(generating, replacement);
-        _ = replacement.RefreshAsync();
     }
 
     private void Replace(IViewerTab old, IViewerTab replacement)
@@ -327,7 +327,21 @@ internal sealed class ViewerPaneView : UserControl
         TabsChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    private void Persist() => _factory?.State.SetOpenViewers(_tabs.Select(tab => tab.Key), _active?.Key);
+    private string? _persisted;
+
+    /// <summary>並びと前に出ているタブを覚える。<b>変わったときだけ</b>書く——タブの題や状態（URL のタブは頁を移るたび）でも
+    /// 呼ばれるので、毎回書くと UI スレッドでファイルを書き続ける。</summary>
+    private void Persist()
+    {
+        if (_factory is null)
+            return;
+        var keys = _tabs.Select(tab => tab.Key).ToList();
+        var snapshot = string.Join("\n", keys) + "\n>" + _active?.Key;
+        if (snapshot == _persisted)
+            return;
+        _persisted = snapshot;
+        _factory.State.SetOpenViewers(keys, _active?.Key);
+    }
 
     // ── 見え方 ───────────────────────────────────────────────
 

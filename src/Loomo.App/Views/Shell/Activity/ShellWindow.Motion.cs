@@ -30,7 +30,7 @@ public partial class ShellWindow {
     private void InitializeMotion() {
         _motion.Recorded += (folder, snapshot) => _ = Task.Run(() => OnMotionRecorded(folder, snapshot));
         _orders.Changed += () => Dispatcher.BeginInvoke(DispatcherPriority.Background,
-            () => RealizedViewerPane()?.Emit("ordersChanged", null, ViewerApi.Orders));
+            () => EmitToViewers("ordersChanged", null, ViewerApi.Orders));
         if (_workspace.PrimaryFolder is { } folder)
             _ = Task.Run(() => _orders.RecoverInterrupted(folder));
         _orderTimer = new DispatcherTimer(DispatcherPriority.Background, Dispatcher) { Interval = TimeSpan.FromMinutes(1) };
@@ -69,7 +69,7 @@ public partial class ShellWindow {
             _claudeNotes.Add(session, new ClaudeNote(ClaudeNote.KindMotionWorsened,
                 $"直前のターンのあと、動きが悪い方へ変わりました：{headline}。直すか、理由を確かめてください。", DateTimeOffset.Now));
         Dispatcher.BeginInvoke(DispatcherPriority.Background, () => {
-            RealizedViewerPane()?.Emit("motionRecorded", new JsonObject { ["id"] = snapshot.Id }, ViewerApi.Motion);
+            EmitToViewers("motionRecorded", new JsonObject { ["id"] = snapshot.Id }, ViewerApi.Motion);
             if (snapshot.OrderResultId is not null || headline is null)
                 return;
             if (snapshot.Trigger == MotionSnapshot.TriggerTurn)
@@ -132,7 +132,7 @@ public partial class ShellWindow {
         if (answer != MessageBoxResult.Yes)
             return;
         _motion.Store.Approve(folder, probes);
-        RealizedViewerPane()?.Emit("motionRecorded", null, ViewerApi.Motion);
+        EmitToViewers("motionRecorded", null, ViewerApi.Motion);
         ToastService.Info("見どころを許しました。次のターンの終わりから録ります");
     }
 

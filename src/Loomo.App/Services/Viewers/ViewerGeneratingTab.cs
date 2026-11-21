@@ -128,6 +128,11 @@ internal sealed class ViewerGeneratingTab : ViewerTabBase
         {
             result = new ViewerGenerationResult(false, "中止しました。");
         }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            // 置き場を作れない・頼みごとを組めない など。「作っています…」のまま固めない。
+            result = new ViewerGenerationResult(false, "Viewer を作る準備に失敗しました：" + ex.Message);
+        }
         _cancel = null;
         _clock.Stop();
         if (Disposed)

@@ -109,7 +109,7 @@ internal static class ViewerTargets
     public static string Describe(ViewerTarget target, ViewerStore store) => target.Kind switch
     {
         ViewerTargetKind.Missing => "そのパスは見つかりません",
-        ViewerTargetKind.Page => "HTML の頁としてそのまま出します（部屋の API は使えません。ネットには出られます）",
+        ViewerTargetKind.Page => "HTML の頁としてそのまま出します（部屋の API は使えず、ネットにも出ません）",
         ViewerTargetKind.Preview when target.ViewerId is not null => "バイナリとして Hex で出します（見せ方は Claude Code に作ってもらうこともできます）",
         ViewerTargetKind.Preview => "EditorSupport と同じ表示で出します",
         ViewerTargetKind.Text => "テキストとしてエディタに出します（読むだけ。見せ方は Claude Code に作ってもらうこともできます）",

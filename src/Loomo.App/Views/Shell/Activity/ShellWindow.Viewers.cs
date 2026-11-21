@@ -39,7 +39,7 @@ public partial class ShellWindow {
         // リポジトリの状態が変わった（背景スレッドで鳴る）→ 出ているViewerへ。Viewerを一度も出していなければ何もしない。
         if (_viewerGitStatus is { } status)
             status.RepositoryChanged += (_, root) => Dispatcher.BeginInvoke(DispatcherPriority.Background,
-                () => RealizedViewerPane()?.Emit("gitChanged", new JsonObject { ["root"] = root }, ViewerApi.Git));
+                () => EmitToViewers("gitChanged", new JsonObject { ["root"] = root }, ViewerApi.Git));
     }
 
     /// <summary>Viewer のタブを作る係（ペインと切り離した窓で共有）。EditorSupport の部品が揃ってから作る。</summary>
@@ -55,6 +55,17 @@ public partial class ShellWindow {
         openInEditor: path => { _ = OpenPathInEditorAsync(path, 0, 0); FocusPane(PaneKind.Editor); },
         createBrowserView: () => CreateBrowserView());
 
+    /// <summary>部屋の出来事を、出ている Viewer へ流す——ペインのタブにも、別ウィンドウへ切り出したタブにも。
+    /// ペインを作っていなければ作らない（出来事を流すためだけに作らない）。</summary>
+    private void EmitToViewers(string name, JsonNode? data, string requiredApi) {
+        RealizedViewerPane()?.Emit(name, data, requiredApi);
+        if (_detached is null)
+            return;
+        foreach (var item in _detached.AllItems)
+            if (item.Content is ViewerFrame { Tab: ViewerTabHost viewer })
+                viewer.Emit(name, data?.DeepClone(), requiredApi);
+    }
+
     /// <summary>作ってあれば「Viewer」ペインの中身（作っていなければ null——出来事を流すためだけに作らない）。</summary>
     private ViewerPaneView? RealizedViewerPane() => ViewerPaneHost.Content as ViewerPaneView;
 
@@ -63,7 +74,7 @@ public partial class ShellWindow {
         if (string.Equals(path, _viewerLastActiveFile, StringComparison.OrdinalIgnoreCase))
             return;
         _viewerLastActiveFile = path;
-        RealizedViewerPane()?.Emit("activeFileChanged", new JsonObject { ["path"] = path }, ViewerApi.Workspace);
+        EmitToViewers("activeFileChanged", new JsonObject { ["path"] = path }, ViewerApi.Workspace);
     }
 
     /// <summary>人間がViewerを開く（パレット・キー）。ペインを出して前へ。</summary>
