@@ -1,15 +1,15 @@
 using System.Text.Json.Nodes;
-using sk0ya.Loomo.Core.Faces;
-using sk0ya.Loomo.Services.Faces;
+using sk0ya.Loomo.Core.Viewers;
+using sk0ya.Loomo.Services.Viewers;
 
 namespace sk0ya.Loomo.App.Services;
 
-/// <summary>面 1 つがいまどう見えるか。</summary>
-internal enum FaceTabStatus
+/// <summary>ビューア 1 つがいまどう見えるか。</summary>
+internal enum ViewerTabStatus
 {
     /// <summary>まだ読んでいない。</summary>
     Pending,
-    /// <summary><c>face.json</c> が読めない（<see cref="FaceTabHost.Error"/> に理由）。</summary>
+    /// <summary><c>viewer.json</c> が読めない（<see cref="ViewerTabHost.Error"/> に理由）。</summary>
     Broken,
     /// <summary>口とコマンドを人間がまだ許していない（または変わった）。ページは読み込まない。</summary>
     NeedsApproval,
@@ -18,17 +18,17 @@ internal enum FaceTabStatus
 }
 
 /// <summary>
-/// 面 1 つ＝WebView2 1 つ（§44.2）。面のフォルダーを面だけのオリジン（<c>https://&lt;id&gt;.face.loomo</c>）で答え、
-/// ページに <c>window.loomo</c> を差し込み、届いた頼みを <see cref="FaceRoomApi"/> へ渡す。
-/// <para><b>線引き</b>：許される前はページを読み込まない／頼みは面のオリジンから届いたものだけ聞く／面の外への遷移は
-/// させない（http(s) のリンクはブラウザペインへ）／<c>net</c> を挙げていない面の外向きの要求は全部断る／
-/// ページが替わる・面を閉じるときは走っているコマンドを止める。</para>
+/// ビューア 1 つ＝WebView2 1 つ（§44.2）。ビューアのフォルダーをビューアだけのオリジン（<c>https://&lt;id&gt;.viewer.loomo</c>）で答え、
+/// ページに <c>window.loomo</c> を差し込み、届いた頼みを <see cref="ViewerRoomApi"/> へ渡す。
+/// <para><b>線引き</b>：許される前はページを読み込まない／頼みはビューアのオリジンから届いたものだけ聞く／ビューアの外への遷移は
+/// させない（http(s) のリンクはブラウザペインへ）／<c>net</c> を挙げていないビューアの外向きの要求は全部断る／
+/// ページが替わる・ビューアを閉じるときは走っているコマンドを止める。</para>
 /// </summary>
-internal sealed class FaceTabHost : IDisposable
+internal sealed class ViewerTabHost : IDisposable
 {
-    private readonly FaceStore _store;
-    private readonly FaceRoomState _state;
-    private readonly FaceRoomApi _api;
+    private readonly ViewerStore _store;
+    private readonly ViewerRoomState _state;
+    private readonly ViewerRoomApi _api;
     private readonly IEditorSupportViewFactory _factory;
     private readonly Panel _host;
     private readonly Dispatcher _dispatcher;
@@ -44,7 +44,7 @@ internal sealed class FaceTabHost : IDisposable
     private readonly List<(CancellationToken Cancel, string Json)> _pendingEvents = [];
     private bool _disposed;
 
-    public FaceTabHost(string id, FaceStore store, FaceRoomState state, FaceRoomApi api,
+    public ViewerTabHost(string id, ViewerStore store, ViewerRoomState state, ViewerRoomApi api,
         IEditorSupportViewFactory factory, Panel host, Dispatcher dispatcher, Func<string, Task> openUrl)
     {
         Id = id;
@@ -61,7 +61,7 @@ internal sealed class FaceTabHost : IDisposable
             _reloadTimer.Stop();
             _ = RefreshAsync(reload: true);
         };
-        // 隠れているペインの中では WebView2 の初期化が終わらない（待つと、面を出した側＝MCP の呼び出しが返らない）。
+        // 隠れているペインの中では WebView2 の初期化が終わらない（待つと、ビューアを出した側＝MCP の呼び出しが返らない）。
         // 読み込みは見えたときに回す。
         _host.IsVisibleChanged += OnHostVisibleChanged;
         Watch();
@@ -80,9 +80,9 @@ internal sealed class FaceTabHost : IDisposable
     }
 
     public string Id { get; }
-    public FaceManifest? Manifest { get; private set; }
+    public ViewerManifest? Manifest { get; private set; }
     public string? Error { get; private set; }
-    public FaceTabStatus Status { get; private set; } = FaceTabStatus.Pending;
+    public ViewerTabStatus Status { get; private set; } = ViewerTabStatus.Pending;
     public string Title => Manifest?.Title ?? Id;
 
     /// <summary>見え方（題・状態）が変わった。</summary>
@@ -101,46 +101,46 @@ internal sealed class FaceTabHost : IDisposable
         if (entry.Manifest is not { } manifest)
         {
             Unload();
-            SetStatus(FaceTabStatus.Broken);
+            SetStatus(ViewerTabStatus.Broken);
             return;
         }
         if (manifest.NeedsApproval && !_state.IsApproved(manifest))
         {
             Unload();
-            SetStatus(FaceTabStatus.NeedsApproval);
+            SetStatus(ViewerTabStatus.NeedsApproval);
             return;
         }
-        var wasRunning = Status == FaceTabStatus.Running && _web is not null;
+        var wasRunning = Status == ViewerTabStatus.Running && _web is not null;
         if (!_visible || !_host.IsVisible)
         {
             // 前に出ていない・ペインが隠れている：許しは済んでいるので「出せる」とだけ言い、読み込みは見えたときに。
             _loadPending = true;
-            SetStatus(FaceTabStatus.Running);
+            SetStatus(ViewerTabStatus.Running);
             return;
         }
         _loadPending = false;
-        SetStatus(FaceTabStatus.Running);
+        SetStatus(ViewerTabStatus.Running);
         if (await EnsureWebAsync() is not { } web || web.TryCore() is not { } core)
         {
             Error = "WebView2 could not be started.";
-            SetStatus(FaceTabStatus.Broken);
+            SetStatus(ViewerTabStatus.Broken);
             return;
         }
-        if (wasRunning && !reload && FaceUrl.IsOf(Id, web.TryUrl()))
+        if (wasRunning && !reload && ViewerUrl.IsOf(Id, web.TryUrl()))
             return;
         CancelPage();
         await ApplyThemeScriptAsync(core);
-        if (wasRunning && FaceUrl.IsOf(Id, web.TryUrl()))
+        if (wasRunning && ViewerUrl.IsOf(Id, web.TryUrl()))
             core.Reload();
         else
-            core.Navigate(FaceUrl.Index(Id));
+            core.Navigate(ViewerUrl.Index(Id));
     }
 
     /// <summary>題だけ先に読む（復元したタブ。前に出るまでページも許しのカードも作らない）。</summary>
     public async Task PeekAsync()
     {
         var entry = await Task.Run(() => _store.Find(Id));
-        if (_disposed || Status != FaceTabStatus.Pending)
+        if (_disposed || Status != ViewerTabStatus.Pending)
             return;
         Manifest = entry.Manifest;
         Error = entry.Error;
@@ -159,21 +159,21 @@ internal sealed class FaceTabHost : IDisposable
     {
         _visible = visible;
         if (_web is not null)
-            _web.Visibility = visible && Status == FaceTabStatus.Running ? Visibility.Visible : Visibility.Collapsed;
+            _web.Visibility = visible && Status == ViewerTabStatus.Running ? Visibility.Visible : Visibility.Collapsed;
         LoadIfPending();
     }
 
     public void Focus() => _web?.Focus();
 
-    /// <summary>部屋の出来事をページへ（<c>loomo.on</c>）。その口を挙げていない面には流さない。</summary>
+    /// <summary>部屋の出来事をページへ（<c>loomo.on</c>）。その口を挙げていないビューアには流さない。</summary>
     public void Emit(string name, JsonNode? data, string requiredApi)
     {
-        if (Status != FaceTabStatus.Running || Manifest?.Allows(requiredApi) != true)
+        if (Status != ViewerTabStatus.Running || Manifest?.Allows(requiredApi) != true)
             return;
         Post(new JsonObject { ["k"] = "event", ["name"] = name, ["data"] = data });
     }
 
-    private void SetStatus(FaceTabStatus status)
+    private void SetStatus(ViewerTabStatus status)
     {
         Status = status;
         SetVisible(_visible);
@@ -224,15 +224,15 @@ internal sealed class FaceTabHost : IDisposable
         if (!await _factory.InitializeAsync(web) || web.TryCore() is not { } core)
             return false;
         core.Settings.IsStatusBarEnabled = false;
-        // 面のフォルダーを面のオリジンで答え、ほかの行き先は（net を挙げていなければ）全部断る。
+        // ビューアのフォルダーをビューアのオリジンで答え、ほかの行き先は（net を挙げていなければ）全部断る。
         core.AddWebResourceRequestedFilter("*", CoreWebView2WebResourceContext.All,
             CoreWebView2WebResourceRequestSourceKinds.All);
         core.WebResourceRequested += OnWebResourceRequested;
         core.NavigationStarting += (_, e) =>
         {
-            if (FaceUrl.IsOf(Id, e.Uri) || e.Uri.StartsWith("about:", StringComparison.OrdinalIgnoreCase))
+            if (ViewerUrl.IsOf(Id, e.Uri) || e.Uri.StartsWith("about:", StringComparison.OrdinalIgnoreCase))
                 return;
-            e.Cancel = true;   // 面の WebView は面のページだけを出す
+            e.Cancel = true;   // ビューアの WebView はビューアのページだけを出す
             if (e.IsUserInitiated && IsWebUrl(e.Uri))
                 _ = _openUrl(e.Uri);
         };
@@ -250,11 +250,11 @@ internal sealed class FaceTabHost : IDisposable
             _dispatcher.BeginInvoke(() =>
             {
                 Unload();
-                Status = FaceTabStatus.Pending;
-                _ = RefreshAsync();   // 落ちたのは Chromium 側。同じ面を組み直す
+                Status = ViewerTabStatus.Pending;
+                _ = RefreshAsync();   // 落ちたのは Chromium 側。同じビューアを組み直す
             });
         };
-        try { await core.AddScriptToExecuteOnDocumentCreatedAsync(FaceBridgeScript.Script); }
+        try { await core.AddScriptToExecuteOnDocumentCreatedAsync(ViewerBridgeScript.Script); }
         catch (Exception ex) when (ex is InvalidOperationException or COMException) { return false; }
         return true;
     }
@@ -262,7 +262,7 @@ internal sealed class FaceTabHost : IDisposable
     private static bool IsWebUrl(string uri)
         => Uri.TryCreate(uri, UriKind.Absolute, out var parsed)
            && (parsed.Scheme == Uri.UriSchemeHttp || parsed.Scheme == Uri.UriSchemeHttps)
-           && !parsed.Host.EndsWith(FaceUrl.HostSuffix, StringComparison.OrdinalIgnoreCase);
+           && !parsed.Host.EndsWith(ViewerUrl.HostSuffix, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>部屋の色をページへ CSS 変数で渡す（読み込みのたびに、いまのテーマで作り直す）。</summary>
     private async Task ApplyThemeScriptAsync(CoreWebView2 core)
@@ -271,9 +271,9 @@ internal sealed class FaceTabHost : IDisposable
         {
             if (_themeScriptId is { } old)
                 core.RemoveScriptToExecuteOnDocumentCreated(old);
-            _themeScriptId = await core.AddScriptToExecuteOnDocumentCreatedAsync(FaceBridgeScript.ThemeScript(FaceTheme.Current()));
+            _themeScriptId = await core.AddScriptToExecuteOnDocumentCreatedAsync(ViewerBridgeScript.ThemeScript(ViewerTheme.Current()));
         }
-        catch (Exception ex) when (ex is InvalidOperationException or COMException) { /* 色が無くても面は動く */ }
+        catch (Exception ex) when (ex is InvalidOperationException or COMException) { /* 色が無くてもビューアは動く */ }
     }
 
     private async void OnWebResourceRequested(object? sender, CoreWebView2WebResourceRequestedEventArgs e)
@@ -284,9 +284,9 @@ internal sealed class FaceTabHost : IDisposable
         try
         {
             LocalFileResponse response;
-            if (FaceUrl.TryParse(e.Request.Uri, out var owner, out var relative))
+            if (ViewerUrl.TryParse(e.Request.Uri, out var owner, out var relative))
             {
-                if (owner != Id || Status != FaceTabStatus.Running)
+                if (owner != Id || Status != ViewerTabStatus.Running)
                     response = LocalFileResponse.Forbidden();
                 else
                 {
@@ -297,7 +297,7 @@ internal sealed class FaceTabHost : IDisposable
                         : LocalFileResponse.NotFound());
                 }
             }
-            else if (Manifest?.Allows(FaceApi.Net) == true
+            else if (Manifest?.Allows(ViewerApi.Net) == true
                      || e.Request.Uri.StartsWith("data:", StringComparison.OrdinalIgnoreCase)
                      || e.Request.Uri.StartsWith("blob:", StringComparison.OrdinalIgnoreCase)
                      || e.Request.Uri.StartsWith("about:", StringComparison.OrdinalIgnoreCase))
@@ -316,8 +316,8 @@ internal sealed class FaceTabHost : IDisposable
 
     private async void OnWebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
     {
-        // 面のオリジンのページから届いたものだけ聞く（中の iframe や、遷移の隙間の別ページから届いたものは捨てる）。
-        if (Manifest is not { } face || Status != FaceTabStatus.Running || !FaceUrl.IsOf(Id, e.Source))
+        // ビューアのオリジンのページから届いたものだけ聞く（中の iframe や、遷移の隙間の別ページから届いたものは捨てる）。
+        if (Manifest is not { } viewer || Status != ViewerTabStatus.Running || !ViewerUrl.IsOf(Id, e.Source))
             return;
         JsonObject? message;
         try { message = JsonNode.Parse(e.WebMessageAsJson) as JsonObject; }
@@ -330,17 +330,17 @@ internal sealed class FaceTabHost : IDisposable
         JsonObject reply;
         try
         {
-            // 画面が要る口は相手（IFaceRoom）が Dispatcher を通す。ここは UI スレッドを塞がない。
-            var value = await Task.Run(() => _api.CallAsync(face, method, args, EmitFromAnyThread, cancel), cancel);
+            // 画面が要る口は相手（IViewerRoom）が Dispatcher を通す。ここは UI スレッドを塞がない。
+            var value = await Task.Run(() => _api.CallAsync(viewer, method, args, EmitFromAnyThread, cancel), cancel);
             reply = new JsonObject { ["k"] = "result", ["id"] = callId, ["ok"] = true, ["v"] = value?.DeepClone() };
         }
-        catch (FaceApiException ex)
+        catch (ViewerApiException ex)
         {
             reply = new JsonObject { ["k"] = "result", ["id"] = callId, ["ok"] = false, ["e"] = ex.Message };
         }
         catch (OperationCanceledException)
         {
-            return;   // ページが替わった・面を閉じた
+            return;   // ページが替わった・ビューアを閉じた
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException or JsonException)
         {
@@ -391,7 +391,7 @@ internal sealed class FaceTabHost : IDisposable
         catch (Exception ex) when (ex is InvalidOperationException or COMException or ArgumentException) { }
     }
 
-    /// <summary>面のフォルダーを見張り、書き直されたら読み直す（置き場のファイルは除く——自分の書き込みで回り続ける）。</summary>
+    /// <summary>ビューアのフォルダーを見張り、書き直されたら読み直す（置き場のファイルは除く——自分の書き込みで回り続ける）。</summary>
     private void Watch()
     {
         try
@@ -412,7 +412,7 @@ internal sealed class FaceTabHost : IDisposable
     private void OnFolderChanged(string? name)
     {
         var file = Path.GetFileName(name ?? "");
-        if (file.StartsWith(FaceStore.StateFileName, StringComparison.OrdinalIgnoreCase))
+        if (file.StartsWith(ViewerStore.StateFileName, StringComparison.OrdinalIgnoreCase))
             return;
         _dispatcher.BeginInvoke(() =>
         {
@@ -438,25 +438,25 @@ internal sealed class FaceTabHost : IDisposable
     }
 }
 
-/// <summary>面に渡す部屋の色（テーマの鍵 → CSS の色）。</summary>
-internal sealed record FaceTheme(string Bg, string Panel, string Fg, string FgDim, string Accent, string Border, double FontSize)
+/// <summary>ビューアに渡す部屋の色（テーマの鍵 → CSS の色）。</summary>
+internal sealed record ViewerTheme(string Bg, string Panel, string Fg, string FgDim, string Accent, string Border, double FontSize)
 {
-    public static FaceTheme Current()
+    public static ViewerTheme Current()
     {
         static string Color(string key, string fallback)
             => Application.Current?.TryFindResource(key) is SolidColorBrush brush
                 ? $"#{brush.Color.R:X2}{brush.Color.G:X2}{brush.Color.B:X2}"
                 : fallback;
         var size = Application.Current?.TryFindResource("Fs13") is double fs ? fs : 13;
-        return new FaceTheme(Color("Bg", "#1E1E1E"), Color("Panel", "#252526"), Color("Fg", "#D4D4D4"),
+        return new ViewerTheme(Color("Bg", "#1E1E1E"), Color("Panel", "#252526"), Color("Fg", "#D4D4D4"),
             Color("FgDim", "#858585"), Color("Accent", "#3794FF"), Color("Border", "#3C3C3C"), size);
     }
 }
 
-/// <summary>面のページへ差し込むスクリプト（<c>window.loomo</c>、§44.2）。中身は <c>postMessage</c> の往復だけ。</summary>
-internal static class FaceBridgeScript
+/// <summary>ビューアのページへ差し込むスクリプト（<c>window.loomo</c>、§44.2）。中身は <c>postMessage</c> の往復だけ。</summary>
+internal static class ViewerBridgeScript
 {
-    public static string ThemeScript(FaceTheme theme)
+    public static string ThemeScript(ViewerTheme theme)
     {
         var values = new JsonObject
         {

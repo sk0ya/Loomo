@@ -20,11 +20,11 @@ public sealed class LoomoDefinitionsTests : IDisposable
         var export = Path.Combine(_root, "export");
         var pc2 = Path.Combine(_root, "pc2");
 
-        // この PC の定義と、持ち出してはいけないもの（許し・録った動き・盆・面の状態）
-        Put(pc1, "faces/dash/face.json", "{\"id\":\"dash\"}");
-        Put(pc1, "faces/dash/index.html", "<p>x</p>");
-        Put(pc1, "faces/dash/.state.json", "{\"secret\":1}");
-        Put(pc1, "faces-state.json", "{\"approved\":true}");
+        // この PC の定義と、持ち出してはいけないもの（許し・録った動き・盆・ビューアの状態）
+        Put(pc1, "viewers/dash/viewer.json", "{\"id\":\"dash\"}");
+        Put(pc1, "viewers/dash/index.html", "<p>x</p>");
+        Put(pc1, "viewers/dash/.state.json", "{\"secret\":1}");
+        Put(pc1, "viewers-state.json", "{\"approved\":true}");
         Put(pc1, "motion/key1/probes.json", "[]");
         Put(pc1, "motion/key1/approved.json", "{\"fingerprint\":\"x\"}");
         Put(pc1, "motion/key1/snapshots/s1/snapshot.json", "{}");
@@ -36,8 +36,8 @@ public sealed class LoomoDefinitionsTests : IDisposable
         Assert.True(File.Exists(Path.Combine(export, LoomoDefinitions.ManifestFileName)));
 
         // 持ち出したフォルダーに、許しや動きや盆は無い
-        Assert.False(File.Exists(Path.Combine(export, "faces", "dash", ".state.json")));
-        Assert.False(File.Exists(Path.Combine(export, "faces-state.json")));
+        Assert.False(File.Exists(Path.Combine(export, "viewers", "dash", ".state.json")));
+        Assert.False(File.Exists(Path.Combine(export, "viewers-state.json")));
         Assert.False(File.Exists(Path.Combine(export, "motion", "key1", "approved.json")));
         Assert.False(Directory.Exists(Path.Combine(export, "motion", "key1", "snapshots")));
         Assert.False(File.Exists(Path.Combine(export, "orders", "key1", "results.json")));
@@ -45,10 +45,10 @@ public sealed class LoomoDefinitionsTests : IDisposable
         // 別の PC へ取り込む：定義だけが入り、その PC の許しは増えない
         var imported = LoomoDefinitions.Import(export, pc2);
         Assert.Equal(counts, imported);
-        Assert.Equal("{\"id\":\"dash\"}", File.ReadAllText(Path.Combine(pc2, "faces", "dash", "face.json")));
+        Assert.Equal("{\"id\":\"dash\"}", File.ReadAllText(Path.Combine(pc2, "viewers", "dash", "viewer.json")));
         Assert.True(File.Exists(Path.Combine(pc2, "motion", "key1", "probes.json")));
         Assert.True(File.Exists(Path.Combine(pc2, "orders", "key1", "orders.json")));
-        Assert.False(File.Exists(Path.Combine(pc2, "faces-state.json")));
+        Assert.False(File.Exists(Path.Combine(pc2, "viewers-state.json")));
         Assert.False(File.Exists(Path.Combine(pc2, "motion", "key1", "approved.json")));
     }
 

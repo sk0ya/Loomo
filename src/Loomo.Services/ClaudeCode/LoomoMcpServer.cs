@@ -29,11 +29,11 @@ public interface ILoomoRoomHost
     /// <summary>このワークスペースで、いちばん新しい「ファイルを書き換えた頼みごと」の差分を Diff に出す。</summary>
     Task<LoomoRoomResult> ShowChangesAsync();
 
-    /// <summary>面の書き方（置き場所・<c>face.json</c> の形・ページの API）。読むだけ（§44.2）。</summary>
-    string FaceGuide();
+    /// <summary>ビューアの書き方（置き場所・<c>viewer.json</c> の形・ページの API）。読むだけ（§44.2）。</summary>
+    string ViewerGuide();
 
-    /// <summary>面を「面」ペインに出す（§44.2）。定義が読めなければ、直せる理由を返す。</summary>
-    Task<LoomoRoomResult> ShowFaceAsync(string id);
+    /// <summary>ビューアを「ビューア」ペインに出す（§44.2）。定義が読めなければ、直せる理由を返す。</summary>
+    Task<LoomoRoomResult> ShowViewerAsync(string id);
 
     /// <summary>動きの見どころの書き方と、いまの見どころ（§44.3）。読むだけ。</summary>
     string MotionGuide();
@@ -461,8 +461,8 @@ public sealed class LoomoMcpServer : IDisposable
 }
 
 /// <summary>
-/// モデルに見せる道具（§43.6 D・§44.2）。<b>置く</b>道具（ファイル・URL・差分・面）と、面の書き方を<b>読む</b>道具だけ
-/// ——見えるターミナルに打つ・タブを閉じる・配置を変える・ファイルを書く道具は出さない（主役は人間、§38.1。面のファイルを
+/// モデルに見せる道具（§43.6 D・§44.2）。<b>置く</b>道具（ファイル・URL・差分・ビューア）と、ビューアの書き方を<b>読む</b>道具だけ
+/// ——見えるターミナルに打つ・タブを閉じる・配置を変える・ファイルを書く道具は出さない（主役は人間、§38.1。ビューアのファイルを
 /// 書くのは Claude Code 自身の道具）。引数の確かめ（ワークスペースの中か・http/https か）はホスト側。
 /// </summary>
 public sealed class LoomoMcpTools(ILoomoRoomHost host)
@@ -471,7 +471,7 @@ public sealed class LoomoMcpTools(ILoomoRoomHost host)
         "Loomo is the room (editor, browser, diff panes) the user is sitting in while talking to you. "
         + "These tools put something in front of the user so they can look at it; they never type, close or rearrange anything. "
         + "Use them sparingly, when pointing at a specific place is clearer than describing it: at most one or two per reply. "
-        + "When the user asks for a small tool, view or dashboard inside the room, grow a \"face\": call face_guide, write the files it describes, then call show_face.";
+        + "When the user asks for a small tool, view or dashboard inside the room, grow a \"viewer\": call viewer_guide, write the files it describes, then call show_viewer.";
 
     public static JsonArray List() =>
     [
@@ -493,17 +493,17 @@ public sealed class LoomoMcpTools(ILoomoRoomHost host)
             "Open, in Loomo's diff pane, everything the most recent request changed in this workspace (before vs after, across files). "
             + "Use when you have finished editing and want the user to review.",
             new JsonObject()),
-        Tool("face_guide",
-            "Read how to grow a \"face\": a small HTML tool that lives in a pane of Loomo and can call the room (open files, read the workspace, "
-            + "run declared commands). Returns the folder to write into, the face.json format, the page API and the existing faces. "
-            + "Call this before writing a face. Read-only.",
+        Tool("viewer_guide",
+            "Read how to grow a \"viewer\": a small HTML tool that lives in a pane of Loomo and can call the room (open files, read the workspace, "
+            + "run declared commands). Returns the folder to write into, the viewer.json format, the page API and the existing viewers. "
+            + "Call this before writing a viewer. Read-only.",
             new JsonObject()),
-        Tool("show_face",
-            "Show a face (written as described by face_guide) in Loomo's face pane. Does not take keyboard focus. "
-            + "If face.json cannot be read, the result says what to fix. A face that declares run, net, motion or orders waits for the user's one-time approval before it opens; others open at once.",
+        Tool("show_viewer",
+            "Show a viewer (written as described by viewer_guide) in Loomo's viewer pane. Does not take keyboard focus. "
+            + "If viewer.json cannot be read, the result says what to fix. A viewer that declares run, net, motion or orders waits for the user's one-time approval before it opens; others open at once.",
             new JsonObject
             {
-                ["id"] = new JsonObject { ["type"] = "string", ["description"] = "The face id (its folder name)." },
+                ["id"] = new JsonObject { ["type"] = "string", ["description"] = "The viewer id (its folder name)." },
             }, "id"),
         Tool("debug_state",
             "Read the debugger in Loomo: whether it is paused, where (the call stack, top frames) and the variables of the selected frame "
@@ -541,8 +541,8 @@ public sealed class LoomoMcpTools(ILoomoRoomHost host)
                     return await host.ShowUrlAsync(url).ConfigureAwait(false);
                 case "show_changes":
                     return await host.ShowChangesAsync().ConfigureAwait(false);
-                case "face_guide":
-                    return new LoomoRoomResult(true, host.FaceGuide());
+                case "viewer_guide":
+                    return new LoomoRoomResult(true, host.ViewerGuide());
                 case "motion_guide":
                     return new LoomoRoomResult(true, host.MotionGuide());
                 case "what_human_sees":
@@ -551,10 +551,10 @@ public sealed class LoomoMcpTools(ILoomoRoomHost host)
                     return await host.DebugStateAsync().ConfigureAwait(false);
                 case "browser_errors":
                     return await host.BrowserErrorsAsync().ConfigureAwait(false);
-                case "show_face":
-                    if (Text(arguments, "id") is not { Length: > 0 } face)
+                case "show_viewer":
+                    if (Text(arguments, "id") is not { Length: > 0 } viewer)
                         return new LoomoRoomResult(false, "id is required.");
-                    return await host.ShowFaceAsync(face).ConfigureAwait(false);
+                    return await host.ShowViewerAsync(viewer).ConfigureAwait(false);
                 default:
                     return new LoomoRoomResult(false, $"Unknown tool: {name}");
             }

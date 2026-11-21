@@ -181,8 +181,8 @@ public partial class ShellWindow : Window {
             return support;
         });
         DeferPaneContent(BrowserSupportPaneHost, () => new BrowserSupportPaneView());
-        _faceGitStatus = gitWorkspaceStatus;
-        InitializeFaces(editorSupportViewFactory);
+        _viewerGitStatus = gitWorkspaceStatus;
+        InitializeViewers(editorSupportViewFactory);
         DeferPaneContent(DebugPaneHost, () => new DebugView());
         DeferPaneContent(TsIdePaneHost, () => new TsDebugView());
         DeferPaneContent(DiffSessionHost, () => {

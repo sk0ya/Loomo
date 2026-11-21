@@ -39,7 +39,7 @@ public sealed class LoomoMcpServerTests : IDisposable
         Assert.Equal(HttpStatusCode.Accepted, note.StatusCode);
 
         var list = await PostAsync(client, server.Url, new { jsonrpc = "2.0", id = 2, method = "tools/list" });
-        Assert.Equal(["show_file", "show_url", "show_changes", "face_guide", "show_face", "debug_state", "browser_errors", "what_human_sees", "motion_guide"],
+        Assert.Equal(["show_file", "show_url", "show_changes", "viewer_guide", "show_viewer", "debug_state", "browser_errors", "what_human_sees", "motion_guide"],
             list.GetProperty("result").GetProperty("tools").EnumerateArray().Select(tool => tool.GetProperty("name").GetString()));
 
         var call = await PostAsync(client, server.Url, new
@@ -137,13 +137,13 @@ public sealed class LoomoMcpServerTests : IDisposable
             return Task.FromResult(new LoomoRoomResult(true, "shown"));
         }
 
-        public string FaceGuide() => "guide";
+        public string ViewerGuide() => "guide";
 
         public string MotionGuide() => "motion";
 
-        public Task<LoomoRoomResult> ShowFaceAsync(string id)
+        public Task<LoomoRoomResult> ShowViewerAsync(string id)
         {
-            Calls.Add(("face", id, 0));
+            Calls.Add(("viewer", id, 0));
             return Task.FromResult(new LoomoRoomResult(true, "shown"));
         }
 

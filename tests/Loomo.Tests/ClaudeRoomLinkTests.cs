@@ -240,9 +240,9 @@ public sealed class ClaudeRoomLinkTests : IDisposable
             return Task.FromResult(new LoomoRoomResult(true, "shown"));
         }
 
-        public string FaceGuide() => "guide";
+        public string ViewerGuide() => "guide";
         public string MotionGuide() => "motion";
-        public Task<LoomoRoomResult> ShowFaceAsync(string id) => Task.FromResult(new LoomoRoomResult(true, "shown"));
+        public Task<LoomoRoomResult> ShowViewerAsync(string id) => Task.FromResult(new LoomoRoomResult(true, "shown"));
         public Task<LoomoRoomResult> ShowFileAsync(string path, int line) => Task.FromResult(new LoomoRoomResult(true, "shown"));
         public Task<LoomoRoomResult> ShowUrlAsync(string url) => Task.FromResult(new LoomoRoomResult(true, "shown"));
     }

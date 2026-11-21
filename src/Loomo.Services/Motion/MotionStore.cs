@@ -9,17 +9,17 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
-using sk0ya.Loomo.Core.Faces;
+using sk0ya.Loomo.Core.Viewers;
 using sk0ya.Loomo.Core.Motion;
 using sk0ya.Loomo.Core.Processes;
-using sk0ya.Loomo.Services.Faces;
+using sk0ya.Loomo.Services.Viewers;
 
 namespace sk0ya.Loomo.Services.Motion;
 
 /// <summary>
 /// 動きの置き場（§44.3）。ワークスペース（主フォルダー）ごとに <c>%APPDATA%/Loomo/motion/&lt;鍵&gt;/</c>：
 /// 見どころの定義 <c>probes.json</c>・録った時点ごとのフォルダー <c>snapshots/&lt;id&gt;/</c>（<c>snapshot.json</c> と絵）。
-/// <b>リポジトリには何も書かない</b>。許した指紋は面と同じく置き場の外（<c>motion/approved.json</c>）——定義を書く Claude が
+/// <b>リポジトリには何も書かない</b>。許した指紋はビューアと同じく置き場の外（<c>motion/approved.json</c>）——定義を書く Claude が
 /// 自分で自分を許せないように。ディスクを読むので UI スレッドの打鍵の経路からは呼ばない。
 /// <para>計画では SQLite（<c>motion.db</c>）だったが、絵を隣に置くのでフォルダーにした。古いものは数で刈る。</para>
 /// </summary>
@@ -218,7 +218,7 @@ public sealed class MotionStore
 public sealed record MotionOrigin(string? SessionId, int PromptLine, string? PromptHead, string Trigger);
 
 /// <summary>
-/// 見どころを裏で回して、その時点の動きを録る（§44.3）。コマンドは面と同じ殻（<see cref="FaceCommandRunner"/>）で、
+/// 見どころを裏で回して、その時点の動きを録る（§44.3）。コマンドはビューアと同じ殻（<see cref="ViewerCommandRunner"/>）で、
 /// 見えるターミナルには流さない。<b>回している間に作業ツリーが変わったら、その回は捨てる</b>（混ざった動きを録らない）。
 /// </summary>
 public sealed class MotionRecorder(MotionStore store)
@@ -275,8 +275,8 @@ public sealed class MotionRecorder(MotionStore store)
         var clock = Stopwatch.StartNew();
         try
         {
-            var result = await FaceCommandRunner.RunAsync(
-                new FaceCommand(probe.Id, probe.Command, FaceCommand.CwdWorkspace, probe.TimeoutSeconds),
+            var result = await ViewerCommandRunner.RunAsync(
+                new ViewerCommand(probe.Id, probe.Command, ViewerCommand.CwdWorkspace, probe.TimeoutSeconds),
                 workspaceFolder, [], null, _ => { }, cancel,
                 new Dictionary<string, string> { ["LOOMO_OUT"] = outFolder }).ConfigureAwait(false);
             cancel.ThrowIfCancellationRequested();

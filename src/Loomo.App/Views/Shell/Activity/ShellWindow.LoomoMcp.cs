@@ -113,8 +113,8 @@ public partial class ShellWindow {
             return new LoomoRoomResult(true, $"Opened in a new tab of the browser pane: {uri.AbsoluteUri}");
         });
 
-        // 面（§44.2）：書き方を読む・出す。ファイルを書くのは Claude Code 自身。
-        public string FaceGuide() => sk0ya.Loomo.Services.Faces.FaceGuide.Text(window._faceStore);
+        // ビューア（§44.2）：書き方を読む・出す。ファイルを書くのは Claude Code 自身。
+        public string ViewerGuide() => sk0ya.Loomo.Services.Viewers.ViewerGuide.Text(window._viewerStore);
 
         // 動き（§44.3）：見どころの書き方を読む。書くのは Claude Code 自身、許すのは人間。
         public string MotionGuide() => sk0ya.Loomo.Services.Motion.MotionGuide.Text(window._motion.Store, window._workspace.PrimaryFolder);
@@ -167,7 +167,7 @@ public partial class ShellWindow {
             return Task.FromResult<System.Text.Json.Nodes.JsonObject?>(null);
         }
 
-        public Task<LoomoRoomResult> ShowFaceAsync(string id) => OnUi(() => window.ShowFaceFromClaudeAsync(id));
+        public Task<LoomoRoomResult> ShowViewerAsync(string id) => OnUi(() => window.ShowViewerFromClaudeAsync(id));
 
         public Task<LoomoRoomResult> WhatHumanSeesAsync() => window.Dispatcher.InvokeAsync(window.DescribeHumanView).Task;
 

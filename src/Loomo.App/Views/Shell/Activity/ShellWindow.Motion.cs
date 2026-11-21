@@ -1,10 +1,10 @@
 using System.Text.Json.Nodes;
-using sk0ya.Loomo.Core.Faces;
+using sk0ya.Loomo.Core.Viewers;
 using sk0ya.Loomo.Core.Harness;
 using sk0ya.Loomo.Core.Motion;
 using sk0ya.Loomo.Core.Orders;
 using sk0ya.Loomo.Services.ClaudeCode;
-using sk0ya.Loomo.Services.Faces;
+using sk0ya.Loomo.Services.Viewers;
 using sk0ya.Loomo.Services.Motion;
 using sk0ya.Loomo.Services.Orders;
 
@@ -16,8 +16,8 @@ namespace sk0ya.Loomo.App.Views;
 /// <item>動きが悪い方へ変わったら（テストが落ちるようになった等）、きっかけが「動き」の言いつけを裏のワークツリーで進める。</item>
 /// <item>毎日の時刻の言いつけを、時刻が来たら進める（Loomo が動いている間だけ・1 日の回数と使用量の線の内側で）。</item>
 /// </list>
-/// 見せる面は本体に作らず、<see cref="BuiltInFaces"/> が置く面（「動き」「言いつけ」）として生やす——口は
-/// <see cref="MotionFaceApi"/>・<see cref="OrdersFaceApi"/>。
+/// 見せるビューアは本体に作らず、<see cref="BuiltInViewers"/> が置くビューア（「動き」「言いつけ」）として生やす——口は
+/// <see cref="MotionViewerApi"/>・<see cref="OrdersViewerApi"/>。
 /// </summary>
 public partial class ShellWindow {
     private readonly MotionService _motion = new(new MotionStore());
@@ -30,7 +30,7 @@ public partial class ShellWindow {
     private void InitializeMotion() {
         _motion.Recorded += (folder, snapshot) => _ = Task.Run(() => OnMotionRecorded(folder, snapshot));
         _orders.Changed += () => Dispatcher.BeginInvoke(DispatcherPriority.Background,
-            () => RealizedFacePane()?.Emit("ordersChanged", null, FaceApi.Orders));
+            () => RealizedViewerPane()?.Emit("ordersChanged", null, ViewerApi.Orders));
         if (_workspace.PrimaryFolder is { } folder)
             _ = Task.Run(() => _orders.RecoverInterrupted(folder));
         _orderTimer = new DispatcherTimer(DispatcherPriority.Background, Dispatcher) { Interval = TimeSpan.FromMinutes(1) };
@@ -69,7 +69,7 @@ public partial class ShellWindow {
             _claudeNotes.Add(session, new ClaudeNote(ClaudeNote.KindMotionWorsened,
                 $"直前のターンのあと、動きが悪い方へ変わりました：{headline}。直すか、理由を確かめてください。", DateTimeOffset.Now));
         Dispatcher.BeginInvoke(DispatcherPriority.Background, () => {
-            RealizedFacePane()?.Emit("motionRecorded", new JsonObject { ["id"] = snapshot.Id }, FaceApi.Motion);
+            RealizedViewerPane()?.Emit("motionRecorded", new JsonObject { ["id"] = snapshot.Id }, ViewerApi.Motion);
             if (snapshot.OrderResultId is not null || headline is null)
                 return;
             if (snapshot.Trigger == MotionSnapshot.TriggerTurn)
@@ -111,7 +111,7 @@ public partial class ShellWindow {
         }
     }
 
-    /// <summary>見どころの行を人間が許す。行をそのまま見せて聞く（面の許しと同じく、行が変わったら聞き直す）。</summary>
+    /// <summary>見どころの行を人間が許す。行をそのまま見せて聞く（ビューアの許しと同じく、行が変わったら聞き直す）。</summary>
     private void ApproveMotionProbes() {
         if (_workspace.PrimaryFolder is not { } folder)
             return;
@@ -132,7 +132,7 @@ public partial class ShellWindow {
         if (answer != MessageBoxResult.Yes)
             return;
         _motion.Store.Approve(folder, probes);
-        RealizedFacePane()?.Emit("motionRecorded", null, FaceApi.Motion);
+        RealizedViewerPane()?.Emit("motionRecorded", null, ViewerApi.Motion);
         ToastService.Info("見どころを許しました。次のターンの終わりから録ります");
     }
 
@@ -185,7 +185,7 @@ public partial class ShellWindow {
             }
             Dispatcher.Invoke(() => {
                 var text = result.Status switch {
-                    OrderResult.Done => $"言いつけ「{orderId}」が仕上がりました（{result.Files} ファイル）。言いつけの面の盆から採るか捨てます",
+                    OrderResult.Done => $"言いつけ「{orderId}」が仕上がりました（{result.Files} ファイル）。言いつけのビューアの盆から採るか捨てます",
                     OrderResult.Empty => $"言いつけ「{orderId}」は変更なしで終わりました",
                     _ => $"言いつけ「{orderId}」は失敗しました：{Head(result.Summary)}",
                 };
@@ -212,18 +212,18 @@ public partial class ShellWindow {
         static string Head(string text) => text.Split('\n')[0] is { Length: > 120 } line ? line[..120] + "…" : text.Split('\n')[0];
     }
 
-    // ── 面の口 ───────────────────────────────────────────────
+    // ── ビューアの口 ───────────────────────────────────────────────
 
-    private static readonly JsonSerializerOptions FaceJson = new(JsonSerializerDefaults.Web);
+    private static readonly JsonSerializerOptions ViewerJson = new(JsonSerializerDefaults.Web);
 
-    private static JsonNode? ToNode<T>(T value) => JsonSerializer.SerializeToNode(value, FaceJson);
+    private static JsonNode? ToNode<T>(T value) => JsonSerializer.SerializeToNode(value, ViewerJson);
 
     /// <summary><c>loomo.motion.*</c>（§44.3）。読むのは裏、Diff を開くのは UI。</summary>
-    private sealed class MotionFaceApi(ShellWindow window) : IFaceApiExtension {
-        public string Api => FaceApi.Motion;
+    private sealed class MotionViewerApi(ShellWindow window) : IViewerApiExtension {
+        public string Api => ViewerApi.Motion;
 
         private string Folder => window._workspace.PrimaryFolder
-            ?? throw new FaceApiException("No workspace folder is open.");
+            ?? throw new ViewerApiException("No workspace folder is open.");
 
         public async Task<JsonNode?> CallAsync(string method, JsonObject? args, CancellationToken cancel) {
             var folder = Folder;
@@ -275,34 +275,34 @@ public partial class ShellWindow {
                         return null;
                     var bytes = await File.ReadAllBytesAsync(path, cancel);
                     if (bytes.Length > 12 * 1024 * 1024)
-                        throw new FaceApiException("The picture is too large.");
+                        throw new ViewerApiException("The picture is too large.");
                     return "data:image/png;base64," + Convert.ToBase64String(bytes);
                 }
                 case "record": {
                     if (window._motion.ApprovedProbes(folder).Count == 0)
-                        throw new FaceApiException("見どころがまだ許されていません（パレット「動き：見どころを許す」）");
+                        throw new ViewerApiException("見どころがまだ許されていません（パレット「動き：見どころを許す」）");
                     var snapshot = await window._motion.RecordAllAsync(folder,
                         new MotionOrigin(null, 0, null, MotionSnapshot.TriggerManual), cancel);
                     return snapshot?.Id;
                 }
                 case "openRequest": {
                     if (store.Find(folder, Text(args, "id")) is not { SessionId: { Length: > 0 } session } snapshot || snapshot.PromptLine <= 0)
-                        throw new FaceApiException("この動きには頼みごとが結ばれていません");
+                        throw new ViewerApiException("この動きには頼みごとが結ばれていません");
                     await window.Dispatcher.InvokeAsync(() => window.OpenClaudeTurnDiff(session, snapshot.PromptLine, "motion.diff"));
                     return true;
                 }
                 default:
-                    throw new FaceApiException($"Unknown method: motion.{method}");
+                    throw new ViewerApiException($"Unknown method: motion.{method}");
             }
         }
     }
 
     /// <summary><c>loomo.orders.*</c>（§44.4）。採る・捨てるは git を回すので裏。差分を開くのは UI。</summary>
-    private sealed class OrdersFaceApi(ShellWindow window) : IFaceApiExtension {
-        public string Api => FaceApi.Orders;
+    private sealed class OrdersViewerApi(ShellWindow window) : IViewerApiExtension {
+        public string Api => ViewerApi.Orders;
 
         public async Task<JsonNode?> CallAsync(string method, JsonObject? args, CancellationToken cancel) {
-            var folder = window._workspace.PrimaryFolder ?? throw new FaceApiException("No workspace folder is open.");
+            var folder = window._workspace.PrimaryFolder ?? throw new ViewerApiException("No workspace folder is open.");
             var orders = window._orders;
             try {
                 switch (method) {
@@ -334,7 +334,7 @@ public partial class ShellWindow {
                     case "run": {
                         var problem = await window.Dispatcher.InvokeAsync(() => window.StartOrder(folder, Text(args, "id"), null, automatic: false));
                         if (problem is not null)
-                            throw new FaceApiException(problem);
+                            throw new ViewerApiException(problem);
                         return true;
                     }
                     case "take": {
@@ -348,16 +348,16 @@ public partial class ShellWindow {
                         return true;
                     case "openDiff": {
                         if (orders.Results(folder).FirstOrDefault(r => r.Id == Text(args, "id")) is not { Commit: { } commit, BaseCommit: { } baseCommit } result)
-                            throw new FaceApiException("差分を開ける仕上がりではありません");
+                            throw new ViewerApiException("差分を開ける仕上がりではありません");
                         await window.Dispatcher.InvokeAsync(() => window.ShowDiff(
                             new DiffOpenTarget.CommitRange(baseCommit, commit, $"言いつけ「{result.OrderId}」の仕上がり")));
                         return true;
                     }
                     default:
-                        throw new FaceApiException($"Unknown method: orders.{method}");
+                        throw new ViewerApiException($"Unknown method: orders.{method}");
                 }
             } catch (OrderException ex) {
-                throw new FaceApiException(ex.Message);
+                throw new ViewerApiException(ex.Message);
             }
         }
     }

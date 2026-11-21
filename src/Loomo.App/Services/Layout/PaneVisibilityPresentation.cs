@@ -28,7 +28,7 @@ internal static class PaneVisibilityPresentation
         PaneKind.Harness => "ハーネス",
         PaneKind.TerminalSupport => "ターミナルサポート",
         PaneKind.BrowserSupport => "ブラウザサポート",
-        PaneKind.Face => "面",
+        PaneKind.Viewer => "面",
         _ => kind.ToString(),
     };
 

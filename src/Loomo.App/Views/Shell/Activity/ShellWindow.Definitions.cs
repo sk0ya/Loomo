@@ -22,7 +22,7 @@ public partial class ShellWindow {
             return;
         try {
             var counts = LoomoDefinitions.Export(LoomoAppDataRoot(), dialog.FolderName);
-            ToastService.Info($"定義を書き出しました：面 {counts.Faces}・見どころ {counts.Probes}・言いつけ {counts.Orders}。許しは含めていません");
+            ToastService.Info($"定義を書き出しました：面 {counts.Viewers}・見どころ {counts.Probes}・言いつけ {counts.Orders}。許しは含めていません");
         } catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) {
             ToastService.Error($"定義を書き出せませんでした：{ex.Message}");
         }
@@ -37,7 +37,7 @@ public partial class ShellWindow {
             return;
         try {
             var counts = LoomoDefinitions.Import(dialog.FolderName, LoomoAppDataRoot());
-            ToastService.Info($"定義を取り込みました：面 {counts.Faces}・見どころ {counts.Probes}・言いつけ {counts.Orders}。"
+            ToastService.Info($"定義を取り込みました：面 {counts.Viewers}・見どころ {counts.Probes}・言いつけ {counts.Orders}。"
                 + "面と見どころは、この PC で一度許すまで走りません");
         } catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException
                                         or System.Text.Json.JsonException or InvalidOperationException) {

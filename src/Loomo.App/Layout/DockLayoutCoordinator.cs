@@ -39,7 +39,7 @@ public sealed class DockLayoutCoordinator
     [
         PaneKind.Editor, PaneKind.Terminal, PaneKind.Browser, PaneKind.EditorSupport, PaneKind.Git,
         PaneKind.Debug, PaneKind.TsIde, PaneKind.Search, PaneKind.Files, PaneKind.Harness,
-        PaneKind.TerminalSupport, PaneKind.BrowserSupport, PaneKind.Face,
+        PaneKind.TerminalSupport, PaneKind.BrowserSupport, PaneKind.Viewer,
     ];
 
     /// <summary>ドックに出せる面か（＝<see cref="DockOrder"/> に居るか）。
@@ -74,7 +74,7 @@ public sealed class DockLayoutCoordinator
             // ブラウザの脇に添える面（§41）。
             [PaneKind.BrowserSupport] = DockRegion.Right,
             // 面は脇に出しておく小さな道具（§44.2）。
-            [PaneKind.Face] = DockRegion.Right,
+            [PaneKind.Viewer] = DockRegion.Right,
         };
 
     /// <summary>ドックをまだ一度も組んでいない部屋を復元するときに、下／右へ出しておく面。

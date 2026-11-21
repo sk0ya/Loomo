@@ -1,35 +1,35 @@
 using System.Text.Json.Nodes;
-using sk0ya.Loomo.Core.Faces;
-using sk0ya.Loomo.Services.Faces;
+using sk0ya.Loomo.Core.Viewers;
+using sk0ya.Loomo.Services.Viewers;
 
 namespace sk0ya.Loomo.App.Views;
 
 /// <summary>
-/// 「面」ペインの中身（§44.2）。面 1 つ＝タブ 1 つ。上にタブの並びと「＋」（置いてある面の一覧・面のフォルダー・
-/// 生やす頼みごとの下書き）、下に前に出ている面のページ。ページを出せないとき（まだ許していない・定義が読めない・
-/// 面が 1 つも無い）は、同じ場所にカードを出す。
-/// <para>読み込むのは<b>前に出ている面だけ</b>——復元したタブは選ばれるまでページを作らない。</para>
+/// 「ビューア」ペインの中身（§44.2）。ビューア 1 つ＝タブ 1 つ。上にタブの並びと「＋」（置いてあるビューアの一覧・ビューアのフォルダー・
+/// 生やす頼みごとの下書き）、下に前に出ているビューアのページ。ページを出せないとき（まだ許していない・定義が読めない・
+/// ビューアが 1 つも無い）は、同じ場所にカードを出す。
+/// <para>読み込むのは<b>前に出ているビューアだけ</b>——復元したタブは選ばれるまでページを作らない。</para>
 /// XAML を持たない（部品が少なく、色と字の大きさは部屋のトークンをそのまま引く）。
 /// </summary>
-internal sealed class FacePaneView : UserControl
+internal sealed class ViewerPaneView : UserControl
 {
     private readonly StackPanel _tabs = new() { Orientation = Orientation.Horizontal };
     private readonly Grid _webHost = new();
     private readonly Border _card = new() { Visibility = Visibility.Collapsed };
-    private readonly List<FaceTabHost> _faces = [];
-    private FaceTabHost? _active;
-    private FaceStore? _store;
-    private FaceRoomState? _state;
-    private FaceRoomApi? _api;
+    private readonly List<ViewerTabHost> _viewers = [];
+    private ViewerTabHost? _active;
+    private ViewerStore? _store;
+    private ViewerRoomState? _state;
+    private ViewerRoomApi? _api;
     private IEditorSupportViewFactory? _factory;
     private Func<string, Task>? _openUrl;
 
-    public FacePaneView()
+    public ViewerPaneView()
     {
         Focusable = true;
         SetResourceReference(BackgroundProperty, "Panel");
 
-        var add = new Button { Content = "＋", ToolTip = "面を開く・面のフォルダー・面を生やす", Width = 28, Padding = new Thickness(0) };
+        var add = new Button { Content = "＋", ToolTip = "ビューアを開く・ビューアのフォルダー・ビューアを生やす", Width = 28, Padding = new Thickness(0) };
         add.SetResourceReference(StyleProperty, "PaneHeaderGhostButton");
         add.Click += (_, _) => OpenMenu(add);
         DockPanel.SetDock(add, Dock.Right);
@@ -57,12 +57,12 @@ internal sealed class FacePaneView : UserControl
         Content = root;
     }
 
-    /// <summary>「面を生やす」を押した（頼みごとの下書きを渡すのは部屋の仕事）。</summary>
+    /// <summary>「ビューアを生やす」を押した（頼みごとの下書きを渡すのは部屋の仕事）。</summary>
     public event EventHandler? GrowRequested;
 
-    public IReadOnlyList<string> OpenIds => _faces.Select(face => face.Id).ToArray();
+    public IReadOnlyList<string> OpenIds => _viewers.Select(viewer => viewer.Id).ToArray();
 
-    public void Configure(FaceStore store, FaceRoomState state, FaceRoomApi api,
+    public void Configure(ViewerStore store, ViewerRoomState state, ViewerRoomApi api,
         IEditorSupportViewFactory factory, Func<string, Task> openUrl)
     {
         _store = store;
@@ -70,104 +70,104 @@ internal sealed class FacePaneView : UserControl
         _api = api;
         _factory = factory;
         _openUrl = openUrl;
-        // 前に開いていた面を戻す（数えない・前に出ていた 1 つだけ読み込む）。
-        var (open, active) = state.OpenFaces;
+        // 前に開いていたビューアを戻す（数えない・前に出ていた 1 つだけ読み込む）。
+        var (open, active) = state.OpenViewers;
         foreach (var id in open)
             _ = AddTab(id).PeekAsync();
-        Activate(_faces.FirstOrDefault(face => face.Id == active) ?? _faces.FirstOrDefault(), persist: false);
+        Activate(_viewers.FirstOrDefault(viewer => viewer.Id == active) ?? _viewers.FirstOrDefault(), persist: false);
         RenderTabs();
         RenderCard();
     }
 
-    /// <summary>面をタブに出す（すでに出ていればそれを前へ）。定義が読めなくてもタブは出す——理由がカードに出る。</summary>
-    public async Task<FaceTabHost?> ShowFaceAsync(string id)
+    /// <summary>ビューアをタブに出す（すでに出ていればそれを前へ）。定義が読めなくてもタブは出す——理由がカードに出る。</summary>
+    public async Task<ViewerTabHost?> ShowViewerAsync(string id)
     {
-        if (_store is null || _state is null || !FaceManifest.IsValidId(id))
+        if (_store is null || _state is null || !ViewerManifest.IsValidId(id))
             return null;
-        var face = _faces.FirstOrDefault(existing => existing.Id == id);
-        if (face is null)
+        var viewer = _viewers.FirstOrDefault(existing => existing.Id == id);
+        if (viewer is null)
         {
-            face = AddTab(id);
+            viewer = AddTab(id);
             _state.RecordOpened(id, DateTime.Today);
         }
         // 先に定義を読み直してから前へ出す（前へ出したときの読み込みと二重に走らせない）。
-        await face.RefreshAsync();
-        Activate(face, persist: true);
-        return face;
+        await viewer.RefreshAsync();
+        Activate(viewer, persist: true);
+        return viewer;
     }
 
-    /// <summary>部屋の出来事を、出ている面へ流す。</summary>
+    /// <summary>部屋の出来事を、出ているビューアへ流す。</summary>
     public void Emit(string name, JsonNode? data, string requiredApi)
     {
-        foreach (var face in _faces)
-            face.Emit(name, data?.DeepClone(), requiredApi);
+        foreach (var viewer in _viewers)
+            viewer.Emit(name, data?.DeepClone(), requiredApi);
     }
 
     public void FocusActive()
     {
-        if (_active is { Status: FaceTabStatus.Running } face)
-            face.Focus();
+        if (_active is { Status: ViewerTabStatus.Running } viewer)
+            viewer.Focus();
         else
             Focus();
     }
 
-    private FaceTabHost AddTab(string id)
+    private ViewerTabHost AddTab(string id)
     {
-        var face = new FaceTabHost(id, _store!, _state!, _api!, _factory!, _webHost, Dispatcher, _openUrl!);
-        face.Changed += (_, _) =>
+        var viewer = new ViewerTabHost(id, _store!, _state!, _api!, _factory!, _webHost, Dispatcher, _openUrl!);
+        viewer.Changed += (_, _) =>
         {
             RenderTabs();
-            if (ReferenceEquals(face, _active))
+            if (ReferenceEquals(viewer, _active))
                 RenderCard();
         };
-        _faces.Add(face);
-        return face;
+        _viewers.Add(viewer);
+        return viewer;
     }
 
-    private void Activate(FaceTabHost? face, bool persist)
+    private void Activate(ViewerTabHost? viewer, bool persist)
     {
-        _active = face;
-        foreach (var other in _faces)
-            other.SetVisible(ReferenceEquals(other, face));
-        if (face is { Status: FaceTabStatus.Pending })
-            _ = face.RefreshAsync();
+        _active = viewer;
+        foreach (var other in _viewers)
+            other.SetVisible(ReferenceEquals(other, viewer));
+        if (viewer is { Status: ViewerTabStatus.Pending })
+            _ = viewer.RefreshAsync();
         RenderTabs();
         RenderCard();
         if (persist)
             Persist();
     }
 
-    private void Close(FaceTabHost face)
+    private void Close(ViewerTabHost viewer)
     {
-        var index = _faces.IndexOf(face);
+        var index = _viewers.IndexOf(viewer);
         if (index < 0)
             return;
-        _faces.RemoveAt(index);
-        face.Dispose();
-        if (ReferenceEquals(face, _active))
-            Activate(_faces.Count == 0 ? null : _faces[Math.Min(index, _faces.Count - 1)], persist: false);
+        _viewers.RemoveAt(index);
+        viewer.Dispose();
+        if (ReferenceEquals(viewer, _active))
+            Activate(_viewers.Count == 0 ? null : _viewers[Math.Min(index, _viewers.Count - 1)], persist: false);
         else
             RenderTabs();
         Persist();
     }
 
-    private void Persist() => _state?.SetOpenFaces(_faces.Select(face => face.Id), _active?.Id);
+    private void Persist() => _state?.SetOpenViewers(_viewers.Select(viewer => viewer.Id), _active?.Id);
 
     // ── 見え方 ───────────────────────────────────────────────
 
     private void RenderTabs()
     {
         _tabs.Children.Clear();
-        foreach (var face in _faces)
+        foreach (var viewer in _viewers)
         {
-            var isActive = ReferenceEquals(face, _active);
+            var isActive = ReferenceEquals(viewer, _active);
             var title = new TextBlock
             {
-                Text = face.Status switch
+                Text = viewer.Status switch
                 {
-                    FaceTabStatus.Broken => "⚠ " + face.Title,
-                    FaceTabStatus.NeedsApproval => "？ " + face.Title,
-                    _ => face.Title,
+                    ViewerTabStatus.Broken => "⚠ " + viewer.Title,
+                    ViewerTabStatus.NeedsApproval => "？ " + viewer.Title,
+                    _ => viewer.Title,
                 },
                 VerticalAlignment = VerticalAlignment.Center,
                 Margin = new Thickness(10, 0, 4, 0),
@@ -177,12 +177,12 @@ internal sealed class FacePaneView : UserControl
             title.SetResourceReference(TextBlock.FontSizeProperty, "Fs12");
             title.SetResourceReference(TextBlock.ForegroundProperty, isActive ? "Fg" : "FgDim");
 
-            var close = new Button { Content = "×", ToolTip = "この面を閉じる（面そのものは消えません）", Margin = new Thickness(0, 0, 4, 0) };
+            var close = new Button { Content = "×", ToolTip = "このビューアを閉じる（ビューアそのものは消えません）", Margin = new Thickness(0, 0, 4, 0) };
             close.SetResourceReference(StyleProperty, "PaneHeaderTabClose");
             close.Click += (_, e) =>
             {
                 e.Handled = true;
-                Close(face);
+                Close(viewer);
             };
 
             var row = new StackPanel { Orientation = Orientation.Horizontal };
@@ -194,13 +194,13 @@ internal sealed class FacePaneView : UserControl
                 Background = Brushes.Transparent,
                 BorderThickness = new Thickness(0, 0, 0, 2),
                 Cursor = Cursors.Hand,
-                ToolTip = face.Manifest?.Description is { Length: > 0 } description ? description : face.Id,
+                ToolTip = viewer.Manifest?.Description is { Length: > 0 } description ? description : viewer.Id,
             };
             if (isActive)
                 tab.SetResourceReference(Border.BorderBrushProperty, "Accent");
             else
                 tab.BorderBrush = Brushes.Transparent;
-            tab.MouseLeftButtonDown += (_, _) => Activate(face, persist: true);
+            tab.MouseLeftButtonDown += (_, _) => Activate(viewer, persist: true);
             _tabs.Children.Add(tab);
         }
     }
@@ -210,8 +210,8 @@ internal sealed class FacePaneView : UserControl
         UIElement? content = _active switch
         {
             null => EmptyCard(),
-            { Status: FaceTabStatus.NeedsApproval, Manifest: { } manifest } face => ApprovalCard(face, manifest),
-            { Status: FaceTabStatus.Broken } face => BrokenCard(face),
+            { Status: ViewerTabStatus.NeedsApproval, Manifest: { } manifest } viewer => ApprovalCard(viewer, manifest),
+            { Status: ViewerTabStatus.Broken } viewer => BrokenCard(viewer),
             _ => null,
         };
         _card.Child = content is null ? null : new ScrollViewer
@@ -226,36 +226,36 @@ internal sealed class FacePaneView : UserControl
     private UIElement EmptyCard()
     {
         var panel = CardPanel();
-        panel.Children.Add(Line("面はまだ出ていません", "Fs14", "Fg", bold: true));
+        panel.Children.Add(Line("ビューアはまだ出ていません", "Fs14", "Fg", bold: true));
         panel.Children.Add(Line(
-            "面は、頼むと生える小さな道具です。ターミナルの Claude Code に「〜を一覧する面がほしい」のように頼むと、"
+            "ビューアは、頼むと生える小さな道具です。ターミナルの Claude Code に「〜を一覧するビューアがほしい」のように頼むと、"
             + "Claude が小さな HTML を書いて、ここに出します。Loomo の再ビルドは要りません。", "Fs12", "FgDim"));
-        var grow = new Button { Content = "面を生やす頼みごとの下書きをコピー", HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 10, 0, 0) };
+        var grow = new Button { Content = "ビューアを生やす頼みごとの下書きをコピー", HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 10, 0, 0) };
         grow.SetResourceReference(StyleProperty, "SecondaryButton");
         grow.Click += (_, _) => GrowRequested?.Invoke(this, EventArgs.Empty);
         panel.Children.Add(grow);
         if (_store?.List() is { Count: > 0 })
-            panel.Children.Add(Line("置いてある面は、右上の「＋」から開けます。", "Fs12", "FgDim"));
+            panel.Children.Add(Line("置いてあるビューアは、右上の「＋」から開けます。", "Fs12", "FgDim"));
         return panel;
     }
 
-    private UIElement ApprovalCard(FaceTabHost face, FaceManifest manifest)
+    private UIElement ApprovalCard(ViewerTabHost viewer, ViewerManifest manifest)
     {
         var panel = CardPanel();
-        panel.Children.Add(Line($"面「{manifest.Title}」を開きますか？", "Fs14", "Fg", bold: true));
+        panel.Children.Add(Line($"ビューア「{manifest.Title}」を開きますか？", "Fs14", "Fg", bold: true));
         if (manifest.Description.Length > 0)
             panel.Children.Add(Line(manifest.Description, "Fs12", "FgDim"));
-        panel.Children.Add(Line("この面が部屋でできること", "Fs11", "FgDim", bold: true, top: 12));
+        panel.Children.Add(Line("このビューアが部屋でできること", "Fs11", "FgDim", bold: true, top: 12));
         if (manifest.Api.Count == 0)
             panel.Children.Add(Line("・何もしない（自分のページを出すだけ）", "Fs12", "Fg"));
         foreach (var api in manifest.Api)
-            panel.Children.Add(Line("・" + FaceApi.Describe(api), "Fs12", "Fg"));
+            panel.Children.Add(Line("・" + ViewerApi.Describe(api), "Fs12", "Fg"));
         if (manifest.Commands.Count > 0)
         {
             panel.Children.Add(Line("回せるコマンド（この行のとおりにだけ走ります）", "Fs11", "FgDim", bold: true, top: 12));
             foreach (var command in manifest.Commands)
             {
-                panel.Children.Add(Line(command.Name + (command.Cwd == FaceCommand.CwdFace ? "（面のフォルダーで）" : "（ワークスペースで）"),
+                panel.Children.Add(Line(command.Name + (command.Cwd == ViewerCommand.CwdViewer ? "（ビューアのフォルダーで）" : "（ワークスペースで）"),
                     "Fs11", "FgDim", top: 6));
                 var line = Line(command.Command, "Fs12", "Fg");
                 line.FontFamily = new FontFamily("Cascadia Mono, Consolas");
@@ -266,10 +266,10 @@ internal sealed class FacePaneView : UserControl
 
         var allow = new Button { Content = "許して開く", Margin = new Thickness(0, 0, 8, 0) };
         allow.SetResourceReference(StyleProperty, "FlatButton");
-        allow.Click += (_, _) => _ = face.ApproveAsync();
+        allow.Click += (_, _) => _ = viewer.ApproveAsync();
         var dismiss = new Button { Content = "開かない" };
         dismiss.SetResourceReference(StyleProperty, "SecondaryButton");
-        dismiss.Click += (_, _) => Close(face);
+        dismiss.Click += (_, _) => Close(viewer);
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 12, 0, 0) };
         buttons.Children.Add(allow);
         buttons.Children.Add(dismiss);
@@ -277,14 +277,14 @@ internal sealed class FacePaneView : UserControl
         return panel;
     }
 
-    private UIElement BrokenCard(FaceTabHost face)
+    private UIElement BrokenCard(ViewerTabHost viewer)
     {
         var panel = CardPanel();
-        panel.Children.Add(Line($"面「{face.Id}」を読めません", "Fs14", "Fg", bold: true));
-        var reason = Line(face.Error ?? "", "Fs12", "Fg");
+        panel.Children.Add(Line($"ビューア「{viewer.Id}」を読めません", "Fs14", "Fg", bold: true));
+        var reason = Line(viewer.Error ?? "", "Fs12", "Fg");
         reason.FontFamily = new FontFamily("Cascadia Mono, Consolas");
         panel.Children.Add(reason);
-        panel.Children.Add(Line("面のフォルダーの中身が直ると、ここは自動で読み直します。", "Fs11", "FgDim", top: 10));
+        panel.Children.Add(Line("ビューアのフォルダーの中身が直ると、ここは自動で読み直します。", "Fs11", "FgDim", top: 10));
         return panel;
     }
 
@@ -304,36 +304,36 @@ internal sealed class FacePaneView : UserControl
         return block;
     }
 
-    /// <summary>「＋」のメニュー。置いてある面を全部（枯れたものは下へ分ける）。メニューは押したときに組む。</summary>
+    /// <summary>「＋」のメニュー。置いてあるビューアを全部（枯れたものは下へ分ける）。メニューは押したときに組む。</summary>
     private void OpenMenu(Button anchor)
     {
         if (_store is null || _state is null)
             return;
         var menu = new ContextMenu { PlacementTarget = anchor, Placement = PlacementMode.Bottom };
         var today = DateTime.Today;
-        var faces = _store.List();
-        var withered = new List<FaceEntry>();
-        foreach (var entry in faces)
+        var viewers = _store.List();
+        var withered = new List<ViewerEntry>();
+        foreach (var entry in viewers)
         {
-            if (IsWithered(entry, today) && _faces.All(open => open.Id != entry.Id))
+            if (IsWithered(entry, today) && _viewers.All(open => open.Id != entry.Id))
                 withered.Add(entry);
             else
-                menu.Items.Add(FaceItem(entry, ""));
+                menu.Items.Add(ViewerItem(entry, ""));
         }
-        if (faces.Count == 0)
-            menu.Items.Add(new MenuItem { Header = "（面はまだありません）", IsEnabled = false });
+        if (viewers.Count == 0)
+            menu.Items.Add(new MenuItem { Header = "（ビューアはまだありません）", IsEnabled = false });
         if (withered.Count > 0)
         {
             menu.Items.Add(new Separator());
-            menu.Items.Add(new MenuItem { Header = $"枯れた面（{FaceRoomState.WitherDays} 日開いていない）", IsEnabled = false });
+            menu.Items.Add(new MenuItem { Header = $"枯れたビューア（{ViewerRoomState.WitherDays} 日開いていない）", IsEnabled = false });
             foreach (var entry in withered)
-                menu.Items.Add(FaceItem(entry, "　"));
+                menu.Items.Add(ViewerItem(entry, "　"));
         }
         menu.Items.Add(new Separator());
-        var grow = new MenuItem { Header = "面を生やす頼みごとの下書きをコピー" };
+        var grow = new MenuItem { Header = "ビューアを生やす頼みごとの下書きをコピー" };
         grow.Click += (_, _) => GrowRequested?.Invoke(this, EventArgs.Empty);
         menu.Items.Add(grow);
-        var folder = new MenuItem { Header = "面のフォルダーを開く" };
+        var folder = new MenuItem { Header = "ビューアのフォルダーを開く" };
         folder.Click += (_, _) =>
         {
             try
@@ -343,26 +343,26 @@ internal sealed class FacePaneView : UserControl
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or Win32Exception)
             {
-                ToastService.Error("面のフォルダーを開けませんでした");
+                ToastService.Error("ビューアのフォルダーを開けませんでした");
             }
         };
         menu.Items.Add(folder);
         menu.IsOpen = true;
     }
 
-    private MenuItem FaceItem(FaceEntry entry, string indent)
+    private MenuItem ViewerItem(ViewerEntry entry, string indent)
     {
         var item = new MenuItem
         {
             Header = indent + (entry.Manifest is null ? "⚠ " + entry.Id : entry.Title),
-            IsChecked = _faces.Any(open => open.Id == entry.Id),
+            IsChecked = _viewers.Any(open => open.Id == entry.Id),
             ToolTip = entry.Manifest?.Description is { Length: > 0 } description ? description : entry.Error,
         };
-        item.Click += (_, _) => _ = ShowFaceAsync(entry.Id);
+        item.Click += (_, _) => _ = ShowViewerAsync(entry.Id);
         return item;
     }
 
-    private bool IsWithered(FaceEntry entry, DateTime today)
+    private bool IsWithered(ViewerEntry entry, DateTime today)
     {
         try
         {

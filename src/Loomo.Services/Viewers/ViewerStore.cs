@@ -4,40 +4,40 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using sk0ya.Loomo.Core.Faces;
+using sk0ya.Loomo.Core.Viewers;
 
-namespace sk0ya.Loomo.Services.Faces;
+namespace sk0ya.Loomo.Services.Viewers;
 
-/// <summary>読めた面、または読めなかった理由（書いた Claude がそのまま直せる英語）。</summary>
-public sealed record FaceEntry(string Id, FaceManifest? Manifest, string? Error)
+/// <summary>読めたビューア、または読めなかった理由（書いた Claude がそのまま直せる英語）。</summary>
+public sealed record ViewerEntry(string Id, ViewerManifest? Manifest, string? Error)
 {
     public string Title => Manifest?.Title ?? Id;
 }
 
 /// <summary>
-/// 面の置き場（§44.2）。<c>%APPDATA%/Loomo/faces/&lt;id&gt;/</c> に <c>face.json</c> と <c>index.html</c>。
+/// ビューアの置き場（§44.2）。<c>%APPDATA%/Loomo/viewers/&lt;id&gt;/</c> に <c>viewer.json</c> と <c>index.html</c>。
 /// <b>ワークスペースの中には置かない</b>——人のリポジトリに頼まれずにファイルを増やさない。
-/// ディスクを読むので UI スレッドの打鍵の経路からは呼ばない（面を開く・一覧を出すときだけ）。
+/// ディスクを読むので UI スレッドの打鍵の経路からは呼ばない（ビューアを開く・一覧を出すときだけ）。
 /// </summary>
-public sealed class FaceStore
+public sealed class ViewerStore
 {
-    public const string ManifestFileName = "face.json";
-    /// <summary>面ごとの小さな置き場（<c>loomo.state</c>）。面のフォルダーの中に置き、ページには配らない。</summary>
+    public const string ManifestFileName = "viewer.json";
+    /// <summary>ビューアごとの小さな置き場（<c>loomo.state</c>）。ビューアのフォルダーの中に置き、ページには配らない。</summary>
     public const string StateFileName = ".state.json";
     public const int MaxStateBytes = 256 * 1024;
 
-    public FaceStore(string? root = null)
+    public ViewerStore(string? root = null)
     {
         Root = root ?? Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Loomo", "faces");
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Loomo", "viewers");
     }
 
     public string Root { get; }
 
     public string FolderOf(string id) => Path.Combine(Root, id);
 
-    /// <summary>置いてある面を全部（名前順）。<c>face.json</c> の無いフォルダーは面ではない。</summary>
-    public IReadOnlyList<FaceEntry> List()
+    /// <summary>置いてあるビューアを全部（名前順）。<c>viewer.json</c> の無いフォルダーはビューアではない。</summary>
+    public IReadOnlyList<ViewerEntry> List()
     {
         try
         {
@@ -45,7 +45,7 @@ public sealed class FaceStore
                 return [];
             return Directory.EnumerateDirectories(Root)
                 .Select(Path.GetFileName)
-                .Where(name => FaceManifest.IsValidId(name) && File.Exists(Path.Combine(Root, name!, ManifestFileName)))
+                .Where(name => ViewerManifest.IsValidId(name) && File.Exists(Path.Combine(Root, name!, ManifestFileName)))
                 .OrderBy(name => name, StringComparer.Ordinal)
                 .Select(name => Find(name!))
                 .ToArray();
@@ -56,31 +56,31 @@ public sealed class FaceStore
         }
     }
 
-    public FaceEntry Find(string id)
+    public ViewerEntry Find(string id)
     {
-        if (!FaceManifest.IsValidId(id))
-            return new FaceEntry(id, null, $"Invalid face id \"{id}\": use lowercase letters, digits and hyphens.");
+        if (!ViewerManifest.IsValidId(id))
+            return new ViewerEntry(id, null, $"Invalid viewer id \"{id}\": use lowercase letters, digits and hyphens.");
         var path = Path.Combine(FolderOf(id), ManifestFileName);
         try
         {
             if (!File.Exists(path))
-                return new FaceEntry(id, null, $"No face named \"{id}\": {path} does not exist.");
-            var manifest = FaceManifest.Parse(id, File.ReadAllText(path), out var error);
+                return new ViewerEntry(id, null, $"No viewer named \"{id}\": {path} does not exist.");
+            var manifest = ViewerManifest.Parse(id, File.ReadAllText(path), out var error);
             if (manifest is not null && !File.Exists(Path.Combine(FolderOf(id), "index.html")))
-                return new FaceEntry(id, null, $"The face \"{id}\" has no index.html next to face.json.");
-            return new FaceEntry(id, manifest, error);
+                return new ViewerEntry(id, null, $"The viewer \"{id}\" has no index.html next to viewer.json.");
+            return new ViewerEntry(id, manifest, error);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            return new FaceEntry(id, null, $"Could not read {path}: {ex.Message}");
+            return new ViewerEntry(id, null, $"Could not read {path}: {ex.Message}");
         }
     }
 
-    /// <summary>面のページが頼んだ相対パスを、面のフォルダーの中のファイルへ解く。外へ出るパス・置き場のファイル・
+    /// <summary>ビューアのページが頼んだ相対パスを、ビューアのフォルダーの中のファイルへ解く。外へ出るパス・置き場のファイル・
     /// 無いファイルは null。</summary>
     public string? ResolveFile(string id, string relativePath)
     {
-        if (!FaceManifest.IsValidId(id) || relativePath.Length == 0)
+        if (!ViewerManifest.IsValidId(id) || relativePath.Length == 0)
             return null;
         try
         {
@@ -98,7 +98,7 @@ public sealed class FaceStore
         }
     }
 
-    /// <summary>面の置き場の中身（JSON の文字列。無ければ <c>null</c> という JSON）。</summary>
+    /// <summary>ビューアの置き場の中身（JSON の文字列。無ければ <c>null</c> という JSON）。</summary>
     public string ReadState(string id)
     {
         try
@@ -118,7 +118,7 @@ public sealed class FaceStore
 
     public bool WriteState(string id, string json)
     {
-        if (!FaceManifest.IsValidId(id) || json.Length > MaxStateBytes || !Directory.Exists(FolderOf(id)))
+        if (!ViewerManifest.IsValidId(id) || json.Length > MaxStateBytes || !Directory.Exists(FolderOf(id)))
             return false;
         try
         {
@@ -137,13 +137,13 @@ public sealed class FaceStore
 }
 
 /// <summary>
-/// 面についてこの PC が覚えていること（§44.2）：<b>許した指紋</b>・開いている面・開いた回数（日別）。
-/// <c>%APPDATA%/Loomo/faces-state.json</c> 1 つ。面のフォルダーの中には置かない——面を書く Claude が
-/// 自分で自分を許せてしまう。読み書きは面を開く・閉じるときだけで、小さいのでその場で書く。
+/// ビューアについてこの PC が覚えていること（§44.2）：<b>許した指紋</b>・開いているビューア・開いた回数（日別）。
+/// <c>%APPDATA%/Loomo/viewers-state.json</c> 1 つ。ビューアのフォルダーの中には置かない——ビューアを書く Claude が
+/// 自分で自分を許せてしまう。読み書きはビューアを開く・閉じるときだけで、小さいのでその場で書く。
 /// </summary>
-public sealed class FaceRoomState
+public sealed class ViewerRoomState
 {
-    /// <summary>これだけ開かれなかった面は「枯れた面」へ下げる（消さない。開けば戻る）。</summary>
+    /// <summary>これだけ開かれなかったビューアは「枯れたビューア」へ下げる（消さない。開けば戻る）。</summary>
     public const int WitherDays = 30;
     private const int KeepUsageDays = 120;
 
@@ -151,10 +151,10 @@ public sealed class FaceRoomState
     private readonly object _gate = new();
     private JsonObject _root;
 
-    public FaceRoomState(string? path = null)
+    public ViewerRoomState(string? path = null)
     {
         _path = path ?? Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Loomo", "faces-state.json");
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Loomo", "viewers-state.json");
         _root = Load(_path);
     }
 
@@ -187,17 +187,17 @@ public sealed class FaceRoomState
             File.WriteAllText(temp, _root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
             File.Move(temp, _path, overwrite: true);
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { /* 覚えられなくても面は動く */ }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { /* 覚えられなくてもビューアは動く */ }
     }
 
-    public bool IsApproved(FaceManifest manifest)
+    public bool IsApproved(ViewerManifest manifest)
     {
         lock (_gate)
             return Section("approved")[manifest.Id] is JsonValue value && value.TryGetValue<string>(out var print)
                 && print == manifest.Fingerprint;
     }
 
-    public void Approve(FaceManifest manifest)
+    public void Approve(ViewerManifest manifest)
     {
         lock (_gate)
         {
@@ -206,8 +206,8 @@ public sealed class FaceRoomState
         }
     }
 
-    /// <summary>開いている面（タブの並び順）と、前に出ている面。</summary>
-    public (IReadOnlyList<string> Open, string? Active) OpenFaces
+    /// <summary>開いているビューア（タブの並び順）と、前に出ているビューア。</summary>
+    public (IReadOnlyList<string> Open, string? Active) OpenViewers
     {
         get
         {
@@ -215,14 +215,14 @@ public sealed class FaceRoomState
             {
                 var open = (_root["open"] as JsonArray)?
                     .Select(node => node is JsonValue value && value.TryGetValue<string>(out var id) ? id : null)
-                    .Where(id => FaceManifest.IsValidId(id)).Select(id => id!).Distinct().ToArray() ?? [];
+                    .Where(id => ViewerManifest.IsValidId(id)).Select(id => id!).Distinct().ToArray() ?? [];
                 var active = _root["active"] is JsonValue a && a.TryGetValue<string>(out var text) ? text : null;
                 return (open, active);
             }
         }
     }
 
-    public void SetOpenFaces(IEnumerable<string> open, string? active)
+    public void SetOpenViewers(IEnumerable<string> open, string? active)
     {
         lock (_gate)
         {
@@ -232,7 +232,7 @@ public sealed class FaceRoomState
         }
     }
 
-    /// <summary>面を開いた（タブを新しく出した）ことを数える。</summary>
+    /// <summary>ビューアを開いた（タブを新しく出した）ことを数える。</summary>
     public void RecordOpened(string id, DateTime today)
     {
         lock (_gate)

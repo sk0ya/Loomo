@@ -2,27 +2,27 @@ using System;
 using System.IO;
 using System.Text.Json;
 
-namespace sk0ya.Loomo.Services.Faces;
+namespace sk0ya.Loomo.Services.Viewers;
 
 /// <summary>
-/// Loomo が自分で置く面（§44.3・§44.4）。<b>本体の機能も、生やせるものは面として生やす</b>——部屋の口（<c>window.loomo</c>）で
+/// Loomo が自分で置くビューア（§44.3・§44.4）。<b>本体の機能も、生やせるものはビューアとして生やす</b>——部屋の口（<c>window.loomo</c>）で
 /// 足りるかの試金石で、足りなければ口のほうを直す。置くのは起動時、無いとき・版が古いときだけ（人間や Claude が書き直した
-/// 面を黙って戻さない：<c>face.json</c> の <c>builtIn</c> が同じか新しければ触らない）。許しはほかの面と同じく 1 回聞く。
+/// ビューアを黙って戻さない：<c>viewer.json</c> の <c>builtIn</c> が同じか新しければ触らない）。許しはほかのビューアと同じく 1 回聞く。
 /// </summary>
-public static class BuiltInFaces
+public static class BuiltInViewers
 {
-    public static void Install(FaceStore store)
+    public static void Install(ViewerStore store)
     {
         Place(store, "motion", MotionVersion, MotionManifest, MotionPage);
         Place(store, "orders", OrdersVersion, OrdersManifest, OrdersPage);
     }
 
-    private static void Place(FaceStore store, string id, int version, string manifest, string page)
+    private static void Place(ViewerStore store, string id, int version, string manifest, string page)
     {
         try
         {
             var folder = store.FolderOf(id);
-            var manifestPath = Path.Combine(folder, FaceStore.ManifestFileName);
+            var manifestPath = Path.Combine(folder, ViewerStore.ManifestFileName);
             if (File.Exists(manifestPath) && InstalledVersion(manifestPath) >= version)
                 return;
             Directory.CreateDirectory(folder);
@@ -38,7 +38,7 @@ public static class BuiltInFaces
         {
             using var document = JsonDocument.Parse(File.ReadAllText(manifestPath),
                 new JsonDocumentOptions { AllowTrailingCommas = true, CommentHandling = JsonCommentHandling.Skip });
-            // builtIn が無い＝人間や Claude が同じ名前で作った面。上書きしない。
+            // builtIn が無い＝人間や Claude が同じ名前で作ったビューア。上書きしない。
             return document.RootElement.TryGetProperty("builtIn", out var value) && value.TryGetInt32(out var n) ? n : int.MaxValue;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)

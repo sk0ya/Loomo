@@ -33,7 +33,7 @@ dotnet test --filter "FullyQualifiedName~DiffUtil"
 
 ## UI changes — usability is part of done
 
-Any change to a screen (pane, dialog, settings, detached window, pane-header button, context menu, face HTML) goes
+Any change to a screen (pane, dialog, settings, detached window, pane-header button, context menu, viewer HTML) goes
 through the project skill `ui-usability` (`.claude/skills/ui-usability/SKILL.md`): before coding a new screen, an entry
 point move, or removing/hiding/merging an existing feature, write the user's step script and get agreement; build to
 its rules (labels say what the thing is, state and an exit are visible, Controls.xaml styles, `Fs*` tokens, palette
@@ -73,7 +73,7 @@ path.** A syntax language registered into the editor must implement `ILineStateS
 re-tokenizes the whole file. Child-process output is read through `ChildProcessIo` (dedicated threads), never the
 thread pool.
 
-`%APPDATA%/Loomo/` holds `settings.json`, `window.json` (main window placement), `workspaces/`, `trail.db`, `provenance.db` (§43), `faces/` + `faces-state.json` (§44.2), `motion/` (§44.3), `orders/` (§44.4; worktrees under
+`%APPDATA%/Loomo/` holds `settings.json`, `window.json` (main window placement), `workspaces/`, `trail.db`, `provenance.db` (§43), `viewers/` + `viewers-state.json` (§44.2), `motion/` (§44.3), `orders/` (§44.4; worktrees under
 `%LOCALAPPDATA%/Loomo/orders/`), `themes/<app|editor|terminal|preview>/` (user color themes per area, §3), `lsp-servers.json`, `formatters.json`.
 
 ### sk0ya control libraries
@@ -109,25 +109,25 @@ the raw window title (`◐/◑` / `✳`). The hook (`sk0ya.Loomo.McpBridge.exe h
 so it must stay a no-op outside Loomo.
 
 `LoomoMcpServer` (§43.6 D) is a separate standard MCP server (the IDE protocol only exposes two tools to the model):
-tools that **place things in front of the human** (`show_file` / `show_url` / `show_changes` / `show_face`) plus the
-read-only `face_guide` / `motion_guide` / `what_human_sees` / `debug_state` / `browser_errors` (what the human is looking at; §45.5), and nothing else — no typing into the visible terminal, no closing tabs, no layout changes, no
+tools that **place things in front of the human** (`show_file` / `show_url` / `show_changes` / `show_viewer`) plus the
+read-only `viewer_guide` / `motion_guide` / `what_human_sees` / `debug_state` / `browser_errors` (what the human is looking at; §45.5), and nothing else — no typing into the visible terminal, no closing tabs, no layout changes, no
 focus stealing, no file-writing tools. Loomo never writes the
 user's Claude config for it; the user registers once via the palette command. Claude Code reaches it through the
 stdio bridge `src/Loomo.McpBridge` (copied to `%LOCALAPPDATA%/Loomo/mcp-bridge/`), which re-reads
 `mcp-endpoint.json` on every call — **don't hand the endpoint to shells via environment variables**: resident
 shells (§34) predate them and outlive port changes.
 
-### Faces (§44.2)
+### Viewers (§44.2)
 
-A face is a small HTML tool Claude Code writes into `%APPDATA%/Loomo/faces/<id>/` (`face.json` + `index.html`); it shows
-up as a tab of the Face pane without rebuilding Loomo. The lines are held in `FaceRoomApi` / `FaceTabHost` — keep them
-when extending: each face has its own origin (`https://<id>.face.loomo`) and `window.loomo` exists only there; a face can
-use only the APIs and run only the named commands its `face.json` declares (fixed command line; page values arrive via
-`LOOMO_ARG_n` / `$LoomoInput`); the human approves that declaration once per fingerprint (stored outside the face folder);
+A viewer is a small HTML tool Claude Code writes into `%APPDATA%/Loomo/viewers/<id>/` (`viewer.json` + `index.html`); it shows
+up as a tab of the Viewer pane without rebuilding Loomo. The lines are held in `ViewerRoomApi` / `ViewerTabHost` — keep them
+when extending: each viewer has its own origin (`https://<id>.viewer.loomo`) and `window.loomo` exists only there; a viewer can
+use only the APIs and run only the named commands its `viewer.json` declares (fixed command line; page values arrive via
+`LOOMO_ARG_n` / `$LoomoInput`); the human approves that declaration once per fingerprint (stored outside the viewer folder);
 commands run hidden, never in the visible terminal; nothing is written into the user's repositories. A WebView2 inside a
 hidden pane never finishes initialising — load when visible, don't await it from an MCP call.
-Room features that need a view are grown as built-in faces (`BuiltInFaces`: 動き §44.3, 言いつけ §44.4) on top of
-`IFaceApiExtension` APIs (`motion`, `orders`) instead of WPF views. Standing orders run `claude -p` in a hidden worktree
+Room features that need a view are grown as built-in viewers (`BuiltInViewers`: 動き §44.3, 言いつけ §44.4) on top of
+`IViewerApiExtension` APIs (`motion`, `orders`) instead of WPF views. Standing orders run `claude -p` in a hidden worktree
 and never touch the human's working tree until 採る (`cherry-pick --no-commit`, conflict forecast first); never push.
 
 ### .NET Framework projects (§28.12)

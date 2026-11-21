@@ -716,7 +716,7 @@ public enum PaneKind
     // 数値で永続化されるため、新メンバーは必ず末尾へ追加する（既存 workspaces.json との互換維持）。
     TsIde,
     /// <summary>ファイル一覧（エクスプローラ）ペイン。サイドバーのツリーとは別物で、
-    /// 1フォルダーぶんを平らに並べて並べ替え・絞り込み・一括操作をする面（§26.10）。</summary>
+    /// 1フォルダーぶんを平らに並べて並べ替え・絞り込み・一括操作をするビューア（§26.10）。</summary>
     Files,
     /// <summary>ハーネスペイン。AI 開発ハーネスの改善箇所を記録から見つけ、根拠を辿り、版を比べる作業台（§37）。</summary>
     Harness,
@@ -726,9 +726,9 @@ public enum PaneKind
     /// <summary>ブラウザサポートペイン。前に出ているブラウザのタブのページ（サイト）に合った道具を出す（§41）。
     /// Azure DevOps の PR → Diff ペイン・ファイル → 手元のクローンのように、ページを部屋の中へつなぐ。</summary>
     BrowserSupport,
-    /// <summary>面のペイン。頼むと Claude が書く小さな HTML の道具（面）をタブで出す（§44.2）。
-    /// 面の実体は <c>%APPDATA%/Loomo/faces/</c> にあり、開いている面は部屋ではなく PC ごとに覚える。</summary>
-    Face
+    /// <summary>ビューアのペイン。頼むと Claude が書く小さな HTML の道具（ビューア）をタブで出す（§44.2）。
+    /// ビューアの実体は <c>%APPDATA%/Loomo/viewers/</c> にあり、開いているビューアは部屋ではなく PC ごとに覚える。</summary>
+    Viewer
 }
 
 /// <summary>
@@ -762,9 +762,9 @@ public sealed class ViewportNodeSnapshot
 /// <summary>ペインの所属グループ。固定（<c>StageModeCoordinator.MainGroup</c>）で、ユーザーは変えない。</summary>
 public enum PaneGroup
 {
-    /// <summary>いつも手元に置く面（エディタ／ターミナル／ブラウザ／Git）。</summary>
+    /// <summary>いつも手元に置くビューア（エディタ／ターミナル／ブラウザ／Git）。</summary>
     Main,
-    /// <summary>用があるときに呼ぶ面（エディタサポート／Diff／AI／IDE／TS IDE／検索／ファイル一覧）。</summary>
+    /// <summary>用があるときに呼ぶビューア（エディタサポート／Diff／AI／IDE／TS IDE／検索／ファイル一覧）。</summary>
     Sub
 }
 
