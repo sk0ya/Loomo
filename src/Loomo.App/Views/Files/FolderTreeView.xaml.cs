@@ -253,6 +253,32 @@ public partial class FolderTreeView : UserControl
             _selectionInteraction.SelectAndReveal(visible[targetIndex], focus: true);
     }
 
+    /// <summary>エディタで見ているファイルに選択を合わせる。開いている枝の中に行があればそれを選び、
+    /// 無ければ選択を外す（<see cref="FolderTreeActiveFileFollow"/>）。フォルダーは開かず、スクロール・
+    /// フォーカス・プレビューも動かさない——見ているものと食い違う印を残さないことだけが目的。
+    /// 畳まれた先まで見に行くのは「現在のファイルを選択」（<see cref="RevealPath"/>）の役目。</summary>
+    public void FollowActiveFile(string? fullPath)
+    {
+        if (DataContext is not FolderTreeViewModel vm)
+            return;
+
+        var row = FolderTreeActiveFileFollow.VisibleRowFor<FileNodeViewModel>(
+            vm.Nodes, fullPath, node => node.FullPath, node => node.IsDirectory,
+            node => node.IsExpanded, node => node.Children);
+        _selectionInteraction.SuppressSelectionPreview(() =>
+        {
+            if (row is not null)
+            {
+                if (!row.IsSelected)
+                    row.IsSelected = true;
+            }
+            else if (FileTree.SelectedItem is FileNodeViewModel selected)
+            {
+                selected.IsSelected = false;
+            }
+        });
+    }
+
     // 遅延読込ツリーで指定パスを上から順に展開し、たどり着いたノードを選択・表示する。
     // ShellWindow からエディタの現在ファイルをツリーへ同期表示するために使う。
     public void RevealPath(string fullPath)

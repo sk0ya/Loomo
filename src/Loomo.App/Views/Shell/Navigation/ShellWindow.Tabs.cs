@@ -184,6 +184,9 @@ public partial class ShellWindow {
             SyncEditorCodeActionBulb(tab.Control);
         }
         _editorLspNotices.ShowForFile(filePath);
+        // エクスプローラの選択を見ているファイルへ。開いている枝の中だけで、フォルダーは開かない。
+        // 前のファイルの行が選ばれたまま残ると、ツリーが見ているものを偽る。
+        SidebarFolderTree.FollowActiveFile(filePath);
         OnEditorOutlineFileChanged();   // Editor ペインのアウトラインを見ているファイルへ
         SeedEditorLocationHistory(tab);
         ForgetShelvedFile(filePath);   // 棚にあるファイルを別の道から開き直した（§24.29）
