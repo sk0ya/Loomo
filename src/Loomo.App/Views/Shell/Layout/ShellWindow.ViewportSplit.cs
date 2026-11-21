@@ -483,4 +483,9 @@ public partial class ShellWindow {
     private void QueueEditorTabUpdate(EditorTab tab) {
         _ = tab.Control.Dispatcher.BeginInvoke(new Action(() => UpdateEditorTab(tab)));
     }
+    private void RefreshSavedEditorTabs(VimEditorControl control) {
+        foreach (var tab in _editorTabs)
+            if (tab.IsRealized && ReferenceEquals(tab.Control, control))
+                QueueEditorTabUpdate(tab);
+    }
 }

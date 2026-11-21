@@ -128,6 +128,9 @@ public partial class ShellWindow : Window {
         _editor.NewVirtualDocumentTabRequested += OpenVirtualDocumentTab;
         _editor.FileSaved += _editorDocumentEvents.RaiseSaved;
         _editor.FileSaved += RecordSavedToLocalHistory;
+        // 保存の口（Ctrl+S・:w・保存ダイアログ・Claude からの保存）を問わず、タブ見出しの「*」を外す。
+        // 見出しの更新は本文の変更通知と :w（SaveRequested）にしか結ばれておらず、Ctrl+S では残っていた。
+        _editor.FileSaved += RefreshSavedEditorTabs;
         _editor.FileOpenRequested += async path => await OpenFileInNewEditorTabAsync(path);
         _workspace = workspace;
         _solutionModel = solutionModel;

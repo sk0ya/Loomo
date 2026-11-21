@@ -112,7 +112,15 @@ public sealed class TerminalService : ITerminalService
         IsExecuting = true;
         try
         {
+            var started = Stopwatch.GetTimestamp();
             var result = await view.RunCommandAsync(command, ct);
+            // 打ち込めずに即座に戻った（ターミナルペインをまだ一度も開いておらず、シェルのセッションが無い）。
+            // そのまま返すと、ビルドが出力も無く「失敗 (-1)」になる。忙しいときと同じく非表示プロセスで実行する。
+            if (NeverReachedShell(result, Stopwatch.GetElapsedTime(started), ct))
+            {
+                IsExecuting = false;
+                return await RunCommandAsync(command, ct);
+            }
             TrackChdir(command);
             var mapped = new CommandResult(command, result.Output, result.ExitCode, _cwd,
                 result.Completed && result.ExitCode == 0);
@@ -132,6 +140,16 @@ public sealed class TerminalService : ITerminalService
             IsExecuting = false;
         }
     }
+
+    /// <summary>可視ターミナルへ打ち込めなかった結果か。未完了・出力なしで、すぐ戻ったものだけ
+    /// （タイムアウトや人の中断は出力を伴うか、時間がかかってから戻る——それを実行し直してはいけない）。</summary>
+    internal static bool NeverReachedShell(TerminalCommandResult result, TimeSpan elapsed, CancellationToken ct)
+        => !result.Completed
+           && string.IsNullOrEmpty(result.Output)
+           && !ct.IsCancellationRequested
+           && elapsed < NoSessionReturnWithin;
+
+    private static readonly TimeSpan NoSessionReturnWithin = TimeSpan.FromSeconds(2);
 
     /// <summary>独立した PowerShell プロセスで**非対話**実行し、stdout/stderr/exit を取得する。
     /// 端末ペインには表示されない（AI の実行は人間のターミナルに流さない）。cwd は現在値を引き継ぎ、
