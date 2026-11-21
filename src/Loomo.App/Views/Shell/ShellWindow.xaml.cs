@@ -454,6 +454,8 @@ public partial class ShellWindow : Window {
         vm.Harness.OpenRequested += async (_, request) => await OpenPathInEditorAsync(request.Path, request.Line, 0);
         vm.Harness.TicketOpenRequested += (_, request) => _ = OpenUrlInBrowserAsync(request.Url, request.Title);
         vm.Harness.StateChanged += (_, _) => SaveActiveWorkspaceSnapshot();
+        vm.FolderTree.OpenInViewerRequested += (_, path) => OpenPathInViewer(path);
+        vm.Files.OpenInViewerRequested += (_, path) => OpenPathInViewer(path);
         vm.FolderTree.RevealInFilesPaneRequested += (_, path) => {
             vm.Files.Reveal(path);
             EnsurePaneVisibleOrSwapTopLeft(PaneKind.Files);

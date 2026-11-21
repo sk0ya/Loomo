@@ -259,6 +259,12 @@ public partial class FolderTreeView
             vm.RequestRevealInFilesPane(node);
     }
 
+    private void OnOpenInViewerClick(object sender, RoutedEventArgs e)
+    {
+        if (ContextNode(sender) is { } node && DataContext is FolderTreeViewModel vm)
+            vm.RequestOpenInViewer(node.FullPath, node.IsDirectory);
+    }
+
     private void OnSearchInFolderClick(object sender, RoutedEventArgs e)
     {
         if (ContextNode(sender) is { IsDirectory: true } node && DataContext is FolderTreeViewModel vm)

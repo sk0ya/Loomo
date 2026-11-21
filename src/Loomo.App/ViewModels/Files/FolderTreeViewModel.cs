@@ -129,6 +129,9 @@ public sealed partial class FolderTreeViewModel : ObservableObject
     // 親フォルダーを開いてその行を選ぶ。
     public event EventHandler<string>? RevealInFilesPaneRequested;
 
+    /// <summary>「ペインへ送る ▸ Viewer」（§44.2）。パスを Viewer ペインで開く（見せ方は Viewer が決める）。</summary>
+    public event EventHandler<string>? OpenInViewerRequested;
+
     // 表示ルートが変わったとき（フォルダを開いた・ピンルートへ切替えた）。ShellWindow が購読して
     // 検索パネルの既定の開始フォルダーへ反映する。
     public event EventHandler<string>? CurrentRootChanged;

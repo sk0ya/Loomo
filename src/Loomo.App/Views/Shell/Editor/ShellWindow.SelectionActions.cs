@@ -57,7 +57,30 @@ public partial class ShellWindow {
                 control, SelectionActionPresentation.SelectionSourceLabel(control?.FilePath),
                 e.SelectedText, e.HasSelection)),
             text => _ = SearchSelectionInBrowserAsync(text, EditorSearchOrigin(control, text)),
-            leadingItems: BuildClaudeSendMenuItem(control) is { } claude ? [claude] : null);
+            leadingItems: BuildClaudeSendMenuItem(control) is { } claude ? [claude] : null,
+            trailingItems: BuildViewerSendMenuItem(e.SelectedText, e.HasSelection, control?.FilePath) is { } viewer ? [viewer] : null);
+
+    /// <summary>「ペインへ送る ▸ Viewer（名前）」：選んだ文字が、いまあるファイルかフォルダーのパスのときだけ（§44.2）。
+    /// 相対パスはそのファイルのあるフォルダー、次にワークスペースから探す。</summary>
+    internal MenuItem? BuildViewerSendMenuItem(string selectedText, bool hasSelection, string? currentDocumentPath) {
+        if (!hasSelection || string.IsNullOrWhiteSpace(selectedText) || selectedText.Length > 400 || selectedText.Contains('\n'))
+            return null;
+        var text = selectedText.Trim().Trim('"', '\'', '`');
+        string? path = ViewerTargets.Normalize(text);
+        if (path is null) {
+            var bases = new List<string>();
+            if (Path.GetDirectoryName(currentDocumentPath ?? "") is { Length: > 0 } folder)
+                bases.Add(folder);
+            bases.AddRange(_workspace.Folders);
+            path = bases.Select(b => ViewerTargets.Normalize(Path.Combine(b, text)))
+                .FirstOrDefault(p => p is not null && (File.Exists(p) || Directory.Exists(p)));
+        }
+        if (path is null || !(File.Exists(path) || Directory.Exists(path)))
+            return null;
+        var item = new MenuItem { Header = $"Viewer（{ViewerTargets.NameOf(path)}）", ToolTip = path };
+        item.Click += (_, _) => OpenPathInViewer(path);
+        return item;
+    }
 
     /// <summary>1つの束を足す。中身が1つでも入ったときだけ、束の<b>前</b>に区切り線を1本入れる。
     /// 寄稿側が自分で区切り線を足さなくなるので、「区切り線だけが並ぶ」「末尾が区切り線で終わる」が
@@ -280,7 +303,9 @@ public partial class ShellWindow {
             text => _ = SearchSelectionInBrowserAsync(text,
                 _terminalTabs.FirstOrDefault(t => ReferenceEquals(t.View, sender)) is { } tab
                     ? new BrowserSearchOrigin.Terminal(text, tab.Id) : null),
-            leadingItems: BuildTerminalClaudeSendItem(e.SelectedText, e.HasSelection) is { } claude ? [claude] : null));
+            leadingItems: BuildTerminalClaudeSendItem(e.SelectedText, e.HasSelection) is { } claude ? [claude] : null,
+            trailingItems: BuildViewerSendMenuItem(e.SelectedText, e.HasSelection,
+                (sender as TerminalTabView)?.WorkingDirectory is { Length: > 0 } cwd ? Path.Combine(cwd, "_") : null) is { } viewer ? [viewer] : null));
     private async Task SendLocationToEditorAsync(SourceLocation location) {
         await OpenPathInEditorAsync(location.Path, location.Line, location.Column);
         FocusPane(PaneKind.Editor);

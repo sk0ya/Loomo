@@ -991,6 +991,8 @@
                             <MenuItem Header="ペインへ送る" Tag="AutoGroup">
                                 <MenuItem Header="ターミナル" Tag="Single" Click="OnSetInTerminalClick"
                                           ToolTip="フォルダーは作業場所に設定し、ファイルはパスを入力します" />
+                                <MenuItem Header="Viewer" Tag="Single" Click="OnOpenInViewerClick"
+                                          ToolTip="Viewer ペインで開きます（HTML は頁、PDF・画像などは EditorSupport と同じ表示、.exe は窓を重ねる、ほかは Claude Code が見せ方を作る）" />
                                 <MenuItem Header="検索" Tag="SearchableDir" Click="OnSearchInFolderClick"
                                           ToolTip="このフォルダーを範囲にして検索パネルを開きます" />
                             </MenuItem>

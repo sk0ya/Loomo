@@ -211,6 +211,9 @@ public sealed class TabsPanelSettings
     /// <summary>ターミナルのタブを一覧に出すか。</summary>
     public bool ShowTerminal { get; set; } = true;
 
+    /// <summary>Viewer のタブを一覧に出すか（§44.2）。</summary>
+    public bool ShowViewer { get; set; } = true;
+
     /// <summary>エディタ／ブラウザのタブが上限を超えたら、いちばん長く見ていないものを棚へ自動で下げるか（§24.29）。
     /// 閉じるのではなく棚に残すので、7 日のうちは元の場所（キャレット・スクロール・URL）へ戻せる。</summary>
     public bool AutoShelve { get; set; } = true;

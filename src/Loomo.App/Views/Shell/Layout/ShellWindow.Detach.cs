@@ -27,7 +27,8 @@ public partial class ShellWindow {
             CreateRestoredEditorMove,
             CreateRestoredEditorSupportMirror,
             CreateTerminalSpinoffItem,
-            CreateBrowserSpinoffItem);
+            CreateBrowserSpinoffItem,
+            CreateRestoredViewerItem);
     }
 
     private DetachedItem CreateRestoredEditorMove(DetachedItemSnapshot snapshot) {
@@ -56,7 +57,9 @@ public partial class ShellWindow {
     }
     private void OnSidebarTabDetachRequested(object? sender, TabEntryViewModel tab) {
         DetachedItem? item = tab.Kind switch {
-            TabEntryKind.Editor => TryCreateEditorMirrorItem(tab.Id), TabEntryKind.Terminal => CreateTerminalSpinoffItem(_terminalTabs.FirstOrDefault(t => t.Id == tab.Id)), TabEntryKind.Browser => CreateBrowserSpinoffItem(_browserTabs.FirstOrDefault(t => t.Id == tab.Id)), _ => null
+            TabEntryKind.Editor => TryCreateEditorMirrorItem(tab.Id), TabEntryKind.Terminal => CreateTerminalSpinoffItem(_terminalTabs.FirstOrDefault(t => t.Id == tab.Id)), TabEntryKind.Browser => CreateBrowserSpinoffItem(_browserTabs.FirstOrDefault(t => t.Id == tab.Id)),
+            TabEntryKind.Viewer => RealizedViewerPane()?.Take(tab.Id) is { } viewer ? CreateViewerDetachedItem(viewer) : null,
+            _ => null
         };
         if (item is not null)
             Detached.Detach(item);
@@ -273,6 +276,7 @@ public partial class ShellWindow {
             case TabEntryKind.Terminal: ActivateTerminalTab(tab.Id); break;
             case TabEntryKind.Editor: ActivateEditorTab(tab.Id); break;
             case TabEntryKind.Browser: ActivateBrowserTab(tab.Id); break;
+            case TabEntryKind.Viewer: ActivateViewerTab(tab.Id); break;
         }
     }
     // ===== 切り離しウィンドウ → メインの帯（戻す） =====

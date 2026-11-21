@@ -206,7 +206,7 @@ public sealed class ViewerRoomState
         }
     }
 
-    /// <summary>開いているViewer（タブの並び順）と、前に出ているViewer。</summary>
+    /// <summary>開いているViewer（タブの並び順）と、前に出ているViewer。パスから開いたタブは <see cref="ViewerPath.KeyOf"/> の形。</summary>
     public (IReadOnlyList<string> Open, string? Active) OpenViewers
     {
         get
@@ -215,7 +215,8 @@ public sealed class ViewerRoomState
             {
                 var open = (_root["open"] as JsonArray)?
                     .Select(node => node is JsonValue value && value.TryGetValue<string>(out var id) ? id : null)
-                    .Where(id => ViewerManifest.IsValidId(id)).Select(id => id!).Distinct().ToArray() ?? [];
+                    .Where(id => ViewerManifest.IsValidId(id) || ViewerPath.TryParseKey(id, out _) || ViewerPath.TryParseUrlKey(id, out _)).Select(id => id!)
+                    .Distinct(StringComparer.OrdinalIgnoreCase).ToArray() ?? [];
                 var active = _root["active"] is JsonValue a && a.TryGetValue<string>(out var text) ? text : null;
                 return (open, active);
             }

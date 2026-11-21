@@ -19,6 +19,9 @@ public partial class ShellWindow {
                 EnsurePaneVisibleOrSwapTopLeft(PaneKind.Browser);
                 ActivateBrowserTab(tab.Id);
                 break;
+            case TabEntryKind.Viewer:
+                ActivateViewerTab(tab.Id);
+                break;
         }
     }
     // TABS から開く新しいタブ。ペインを持つ側（ペイン内の＋・ショートカット）と違い、そのペインが
@@ -37,6 +40,9 @@ public partial class ShellWindow {
             case TabEntryKind.Browser:
                 EnsurePaneVisibleOrSwapTopLeft(PaneKind.Browser);
                 OnBrowserNewTab(this, new RoutedEventArgs());
+                break;
+            case TabEntryKind.Viewer:
+                ShowViewerOpenCard();   // 空のタブは作らない：パスを聞くカードを出す
                 break;
         }
     }
@@ -60,9 +66,10 @@ public partial class ShellWindow {
             selected.Kind, selected.Id, scope,
             _terminalTabs.Select(tab => tab.Id),
             _editorTabs.Select(tab => tab.Id),
-            _browserTabs.Select(tab => tab.Id));
+            _browserTabs.Select(tab => tab.Id),
+            RealizedViewerPane()?.Tabs.Select(tab => tab.TabId) ?? []);
         await WorkspaceTabCloseCoordinator.ExecuteAsync(
-            plan, CloseTerminalTabAsync, CloseEditorTab, CloseBrowserTabAsync);
+            plan, CloseTerminalTabAsync, CloseEditorTab, CloseBrowserTabAsync, CloseViewerTabAsync);
     }
     // 見出しはコマンドのたびに変わるが、端末は保存しないのでスナップショットは書かない（表示だけ更新）。
     private void UpdateTerminalTab(TerminalTab tab, string? title)

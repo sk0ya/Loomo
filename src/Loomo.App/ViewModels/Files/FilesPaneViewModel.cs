@@ -52,6 +52,7 @@ public sealed partial class FilesPaneViewModel : ObservableObject, IDisposable
             column.EntryRenamed += (_, e) => EntryRenamed?.Invoke(this, e);
             column.EntryDeleted += (_, path) => EntryDeleted?.Invoke(this, path);
             column.SetInTerminalRequested += (_, request) => SetInTerminalRequested?.Invoke(this, request);
+            column.OpenInViewerRequested += (_, path) => OpenInViewerRequested?.Invoke(this, path);
             column.CompareRequested += (_, request) => CompareRequested?.Invoke(this, request);
             column.SearchInFolderRequested += (_, path) => SearchInFolderRequested?.Invoke(this, path);
             column.StateChanged += (_, _) => StateChanged?.Invoke(this, EventArgs.Empty);
@@ -107,6 +108,8 @@ public sealed partial class FilesPaneViewModel : ObservableObject, IDisposable
     public event EventHandler<EntryRenamedEventArgs>? EntryRenamed;
     public event EventHandler<string>? EntryDeleted;
     public event EventHandler<TerminalSetRequest>? SetInTerminalRequested;
+    /// <summary>「ペインへ送る ▸ Viewer」（§44.2）。列から上がってきたものを ShellWindow へ。</summary>
+    public event EventHandler<string>? OpenInViewerRequested;
     public event EventHandler<FileCompareRequest>? CompareRequested;
     public event EventHandler<string>? SearchInFolderRequested;
     public event EventHandler? StateChanged;

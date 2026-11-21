@@ -61,11 +61,47 @@ public sealed class ViewerRoomApi(ViewerStore store, IWorkspaceService workspace
     private const int MaxOutputChars = 400_000;
 
     /// <param name="emit">途中経過（コマンドの出力の 1 行）をページへ流す。別スレッドから呼ばれる。</param>
+    /// <param name="target">人間がパスを渡して開いたタブなら、そのパス（<c>target.*</c> が読めるのはこれ 1 つだけ）。</param>
     public async Task<JsonNode?> CallAsync(
-        ViewerManifest viewer, string method, JsonObject? args, Action<string, JsonNode> emit, CancellationToken cancel)
+        ViewerManifest viewer, string method, JsonObject? args, Action<string, JsonNode> emit, CancellationToken cancel,
+        string? target = null)
     {
         switch (method)
         {
+            case "target.info":
+            {
+                Require(viewer, ViewerApi.Target);
+                var path = TargetPath(target);
+                return await Task.Run(() => TargetInfo(path), cancel).ConfigureAwait(false);
+            }
+
+            case "target.read":
+            {
+                Require(viewer, ViewerApi.Target);
+                var path = TargetPath(target);
+                if (Directory.Exists(path))
+                    throw new ViewerApiException("The target is a folder; use target.list().");
+                return await Task.Run(() => ReadText(path), cancel).ConfigureAwait(false);
+            }
+
+            case "target.bytes":
+            {
+                Require(viewer, ViewerApi.Target);
+                var path = TargetPath(target);
+                if (Directory.Exists(path))
+                    throw new ViewerApiException("The target is a folder; use target.list().");
+                return await Task.Run(() => ReadBase64(path), cancel).ConfigureAwait(false);
+            }
+
+            case "target.list":
+            {
+                Require(viewer, ViewerApi.Target);
+                var path = TargetPath(target);
+                if (!Directory.Exists(path))
+                    throw new ViewerApiException("The target is a file; use target.read() or target.bytes().");
+                return await Task.Run(() => ListFolder(path), cancel).ConfigureAwait(false);
+            }
+
             case "workspace.folders":
                 Require(viewer, ViewerApi.Workspace);
                 return new JsonArray(workspace.Folders.Select(folder => (JsonNode)new JsonObject
@@ -141,6 +177,49 @@ public sealed class ViewerRoomApi(ViewerStore store, IWorkspaceService workspace
                     return await owner.CallAsync(method[(dot + 1)..], args, cancel).ConfigureAwait(false);
                 }
                 throw new ViewerApiException($"Unknown method: {method}");
+        }
+    }
+
+    public const int MaxBytesRead = 32 * 1024 * 1024;
+
+    /// <summary>このタブに渡されたパス。ほかのパスは読ませない（ページから届くパスは受け取らない）。</summary>
+    private static string TargetPath(string? target)
+    {
+        if (string.IsNullOrEmpty(target))
+            throw new ViewerApiException("This viewer was not opened for a file (there is no target).");
+        if (!File.Exists(target) && !Directory.Exists(target))
+            throw new ViewerApiException("The target no longer exists: " + target);
+        return target;
+    }
+
+    private static JsonNode TargetInfo(string path)
+    {
+        var isDirectory = Directory.Exists(path);
+        FileSystemInfo info = isDirectory ? new DirectoryInfo(path) : new FileInfo(path);
+        return new JsonObject
+        {
+            ["path"] = info.FullName,
+            ["name"] = info.Name,
+            ["isDirectory"] = isDirectory,
+            ["size"] = isDirectory ? 0 : ((FileInfo)info).Length,
+            ["modified"] = info.LastWriteTimeUtc.ToString("o"),
+        };
+    }
+
+    private static JsonNode ReadBase64(string path)
+    {
+        try
+        {
+            if (new FileInfo(path).Length > MaxBytesRead)
+                throw new ViewerApiException($"The file is larger than {MaxBytesRead / 1024 / 1024} MB.");
+            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            using var memory = new MemoryStream();
+            stream.CopyTo(memory);
+            return JsonValue.Create(Convert.ToBase64String(memory.GetBuffer(), 0, (int)memory.Length));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            throw new ViewerApiException("The file could not be read: " + ex.Message);
         }
     }
 
@@ -378,6 +457,7 @@ public static class ViewerGuide
             workspace  folders of the workspace, the file and line in front of the user
             open       open a workspace file in the editor / an http(s) URL in the browser pane
             fs.read    read files and list folders inside the workspace (read-only; there is no write API)
+            target     read the one file (or folder) the user opened this tab for (see "Viewers for a file" below)
             git        repositories and their status
             run        run the commands declared under "commands"
             motion     Loomo's recorded "motion" of the workspace (see the motion_guide tool); read and record
@@ -402,8 +482,19 @@ public static class ViewerGuide
         loomo.run(name, { args?, stdin?, onLine? }) -> { exitCode, output, timedOut }   (onLine gets each output line live)
         loomo.state.get() / loomo.state.set(v) -> small JSON storage for this viewer (max 256 KB)
         loomo.toast(text)                      -> a notification in the room
+        loomo.target.info()                    -> { path, name, isDirectory, size, modified }   (needs "target")
+        loomo.target.read()                    -> string (UTF-8, max 2 MB)
+        loomo.target.bytes()                   -> base64 string (max 32 MB; for binary formats)
+        loomo.target.list()                    -> [{ name, path, isDirectory, size, modified }] when the target is a folder
         loomo.on(event, handler)               -> events: "activeFileChanged" { path } (needs "workspace"), "gitChanged" (needs "git")
         A rejected Promise carries a message that says what was not allowed.
+
+        ## Viewers for a file
+        The user can open any path in Loomo's Viewer pane. HTML pages, programs and the formats Loomo already previews are
+        shown directly. For any other kind of file, Loomo asks Claude Code to write a viewer for that file *kind*, with the
+        id "file-<extension>" (for example file-sqlite; file-folder for folders, file-noext without an extension). The same
+        viewer is reused for every file of that kind, so it must not hard-code one path: read the file with loomo.target.*
+        (declare "target" in "api"). It is re-rendered when the file changes on disk (the page is reloaded).
 
         ## Look
         Loomo injects CSS variables that follow the user's theme; use them so the viewer looks like part of the room:

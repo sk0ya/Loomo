@@ -245,6 +245,7 @@
                     <!-- 行全体クリックでアクティブ化（×ボタン領域は右パディングで確保） -->
                     <Button Style="{StaticResource SidebarTabButton}"
                             Padding="7,0,24,0" HorizontalContentAlignment="Stretch"
+                            ToolTip="{Binding ViewerToolTip}"
                             Foreground="{DynamicResource Fg}"
                             Command="{Binding DataContext.ActivateTabCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
                             CommandParameter="{Binding}">
@@ -585,6 +586,15 @@
                                   CommandParameter="{x:Static vm:TabEntryKind.Terminal}">
                             <MenuItem.Icon>
                                 <Image Source="{Binding Kinds[2].Icon}" Width="16" Height="16" />
+                            </MenuItem.Icon>
+                        </MenuItem>
+                        <!-- Viewer（§44.2）：パスを渡すと Loomo が見せ方を決める。押すと Viewer ペインに入力のカードが出る。 -->
+                        <MenuItem Header="新しい Viewer…（パスを指定して開く）"
+                                  Command="{Binding NewTabCommand}"
+                                  CommandParameter="{x:Static vm:TabEntryKind.Viewer}"
+                                  AutomationProperties.AutomationId="TabsNewViewerItem">
+                            <MenuItem.Icon>
+                                <Image Source="{Binding Kinds[3].Icon}" Width="16" Height="16" />
                             </MenuItem.Icon>
                         </MenuItem>
                     </ContextMenu>

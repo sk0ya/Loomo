@@ -34,6 +34,9 @@ internal static class DetachedItemStateCoordinator
             case DetachedEditorSupportView preview:
                 snapshot.FilePath = preview.SourceFilePath;
                 break;
+            case ViewerFrame viewer when viewer.Tab is { } tab:
+                snapshot.Url = tab.Key;   // 置き場の Viewer は id、パスから開いたものは path:<フルパス>
+                break;
             default:
                 return null;
         }
@@ -47,7 +50,8 @@ internal static class DetachedItemStateCoordinator
         Func<DetachedItemSnapshot, DetachedItem?> createEditorMove,
         Func<string, DetachedItem?> createEditorSupportMirror,
         Func<string?, DetachedItem> createTerminalSpinoff,
-        Func<string?, DetachedItem> createBrowserSpinoff)
+        Func<string?, DetachedItem> createBrowserSpinoff,
+        Func<string?, DetachedItem?>? createViewer = null)
     {
         if (!Enum.TryParse<DetachKind>(snapshot.Kind, out var kind))
             return null;
@@ -67,6 +71,9 @@ internal static class DetachedItemStateCoordinator
 
         if (kind == DetachKind.BrowserSpinoff)
             return createBrowserSpinoff(snapshot.Url);
+
+        if (kind == DetachKind.ViewerMove)
+            return createViewer?.Invoke(snapshot.Url);
 
         return null;
     }

@@ -1,3 +1,4 @@
+using System.Windows.Automation;
 using System.Text.Json.Nodes;
 using sk0ya.Loomo.Core.Viewers;
 using sk0ya.Loomo.Services.Viewers;
@@ -5,32 +6,36 @@ using sk0ya.Loomo.Services.Viewers;
 namespace sk0ya.Loomo.App.Views;
 
 /// <summary>
-/// 「Viewer」ペインの中身（§44.2）。Viewer 1 つ＝タブ 1 つ。上にタブの並びと「＋」（置いてあるViewerの一覧・Viewerのフォルダー・
-/// 生やす頼みごとの下書き）、下に前に出ているViewerのページ。ページを出せないとき（まだ許していない・定義が読めない・
-/// Viewerが 1 つも無い）は、同じ場所にカードを出す。
-/// <para>読み込むのは<b>前に出ているViewerだけ</b>——復元したタブは選ばれるまでページを作らない。</para>
+/// 「Viewer」ペインの中身（§44.2）。タブ 1 つに Viewer 1 つ——置き場の Viewer か、<b>パスを渡して開いたもの</b>
+/// （HTML の頁・EditorSupport の表示・プログラムの窓・Claude Code が作った Viewer）。上にタブの並びと「＋」、下に前に出ている
+/// タブの中身。中身を出せないとき（まだ許していない・作っている途中・起動していない…）は、同じ場所にカードを出す。
+/// <para>読み込むのは<b>前に出ているタブだけ</b>——復元したタブは選ばれるまで中身を作らない。</para>
 /// XAML を持たない（部品が少なく、色と字の大きさは部屋のトークンをそのまま引く）。
 /// </summary>
 internal sealed class ViewerPaneView : UserControl
 {
-    private readonly StackPanel _tabs = new() { Orientation = Orientation.Horizontal };
-    private readonly Grid _webHost = new();
+    private readonly StackPanel _strip = new() { Orientation = Orientation.Horizontal };
+    private readonly Grid _contentHost = new();
     private readonly Border _card = new() { Visibility = Visibility.Collapsed };
-    private readonly List<ViewerTabHost> _viewers = [];
-    private ViewerTabHost? _active;
-    private ViewerStore? _store;
-    private ViewerRoomState? _state;
-    private ViewerRoomApi? _api;
-    private IEditorSupportViewFactory? _factory;
-    private Func<string, Task>? _openUrl;
+    private readonly List<IViewerTab> _tabs = [];
+    private readonly DispatcherTimer _hintTimer;
+    private IViewerTab? _active;
+    private ViewerTabFactory? _factory;
+    private bool _openCardShown;
+    private TextBox? _pathBox;
+    private TextBlock? _hint;
 
     public ViewerPaneView()
     {
         Focusable = true;
+        AllowDrop = true;
         SetResourceReference(BackgroundProperty, "Panel");
+        AutomationProperties.SetAutomationId(this, "ViewerPane");
 
-        var add = new Button { Content = "＋", ToolTip = "Viewerを開く・Viewerのフォルダー・Viewerを生やす", Width = 28, Padding = new Thickness(0) };
+        var add = new Button { Content = "＋", ToolTip = "パスを指定して開く・置いてある Viewer・Viewer のフォルダー", Width = 28, Padding = new Thickness(0) };
         add.SetResourceReference(StyleProperty, "PaneHeaderGhostButton");
+        AutomationProperties.SetAutomationId(add, "ViewerAddButton");
+        AutomationProperties.SetName(add, "Viewer を開く");
         add.Click += (_, _) => OpenMenu(add);
         DockPanel.SetDock(add, Dock.Right);
 
@@ -38,7 +43,7 @@ internal sealed class ViewerPaneView : UserControl
         strip.Children.Add(add);
         strip.Children.Add(new ScrollViewer
         {
-            Content = _tabs,
+            Content = _strip,
             HorizontalScrollBarVisibility = ScrollBarVisibility.Hidden,
             VerticalScrollBarVisibility = ScrollBarVisibility.Disabled,
         });
@@ -47,7 +52,7 @@ internal sealed class ViewerPaneView : UserControl
         DockPanel.SetDock(stripBorder, Dock.Top);
 
         var body = new Grid();
-        body.Children.Add(_webHost);
+        body.Children.Add(_contentHost);
         body.Children.Add(_card);
         _card.SetResourceReference(Border.BackgroundProperty, "Panel");
 
@@ -55,40 +60,56 @@ internal sealed class ViewerPaneView : UserControl
         root.Children.Add(stripBorder);
         root.Children.Add(body);
         Content = root;
+
+        _hintTimer = new DispatcherTimer(DispatcherPriority.Background) { Interval = TimeSpan.FromMilliseconds(250) };
+        _hintTimer.Tick += (_, _) =>
+        {
+            _hintTimer.Stop();
+            _ = UpdateHintAsync();
+        };
+        DragOver += OnDragOver;
+        Drop += OnDrop;
     }
 
-    /// <summary>「Viewerを生やす」を押した（頼みごとの下書きを渡すのは部屋の仕事）。</summary>
+    /// <summary>「Viewer を生やす」を押した（頼みごとの下書きを渡すのは部屋の仕事）。</summary>
     public event EventHandler? GrowRequested;
 
-    public IReadOnlyList<string> OpenIds => _viewers.Select(viewer => viewer.Id).ToArray();
+    /// <summary>タブの並び・題・前に出ているタブが変わった（TABS へ写す）。</summary>
+    public event EventHandler? TabsChanged;
 
-    public void Configure(ViewerStore store, ViewerRoomState state, ViewerRoomApi api,
-        IEditorSupportViewFactory factory, Func<string, Task> openUrl)
+    /// <summary>タブの右クリック「別ウィンドウで開く」。</summary>
+    public event EventHandler<IViewerTab>? DetachRequested;
+
+    public IReadOnlyList<IViewerTab> Tabs => _tabs;
+    public IViewerTab? ActiveTab => _active;
+
+    public void Configure(ViewerTabFactory factory)
     {
-        _store = store;
-        _state = state;
-        _api = api;
         _factory = factory;
-        _openUrl = openUrl;
-        // 前に開いていたViewerを戻す（数えない・前に出ていた 1 つだけ読み込む）。
-        var (open, active) = state.OpenViewers;
-        foreach (var id in open)
-            _ = AddTab(id).PeekAsync();
-        Activate(_viewers.FirstOrDefault(viewer => viewer.Id == active) ?? _viewers.FirstOrDefault(), persist: false);
-        RenderTabs();
-        RenderCard();
+        // 前に開いていたタブを戻す（数えない・前に出ていた 1 つだけ読み込む・プログラムは起動しない）。
+        var (open, active) = factory.State.OpenViewers;
+        foreach (var key in open)
+        {
+            if (factory.ForKey(key, _contentHost) is { } tab)
+            {
+                Attach(tab);
+                _ = tab.PeekAsync();
+            }
+        }
+        Activate(_tabs.FirstOrDefault(tab => tab.Key == active) ?? _tabs.FirstOrDefault(), persist: false);
     }
 
-    /// <summary>Viewerをタブに出す（すでに出ていればそれを前へ）。定義が読めなくてもタブは出す——理由がカードに出る。</summary>
+    /// <summary>置き場の Viewer をタブに出す（すでに出ていればそれを前へ）。定義が読めなくてもタブは出す——理由がカードに出る。</summary>
     public async Task<ViewerTabHost?> ShowViewerAsync(string id)
     {
-        if (_store is null || _state is null || !ViewerManifest.IsValidId(id))
+        if (_factory is null || !ViewerManifest.IsValidId(id))
             return null;
-        var viewer = _viewers.FirstOrDefault(existing => existing.Id == id);
+        var viewer = _tabs.OfType<ViewerTabHost>().FirstOrDefault(existing => existing.Id == id && existing.TargetPath is null);
         if (viewer is null)
         {
-            viewer = AddTab(id);
-            _state.RecordOpened(id, DateTime.Today);
+            viewer = _factory.ForViewer(id, _contentHost);
+            Attach(viewer);
+            _factory.State.RecordOpened(id, DateTime.Today);
         }
         // 先に定義を読み直してから前へ出す（前へ出したときの読み込みと二重に走らせない）。
         await viewer.RefreshAsync();
@@ -96,78 +117,234 @@ internal sealed class ViewerPaneView : UserControl
         return viewer;
     }
 
-    /// <summary>部屋の出来事を、出ているViewerへ流す。</summary>
+    /// <summary>パスを開く（すでに開いていればそれを前へ）。見せ方は Loomo が決める。開けなければ null と通知。</summary>
+    public IViewerTab? OpenPath(string input)
+    {
+        if (_factory is null)
+            return null;
+        if (ViewerTargets.WebUrl(input) is { } url)
+        {
+            var web = _tabs.OfType<ViewerWebTab>().FirstOrDefault(tab => tab.Url == url) as IViewerTab ?? _factory.ForUrl(url, _contentHost);
+            if (!_tabs.Contains(web))
+                Attach(web);
+            HideOpenCard();
+            Activate(web, persist: true);
+            return web;
+        }
+        if (ViewerTargets.Normalize(input) is not { } path)
+        {
+            ToastService.Error("パスとして読めません：" + input);
+            return null;
+        }
+        if (_tabs.FirstOrDefault(tab => string.Equals(tab.TargetPath, path, StringComparison.OrdinalIgnoreCase)) is { } existing)
+        {
+            HideOpenCard();
+            Activate(existing, persist: true);
+            return existing;
+        }
+        if (!File.Exists(path) && !Directory.Exists(path))
+        {
+            ToastService.Error("見つかりません：" + path);
+            return null;
+        }
+        var tab = _factory.ForPath(path, _contentHost, fresh: true);
+        Attach(tab);
+        HideOpenCard();
+        Activate(tab, persist: true);
+        return tab;
+    }
+
+    /// <summary>「パスを指定して開く」のカードを出す（TABS の「＋」・パレット・ペインの「＋」から）。</summary>
+    public void ShowOpenCard(string? initial = null)
+    {
+        _openCardShown = true;
+        RenderCard();
+        if (_pathBox is not null)
+        {
+            if (initial is not null)
+                _pathBox.Text = initial;
+            Dispatcher.BeginInvoke(DispatcherPriority.Input, () =>
+            {
+                _pathBox?.Focus();
+                _pathBox?.SelectAll();
+            });
+        }
+    }
+
+    public void ActivateTab(Guid tabId)
+    {
+        if (_tabs.FirstOrDefault(tab => tab.TabId == tabId) is { } tab)
+            Activate(tab, persist: true);
+    }
+
+    public void CloseTab(Guid tabId)
+    {
+        if (_tabs.FirstOrDefault(tab => tab.TabId == tabId) is { } tab)
+            Close(tab);
+    }
+
+    /// <summary>タブを並びから外して渡す（捨てない）。切り離した窓へ移すとき。</summary>
+    public IViewerTab? Take(Guid tabId)
+    {
+        if (_tabs.FirstOrDefault(tab => tab.TabId == tabId) is not { } tab)
+            return null;
+        Remove(tab, dispose: false);
+        return tab;
+    }
+
+    /// <summary>よそ（切り離した窓）から戻ってきたタブを並びに入れて前へ。</summary>
+    public void Adopt(IViewerTab tab)
+    {
+        tab.Rehost(_contentHost);
+        Attach(tab);
+        Activate(tab, persist: true);
+    }
+
+    /// <summary>部屋の出来事を、出ている Viewer へ流す。</summary>
     public void Emit(string name, JsonNode? data, string requiredApi)
     {
-        foreach (var viewer in _viewers)
+        foreach (var viewer in _tabs.OfType<ViewerTabHost>())
             viewer.Emit(name, data?.DeepClone(), requiredApi);
     }
 
     public void FocusActive()
     {
-        if (_active is { Status: ViewerTabStatus.Running } viewer)
-            viewer.Focus();
+        if (_openCardShown && _pathBox is not null)
+            _pathBox.Focus();
+        else if (_active is { Status: ViewerTabStatus.Running } tab)
+            tab.Focus();
         else
             Focus();
     }
 
-    private ViewerTabHost AddTab(string id)
+    private void Attach(IViewerTab tab)
     {
-        var viewer = new ViewerTabHost(id, _store!, _state!, _api!, _factory!, _webHost, Dispatcher, _openUrl!);
-        viewer.Changed += (_, _) =>
-        {
-            RenderTabs();
-            if (ReferenceEquals(viewer, _active))
-                RenderCard();
-        };
-        _viewers.Add(viewer);
-        return viewer;
+        tab.Changed += OnTabChanged;
+        tab.CloseRequested += OnTabCloseRequested;
+        if (tab is ViewerGeneratingTab generating)
+            generating.Completed += OnGenerationCompleted;
+        if (tab is ViewerTabBase based)
+            based.GenerateRequested += OnGenerateRequested;
+        _tabs.Add(tab);
     }
 
-    private void Activate(ViewerTabHost? viewer, bool persist)
+    private void Detach(IViewerTab tab)
     {
-        _active = viewer;
-        foreach (var other in _viewers)
-            other.SetVisible(ReferenceEquals(other, viewer));
-        if (viewer is { Status: ViewerTabStatus.Pending })
-            _ = viewer.RefreshAsync();
+        tab.Changed -= OnTabChanged;
+        tab.CloseRequested -= OnTabCloseRequested;
+        if (tab is ViewerGeneratingTab generating)
+            generating.Completed -= OnGenerationCompleted;
+        if (tab is ViewerTabBase based)
+            based.GenerateRequested -= OnGenerateRequested;
+    }
+
+    /// <summary>「Claude Code に見せ方を作ってもらう」：同じ場所を、作っている途中のタブに差し替える。</summary>
+    private void OnGenerateRequested(object? sender, EventArgs e)
+    {
+        if (sender is IViewerTab { TargetPath: { } path } tab && _factory is not null)
+            Replace(tab, _factory.Generate(path, _contentHost));
+    }
+
+    private void OnTabChanged(object? sender, EventArgs e)
+    {
+        Persist();   // URL のタブは、見ている頁が変わると鍵も変わる
+        RenderTabs();
+        if (ReferenceEquals(sender, _active))
+            RenderCard();
+        TabsChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void OnTabCloseRequested(object? sender, EventArgs e)
+    {
+        if (sender is IViewerTab tab)
+            Close(tab);
+    }
+
+    /// <summary>作り終えた（またはやめた作り直し）：同じ場所を、その Viewer でそのファイルを開いたタブに差し替える。</summary>
+    private void OnGenerationCompleted(object? sender, EventArgs e)
+    {
+        if (sender is not ViewerGeneratingTab generating || _factory is null || generating.TargetPath is not { } path)
+            return;
+        var replacement = _factory.ForViewer(generating.ViewerId, _contentHost, path);
+        Replace(generating, replacement);
+        _ = replacement.RefreshAsync();
+    }
+
+    private void Replace(IViewerTab old, IViewerTab replacement)
+    {
+        var index = _tabs.IndexOf(old);
+        if (index < 0)
+            return;
+        var wasActive = ReferenceEquals(old, _active);
+        Detach(old);
+        old.Dispose();
+        _tabs.RemoveAt(index);
+        Attach(replacement);
+        _tabs.Remove(replacement);
+        _tabs.Insert(index, replacement);
+        if (wasActive)
+            Activate(replacement, persist: true);
+        else
+        {
+            replacement.SetVisible(false);
+            RenderTabs();
+            Persist();
+        }
+    }
+
+    private void Activate(IViewerTab? tab, bool persist)
+    {
+        _active = tab;
+        foreach (var other in _tabs)
+            other.SetVisible(ReferenceEquals(other, tab));
+        if (tab is { Status: ViewerTabStatus.Pending })
+            _ = tab.RefreshAsync();
         RenderTabs();
         RenderCard();
         if (persist)
             Persist();
+        TabsChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    private void Close(ViewerTabHost viewer)
+    private void Close(IViewerTab tab) => Remove(tab, dispose: true);
+
+    private void Remove(IViewerTab tab, bool dispose)
     {
-        var index = _viewers.IndexOf(viewer);
+        var index = _tabs.IndexOf(tab);
         if (index < 0)
             return;
-        _viewers.RemoveAt(index);
-        viewer.Dispose();
-        if (ReferenceEquals(viewer, _active))
-            Activate(_viewers.Count == 0 ? null : _viewers[Math.Min(index, _viewers.Count - 1)], persist: false);
+        _tabs.RemoveAt(index);
+        Detach(tab);
+        if (dispose)
+            tab.Dispose();
+        else
+            tab.SetVisible(false);
+        if (ReferenceEquals(tab, _active))
+            Activate(_tabs.Count == 0 ? null : _tabs[Math.Min(index, _tabs.Count - 1)], persist: false);
         else
             RenderTabs();
         Persist();
+        TabsChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    private void Persist() => _state?.SetOpenViewers(_viewers.Select(viewer => viewer.Id), _active?.Id);
+    private void Persist() => _factory?.State.SetOpenViewers(_tabs.Select(tab => tab.Key), _active?.Key);
 
     // ── 見え方 ───────────────────────────────────────────────
 
     private void RenderTabs()
     {
-        _tabs.Children.Clear();
-        foreach (var viewer in _viewers)
+        _strip.Children.Clear();
+        foreach (var tab in _tabs)
         {
-            var isActive = ReferenceEquals(viewer, _active);
+            var isActive = ReferenceEquals(tab, _active);
             var title = new TextBlock
             {
-                Text = viewer.Status switch
+                Text = tab.Status switch
                 {
-                    ViewerTabStatus.Broken => "⚠ " + viewer.Title,
-                    ViewerTabStatus.NeedsApproval => "？ " + viewer.Title,
-                    _ => viewer.Title,
+                    ViewerTabStatus.Broken => "⚠ " + tab.Title,
+                    ViewerTabStatus.NeedsApproval => "？ " + tab.Title,
+                    ViewerTabStatus.Generating => "… " + tab.Title,
+                    _ => tab.Title,
                 },
                 VerticalAlignment = VerticalAlignment.Center,
                 Margin = new Thickness(10, 0, 4, 0),
@@ -177,43 +354,58 @@ internal sealed class ViewerPaneView : UserControl
             title.SetResourceReference(TextBlock.FontSizeProperty, "Fs12");
             title.SetResourceReference(TextBlock.ForegroundProperty, isActive ? "Fg" : "FgDim");
 
-            var close = new Button { Content = "×", ToolTip = "このViewerを閉じる（Viewerそのものは消えません）", Margin = new Thickness(0, 0, 4, 0) };
+            var close = new Button { Content = "×", ToolTip = "このタブを閉じる", Margin = new Thickness(0, 0, 4, 0) };
             close.SetResourceReference(StyleProperty, "PaneHeaderTabClose");
+            AutomationProperties.SetName(close, tab.Title + " を閉じる");
             close.Click += (_, e) =>
             {
                 e.Handled = true;
-                Close(viewer);
+                Close(tab);
             };
 
             var row = new StackPanel { Orientation = Orientation.Horizontal };
             row.Children.Add(title);
             row.Children.Add(close);
-            var tab = new Border
+            var border = new Border
             {
                 Child = row,
                 Background = Brushes.Transparent,
                 BorderThickness = new Thickness(0, 0, 0, 2),
                 Cursor = Cursors.Hand,
-                ToolTip = viewer.Manifest?.Description is { Length: > 0 } description ? description : viewer.Id,
+                ToolTip = tab.ToolTip,
             };
             if (isActive)
-                tab.SetResourceReference(Border.BorderBrushProperty, "Accent");
+                border.SetResourceReference(Border.BorderBrushProperty, "Accent");
             else
-                tab.BorderBrush = Brushes.Transparent;
-            tab.MouseLeftButtonDown += (_, _) => Activate(viewer, persist: true);
-            _tabs.Children.Add(tab);
+                border.BorderBrush = Brushes.Transparent;
+            border.MouseLeftButtonDown += (_, _) => Activate(tab, persist: true);
+            border.MouseDown += (_, e) =>
+            {
+                if (e.ChangedButton == MouseButton.Middle)
+                {
+                    e.Handled = true;
+                    Close(tab);
+                }
+            };
+            border.MouseRightButtonUp += (_, e) =>
+            {
+                e.Handled = true;
+                OpenTabMenu(border, tab);
+            };
+            _strip.Children.Add(border);
         }
     }
 
     private void RenderCard()
     {
-        UIElement? content = _active switch
+        UIElement? content = _openCardShown ? OpenPathCard()
+            : _active is null ? EmptyCard()
+            : _active.BuildCard();
+        if (!_openCardShown)
         {
-            null => EmptyCard(),
-            { Status: ViewerTabStatus.NeedsApproval, Manifest: { } manifest } viewer => ApprovalCard(viewer, manifest),
-            { Status: ViewerTabStatus.Broken } viewer => BrokenCard(viewer),
-            _ => null,
-        };
+            _pathBox = null;
+            _hint = null;
+        }
         _card.Child = content is null ? null : new ScrollViewer
         {
             Content = content,
@@ -225,128 +417,211 @@ internal sealed class ViewerPaneView : UserControl
 
     private UIElement EmptyCard()
     {
-        var panel = CardPanel();
-        panel.Children.Add(Line("Viewerはまだ出ていません", "Fs14", "Fg", bold: true));
-        panel.Children.Add(Line(
-            "Viewerは、頼むと生える小さな道具です。ターミナルの Claude Code に「〜を一覧するViewerがほしい」のように頼むと、"
-            + "Claude が小さな HTML を書いて、ここに出します。Loomo の再ビルドは要りません。", "Fs12", "FgDim"));
-        var grow = new Button { Content = "Viewerを生やす頼みごとの下書きをコピー", HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 10, 0, 0) };
-        grow.SetResourceReference(StyleProperty, "SecondaryButton");
-        grow.Click += (_, _) => GrowRequested?.Invoke(this, EventArgs.Empty);
-        panel.Children.Add(grow);
-        if (_store?.List() is { Count: > 0 })
-            panel.Children.Add(Line("置いてあるViewerは、右上の「＋」から開けます。", "Fs12", "FgDim"));
+        var panel = ViewerCards.Panel();
+        panel.Children.Add(ViewerCards.Line("Viewer はまだ開いていません", "Fs14", "Fg", bold: true));
+        panel.Children.Add(ViewerCards.Line(
+            "ファイル・フォルダーのパスや URL を渡すと、Loomo が見せ方を決めてここに出します。HTML は頁のまま、PDF・画像・Markdown などは "
+            + "EditorSupport と同じ表示、.exe は起動した窓をこのタブに重ねます、URL はブラウザと同じ中身です。見せ方の決まっていないファイルは "
+            + "エディタに読むだけで出し、頼めば Claude Code が見せ方を作ります（同じ種類のファイルは次からそれで開きます）。",
+            "Fs12", "FgDim"));
+        panel.Children.Add(ViewerCards.Line("ファイルをここへドロップしても開けます。", "Fs12", "FgDim", top: 6));
+        panel.Children.Add(ViewerCards.Buttons(
+            ViewerCards.Button("パスを指定して開く…", "FlatButton", () => ShowOpenCard(), "ViewerOpenPathButton"),
+            ViewerCards.Button("Viewer を生やす頼みごとの下書きをコピー", "SecondaryButton", () => GrowRequested?.Invoke(this, EventArgs.Empty))));
         return panel;
     }
 
-    private UIElement ApprovalCard(ViewerTabHost viewer, ViewerManifest manifest)
+    /// <summary>「パスを指定して開く」：入力欄・参照・どう出すかの 1 行・開く／やめる。Enter で開く、Esc でやめる。</summary>
+    private UIElement OpenPathCard()
     {
-        var panel = CardPanel();
-        panel.Children.Add(Line($"Viewer「{manifest.Title}」を開きますか？", "Fs14", "Fg", bold: true));
-        if (manifest.Description.Length > 0)
-            panel.Children.Add(Line(manifest.Description, "Fs12", "FgDim"));
-        panel.Children.Add(Line("このViewerが部屋でできること", "Fs11", "FgDim", bold: true, top: 12));
-        if (manifest.Api.Count == 0)
-            panel.Children.Add(Line("・何もしない（自分のページを出すだけ）", "Fs12", "Fg"));
-        foreach (var api in manifest.Api)
-            panel.Children.Add(Line("・" + ViewerApi.Describe(api), "Fs12", "Fg"));
-        if (manifest.Commands.Count > 0)
+        var panel = ViewerCards.Panel();
+        panel.Children.Add(ViewerCards.Line("パスを指定して Viewer で開く", "Fs14", "Fg", bold: true));
+        panel.Children.Add(ViewerCards.Line("ファイル・フォルダーのパスか URL（ドロップでも渡せます）", "Fs11", "FgDim", top: 8));
+        var box = _pathBox ?? new TextBox { MinWidth = 360, Margin = new Thickness(0, 4, 0, 0) };
+        if (box.Parent is Panel oldParent)
+            oldParent.Children.Remove(box);
+        AutomationProperties.SetAutomationId(box, "ViewerPathBox");
+        AutomationProperties.SetName(box, "開くパス");
+        if (!ReferenceEquals(box, _pathBox))
         {
-            panel.Children.Add(Line("回せるコマンド（この行のとおりにだけ走ります）", "Fs11", "FgDim", bold: true, top: 12));
-            foreach (var command in manifest.Commands)
+            box.TextChanged += (_, _) =>
             {
-                panel.Children.Add(Line(command.Name + (command.Cwd == ViewerCommand.CwdViewer ? "（Viewerのフォルダーで）" : "（ワークスペースで）"),
-                    "Fs11", "FgDim", top: 6));
-                var line = Line(command.Command, "Fs12", "Fg");
-                line.FontFamily = new FontFamily("Cascadia Mono, Consolas");
-                panel.Children.Add(line);
-            }
+                _hintTimer.Stop();
+                _hintTimer.Start();
+            };
+            box.KeyDown += (_, e) =>
+            {
+                if (e.Key == Key.Enter)
+                {
+                    e.Handled = true;
+                    OpenPath(box.Text);
+                }
+                else if (e.Key == Key.Escape)
+                {
+                    e.Handled = true;
+                    HideOpenCard();
+                }
+            };
         }
-        panel.Children.Add(Line("口やコマンドが変わったら、もう一度ここで聞きます。ページの書き直しでは聞きません。", "Fs11", "FgDim", top: 12));
-
-        var allow = new Button { Content = "許して開く", Margin = new Thickness(0, 0, 8, 0) };
-        allow.SetResourceReference(StyleProperty, "FlatButton");
-        allow.Click += (_, _) => _ = viewer.ApproveAsync();
-        var dismiss = new Button { Content = "開かない" };
-        dismiss.SetResourceReference(StyleProperty, "SecondaryButton");
-        dismiss.Click += (_, _) => Close(viewer);
-        var buttons = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 12, 0, 0) };
-        buttons.Children.Add(allow);
-        buttons.Children.Add(dismiss);
-        panel.Children.Add(buttons);
+        _pathBox = box;
+        panel.Children.Add(box);
+        var hint = _hint = ViewerCards.Line(" ", "Fs12", "FgDim", top: 6);
+        AutomationProperties.SetAutomationId(hint, "ViewerPathHint");
+        panel.Children.Add(hint);
+        panel.Children.Add(ViewerCards.Buttons(
+            ViewerCards.Button("開く", "FlatButton", () => OpenPath(box.Text), "ViewerOpenButton"),
+            ViewerCards.Button("ファイルを選ぶ…", "SecondaryButton", BrowseFile),
+            ViewerCards.Button("フォルダーを選ぶ…", "SecondaryButton", BrowseFolder),
+            ViewerCards.Button("やめる", "SecondaryButton", HideOpenCard)));
+        _ = UpdateHintAsync();
         return panel;
     }
 
-    private UIElement BrokenCard(ViewerTabHost viewer)
+    private void HideOpenCard()
     {
-        var panel = CardPanel();
-        panel.Children.Add(Line($"Viewer「{viewer.Id}」を読めません", "Fs14", "Fg", bold: true));
-        var reason = Line(viewer.Error ?? "", "Fs12", "Fg");
-        reason.FontFamily = new FontFamily("Cascadia Mono, Consolas");
-        panel.Children.Add(reason);
-        panel.Children.Add(Line("Viewerのフォルダーの中身が直ると、ここは自動で読み直します。", "Fs11", "FgDim", top: 10));
-        return panel;
+        if (!_openCardShown)
+            return;
+        _openCardShown = false;
+        RenderCard();
     }
 
-    private static StackPanel CardPanel() => new() { Margin = new Thickness(16, 14, 16, 14), MaxWidth = 640, HorizontalAlignment = HorizontalAlignment.Left };
-
-    private static TextBlock Line(string text, string size, string color, bool bold = false, double top = 2)
+    private async Task UpdateHintAsync()
     {
-        var block = new TextBlock
+        if (_factory is not { } factory || _pathBox is not { } box || _hint is not { } hint)
+            return;
+        var input = box.Text;
+        if (string.IsNullOrWhiteSpace(input))
         {
-            Text = text,
-            TextWrapping = TextWrapping.Wrap,
-            Margin = new Thickness(0, top, 0, 0),
-            FontWeight = bold ? FontWeights.SemiBold : FontWeights.Normal,
-        };
-        block.SetResourceReference(TextBlock.FontSizeProperty, size);
-        block.SetResourceReference(TextBlock.ForegroundProperty, color);
-        return block;
+            hint.Text = "Loomo が中身に合わせて見せ方を決めます";
+            return;
+        }
+        if ((ViewerTargets.WebUrl(input) ?? ViewerTargets.Normalize(input)) is not { } path)
+        {
+            hint.Text = "フルパスか URL で入れてください（例：C:\\work\\report.pdf、https://example.com）";
+            return;
+        }
+        var text = await Task.Run(() => factory.Describe(factory.Classify(path)));
+        if (ReferenceEquals(_hint, hint) && box.Text == input)
+            hint.Text = text;
     }
 
-    /// <summary>「＋」のメニュー。置いてあるViewerを全部（枯れたものは下へ分ける）。メニューは押したときに組む。</summary>
+    private void BrowseFile()
+    {
+        var dialog = new Microsoft.Win32.OpenFileDialog { Title = "Viewer で開くファイル", CheckFileExists = true };
+        if (dialog.ShowDialog(Window.GetWindow(this)) == true)
+            OpenPath(dialog.FileName);
+    }
+
+    private void BrowseFolder()
+    {
+        var dialog = new Microsoft.Win32.OpenFolderDialog { Title = "Viewer で開くフォルダー" };
+        if (dialog.ShowDialog(Window.GetWindow(this)) == true)
+            OpenPath(dialog.FolderName);
+    }
+
+    private void OnDragOver(object sender, DragEventArgs e)
+    {
+        e.Effects = e.Data.GetDataPresent(DataFormats.FileDrop) ? DragDropEffects.Link : DragDropEffects.None;
+        e.Handled = true;
+    }
+
+    private void OnDrop(object sender, DragEventArgs e)
+    {
+        if (e.Data.GetData(DataFormats.FileDrop) is not string[] paths)
+            return;
+        e.Handled = true;
+        foreach (var path in paths.Take(8))
+            OpenPath(path);
+    }
+
+    /// <summary>タブの右クリック。</summary>
+    private void OpenTabMenu(FrameworkElement anchor, IViewerTab tab)
+    {
+        var menu = new ContextMenu { PlacementTarget = anchor, Placement = PlacementMode.Bottom };
+        Item(menu, "閉じる", () => Close(tab));
+        Item(menu, "他のタブを閉じる", () =>
+        {
+            foreach (var other in _tabs.Where(other => !ReferenceEquals(other, tab)).ToArray())
+                Close(other);
+        }, enabled: _tabs.Count > 1);
+        menu.Items.Add(new Separator());
+        Item(menu, "別ウィンドウで開く", () => DetachRequested?.Invoke(this, tab));
+        if (tab is ViewerTabHost { CanRemake: true } host)
+            Item(menu, "Viewer を作り直す…", () => Remake(host));
+        if (tab is ViewerTabBase { CanGenerate: true } based)
+            Item(menu, "Claude Code に見せ方を作ってもらう", based.RequestGenerate);
+        if (tab is ViewerWebTab web)
+        {
+            menu.Items.Add(new Separator());
+            Item(menu, "URL をコピー", () => ClipboardText.Set(web.Url));
+        }
+        if (tab.TargetPath is { } path)
+        {
+            menu.Items.Add(new Separator());
+            Item(menu, "パスをコピー", () => ClipboardText.Set(path));
+            Item(menu, "エクスプローラーで表示", () => FileExplorerLauncher.RevealNearestExisting(path));
+        }
+        menu.IsOpen = true;
+    }
+
+    private static void Item(ContextMenu menu, string header, Action click, bool enabled = true)
+    {
+        var item = new MenuItem { Header = header, IsEnabled = enabled };
+        item.Click += (_, _) => click();
+        menu.Items.Add(item);
+    }
+
+    /// <summary>「作り直す」：同じ場所に、一言を聞くカードのタブを入れる（やめれば元の Viewer に戻る）。</summary>
+    private void Remake(ViewerTabHost host)
+    {
+        if (_factory is null)
+            return;
+        var remake = _factory.Remake(host, _contentHost);
+        Replace(host, remake);
+    }
+
+    /// <summary>「＋」のメニュー。パスを開く・置いてある Viewer（枯れたものは下へ分ける）・頼みごと・フォルダー。押したときに組む。</summary>
     private void OpenMenu(Button anchor)
     {
-        if (_store is null || _state is null)
+        if (_factory is not { } factory)
             return;
         var menu = new ContextMenu { PlacementTarget = anchor, Placement = PlacementMode.Bottom };
+        Item(menu, "パスを指定して開く…", () => ShowOpenCard());
+        menu.Items.Add(new Separator());
         var today = DateTime.Today;
-        var viewers = _store.List();
+        // ファイルごとに作った Viewer（file-…）は開くファイルが要るので、ここには並べない。
+        var viewers = factory.Store.List().Where(entry => !ViewerPath.IsGenerated(entry.Id)).ToList();
         var withered = new List<ViewerEntry>();
         foreach (var entry in viewers)
         {
-            if (IsWithered(entry, today) && _viewers.All(open => open.Id != entry.Id))
+            if (IsWithered(entry, today) && _tabs.OfType<ViewerTabHost>().All(open => open.Id != entry.Id))
                 withered.Add(entry);
             else
                 menu.Items.Add(ViewerItem(entry, ""));
         }
         if (viewers.Count == 0)
-            menu.Items.Add(new MenuItem { Header = "（Viewerはまだありません）", IsEnabled = false });
+            menu.Items.Add(new MenuItem { Header = "（置いてある Viewer はまだありません）", IsEnabled = false });
         if (withered.Count > 0)
         {
             menu.Items.Add(new Separator());
-            menu.Items.Add(new MenuItem { Header = $"枯れたViewer（{ViewerRoomState.WitherDays} 日開いていない）", IsEnabled = false });
+            menu.Items.Add(new MenuItem { Header = $"枯れた Viewer（{ViewerRoomState.WitherDays} 日開いていない）", IsEnabled = false });
             foreach (var entry in withered)
                 menu.Items.Add(ViewerItem(entry, "　"));
         }
         menu.Items.Add(new Separator());
-        var grow = new MenuItem { Header = "Viewerを生やす頼みごとの下書きをコピー" };
-        grow.Click += (_, _) => GrowRequested?.Invoke(this, EventArgs.Empty);
-        menu.Items.Add(grow);
-        var folder = new MenuItem { Header = "Viewerのフォルダーを開く" };
-        folder.Click += (_, _) =>
+        Item(menu, "Viewer を生やす頼みごとの下書きをコピー", () => GrowRequested?.Invoke(this, EventArgs.Empty));
+        Item(menu, "Viewer のフォルダーを開く", () =>
         {
             try
             {
-                Directory.CreateDirectory(_store.Root);
-                Process.Start(new ProcessStartInfo(_store.Root) { UseShellExecute = true });
+                Directory.CreateDirectory(factory.Store.Root);
+                Process.Start(new ProcessStartInfo(factory.Store.Root) { UseShellExecute = true });
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or Win32Exception)
             {
-                ToastService.Error("Viewerのフォルダーを開けませんでした");
+                ToastService.Error("Viewer のフォルダーを開けませんでした");
             }
-        };
-        menu.Items.Add(folder);
+        });
         menu.IsOpen = true;
     }
 
@@ -355,7 +630,7 @@ internal sealed class ViewerPaneView : UserControl
         var item = new MenuItem
         {
             Header = indent + (entry.Manifest is null ? "⚠ " + entry.Id : entry.Title),
-            IsChecked = _viewers.Any(open => open.Id == entry.Id),
+            IsChecked = _tabs.OfType<ViewerTabHost>().Any(open => open.Id == entry.Id && open.TargetPath is null),
             ToolTip = entry.Manifest?.Description is { Length: > 0 } description ? description : entry.Error,
         };
         item.Click += (_, _) => _ = ShowViewerAsync(entry.Id);
@@ -366,7 +641,7 @@ internal sealed class ViewerPaneView : UserControl
     {
         try
         {
-            return _state!.IsWithered(entry.Id, Directory.GetCreationTime(_store!.FolderOf(entry.Id)), today);
+            return _factory!.State.IsWithered(entry.Id, Directory.GetCreationTime(_factory.Store.FolderOf(entry.Id)), today);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {

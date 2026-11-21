@@ -24,6 +24,7 @@ public partial class ShellWindow {
             enabled: exists);
         AddEditorFileItem(send, "ファイル一覧", () => _vm.FolderTree.RequestRevealPathInFilesPane(path, isDirectory: false),
             enabled: exists);
+        AddEditorFileItem(send, "Viewer", () => OpenPathInViewer(path), enabled: exists);
 
         menu.Items.Add(new Separator());
         var copy = AddEditorFileSubmenu(menu, "パスをコピー");

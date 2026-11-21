@@ -94,15 +94,16 @@ public sealed class TabsViewModelTests
     }
 
     [Fact]
-    public void 種別を3つとも隠したときだけ案内を出す()
+    public void 種別を全部隠したときだけ案内を出す()
     {
         var sut = WithOneOfEach();
 
         sut.ShowEditorTabs = false;
         sut.ShowBrowserTabs = false;
+        sut.ShowTerminalTabs = false;
         Assert.False(sut.IsAllKindsHidden);
 
-        sut.ShowTerminalTabs = false;
+        sut.ShowViewerTabs = false;
         Assert.True(sut.IsAllKindsHidden);
     }
 
@@ -142,12 +143,13 @@ public sealed class TabsViewModelTests
         var sut = WithOneOfEach();
 
         Assert.Equal(
-            [TabEntryKind.Editor, TabEntryKind.Browser, TabEntryKind.Terminal],
+            [TabEntryKind.Editor, TabEntryKind.Browser, TabEntryKind.Terminal, TabEntryKind.Viewer],
             sut.Kinds.Select(k => k.Kind));
-        Assert.Equal(["エディタ", "ブラウザ", "ターミナル"], sut.Kinds.Select(k => k.Label));
-        // 隠していても件数は出し続ける（「無くなった」に見せない）。
+        Assert.Equal(["エディタ", "ブラウザ", "ターミナル", "Viewer"], sut.Kinds.Select(k => k.Label));
+        // 隠していても件数は出し続ける（「無くなった」に見せない）。Viewer の行は Viewer ペインが写すので、ここでは 0。
         sut.ShowEditorTabs = false;
-        Assert.All(sut.Kinds, k => Assert.Equal(1, k.Count));
+        Assert.All(sut.Kinds.Take(3), k => Assert.Equal(1, k.Count));
+        Assert.Equal(0, sut.Kinds[3].Count);
     }
 
     [Fact]

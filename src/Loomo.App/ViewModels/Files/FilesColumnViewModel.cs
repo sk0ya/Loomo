@@ -307,6 +307,9 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
     public event EventHandler<EntryRenamedEventArgs>? EntryRenamed;
     public event EventHandler<string>? EntryDeleted;
     public event EventHandler<TerminalSetRequest>? SetInTerminalRequested;
+
+    /// <summary>「ペインへ送る ▸ Viewer」（§44.2）。</summary>
+    public event EventHandler<string>? OpenInViewerRequested;
     public event EventHandler<FileCompareRequest>? CompareRequested;
     public event EventHandler<string>? SearchInFolderRequested;
     public event EventHandler<string>? OpenInBrowserRequested;
@@ -1659,6 +1662,12 @@ public sealed partial class FilesColumnViewModel : ObservableObject, IDisposable
     {
         if (_commands.EntryExists(entry.FullPath, entry.IsDirectory))
             SetInTerminalRequested?.Invoke(this, new TerminalSetRequest(entry.FullPath, entry.IsDirectory));
+    }
+
+    public void RequestOpenInViewer(FileEntryViewModel entry)
+    {
+        if (_commands.EntryExists(entry.FullPath, entry.IsDirectory))
+            OpenInViewerRequested?.Invoke(this, entry.FullPath);
     }
 
     /// <summary>Diff ペインでの比較要求。<paramref name="rightPath"/> が null なら

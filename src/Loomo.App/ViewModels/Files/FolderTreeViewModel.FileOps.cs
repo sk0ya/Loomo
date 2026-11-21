@@ -307,6 +307,13 @@ public sealed partial class FolderTreeViewModel
             SearchInFolderRequested?.Invoke(this, node.FullPath);
     }
 
+    /// <summary>パスを Viewer ペインで開くよう要求する（ShellWindow が処理）。実在するときだけ。</summary>
+    public void RequestOpenInViewer(string fullPath, bool isDirectory)
+    {
+        if (_fileCommands.EntryExists(fullPath, isDirectory))
+            OpenInViewerRequested?.Invoke(this, fullPath);
+    }
+
     /// <summary>この項目をファイル一覧ペインで開くよう要求する（ShellWindow が処理）。
     /// フォルダーはそこを開き、ファイルは親フォルダーを開いてその行を選ぶ。</summary>
     public void RequestRevealInFilesPane(FileNodeViewModel node)

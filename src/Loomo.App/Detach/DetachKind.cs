@@ -20,5 +20,7 @@ internal enum DetachKind
     /// 隠れているときの差分の行き先もこれで、どちらも送るたびに1枚増える。DIFF ペインとは
     /// 別の VM を持つので、ペイン側の表示対象を奪わない。<b>復元しない</b>——見比べのために
     /// その場で開く一時的な窓で、スナップショットには何が写っていたかを持たせていない。</summary>
-    DiffSpinoff
+    DiffSpinoff,
+    /// <summary>Viewer ペインのタブ（§44.2）をそのまま別ウィンドウへ移したもの。戻すと Viewer ペインの並びへ戻る。</summary>
+    ViewerMove
 }

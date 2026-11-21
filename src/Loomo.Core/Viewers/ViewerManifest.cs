@@ -36,13 +36,15 @@ public static class ViewerApi
     public const string Motion = "motion";
     /// <summary>言いつけ（§44.4）：言いつけを置く・進める・盆から採る／捨てる。</summary>
     public const string Orders = "orders";
+    /// <summary>人間がパスを渡して開いたファイル（そのタブの 1 つだけ）を読む。ワークスペースの外でもよい——選んだのは人間。</summary>
+    public const string Target = "target";
 
-    public static readonly IReadOnlyList<string> All = [Workspace, Open, FsRead, Git, Run, Net, Motion, Orders];
+    public static readonly IReadOnlyList<string> All = [Workspace, Open, FsRead, Git, Run, Net, Motion, Orders, Target];
 
     /// <summary>許しを聞かずに使える口：読むか、人間の前に置くだけで、外へも出られないもの。ここに無い口（<c>run</c>＝任意の
     /// コマンド・<c>net</c>＝読んだ中身を外へ送れる・<c>motion</c>／<c>orders</c>＝裏で回す・作業ツリーへ当てる）を 1 つでも
     /// 挙げたViewerだけ人間に聞く。新しい口は足した時点では聞く側——安全と言えるときだけここへ足す。</summary>
-    public static readonly IReadOnlyList<string> WithoutApproval = [Workspace, Open, FsRead, Git];
+    public static readonly IReadOnlyList<string> WithoutApproval = [Workspace, Open, FsRead, Git, Target];
 
     /// <summary>許しを聞くカードに出す、人間向けの 1 行。</summary>
     public static string Describe(string api) => api switch
@@ -54,6 +56,7 @@ public static class ViewerApi
         Run => "下に書いてあるコマンドを裏で回す（見えるターミナルには打たない）",
         Net => "ネットワークへ出る（外のページ・スクリプトを読む、外へ送る）",
         Motion => "録った動き（見どころの出力・テストの成否・絵）を読み、いまの作業ツリーで見どころを回して録る",
+        Target => "開いたファイル（このタブに渡したパス）を読む",
         Orders => "言いつけを置く・外す・裏のワークツリーで Claude Code に進めさせる・仕上がりを作業ツリーへ当てる（採る）",
         _ => api,
     };
@@ -236,4 +239,59 @@ public static class ViewerUrl
         relativePath = path.Length == 0 || path.EndsWith('/') ? path + "index.html" : path;
         return true;
     }
+}
+
+/// <summary>
+/// 人間がパスを渡して開いた Viewer のタブ（§44.2「パスから開く」）。開いているタブの並びには、置き場の Viewer の id と並べて
+/// <c>path:&lt;フルパス&gt;</c> の形で入る。そのままでは出せないファイルは、拡張子ごとに Claude Code が作った Viewer
+/// （id は <see cref="IdFor"/>）で見せ、同じ拡張子の次のファイルからは使い回す。I/O なし。
+/// </summary>
+public static class ViewerPath
+{
+    public const string KeyPrefix = "path:";
+
+    /// <summary>URL を渡して開いたタブの鍵の頭（<c>url:https://…</c>）。</summary>
+    public const string UrlKeyPrefix = "url:";
+
+    /// <summary>作った Viewer の id の頭。人が置いた Viewer と名前がぶつからないように分ける。</summary>
+    public const string GeneratedPrefix = "file-";
+
+    public static string KeyOf(string fullPath) => KeyPrefix + fullPath;
+
+    public static string UrlKeyOf(string url) => UrlKeyPrefix + url;
+
+    public static bool TryParseUrlKey(string? key, out string url)
+    {
+        url = "";
+        if (key is null || !key.StartsWith(UrlKeyPrefix, StringComparison.Ordinal)
+            || !Uri.TryCreate(key[UrlKeyPrefix.Length..], UriKind.Absolute, out var uri)
+            || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+            return false;
+        url = key[UrlKeyPrefix.Length..];
+        return true;
+    }
+
+    public static bool TryParseKey(string? key, out string fullPath)
+    {
+        fullPath = "";
+        if (key is null || !key.StartsWith(KeyPrefix, StringComparison.Ordinal) || key.Length == KeyPrefix.Length)
+            return false;
+        fullPath = key[KeyPrefix.Length..];
+        return System.IO.Path.IsPathFullyQualified(fullPath);
+    }
+
+    /// <summary>そのファイルを見せる Viewer の id（拡張子ごと）。<c>data.sqlite</c> → <c>file-sqlite</c>、拡張子が無ければ
+    /// <c>file-noext</c>、フォルダーは <c>file-folder</c>。</summary>
+    public static string IdFor(string path, bool isDirectory)
+    {
+        if (isDirectory)
+            return GeneratedPrefix + "folder";
+        var ext = System.IO.Path.GetExtension(path).TrimStart('.').ToLowerInvariant();
+        var clean = new string(ext.Where(c => c is >= 'a' and <= 'z' or >= '0' and <= '9').ToArray());
+        if (clean.Length == 0)
+            return GeneratedPrefix + "noext";
+        return GeneratedPrefix + (clean.Length > 30 ? clean[..30] : clean);
+    }
+
+    public static bool IsGenerated(string id) => id.StartsWith(GeneratedPrefix, StringComparison.Ordinal);
 }

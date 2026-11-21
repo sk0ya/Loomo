@@ -19,7 +19,9 @@ public enum TabEntryKind
 {
     Terminal,
     Editor,
-    Browser
+    Browser,
+    /// <summary>Viewer ペインのタブ（§44.2）。並びと実体は Viewer ペインが持ち、ここへは写すだけ。</summary>
+    Viewer
 }
 
 public sealed partial class TabEntryViewModel : ObservableObject
@@ -141,7 +143,7 @@ public sealed partial class TabEntryViewModel : ObservableObject
     public bool CanRename => Kind == TabEntryKind.Terminal;
 
     /// <summary>棚へ下げられる種別か（§24.29）。ターミナルは帯から外すとシェルが死ぬので下げない。</summary>
-    public bool CanShelve => Kind != TabEntryKind.Terminal;
+    public bool CanShelve => Kind is TabEntryKind.Editor or TabEntryKind.Browser;
 
     /// <summary>ピン留め（§24.29）。上限の枚数に数えず、自動では棚へ下げない。棚を持つ種別だけ。</summary>
     [ObservableProperty] private bool _isPinned;
@@ -155,15 +157,19 @@ public sealed partial class TabEntryViewModel : ObservableObject
     private string? _browserUrl;
 
     /// <summary>右クリック「他の Loomo で開く」の表示可否：渡せるファイルか URL を持っている。</summary>
-    public bool CanOpenInOtherRoom => OtherRoomOpen.RequestFor(FilePath, BrowserUrl) is not null;
+    public bool CanOpenInOtherRoom => Kind != TabEntryKind.Viewer && OtherRoomOpen.RequestFor(FilePath, BrowserUrl) is not null;
 
     /// <summary>ブラウザタブの現在URLから求めたホスト名。ブラウザ以外は null。</summary>
     public string? BrowserDomain { get; private set; }
+
+    /// <summary>Viewer のタブの説明（パスと見せ方）。Viewer 以外は null。</summary>
+    [ObservableProperty] private string? _viewerToolTip;
 
     public string GroupLabel => Kind switch
     {
         TabEntryKind.Editor => "エディタ",
         TabEntryKind.Browser => "ブラウザ",
+        TabEntryKind.Viewer => "Viewer",
         _ => "ターミナル",
     };
 
@@ -171,6 +177,7 @@ public sealed partial class TabEntryViewModel : ObservableObject
     {
         TabEntryKind.Editor => 0,
         TabEntryKind.Browser => 1,
+        TabEntryKind.Viewer => 3,
         _ => 2,
     };
 
@@ -312,6 +319,8 @@ public sealed partial class TabsViewModel : ObservableObject
 {
     /// <summary>ターミナルのタブに出す絵は PowerShell（.ps1）のアイコンを流用する。</summary>
     private static readonly int TerminalIconIndex = FileIcons.IndexFor("terminal.ps1", isDirectory: false);
+    /// <summary>Viewer の種別の絵は HTML のアイコンを流用する（行は開いたファイルの種類の絵）。</summary>
+    private static readonly int ViewerIconIndex = FileIcons.IndexFor("viewer.html", isDirectory: false);
 
     private readonly TabIconService _icons;
     private readonly LoomoSettings? _settings;
@@ -320,9 +329,11 @@ public sealed partial class TabsViewModel : ObservableObject
     private readonly TabKindRowViewModel _editorKind;
     private readonly TabKindRowViewModel _browserKind;
     private readonly TabKindRowViewModel _terminalKind;
+    private readonly TabKindRowViewModel _viewerKind;
     private bool _groupBrowserTabsByDomain;
 
     public ObservableCollection<TabEntryViewModel> TerminalTabs { get; } = new();
+    public ObservableCollection<TabEntryViewModel> ViewerTabs { get; } = new();
     public ObservableCollection<TabEntryViewModel> EditorTabs { get; } = new();
     public ObservableCollection<TabEntryViewModel> BrowserTabs { get; } = new();
     public ObservableCollection<TabEntryViewModel> AllTabs { get; } = new();
@@ -377,7 +388,8 @@ public sealed partial class TabsViewModel : ObservableObject
     public int TotalCount
         => (ShowEditorTabs ? EditorTabs.Count : 0)
          + (ShowBrowserTabs ? BrowserTabs.Count : 0)
-         + (ShowTerminalTabs ? TerminalTabs.Count : 0);
+         + (ShowTerminalTabs ? TerminalTabs.Count : 0)
+         + (ShowViewerTabs ? ViewerTabs.Count : 0);
 
     /// <summary>見出しクリックで開く設定ビュー（表示する種別を選ぶ）が開いているか。
     /// 面そのものの出し入れは ActivityBar が担うので、見出しクリックはこちらに使える。</summary>
@@ -462,9 +474,16 @@ public sealed partial class TabsViewModel : ObservableObject
         set => _terminalKind.IsShown = value;
     }
 
+    /// <summary>Viewer のタブを一覧に出すか。</summary>
+    public bool ShowViewerTabs
+    {
+        get => _viewerKind.IsShown;
+        set => _viewerKind.IsShown = value;
+    }
+
     /// <summary>いずれかの種別を隠している＝一覧に絞りが効いている。見出しの ⚙ に印を残すのに使う
     /// ——開かなくても「全部は出ていない」と分かる必要がある。</summary>
-    public bool IsFiltered => !(ShowEditorTabs && ShowBrowserTabs && ShowTerminalTabs);
+    public bool IsFiltered => !(ShowEditorTabs && ShowBrowserTabs && ShowTerminalTabs && ShowViewerTabs);
 
     /// <summary>その種別の行をいま並べるか（出す設定＋実際に1つ以上ある）。</summary>
     public bool IsEditorSectionVisible => ShowEditorTabs && EditorTabs.Count > 0;
@@ -473,7 +492,7 @@ public sealed partial class TabsViewModel : ObservableObject
 
     /// <summary>3種とも隠していて、一覧が空になっている。タブが無いのか自分で隠したのかを
     /// 見分けられないと「壊れた」に見えるので、そのときだけ案内を出す。</summary>
-    public bool IsAllKindsHidden => !ShowEditorTabs && !ShowBrowserTabs && !ShowTerminalTabs;
+    public bool IsAllKindsHidden => !ShowEditorTabs && !ShowBrowserTabs && !ShowTerminalTabs && !ShowViewerTabs;
 
     // ===== ペインのヘッダーに出す「いま見ているもの」 =====
     // ヘッダーからタブ帯を外したので、ペインを見ただけでは何を映しているかが分からなくなった。
@@ -512,7 +531,8 @@ public sealed partial class TabsViewModel : ObservableObject
         _editorKind = new(TabEntryKind.Editor, "エディタ", "TabsShowEditorToggle", EditorTabs);
         _browserKind = new(TabEntryKind.Browser, "ブラウザ", "TabsShowBrowserToggle", BrowserTabs);
         _terminalKind = new(TabEntryKind.Terminal, "ターミナル", "TabsShowTerminalToggle", TerminalTabs);
-        Kinds = [_editorKind, _browserKind, _terminalKind];
+        _viewerKind = new(TabEntryKind.Viewer, "Viewer", "TabsShowViewerToggle", ViewerTabs);
+        Kinds = [_editorKind, _browserKind, _terminalKind, _viewerKind];
         Shelf = new TabShelfViewModel(() => _icons.GetBrowserDefaultIcon());
         _editorKind.AttachShelf(Shelf.EditorItems);
         _browserKind.AttachShelf(Shelf.BrowserItems);
@@ -529,10 +549,12 @@ public sealed partial class TabsViewModel : ObservableObject
         _editorKind.IsShown = settings?.TabsPanel.ShowEditor ?? true;
         _browserKind.IsShown = settings?.TabsPanel.ShowBrowser ?? true;
         _terminalKind.IsShown = settings?.TabsPanel.ShowTerminal ?? true;
+        _viewerKind.IsShown = settings?.TabsPanel.ShowViewer ?? true;
         foreach (var kind in Kinds)
             kind.PropertyChanged += OnKindRowChanged;
         RefreshKindIcons();
         TerminalTabs.CollectionChanged += OnTabCollectionChanged;
+        ViewerTabs.CollectionChanged += OnTabCollectionChanged;
         EditorTabs.CollectionChanged += OnTabCollectionChanged;
         BrowserTabs.CollectionChanged += OnTabCollectionChanged;
         // アプリと同じ寿命なので解除は要らない（フォルダーツリーと同じ扱い）。
@@ -548,6 +570,7 @@ public sealed partial class TabsViewModel : ObservableObject
         foreach (var tab in EditorTabs) AllTabs.Add(tab);
         foreach (var tab in BrowserTabs) AllTabs.Add(tab);
         foreach (var tab in TerminalTabs) AllTabs.Add(tab);
+        foreach (var tab in ViewerTabs) AllTabs.Add(tab);
         RefreshTabGroupProviders();
         TabsView.Refresh();
         NotifyCounts();
@@ -586,6 +609,7 @@ public sealed partial class TabsViewModel : ObservableObject
         RefreshTabGroupProvider(_editorKind);
         RefreshTabGroupProvider(_browserKind);
         RefreshTabGroupProvider(_terminalKind);
+        RefreshTabGroupProvider(_viewerKind);
     }
 
     private void RefreshTabGroupProvider(TabKindRowViewModel provider)
@@ -637,6 +661,7 @@ public sealed partial class TabsViewModel : ObservableObject
         {
             TabEntryKind.Editor => nameof(ShowEditorTabs),
             TabEntryKind.Browser => nameof(ShowBrowserTabs),
+            TabEntryKind.Viewer => nameof(ShowViewerTabs),
             _ => nameof(ShowTerminalTabs),
         });
         NotifyCounts();
@@ -672,6 +697,7 @@ public sealed partial class TabsViewModel : ObservableObject
         {
             TabEntryKind.Editor => _editorKind,
             TabEntryKind.Browser => _browserKind,
+            TabEntryKind.Viewer => _viewerKind,
             _ => _terminalKind,
         };
         if (row.IsShown != tab.IsGroupShown)
@@ -683,6 +709,7 @@ public sealed partial class TabsViewModel : ObservableObject
         _editorKind.Count = EditorTabs.Count;
         _browserKind.Count = BrowserTabs.Count;
         _terminalKind.Count = TerminalTabs.Count;
+        _viewerKind.Count = ViewerTabs.Count;
         OnPropertyChanged(nameof(TotalCount));
         OnPropertyChanged(nameof(IsEditorSectionVisible));
         OnPropertyChanged(nameof(IsBrowserSectionVisible));
@@ -698,6 +725,7 @@ public sealed partial class TabsViewModel : ObservableObject
         _settings.TabsPanel.ShowBrowser = ShowBrowserTabs;
         _settings.TabsPanel.GroupBrowserByDomain = GroupBrowserTabsByDomain;
         _settings.TabsPanel.ShowTerminal = ShowTerminalTabs;
+        _settings.TabsPanel.ShowViewer = ShowViewerTabs;
         try { _settingsStore?.Save(_settings); }
         catch { /* 永続化に失敗しても選択自体は効かせる */ }
     }
@@ -709,6 +737,7 @@ public sealed partial class TabsViewModel : ObservableObject
         foreach (var tab in EditorTabs) tab.RefreshIcon();
         foreach (var tab in BrowserTabs) tab.RefreshIcon();
         foreach (var tab in TerminalTabs) tab.RefreshIcon();
+        foreach (var tab in ViewerTabs) tab.RefreshIcon();
         Shelf.RefreshIcons();
         RefreshKindIcons();
     }
@@ -719,6 +748,7 @@ public sealed partial class TabsViewModel : ObservableObject
     {
         _editorKind.Icon = FileIcons.ImageFor(FileIconData.DefaultFileIndex);
         _terminalKind.Icon = FileIcons.ImageFor(TerminalIconIndex);
+        _viewerKind.Icon = FileIcons.ImageFor(ViewerIconIndex);
         _browserKind.Icon = _icons.GetBrowserDefaultIcon();
     }
 
@@ -938,6 +968,45 @@ public sealed partial class TabsViewModel : ObservableObject
         }
     }
 
+    /// <summary>Viewer ペインのタブの並びを写す（行は作り直さず、題・状態・並びだけ合わせる）。</summary>
+    public void SetViewerTabs(IReadOnlyList<ViewerTabRow> rows)
+    {
+        for (var i = ViewerTabs.Count - 1; i >= 0; i--)
+        {
+            if (rows.All(row => row.Id != ViewerTabs[i].Id))
+            {
+                UnwatchGroupState(ViewerTabs[i]);
+                ViewerTabs.RemoveAt(i);
+            }
+        }
+        for (var i = 0; i < rows.Count; i++)
+        {
+            var row = rows[i];
+            var tab = ViewerTabs.FirstOrDefault(t => t.Id == row.Id);
+            if (tab is null)
+            {
+                tab = new TabEntryViewModel(row.Id, TabEntryKind.Viewer, row.Title, row.IsActive) { IsGroupShown = ShowViewerTabs };
+                WatchGroupState(tab);
+                ViewerTabs.Insert(Math.Min(i, ViewerTabs.Count), tab);
+            }
+            else
+            {
+                var at = ViewerTabs.IndexOf(tab);
+                if (at != i && i < ViewerTabs.Count)
+                    ViewerTabs.Move(at, i);
+            }
+            tab.Title = row.Title;
+            tab.IsActive = row.IsActive;
+            tab.FilePath = row.FilePath;
+            tab.ViewerToolTip = row.ToolTip;
+            var icon = row.FilePath is { Length: > 0 } path
+                ? FileIcons.IndexFor(path, Directory.Exists(path))
+                : ViewerIconIndex;
+            if (tab.IconIndex != icon)
+                tab.SetFileIcon(icon);
+        }
+    }
+
     public void AddBrowserTab(Guid id, string? title, bool isActive, string? url = null)
     {
         var tab = new TabEntryViewModel(
@@ -997,6 +1066,12 @@ public sealed partial class TabsViewModel : ObservableObject
             UnwatchGroupState(tab);
             BrowserTabs.Remove(tab);
         }
+    }
+
+    public void ActivateViewerTab(Guid id)
+    {
+        foreach (var tab in ViewerTabs)
+            tab.IsActive = tab.Id == id;
     }
 
     public void UpdateTabIcon(Guid id, ImageSource? icon)
@@ -1179,3 +1254,7 @@ public sealed partial class TabsViewModel : ObservableObject
             FileExplorerLauncher.RevealNearestExisting(path);
     }
 }
+
+
+/// <summary>Viewer ペインのタブ 1 つを TABS の行へ写すための形。</summary>
+public sealed record ViewerTabRow(Guid Id, string Title, string ToolTip, string? FilePath, bool IsActive);

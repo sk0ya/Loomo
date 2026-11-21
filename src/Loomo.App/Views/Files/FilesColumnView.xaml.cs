@@ -296,6 +296,12 @@ public partial class FilesColumnView : UserControl
             Vm?.RequestSetInTerminal(entry);
     }
 
+    private void OnOpenInViewerClick(object sender, RoutedEventArgs e)
+    {
+        if (SingleSelection() is { } entry)
+            Vm?.RequestOpenInViewer(entry);
+    }
+
     private void OnCompareWithClipboardClick(object sender, RoutedEventArgs e)
     {
         if (SingleSelection() is { IsDirectory: false } entry)

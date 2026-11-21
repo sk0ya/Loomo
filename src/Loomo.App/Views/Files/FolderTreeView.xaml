@@ -440,6 +440,8 @@
                                                   ToolTip="フォルダーは作業場所に設定し、ファイルはパスを入力します" />
                                         <MenuItem Header="ファイル一覧" Click="OnRevealInFilesPaneClick"
                                                   ToolTip="ファイル一覧ペインでこの場所を開きます（並べ替え・絞り込み・一括操作）" />
+                                        <MenuItem Header="Viewer" Click="OnOpenInViewerClick"
+                                                  ToolTip="Viewer ペインで開きます（HTML は頁、PDF・画像などは EditorSupport と同じ表示、.exe は窓を重ねる、ほかは Claude Code が見せ方を作る）" />
                                         <MenuItem Header="検索" Click="OnSearchInFolderClick"
                                                   Visibility="{Binding IsDirectory, Converter={StaticResource BoolToVis}}"
                                                   ToolTip="このフォルダーを範囲にして検索パネルを開きます" />

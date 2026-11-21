@@ -13,8 +13,12 @@ internal enum ViewerTabStatus
     Broken,
     /// <summary>口とコマンドを人間がまだ許していない（または変わった）。ページは読み込まない。</summary>
     NeedsApproval,
-    /// <summary>ページが出ている。</summary>
+    /// <summary>ページ（窓）が出ている。</summary>
     Running,
+    /// <summary>Claude Code が見せ方を作っている途中。</summary>
+    Generating,
+    /// <summary>止まっている（プログラムをまだ起動していない・終わった）。</summary>
+    Stopped,
 }
 
 /// <summary>
@@ -24,13 +28,14 @@ internal enum ViewerTabStatus
 /// させない（http(s) のリンクはブラウザペインへ）／<c>net</c> を挙げていないViewerの外向きの要求は全部断る／
 /// ページが替わる・Viewerを閉じるときは走っているコマンドを止める。</para>
 /// </summary>
-internal sealed class ViewerTabHost : IDisposable
+internal sealed class ViewerTabHost : IViewerTab
 {
+    private FileSystemWatcher? _targetWatcher;
     private readonly ViewerStore _store;
     private readonly ViewerRoomState _state;
     private readonly ViewerRoomApi _api;
     private readonly IEditorSupportViewFactory _factory;
-    private readonly Panel _host;
+    private Panel _host;
     private readonly Dispatcher _dispatcher;
     private readonly Func<string, Task> _openUrl;
     private readonly DispatcherTimer _reloadTimer;
@@ -45,9 +50,11 @@ internal sealed class ViewerTabHost : IDisposable
     private bool _disposed;
 
     public ViewerTabHost(string id, ViewerStore store, ViewerRoomState state, ViewerRoomApi api,
-        IEditorSupportViewFactory factory, Panel host, Dispatcher dispatcher, Func<string, Task> openUrl)
+        IEditorSupportViewFactory factory, Panel host, Dispatcher dispatcher, Func<string, Task> openUrl,
+        string? targetPath = null)
     {
         Id = id;
+        TargetPath = targetPath;
         _store = store;
         _state = state;
         _api = api;
@@ -65,12 +72,25 @@ internal sealed class ViewerTabHost : IDisposable
         // 読み込みは見えたときに回す。
         _host.IsVisibleChanged += OnHostVisibleChanged;
         Watch();
+        WatchTarget();
     }
 
     private void OnHostVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
     {
         if (e.NewValue is true)
             LoadIfPending();
+    }
+
+    /// <summary>別の入れ物へ移す。WebView2 は窓をまたいで載せ替えると空表示になるので捨て、移った先で見えたときに読み直す。</summary>
+    public void Rehost(Panel host)
+    {
+        var wasRunning = Status == ViewerTabStatus.Running;
+        Unload();
+        _host.IsVisibleChanged -= OnHostVisibleChanged;
+        _host = host;
+        _host.IsVisibleChanged += OnHostVisibleChanged;
+        _loadPending = wasRunning;
+        LoadIfPending();
     }
 
     private void LoadIfPending()
@@ -83,10 +103,68 @@ internal sealed class ViewerTabHost : IDisposable
     public ViewerManifest? Manifest { get; private set; }
     public string? Error { get; private set; }
     public ViewerTabStatus Status { get; private set; } = ViewerTabStatus.Pending;
-    public string Title => Manifest?.Title ?? Id;
+    public Guid TabId { get; } = Guid.NewGuid();
+    public string? TargetPath { get; }
+    public string Key => TargetPath is { } path ? ViewerPath.KeyOf(path) : Id;
+    public string Title => TargetPath is { } path ? ViewerTargets.NameOf(path) : Manifest?.Title ?? Id;
+
+    public string ToolTip => TargetPath is { } path
+        ? $"{path}\nViewer「{Manifest?.Title ?? Id}」で表示"
+        : Manifest?.Description is { Length: > 0 } description ? description : Id;
 
     /// <summary>見え方（題・状態）が変わった。</summary>
     public event EventHandler? Changed;
+
+    public event EventHandler? CloseRequested;
+
+    /// <summary>パスから開いた、Claude Code が作った Viewer か（タブの「作り直す」を出す）。</summary>
+    public bool CanRemake => TargetPath is not null && ViewerPath.IsGenerated(Id);
+
+    public UIElement? BuildCard() => Status switch
+    {
+        ViewerTabStatus.NeedsApproval when Manifest is { } manifest => ApprovalCard(manifest),
+        ViewerTabStatus.Broken => BrokenCard(),
+        _ => null,
+    };
+
+    private UIElement ApprovalCard(ViewerManifest manifest)
+    {
+        var panel = ViewerCards.Panel();
+        panel.Children.Add(ViewerCards.Line(TargetPath is { } path
+            ? $"「{ViewerTargets.NameOf(path)}」を Viewer「{manifest.Title}」で開きますか？"
+            : $"Viewer「{manifest.Title}」を開きますか？", "Fs14", "Fg", bold: true));
+        if (manifest.Description.Length > 0)
+            panel.Children.Add(ViewerCards.Line(manifest.Description, "Fs12", "FgDim"));
+        panel.Children.Add(ViewerCards.Line("この Viewer が部屋でできること", "Fs11", "FgDim", bold: true, top: 12));
+        if (manifest.Api.Count == 0)
+            panel.Children.Add(ViewerCards.Line("・何もしない（自分のページを出すだけ）", "Fs12", "Fg"));
+        foreach (var api in manifest.Api)
+            panel.Children.Add(ViewerCards.Line("・" + ViewerApi.Describe(api), "Fs12", "Fg"));
+        if (manifest.Commands.Count > 0)
+        {
+            panel.Children.Add(ViewerCards.Line("回せるコマンド（この行のとおりにだけ走ります）", "Fs11", "FgDim", bold: true, top: 12));
+            foreach (var command in manifest.Commands)
+            {
+                panel.Children.Add(ViewerCards.Line(command.Name + (command.Cwd == ViewerCommand.CwdViewer ? "（Viewer のフォルダーで）" : "（ワークスペースで）"),
+                    "Fs11", "FgDim", top: 6));
+                panel.Children.Add(ViewerCards.Mono(command.Command));
+            }
+        }
+        panel.Children.Add(ViewerCards.Line("できることやコマンドが変わったら、もう一度ここで聞きます。ページの書き直しでは聞きません。", "Fs11", "FgDim", top: 12));
+        panel.Children.Add(ViewerCards.Buttons(
+            ViewerCards.Button("許して開く", "FlatButton", () => _ = ApproveAsync(), "ViewerApproveButton"),
+            ViewerCards.Button("開かない", "SecondaryButton", () => CloseRequested?.Invoke(this, EventArgs.Empty))));
+        return panel;
+    }
+
+    private UIElement BrokenCard()
+    {
+        var panel = ViewerCards.Panel();
+        panel.Children.Add(ViewerCards.Line($"Viewer「{Id}」を読めません", "Fs14", "Fg", bold: true));
+        panel.Children.Add(ViewerCards.Mono(Error ?? ""));
+        panel.Children.Add(ViewerCards.Line("Viewer のフォルダーの中身が直ると、ここは自動で読み直します。", "Fs11", "FgDim", top: 10));
+        return panel;
+    }
 
     /// <summary>定義を読み直して、出せるなら出す。<paramref name="reload"/> はフォルダーの中身が変わったとき。</summary>
     public async Task RefreshAsync(bool reload = false)
@@ -331,7 +409,7 @@ internal sealed class ViewerTabHost : IDisposable
         try
         {
             // 画面が要る口は相手（IViewerRoom）が Dispatcher を通す。ここは UI スレッドを塞がない。
-            var value = await Task.Run(() => _api.CallAsync(viewer, method, args, EmitFromAnyThread, cancel), cancel);
+            var value = await Task.Run(() => _api.CallAsync(viewer, method, args, EmitFromAnyThread, cancel, TargetPath), cancel);
             reply = new JsonObject { ["k"] = "result", ["id"] = callId, ["ok"] = true, ["v"] = value?.DeepClone() };
         }
         catch (ViewerApiException ex)
@@ -409,6 +487,37 @@ internal sealed class ViewerTabHost : IDisposable
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException) { }
     }
 
+    /// <summary>開いたファイルを見張り、書き換わったらページを読み直す（ページは読み直すたびに target を読む）。</summary>
+    private void WatchTarget()
+    {
+        if (TargetPath is not { } path)
+            return;
+        try
+        {
+            var isDirectory = Directory.Exists(path);
+            var folder = isDirectory ? path : Path.GetDirectoryName(path);
+            if (folder is null || !Directory.Exists(folder))
+                return;
+            _targetWatcher = isDirectory
+                ? new FileSystemWatcher(folder) { IncludeSubdirectories = false, EnableRaisingEvents = true }
+                : new FileSystemWatcher(folder, Path.GetFileName(path)) { EnableRaisingEvents = true };
+            FileSystemEventHandler changed = (_, _) => ScheduleReload();
+            _targetWatcher.Changed += changed;
+            _targetWatcher.Created += changed;
+            _targetWatcher.Deleted += changed;
+            _targetWatcher.Renamed += (_, _) => ScheduleReload();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException) { }
+    }
+
+    private void ScheduleReload() => _dispatcher.BeginInvoke(() =>
+    {
+        if (_disposed)
+            return;
+        _reloadTimer.Stop();
+        _reloadTimer.Start();
+    });
+
     private void OnFolderChanged(string? name)
     {
         var file = Path.GetFileName(name ?? "");
@@ -432,9 +541,12 @@ internal sealed class ViewerTabHost : IDisposable
         _reloadTimer.Stop();
         _watcher?.Dispose();
         _watcher = null;
+        _targetWatcher?.Dispose();
+        _targetWatcher = null;
         Unload();
         _pageCancel.Dispose();
         Changed = null;
+        CloseRequested = null;
     }
 }
 
@@ -527,6 +639,12 @@ internal static class ViewerBridgeScript
               set: value => call('state.set', { value: value === undefined ? null : value }),
             }),
             toast: text => call('toast', { text: String(text) }),
+            target: Object.freeze({
+              info: () => call('target.info'),
+              read: () => call('target.read'),
+              bytes: () => call('target.bytes'),
+              list: () => call('target.list'),
+            }),
             motion: Object.freeze({
               state: () => call('motion.state'),
               snapshots: () => call('motion.snapshots'),
